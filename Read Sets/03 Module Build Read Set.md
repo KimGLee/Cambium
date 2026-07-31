@@ -6,10 +6,10 @@
 
 先读取 [[Knowledge Base Standards/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
 
-- [[Knowledge Base Standards/01 Scope and Architecture/01 Scope Boundaries|Scope Boundaries]]
-- [[Knowledge Base Standards/01 Scope and Architecture/02 Logical Architecture and Knowledge Spine|Logical Architecture and Knowledge Spine]]
-- [[Knowledge Base Standards/01 Scope and Architecture/03 Foundation Preservation|Foundation Preservation]]
-- [[Knowledge Base Standards/01 Scope and Architecture/04 Folder and Shared Ownership|Folder and Shared Ownership]]
+- [[kernel/01 Scope and Architecture/01 Scope Boundaries|Scope Boundaries]]
+- [[kernel/01 Scope and Architecture/02 Logical Architecture and Knowledge Spine|Logical Architecture and Knowledge Spine]]
+- [[kernel/01 Scope and Architecture/03 Foundation Preservation|Foundation Preservation]]
+- [[kernel/01 Scope and Architecture/04 Folder and Shared Ownership|Folder and Shared Ownership]]
 - [[Knowledge Base Standards/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
 - [[Knowledge Base Standards/02 Build Execution/04 Architecture Samples and Dependency Build|Architecture Samples and Dependency Build]]
 - [[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]]
@@ -41,5 +41,5 @@
 ## Related
 
 - [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
-- [[Knowledge Base Standards/01 Scope and Architecture Standard|Scope and Architecture]]
+- [[kernel/01 Scope and Architecture Standard|Scope and Architecture]]
 - [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|Build Execution]]

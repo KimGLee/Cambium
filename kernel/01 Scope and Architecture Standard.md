@@ -12,10 +12,12 @@
 
 | Module | Canonical sections |
 |---|---|
-| [[Knowledge Base Standards/01 Scope and Architecture/01 Scope Boundaries\|Scope Boundaries]] | `Purpose`、`Target`、`Excluded Scope` |
-| [[Knowledge Base Standards/01 Scope and Architecture/02 Logical Architecture and Knowledge Spine\|Logical Architecture and Knowledge Spine]] | `Logical Architecture`、`Knowledge Spine` |
-| [[Knowledge Base Standards/01 Scope and Architecture/03 Foundation Preservation\|Foundation Preservation]] | `Foundation Preservation Rule` |
-| [[Knowledge Base Standards/01 Scope and Architecture/04 Folder and Shared Ownership\|Folder and Shared Ownership]] | `Physical Folder Policy`、`Shared Ownership Rule`、`Architecture Anti-patterns`、`Related` |
+| [[kernel/01 Scope and Architecture/01 Scope Boundaries\|Scope Boundaries]] | `Purpose`、`Profile Scope Interface` |
+| [[kernel/01 Scope and Architecture/02 Logical Architecture and Knowledge Spine\|Logical Architecture and Knowledge Spine]] | `Logical Architecture`、`Knowledge Spine` |
+| [[kernel/01 Scope and Architecture/03 Foundation Preservation\|Foundation Preservation]] | `Foundation Preservation Rule` |
+| [[kernel/01 Scope and Architecture/04 Folder and Shared Ownership\|Folder and Shared Ownership]] | `Physical Folder Policy`、`Shared Ownership Rule`、`Architecture Anti-patterns`、`Related` |
+
+完整生效时还必须加载所选 profile 注册的 `Profile Scope`，由它提供具体目标、逻辑层、knowledge spine、基础层目录、共享层名和排除清单。
 
 ## Applicable Read Sets
 
@@ -26,6 +28,6 @@
 
 - [[Knowledge Base Standards/04 Content Depth Standard|04 Content Depth Standard]]
 - [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
-- [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]]
+- 所选 profile 注册的 `Expression Layer Entry`
 - [[Knowledge Base Standards/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]]
 - [[Knowledge Base Standards/05 Terminology Standard|05 Terminology Standard]]

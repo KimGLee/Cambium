@@ -62,7 +62,7 @@ Open Standards Overview
 | Domain | Stable MOC | Responsibility |
 |---|---|---|
 | `00` | [[Knowledge Base Standards/00 Standards Overview\|Standards Overview]] | 总体 Index、Read Set routing 和 Standards control |
-| `01` | [[Knowledge Base Standards/01 Scope and Architecture Standard\|Scope and Architecture]] | scope、logical architecture、knowledge spine 和 foundation preservation |
+| `01` | [[kernel/01 Scope and Architecture Standard\|Scope and Architecture]] | scope、logical architecture、knowledge spine 和 foundation preservation |
 | `02` | [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard\|Build Execution]] | task contract、state、guidance、batch、checkpoint、resume 和 handoff |
 | `03` | [[Knowledge Base Standards/03 Note Types and Ownership Standard\|Note Types and Ownership]] | note type、canonical owner、split 和 duplication |
 | `04` | [[Knowledge Base Standards/04 Content Depth Standard\|Content Depth]] | concept、flow、system、production、evidence 和 failure depth |
