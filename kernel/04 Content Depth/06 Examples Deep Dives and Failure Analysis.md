@@ -1,7 +1,7 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/04 Content Depth Standard|04 Content Depth Standard]].
-- Previous: [[Knowledge Base Standards/04 Content Depth/05 Source and Evaluation Depth|Source and Evaluation Depth]].
+- Parent: [[kernel/04 Content Depth Standard|04 Content Depth Standard]].
+- Previous: [[kernel/04 Content Depth/05 Source and Evaluation Depth|Source and Evaluation Depth]].
 
 ## Example Standard
 
@@ -47,11 +47,11 @@ Why is it needed?
 - 只有公式，没有符号解释和数值例子。
 - 只有流程图，没有说明每一步为什么存在。
 - 把复杂过程画成无分支、无循环、无失败路径的一条直线。
-- 把 model proposal、Harness authorization 和 external effect 合并成一个“Agent executes”步骤。
+- 把 proposer 的提议、gatekeeper 的授权和 executor 产生的 external effect 合并成一个“system executes”步骤。
 - 为了让图适配视口而删除关键 transition、状态或 recovery path。
 - 用大量链接代替当前页面应承担的机制说明。
-- 结尾有 Interview Answer，但正文不足以支撑追问。
-- 为突出 Agent/Harness，把基础页面压缩成只说明“在 Agent 中如何使用”。
+- 结尾有 Expression Layer Answer，但正文不足以支撑追问。
+- 为突出某 profile 应用主线，把基础页面压缩成只说明“在当前应用中如何使用”。
 - 把文章摘要直接当作 canonical mechanism explanation。
 - 系统页面只有组件列表，没有 execution、state、coordination、evidence 和 recovery paths。
 

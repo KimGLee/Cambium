@@ -26,7 +26,7 @@ Level 代表前置难度，不代表面试重要性。
 - `core`
 - `system`
 
-定义见 [[Knowledge Base Standards/04 Content Depth Standard|Content Depth Standard]]。
+定义见 [[kernel/04 Content Depth Standard|Content Depth Standard]]。
 
 ## Priority
 

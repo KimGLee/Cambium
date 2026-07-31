@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/04 Content Depth Standard|04 Content Depth Standard]].
-- Previous: [[Knowledge Base Standards/04 Content Depth/01 Depth Model and Foundation|Depth Model and Foundation]].
-- Next: [[Knowledge Base Standards/04 Content Depth/03 Process and Flow Structure|Process and Flow Structure]].
+- Parent: [[kernel/04 Content Depth Standard|04 Content Depth Standard]].
+- Previous: [[kernel/04 Content Depth/01 Depth Model and Foundation|Depth Model and Foundation]].
+- Next: [[kernel/04 Content Depth/03 Process and Flow Structure|Process and Flow Structure]].
 
 ## Core Concept Structure
 
@@ -25,7 +25,7 @@ Debugging And Diagnosis（调试与诊断）
 Comparison With Alternatives（与替代方案的比较）
 Production Considerations（生产环境考虑）
 Evaluation（评估）
-Interview Preparation Link（面试准备链接）
+Expression Layer Link（表达层链接）
 Related（相关）
 Sources（来源）
 ```

@@ -43,6 +43,6 @@
 
 - [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]]
 - [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
-- [[Knowledge Base Standards/04 Content Depth Standard|04 Content Depth Standard]]
+- [[kernel/04 Content Depth Standard|04 Content Depth Standard]]
 - [[Knowledge Base Standards/07 Sources and Accuracy Standard|07 Sources and Accuracy Standard]]
 - [[Knowledge Base Standards/08 Metadata and Status Standard|08 Metadata and Status Standard]]

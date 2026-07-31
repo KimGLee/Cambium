@@ -11,7 +11,7 @@
 - [[Knowledge Base Standards/11 Interview Content/03 Card Structure and Answer Levels|Card Structure and Answer Levels]]
 - [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]]
 - [[Knowledge Base Standards/11 Interview Content/05 Knowledge Links and Preparation|Knowledge Links and Preparation]]
-- [[Knowledge Base Standards/04 Content Depth/01 Depth Model and Foundation|Depth Model and Foundation]]
+- [[kernel/04 Content Depth/01 Depth Model and Foundation|Depth Model and Foundation]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation/01 Link Semantics and Body Links|Link Semantics and Body Links]]
 - [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|Chinese-first Technical Language]]，用于区分中文知识表达与独立 English Answer 例外。
 

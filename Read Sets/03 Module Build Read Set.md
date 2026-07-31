@@ -16,9 +16,9 @@
 - [[kernel/03 Note Types and Ownership/01 Note Type Catalog|Note Type Catalog]]
 - [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
 - [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]
-- [[Knowledge Base Standards/04 Content Depth/01 Depth Model and Foundation|Depth Model and Foundation]]
-- 根据模块中的页面类型分别加载 [[Knowledge Base Standards/04 Content Depth/02 Core Concept Structure|Core Concept Structure]]、[[Knowledge Base Standards/04 Content Depth/03 Process and Flow Structure|Process and Flow Structure]]、[[Knowledge Base Standards/04 Content Depth/04 System and Production Reasoning|System and Production Reasoning]] 或 [[Knowledge Base Standards/04 Content Depth/05 Source and Evaluation Depth|Source and Evaluation Depth]]。
-- 需要实例、深挖、失败模式或调试时加载 [[Knowledge Base Standards/04 Content Depth/06 Examples Deep Dives and Failure Analysis|Examples Deep Dives and Failure Analysis]]。
+- [[kernel/04 Content Depth/01 Depth Model and Foundation|Depth Model and Foundation]]
+- 根据模块中的页面类型分别加载 [[kernel/04 Content Depth/02 Core Concept Structure|Core Concept Structure]]、[[kernel/04 Content Depth/03 Process and Flow Structure|Process and Flow Structure]]、[[kernel/04 Content Depth/04 System and Production Reasoning|System and Production Reasoning]] 或 [[kernel/04 Content Depth/05 Source and Evaluation Depth|Source and Evaluation Depth]]。
+- 需要实例、深挖、失败模式或调试时加载 [[kernel/04 Content Depth/06 Examples Deep Dives and Failure Analysis|Examples Deep Dives and Failure Analysis]]。
 - [[Knowledge Base Standards/08 Metadata and Status/03 Status Axes|Status Axes]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation/02 Structural and Bidirectional Links|Structural and Bidirectional Links]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation/04 MOC Related and Link Creation|MOC Related and Link Creation]]

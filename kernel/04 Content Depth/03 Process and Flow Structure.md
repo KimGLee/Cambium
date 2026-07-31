@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/04 Content Depth Standard|04 Content Depth Standard]].
-- Previous: [[Knowledge Base Standards/04 Content Depth/02 Core Concept Structure|Core Concept Structure]].
-- Next: [[Knowledge Base Standards/04 Content Depth/04 System and Production Reasoning|System and Production Reasoning]].
+- Parent: [[kernel/04 Content Depth Standard|04 Content Depth Standard]].
+- Previous: [[kernel/04 Content Depth/02 Core Concept Structure|Core Concept Structure]].
+- Next: [[kernel/04 Content Depth/04 System and Production Reasoning|System and Production Reasoning]].
 
 ## Process And Flow Structure
 
@@ -21,24 +21,24 @@ Loop And Replanning Conditions（循环与重规划条件）
 State Transitions（状态转换）
 External Effects And Receipts（外部效果与凭据）
 Retry / Timeout / Cancel / Pause（重试 / 超时 / 取消 / 暂停）
-Human Approval Or Handoff（人工审批或交接）
+Approval Or Handoff（审批或交接）
 Failure Propagation And Recovery（失败传播与恢复）
 Stop Condition And Terminal Proof（停止条件与终态证明）
 Observability And Evaluation（可观测性与评估）
 Worked Execution Trace（完整执行追踪）
 Related Component Contracts（相关组件契约）
-Interview Preparation Link（面试准备链接）
+Expression Layer Link（表达层链接）
 Sources（来源）
 ```
 
-Process / Flow 页面至少区分以下角色：
+Process / Flow 页面至少回答以下四个角色问题：
 
-- Model proposal：模型建议下一动作、参数或解释。
-- Harness control：验证、授权、调度、预算、状态提交和完成判断。
-- External executor：工具、服务、数据库、filesystem、browser 或其它环境实际产生效果。
-- Human authority：在高风险、歧义或策略要求下批准、拒绝、修改或接管。
+- `proposer`：谁提议下一动作、参数或解释。
+- `gatekeeper`：谁验证、授权、调度、控制预算、提交状态并判断完成。
+- `executor`：谁在外部环境实际产生效果。
+- `stopper`：在高风险、歧义或策略要求下，谁批准、拒绝、修改、接管或叫停。
 
-并非每个流程都需要四类角色，但不能把模型“提出动作”写成模型已经直接执行了外部效果。
+四问不要求四个不同主体；同一主体可以承担多个角色。所选 profile 可以增加角色，但不能降低四问下限。不能把 proposer“提出动作”写成 executor 已经实际产生了外部效果。
 
 流程图只是结构视图，正文还必须解释：
 

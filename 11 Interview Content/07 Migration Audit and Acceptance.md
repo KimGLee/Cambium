@@ -62,7 +62,7 @@
 
 ## Related
 
-- [[Knowledge Base Standards/04 Content Depth Standard|Content Depth Standard]]
+- [[kernel/04 Content Depth Standard|Content Depth Standard]]
 - [[Knowledge Base Standards/05 Terminology Standard|Terminology Standard]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]
 - [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]

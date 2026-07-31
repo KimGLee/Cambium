@@ -40,6 +40,6 @@ v1.1 的 `195` 个原始 H2 blocks，因此不改变 `195 / 195` 内容守恒计
 
 - [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]]
-- [[Knowledge Base Standards/04 Content Depth Standard|04 Content Depth Standard]]
+- [[kernel/04 Content Depth Standard|04 Content Depth Standard]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]]
 - [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]

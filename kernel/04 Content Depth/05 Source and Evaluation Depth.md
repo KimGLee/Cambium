@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/04 Content Depth Standard|04 Content Depth Standard]].
-- Previous: [[Knowledge Base Standards/04 Content Depth/04 System and Production Reasoning|System and Production Reasoning]].
-- Next: [[Knowledge Base Standards/04 Content Depth/06 Examples Deep Dives and Failure Analysis|Examples Deep Dives and Failure Analysis]].
+- Parent: [[kernel/04 Content Depth Standard|04 Content Depth Standard]].
+- Previous: [[kernel/04 Content Depth/04 System and Production Reasoning|System and Production Reasoning]].
+- Next: [[kernel/04 Content Depth/06 Examples Deep Dives and Failure Analysis|Examples Deep Dives and Failure Analysis]].
 
 ## Source Note And Research Synthesis Depth
 

@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/04 Content Depth Standard|04 Content Depth Standard]].
-- Previous: [[Knowledge Base Standards/04 Content Depth/03 Process and Flow Structure|Process and Flow Structure]].
-- Next: [[Knowledge Base Standards/04 Content Depth/05 Source and Evaluation Depth|Source and Evaluation Depth]].
+- Parent: [[kernel/04 Content Depth Standard|04 Content Depth Standard]].
+- Previous: [[kernel/04 Content Depth/03 Process and Flow Structure|Process and Flow Structure]].
+- Next: [[kernel/04 Content Depth/05 Source and Evaluation Depth|Source and Evaluation Depth]].
 
 ## System Design Structure
 
@@ -29,13 +29,13 @@ Scalability（可扩展性）
 Latency And Cost（延迟与成本）
 Alternatives And Tradeoffs（替代方案与权衡）
 Worked Scenario（完整场景推演）
-Interview Preparation Link（面试准备链接）
+Expression Layer Link（表达层链接）
 Sources（来源）
 ```
 
 ## Production System Reasoning
 
-P0 / P1 Agent、Harness 和 AI Systems 页面必须能够沿五条链路回答企业系统追问：
+由所选 profile 的 `Production System Reasoning Applicability` 登记项覆盖的 P0 / P1 页面必须能够沿五条链路回答企业系统追问：
 
 - Execution path：目标如何经过决策、工具和环境变成结果。
 - State path：状态由谁拥有、保存、更新、同步和清理。

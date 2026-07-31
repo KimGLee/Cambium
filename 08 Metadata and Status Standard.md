@@ -28,7 +28,7 @@
 ## Related Standards
 
 - [[kernel/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]]
-- [[Knowledge Base Standards/04 Content Depth Standard|04 Content Depth Standard]]
+- [[kernel/04 Content Depth Standard|04 Content Depth Standard]]
 - [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]]
 - [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]

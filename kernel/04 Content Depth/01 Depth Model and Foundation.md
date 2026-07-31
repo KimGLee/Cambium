@@ -1,7 +1,7 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/04 Content Depth Standard|04 Content Depth Standard]].
-- Next: [[Knowledge Base Standards/04 Content Depth/02 Core Concept Structure|Core Concept Structure]].
+- Parent: [[kernel/04 Content Depth Standard|04 Content Depth Standard]].
+- Next: [[kernel/04 Content Depth/02 Core Concept Structure|Core Concept Structure]].
 
 ## Purpose
 
@@ -31,38 +31,32 @@
 
 ### Atomic
 
-适合单一术语或参数，例如 Epoch、Top-p、Logits。
+适合单一术语或参数，例如 Timeout、Checksum、Lease。
 
 至少覆盖：定义、作用、直觉、一个例子、边界、误区、使用位置和相关概念。
 
-软性篇幅参考：500–1200 个中文字。
+软性篇幅参考：500–1200 个由所选 profile 的 `Language Contract` 定义的内容长度单位。
 
 ### Core
 
-适合高频核心机制，例如 Bias-Variance、Backpropagation、Self-Attention、RAG。
+适合高频核心机制，例如 Transaction Isolation、Eventual Consistency、Control Loop、Caching。
 
 至少覆盖：问题来源、机制、公式或流程、假设、worked example、选择规则、替代方案、失败模式、评估和工程考虑。
 
-软性篇幅参考：1500–3000 个中文字。
+软性篇幅参考：1500–3000 个由所选 profile 的 `Language Contract` 定义的内容长度单位。
 
 ### System
 
-适合组件和完整系统，例如 Context Manager、Agent Harness、Serving Platform。
+适合组件和完整系统，例如 Task Scheduler、Message Broker、Order Processing Platform。
 
 至少覆盖：目标、非目标、需求、组件、接口、数据流、状态、生命周期、并发、失败、安全、观测、扩展、成本和替代方案。
 
-软性篇幅参考：2500–6000 个中文字。
+软性篇幅参考：2500–6000 个由所选 profile 的 `Language Contract` 定义的内容长度单位。
 
 篇幅只用于发现异常，不能用无信息密度的重复内容凑长度。
 
 ## Foundation Depth Rule
 
-以 Agent/Harness 为知识主线不降低基础页面的深度要求。
+所选 profile 的知识主线不降低基础页面的深度要求。
 
-- 数学与统计页面要解释定义、公式、假设、直觉、数值例子和边界。
-- ML/DL 页面要解释训练或推理机制、数据要求、评估、失败和选择依据。
-- LLM 页面要解释模型行为的来源，不能只写“Agent 会使用它”。
-- Retrieval/RAG 页面要解释检索、排序、grounding 和 evaluation，不能退化为 Agent 工具清单。
-- Agent/Harness 页面通过 wiki links 使用基础知识，只补充当前系统语境，不复制完整基础机制。
-
-基础知识页应能脱离 Agent 页面独立学习；Agent 页面则必须能够沿 prerequisites 回溯到完整基础解释。
+基础知识页应能脱离 profile 应用页独立学习；profile 应用页则必须能够沿 prerequisites 回溯到完整基础解释。逐学科要求由 `Profile Scope` 的 `Foundation Depth Requirements` 登记。

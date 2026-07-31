@@ -171,3 +171,17 @@ Case Study 必须基于已核验来源，区分公开事实、合理推断和知
 | `Case Study Layer` | `Case Study` |
 | `Source Note Layer` | `Source Note` |
 | `Research Synthesis Layer` | `Research Synthesis` |
+
+## Foundation Depth Requirements
+
+- Knowledge mainline: `Agent/Harness`
+- Application page: `Agent 页面`
+- 数学与统计页面要解释定义、公式、假设、直觉、数值例子和边界。
+- ML/DL 页面要解释训练或推理机制、数据要求、评估、失败和选择依据。
+- LLM 页面要解释模型行为的来源，不能只写“Agent 会使用它”。
+- Retrieval/RAG 页面要解释检索、排序、grounding 和 evaluation，不能退化为 Agent 工具清单。
+- Agent/Harness 页面通过 wiki links 使用基础知识，只补充当前系统语境，不复制完整基础机制。
+
+## Production System Reasoning Applicability
+
+- Covered pages: `P0 / P1 Agent、Harness 和 AI Systems 页面`

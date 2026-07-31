@@ -36,7 +36,7 @@
 - `01` [[kernel/01 Scope and Architecture Standard|Scope and Architecture Standard]]：范围、Agent/Harness 主线、基础层和 logical architecture。
 - `02` [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]：长任务 contract、Mid-task Guidance、时间语义、task state、Coverage Ledger、batch、恢复和 Terminal Proof。
 - `03` [[kernel/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]：note types、Process / Flow、canonical ownership、split 和 duplication。
-- `04` [[Knowledge Base Standards/04 Content Depth Standard|Content Depth Standard]]：Atomic / Core / System 深度、Process / Flow、系统链路和 evaluation provenance。
+- `04` [[kernel/04 Content Depth Standard|Content Depth Standard]]：Atomic / Core / System 深度、Process / Flow、系统链路和 evaluation provenance。
 - `05` [[Knowledge Base Standards/05 Terminology Standard|Terminology Standard]]：专有名词提取、aliases、复用和 emerging terminology。
 - `06` [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]：用户 hypothesis / source lead、source-to-knowledge pipeline、synthesis、graph impact 和 promotion。
 - `07` [[Knowledge Base Standards/07 Sources and Accuracy Standard|Sources and Accuracy Standard]]：来源角色、claim、公式、指标和时效性核验。

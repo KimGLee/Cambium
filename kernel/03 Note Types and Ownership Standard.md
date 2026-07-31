@@ -33,7 +33,7 @@
 ## Related Standards
 
 - 所选 profile 注册的 `Expression Layer Entry`
-- [[Knowledge Base Standards/04 Content Depth Standard|04 Content Depth Standard]]
+- [[kernel/04 Content Depth Standard|04 Content Depth Standard]]
 - [[Knowledge Base Standards/05 Terminology Standard|05 Terminology Standard]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]]
 - [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
