@@ -16,6 +16,10 @@
 
 `Expression Layer Entry` 把 kernel 的 `Expression Layer Link` 绑定到 profile 的显示标签和已注册表达产物。它只负责路由与命名，不复制表达层规则。
 
+## Source Policy Slot
+
+`Source Policy` 绑定 profile-owned 的具名一手来源集合、扫描 / 核验入口、适用范围或 priority trigger、对照与缺失记录规则，以及 profile-specific evaluation provenance extensions。它可以加严，但不得削弱或替代 kernel 的 source hierarchy、authority / evidence role / applicability / bias 四维判断、cross-source independence / comparability、十要素 provenance、`unknown`、source quality 或 promotion gate。
+
 ## Role Registry Slot
 
 `Role Registry` 可以为 kernel 的 `proposer`、`gatekeeper`、`executor`、`stopper` 登记 profile 角色名并增加扩展角色，但不能降低四问下限。同一主体可以承担多个角色。

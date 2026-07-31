@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/07 Sources and Accuracy Standard|07 Sources and Accuracy Standard]].
-- Previous: [[Knowledge Base Standards/07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|Source Hierarchy and Evidence Roles]].
-- Next: [[Knowledge Base Standards/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]].
+- Parent: [[kernel/07 Sources and Accuracy Standard|07 Sources and Accuracy Standard]].
+- Previous: [[kernel/07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|Source Hierarchy and Evidence Roles]].
+- Next: [[kernel/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]].
 
 ## Claims Requiring Sources
 
@@ -16,7 +16,7 @@
 - 安全攻击、风险分类和 mitigation 建议。
 - 有争议或依赖条件的工程结论。
 - 行业案例中的架构、指标、用户规模、成本和效果数据。
-- 从官方文章或社区讨论综合出的新 Agent/Harness 模式。
+- 从官方文章或社区讨论综合出的新系统 / 运行控制模式。
 
 常识性连接句不需要逐句引用，但不能用“常见做法”掩盖未经验证的事实。
 
@@ -47,4 +47,4 @@
 - `Cross-source Synthesis`：比较多个来源后形成的判断。
 - `Engineering Recommendation`：结合证据和约束给出的建议。
 
-正文语气必须与 claim 类型和 `evidence_maturity` 一致。单一社区讨论不能写成“业界已经证明”，单一厂商案例不能写成“所有 Agent 系统都应该”。
+正文语气必须与 claim 类型和 `evidence_maturity` 一致。单一社区讨论不能写成“业界已经证明”，单一厂商案例不能写成“所有系统都应该”。

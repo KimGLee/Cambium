@@ -20,10 +20,10 @@
 ## Triggered
 
 - 出现可复用专有名词：读取 [[kernel/05 Terminology/01 Terminology Extraction|Terminology Extraction]]、[[kernel/05 Terminology/02 Ownership and Term Structure|Ownership and Term Structure]] 和 [[kernel/05 Terminology/03 Naming Context and Linking|Naming Context and Linking]]；关闭 term note 前读取 [[kernel/05 Terminology/04 Terminology Acceptance|Interview and Acceptance]]。
-- 关键 claim 或外部文章：读取 [[Knowledge Base Standards/07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|Source Hierarchy and Evidence Roles]] 和 [[Knowledge Base Standards/07 Sources and Accuracy/02 Claims Sources and Classification|Claims Sources and Classification]]。
-- 官方厂商材料或需要独立核验的结论：读取 [[Knowledge Base Standards/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]]。
-- Benchmark、accuracy、回测或生产指标：读取 [[Knowledge Base Standards/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]]。
-- 时效性 claim、公式、术语冲突或不确定性：读取 [[Knowledge Base Standards/07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty|Time Formula Terminology and Uncertainty]]。
+- 关键 claim 或外部文章：读取 [[kernel/07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|Source Hierarchy and Evidence Roles]] 和 [[kernel/07 Sources and Accuracy/02 Claims Sources and Classification|Claims Sources and Classification]]。
+- 官方厂商材料或需要独立核验的结论：读取 [[kernel/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]]。
+- Benchmark、accuracy、回测或生产指标：读取 [[kernel/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]]。
+- 时效性 claim、公式、术语冲突或不确定性：读取 [[kernel/07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty|Time Formula Terminology and Uncertainty]]。
 - 数学、表格或代码：读取 [[Knowledge Base Standards/10 Writing and Formatting/02 Mathematics Tables and Code|Mathematics Tables and Code]]。
 - 图、图片或可视化：读取 [[Knowledge Base Standards/10 Writing and Formatting/03 Diagrams and Assets|Diagrams and Assets]]。
 - 需要深挖案例、失败模式或调试：读取 [[kernel/04 Content Depth/06 Examples Deep Dives and Failure Analysis|Examples Deep Dives and Failure Analysis]]。

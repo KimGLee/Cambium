@@ -23,7 +23,7 @@
 - 高质量社区讨论、issue、经验总结和新出现的实践问题。
 - 现有知识页在学习、表达任务或工程分析中暴露出的新缺口。
 
-它不替代 [[Knowledge Base Standards/07 Sources and Accuracy Standard|Sources and Accuracy Standard]]。Sources and Accuracy 判断结论是否有可靠依据；本标准判断这些依据应如何改变知识库。
+它不替代 [[kernel/07 Sources and Accuracy Standard|Sources and Accuracy Standard]]。Sources and Accuracy 判断结论是否有可靠依据；本标准判断这些依据应如何改变知识库。
 
 ## Core Model
 

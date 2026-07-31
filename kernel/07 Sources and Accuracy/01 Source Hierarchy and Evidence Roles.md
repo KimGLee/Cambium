@@ -1,7 +1,7 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/07 Sources and Accuracy Standard|07 Sources and Accuracy Standard]].
-- Next: [[Knowledge Base Standards/07 Sources and Accuracy/02 Claims Sources and Classification|Claims Sources and Classification]].
+- Parent: [[kernel/07 Sources and Accuracy Standard|07 Sources and Accuracy Standard]].
+- Next: [[kernel/07 Sources and Accuracy/02 Claims Sources and Classification|Claims Sources and Classification]].
 
 ## Purpose
 
@@ -27,9 +27,9 @@
 
 - Source authority：作者是否直接拥有数据、系统或实验信息。
 - Evidence role：它用于发现问题、解释机制、证明实现、提供实验、展示失败还是反驳结论。
-- Applicability boundary：结论适用于哪些模型、任务、Harness、组织和时间范围。
+- Applicability boundary：结论适用于哪些模型、任务、execution / control setup、组织和时间范围。
 - Potential bias：是否存在厂商宣传、选择性披露、社区幸存者偏差或 benchmark 激励。
 
-社区内容权威级别通常较低，但可以是高价值 discovery signal 或 failure evidence；官方公司文章可以证明其公开系统，却不能自动证明行业普遍规律（详见 [[Knowledge Base Standards/07 Sources and Accuracy/03 Official and Cross-source Verification|07/03]]）。
+社区内容权威级别通常较低，但可以是高价值 discovery signal 或 failure evidence；官方公司文章可以证明其公开系统，却不能自动证明行业普遍规律（详见 [[kernel/07 Sources and Accuracy/03 Official and Cross-source Verification|07/03]]）。
 
 七种 evidence roles 的 canonical 定义见 [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|06/03]] Stage 4。

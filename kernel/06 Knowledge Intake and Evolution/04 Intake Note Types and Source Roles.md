@@ -48,11 +48,11 @@ Research Synthesis 不是永久替代 canonical notes。结论稳定后，应把
 
 ### Official Company Sources
 
-不同公司的官方文章在 intake 中作为一手 implementation evidence，用于证明该公司公开披露的系统、实验和工程经验，不自动证明行业普遍规律。canonical 政策见 [[Knowledge Base Standards/07 Sources and Accuracy/03 Official and Cross-source Verification|07/03]]。
+不同公司的官方文章在 intake 中作为一手 implementation evidence，用于证明该公司公开披露的系统、实验和工程经验，不自动证明行业普遍规律。canonical 政策见 [[kernel/07 Sources and Accuracy/03 Official and Cross-source Verification|07/03]]。
 
 ### Community Sources
 
-社区讨论在 intake 中主要作为 discovery signal 和 failure evidence，用于发现问题、收集实践经验并形成需要进一步验证的 hypothesis；社区共识不等于事实。canonical 层级与角色定位见 [[Knowledge Base Standards/07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|07/01]]。
+社区讨论在 intake 中主要作为 discovery signal 和 failure evidence，用于发现问题、收集实践经验并形成需要进一步验证的 hypothesis；社区共识不等于事实。canonical 层级与角色定位见 [[kernel/07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|07/01]]。
 
 ### Papers Benchmarks And Reproductions
 

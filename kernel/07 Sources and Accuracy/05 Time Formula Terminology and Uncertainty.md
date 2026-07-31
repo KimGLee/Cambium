@@ -1,18 +1,18 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/07 Sources and Accuracy Standard|07 Sources and Accuracy Standard]].
-- Previous: [[Knowledge Base Standards/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]].
-- Next: [[Knowledge Base Standards/07 Sources and Accuracy/06 Source Maintenance and Acceptance|Source Maintenance and Acceptance]].
+- Parent: [[kernel/07 Sources and Accuracy Standard|07 Sources and Accuracy Standard]].
+- Previous: [[kernel/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]].
+- Next: [[kernel/07 Sources and Accuracy/06 Source Maintenance and Acceptance|Source Maintenance and Acceptance]].
 
 ## Time-sensitive Content
 
 以下主题需要 `last_verified`：
 
-- MCP、tool calling、model API 等协议和接口。
-- 模型规格、context window、价格、限制。
+- 协议、API 和其它外部接口。
+- 组件或服务规格、容量上限、价格和限制。
 - 框架版本和库行为。
 - 安全建议、法规和行业标准。
-- 云服务、vector database 和推理平台能力。
+- 云服务、数据服务和运行平台能力。
 
 时效性结论必须注明验证日期，不能只依赖模型记忆。
 
@@ -33,7 +33,7 @@
 - 全称、缩写和大小写必须准确。
 - 区分相似但不同的概念，例如 parameter vs hyperparameter、state vs memory。
 - 协议定义与常见工程习惯分开描述。
-- 中文翻译不能改变英文术语含义。
+- `Language Contract` 规定的翻译不能改变原术语含义。
 - 专有名词的 canonical definition 遵循 [[kernel/05 Terminology Standard|Terminology Standard]]。
 
 ## Uncertainty And Disagreement

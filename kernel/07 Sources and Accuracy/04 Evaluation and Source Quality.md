@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/07 Sources and Accuracy Standard|07 Sources and Accuracy Standard]].
-- Previous: [[Knowledge Base Standards/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]].
-- Next: [[Knowledge Base Standards/07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty|Time Formula Terminology and Uncertainty]].
+- Parent: [[kernel/07 Sources and Accuracy Standard|07 Sources and Accuracy Standard]].
+- Previous: [[kernel/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]].
+- Next: [[kernel/07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty|Time Formula Terminology and Uncertainty]].
 
 ## Evaluation Provenance
 
@@ -13,7 +13,7 @@ Task Definition
  -> Dataset And Sampling
  -> Ground Truth
  -> Trial Setup And Repeat Count
- -> Model + Prompt + Harness + Tools + Environment
+ -> Model + Prompt + Execution / Control Setup + Tools + Environment
  -> Grader
  -> Metric And Aggregation
  -> Uncertainty And Slice Analysis
@@ -23,7 +23,7 @@ Task Definition
 
 Reproduction Boundary 必须说明结论可以复现到什么程度以及复现边界在哪里。无法获得的要素必须显式记录为 `unknown` 并说明原因。
 
-Agent evaluation 还需要区分 transcript、trajectory 和 final environment outcome。非确定性任务不能只给单次运行结果；应说明 trial 数、方差、一致性和失败分布。
+所选 profile 的额外 evaluation provenance 要求由 `Source Policy` 注册。
 
 ## Source Quality
 
