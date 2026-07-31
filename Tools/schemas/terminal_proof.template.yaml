@@ -1,0 +1,52 @@
+# =============================================================================
+# Terminal Proof 模板（机读状态层，模板即 schema 文档）
+# Owner 标准："12 Quality Assurance/06 Completion Terminal Audit and Final Report.md"
+#   —— 字段清单逐字段照抄 12/06 "Terminal Proof 至少包含" 的 28 个字段
+#      （canonical 定义见 12/06，含 full_deterministic_results；12/07
+#       Terminal Reconciliation Rules 亦指回 12/06）。
+# 完成条件（12/06）：只有 guidance 三个未决计数为 0、required_authoring_gaps = 0、
+#   unverified_batches = 0、unresolved_invalidations = 0 且所有适用 gate 通过时，
+#   task state 才能改为 complete。
+# 本模板是 Tools/check_proof.py 的权威字段清单来源（顶层 key = 必填字段）。
+#
+# 仅允许受限 YAML 子集语法（Tools/kblib.py parse_yaml_subset 可解析）：
+#   - `key: value` 标量（字符串/数字/布尔/空值、引号字符串、内联 `[]`）；
+#   - `key:` 下缩进的 `- 项` 列表；
+#   - 列表项可为一层平铺 map；两级缩进嵌套 map。
+#   不允许：锚点/别名、多行字符串（| >）、flow map {}、tag、多文档。
+# =============================================================================
+
+scope_version: "s1"                # 冻结候选快照时的 scope version（12/06 Terminal Audit 步骤 1；02/02 Versioning Rules）
+contract_version: "c1"             # contract version（同上）
+queue_revision: "q1"               # Required Queue 修订号（同上）
+batch_revision: "b1"               # batch revision（同上）
+standards_version: "2.3"           # 冻结的 Standards version（02/01：任务开始后冻结）
+selected_read_sets:                # 本任务选定的 Read Sets（12/06 步骤 1 要求同时记录）
+  - "Read Sets/07 Long-running Execution Read Set.md"
+loaded_module_paths:               # 实际加载的 module 完整 vault-relative 路径（09/03：不能只记录模糊的 Standard 编号）
+  - "02 Build Execution/01 Contract Time and Task State.md"
+guidance_cutoff_id: "G-012"        # guidance 边界 ID（12/06 步骤 1；02/02：guidance_id 单调递增不复用）
+guidance_reconciliation_result: "passed"  # Guidance Reconciliation Review 结果（12/06 步骤 3；guidance 三个未决计数必须为 0 才能 complete）
+coverage_reconciliation_result: "passed"  # Coverage Ledger 与文件系统/exclusions/competency matrix/Required Queue 对账结果（12/06 步骤 4）
+required_authoring_gaps: 0         # 未闭合 Required authoring 缺口数；完成条件：必须为 0（12/06；与 Coverage Ledger open_gaps 对账）
+unverified_batches: 0              # 未通过 Batch Review 验证的批次数；完成条件：必须为 0（12/06）
+automated_QA_result: "passed"      # 自动检查总体结果（12/05 Automated and Manual Checks）
+manual_review_result: "passed"     # note-type-aware 人工审阅总体结果（12/06 步骤 7）
+rendering_evidence: "level-0/1 deterministic passed; visual_trigger: not_applicable"  # 必须说明最高实际级别和验证结果；无 visual trigger 时记 visual_trigger: not_applicable（12/06）
+audit_snapshot_id: "snap-20260721-01"     # 冻结候选快照标识（12/06 步骤 1、10）
+audit_receipt_register: "Tools/receipts/register.jsonl"  # Audit Receipt Register 引用（12/06 步骤 2；receipt 存放位置见 12/07）
+reused_receipts:                   # 通过 Reuse Gate 复用的 receipt_id 列表（12/06；Reuse Gate 条件见 12/07）
+  - "audit-check_links-20260701T000000Z-0001"
+superseded_receipts:               # 被新结果 supersede 的 receipt_id 列表（12/07：新结果 supersede 前一 receipt）
+  - "audit-check_links-20260601T000000Z-0001"
+invalidated_receipts:              # 被判失效的 receipt_id 列表（12/07 Direct / Dependency Invalidation）
+  - "audit-check_vocab-20260601T000000Z-0002"
+unresolved_invalidations: 0        # 未处置的失效数；完成条件：必须为 0（12/06；12/07 Terminal Reconciliation Rules）
+full_deterministic_results: "Tools/receipts/terminal-full-20260721.jsonl"  # 终审对最终冻结快照全量运行的确定性检查的完整结果集引用（12/06）
+incremental_manual_scope:          # 增量人工审阅覆盖范围：changed/invalidated/overdue/P0-P1 high-risk/专项暴露页面（12/06 步骤 7）
+  - "Agent Knowledge/Harness/Agent Harness.md"
+sampling_scope_and_result: "有效 receipts 有界抽样 12 页，全部通过"  # 有界抽样范围与结果（12/06 步骤 7）
+systemic_expansions: []            # family expansion 记录；无系统性问题时为空列表（12/06 步骤 10；12/07 Systemic Expansion）
+deferred_evidence_backlog: []      # 外部证据 backlog；不得用于掩盖 Required authoring gap（12/06 Completion Gate）
+final_handoff: "02 Build Execution/07 Completion and Handoff.md 要求的交接包引用"  # Final Handoff 引用（12/06 步骤 11）
+time_contract_result: "minimum_run_until 已满足; hard_stop_at 未触发"  # 时间契约执行结果（02/01：时间边界不是完成证据）

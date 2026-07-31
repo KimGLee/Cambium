@@ -1,0 +1,20 @@
+# =============================================================================
+# 脚本级 Receipt 模板（机读 JSONL：一行一个 JSON 对象）
+# 概念 owner："12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md"
+#   —— 本文件是确定性检查脚本产出的轻量 receipt schema；12/07 的完整
+#      AuditReceipt（含 scope/acceptance_predicate/三类 fingerprint 等）在
+#      进入 Audit Receipt Register 时由 AuditPlan 层补齐；脚本 receipt 的
+#      receipt_id 可直接作为 evidence_ref / gate_receipts 引用。
+# 说明：真实 receipts 文件是纯 JSONL，不含任何 # 注释行；本模板中的
+#      # 行仅用于文档目的。字段含义：
+#   receipt_id     : "audit-<tool>-<UTC时间戳>-<序号>"，不可变、不复用（12/07：receipt_id: audit-<stable-id>）
+#   check          : 检查项标识，如 "link-missing" / "vocab-unknown-value" / "proof-zero-field"
+#   target         : 被检对象（vault-relative 路径[:行号] 或字段名）
+#   result         : pass / fail / candidate（candidate = 只产生候选、需人工判定，见 10/05 Acceptance And Audit）
+#   details        : 中文明细，说明具体证据；不能只写 "QA passed"（12/07）
+#   checked_at     : UTC ISO8601 检查时间
+#   tool           : 产出脚本名（12/07 verifier.name 对应物）
+#   tool_version   : 脚本版本（12/07 verifier.version 对应物；parser/verifier 不兼容变化触发 Direct Invalidation）
+#   invalidated_by : 失效来源（后继 receipt_id 或 invalidation 事件说明）；有效时为 null（12/07 Invalidation）
+# =============================================================================
+{"receipt_id": "audit-check_links-20260721T000000Z-0001", "check": "link-missing", "target": "Agent Knowledge/Harness/Agent Harness.md:42", "result": "fail", "details": "[[Context Compaction]] 无匹配目标（missing）", "checked_at": "2026-07-21T00:00:00Z", "tool": "check_links", "tool_version": "1.0.0", "invalidated_by": null}

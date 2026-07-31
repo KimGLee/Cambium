@@ -1,0 +1,152 @@
+# =============================================================================
+# 受控词表编译产物（machine-readable vocabulary）
+# compiled_from: Knowledge Base Standards v2.3
+# 各词表 owner 文件（权威定义，本文件只是照抄的编译产物）：
+#   type / domain                  -> "08 Metadata and Status/01 Frontmatter and Core Vocabularies.md"
+#   scope / level / depth / priority -> "08 Metadata and Status/02 Scope Level Depth and Priority.md"
+#   authoring_status / interview_status / learning_status / coverage_disposition
+#                                  -> "08 Metadata and Status/03 Status Axes.md"
+#   evidence_maturity              -> "08 Metadata and Status/04 Evidence and Relationship Metadata.md"
+#   volatility                     -> "08 Metadata and Status/05 Review Source and Migration Metadata.md"
+#                                     （三档定义、domain 默认派发与复验间隔；词表登记在 08/01）
+#   lifecycle                      -> "03 Note Types and Ownership/03 Split and Duplication Policy.md"
+#                                     （退役/合并流程 owner；词表登记在 08/01）
+#   task_state（Progress Ledger 字段，非页面 frontmatter） -> "02 Build Execution/01 Contract Time and Task State.md"
+# 修订 owner 标准文件后必须重新生成本文件；不得只改本文件而不改 owner。
+#
+# 仅允许受限 YAML 子集语法（Tools/kblib.py parse_yaml_subset 可解析）。
+# =============================================================================
+
+compiled_from: "v2.3"
+compiled_at: "2026-07-30"
+
+fields:                            # 页面 frontmatter 的受控字段（08 域）
+  type:
+    owner: "08 Metadata and Status/01 Frontmatter and Core Vocabularies.md"
+    values:
+      - term
+      - concept
+      - process-flow
+      - algorithm
+      - metric
+      - system-component
+      - system-design
+      - comparison
+      - risk-control
+      - source-note
+      - research-synthesis
+      - case-study
+      - interview-card
+      - roadmap
+      - cheat-sheet
+      - overview
+      - standard
+      - management
+      - runtime-card    # 仅 Cards/ 编译产物（08/01 v1.7 新增）
+      - card-index      # 仅 Cards/00 Card Index（08/01 v1.7 新增）
+  domain:                          # 08/01 称"初始建议值"，但明确 domain 使用受控词表，不能随意创建变体
+    owner: "08 Metadata and Status/01 Frontmatter and Core Vocabularies.md"
+    values:
+      - modeling-fundamentals
+      - machine-learning
+      - deep-learning
+      - llm
+      - retrieval-rag
+      - agent
+      - ai-systems
+      - evaluation
+      - safety-governance
+      - interview
+      - knowledge-management
+  scope:
+    owner: "08 Metadata and Status/02 Scope Level Depth and Priority.md"
+    values:
+      - shared
+      - domain-specific
+      - case-specific
+      - source-specific
+      - interview-only
+  level:
+    owner: "08 Metadata and Status/02 Scope Level Depth and Priority.md"
+    values:
+      - basic
+      - intermediate
+      - advanced
+  depth:
+    owner: "08 Metadata and Status/02 Scope Level Depth and Priority.md"
+    values:
+      - atomic
+      - core
+      - system
+  priority:
+    owner: "08 Metadata and Status/02 Scope Level Depth and Priority.md"
+    values:
+      - P0
+      - P1
+      - P2
+  authoring_status:
+    owner: "08 Metadata and Status/03 Status Axes.md"
+    values:
+      - unassessed
+      - outline
+      - drafted
+      - reviewed
+  interview_status:
+    owner: "08 Metadata and Status/03 Status Axes.md"
+    values:
+      - not-required
+      - missing
+      - mapped
+      - drafted
+      - reviewed
+      - interview-ready
+  learning_status:
+    owner: "08 Metadata and Status/03 Status Axes.md"
+    values:
+      - not-started
+      - learning
+      - self-tested
+      - mastered
+  coverage_disposition:
+    owner: "08 Metadata and Status/03 Status Axes.md"
+    values:
+      - required
+      - optional
+      - deferred
+      - excluded
+  evidence_maturity:
+    owner: "08 Metadata and Status/04 Evidence and Relationship Metadata.md"
+    values:
+      - signal
+      - single-source
+      - corroborated
+      - validated
+      - contested
+      - superseded
+  volatility:                      # 保质期档位（08/01 v1.8 新增；三档定义与间隔见 08/05 Freshness And Review Due）
+    owner: "08 Metadata and Status/05 Review Source and Migration Metadata.md"
+    values:
+      - fast      # 快变内容，复验间隔 120 天
+      - slow      # 慢变内容，复验间隔 365 天
+      - stable    # 稳定内容，不设复验截止
+  lifecycle:                       # 页面生命周期（08/01 v1.8 新增；默认 active）
+    owner: "03 Note Types and Ownership/03 Split and Duplication Policy.md"  # 退役/合并流程 owner；词表登记在 08/01
+    values:
+      - active
+      - retired   # 退役页：tombstone＋superseded_by＋入链改指（03/03 Retirement）
+      - merged    # 被并页：同退役流程，superseded_by 指向合并后页面（03/03 Merge）
+
+  # review_by 不是受控枚举，不入本词表校验：它是 Tools/check_freshness.py
+  # 按 last_verified + volatility 间隔生成的复验截止日期（脚本生成、只读，
+  # 不手工填写；owner 08/01 Freshness And Lifecycle Vocabulary）。
+
+task_state:                        # 非 frontmatter 字段：长任务状态只记录在 Progress Ledger（02/01）
+  owner: "02 Build Execution/01 Contract Time and Task State.md"
+  values:
+    - planned
+    - active
+    - paused
+    - blocked
+    - completion-candidate
+    - complete
+    - cancelled

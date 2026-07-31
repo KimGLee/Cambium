@@ -1,0 +1,90 @@
+## Navigation
+
+- Parent: [[Knowledge Base Standards/08 Metadata and Status Standard|08 Metadata and Status Standard]].
+- Next: [[Knowledge Base Standards/08 Metadata and Status/02 Scope Level Depth and Priority|Scope Level Depth and Priority]].
+
+## Purpose
+
+本标准定义知识文件的机器可读元数据、优先级和成熟度，使超长任务可以追踪覆盖范围，而不是依赖文件是否存在。
+
+## Frontmatter Schema
+
+```yaml
+---
+type: concept
+domain: agent
+scope: domain-specific
+level: intermediate
+depth: core
+authoring_status: drafted
+interview_status: missing
+learning_status:
+priority: P0
+coverage_disposition: required
+deferred_reason:
+next_batch:
+aliases: []
+prerequisites: []
+interview_card:
+evidence_maturity:
+first_seen:
+last_reviewed:
+last_verified:
+volatility:
+review_by:
+lifecycle: active
+---
+```
+
+该 schema 已作为 Standards v1.0 的标准字段集。新建或实质重写页面按适用字段使用；是否批量应用到全部现有知识文件仍需进入单独 task contract。批量迁移前由 Coverage Ledger 保存权威状态。标准文件不保存容易过时的固定文件数量，实际规模由 inventory 生成。
+
+## Type Vocabulary
+
+允许值：
+
+- `term`
+- `concept`
+- `process-flow`
+- `algorithm`
+- `metric`
+- `system-component`
+- `system-design`
+- `comparison`
+- `risk-control`
+- `source-note`
+- `research-synthesis`
+- `case-study`
+- `interview-card`
+- `roadmap`
+- `cheat-sheet`
+- `overview`
+- `standard`
+- `management`
+- `runtime-card`（仅用于 `Knowledge Base Standards/Cards/` 下的编译产物，不属于知识笔记类型）
+- `card-index`（仅用于 Cards/00 Card Index，编译产物层索引）
+
+类型职责见 [[Knowledge Base Standards/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]。
+
+## Domain Vocabulary
+
+初始建议值：
+
+- `modeling-fundamentals`
+- `machine-learning`
+- `deep-learning`
+- `llm`
+- `retrieval-rag`
+- `agent`
+- `ai-systems`
+- `evaluation`
+- `safety-governance`
+- `interview`
+- `knowledge-management`
+
+Domain 使用受控词表，不能随意创建大小写或同义变体。
+
+## Freshness And Lifecycle Vocabulary
+
+- `volatility`：允许值 `fast` / `slow` / `stable`。三档定义、domain 默认派发和复验间隔的 canonical owner 是 [[Knowledge Base Standards/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]]。
+- `review_by`：由 `Tools/check_freshness.py` 生成的复验截止日期；脚本生成，只读，不手工填写。
+- `lifecycle`：允许值 `active` / `retired` / `merged`，默认 `active`。退役与合并流程的定义 owner 见 [[Knowledge Base Standards/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]。

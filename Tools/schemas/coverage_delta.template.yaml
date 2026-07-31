@@ -1,0 +1,24 @@
+# =============================================================================
+# Coverage Delta 模板（并发批次的状态增量，模板即 schema 文档）
+# Owner 标准："02 Build Execution/05 Batch Execution and Progress Ledger.md"
+#            （Concurrent Batches：并发批次不直接写 Coverage/Progress Ledger，
+#             只产出本文件；integrator 在串行合并时应用到 canonical Ledger）
+# 存放位置：Machine State/Deltas/<batch>.yaml；合并后由 integrator 归档或删除
+#
+# 仅允许受限 YAML 子集语法（Tools/kblib.py parse_yaml_subset 可解析）：
+#   - `key: value` 标量；`key:` 下缩进的 `- 项` 列表；列表项一层平铺 map。
+# =============================================================================
+
+batch: "B7"                        # 产出本 delta 的批次（与 receipts 目录同名）
+generated_at: "2026-07-30T12:00:00+08:00"  # delta 写出时间（批次进入 merge-ready 时）
+
+pages:                             # 本批清单内页面的状态更新（仅限本批清单；越界页面合并时拒绝）
+  - path: "Agent Knowledge/Example.md"
+    authoring_status: reviewed     # 更新后的状态轴取值（词表 owner 08/03）
+    interview_status: mapped
+    gate_receipts: ["r-0311", "r-0312"]  # 本批为该页产出的 receipt id
+
+open_gaps_added: []                # 本批新增的 open gaps（含 needs_rereview 与跨批缺链 type: link；type 词表见 coverage_ledger 模板）
+open_gaps_closed: []               # 本批关闭的 open gaps（gap id 或 page+type）
+next_batch_updates: []             # 对后续批次 manifest 的建议调整（仅建议；queue 修订权在 integrator）
+watermark_advance:                 # 可选：来源/维护批次的水位线推进值（02/05；integrator 合并时应用到 Tools/state/watermark.yaml）

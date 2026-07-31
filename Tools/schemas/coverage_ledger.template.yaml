@@ -1,0 +1,40 @@
+# =============================================================================
+# Coverage Ledger 模板（机读状态层，模板即 schema 文档）
+# Owner 标准："02 Build Execution/03 Inventory and Coverage Reconciliation.md"
+#            （Coverage Ledger 是 page-level coverage 的权威记录；
+#             Progress Ledger 只记录 task 和 batch 进度）
+# 词表来源：08 Metadata and Status 域（见 Tools/vocab.yaml，编译产物）
+#
+# 仅允许受限 YAML 子集语法（Tools/kblib.py parse_yaml_subset 可解析）：
+#   - `key: value` 标量（字符串/数字/布尔/空值、引号字符串、内联 `[]`）；
+#   - `key:` 下缩进的 `- 项` 列表；
+#   - 列表项可为一层平铺 map；两级缩进嵌套 map。
+#   不允许：锚点/别名、多行字符串（| >）、flow map {}、tag、多文档。
+# =============================================================================
+
+task_id: "kb-build-2026-xx"        # 任务标识；与 Progress Ledger 的 task_id 一致（02/05）
+updated_at: "2026-07-21T00:00:00Z" # 本 Ledger 最近一次对账/更新时间（02/03 Coverage Reconciliation 时点）
+scope_version: "s1"                # 生成本 Ledger 时的 scope version（02/01 Phase 0 冻结的契约字段）
+
+pages:                             # 每个 in-scope .md 文件恰好一条记录；Required 但尚未创建的知识对象同样有记录（02/03）
+  - path: "Agent Knowledge/Harness/Agent Harness.md"  # vault-relative 完整路径（09/03：不使用模糊编号）
+    type: concept                  # note type；词表 owner：08 Metadata and Status/01（Type Vocabulary）
+    priority: P0                   # P0/P1/P2；词表 owner：08 Metadata and Status/02（Priority）
+    tier: M                        # 页面规模分级 S/M/L（本 Ledger 的执行辅助字段，非 08 域词表；用于批次排程估算）
+    authoring_status: drafted      # unassessed/outline/drafted/reviewed；owner：08/03 Status Axes（无 metadata 旧页默认 unassessed，02/03）
+    interview_status: missing      # not-required/missing/mapped/drafted/reviewed/interview-ready；owner：08/03 Status Axes
+    # 可选：volatility: fast       # fast/slow/stable 保质期档位；三档定义与 domain 派发 owner：08/05（词表登记 08/01）
+    # 可选：review_by: "2026-11-18"  # 复验截止日期；由 Tools/check_freshness.py 生成（脚本生成、只读，不手填）
+    # 可选：lifecycle: active      # active/retired/merged；流程 owner：03/03（retired/merged 页移出 Required 集合）
+    batch: "B3"                    # 该页所属/计划批次；未完成的 Required 项必须有明确 next batch（02/03）
+    gate_receipts:                 # 该页最新有效 receipt IDs（Coverage Ledger 只记 ID 与失效状态，不复制完整 receipt，12/07）
+      - "audit-check_links-20260721T000000Z-0001"
+      - "audit-check_vocab-20260721T000000Z-0002"
+
+open_gaps:                         # 未闭合缺口清单；Terminal Proof 的 required_authoring_gaps 必须与此对账（12/06）
+  - page: "Agent Knowledge/Harness/Agent Harness.md"  # 缺口所在页面（或尚未创建的 Required 对象名）
+    type: missing-section          # 缺口类型：missing-page/missing-section/missing-source/missing-interview-card/rereview 等（02/03 inventory 维度；rereview = 上游机制性修改标记的下游 needs_rereview，owner：12/07 Content-level Propagation）
+    note: "缺 Failure Modes 一节"  # 中文说明缺什么、为何未闭合
+
+next_batch_candidates:             # 下一批候选页面路径；进入批次前由 Required Queue 排序确认（02/05）
+  - "Agent Knowledge/Harness/Context Compaction.md"
