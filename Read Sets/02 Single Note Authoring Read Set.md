@@ -6,8 +6,8 @@
 
 先读取 [[Knowledge Base Standards/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
 
-- [[Knowledge Base Standards/03 Note Types and Ownership/01 Note Type Catalog|Note Type Catalog]]
-- [[Knowledge Base Standards/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
+- [[kernel/03 Note Types and Ownership/01 Note Type Catalog|Note Type Catalog]]
+- [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
 - [[Knowledge Base Standards/04 Content Depth/01 Depth Model and Foundation|Depth Model and Foundation]]
 - 根据页面类型选择 [[Knowledge Base Standards/04 Content Depth/02 Core Concept Structure|Core Concept Structure]]、[[Knowledge Base Standards/04 Content Depth/03 Process and Flow Structure|Process and Flow Structure]]、[[Knowledge Base Standards/04 Content Depth/04 System and Production Reasoning|System and Production Reasoning]] 或 [[Knowledge Base Standards/04 Content Depth/05 Source and Evaluation Depth|Source and Evaluation Depth]]。
 - [[Knowledge Base Standards/08 Metadata and Status/01 Frontmatter and Core Vocabularies|Frontmatter and Core Vocabularies]]
@@ -40,5 +40,5 @@
 ## Related
 
 - [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
-- [[Knowledge Base Standards/03 Note Types and Ownership Standard|Note Types and Ownership]]
+- [[kernel/03 Note Types and Ownership Standard|Note Types and Ownership]]
 - [[Knowledge Base Standards/04 Content Depth Standard|Content Depth]]

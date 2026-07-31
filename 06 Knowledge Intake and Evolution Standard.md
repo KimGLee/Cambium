@@ -30,6 +30,6 @@
 - [[Knowledge Base Standards/07 Sources and Accuracy Standard|07 Sources and Accuracy Standard]]
 - [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]]
 - [[kernel/01 Scope and Architecture Standard|01 Scope and Architecture Standard]]
-- [[Knowledge Base Standards/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]]
+- [[kernel/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]]
 - [[Knowledge Base Standards/08 Metadata and Status Standard|08 Metadata and Status Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]]

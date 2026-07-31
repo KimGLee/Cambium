@@ -28,7 +28,7 @@ Term Note 不保存完整面试回答，只保存 Interview Card 链接：
 
 ## Related
 
-- [[Knowledge Base Standards/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]
+- [[kernel/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]
 - [[Knowledge Base Standards/11 Interview Content Standard|Interview Content Standard]]
 - [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]

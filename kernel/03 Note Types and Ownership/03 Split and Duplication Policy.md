@@ -1,7 +1,7 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]].
-- Previous: [[Knowledge Base Standards/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]].
+- Parent: [[kernel/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]].
+- Previous: [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]].
 
 ## Purpose
 
@@ -14,7 +14,7 @@
 - 子主题被多个页面复用。
 - 子主题有独立机制、公式、生命周期或失败模式。
 - 当前页面因解释该子主题而偏离主线。
-- 子主题能产生独立的学习或面试问题。
+- 子主题能产生独立的学习问题或所选 profile 注册的表达问题。
 - 拆分后仍能通过明确承接关系保持连贯。
 - 新来源揭示了多个具有不同 owner 的独立知识对象。
 
@@ -32,14 +32,14 @@
 允许重复：
 
 - 为保证段落可读而提供的一句上下文解释。
-- 30 秒面试回答中的最小必要定义。
+- 受限长度表达中的最小必要定义。
 - Case Study 中对决策背景的简短复述。
 - Research Synthesis 中为比较来源而提供的最小 claim 摘要。
 
 不允许重复：
 
 - 多个页面复制同一整段机制说明。
-- 多个 Interview Cards 保存同一个完整答案。
+- 多个 profile 表达产物保存同一个完整答案。
 - Roadmap 或 Cheat Sheet 重新撰写知识页正文。
 - 通过改名制造实际相同的概念页。
 
@@ -51,7 +51,7 @@
 - 正文顶部加入 tombstone 块：退役原因、退役日期、`superseded_by` 链接指向接替页；没有接替页时说明原因。
 - 从 coverage 的 Required 集合移除。
 - 退役 gate 硬条件：先运行 `Tools/check_links.py` 找出全部入链，并逐条改指到接替页，之后才能退役。
-- 高入度页面退役的入链改指工作按"改指数 ÷ 6"折算为页数计入维护轮预算（规则 owner：[[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|00/02]] Maintenance Run Envelope，此处引用）。
+- 高入度页面退役的入链改指工作，按所选 profile 未覆写时的内核默认值“改指数 ÷ 6”折算为页数计入维护轮预算（规则 owner：[[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|00/02]] Maintenance Run Envelope，此处引用）；profile 可以显式覆写该折算参数。
 
 ## Merge
 

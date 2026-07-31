@@ -17,7 +17,7 @@
 ## Triggered
 
 - 收到 `needs_rereview` 项：读取 [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Content-level Propagation|Content-level Propagation]]。
-- 出现退役或合并候选：读取 [[Knowledge Base Standards/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]。
+- 出现退役或合并候选：读取 [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]。
 - 本轮产出 L 档页面：读取 [[Knowledge Base Standards/12 Quality Assurance/01 Quality Dimensions and Single Note Review#Substantive Correctness Review|Substantive Correctness Review]]。
 - 涉及来源驱动内容：组合 [[Knowledge Base Standards/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]。
 - 涉及 interview 内容：组合 [[Knowledge Base Standards/Read Sets/05 Interview Content Read Set|Interview Content]]。

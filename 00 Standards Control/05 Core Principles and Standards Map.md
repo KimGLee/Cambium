@@ -35,7 +35,7 @@
 - `Read Sets` [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]：按任务、事件和执行阶段组合需要读取的 leaf modules。
 - `01` [[kernel/01 Scope and Architecture Standard|Scope and Architecture Standard]]：范围、Agent/Harness 主线、基础层和 logical architecture。
 - `02` [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]：长任务 contract、Mid-task Guidance、时间语义、task state、Coverage Ledger、batch、恢复和 Terminal Proof。
-- `03` [[Knowledge Base Standards/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]：note types、Process / Flow、canonical ownership、split 和 duplication。
+- `03` [[kernel/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]：note types、Process / Flow、canonical ownership、split 和 duplication。
 - `04` [[Knowledge Base Standards/04 Content Depth Standard|Content Depth Standard]]：Atomic / Core / System 深度、Process / Flow、系统链路和 evaluation provenance。
 - `05` [[Knowledge Base Standards/05 Terminology Standard|Terminology Standard]]：专有名词提取、aliases、复用和 emerging terminology。
 - `06` [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]：用户 hypothesis / source lead、source-to-knowledge pipeline、synthesis、graph impact 和 promotion。
@@ -67,7 +67,7 @@
 | Batch / Coverage 验收清单 | [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]] |
 | Source-to-Knowledge pipeline | [[Knowledge Base Standards/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] |
 | 保质期与 volatility 词表 | [[Knowledge Base Standards/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]] |
-| 退役与合并流程 | [[Knowledge Base Standards/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]] |
+| 退役与合并流程 | [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]] |
 | 维护轮预算封套 | [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]] |
 
 ## Control Registry

@@ -42,7 +42,7 @@
 
 ## Related
 
-- [[Knowledge Base Standards/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]
+- [[kernel/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]
 - [[Knowledge Base Standards/05 Terminology Standard|Terminology Standard]]
 - 所选 profile 注册的 `Expression Layer Entry`
 - [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]

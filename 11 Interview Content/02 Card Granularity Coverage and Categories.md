@@ -1,7 +1,7 @@
 ## Navigation
 
 - Parent: [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]].
-- Previous: [[Knowledge Base Standards/11 Interview Content/01 Interview Architecture and Separation|Interview Architecture and Separation]].
+- Previous: [[11 Interview Content/01 Interview Architecture and Separation|Interview Architecture and Separation]].
 - Next: [[Knowledge Base Standards/11 Interview Content/03 Card Structure and Answer Levels|Card Structure and Answer Levels]].
 
 ## Interview Card Granularity

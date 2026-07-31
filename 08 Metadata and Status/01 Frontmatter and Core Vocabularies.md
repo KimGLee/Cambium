@@ -63,7 +63,7 @@ lifecycle: active
 - `runtime-card`（仅用于 `Knowledge Base Standards/Cards/` 下的编译产物，不属于知识笔记类型）
 - `card-index`（仅用于 Cards/00 Card Index，编译产物层索引）
 
-类型职责见 [[Knowledge Base Standards/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]。
+类型职责见 [[kernel/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]。
 
 ## Domain Vocabulary
 
@@ -87,4 +87,4 @@ Domain 使用受控词表，不能随意创建大小写或同义变体。
 
 - `volatility`：允许值 `fast` / `slow` / `stable`。三档定义、domain 默认派发和复验间隔的 canonical owner 是 [[Knowledge Base Standards/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]]。
 - `review_by`：由 `Tools/check_freshness.py` 生成的复验截止日期；脚本生成，只读，不手工填写。
-- `lifecycle`：允许值 `active` / `retired` / `merged`，默认 `active`。退役与合并流程的定义 owner 见 [[Knowledge Base Standards/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]。
+- `lifecycle`：允许值 `active` / `retired` / `merged`，默认 `active`。退役与合并流程的定义 owner 见 [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]。

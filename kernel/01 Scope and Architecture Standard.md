@@ -29,5 +29,5 @@
 - [[Knowledge Base Standards/04 Content Depth Standard|04 Content Depth Standard]]
 - [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
 - 所选 profile 注册的 `Expression Layer Entry`
-- [[Knowledge Base Standards/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]]
+- [[kernel/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]]
 - [[Knowledge Base Standards/05 Terminology Standard|05 Terminology Standard]]

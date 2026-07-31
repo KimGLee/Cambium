@@ -1,11 +1,11 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]].
-- Next: [[Knowledge Base Standards/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]].
+- Parent: [[kernel/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]].
+- Next: [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]].
 
 ## Purpose
 
-本标准定义不同笔记类型的职责，避免把定义、机制、系统设计、案例和面试内容混在同一个文件中。
+本标准定义不同笔记类型的职责，避免把定义、机制、系统设计、案例和所选 profile 注册的表达内容混在同一个文件中。
 
 ## Note Types
 
@@ -13,25 +13,25 @@
 
 负责一个专有名词的 canonical definition、别名、直觉、形式化含义、例子和误区。
 
-Term Note 不负责解释某个完整算法或系统如何工作，也不保存完整面试话术。
+Term Note 不负责解释某个完整算法或系统如何工作，也不保存所选 profile 注册的完整表达产物。
 
 ### Concept Note
 
 负责解释一个机制或思想：问题来源、工作原理、假设、边界、例子、失败模式和应用。
 
-例如：Bias-Variance Tradeoff、Backpropagation、Self-Attention、Grounded Generation。
+例如：Transaction Isolation、Eventual Consistency、Control Loop、Caching。
 
 ### Process / Flow Note
 
 负责解释一个过程如何从入口状态推进到可验证出口，包括参与者、authority、输入、前置条件、顺序、决策点、分支、循环、状态变化、外部副作用、失败处理和终止条件。
 
-例如：Agent Basic Flow、Tool Calling Flow、RAG Pipeline、Training Loop、Release And Rollout Flow。
+例如：Incident Response Flow、Order Fulfillment Flow、Release And Rollout Flow、Reconciliation Flow。
 
 Process / Flow Note 不拥有每个组件的完整内部机制。它通过 wiki links 复用组件页面，但必须在当前流程中说明：
 
 - 谁在该步骤作决定，谁真正执行。
 - 输入、输出、状态和 authority 如何变化。
-- 哪些步骤是确定性 Harness control，哪些是 model proposal。
+- 哪些步骤只是提出动作，哪些步骤由确定性控制完成校验与授权。
 - 何时 branch、loop、retry、timeout、cancel、pause 或 handoff。
 - 外部副作用如何记录、确认、补偿或对账。
 - 何时可以停止，以及 completion 如何被独立验证。
@@ -42,7 +42,7 @@ Process / Flow Note 不拥有每个组件的完整内部机制。它通过 wiki 
 
 负责算法的目标、核心思想、数学过程、训练与推理、复杂度、超参数、适用条件、优缺点、过拟合控制和解释方法。
 
-例如：Decision Tree、SVM、K-Means、XGBoost。
+例如：Binary Search、Dijkstra、Quicksort、Consistent Hashing。
 
 ### Metric Note
 
@@ -54,19 +54,19 @@ Metric Note 不负责重复整个任务类型的定义。
 
 负责一个系统组件的职责、接口、输入输出、状态、生命周期、依赖、失败模式、观测和安全。
 
-例如：Context Manager、MCP Client、Retriever、Budget Manager。
+例如：Scheduler、Message Queue、Cache、Rate Limiter。
 
 ### System Design Note
 
 负责完整系统：需求、架构、组件关系、数据流、API、状态、可靠性、安全、扩展、成本和替代方案。
 
-例如：RAG Pipeline、Agent Harness、Model Serving Platform。
+例如：Order Processing System、Event Processing Platform、Document Storage Service。
 
 ### Comparison Note
 
 负责在统一维度下比较多个方案，并提供选择规则和边界案例。
 
-例如：L1 vs L2、RAG vs Fine-tuning、MCP vs API Tool。
+例如：Polling vs Subscription、Relational vs Document Store、Synchronous vs Asynchronous Interface。
 
 Comparison Note 不能只是两列优缺点列表。
 
@@ -74,7 +74,7 @@ Comparison Note 不能只是两列优缺点列表。
 
 负责威胁模型、攻击或失败路径、影响、检测、缓解、残余风险和验证方式。
 
-例如：Data Leakage、Prompt Injection、Secret Leakage、Rate Limit。
+例如：Data Leakage、Injection、Secret Leakage、Rate Limit。
 
 ### Source Note
 
@@ -93,10 +93,6 @@ Research Synthesis 可以承载尚在形成的前沿问题，但不能长期代�
 负责把已有知识用于真实问题：需求、约束、决策、架构、end-to-end flow、tradeoff、故障、指标来源、安全、上线过程和复盘。
 
 Case Study 不拥有基础概念定义，必须链接 canonical notes，并区分公开事实、合理推断和知识库建议。
-
-### Interview Card
-
-负责 30 秒、90 秒、追问树、误区、评分信号和自测。详细规则见 [[Knowledge Base Standards/11 Interview Content Standard|Interview Content Standard]]。
 
 ### Overview / MOC
 

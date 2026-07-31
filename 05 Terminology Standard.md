@@ -33,7 +33,7 @@
 
 ## Related Standards
 
-- [[Knowledge Base Standards/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]]
+- [[kernel/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]]
 - [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]]
 - [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]

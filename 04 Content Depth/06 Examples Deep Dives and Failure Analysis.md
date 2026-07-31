@@ -57,7 +57,7 @@ Why is it needed?
 
 ## Related
 
-- [[Knowledge Base Standards/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]
+- [[kernel/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]
 - [[Knowledge Base Standards/07 Sources and Accuracy Standard|Sources and Accuracy Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]
 - [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]

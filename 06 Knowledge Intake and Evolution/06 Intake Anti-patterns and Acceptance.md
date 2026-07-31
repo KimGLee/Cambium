@@ -34,7 +34,7 @@
 ## Related
 
 - [[kernel/01 Scope and Architecture Standard|Scope and Architecture Standard]]
-- [[Knowledge Base Standards/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]
+- [[kernel/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]
 - [[Knowledge Base Standards/07 Sources and Accuracy Standard|Sources and Accuracy Standard]]
 - [[Knowledge Base Standards/08 Metadata and Status Standard|Metadata and Status Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]
