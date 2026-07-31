@@ -67,7 +67,7 @@ Open Standards Overview
 | `03` | [[kernel/03 Note Types and Ownership Standard\|Note Types and Ownership]] | note type、canonical owner、split 和 duplication |
 | `04` | [[kernel/04 Content Depth Standard\|Content Depth]] | concept、flow、system、production、evidence 和 failure depth |
 | `05` | [[kernel/05 Terminology Standard\|Terminology]] | term extraction、ownership、aliases、context 和 reuse |
-| `06` | [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard\|Knowledge Intake and Evolution]] | source-to-knowledge、claims、promotion 和 evolution |
+| `06` | [[kernel/06 Knowledge Intake and Evolution Standard\|Knowledge Intake and Evolution]] | source-to-knowledge、claims、promotion 和 evolution |
 | `07` | [[Knowledge Base Standards/07 Sources and Accuracy Standard\|Sources and Accuracy]] | source authority、evidence role、verification、provenance 和 uncertainty |
 | `08` | [[Knowledge Base Standards/08 Metadata and Status Standard\|Metadata and Status]] | frontmatter、vocabulary、status axes、evidence 和 migration metadata |
 | `09` | [[Knowledge Base Standards/09 Wiki Link and Navigation Standard\|Wiki Link and Navigation]] | semantic links、MOC、path、alias、heading 和 graph verification |

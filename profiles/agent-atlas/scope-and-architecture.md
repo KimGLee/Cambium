@@ -142,7 +142,7 @@ Agent 专属安全内容可以继续由本 profile 注册的安全内容 owner �
 - Model Serving Platform。
 - Agent Evaluation Platform。
 
-Case Study 必须基于已核验来源，区分公开事实、合理推断和知识库建议。具体准入过程见 [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]。
+Case Study 必须基于已核验来源，区分公开事实、合理推断和知识库建议。具体准入过程见 [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]。
 
 ### Knowledge Intake And Research Synthesis
 

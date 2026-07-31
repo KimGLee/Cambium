@@ -1,7 +1,7 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]].
-- Previous: [[Knowledge Base Standards/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]].
+- Parent: [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]].
+- Previous: [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]].
 
 ## Anti-patterns
 
@@ -24,10 +24,10 @@
 - Source、claim、knowledge object 和 file 已明确区分。
 - 社区、官方、论文、benchmark 和 postmortem 的证据角色已区分。
 - 新 canonical note 通过 promotion gate。
-- 基础知识缺口会被补足，不会全部塞进 Agent/Harness 页面。
-- OpenAI、Anthropic 等厂商观点被比较但未被强行等同。
+- 基础知识缺口会被补足，不会全部塞进 `Profile Scope` 所声明的 application page。
+- 不同厂商观点被比较但未被强行等同。
 - Emerging、contested 和 superseded 结论有明确状态。
-- 新知识已进入正文链接、Overview、Case Study 和必要的 Interview Preparation。
+- 新知识已进入正文链接、Overview、Case Study 和由 `Expression Layer Entry` 注册的必要表达产物。
 - User hypothesis、source lead、task amendment 和最终 graph change 之间可以沿 guidance ID 追踪。
 - 没有未经核验就从用户观点直接提升的 canonical claim。
 

@@ -20,9 +20,9 @@
 ## Triggered
 
 - 收到中途指导、范围变化、纠正或优先级变化：读取 [[Knowledge Base Standards/02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]]。
-- 用户 guidance 同时包含技术 hypothesis 或 source lead：读取 [[Knowledge Base Standards/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]]。
+- 用户 guidance 同时包含技术 hypothesis 或 source lead：读取 [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]]。
 - 关闭 guidance amendment：读取 [[Knowledge Base Standards/12 Quality Assurance/04 Guidance Source and Interview Review|Guidance Source and Interview Review]]。
-- 新 source-driven batch：读取 [[Knowledge Base Standards/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]]。
+- 新 source-driven batch：读取 [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]]。
 
 ## Gate
 

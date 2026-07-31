@@ -31,6 +31,6 @@
 - [[Knowledge Base Standards/00 Standards Overview|00 Standards Overview]]
 - [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]]
 - [[kernel/05 Terminology Standard|05 Terminology Standard]]
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
+- [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]]
 - [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]]

@@ -30,7 +30,7 @@
 
 ## Related Standards
 
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
+- [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]]
 - [[Knowledge Base Standards/00 Standards Overview|00 Standards Overview]]
 - [[Knowledge Base Standards/08 Metadata and Status Standard|08 Metadata and Status Standard]]

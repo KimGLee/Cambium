@@ -74,4 +74,4 @@ Authoring completion 与 evidence closure 分离的 canonical 规则（含四条
 - [[Knowledge Base Standards/08 Metadata and Status Standard|Metadata and Status Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]
+- [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]

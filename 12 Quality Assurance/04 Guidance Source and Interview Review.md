@@ -52,10 +52,10 @@ Source-driven expansion 需要额外检查：
 - Source authority 和 evidence role 是否分别判断。
 - 社区信号是否被误写成已验证规律。
 - 官方公司文章是否只用于支撑其实际披露范围。
-- 用户 hypothesis、source lead 和 first-party context 是否按 [[Knowledge Base Standards/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads#User Guidance, Hypotheses And Source Leads|User Guidance, Hypotheses And Source Leads]] 保留证据边界。
+- 用户 hypothesis、source lead 和 first-party context 是否按 [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads#User Guidance, Hypotheses And Source Leads|User Guidance, Hypotheses And Source Leads]] 保留证据边界。
 - 多来源是否真正独立，术语和实验条件是否可比。
 - 新信息为何更新、新建、拆分、合并或暂缓是否有 graph impact 理由。
-- 新 canonical note 是否通过 [[Knowledge Base Standards/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline#Stage 9: Verification And Promotion|canonical promotion gate]]。
+- 新 canonical note 是否通过 [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline#Stage 9: Verification And Promotion|canonical promotion gate]]。
 - Contested 或 superseded 结论是否保留状态、来源和替代关系。
 
 单个 source-driven batch 负责当时的 claim 和 promotion correctness；后续 Source Audit 负责跨批次 identity/currentness、冲突、supersession 和 affected-note propagation。若 artifact、source dependency、review due 或 acceptance predicate 未变化，可以复用局部 source receipt；不能借专项 Audit 重写与其 global invariant 无关的稳定机制。

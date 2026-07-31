@@ -38,5 +38,5 @@
 - [[kernel/04 Content Depth Standard|Content Depth Standard]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]
+- [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]
 - [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|Chinese-first Technical Language]]

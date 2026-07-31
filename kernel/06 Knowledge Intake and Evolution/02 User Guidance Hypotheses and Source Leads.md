@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]].
-- Previous: [[Knowledge Base Standards/06 Knowledge Intake and Evolution/01 Intake Scope and Knowledge Model|Intake Scope and Knowledge Model]].
-- Next: [[Knowledge Base Standards/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]].
+- Parent: [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]].
+- Previous: [[kernel/06 Knowledge Intake and Evolution/01 Intake Scope and Knowledge Model|Intake Scope and Knowledge Model]].
+- Next: [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]].
 
 ## User Guidance, Hypotheses And Source Leads
 
@@ -19,7 +19,7 @@
 | 对现有知识的纠正 | 触发定向审计 | 根据公式、规范、原始来源或实现证据确认后再改 canonical note |
 | 可复用的建设规则 | 用户可以授权 governance change | 只有明确要求修改 Standards 时才改变 `standards_version` |
 
-用户提出“Cache 是最近行业热点”可以提升研究优先级并触发 environmental scanning，但在找到和比较来源前只能写成 signal。用户提出“增加 Cache 部分”则同时是 scope amendment；是否建立新页面、扩写现有页面或形成 system vertical slice，仍由 gap analysis 和 canonical ownership 决定。
+用户提出“Topic X 是近期热点”可以提升研究优先级并触发 environmental scanning，但在找到和比较来源前只能写成 signal。用户提出“增加 Topic X 部分”则同时是 scope amendment；是否建立新页面、扩写现有页面或形成 system vertical slice，仍由 gap analysis 和 canonical ownership 决定。
 
 处理流程为：
 
@@ -40,5 +40,5 @@ User Guidance Event
 - 用户提供 URL 时，记录文档自身的 organization、author、date 和 applicability，不把“用户发来的”当作 source authority。
 - 用户提供的项目事实必须注明 system、time、dataset、role 和可验证边界；缺失信息保持 unknown。
 - 用户观点与可靠来源冲突时，保留冲突并说明，不静默选择更方便的说法。
-- 用户只是表达兴趣时，不自动把所有相关页面改为 P0；priority 仍要结合岗位、依赖和明确 task intent。
+- 用户只是表达兴趣时，不自动把所有相关页面改为 P0；priority 仍要结合 `Profile Scope` 声明的目标、依赖和明确 task intent。
 - 用户要求立即纳入范围时，先更新 scope / queue，再按 source-to-knowledge pipeline 建设，不能把未经验证的观点直接写成稳定结论。

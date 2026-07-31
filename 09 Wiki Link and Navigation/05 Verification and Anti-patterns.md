@@ -28,4 +28,4 @@ Link verification 通过不等于内容完成；Coverage、Depth、Sources 和 I
 - [[kernel/05 Terminology Standard|Terminology Standard]]
 - [[Knowledge Base Standards/11 Interview Content Standard|Interview Content Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]
+- [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]

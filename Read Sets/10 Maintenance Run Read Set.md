@@ -8,7 +8,7 @@
 
 - [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]（Maintenance Run Envelope 与 Effort Tiering）
 - [[Knowledge Base Standards/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]]（Freshness And Review Due）
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]]（Stage 1 的增量扫描与水位线语义）
+- [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]]（Stage 1 的增量扫描与水位线语义）
 - [[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]]
 - [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
 
@@ -30,5 +30,5 @@
 ## Related
 
 - [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution]]
+- [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance]]

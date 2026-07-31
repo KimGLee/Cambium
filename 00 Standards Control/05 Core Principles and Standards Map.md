@@ -38,7 +38,7 @@
 - `03` [[kernel/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]：note types、Process / Flow、canonical ownership、split 和 duplication。
 - `04` [[kernel/04 Content Depth Standard|Content Depth Standard]]：Atomic / Core / System 深度、Process / Flow、系统链路和 evaluation provenance。
 - `05` [[kernel/05 Terminology Standard|Terminology Standard]]：专有名词提取、aliases、复用和 emerging terminology。
-- `06` [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]：用户 hypothesis / source lead、source-to-knowledge pipeline、synthesis、graph impact 和 promotion。
+- `06` [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]：用户 hypothesis / source lead、source-to-knowledge pipeline、synthesis、graph impact 和 promotion。
 - `07` [[Knowledge Base Standards/07 Sources and Accuracy Standard|Sources and Accuracy Standard]]：来源角色、claim、公式、指标和时效性核验。
 - `08` [[Knowledge Base Standards/08 Metadata and Status Standard|Metadata and Status Standard]]：type、domain、priority、authoring / interview / learning status、coverage disposition 和 evidence maturity。
 - `09` [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]：正文链接、结构导航、path、alias 和验证。
@@ -57,15 +57,15 @@
 | `task_state` 词表 | [[Knowledge Base Standards/02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]] |
 | authoring / interview / learning 状态词表 | [[Knowledge Base Standards/08 Metadata and Status/03 Status Axes|Status Axes]] |
 | `evidence_maturity` 定义 | [[Knowledge Base Standards/08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]] |
-| Evidence roles | [[Knowledge Base Standards/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] |
-| Source Note / Research Synthesis 模板 | [[Knowledge Base Standards/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles|Intake Note Types and Source Roles]] |
+| Evidence roles | [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] |
+| Source Note / Research Synthesis 模板 | [[kernel/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles|Intake Note Types and Source Roles]] |
 | Evaluation provenance 要素清单 | [[Knowledge Base Standards/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]] |
 | 官方来源政策 | [[Knowledge Base Standards/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]] |
 | 语言政策 | [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|Chinese-first Technical Language]] |
 | Interview 双语政策 | [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]] |
 | System Deep Dive 骨架 | [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]] |
 | Batch / Coverage 验收清单 | [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]] |
-| Source-to-Knowledge pipeline | [[Knowledge Base Standards/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] |
+| Source-to-Knowledge pipeline | [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] |
 | 保质期与 volatility 词表 | [[Knowledge Base Standards/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]] |
 | 退役与合并流程 | [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]] |
 | 维护轮预算封套 | [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]] |

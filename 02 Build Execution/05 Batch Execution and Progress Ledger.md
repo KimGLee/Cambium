@@ -37,7 +37,7 @@ batch 关闭的验收清单以 [[Knowledge Base Standards/12 Quality Assurance/0
 
 ## Source-driven Expansion Batch
 
-从 OpenAI、Anthropic、论文、postmortem 或社区讨论扩展知识库时，batch 必须遵循 [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]：来源驱动批次必须完整走 [[Knowledge Base Standards/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] 的全部阶段（Stage 1–10）。
+从 OpenAI、Anthropic、论文、postmortem 或社区讨论扩展知识库时，batch 必须遵循 [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]：来源驱动批次必须完整走 [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] 的全部阶段（Stage 1–10）。
 
 来源 batch 可以产生零个、一个或多个 canonical notes。
 

@@ -12,12 +12,12 @@
 
 | Module | Canonical sections |
 |---|---|
-| [[Knowledge Base Standards/06 Knowledge Intake and Evolution/01 Intake Scope and Knowledge Model\|Intake Scope and Knowledge Model]] | `Purpose`、`Scope`、`Core Model`、`Many-to-many Rule` |
-| [[Knowledge Base Standards/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads\|User Guidance Hypotheses and Source Leads]] | `User Guidance, Hypotheses And Source Leads` |
-| [[Knowledge Base Standards/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline\|Source-to-Knowledge Pipeline]] | `Source-to-Knowledge Pipeline` |
-| [[Knowledge Base Standards/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles\|Intake Note Types and Source Roles]] | `Note Types In The Intake Layer`、`Source Role Policy` |
-| [[Knowledge Base Standards/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy\|Evidence Maturity and Batch Policy]] | `Evidence Maturity`、`Batch Policy` |
-| [[Knowledge Base Standards/06 Knowledge Intake and Evolution/06 Intake Anti-patterns and Acceptance\|Intake Anti-patterns and Acceptance]] | `Anti-patterns`、`Acceptance Criteria`、`Related` |
+| [[kernel/06 Knowledge Intake and Evolution/01 Intake Scope and Knowledge Model\|Intake Scope and Knowledge Model]] | `Purpose`、`Scope`、`Core Model`、`Many-to-many Rule` |
+| [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads\|User Guidance Hypotheses and Source Leads]] | `User Guidance, Hypotheses And Source Leads` |
+| [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline\|Source-to-Knowledge Pipeline]] | `Source-to-Knowledge Pipeline` |
+| [[kernel/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles\|Intake Note Types and Source Roles]] | `Note Types In The Intake Layer`、`Source Role Policy` |
+| [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy\|Evidence Maturity and Batch Policy]] | `Evidence Maturity`、`Batch Policy` |
+| [[kernel/06 Knowledge Intake and Evolution/06 Intake Anti-patterns and Acceptance\|Intake Anti-patterns and Acceptance]] | `Anti-patterns`、`Acceptance Criteria`、`Related` |
 
 ## Applicable Read Sets
 

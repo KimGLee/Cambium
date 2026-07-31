@@ -1,7 +1,7 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]].
-- Next: [[Knowledge Base Standards/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]].
+- Parent: [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]].
+- Next: [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]].
 
 ## Purpose
 
@@ -17,11 +17,11 @@
 
 本标准适用于：
 
-- OpenAI、Anthropic 和其它机构的官方 engineering / research articles。
+- 不同机构的官方 engineering / research articles。
 - 论文、benchmark、技术报告、标准和协议更新。
 - 生产 case study、postmortem 和公开架构说明。
 - 高质量社区讨论、issue、经验总结和新出现的实践问题。
-- 现有知识页在学习、面试或工程分析中暴露出的新缺口。
+- 现有知识页在学习、表达任务或工程分析中暴露出的新缺口。
 
 它不替代 [[Knowledge Base Standards/07 Sources and Accuracy Standard|Sources and Accuracy Standard]]。Sources and Accuracy 判断结论是否有可靠依据；本标准判断这些依据应如何改变知识库。
 
@@ -36,7 +36,7 @@ Source != Claim != Knowledge Object != Markdown File
 - Source 是文章、论文、讨论、代码、benchmark 或 postmortem。
 - Claim 是来源中可以单独判断真伪和适用范围的主张。
 - Knowledge Object 是需要被长期维护的术语、机制、组件、系统、风险、控制或案例。
-- Markdown File 是知识对象在当前 Obsidian 架构中的承载方式。
+- Markdown File 是知识对象在当前知识库架构中的承载方式。
 
 不能看到一个新词或文章标题就直接创建同名 canonical note。
 

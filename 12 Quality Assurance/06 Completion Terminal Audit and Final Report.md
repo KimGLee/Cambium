@@ -119,6 +119,6 @@ time_contract_result
 
 - [[kernel/04 Content Depth Standard|Content Depth Standard]]
 - [[Knowledge Base Standards/07 Sources and Accuracy Standard|Sources and Accuracy Standard]]
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]
+- [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]
 - [[Knowledge Base Standards/08 Metadata and Status Standard|Metadata and Status Standard]]
 - [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]

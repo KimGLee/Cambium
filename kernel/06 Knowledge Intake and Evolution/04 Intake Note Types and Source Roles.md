@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]].
-- Previous: [[Knowledge Base Standards/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]].
-- Next: [[Knowledge Base Standards/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]].
+- Parent: [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]].
+- Previous: [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]].
+- Next: [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]].
 
 ## Note Types In The Intake Layer
 
@@ -48,7 +48,7 @@ Research Synthesis 不是永久替代 canonical notes。结论稳定后，应把
 
 ### Official Company Sources
 
-OpenAI、Anthropic 和其它公司官方文章在 intake 中作为一手 implementation evidence，用于证明该公司公开披露的系统、实验和工程经验，不自动证明行业普遍规律。canonical 政策见 [[Knowledge Base Standards/07 Sources and Accuracy/03 Official and Cross-source Verification|07/03]]。
+不同公司的官方文章在 intake 中作为一手 implementation evidence，用于证明该公司公开披露的系统、实验和工程经验，不自动证明行业普遍规律。canonical 政策见 [[Knowledge Base Standards/07 Sources and Accuracy/03 Official and Cross-source Verification|07/03]]。
 
 ### Community Sources
 

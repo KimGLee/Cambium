@@ -6,10 +6,10 @@
 
 先读取 [[Knowledge Base Standards/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
 
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution/01 Intake Scope and Knowledge Model|Intake Scope and Knowledge Model]]
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]]
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles|Intake Note Types and Source Roles]]
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]]
+- [[kernel/06 Knowledge Intake and Evolution/01 Intake Scope and Knowledge Model|Intake Scope and Knowledge Model]]
+- [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]]
+- [[kernel/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles|Intake Note Types and Source Roles]]
+- [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]]
 - [[Knowledge Base Standards/07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|Source Hierarchy and Evidence Roles]]
 - [[Knowledge Base Standards/07 Sources and Accuracy/02 Claims Sources and Classification|Claims Sources and Classification]]
 - [[Knowledge Base Standards/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]]
@@ -19,7 +19,7 @@
 
 ## Triggered
 
-- 用户观点、source lead 或 first-party context：读取 [[Knowledge Base Standards/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]]。
+- 用户观点、source lead 或 first-party context：读取 [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]]。
 - Benchmark、accuracy、回测或生产指标：读取 [[Knowledge Base Standards/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]]。
 - 时效性、公式、术语冲突或来源分歧：读取 [[Knowledge Base Standards/07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty|Time Formula Terminology and Uncertainty]]。
 - 来源产出新术语时：读取 [[kernel/05 Terminology/01 Terminology Extraction|Terminology Extraction]]。
@@ -27,12 +27,12 @@
 
 ## Gate
 
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution/06 Intake Anti-patterns and Acceptance|Intake Anti-patterns and Acceptance]]
+- [[kernel/06 Knowledge Intake and Evolution/06 Intake Anti-patterns and Acceptance|Intake Anti-patterns and Acceptance]]
 - [[Knowledge Base Standards/07 Sources and Accuracy/06 Source Maintenance and Acceptance|Source Maintenance and Acceptance]]
 - [[Knowledge Base Standards/12 Quality Assurance/04 Guidance Source and Interview Review|Guidance Source and Interview Review]]
 
 ## Related
 
 - [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution]]
+- [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution]]
 - [[Knowledge Base Standards/07 Sources and Accuracy Standard|Sources and Accuracy]]

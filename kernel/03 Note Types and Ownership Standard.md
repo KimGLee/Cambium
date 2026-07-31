@@ -36,4 +36,4 @@
 - [[kernel/04 Content Depth Standard|04 Content Depth Standard]]
 - [[kernel/05 Terminology Standard|05 Terminology Standard]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]]
-- [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
+- [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]

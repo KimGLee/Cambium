@@ -6,7 +6,7 @@
 
 ## Source Note And Research Synthesis Depth
 
-Source Note 的深度来自忠实性和证据边界，不要求扩写成完整教材。Source Note 和 Research Synthesis 不通过字数判断深度，而通过 claim coverage、来源边界和 graph impact 是否清楚判断。结构模板的 canonical 定义见 [[Knowledge Base Standards/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles|06/04]]。
+Source Note 的深度来自忠实性和证据边界，不要求扩写成完整教材。Source Note 和 Research Synthesis 不通过字数判断深度，而通过 claim coverage、来源边界和 graph impact 是否清楚判断。结构模板的 canonical 定义见 [[kernel/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles|06/04]]。
 
 ## Evaluation Provenance Depth
 

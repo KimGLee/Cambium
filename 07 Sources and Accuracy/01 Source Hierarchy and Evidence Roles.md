@@ -19,7 +19,7 @@
 
 技术问题使用一手来源核对。协议、API、框架和版本行为优先官方文档。
 
-来源层级只回答“来源通常有多可靠”，不能回答“该来源在当前论证中证明了什么”。具体 source-to-knowledge 准入遵循 [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]。
+来源层级只回答“来源通常有多可靠”，不能回答“该来源在当前论证中证明了什么”。具体 source-to-knowledge 准入遵循 [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]。
 
 ## Source Authority And Evidence Role
 
@@ -32,4 +32,4 @@
 
 社区内容权威级别通常较低，但可以是高价值 discovery signal 或 failure evidence；官方公司文章可以证明其公开系统，却不能自动证明行业普遍规律（详见 [[Knowledge Base Standards/07 Sources and Accuracy/03 Official and Cross-source Verification|07/03]]）。
 
-七种 evidence roles 的 canonical 定义见 [[Knowledge Base Standards/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|06/03]] Stage 4。
+七种 evidence roles 的 canonical 定义见 [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|06/03]] Stage 4。

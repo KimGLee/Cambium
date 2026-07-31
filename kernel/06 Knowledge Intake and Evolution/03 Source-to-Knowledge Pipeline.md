@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]].
-- Previous: [[Knowledge Base Standards/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]].
-- Next: [[Knowledge Base Standards/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles|Intake Note Types and Source Roles]].
+- Parent: [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]].
+- Previous: [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]].
+- Next: [[kernel/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles|Intake Note Types and Source Roles]].
 
 ## Source-to-Knowledge Pipeline
 
@@ -28,7 +28,7 @@ Environmental Scanning
 - 新出现的问题、能力、失败模式或工程模式。
 - 发现来源和首次发现日期。
 - Originating guidance ID，适用于用户提供的 hypothesis 或 source lead。
-- 与 Agent/Harness 主线的关系。
+- 与 `Profile Scope` 所声明 Knowledge Spine 的关系。
 - 它可能影响的现有模块。
 - 为什么值得进一步调查。
 
@@ -148,8 +148,8 @@ Knowledge gap 必须以“缺失的问题或机制”描述，不能只写“缺
 - Parent、prerequisites、components、applications 和 failure/control links。
 - Source Note、Research Synthesis、Case Study 与 canonical notes 的显式关系。
 - Overview / MOC 和 coverage map。
-- 需要时的 Interview Card 和 Question Bank。
-- Metadata、authoring status、interview status、coverage disposition、evidence maturity 和 review dates。
+- 需要时由 `Expression Layer Entry` 注册的表达产物和集合。
+- Metadata、authoring status、expression status、coverage disposition、evidence maturity 和 review dates。
 
 不得只创建孤立页面，等待未来再补关系。
 
@@ -170,10 +170,10 @@ Knowledge gap 必须以“缺失的问题或机制”描述，不能只写“缺
 
 ### Stage 10: Maintenance And Supersession
 
-前沿 Agent/Harness 知识需要持续维护：
+`Profile Scope` 所声明知识主线中的前沿知识需要持续维护：
 
 - 新来源是否支持、限制或反驳现有结论。
-- 模型能力变化是否让旧 Harness assumption 失效。
+- 模型能力变化是否让旧运行控制假设失效。
 - Benchmark、API、工具和系统环境是否变化。
 - 一个 emerging pattern 是否已获得独立复现。
 - 旧术语是否被更准确的分类取代。
