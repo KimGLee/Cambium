@@ -1,7 +1,7 @@
 ## Navigation
 
 - Parent: [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]].
-- Previous: [[Knowledge Base Standards/11 Interview Content/05 Knowledge Links and Preparation|Knowledge Links and Preparation]].
+- Previous: [[11 Interview Content/05 Knowledge Links and Preparation|Knowledge Links and Preparation]].
 - Next: [[Knowledge Base Standards/11 Interview Content/07 Migration Audit and Acceptance|Migration Audit and Acceptance]].
 
 ## Roadmap Policy

@@ -35,6 +35,6 @@ Related links 应按语义组织，避免无序堆积。内容多时可以拆为
 - 需要引用的 canonical page 已存在时直接链接。
 - 需要新页面时必须同时创建足够内容，不能只制造 unresolved link。
 - 大批量创建前先检查是否已有同义页面。
-- 名词提取遵循 [[Knowledge Base Standards/05 Terminology Standard|Terminology Standard]]。
+- 名词提取遵循 [[kernel/05 Terminology Standard|Terminology Standard]]。
 - 外部来源触发的新链接和页面遵循 [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]。
 - 一篇文章不能仅因包含多个名词就与所有名词建立弱连接；只链接实际受其 claim 影响的知识对象。

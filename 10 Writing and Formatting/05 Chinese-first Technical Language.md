@@ -19,7 +19,7 @@
 |---|---|---|
 | 本规则 | 中文优先表达、英文保留边界、标题中文注释、表格语言、语言验收 | 术语是否值得建立独立页面 |
 | [[Knowledge Base Standards/10 Writing and Formatting/01 Naming Language and Prose\|Naming Language and Prose]] | 文件命名、标题层级、段落与列表 | 英文词是否应保留 |
-| [[Knowledge Base Standards/05 Terminology/03 Naming Context and Linking\|Naming Context and Linking]] | canonical term、aliases、首次链接和复用 | 当前句子和表格使用哪种叙述语言 |
+| [[kernel/05 Terminology/03 Naming Context and Linking\|Naming Context and Linking]] | canonical term、aliases、首次链接和复用 | 当前句子和表格使用哪种叙述语言 |
 | [[Knowledge Base Standards/10 Writing and Formatting/02 Mathematics Tables and Code\|Mathematics Tables and Code]] | 表格、公式和代码的结构与渲染 | 表头和解释性单元格的语言 |
 | [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy\|System Deep Dive and Bilingual Policy]] | Interview Card 的中英文答案结构和语义一致性 | 普通知识正文的大段英文 |
 
@@ -235,7 +235,7 @@ Task output -> decision policy -> action -> outcome evidence.
 - [[Knowledge Base Standards/10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]
 - [[Knowledge Base Standards/10 Writing and Formatting/02 Mathematics Tables and Code|Mathematics Tables and Code]]
 - [[Knowledge Base Standards/10 Writing and Formatting/04 Rendering and Formatting Review|Rendering and Formatting Review]]
-- [[Knowledge Base Standards/05 Terminology/03 Naming Context and Linking|Naming Context and Linking]]
+- [[kernel/05 Terminology/03 Naming Context and Linking|Naming Context and Linking]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]]
 - [[Knowledge Base Standards/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]]

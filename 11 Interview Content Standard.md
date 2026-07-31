@@ -16,7 +16,7 @@
 | [[Knowledge Base Standards/11 Interview Content/02 Card Granularity Coverage and Categories\|Card Granularity Coverage and Categories]] | `Interview Card Granularity`、`Interview Coverage Status`、`Interview Card Categories` |
 | [[Knowledge Base Standards/11 Interview Content/03 Card Structure and Answer Levels\|Card Structure and Answer Levels]] | `Interview Card Structure`、`Answer Levels` |
 | [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy\|System Deep Dive and Bilingual Policy]] | `System And Project Deep Dive`、`Bilingual Policy` |
-| [[Knowledge Base Standards/11 Interview Content/05 Knowledge Links and Preparation\|Knowledge Links and Preparation]] | `Knowledge Links`、`Interview Preparation`、`Core Knowledge Links` |
+| [[11 Interview Content/05 Knowledge Links and Preparation\|Knowledge Links and Preparation]] | `Knowledge Links`、`Interview Preparation`、`Core Knowledge Links` |
 | [[Knowledge Base Standards/11 Interview Content/06 Roadmap and Question Bank\|Roadmap and Question Bank]] | `Roadmap Policy`、`Question Bank Policy` |
 | [[Knowledge Base Standards/11 Interview Content/07 Migration Audit and Acceptance\|Migration Audit and Acceptance]] | `Migration Policy`、`Migration Audit`、`Acceptance Criteria`、`Related` |
 
@@ -28,6 +28,6 @@
 ## Related Standards
 
 - [[kernel/04 Content Depth Standard|04 Content Depth Standard]]
-- [[Knowledge Base Standards/05 Terminology Standard|05 Terminology Standard]]
+- [[kernel/05 Terminology Standard|05 Terminology Standard]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]]
 - [[Knowledge Base Standards/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]

@@ -1,41 +1,24 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/05 Terminology Standard|05 Terminology Standard]].
-- Previous: [[Knowledge Base Standards/05 Terminology/01 Terminology Extraction|Terminology Extraction]].
-- Next: [[Knowledge Base Standards/05 Terminology/03 Naming Context and Linking|Naming Context and Linking]].
+- Parent: [[kernel/05 Terminology Standard|05 Terminology Standard]].
+- Previous: [[kernel/05 Terminology/01 Terminology Extraction|Terminology Extraction]].
+- Next: [[kernel/05 Terminology/03 Naming Context and Linking|Naming Context and Linking]].
 
 ## Ownership
 
 术语使用“最低合理归属”规则：
 
 1. 有明确领域归属：放在该领域。
-2. 多领域复用且有基础学科归属：放在 Shared Foundations。
-3. 生产系统通用：放在 AI Systems Engineering。
-4. 真正跨领域且无自然 owner：放在未来 `Shared Concepts`。
-5. 面试表达不改变术语 owner，Interview Card 只引用它。
+2. 多领域复用且有基础学科归属：放在所选 profile 注册的 `Shared Foundation Layer`。
+3. 生产系统通用：放在所选 profile 注册的 `Production Systems Layer`。
+4. 真正跨领域且无自然 owner：放在所选 profile 注册的 `Cross-domain Concepts Layer`。
+5. 表达层不改变术语 owner，`Expression Layer Artifact` 只引用它。
 
 不建议建立一个无分类、无限增长的全局 Glossary 文件夹。
 
 ## Suggested Structure
 
-```text
-Shared Concepts/
-├── Mathematics/
-├── Data/
-├── Evaluation/
-├── Systems/
-├── Security/
-└── Terminology Index.md
-```
-
-领域专属术语可以使用：
-
-```text
-Deep Learning Knowledge/Terminology/
-LLM Knowledge/Terminology/
-Agent Knowledge/Terminology/
-AI Systems Engineering/Terminology/
-```
+具体目录树由所选 profile 的 `Profile Scope` 在 `Terminology Structure` 中登记。
 
 该结构需要在整体架构确认后再创建，当前规则不自动移动现有术语页。
 
@@ -54,7 +37,7 @@ Minimal Example（最小示例）
 Where It Is Used（使用场景）
 What It Is Not（它不是什么）
 Common Misconceptions（常见误解）
-Interview Preparation Link（面试准备链接）
+Expression Layer Link（表达层链接）
 Related Terms（相关术语）
 Sources（来源）
 ```

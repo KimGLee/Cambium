@@ -2,7 +2,7 @@
 
 - Parent: [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]].
 - Previous: [[Knowledge Base Standards/11 Interview Content/03 Card Structure and Answer Levels|Card Structure and Answer Levels]].
-- Next: [[Knowledge Base Standards/11 Interview Content/05 Knowledge Links and Preparation|Knowledge Links and Preparation]].
+- Next: [[11 Interview Content/05 Knowledge Links and Preparation|Knowledge Links and Preparation]].
 
 ## System And Project Deep Dive
 

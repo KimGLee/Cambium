@@ -34,7 +34,7 @@
 - 区分相似但不同的概念，例如 parameter vs hyperparameter、state vs memory。
 - 协议定义与常见工程习惯分开描述。
 - 中文翻译不能改变英文术语含义。
-- 专有名词的 canonical definition 遵循 [[Knowledge Base Standards/05 Terminology Standard|Terminology Standard]]。
+- 专有名词的 canonical definition 遵循 [[kernel/05 Terminology Standard|Terminology Standard]]。
 
 ## Uncertainty And Disagreement
 

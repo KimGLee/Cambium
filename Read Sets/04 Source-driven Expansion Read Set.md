@@ -22,7 +22,7 @@
 - 用户观点、source lead 或 first-party context：读取 [[Knowledge Base Standards/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]]。
 - Benchmark、accuracy、回测或生产指标：读取 [[Knowledge Base Standards/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]]。
 - 时效性、公式、术语冲突或来源分歧：读取 [[Knowledge Base Standards/07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty|Time Formula Terminology and Uncertainty]]。
-- 来源产出新术语时：读取 [[Knowledge Base Standards/05 Terminology/01 Terminology Extraction|Terminology Extraction]]。
+- 来源产出新术语时：读取 [[kernel/05 Terminology/01 Terminology Extraction|Terminology Extraction]]。
 - 创建或修改 canonical note：组合 [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]。
 
 ## Gate

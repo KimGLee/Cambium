@@ -1,7 +1,7 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/05 Terminology Standard|05 Terminology Standard]].
-- Next: [[Knowledge Base Standards/05 Terminology/02 Ownership and Term Structure|Ownership and Term Structure]].
+- Parent: [[kernel/05 Terminology Standard|05 Terminology Standard]].
+- Next: [[kernel/05 Terminology/02 Ownership and Term Structure|Ownership and Term Structure]].
 
 ## Purpose
 
@@ -14,7 +14,7 @@ Term Note owns the definition.
 Concept Note owns the mechanism.
 System Note owns component interaction.
 Case Study owns application.
-Interview Card owns expression.
+Expression Layer Artifact owns expression.
 ```
 
 专有名词只在一个独立 Markdown 文件中完整解释。其它页面只说明该名词在当前主题中的作用，并通过 wiki link 引用。
@@ -27,9 +27,10 @@ Interview Card owns expression.
 - 完整解释需要超过两三句话。
 - 有独立的形式化定义、符号、数据结构或生命周期。
 - 有常见误区或容易混淆的相似概念。
-- 面试中可能被单独追问。
 - 会被多个顶层领域复用。
 - 定义随协议、框架或版本变化，需要独立维护。
+
+所选 profile 可以通过 `Expression Layer Entry` 注册扩展提取条件。
 
 ## Do Not Extract
 

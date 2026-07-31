@@ -19,7 +19,7 @@
 
 ## Triggered
 
-- 出现可复用专有名词：读取 [[Knowledge Base Standards/05 Terminology/01 Terminology Extraction|Terminology Extraction]]、[[Knowledge Base Standards/05 Terminology/02 Ownership and Term Structure|Ownership and Term Structure]] 和 [[Knowledge Base Standards/05 Terminology/03 Naming Context and Linking|Naming Context and Linking]]；关闭 term note 前读取 [[Knowledge Base Standards/05 Terminology/04 Interview and Acceptance|Interview and Acceptance]]。
+- 出现可复用专有名词：读取 [[kernel/05 Terminology/01 Terminology Extraction|Terminology Extraction]]、[[kernel/05 Terminology/02 Ownership and Term Structure|Ownership and Term Structure]] 和 [[kernel/05 Terminology/03 Naming Context and Linking|Naming Context and Linking]]；关闭 term note 前读取 [[kernel/05 Terminology/04 Terminology Acceptance|Interview and Acceptance]]。
 - 关键 claim 或外部文章：读取 [[Knowledge Base Standards/07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|Source Hierarchy and Evidence Roles]] 和 [[Knowledge Base Standards/07 Sources and Accuracy/02 Claims Sources and Classification|Claims Sources and Classification]]。
 - 官方厂商材料或需要独立核验的结论：读取 [[Knowledge Base Standards/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]]。
 - Benchmark、accuracy、回测或生产指标：读取 [[Knowledge Base Standards/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]]。

@@ -166,6 +166,7 @@ Case Study 必须基于已核验来源，区分公开事实、合理推断和知
 |---|---|
 | `Shared Foundation Layer` | `Shared Foundations` |
 | `Production Systems Layer` | `AI Systems Engineering` |
+| `Cross-domain Concepts Layer` | `Shared Concepts` |
 | `Expression Layer Predicate` | `只描述面试表达` |
 | `Expression Layer` | `Interview Preparation` |
 | `Case Study Layer` | `Case Study` |
@@ -185,3 +186,28 @@ Case Study 必须基于已核验来源，区分公开事实、合理推断和知
 ## Production System Reasoning Applicability
 
 - Covered pages: `P0 / P1 Agent、Harness 和 AI Systems 页面`
+
+## Terminology Structure
+
+```text
+Shared Concepts/
+├── Mathematics/
+├── Data/
+├── Evaluation/
+├── Systems/
+├── Security/
+└── Terminology Index.md
+```
+
+领域专属术语可以使用：
+
+```text
+Deep Learning Knowledge/Terminology/
+LLM Knowledge/Terminology/
+Agent Knowledge/Terminology/
+AI Systems Engineering/Terminology/
+```
+
+## Terminology Kernel Binding
+
+- Kernel owner: [[kernel/05 Terminology/02 Ownership and Term Structure|Ownership And Term Structure]]
