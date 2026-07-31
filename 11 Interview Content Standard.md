@@ -13,7 +13,7 @@
 | Module | Canonical sections |
 |---|---|
 | [[11 Interview Content/01 Interview Architecture and Separation\|Interview Architecture and Separation]] | `Purpose`、`Core Separation`、`Folder Structure` |
-| [[Knowledge Base Standards/11 Interview Content/02 Card Granularity Coverage and Categories\|Card Granularity Coverage and Categories]] | `Interview Card Granularity`、`Interview Coverage Status`、`Interview Card Categories` |
+| [[11 Interview Content/02 Card Granularity Coverage and Categories\|Card Granularity Coverage and Categories]] | `Interview Card Granularity`、`Interview Coverage Status`、`Interview Card Categories` |
 | [[Knowledge Base Standards/11 Interview Content/03 Card Structure and Answer Levels\|Card Structure and Answer Levels]] | `Interview Card Structure`、`Answer Levels` |
 | [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy\|System Deep Dive and Bilingual Policy]] | `System And Project Deep Dive`、`Bilingual Policy` |
 | [[11 Interview Content/05 Knowledge Links and Preparation\|Knowledge Links and Preparation]] | `Knowledge Links`、`Interview Preparation`、`Core Knowledge Links` |

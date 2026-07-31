@@ -1,0 +1,58 @@
+# Agent Atlas profile vocabulary extensions.
+# Canonical profile input for the later deterministic Tools/vocab.yaml composition.
+
+schema_version: 1
+profile_id: agent-atlas
+extends: "kernel/08 Metadata and Status/vocabulary-base.yaml"
+composition_policy: append-only
+
+frontmatter_extensions:
+  fields:
+    - interview_status
+    - interview_card
+  example_values:
+    domain: agent
+
+fields:
+  type:
+    owner: "profiles/agent-atlas/vocabulary-extensions.yaml"
+    values:
+      - interview-card
+      - roadmap
+  domain:
+    owner: "profiles/agent-atlas/vocabulary-extensions.yaml"
+    values:
+      - modeling-fundamentals
+      - machine-learning
+      - deep-learning
+      - llm
+      - retrieval-rag
+      - agent
+      - ai-systems
+      - evaluation
+      - safety-governance
+      - interview
+      - knowledge-management
+  scope:
+    owner: "profiles/agent-atlas/vocabulary-extensions.yaml"
+    values:
+      - interview-only
+  interview_status:
+    owner: "profiles/agent-atlas/interview/02 Card Granularity Coverage and Categories.md#Interview Coverage Status"
+    role: Expression Status Axis
+    values:
+      - not-required
+      - missing
+      - mapped
+      - drafted
+      - reviewed
+      - interview-ready
+
+volatility_defaults:
+  agent: fast
+  llm: fast
+  retrieval-rag: fast
+  machine-learning: slow
+  deep-learning: slow
+  ai-systems: slow
+  modeling-fundamentals: stable

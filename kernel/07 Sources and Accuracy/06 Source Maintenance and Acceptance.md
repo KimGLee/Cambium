@@ -26,6 +26,6 @@
 
 ## Related
 
-- [[Knowledge Base Standards/08 Metadata and Status Standard|Metadata and Status Standard]]
+- [[kernel/08 Metadata and Status Standard|Metadata and Status Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]

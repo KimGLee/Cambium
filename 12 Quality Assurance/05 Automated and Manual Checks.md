@@ -27,7 +27,7 @@
 - Level 2–4 记录必须包含 visual trigger、unresolved question、target 和 result；没有 trigger 的 batch 不要求 visual evidence。
 - 跨文件重复块检测——用 `Tools/duplicate_check.py` 跑段落级相似度扫描，相似段落对报为候选，人工判定是否违反 [[Knowledge Base Standards/00 Standards Control/05 Core Principles and Standards Map#Cross-domain Rule Registry|Cross-domain Rule Registry]]。仅维护轮与 governance 任务运行；批次层面仅保留封闭清单中的 basename 级检测。
 - Terminal Proof 完整性与零值条件校验（canonical 定义见 [[Knowledge Base Standards/12 Quality Assurance/06 Completion Terminal Audit and Final Report|12/06]]）——已实现为 `Tools/check_proof.py`，可与 Coverage Ledger 交叉对账。
-- 知识时效检查——`Tools/check_freshness.py` 按 volatility 与 last_verified 计算 review_by，输出过期清单（按 priority 排序），作为维护轮候选输入。维护轮专属，不在批次检查中运行。规则 owner 见 [[Knowledge Base Standards/08 Metadata and Status/05 Review Source and Migration Metadata|08/05]]。
+- 知识时效检查——`Tools/check_freshness.py` 按 volatility 与 last_verified 计算 review_by，输出过期清单（按 priority 排序），作为维护轮候选输入。维护轮专属，不在批次检查中运行。规则 owner 见 [[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|08/05]]。
 
 语言相关自动检查只能产生候选项，不能按字符比例自动判失败（定义与例外边界见 [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|10/05]]）。自动检查只能发现结构问题，不能代替内容审阅。
 

@@ -10,9 +10,9 @@
 - [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
 - [[kernel/04 Content Depth/01 Depth Model and Foundation|Depth Model and Foundation]]
 - 根据页面类型选择 [[kernel/04 Content Depth/02 Core Concept Structure|Core Concept Structure]]、[[kernel/04 Content Depth/03 Process and Flow Structure|Process and Flow Structure]]、[[kernel/04 Content Depth/04 System and Production Reasoning|System and Production Reasoning]] 或 [[kernel/04 Content Depth/05 Source and Evaluation Depth|Source and Evaluation Depth]]。
-- [[Knowledge Base Standards/08 Metadata and Status/01 Frontmatter and Core Vocabularies|Frontmatter and Core Vocabularies]]
-- [[Knowledge Base Standards/08 Metadata and Status/02 Scope Level Depth and Priority|Scope Level Depth and Priority]]
-- [[Knowledge Base Standards/08 Metadata and Status/03 Status Axes|Status Axes]]
+- [[kernel/08 Metadata and Status/01 Frontmatter and Core Vocabularies|Frontmatter and Core Vocabularies]]
+- [[kernel/08 Metadata and Status/02 Scope Level Depth and Priority|Scope Level Depth and Priority]]
+- [[kernel/08 Metadata and Status/03 Status Axes|Status Axes]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation/01 Link Semantics and Body Links|Link Semantics and Body Links]]
 - [[Knowledge Base Standards/10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]
 - [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|Chinese-first Technical Language]]

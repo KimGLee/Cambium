@@ -6,7 +6,7 @@
 
 ## Evidence Maturity
 
-写作完成状态和证据成熟度必须分开。authoring_status 流转见 [[Knowledge Base Standards/08 Metadata and Status/03 Status Axes|08/03]]。
+写作完成状态和证据成熟度必须分开。authoring_status 流转见 [[kernel/08 Metadata and Status/03 Status Axes|08/03]]。
 
 ```text
 Evidence maturity:
@@ -15,7 +15,7 @@ signal -> single-source -> corroborated -> validated
 validated / contested -> superseded
 ```
 
-六个取值的 canonical 定义见 [[Knowledge Base Standards/08 Metadata and Status/04 Evidence and Relationship Metadata|08/04]]。
+六个取值的 canonical 定义见 [[kernel/08 Metadata and Status/04 Evidence and Relationship Metadata|08/04]]。
 
 证据成熟度描述结论强度，不代表页面写作质量，也不代表表达层优先级。
 

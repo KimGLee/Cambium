@@ -5,6 +5,8 @@
 ## Implemented Slots
 
 - `Profile Scope`: [[profiles/agent-atlas/scope-and-architecture|Scope And Architecture]]
+- `Priority Rubric`: [[profiles/agent-atlas/priority-rubric|Priority Rubric]]
+- `Vocabulary Extensions`: [Vocabulary Extensions](vocabulary-extensions.yaml)
 - `Language Contract`: [[profiles/agent-atlas/language-contract|Language Contract]]
 - `Expression Layer Entry`: [[profiles/agent-atlas/expression-layer|Expression Layer]]
 - `Source Policy`: [[profiles/agent-atlas/source-policy|Source Policy]]
@@ -14,3 +16,4 @@
 ## Registered Extensions
 
 - `Expression Layer Artifact`: [[profiles/agent-atlas/interview/01 Interview Architecture and Separation#Interview Card|Interview Card]]
+- `Expression Status Axis`: [[profiles/agent-atlas/interview/02 Card Granularity Coverage and Categories#Interview Coverage Status|Interview Coverage Status]]

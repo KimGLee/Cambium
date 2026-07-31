@@ -12,11 +12,13 @@
 
 | Module | Canonical sections |
 |---|---|
-| [[Knowledge Base Standards/08 Metadata and Status/01 Frontmatter and Core Vocabularies\|Frontmatter and Core Vocabularies]] | `Purpose`、`Frontmatter Schema`、`Type Vocabulary`、`Domain Vocabulary`、`Freshness And Lifecycle Vocabulary` |
-| [[Knowledge Base Standards/08 Metadata and Status/02 Scope Level Depth and Priority\|Scope Level Depth and Priority]] | `Scope`、`Level`、`Depth`、`Priority` |
-| [[Knowledge Base Standards/08 Metadata and Status/03 Status Axes\|Status Axes]] | `Status Axes` |
-| [[Knowledge Base Standards/08 Metadata and Status/04 Evidence and Relationship Metadata\|Evidence and Relationship Metadata]] | `Evidence Maturity`、`Prerequisites`、`Aliases` |
-| [[Knowledge Base Standards/08 Metadata and Status/05 Review Source and Migration Metadata\|Review Source and Migration Metadata]] | `Review Dates`、`Freshness And Review Due`、`Conditional Source Metadata`、`Migration Rules`、`Related` |
+| [[kernel/08 Metadata and Status/01 Frontmatter and Core Vocabularies\|Frontmatter and Core Vocabularies]] + `Vocabulary Extensions` | `Purpose`、`Frontmatter Schema`、`Type Vocabulary`、`Domain Vocabulary`、`Freshness And Lifecycle Vocabulary` |
+| [[kernel/08 Metadata and Status/02 Scope Level Depth and Priority\|Scope Level Depth and Priority]] + `Priority Rubric` + `Vocabulary Extensions` | `Scope`、`Level`、`Depth`、`Priority` |
+| [[kernel/08 Metadata and Status/03 Status Axes\|Status Axes]] + `Vocabulary Extensions` | `Status Axes` |
+| [[kernel/08 Metadata and Status/04 Evidence and Relationship Metadata\|Evidence and Relationship Metadata]] + `Language Contract` | `Evidence Maturity`、`Prerequisites`、`Aliases` |
+| [[kernel/08 Metadata and Status/05 Review Source and Migration Metadata\|Review Source and Migration Metadata]] + `Vocabulary Extensions` | `Review Dates`、`Freshness And Review Due`、`Conditional Source Metadata`、`Migration Rules`、`Related` |
+
+Machine-readable base values 登记在 `kernel/08 Metadata and Status/vocabulary-base.yaml`；所选 profile 只通过 `Vocabulary Extensions` 追加值。Markdown prose 仍是字段语义与行为规则的唯一 owner，machine registries 不复制升级 gate。
 
 ## Applicable Read Sets
 
@@ -29,7 +31,7 @@
 
 - [[kernel/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]]
 - [[kernel/04 Content Depth Standard|04 Content Depth Standard]]
-- [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]]
+- `Expression Layer Entry`（所选 profile 的表达层标准）
 - [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
 - [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]]

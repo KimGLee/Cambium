@@ -1,7 +1,7 @@
 ## Navigation
 
 - Parent: [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]].
-- Previous: [[Knowledge Base Standards/11 Interview Content/02 Card Granularity Coverage and Categories|Card Granularity Coverage and Categories]].
+- Previous: [[11 Interview Content/02 Card Granularity Coverage and Categories|Card Granularity Coverage and Categories]].
 - Next: [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]].
 
 ## Interview Card Structure

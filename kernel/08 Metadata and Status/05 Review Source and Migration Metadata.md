@@ -1,7 +1,7 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/08 Metadata and Status Standard|08 Metadata and Status Standard]].
-- Previous: [[Knowledge Base Standards/08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]].
+- Parent: [[kernel/08 Metadata and Status Standard|08 Metadata and Status Standard]].
+- Previous: [[kernel/08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]].
 
 ## Review Dates
 
@@ -16,17 +16,11 @@
 
 `volatility` 使用受控词表，描述页面结论的时效衰减速度：
 
-- `fast`：快变内容，如框架与工具生态现状、模型对比、性能数字；复验间隔 120 天。
+- `fast`：快变内容，如外部服务与接口现状、组件对比、性能数字；复验间隔 120 天。
 - `slow`：慢变内容，如方法论和系统设计模式；复验间隔 365 天。
-- `stable`：稳定内容，如数学和经典算法原理；不设复验截止。
+- `stable`：稳定内容，如数学和经典基础原理；不设复验截止。
 
-未显式声明时按 domain 派发默认值，单页可显式覆盖：
-
-| Domain | Default volatility |
-|---|---|
-| `agent`、`llm`、`retrieval-rag` | `fast` |
-| `machine-learning`、`deep-learning`、`ai-systems` | `slow` |
-| `modeling-fundamentals` | `stable` |
+未显式声明时按所选 profile 的 `Vocabulary Extensions` 所登记的 domain 派发表取默认值，单页可显式覆盖。
 
 `review_by` 不手工填写，由 `Tools/check_freshness.py` 按 `last_verified + 对应间隔` 计算；页面没有 `last_verified` 时以创建日期或最近一次实质修改日期代替，并标记为待首验。
 
@@ -40,7 +34,7 @@ Source Note 和 Research Synthesis 可以增加：
 
 ```yaml
 source_type: official-engineering-article
-source_organization: Anthropic
+source_organization: Example Organization
 source_date:
 source_url:
 evidence_roles:
@@ -53,7 +47,7 @@ review_due:
 
 - `source_type` 使用受控词表，区分 paper、official article、documentation、benchmark、postmortem、community discussion 和 independent reproduction。
 - `evidence_roles` 描述来源承担的证据作用，而不是简单重复来源权威级别。
-- `claim_scope` 说明结论适用于哪个模型、Harness、任务、组织或时间范围。
+- `claim_scope` 说明结论适用于哪个组件、execution / control setup、任务、组织或时间范围。
 - `supersedes` / `superseded_by` 保留结论演化关系。
 - `review_due` 用于快速变化内容，不要求稳定基础知识频繁复审。
 
@@ -62,12 +56,12 @@ review_due:
 - 先批准 schema，再批量添加 frontmatter。
 - 先在 Coverage Ledger 中建立权威状态，再决定是否批量写回 Frontmatter。
 - 迁移时不改变正文语义。
-- 旧 `status` 只迁移到 `authoring_status`；不得据此推断 `interview_status`、`learning_status` 或 `evidence_maturity`。
+- 旧 `status` 只迁移到 `authoring_status`；不得据此推断 profile 注册的表达就绪状态、`learning_status` 或 `evidence_maturity`。
 - 没有 Frontmatter 的现有页面默认是 `unassessed`，不是 `drafted` 或 `reviewed`。
 - aliases 和 prerequisites 需要人工或半自动审阅。
 - 不一次性把所有页面标记为 reviewed。
 - `deferred` 和 `excluded` 必须有明确原因，不能作为隐藏缺口的默认值。
-- 完成后验证 Obsidian 插件和 graph 不受影响。
+- 完成后验证所选 knowledge host 的插件和 relationship graph 不受影响。
 
 ## Related
 

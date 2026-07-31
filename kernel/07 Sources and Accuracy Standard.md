@@ -29,5 +29,5 @@
 
 - [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
 - [[kernel/05 Terminology Standard|05 Terminology Standard]]
-- [[Knowledge Base Standards/08 Metadata and Status Standard|08 Metadata and Status Standard]]
+- [[kernel/08 Metadata and Status Standard|08 Metadata and Status Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]]

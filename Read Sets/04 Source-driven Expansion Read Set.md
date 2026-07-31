@@ -13,7 +13,7 @@
 - [[kernel/07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|Source Hierarchy and Evidence Roles]]
 - [[kernel/07 Sources and Accuracy/02 Claims Sources and Classification|Claims Sources and Classification]]
 - [[kernel/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]]
-- [[Knowledge Base Standards/08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]]
+- [[kernel/08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]]
 - [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
 - [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|Chinese-first Technical Language]]，用于区分 source identity 原文与中文 claim 转述。
 

@@ -8,6 +8,14 @@
 
 对于内容深度，`Profile Scope` 还必须实现 `Foundation Depth Requirements` 和 `Production System Reasoning Applicability` 两个子项。
 
+## Priority Rubric Slot
+
+`Priority Rubric` 绑定所选 profile 的 P0 / P1 授予条件。它必须消费 kernel 固定的 P0 / P1 / P2 三级轴，不能改名、增删或重定义该轴，也不能覆写 tier 派生、配额挂钩、默认阈值或豁免机制。
+
+## Vocabulary Extensions Slot
+
+`Vocabulary Extensions` 绑定 profile-owned 的 frontmatter 扩展字段、type / domain / scope / status 追加值和 domain → volatility 派发表。它只能追加已注册值，不能删除、重命名或重定义 kernel base；含行为规则的字段必须指向 manifest 登记的唯一 prose owner。`Tools/vocab.yaml` 是后续由 kernel base 与 selected profile extensions 合成的生成物，不是 canonical owner。
+
 ## Language Contract Slot
 
 `Language Contract` 绑定 profile 的正文语言、显示标签和内容长度单位。它可以把 kernel 的软性篇幅范围解释为 profile 单位，但不能改变数值范围，也不能把软性参考改成硬 gate。

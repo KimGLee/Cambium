@@ -40,7 +40,7 @@
 - `05` [[kernel/05 Terminology Standard|Terminology Standard]]：专有名词提取、aliases、复用和 emerging terminology。
 - `06` [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]：用户 hypothesis / source lead、source-to-knowledge pipeline、synthesis、graph impact 和 promotion。
 - `07` [[kernel/07 Sources and Accuracy Standard|Sources and Accuracy Standard]]：来源角色、claim、公式、指标和时效性核验。
-- `08` [[Knowledge Base Standards/08 Metadata and Status Standard|Metadata and Status Standard]]：type、domain、priority、authoring / interview / learning status、coverage disposition 和 evidence maturity。
+- `08` [[kernel/08 Metadata and Status Standard|Metadata and Status Standard]]：type、domain、priority、authoring / interview / learning status、coverage disposition 和 evidence maturity。
 - `09` [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]：正文链接、结构导航、path、alias 和验证。
 - `10` [[Knowledge Base Standards/10 Writing and Formatting Standard|Writing and Formatting Standard]]：英文文件名、中文优先技术表达、`English（中文）` 显示合同、公式、表格、图方向、图完整性和 rendering workflow。
 - `11` [[Knowledge Base Standards/11 Interview Content Standard|Interview Content Standard]]：Interview Cards、coverage status、双语回答、系统深挖和 migration audit。
@@ -55,8 +55,8 @@
 | Terminal Proof 公式 | [[Knowledge Base Standards/02 Build Execution/07 Completion and Handoff|Completion and Handoff]] |
 | Terminal Audit 流程与 Proof 字段清单 | [[Knowledge Base Standards/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]] |
 | `task_state` 词表 | [[Knowledge Base Standards/02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]] |
-| authoring / interview / learning 状态词表 | [[Knowledge Base Standards/08 Metadata and Status/03 Status Axes|Status Axes]] |
-| `evidence_maturity` 定义 | [[Knowledge Base Standards/08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]] |
+| authoring / interview / learning 状态词表 | [[kernel/08 Metadata and Status/03 Status Axes|Status Axes]] |
+| `evidence_maturity` 定义 | [[kernel/08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]] |
 | Evidence roles | [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] |
 | Source Note / Research Synthesis 模板 | [[kernel/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles|Intake Note Types and Source Roles]] |
 | Evaluation provenance 要素清单 | [[kernel/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]] |
@@ -66,7 +66,7 @@
 | System Deep Dive 骨架 | [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]] |
 | Batch / Coverage 验收清单 | [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]] |
 | Source-to-Knowledge pipeline | [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] |
-| 保质期与 volatility 词表 | [[Knowledge Base Standards/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]] |
+| 保质期与 volatility 词表 | [[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]] |
 | 退役与合并流程 | [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]] |
 | 维护轮预算封套 | [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]] |
 
@@ -87,4 +87,4 @@ Cross-domain Rule Registry 管内容规则“规则住在哪”；本控制注�
 | 渲染 | note 关闭 Level 0/1：[[Knowledge Base Standards/12 Quality Assurance/02 Rendering Verification|12/02]] | 批关闭枚举检查一项；终审信任 receipt |
 | Interview 迁移扫描 | 批次关闭：[[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|封闭清单]]第 6 项＋changed-scope 扫描 | 其它层引用封闭清单，不另做全库扫描 |
 | 重复检测 | 维护轮与 governance 任务：[[Knowledge Base Standards/12 Quality Assurance/05 Automated and Manual Checks|12/05]] duplicate_check | 批次层面仅封闭清单 basename 级；段落级扫描不每批跑 |
-| 知识时效 | 维护轮开始 check_freshness：[[Knowledge Base Standards/08 Metadata and Status/05 Review Source and Migration Metadata|08/05]] | 不在批次自动检查清单中 |
+| 知识时效 | 维护轮开始 check_freshness：[[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|08/05]] | 不在批次自动检查清单中 |

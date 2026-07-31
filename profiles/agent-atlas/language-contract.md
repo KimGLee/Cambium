@@ -26,6 +26,10 @@ aliases:
   - 幂等性
 ```
 
+## Alias Language Extension
+
+- 常见中文名称。
+
 ## Display Language Contract（显示语言契约）
 
 - canonical 文件名保持英文，不向文件名追加中文注释。

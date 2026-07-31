@@ -11,7 +11,7 @@
 - [[Knowledge Base Standards/02 Build Execution/06 Existing Changes Migration and Resume|Existing Changes Migration and Resume]]
 - [[kernel/01 Scope and Architecture/04 Folder and Shared Ownership|Folder and Shared Ownership]]
 - [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]
-- [[Knowledge Base Standards/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]]
+- [[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - [[Knowledge Base Standards/09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]]
 
