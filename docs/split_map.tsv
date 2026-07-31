@@ -244,7 +244,7 @@ Read Sets/10 Maintenance Run Read Set.md	Related	nav
 08 Metadata and Status Standard.md	Applicable Read Sets	kernel	Read Set 挂接机制
 08 Metadata and Status Standard.md	Related Standards	nav
 08 Metadata and Status/01 Frontmatter and Core Vocabularies.md	Purpose	kernel	机器可读元数据支撑覆盖追踪
-08 Metadata and Status/01 Frontmatter and Core Vocabularies.md	Frontmatter Schema	mixed	schema 机制为 kernel；interview_status/interview_card 字段与 `domain: agent` 示例值抽入 profile
+08 Metadata and Status/01 Frontmatter and Core Vocabularies.md	Frontmatter Schema	mixed	schema 机制为 kernel；interview_status/interview_card 字段与 `domain: agent` 示例值抽入 profile；施工中改判+理由：删除“该 schema 已作为 Standards v1.0 的标准字段集”历史部署断言并登记 instance segment，避免旧版本史进入 active kernel
 08 Metadata and Status/01 Frontmatter and Core Vocabularies.md	Type Vocabulary	mixed	受控 type 词表机制为 kernel；interview-card、roadmap 条目随 profile 模块
 08 Metadata and Status/01 Frontmatter and Core Vocabularies.md	Domain Vocabulary	mixed	"domain 受控词表、禁同义变体"机制为 kernel；AI/Agent 取值清单是 profile 槽位内容
 08 Metadata and Status/01 Frontmatter and Core Vocabularies.md	Freshness And Lifecycle Vocabulary	kernel	volatility 三档、review_by 只读、lifecycle 词表
