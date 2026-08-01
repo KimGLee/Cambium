@@ -5,17 +5,17 @@
 
 ## Example Standard
 
-重要主题应尽量包含三类例子：
+Important topics SHOULD include three kinds of examples where possible:
 
-- Minimal example：用最小输入展示机制。
-- Real-world example：说明在业务或生产系统中的使用。
-- Failure example：展示错误使用、边界或反例。
+- Minimal example: shows the mechanism with minimal input.
+- Real-world example: shows use in a business or production system.
+- Failure example: shows misuse, boundaries, or counterexamples.
 
-数学主题需要数值例子；系统主题需要 data flow；风险主题需要 attack / failure path。
+Mathematical topics need numeric examples; system topics need data flow; risk topics need attack / failure paths.
 
 ## Deep-Dive Standard
 
-每个 P0 / P1 核心主题至少建立一条三层以上的 why-chain：
+Each P0 / P1 core topic establishes at least one why-chain of three or more levels:
 
 ```text
 Why is it needed?
@@ -25,35 +25,35 @@ Why is it needed?
  -> How would we detect that failure?
 ```
 
-正文必须提供答案，不能只列问题。
+The body MUST provide the answers; it MUST NOT merely list the questions.
 
 ## Failure And Debugging Standard
 
-不能只写笼统缺点。Failure Mode 应说明：
+Writing only generic weaknesses is not acceptable. A Failure Mode SHOULD state:
 
-- Trigger：什么条件触发。
-- Symptom：观察到什么现象。
-- Root cause：底层原因是什么。
-- Detection：通过什么指标或日志发现。
-- Mitigation：如何缓解。
-- Residual risk：仍有什么风险。
+- Trigger: what conditions trigger it.
+- Symptom: what phenomena are observed.
+- Root cause: what the underlying cause is.
+- Detection: which metrics or logs reveal it.
+- Mitigation: how to mitigate it.
+- Residual risk: what risk remains.
 
 ## Anti-patterns
 
-- 只有 Definition、Advantages、Disadvantages。
-- 每个 section 只有一句话。
-- 把同一个定义换词重复三次。
-- 只讲理想路径，不讲假设和失败。
-- 只有公式，没有符号解释和数值例子。
-- 只有流程图，没有说明每一步为什么存在。
-- 把复杂过程画成无分支、无循环、无失败路径的一条直线。
-- 把 proposer 的提议、gatekeeper 的授权和 executor 产生的 external effect 合并成一个“system executes”步骤。
-- 为了让图适配视口而删除关键 transition、状态或 recovery path。
-- 用大量链接代替当前页面应承担的机制说明。
-- 结尾有 Expression Layer Answer，但正文不足以支撑追问。
-- 为突出某 profile 应用主线，把基础页面压缩成只说明“在当前应用中如何使用”。
-- 把文章摘要直接当作 canonical mechanism explanation。
-- 系统页面只有组件列表，没有 execution、state、coordination、evidence 和 recovery paths。
+- Only Definition, Advantages, Disadvantages.
+- Every section has only one sentence.
+- Repeating the same definition three times with different wording.
+- Explaining only the ideal path, without assumptions and failures.
+- Formulas only, with no symbol explanation and no numeric examples.
+- A flow diagram only, with no explanation of why each step exists.
+- Drawing a complex process as a single straight line with no branches, no loops, and no failure paths.
+- Merging the proposer's proposal, the gatekeeper's authorization, and the external effect produced by the executor into a single "system executes" step.
+- Deleting key transitions, states, or recovery paths to make a diagram fit the viewport.
+- Substituting a large number of links for the mechanism explanation the current page should carry.
+- An Expression Layer Answer at the end while the body is insufficient to support follow-up questions.
+- Compressing a foundation page down to explaining only "how it is used in the current application" to highlight a profile's application mainline.
+- Treating an article summary directly as the canonical mechanism explanation.
+- A system page with only a component list, without execution, state, coordination, evidence, and recovery paths.
 
 ## Related
 

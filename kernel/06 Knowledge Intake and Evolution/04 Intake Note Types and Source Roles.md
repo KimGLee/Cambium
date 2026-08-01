@@ -8,7 +8,7 @@
 
 ### Source Note
 
-Source Note 忠实描述单一来源：
+A Source Note faithfully describes a single source:
 
 ```text
 Source Identity（来源标识）
@@ -23,11 +23,11 @@ Affected Knowledge Notes（受影响的知识笔记）
 Open Questions（未决问题）
 ```
 
-Source Note 不拥有通用定义和机制。
+A Source Note does not own general definitions or mechanisms.
 
 ### Research Synthesis Note
 
-Research Synthesis Note 围绕一个问题整合多个来源：
+A Research Synthesis Note integrates multiple sources around one question:
 
 ```text
 Research Question（研究问题）
@@ -42,21 +42,21 @@ Unresolved Questions（未解决问题）
 Recommended Graph Changes（建议的图谱变更）
 ```
 
-Research Synthesis 不是永久替代 canonical notes。结论稳定后，应把机制提升到正确 owner，并让 synthesis 保留研究过程、分歧和来源关系。
+A Research Synthesis is not a permanent replacement for canonical notes. Once conclusions stabilize, the mechanisms SHOULD be promoted to the correct owner, with the synthesis retaining the research process, disagreements, and source relationships.
 
 ## Source Role Policy
 
 ### Official Company Sources
 
-不同公司的官方文章在 intake 中作为一手 implementation evidence，用于证明该公司公开披露的系统、实验和工程经验，不自动证明行业普遍规律。canonical 政策见 [[kernel/07 Sources and Accuracy/03 Official and Cross-source Verification|07/03]]。
+In intake, official articles from different companies serve as primary implementation evidence, used to prove the systems, experiments, and engineering experience that company has publicly disclosed; they do not automatically prove industry-wide laws. The canonical policy is in [[kernel/07 Sources and Accuracy/03 Official and Cross-source Verification|07/03]].
 
 ### Community Sources
 
-社区讨论在 intake 中主要作为 discovery signal 和 failure evidence，用于发现问题、收集实践经验并形成需要进一步验证的 hypothesis；社区共识不等于事实。canonical 层级与角色定位见 [[kernel/07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|07/01]]。
+In intake, community discussions serve mainly as discovery signals and failure evidence, used to discover problems, collect practice experience, and form hypotheses requiring further verification; community consensus is not fact. The canonical hierarchy and role positioning are in [[kernel/07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|07/01]].
 
 ### Papers Benchmarks And Reproductions
 
-- 论文负责理论、方法和受控实验，不自动代表生产表现。
-- Benchmark 必须同时记录 task、dataset、grader、harness 和 contamination 风险。
-- 独立复现用于判断结论是否能跨实现成立。
-- Postmortem 对 failure path 和 recovery 有高价值，但结论仍受具体系统约束。
+- Papers are responsible for theory, methods, and controlled experiments; they do not automatically represent production performance.
+- A benchmark MUST record task, dataset, grader, harness, and contamination risk together.
+- Independent reproductions are used to judge whether conclusions hold across implementations.
+- Postmortems are high-value for failure paths and recovery, but their conclusions remain constrained by the specific system.

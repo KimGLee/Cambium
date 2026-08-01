@@ -6,20 +6,20 @@
 
 ## Resolvable Binding
 
-模板可以使用普通占位路径描述尚未建立的目标；目标产物创建后，占位路径必须替换为实际可解析的 wiki link。标准正文不得为了表示未来意图预先制造 unresolved links。
+Templates MAY use plain placeholder paths to describe targets that do not yet exist; once the target artifact is created, the placeholder path MUST be replaced with an actual resolvable wiki link. Standard body text MUST NOT pre-create unresolved links to express future intent.
 
-链接的 missing、ambiguous 与 heading 约束见 [[kernel/09 Wiki Link and Navigation/05 Verification and Anti-patterns#Verification|Link Verification]]。
+For the missing, ambiguous, and heading constraints on links, see [[kernel/09 Wiki Link and Navigation/05 Verification and Anti-patterns#Verification|Link Verification]].
 
 ## Bidirectional Knowledge Flow
 
-- Canonical note 指向使用其知识的表达产物。
-- 表达产物反向链接其 prerequisites、canonical owners 和关键证据。
-- 表达产物引用 canonical 内容，不复制或重新拥有完整机制说明。
+- A canonical note points to the expression artifacts that use its knowledge.
+- An expression artifact links back to its prerequisites, canonical owners, and key evidence.
+- An expression artifact references canonical content; it does not copy or re-own complete mechanism explanations.
 
-关系含义与结构要求见 [[kernel/09 Wiki Link and Navigation/01 Link Semantics and Body Links#Link Meaning|Link Meaning]] 和 [[kernel/09 Wiki Link and Navigation/02 Structural and Bidirectional Links#Bidirectional Knowledge Flow|Bidirectional Knowledge Flow]]。
+For relationship meaning and structural requirements, see [[kernel/09 Wiki Link and Navigation/01 Link Semantics and Body Links#Link Meaning|Link Meaning]] and [[kernel/09 Wiki Link and Navigation/02 Structural and Bidirectional Links#Bidirectional Knowledge Flow|Bidirectional Knowledge Flow]].
 
 ## Evidence Maturity Boundary
 
-进入稳定表达的关键结论应已经提升到 reviewed canonical knowledge；尚处于 `emerging` 或 `contested` 的结论必须在表达产物中保留相同限定，不得因表达流畅而抬高证据强度。
+Key conclusions entering stable expression SHOULD already have been promoted to reviewed canonical knowledge; conclusions still at `emerging` or `contested` MUST retain the same qualification in expression artifacts, and evidence strength MUST NOT be inflated for the sake of expressive fluency.
 
-Evidence maturity 的 canonical owner 是 [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy#Evidence Maturity|Evidence Maturity]]。
+The canonical owner of evidence maturity is [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy#Evidence Maturity|Evidence Maturity]].

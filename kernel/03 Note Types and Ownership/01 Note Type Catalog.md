@@ -5,119 +5,119 @@
 
 ## Purpose
 
-本标准定义不同笔记类型的职责，避免把定义、机制、系统设计、案例和所选 profile 注册的表达内容混在同一个文件中。
+This standard defines the responsibilities of the different note types, to avoid mixing definitions, mechanisms, system designs, cases, and the expression content registered by the selected profile in the same file.
 
 ## Note Types
 
 ### Term Note
 
-负责一个专有名词的 canonical definition、别名、直觉、形式化含义、例子和误区。
+Responsible for one proper noun's canonical definition, aliases, intuition, formal meaning, examples, and misconceptions.
 
-Term Note 不负责解释某个完整算法或系统如何工作，也不保存所选 profile 注册的完整表达产物。
+A Term Note is not responsible for explaining how a complete algorithm or system works, and does not store the complete expression artifacts registered by the selected profile.
 
 ### Concept Note
 
-负责解释一个机制或思想：问题来源、工作原理、假设、边界、例子、失败模式和应用。
+Responsible for explaining one mechanism or idea: problem origin, working principle, assumptions, boundaries, examples, failure modes, and applications.
 
-例如：Transaction Isolation、Eventual Consistency、Control Loop、Caching。
+Examples: Transaction Isolation, Eventual Consistency, Control Loop, Caching.
 
 ### Process / Flow Note
 
-负责解释一个过程如何从入口状态推进到可验证出口，包括参与者、authority、输入、前置条件、顺序、决策点、分支、循环、状态变化、外部副作用、失败处理和终止条件。
+Responsible for explaining how a process advances from an entry state to a verifiable exit, including participants, authority, inputs, preconditions, ordering, decision points, branches, loops, state changes, external side effects, failure handling, and termination conditions.
 
-例如：Incident Response Flow、Order Fulfillment Flow、Release And Rollout Flow、Reconciliation Flow。
+Examples: Incident Response Flow, Order Fulfillment Flow, Release And Rollout Flow, Reconciliation Flow.
 
-Process / Flow Note 不拥有每个组件的完整内部机制。它通过 wiki links 复用组件页面，但必须在当前流程中说明：
+A Process / Flow Note does not own the complete internal mechanism of each component. It reuses component pages via wiki links, but MUST state, within the current flow:
 
-- 谁在该步骤作决定，谁真正执行。
-- 输入、输出、状态和 authority 如何变化。
-- 哪些步骤只是提出动作，哪些步骤由确定性控制完成校验与授权。
-- 何时 branch、loop、retry、timeout、cancel、pause 或 handoff。
-- 外部副作用如何记录、确认、补偿或对账。
-- 何时可以停止，以及 completion 如何被独立验证。
+- Who decides at each step, and who actually executes.
+- How inputs, outputs, state, and authority change.
+- Which steps merely propose actions, and which steps have validation and authorization completed by deterministic control.
+- When to branch, loop, retry, timeout, cancel, pause, or handoff.
+- How external side effects are recorded, confirmed, compensated, or reconciled.
+- When it may stop, and how completion is independently verified.
 
-只有一条 happy-path 箭头链、没有控制与失败语义的页面，不满足 Process / Flow Note。
+A page with only a single happy-path arrow chain and no control or failure semantics does not satisfy Process / Flow Note.
 
 ### Algorithm Note
 
-负责算法的目标、核心思想、数学过程、训练与推理、复杂度、超参数、适用条件、优缺点、过拟合控制和解释方法。
+Responsible for an algorithm's goal, core idea, mathematical procedure, training and inference, complexity, hyperparameters, applicability conditions, strengths and weaknesses, overfitting control, and interpretation methods.
 
-例如：Binary Search、Dijkstra、Quicksort、Consistent Hashing。
+Examples: Binary Search, Dijkstra, Quicksort, Consistent Hashing.
 
 ### Metric Note
 
-负责指标定义、公式、数值例子、适用场景、边界、阈值、与其它指标的冲突和常见误读。
+Responsible for the metric definition, formula, numeric examples, applicable scenarios, boundaries, thresholds, conflicts with other metrics, and common misreadings.
 
-Metric Note 不负责重复整个任务类型的定义。
+A Metric Note is not responsible for repeating the definition of an entire task type.
 
 ### System Component Note
 
-负责一个系统组件的职责、接口、输入输出、状态、生命周期、依赖、失败模式、观测和安全。
+Responsible for one system component's responsibilities, interfaces, inputs and outputs, state, lifecycle, dependencies, failure modes, observability, and security.
 
-例如：Scheduler、Message Queue、Cache、Rate Limiter。
+Examples: Scheduler, Message Queue, Cache, Rate Limiter.
 
 ### System Design Note
 
-负责完整系统：需求、架构、组件关系、数据流、API、状态、可靠性、安全、扩展、成本和替代方案。
+Responsible for a complete system: requirements, architecture, component relationships, data flow, API, state, reliability, security, scaling, cost, and alternatives.
 
-例如：Order Processing System、Event Processing Platform、Document Storage Service。
+Examples: Order Processing System, Event Processing Platform, Document Storage Service.
 
 ### Comparison Note
 
-负责在统一维度下比较多个方案，并提供选择规则和边界案例。
+Responsible for comparing multiple options along unified dimensions, and providing selection rules and boundary cases.
 
-例如：Polling vs Subscription、Relational vs Document Store、Synchronous vs Asynchronous Interface。
+Examples: Polling vs Subscription, Relational vs Document Store, Synchronous vs Asynchronous Interface.
 
-Comparison Note 不能只是两列优缺点列表。
+A Comparison Note MUST NOT be merely a two-column list of pros and cons.
 
 ### Risk And Control Note
 
-负责威胁模型、攻击或失败路径、影响、检测、缓解、残余风险和验证方式。
+Responsible for the threat model, attack or failure paths, impact, detection, mitigation, residual risk, and verification methods.
 
-例如：Data Leakage、Injection、Secret Leakage、Rate Limit。
+Examples: Data Leakage, Injection, Secret Leakage, Rate Limit.
 
 ### Source Note
 
-负责忠实记录一个值得复用或持续追踪的外部来源：来源身份、问题背景、关键 claims、证据、限制、未证明内容和可能影响的知识页。
+Responsible for faithfully recording one external source worth reusing or continuously tracking: source identity, problem background, key claims, evidence, limitations, unproven content, and the knowledge pages it may affect.
 
-Source Note 不拥有通用定义、机制或行业结论，也不要求为每一个普通 URL 建立文件。
+A Source Note does not own generic definitions, mechanisms, or industry conclusions, and a file is not required for every ordinary URL.
 
 ### Research Synthesis Note
 
-负责围绕一个研究问题综合多个来源：术语映射、共同观察、冲突、证据强弱、厂商特定选择、可推广机制、开放问题和建议的知识图谱变更。
+Responsible for synthesizing multiple sources around one research question: terminology mapping, common observations, conflicts, evidence strength, vendor-specific choices, generalizable mechanisms, open questions, and proposed knowledge-graph changes.
 
-Research Synthesis 可以承载尚在形成的前沿问题，但不能长期代替已经稳定的 canonical concept、system 或 risk/control notes。
+A Research Synthesis MAY carry frontier questions still taking shape, but MUST NOT serve long-term as a substitute for already-stable canonical concept, system, or risk/control notes.
 
 ### Case Study
 
-负责把已有知识用于真实问题：需求、约束、决策、架构、end-to-end flow、tradeoff、故障、指标来源、安全、上线过程和复盘。
+Responsible for applying existing knowledge to a real problem: requirements, constraints, decisions, architecture, end-to-end flow, tradeoffs, incidents, metric provenance, security, launch process, and retrospective.
 
-Case Study 不拥有基础概念定义，必须链接 canonical notes，并区分公开事实、合理推断和知识库建议。
+A Case Study does not own basic concept definitions, MUST link to canonical notes, and MUST distinguish public facts, reasonable inferences, and knowledge-base recommendations.
 
 ### Overview / MOC
 
-负责领域边界、模块关系、主要入口、prerequisite chain 和 coverage navigation。Overview / MOC 不拥有叶子知识的完整机制，也不能用链接列表代替模块关系解释。
+Responsible for domain boundaries, module relationships, main entry points, prerequisite chain, and coverage navigation. An Overview / MOC does not own the complete mechanisms of leaf knowledge, and MUST NOT substitute a list of links for the explanation of module relationships.
 
 ### Roadmap
 
-负责学习或准备顺序、优先级和验收节点，不承担核心知识解释。
+Responsible for learning or preparation order, priorities, and acceptance milestones; it does not carry core knowledge explanation.
 
 ### Cheat Sheet
 
-负责压缩复习和快速定位，所有详细解释必须链接回 canonical notes。
+Responsible for compressed review and quick lookup; all detailed explanations MUST link back to canonical notes.
 
 ### Standards And Management Note
 
-负责规则、Coverage Ledger、覆盖矩阵、进度、审计结果和迁移记录，不进入正常知识学习主线。
+Responsible for rules, the Coverage Ledger, coverage matrices, progress, audit results, and migration records; it does not enter the normal knowledge learning mainline.
 
 ## Type And Depth Fit
 
-Note type 决定页面承担什么责任，depth class 决定需要回答到什么程度：
+Note type decides what responsibility a page carries; depth class decides to what extent questions must be answered:
 
-- Term Note 通常是 `atomic`，可以有意保持简洁。
-- Concept、Comparison 和 Metric 通常是 `core`。
-- Process / Flow 根据范围可以是 `core` 或 `system`。
-- System Component 和完整 System Design 通常是 `system`。
-- Source Note 和 Research Synthesis 由 claim coverage 和 evidence boundary 决定，不按篇幅升级。
+- A Term Note is usually `atomic` and MAY be deliberately kept concise.
+- Concept, Comparison, and Metric are usually `core`.
+- Process / Flow MAY be `core` or `system` depending on scope.
+- System Component and complete System Design are usually `system`.
+- Source Note and Research Synthesis are determined by claim coverage and evidence boundary, and are not upgraded by length.
 
-行数只能用于发现异常，不能改变 note type，也不能证明 depth。不能把本应解释机制或生产流程的页面标成 Term Note 来规避 Core / System 深度要求。
+Line counts may only be used to detect anomalies; they cannot change the note type, and they cannot prove depth. A page that should explain a mechanism or a production flow MUST NOT be labeled a Term Note to evade the Core / System depth requirements.

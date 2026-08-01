@@ -6,22 +6,22 @@
 
 ## Path And Alias Rules
 
-- 同名文件存在歧义时必须使用完整 vault-relative path。
-- 显示文本使用 alias，例如 `[[kernel/00 Standards Overview|Standards Overview]]`。
-- Markdown 表格中的 wiki alias pipe 必须转义：`\|`。
-- 文件移动后必须更新显式 path links。
-- 不创建只有 alias 不明确 target 的链接。
-- Standards 领域级引用可以指向 stable MOC；引用具体规则、流程或 gate 时必须指向 folder 内的 canonical leaf module。
-- Task Contract、Read Set 和 migration map 使用完整 vault-relative module path，不能只记录模糊的 Standard 编号。
+- When same-named files are ambiguous, the full vault-relative path MUST be used.
+- Use an alias for the display text, for example `[[kernel/00 Standards Overview|Standards Overview]]`.
+- The wiki alias pipe in Markdown tables MUST be escaped: `\|`.
+- After a file moves, explicit path links MUST be updated.
+- Links that have only an alias without an unambiguous target MUST NOT be created.
+- Domain-level references to Standards MAY point to the stable MOC; references to a specific rule, process, or gate MUST point to the canonical leaf module inside the folder.
+- Task Contracts, Read Sets, and migration maps use full vault-relative module paths and MUST NOT record only a vague Standard number.
 
 ## Heading Links
 
-当引用的是一个具体结论或流程时，优先链接 heading：
+When referencing a specific conclusion or process, prefer linking the heading:
 
 ```markdown
 [[kernel/09 Wiki Link and Navigation/04 MOC Related and Link Creation#Link Creation Policy|Link Creation Policy]]
 ```
 
-Heading 重命名会破坏这种链接，因此稳定的核心 heading 不应随意修改。
+Renaming a heading breaks such links, so stable core headings SHOULD NOT be modified casually.
 
-章节从 monolithic note 迁移到 leaf module 后，必须把 Vault 内旧 heading links 更新到新 owner；原 path-only link 可以继续指向 stable MOC。
+After a section migrates from a monolithic note to a leaf module, old heading links inside the Vault MUST be updated to the new owner; the original path-only links MAY continue to point to the stable MOC.

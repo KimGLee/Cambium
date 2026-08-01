@@ -6,25 +6,25 @@
 
 ## Claims Requiring Sources
 
-以下内容必须有来源：
+The following content MUST have sources:
 
-- 数学定义和重要公式。
-- 算法原始机制、复杂度和理论性质。
-- 协议角色、生命周期和安全要求。
-- 框架、库、模型的当前能力和限制。
-- Benchmark、性能、价格和版本数据。
-- 安全攻击、风险分类和 mitigation 建议。
-- 有争议或依赖条件的工程结论。
-- 行业案例中的架构、指标、用户规模、成本和效果数据。
-- 从官方文章或社区讨论综合出的新系统 / 运行控制模式。
+- Mathematical definitions and important formulas.
+- Original algorithm mechanisms, complexity, and theoretical properties.
+- Protocol roles, lifecycles, and security requirements.
+- Current capabilities and limitations of frameworks, libraries, and models.
+- Benchmark, performance, pricing, and version data.
+- Security attacks, risk classifications, and mitigation recommendations.
+- Contested or condition-dependent engineering conclusions.
+- Architecture, metrics, user scale, cost, and effectiveness data in industry cases.
+- New system / operational-control patterns synthesized from official articles or community discussions.
 
-常识性连接句不需要逐句引用，但不能用“常见做法”掩盖未经验证的事实。
+Common-sense connective sentences do not require per-sentence citation, but "common practice" MUST NOT be used to mask unverified facts.
 
 ## Source Placement
 
-每个 Core / System 页面至少包含 `## Sources`。
+Every Core / System page contains at least `## Sources`.
 
-推荐格式：
+Recommended format:
 
 ```markdown
 
@@ -34,17 +34,17 @@
 - Paper title, authors, year.
 ```
 
-时效性强、容易误解或直接引用官方行为的结论，应在相关段落附近放链接，同时在 Sources 汇总。
+Conclusions that are time-sensitive, easily misunderstood, or directly cite official behavior SHOULD have links placed near the relevant paragraph, while also being aggregated in Sources.
 
-只有会被复用、比较或持续追踪的来源才建立 Source Note。普通 supporting citation 直接保留在 canonical note 的相关段落或 Sources 中即可。
+Only sources that will be reused, compared, or continuously tracked get a Source Note. An ordinary supporting citation simply stays in the relevant paragraph of the canonical note or in Sources.
 
 ## Claim Classification
 
-来源驱动内容应区分：
+Source-driven content SHOULD distinguish:
 
-- `Reported Claim`：来源直接报告。
-- `Reasoned Inference`：根据来源推断。
-- `Cross-source Synthesis`：比较多个来源后形成的判断。
-- `Engineering Recommendation`：结合证据和约束给出的建议。
+- `Reported Claim`: directly reported by the source.
+- `Reasoned Inference`: inferred from the source.
+- `Cross-source Synthesis`: a judgment formed after comparing multiple sources.
+- `Engineering Recommendation`: a recommendation combining evidence and constraints.
 
-正文语气必须与 claim 类型和 `evidence_maturity` 一致。单一社区讨论不能写成“业界已经证明”，单一厂商案例不能写成“所有系统都应该”。
+Body tone MUST be consistent with the claim type and `evidence_maturity`. A single community discussion MUST NOT be written as "the industry has proven", and a single vendor case MUST NOT be written as "all systems should".

@@ -6,6 +6,6 @@
 
 ## Canonical Evidence Boundary
 
-表达产物负责组织表达顺序，不独立拥有或发明系统事实。定义、机制、指标、tradeoff、失败模式和案例结论必须回链其 canonical owners；涉及事实或数值的结论还必须保留 [[kernel/07 Sources and Accuracy Standard|Sources and Accuracy]] 要求的 evidence 与 evaluation provenance。
+Expression artifacts are responsible for organizing expression order; they do not independently own or invent system facts. Definitions, mechanisms, metrics, tradeoffs, failure modes, and case conclusions MUST link back to their canonical owners; conclusions involving facts or numbers MUST also retain the evidence and evaluation provenance required by [[kernel/07 Sources and Accuracy Standard|Sources and Accuracy]].
 
-当 canonical knowledge 尚不足以支持某项表达时，应先补全 canonical owner，或明确记录 `unknown`、证据不足及适用边界；不得在派生表达中用无来源内容填补缺口。
+When canonical knowledge is not yet sufficient to support an expression item, the canonical owner SHOULD be completed first, or `unknown`, insufficient evidence, and the applicable boundary SHOULD be recorded explicitly; gaps MUST NOT be filled with unsourced content in derived expressions.

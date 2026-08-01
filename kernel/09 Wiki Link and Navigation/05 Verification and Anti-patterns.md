@@ -5,27 +5,27 @@
 
 ## Verification
 
-批次级执行清单以 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] 的 Batch-close Closed List 为准；本页保留链接规则的定义与 missing / ambiguous 语义（owner 职责不变）：
+The batch-level execution checklist is governed by the Batch-close Closed List in [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]; this page retains the definition of the link rules and the missing / ambiguous semantics (owner responsibility unchanged):
 
-- `missing=0`：不存在指向不存在目标的 wiki link。
-- `ambiguous=0`：不存在可解析到多个不同目标的 wiki link。
+- `missing=0`: no wiki link points to a nonexistent target.
+- `ambiguous=0`: no wiki link resolves to multiple different targets.
 
-Link verification 通过不等于内容完成；Coverage、Depth、Sources 和 profile expression migration 仍需按 [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]] 独立验收。
+Passing link verification does not equal content completion; Coverage, Depth, Sources, and profile expression migration still require independent acceptance per the [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]].
 
 ## Anti-patterns
 
-- 只在 `Related` 中链接，正文完全没有引用。
-- 每次出现同一个词都重复链接。
-- 一个段落几乎每个名词都是 link。
-- 为了颜色和节点数量建立弱关系。
-- 同一个 alias 指向多个不同概念。
-- 创建红链接后长期不补正文。
-- Source Notes 彼此成团，但没有连接 canonical knowledge。
-- 仅因为文章来源相同就建立不存在的语义关系。
+- Linking only in `Related`, with no reference at all in the body.
+- Re-linking the same term at every occurrence.
+- A paragraph in which almost every noun is a link.
+- Creating weak relationships for the sake of colors and node counts.
+- The same alias pointing to multiple different concepts.
+- Creating unresolved links and leaving the body unwritten for a long time.
+- Source Notes clustering with each other without connecting to canonical knowledge.
+- Creating nonexistent semantic relationships merely because articles share the same source.
 
 ## Related
 
 - [[kernel/05 Terminology Standard|Terminology Standard]]
-- `Expression Layer Entry`（由所选 profile 绑定）
+- `Expression Layer Entry` (bound by the selected profile)
 - [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]

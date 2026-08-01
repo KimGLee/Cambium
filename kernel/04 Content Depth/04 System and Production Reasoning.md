@@ -6,7 +6,7 @@
 
 ## System Design Structure
 
-系统设计页面通常应包含：
+A system design page SHOULD usually include:
 
 ```text
 Goals And Non-goals（目标与非目标）
@@ -35,16 +35,16 @@ Sources（来源）
 
 ## Production System Reasoning
 
-由所选 profile 的 `Production System Reasoning Applicability` 登记项覆盖的 P0 / P1 页面必须能够沿五条链路回答企业系统追问：
+P0 / P1 pages covered by the `Production System Reasoning Applicability` register entry of the selected profile MUST be able to answer enterprise-system follow-up questions along five paths:
 
-- Execution path：目标如何经过决策、工具和环境变成结果。
-- State path：状态由谁拥有、保存、更新、同步和清理。
-- Coordination path：任务如何拆分、交接、并行、合并和处理冲突。
-- Evidence path：结论、指标和成功判断如何产生并被验证。
-- Recovery path：失败后如何 retry、resume、fallback、rollback、compensate 或转人工。
+- Execution path: how a goal becomes a result through decisions, tools, and the environment.
+- State path: who owns, stores, updates, synchronizes, and cleans up state.
+- Coordination path: how tasks are split, handed off, parallelized, merged, and how conflicts are handled.
+- Evidence path: how conclusions, metrics, and success judgments are produced and verified.
+- Recovery path: after failure, how to retry, resume, fallback, rollback, compensate, or hand over to a human.
 
-页面不能只画 happy-path architecture。每条链路至少说明关键 contract、可观测信号、失败传播和控制点。
+A page MUST NOT draw only the happy-path architecture. Each path states at least the key contracts, observable signals, failure propagation, and control points.
 
-Process / Flow 和 System Design 的分工是：前者拥有有序 transition 和控制语义，后者拥有完整组件架构及跨流程约束。二者互相链接，但不能通过重复同一整段内容解决衔接。
+The division of labor between Process / Flow and System Design is: the former owns ordered transitions and control semantics; the latter owns the complete component architecture and cross-flow constraints. The two link to each other, but the junction MUST NOT be resolved by repeating the same full passage of content.
 
-“Backup”之类的模糊表达必须拆成实际机制：data backup、checkpoint、durable execution、failover、fallback、rollback、compensating transaction 或 human takeover。
+Vague expressions such as "Backup" MUST be broken down into actual mechanisms: data backup, checkpoint, durable execution, failover, fallback, rollback, compensating transaction, or human takeover.

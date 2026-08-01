@@ -1,27 +1,27 @@
 ## Purpose
 
-本页是 Knowledge Intake and Evolution 标准的稳定入口。详细规则已经按职责拆分到下列模块，原始内容没有缩减。
+This page is the stable entry point for the Knowledge Intake and Evolution standard. The detailed rules have been split by responsibility into the modules below; the original content has not been reduced.
 
 ## Reading Rule
 
-- 先用本 MOC 定位规则 owner，再读取当前任务、事件或质量门需要的模块。
-- 不要求因为进入本领域就一次性读取全部模块。
-- 每个模块通过 `Navigation` 返回父级，并连接前后相邻模块。
+- First use this MOC to locate the rule owner, then read the modules needed by the current task, event, or quality gate.
+- Reading all modules at once is not required merely because this domain is entered.
+- Each module returns to its parent via `Navigation` and connects to its adjacent modules.
 
 ## Module Index
 
 | Module | Canonical sections |
 |---|---|
-| [[kernel/06 Knowledge Intake and Evolution/01 Intake Scope and Knowledge Model\|Intake Scope and Knowledge Model]] | `Purpose`、`Scope`、`Core Model`、`Many-to-many Rule` |
+| [[kernel/06 Knowledge Intake and Evolution/01 Intake Scope and Knowledge Model\|Intake Scope and Knowledge Model]] | `Purpose`, `Scope`, `Core Model`, `Many-to-many Rule` |
 | [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads\|User Guidance Hypotheses and Source Leads]] | `User Guidance, Hypotheses And Source Leads` |
 | [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline\|Source-to-Knowledge Pipeline]] | `Source-to-Knowledge Pipeline` |
-| [[kernel/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles\|Intake Note Types and Source Roles]] | `Note Types In The Intake Layer`、`Source Role Policy` |
-| [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy\|Evidence Maturity and Batch Policy]] | `Evidence Maturity`、`Batch Policy` |
-| [[kernel/06 Knowledge Intake and Evolution/06 Intake Anti-patterns and Acceptance\|Intake Anti-patterns and Acceptance]] | `Anti-patterns`、`Acceptance Criteria`、`Related` |
+| [[kernel/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles\|Intake Note Types and Source Roles]] | `Note Types In The Intake Layer`, `Source Role Policy` |
+| [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy\|Evidence Maturity and Batch Policy]] | `Evidence Maturity`, `Batch Policy` |
+| [[kernel/06 Knowledge Intake and Evolution/06 Intake Anti-patterns and Acceptance\|Intake Anti-patterns and Acceptance]] | `Anti-patterns`, `Acceptance Criteria`, `Related` |
 
 ## Applicable Read Sets
 
-- [[kernel/Read Sets/03 Module Build Read Set|Module Build]]（经 Module Build Read Set 组合触发）
+- [[kernel/Read Sets/03 Module Build Read Set|Module Build]] (triggered via the Module Build Read Set composition)
 - [[kernel/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]
 - [[kernel/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]
 

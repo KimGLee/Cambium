@@ -5,7 +5,7 @@
 
 ## Purpose
 
-本标准规定专有名词如何拆分成可复用的 canonical Term Notes，避免主题页面反复解释同一概念，也避免知识库因过度拆分而碎片化。
+This standard specifies how proper nouns are split into reusable canonical Term Notes, avoiding topic pages repeatedly explaining the same concept, and also avoiding fragmentation of the knowledge base through over-splitting.
 
 ## Core Rule
 
@@ -17,47 +17,47 @@ Case Study owns application.
 Expression Layer Artifact owns expression.
 ```
 
-专有名词只在一个独立 Markdown 文件中完整解释。其它页面只说明该名词在当前主题中的作用，并通过 wiki link 引用。
+A proper noun is fully explained in only one standalone Markdown file. Other pages only state the noun's role in the current topic and reference it via a wiki link.
 
 ## Extraction Criteria
 
-满足以下任一条件时，应考虑创建独立 Term Note：
+When any one of the following conditions is met, creating a standalone Term Note SHOULD be considered:
 
-- 在两个或以上页面中使用。
-- 完整解释需要超过两三句话。
-- 有独立的形式化定义、符号、数据结构或生命周期。
-- 有常见误区或容易混淆的相似概念。
-- 会被多个顶层领域复用。
-- 定义随协议、框架或版本变化，需要独立维护。
+- Used in two or more pages.
+- A complete explanation needs more than two or three sentences.
+- It has an independent formal definition, notation, data structure, or lifecycle.
+- It has common misconceptions or easily confused similar concepts.
+- It will be reused by multiple top-level domains.
+- Its definition changes with protocols, frameworks, or versions and needs independent maintenance.
 
-所选 profile 可以通过 `Expression Layer Entry` 注册扩展提取条件。
+The selected profile MAY register extended extraction criteria via the `Expression Layer Entry`.
 
 ## Do Not Extract
 
-以下内容通常不应单独创建文件：
+The following usually SHOULD NOT get a standalone file:
 
-- 只在一个页面中使用的局部变量或临时分类。
-- 一句话即可解释的普通词。
-- 没有独立知识价值的语法性名称。
-- 拆分后只能形成两三句空壳的内容。
-- 必须依赖当前页面上下文才有意义的局部概念。
-- 只在单一文章中出现、边界不清且尚未被其它来源采用的新标签。
+- Local variables or temporary classifications used in only one page.
+- Ordinary words explainable in one sentence.
+- Syntactic names with no independent knowledge value.
+- Content that would form only a two-or-three-sentence empty shell after splitting.
+- Local concepts that are meaningful only by depending on the current page's context.
+- New labels that appear in only a single article, have unclear boundaries, and have not yet been adopted by other sources.
 
 ## Source-discovered Terminology
 
-从官方文章、论文或社区讨论发现的新词，先判断它是：
+For a new term discovered from official articles, papers, or community discussions, first judge whether it is:
 
-- 已有概念的新名称。
-- 特定厂商或实现的局部术语。
-- 对多个现象的模糊总称。
-- 边界清晰、可复用的新知识对象。
+- A new name for an existing concept.
+- A local term of a specific vendor or implementation.
+- A vague umbrella name for multiple phenomena.
+- A new knowledge object with clear boundaries and reusability.
 
-新词进入 canonical terminology 前需要：
+Before a new term enters canonical terminology, it requires:
 
-1. 收集来源中的原始定义和使用上下文。
-2. 检查其它来源是否使用同一词表达同一含义。
-3. 检查现有知识库是否已有同义概念。
-4. 明确包含什么、不包含什么。
-5. 判断它应成为 alias、Research Synthesis 中的临时标签，还是独立 Term / Concept Note。
+1. Collecting the original definition and usage context in the source.
+2. Checking whether other sources use the same term to express the same meaning.
+3. Checking whether the existing knowledge base already has a synonymous concept.
+4. Making explicit what it includes and what it does not include.
+5. Judging whether it should become an alias, a temporary label in a Research Synthesis, or a standalone Term / Concept Note.
 
-术语仍在演化时，应在 Research Synthesis 中维护 terminology mapping，并标注 provisional definition。不能为了跟随社区热点立即建立稳定 Term Note。
+While terminology is still evolving, a terminology mapping SHOULD be maintained in a Research Synthesis, annotated as a provisional definition. A stable Term Note MUST NOT be created immediately just to follow community hype.

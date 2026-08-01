@@ -6,36 +6,36 @@
 
 ## Rendering Workflow
 
-内容和结构检查以直接提取 Markdown 为主，渲染检查遵循确定性优先、视觉识别例外；渲染分级的 canonical 定义与升级条件见 [[kernel/12 Quality Assurance/02 Rendering Verification|12/02]]。
+Content and structure checks rely primarily on directly extracted Markdown; rendering checks follow deterministic-first with visual recognition as the exception. The canonical definitions of the rendering levels and their escalation conditions are in [[kernel/12 Quality Assurance/02 Rendering Verification|12/02]].
 
-执行侧要点：纯文本编辑不默认需要打开所选 knowledge host 的 UI。新增 diagram、table、formula、image、callout 或 embed 也不自动触发 UI；先执行相应 compiler、parser、path、dimension 和结构验证。
+Execution-side points: plain-text edits do not by default require opening the selected knowledge host's UI. Adding a diagram, table, formula, image, callout, or embed does not automatically trigger the UI either; first run the corresponding compiler, parser, path, dimension, and structure verification.
 
-只有 [[kernel/12 Quality Assurance/02 Rendering Verification#Level 2: Targeted Visual Recognition Exception|Level 2]] 的客观条件成立时，才打开最小页面或查看目标截图。录屏只适用于静态证据无法表达的时序或交互问题。Reading View 通过只表示被检查目标的显示正常，不表示内容、来源、链接和 Completion Gate 已经通过。
+Only when the objective conditions of [[kernel/12 Quality Assurance/02 Rendering Verification#Level 2: Targeted Visual Recognition Exception|Level 2]] hold is the minimal page opened or the target screenshot inspected. Screen recording applies only to timing or interaction issues that static evidence cannot express. Passing Reading View only means the inspected target displays correctly; it does not mean content, sources, links, and the Completion Gate have passed.
 
 ## Formatting Anti-patterns
 
-- 重复标题。
-- 日期出现在普通概念标题中。
-- 只有 bullet list，没有解释段落。
-- 公式符号未定义。
-- Markdown table 因 wiki pipe 破裂。
-- 过长表格代替完整章节。
-- 图片与正文没有解释关系。
-- 所有流程图都强制使用同一方向。
-- 为了适配单个视口而删掉关键流程或失败路径。
-- 把新增视觉构造本身当作 UI 抽样理由，而不先执行确定性验证。
-- 每轮都重复打开页面、截图或录屏，却没有记录尚未解决的显示问题。
-- 使用视觉识别读取本可直接解析的正文、链接、表格结构或配置。
-- 使用大量粗体和装饰符号制造虚假层次。
-以上 reader-facing language 反模式的 canonical 定义与例外边界由所选 profile 的 `Language Contract` 提供。
+- Duplicated titles.
+- Dates appearing in ordinary concept titles.
+- Only bullet lists, with no explanatory paragraphs.
+- Undefined formula symbols.
+- Markdown tables broken by wiki pipes.
+- Overlong tables replacing full sections.
+- Images with no explanatory relationship to the body.
+- Forcing all flowcharts into the same direction.
+- Deleting key flows or failure paths to fit a single viewport.
+- Treating a newly added visual construct itself as a reason for UI sampling, without first running deterministic verification.
+- Repeatedly opening pages, taking screenshots, or recording video every round, without logging the still-unresolved display issue.
+- Using visual recognition to read body text, links, table structure, or configuration that could be parsed directly.
+- Using heavy bold and decorative symbols to fabricate false hierarchy.
+The canonical definitions and exception boundaries of the reader-facing language anti-patterns above are provided by the selected profile's `Language Contract`.
 
 ### Automated Language Review Boundary
 
-字符比例、token pattern、heading 或 table-header density 等自动检查只能产生 review candidates，不能绕过 `Language Contract` 的 scoped exceptions 或直接判定内容失败；最终结论必须来自有范围的审阅。
+Automated checks such as character ratio, token pattern, and heading or table-header density can only produce review candidates; they MUST NOT bypass the `Language Contract`'s scoped exceptions or directly rule content failed. The final conclusion MUST come from a scoped review.
 
 ### Formatting Migration Invalidation
 
-格式或语言迁移只失效直接受影响的 audit dimensions：heading / link 变化至少失效 structure and links，语义、source、formula 或 `Expression Layer Artifact` 变化分别失效对应维度。所选 profile 的 `Language Contract` 提供具体映射和例外；active task 必须重新采用变更后的合同，不能无差别重跑无关 receipts。
+A formatting or language migration invalidates only the directly affected audit dimensions: heading / link changes invalidate at least structure and links; semantic, source, formula, or `Expression Layer Artifact` changes invalidate the corresponding dimensions respectively. The selected profile's `Language Contract` provides the concrete mapping and exceptions; an active task MUST re-adopt the changed contract and MUST NOT indiscriminately re-run unrelated receipts.
 
 ## Related
 
@@ -43,4 +43,4 @@
 - [[kernel/09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]
 - [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]
-- 所选 profile 的 `Language Contract`
+- The selected profile's `Language Contract`

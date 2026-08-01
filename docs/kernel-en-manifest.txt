@@ -1,0 +1,93 @@
+d408525edb8390e1ec615fe7b8af1c7a  ./00 Standards Control/01 Operating Role and Reading Protocol.md
+569b032cd0e1eff88e8dea6a13c8b4ea  ./00 Standards Control/02 Task Routing and Pre-execution.md
+94e73b6a8c9e6d17b34d299acb40016f  ./00 Standards Control/03 Standards Governance.md
+0e68eeb37a7cebcc1c4107f223fd41ae  ./00 Standards Control/04 Control State and Scope.md
+09b707b22d7f8d372b7fd586dad5f0d5  ./00 Standards Control/05 Core Principles and Standards Map.md
+04915e98c318182031ff2e2391262d6f  ./00 Standards Control/06 Completion Precedence and Task Contract.md
+c48d53647ee224263da58f8c61581d60  ./00 Standards Control/07 v1.1 to v1.2 Migration Map.md
+bae1ac1caf61c9660b7e2fdeb4cbc233  ./00 Standards Overview.md
+9542e95d6f1c17cfa7bbbcccb0ff1101  ./01 Scope and Architecture Standard.md
+5e8703f0b588b6264378126955f31b6f  ./01 Scope and Architecture/01 Scope Boundaries.md
+790acf8b1258c618678eb64ce3afc5ab  ./01 Scope and Architecture/02 Logical Architecture and Knowledge Spine.md
+19f32dde41cab552bc5efc80d44734e1  ./01 Scope and Architecture/03 Foundation Preservation.md
+0cd3ad87d83be6823b1d0b13dcd6886a  ./01 Scope and Architecture/04 Folder and Shared Ownership.md
+6a3f282c4974ce58be9b01187dfb68c0  ./02 Build Execution/01 Contract Time and Task State.md
+ab0ba6b5b069cdb1590a121ea746d617  ./02 Build Execution/02 Mid-task Guidance and Amendment.md
+77c05d54c2b65fb173d880424296d006  ./02 Build Execution/03 Inventory and Coverage Reconciliation.md
+85684c4642e300c83544ff20cd9736ff  ./02 Build Execution/04 Architecture Samples and Dependency Build.md
+a58235dcfc990e79aa1cf92cc87965ca  ./02 Build Execution/05 Batch Execution and Progress Ledger.md
+30440968fdec261775df08b2e0f332d0  ./02 Build Execution/06 Existing Changes Migration and Resume.md
+c4226c4b0634bd307165dc8f2ae299f0  ./02 Build Execution/07 Completion and Handoff.md
+55a7562f12023c9e41c9b4c5896754ec  ./02 Knowledge Base Build Execution Standard.md
+9359299343d52eb925ad361644576fbe  ./03 Note Types and Ownership Standard.md
+f88c471c324762953662f7b8530a9a1d  ./03 Note Types and Ownership/01 Note Type Catalog.md
+762bdeba18e6ae1298c62e0b0e9c9949  ./03 Note Types and Ownership/02 Ownership and Canonical Notes.md
+b9acb7a4feb3f3f5552eed982ba98356  ./03 Note Types and Ownership/03 Split and Duplication Policy.md
+ce5d4d64a2ff2b2fd22ba0708d47cb08  ./04 Content Depth Standard.md
+fe1ee67b865222e03d29d969da14f3dc  ./04 Content Depth/01 Depth Model and Foundation.md
+f3fedb31bba769df7087d3c6a443fa19  ./04 Content Depth/02 Core Concept Structure.md
+af6a8a853d0e52efefc7d01752b36479  ./04 Content Depth/03 Process and Flow Structure.md
+0590f153e9583924e45bf6e70aa73fc6  ./04 Content Depth/04 System and Production Reasoning.md
+07f47b89b1b966cfe541268e20b23d52  ./04 Content Depth/05 Source and Evaluation Depth.md
+531f989c03239830fbd4cfec7c4ded9b  ./04 Content Depth/06 Examples Deep Dives and Failure Analysis.md
+dc827d5ec8ac0c5fa417920fcb90e582  ./05 Terminology Standard.md
+2350064a16a3e7442b93e76ed931124e  ./05 Terminology/01 Terminology Extraction.md
+0004c11003db03ab77b7fb00a1f80c97  ./05 Terminology/02 Ownership and Term Structure.md
+5572a02d5fa1d34811a1b2692d4a7713  ./05 Terminology/03 Naming Context and Linking.md
+a8eec1334405dd721758050a924d8ea6  ./05 Terminology/04 Terminology Acceptance.md
+69a59caf28fddfeb0b20471109ff3421  ./06 Knowledge Intake and Evolution Standard.md
+62560ade2192dd42451386eb14dadebb  ./06 Knowledge Intake and Evolution/01 Intake Scope and Knowledge Model.md
+ff424043aa765b5dd59025c574f6e9c2  ./06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads.md
+47b994022ade3d2d92f5fdf2656a2000  ./06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline.md
+faafb4249ef30b0c6a22302145a6357a  ./06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles.md
+91fdc64b0c098919f477a6e236c214f9  ./06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy.md
+59c3652565d9e608ff8cffa9891f71a7  ./06 Knowledge Intake and Evolution/06 Intake Anti-patterns and Acceptance.md
+f8047eae82c2c5ae315494c10803d5fa  ./07 Sources and Accuracy Standard.md
+464721e9f6bf8df11e821b9dfd1f3a66  ./07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles.md
+3f700b16240ebc7e30c5cdbc227178f2  ./07 Sources and Accuracy/02 Claims Sources and Classification.md
+39044e1f514048b60475fc138bf00cdb  ./07 Sources and Accuracy/03 Official and Cross-source Verification.md
+9b449ad7f6afd19c7fdff48f7f5e3aaf  ./07 Sources and Accuracy/04 Evaluation and Source Quality.md
+c0c1e0d1cadb99298b431f1a0b6c152d  ./07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty.md
+4ed34cb3d09f291be09d4c929f02ec53  ./07 Sources and Accuracy/06 Source Maintenance and Acceptance.md
+673fcc270fab05c3c5e8ee2ec721d925  ./08 Metadata and Status Standard.md
+e635d84a2725659e6d28bc96b186cdc4  ./08 Metadata and Status/01 Frontmatter and Core Vocabularies.md
+6e8dfa6039f15120785d0b3958fc929e  ./08 Metadata and Status/02 Scope Level Depth and Priority.md
+e1b73d9d37ad6a338e1bae6be5f46fd5  ./08 Metadata and Status/03 Status Axes.md
+bb939b922be72997f9a75495cb5901bc  ./08 Metadata and Status/04 Evidence and Relationship Metadata.md
+47600e65dbe7504706732b647cbd9915  ./08 Metadata and Status/05 Review Source and Migration Metadata.md
+21c4833d1a7f4015de19be604fc0a613  ./09 Wiki Link and Navigation Standard.md
+985fa6309f82cef32769fe249c576f65  ./09 Wiki Link and Navigation/01 Link Semantics and Body Links.md
+3601b59a3338ddc0ab3cf0348e5f0b8b  ./09 Wiki Link and Navigation/02 Structural and Bidirectional Links.md
+9c2001fd146460fd78cb8324ec7a1463  ./09 Wiki Link and Navigation/03 Path Alias and Heading Links.md
+96332b9a56f7d013533951b3698df678  ./09 Wiki Link and Navigation/04 MOC Related and Link Creation.md
+798c4f41fd7160a7ddf4f60aa3119e2b  ./09 Wiki Link and Navigation/05 Verification and Anti-patterns.md
+e81de0854cef6d2b91ee124ecc0bd5cd  ./10 Writing and Formatting Standard.md
+196148ff6c2fab58c39f0c0cecd004cc  ./10 Writing and Formatting/01 Naming Language and Prose.md
+e3b699d77763753c2fbab0e2a688bbeb  ./10 Writing and Formatting/02 Mathematics Tables and Code.md
+418c3e5f7f1c620ed508e9b208132ec4  ./10 Writing and Formatting/03 Diagrams and Assets.md
+550b227814efeeaf4d1565b987bae487  ./10 Writing and Formatting/04 Rendering and Formatting Review.md
+dba3825d3caed2fabb7851f705d4ffac  ./11 Expression Layer Standard.md
+bab1d96e85cee87465218644d0d5cdc6  ./11 Expression Layer/01 Expression Architecture and Separation.md
+ce8b3aab0627671ba939391d664002ab  ./11 Expression Layer/02 Expression Coverage and Readiness.md
+4fe1758985b009b193a62cbe54ef1448  ./11 Expression Layer/04 Evidence-bound Expression.md
+95ea6475164574da27466e1f2e525b79  ./11 Expression Layer/05 Expression Knowledge Binding.md
+6e5e61f21ec19947aae474ad323682e6  ./11 Expression Layer/06 Sequence and Progress Semantics.md
+bf05ee6ae8680d98d780d2f4d91314a2  ./11 Expression Layer/07 Expression Migration Audit and Acceptance.md
+5c502c6a9a3014f99ad050b0f64b4170  ./12 Quality Assurance Standard.md
+cc573b5debd5ca634a2fd3f283275acc  ./12 Quality Assurance/01 Quality Dimensions and Single Note Review.md
+5013d66e3b6c7a887228ec1141bc4582  ./12 Quality Assurance/02 Rendering Verification.md
+d8fcbf1eb681a93b12d8854b79f079e3  ./12 Quality Assurance/03 Module Coverage and Batch Review.md
+2b1faebffcb79f633205111215989c78  ./12 Quality Assurance/04 Guidance and Source Review.md
+ccaed374352085daff453c2d526ac8da  ./12 Quality Assurance/05 Automated and Manual Checks.md
+17e68a1679df5c43e72311d42aba2bdd  ./12 Quality Assurance/06 Completion Terminal Audit and Final Report.md
+5ce8ac0dcba963bebabe68c9dd3435ff  ./12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
+b5389a39d64fdc13e0b8416b756e44e3  ./Read Sets/00 Read Sets Index.md
+dad63259549290ee27d05c5340efcf4c  ./Read Sets/01 Core Bootstrap Read Set.md
+05a9c50dd4fb1669673d9805af78d99b  ./Read Sets/02 Single Note Authoring Read Set.md
+74de0200d35ffdad4fb3237deccddcbb  ./Read Sets/03 Module Build Read Set.md
+85dc5dccd78f6a092379fd0f8022cea8  ./Read Sets/04 Source-driven Expansion Read Set.md
+fbb5b2763ec90f631cb19c3bab5bc9f8  ./Read Sets/06 Migration and Refactor Read Set.md
+7b9959268188cc49eacdb1c15b96e444  ./Read Sets/07 Long-running Execution Read Set.md
+47a71c468dfb7e755e0aeb253cc61ba4  ./Read Sets/08 Audit and Completion Read Set.md
+3da5b08abcf5d0db09de6c89690003a1  ./Read Sets/09 Standards Governance Read Set.md
+5b9fd0cdeb65e929f07682cd32dd5b2b  ./Read Sets/10 Maintenance Run Read Set.md

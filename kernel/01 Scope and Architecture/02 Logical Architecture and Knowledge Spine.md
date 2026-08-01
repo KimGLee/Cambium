@@ -6,10 +6,10 @@
 
 ## Logical Architecture
 
-逻辑架构不得把所有主题平铺在顶层；具体层次由所选 profile 的 `Profile Scope` 注册。
+The logical architecture MUST NOT lay all topics out flat at the top level; the concrete hierarchy is registered by the `Profile Scope` of the selected profile.
 
-这是一种 logical center，不要求立即把所有物理目录移动到所选 profile 指定的中心目录下。
+This is a logical center; it does not require immediately moving all physical directories under the center directory specified by the selected profile.
 
 ## Knowledge Spine
 
-每个系统主题应说明它位于所选 profile 定义的 knowledge spine 的哪里、依赖哪些基础知识、影响哪些下游环节。基础页面负责完整机制，profile 的系统页面只解释该机制在当前系统中的作用并通过 wiki links 复用。
+Each system topic SHOULD state where it sits on the knowledge spine defined by the selected profile, which foundational knowledge it depends on, and which downstream stages it affects. Foundation pages are responsible for the complete mechanism; the profile's system pages only explain that mechanism's role in the current system and reuse it via wiki links.

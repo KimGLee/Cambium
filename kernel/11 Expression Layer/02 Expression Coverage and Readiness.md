@@ -6,8 +6,8 @@
 
 ## Expression Coverage And Readiness
 
-表达层 readiness 是独立状态轴。字段、允许值与升级 gates 由所选 profile 注册，并服从 [[kernel/08 Metadata and Status/03 Status Axes#Profile Readiness Status|Profile Readiness Status]]；它不能从 `authoring_status`、`evidence_maturity`、学习进度、文件存在或其它状态轴自动推断。
+Expression layer readiness is an independent status axis. The field, allowed values, and promotion gates are registered by the selected profile and are subject to [[kernel/08 Metadata and Status/03 Status Axes#Profile Readiness Status|Profile Readiness Status]]; it MUST NOT be inferred automatically from `authoring_status`, `evidence_maturity`, learning progress, file existence, or any other status axis.
 
-一个可解析的表达产物 link 只证明目标已经映射，不能自动证明产物已完成、已审阅或可用于其目标场景。
+A resolvable expression artifact link proves only that the target has been mapped; it does not automatically prove that the artifact is complete, reviewed, or usable for its target scenario.
 
-一个表达产物可以绑定多个紧密相关的 canonical notes，但每个被绑定的 canonical note 都必须能导航到该产物，该产物也必须显式回链相应的 canonical owners。双向关系的 link semantics 见 [[kernel/09 Wiki Link and Navigation/02 Structural and Bidirectional Links#Bidirectional Knowledge Flow|Bidirectional Knowledge Flow]]。
+An expression artifact MAY bind multiple closely related canonical notes, but every bound canonical note MUST be able to navigate to that artifact, and the artifact MUST explicitly link back to the corresponding canonical owners. For the link semantics of the bidirectional relationship, see [[kernel/09 Wiki Link and Navigation/02 Structural and Bidirectional Links#Bidirectional Knowledge Flow|Bidirectional Knowledge Flow]].

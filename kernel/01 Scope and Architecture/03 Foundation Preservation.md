@@ -6,10 +6,10 @@
 
 ## Foundation Preservation Rule
 
-基础知识不是附录或速查表，必须保留独立的学习价值：
+Foundational knowledge is not an appendix or a cheat sheet; it MUST retain independent learning value:
 
-具体基础层及其独立解释责任由所选 profile 的 `Profile Scope` 注册。
+The concrete foundation layers and their independent explanation responsibilities are registered by the `Profile Scope` of the selected profile.
 
-基础主题同样遵循 [[kernel/04 Content Depth Standard|Content Depth Standard]]，不得因为它们是前置知识而只保留两三句定义。
+Foundation topics likewise follow the [[kernel/04 Content Depth Standard|Content Depth Standard]]; they MUST NOT be reduced to two or three sentences of definition merely because they are prerequisite knowledge.
 
-当 profile 的系统页面依赖一个尚未讲清的基础概念时，应先补足 canonical foundation note，再继续系统页面；不得把缺失基础直接复制进 profile 的系统页面。
+When a profile system page depends on a foundational concept that has not yet been explained clearly, the canonical foundation note SHOULD be completed first before continuing the system page; the missing foundation MUST NOT be copied directly into the profile's system page.

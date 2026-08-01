@@ -6,21 +6,21 @@
 
 ## Overview And MOC
 
-每个顶层领域至少需要：
+Each top-level domain requires at least:
 
-- Overview：领域边界、核心模块和关系。
-- Sequence view：学习或执行顺序，由所选 profile 的路由机制绑定具体实现。
-- Coverage map：已覆盖、缺失和优先级。
+- Overview: domain boundaries, core modules, and relationships.
+- Sequence view: learning or execution order; the concrete implementation is bound by the selected profile's routing mechanism.
+- Coverage map: covered, missing, and priorities.
 
-Overview 不是文件列表，应解释模块之间的依赖和职责。
+An Overview is not a file list; it SHOULD explain the dependencies and responsibilities between modules.
 
-Coverage map 是 [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation#Phase 1: Inventory|Coverage Ledger]] 的读者视图，不独立维护另一套完成状态。页面有 incoming link、sequence-view entry 或可解析 Wiki link，只能证明可导航，不能证明 authoring、profile readiness 或 evidence 状态已经完成。
+The coverage map is the reader view of the [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation#Phase 1: Inventory|Coverage Ledger]]; it does not maintain a separate set of completion states. A page having an incoming link, a sequence-view entry, or a resolvable wiki link can only prove navigability; it cannot prove that authoring, profile readiness, or evidence status is complete.
 
 ## Related Section
 
-`Related` 用于补充邻近页面，不承担正文中的因果和依赖说明。
+`Related` supplements neighboring pages; it does not carry the causal and dependency explanations that belong in the body.
 
-Related links 应按语义组织，避免无序堆积。内容多时可以拆为：
+Related links SHOULD be organized semantically, avoiding unordered accumulation. When content is large, they MAY be split into:
 
 - Prerequisites
 - Components
@@ -32,9 +32,9 @@ Related links 应按语义组织，避免无序堆积。内容多时可以拆为
 
 ## Link Creation Policy
 
-- 需要引用的 canonical page 已存在时直接链接。
-- 需要新页面时必须同时创建足够内容，不能只制造 unresolved link。
-- 大批量创建前先检查是否已有同义页面。
-- 名词提取遵循 [[kernel/05 Terminology Standard|Terminology Standard]]。
-- 外部来源触发的新链接和页面遵循 [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]。
-- 一篇文章不能仅因包含多个名词就与所有名词建立弱连接；只链接实际受其 claim 影响的知识对象。
+- When the canonical page to reference already exists, link it directly.
+- When a new page is needed, sufficient content MUST be created at the same time; merely producing an unresolved link is not allowed.
+- Before bulk creation, first check whether synonymous pages already exist.
+- Term extraction follows the [[kernel/05 Terminology Standard|Terminology Standard]].
+- New links and pages triggered by external sources follow the [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]].
+- An article MUST NOT establish weak connections to all terms merely because it contains multiple terms; link only the knowledge objects actually affected by its claims.

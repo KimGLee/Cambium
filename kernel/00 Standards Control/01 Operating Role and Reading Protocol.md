@@ -5,31 +5,31 @@
 
 ## Purpose
 
-Active Standards 定义所选 `knowledge-host` corpus 的内容、结构、引用、来源、表达层拆分和质量验收规则。
+Active Standards define the content, structure, citation, source, expression-layer split, and quality acceptance rules for the selected `knowledge-host` corpus.
 
-这套标准的目标不是增加文件数量，而是保证 knowledge corpus 能够支持：
+The goal of these Standards is not to increase file count, but to ensure the knowledge corpus can support:
 
-- 系统学习：知道前置知识、核心机制和后续方向。
-- 深度理解：能够解释原因、假设、边界和失败模式。
-- 工程实践：能够讨论实现、评估、可靠性、安全和成本。
-- 长期维护：一个概念只有一个事实来源，内容可以复用和更新。
-- 持续演化：能够从官方文章、论文、案例和社区信号中发现知识缺口，并通过证据综合安全扩展知识图谱。
+- Systematic learning: knowing prerequisites, core mechanisms, and follow-on directions.
+- Deep understanding: able to explain reasons, assumptions, boundaries, and failure modes.
+- Engineering practice: able to discuss implementation, evaluation, reliability, safety, and cost.
+- Long-term maintenance: one concept has a single source of truth, and content can be reused and updated.
+- Continuous evolution: able to discover knowledge gaps from official articles, papers, cases, and community signals, and to safely extend the knowledge graph through evidence synthesis.
 
 ## Operating Role
 
-[[kernel/00 Standards Overview|00 Standards Overview]] 是整个标准体系的唯一入口和规则路由器。它负责告诉执行者：
+[[kernel/00 Standards Overview|00 Standards Overview]] is the sole entry point and rule router for the entire Standards system. It is responsible for telling the executor:
 
-- 当前任务必须读取哪些标准。
-- 读取标准的先后顺序。
-- 哪些约束始终生效。
-- 何时可以开始修改 knowledge corpus。
-- 完成前必须经过哪些验收。
+- Which Standards the current task MUST read.
+- The order in which to read the Standards.
+- Which constraints are always in effect.
+- When modification of the knowledge corpus MAY begin.
+- Which acceptance checks MUST be passed before completion.
 
-总体 Index 不替代细则。长任务不能只读取 `00` 后直接执行，必须由所选 profile 的 `Runtime Card Provider` 解析对应 Runtime Cards，例外情形回读 Read Sets 和 leaf modules。
+The overall Index does not replace the detailed rules. A long-running task MUST NOT read only `00` and then execute directly; the corresponding Runtime Cards MUST be resolved by the selected profile's `Runtime Card Provider`, with Read Sets and leaf modules read back in exception cases.
 
 ## Mandatory Reading Protocol
 
-任何 knowledge-corpus 任务开始前，按以下顺序解析规则：
+Before any knowledge-corpus task starts, resolve rules in the following order:
 
 ```text
 00 Standards Overview
@@ -41,42 +41,42 @@ Active Standards 定义所选 `knowledge-host` corpus 的内容、结构、引�
  -> Gate Checks And Scripts
 ```
 
-所有任务从所选 profile 注册的 `Runtime Card Provider` 进入，解析 Card Index 与任务对应的 Runtime Card；Core Bootstrap 约束由 provider 注册的 Core Bootstrap Card 承载。需要回读原文时，从 [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]] 选择实际任务对应的 Read Set；不得因为任务属于 knowledge-corpus 长任务就自动加载 `01`、`02`、`08`、`12` 的全部模块。
+All tasks enter through the `Runtime Card Provider` registered by the selected profile, resolving the Card Index and the Runtime Card corresponding to the task; Core Bootstrap constraints are carried by the provider-registered Core Bootstrap Card. When the source text needs to be read back, select the Read Set corresponding to the actual task from [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]; a task being a knowledge-corpus long-running task MUST NOT by itself cause automatic loading of all modules of `01`, `02`, `08`, and `12`.
 
-长任务必须组合实际内容类型对应的 Card 与 `Runtime Card Provider` 解析的 Long-running Execution Card；回读原文时组合相应 Read Sets。质量规则在任务开始时通过 Gate 列表进入 contract，在到达对应 checkpoint 时再读取完整 gate procedure。
+A long-running task MUST combine the Card corresponding to the actual content type with the Long-running Execution Card resolved by the `Runtime Card Provider`; when reading back the source text, combine the corresponding Read Sets. Quality rules enter the contract at task start via the Gate list; the full gate procedure is read only when the corresponding checkpoint is reached.
 
-Task Contract 或 Progress Ledger 必须记录：
+The Task Contract or Progress Ledger MUST record:
 
-- `standards_version`。
-- 实际的 loaded set：Runtime Card IDs、`Runtime Card Provider` 解析的 artifacts 与升级回读的 module paths。
-- 使用的 Runtime Cards 与 Read Sets。
-- 尚未触发但已经登记的 gate modules。
-- Standards 或 task scope 变化后的重新解析结果。
+- `standards_version`.
+- The actual loaded set: Runtime Card IDs, artifacts resolved by the `Runtime Card Provider`, and module paths read back on escalation.
+- The Runtime Cards and Read Sets used.
+- Gate modules registered but not yet triggered.
+- Re-resolution results after Standards or task scope changes.
 
 ## Card-first Reading Mode
 
-默认阅读模式为读取 `Runtime Card Provider` 解析的任务对应 Runtime Card。Card 是对应 Read Set 的 Start/Triggered/Gate 模块的忠实压缩，覆盖日常任务所需的判定、流程和 Gate 清单。
+The default reading mode is to read the task's Runtime Card resolved by the `Runtime Card Provider`. A Card is a faithful compression of the corresponding Read Set's Start/Triggered/Gate modules, covering the determinations, procedures, and Gate lists needed for routine tasks.
 
-以下情形必须回读标准原文，不得只依赖卡片：
+In the following cases the Standards source text MUST be read back; cards alone MUST NOT be relied on:
 
-- 卡片未覆盖当前情形，或对卡片内容存疑。
-- 规则争议或规则冲突需要裁决。
-- L 档页面的深度规则（完整清单只在原文中维护）。
-- Governance 任务：必须通读 RS 09 原文，卡片不可作为修订依据。
+- The card does not cover the current situation, or the card content is in doubt.
+- A rule dispute or rule conflict requires adjudication.
+- Depth rules for L-tier pages (the complete list is maintained only in the source text).
+- Governance tasks: the RS 09 source text MUST be read in full; cards MUST NOT serve as the basis for a revision.
 
-Runtime Cards 为编译产物，禁止手改。卡片与标准原文冲突时，以标准原文为准，并按 [[kernel/00 Standards Control/03 Standards Governance|Standards Governance]] 的 Revision Write-back Checklist 触发重新生成。
+Runtime Cards are compiled artifacts and must not be hand-edited. When a card conflicts with the Standards source text, the source text prevails, and regeneration is triggered per the Revision Write-back Checklist of [[kernel/00 Standards Control/03 Standards Governance|Standards Governance]].
 
 ## Default Read Sets
 
-当前 Read Sets：
+Current Read Sets:
 
-- [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]：所有任务共同控制边界。
-- [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]：单个 canonical note。
-- [[kernel/Read Sets/03 Module Build Read Set|Module Build]]：完整知识模块。
-- [[kernel/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]：外部来源和社区信号。
-- 所选 profile 的 `Routing And Gate Registry` 注册的 `Expression Layer Read Set`：表达层内容的创建、迁移和审查。
-- [[kernel/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]：移动、重命名、拆分和目录重构。
-- [[kernel/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]：batch、checkpoint、resume 和 Terminal Proof。
-- [[kernel/Read Sets/08 Audit and Completion Read Set|Audit and Completion]]：质量审查和完成验收。
-- [[kernel/Read Sets/09 Standards Governance Read Set|Standards Governance]]：控制面规则或结构变更。
-- [[kernel/Read Sets/10 Maintenance Run Read Set|Maintenance Run]]：周期性更新与保鲜，按预算封套消化过期复验、水位线增量与 needs_rereview。
+- [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]: the shared control boundary for all tasks.
+- [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]: a single canonical note.
+- [[kernel/Read Sets/03 Module Build Read Set|Module Build]]: a complete knowledge module.
+- [[kernel/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]: external sources and community signals.
+- The `Expression Layer Read Set` registered in the selected profile's `Routing And Gate Registry`: creation, migration, and review of expression-layer content.
+- [[kernel/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]: moves, renames, splits, and directory restructuring.
+- [[kernel/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]: batch, checkpoint, resume, and Terminal Proof.
+- [[kernel/Read Sets/08 Audit and Completion Read Set|Audit and Completion]]: quality review and completion acceptance.
+- [[kernel/Read Sets/09 Standards Governance Read Set|Standards Governance]]: control-plane rule or structure changes.
+- [[kernel/Read Sets/10 Maintenance Run Read Set|Maintenance Run]]: periodic updates and freshness, digesting overdue re-review, watermark deltas, and needs_rereview within the budget envelope.

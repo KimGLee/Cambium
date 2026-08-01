@@ -5,49 +5,49 @@
 
 ## Completion Gate
 
-页面升级为 `reviewed` 前必须通过 [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review#Single Note Review|Single Note Review]]。
+Before a page is promoted to `reviewed`, it MUST pass [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review#Single Note Review|Single Note Review]].
 
-来源驱动的新 canonical page 升级为 `reviewed` 前，还必须通过 [[kernel/12 Quality Assurance/04 Guidance and Source Review#Source Intake And Promotion Review|Source Intake And Promotion Review]]。
+Before a source-driven new canonical page is promoted to `reviewed`, it MUST also pass [[kernel/12 Quality Assurance/04 Guidance and Source Review#Source Intake And Promotion Review|Source Intake And Promotion Review]].
 
-Batch 关闭前必须通过 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Batch Review|Batch Review]]。
+Before a batch closes, it MUST pass [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Batch Review|Batch Review]].
 
-模块宣告完成前必须通过 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Module Review|Module Review]]。
+Before a module is declared complete, it MUST pass [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Module Review|Module Review]].
 
-Profile-owned readiness axis 升级到其完成值前，必须通过 `Routing And Gate Registry` 为该轴登记的 gate；kernel 不点名具体 status value 或表达产物。
+Before a profile-owned readiness axis is promoted to its completion value, it MUST pass the gate registered for that axis in the `Routing And Gate Registry`; the kernel does not name concrete status values or expression artifacts.
 
-长任务只能在完成 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Coverage Reconciliation Review|Coverage Reconciliation Review]]、[[kernel/12 Quality Assurance/04 Guidance and Source Review#Guidance Reconciliation Review|Guidance Reconciliation Review]] 和 Terminal Audit 后标记 `complete`。
+A long task may be marked `complete` only after completing [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Coverage Reconciliation Review|Coverage Reconciliation Review]], [[kernel/12 Quality Assurance/04 Guidance and Source Review#Guidance Reconciliation Review|Guidance Reconciliation Review]], and the Terminal Audit.
 
-历史 gate 结果只能通过 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Reuse Gate|Reuse Gate]] 进入 Terminal Proof；`reviewed`、日期或“此前通过”本身不是可复用证据。
+Historical gate results may enter the Terminal Proof only through the [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Reuse Gate|Reuse Gate]]; `reviewed`, a date, or "passed previously" is not by itself reusable evidence.
 
-任何一个适用的硬性门槛失败，都必须保持原状态，不得因为任务接近结束、达到时间点、已运行较久或创建大量文件而降低标准。
+If any applicable hard gate fails, the current state MUST be kept; the standard MUST NOT be lowered because the task is near its end, a time point has been reached, the run has lasted long, or many files have been created.
 
-Authoring completion 不要求所有前沿结论达到 `validated`。无法在当前任务中取得的独立生产数据、跨实现复现或未来监测结果可以进入 evidence backlog，但必须：
+Authoring completion does not require all frontier conclusions to reach `validated`. Independent production data, cross-implementation reproduction, or future monitoring results that cannot be obtained within the current task MAY enter the evidence backlog, but MUST:
 
-- 不影响当前正文对已知机制的完整解释。
-- 限制 claim 强度并保留 `evidence_maturity`。
-- 记录缺失证据、重新核验条件和受影响页面。
-- 不用 evidence backlog 掩盖缺少正文、来源、profile-registered expression migration 或 QA 的 Required authoring gap。
+- Not affect the current body's complete explanation of known mechanisms.
+- Limit claim strength and retain `evidence_maturity`.
+- Record the missing evidence, the re-verification conditions, and the affected pages.
+- Not use the evidence backlog to conceal a Required authoring gap missing body text, sources, profile-registered expression migration, or QA.
 
 ## Terminal Audit
 
-任务从 `active` 进入 `completion-candidate` 后执行 Terminal Audit：
+After the task moves from `active` to `completion-candidate`, run the Terminal Audit:
 
-1. 冻结新增内容，记录 contract、scope、queue、Standards version、`guidance_cutoff_id` 和候选完成状态。
-   - 同时记录 selected runtime guidance、Read Sets 及 loaded set（runtime guidance 与升级回读的 module paths）。
-2. 加载 Audit Receipt Register，计算 changed、directly invalidated、dependency-invalidated、overdue 和 legacy-evidence。
-3. 执行 [[kernel/12 Quality Assurance/04 Guidance and Source Review#Guidance Reconciliation Review|Guidance Reconciliation Review]]，确认所有 cutoff 以内的 guidance 都有最终 disposition。
-4. 将 Coverage Ledger 与文件系统、exclusions、competency matrix 和 Required Queue 对账；若 completion-candidate 冻结前已完成该对账且其后无文件变化，直接复用该结果，不重复执行。
-5. 确认所有 batch 已关闭且 merge 队列清空（无 `merge-ready` 未合并批次、无已写出未应用的 delta），没有未验证修改或 unresolved invalidation。
-6. 运行 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|Batch-close Closed List]]（对最终冻结快照）。
-7. 对 changed、invalidated、overdue 与有界抽样对象执行 note-type-aware 内容审阅；其余有效 receipts 按 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Reuse Gate|Reuse Gate]] 复用。
-8. 检查 Source Promotion，以及 `Routing And Gate Registry` 登记的 expression-layer migration 与 profile synchronization gates；专项 Audit 只证明跨批次 invariant，不无差别重做局部机制审阅。
-9. 审核本轮 `rendering_mode`、Level 0 / Level 1 确定性证据；只有存在记录的客观 trigger 时才审核 Level 2–4 UI、截图或录屏证据，并按已确认的系统性影响扩大检查。
-10. 对抽样或定向检查发现的系统性问题执行 family expansion；修复与重检按 Terminal Findings And Convergence 分级处置。
-11. 生成 receipt reconciliation、Final Handoff 和 Terminal Proof。
+1. Freeze new content; record the contract, scope, queue, Standards version, `guidance_cutoff_id`, and the candidate completion state.
+   - Also record the selected runtime guidance, Read Sets, and the loaded set (runtime guidance and the module paths read back on escalation).
+2. Load the Audit Receipt Register; compute changed, directly invalidated, dependency-invalidated, overdue, and legacy-evidence.
+3. Run [[kernel/12 Quality Assurance/04 Guidance and Source Review#Guidance Reconciliation Review|Guidance Reconciliation Review]] and confirm that all guidance within the cutoff has a final disposition.
+4. Reconcile the Coverage Ledger against the file system, exclusions, competency matrix, and Required Queue; if that reconciliation was already completed before the completion-candidate freeze and no files changed afterwards, reuse that result directly without re-running.
+5. Confirm all batches are closed and the merge queue is empty (no `merge-ready` unmerged batches, no written-out unapplied deltas), and there are no unverified modifications or unresolved invalidations.
+6. Run the [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|Batch-close Closed List]] (against the final frozen snapshot).
+7. Run note-type-aware content review on changed, invalidated, overdue, and bounded-sampling objects; reuse the remaining valid receipts per the [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Reuse Gate|Reuse Gate]].
+8. Check Source Promotion, plus the expression-layer migration and profile synchronization gates registered in the `Routing And Gate Registry`; specialized Audits prove only cross-batch invariants and do not indiscriminately redo local mechanism review.
+9. Review this round's `rendering_mode` and Level 0 / Level 1 deterministic evidence; review Level 2–4 UI, screenshot, or recording evidence only when a recorded objective trigger exists, and expand checks according to confirmed systemic impact.
+10. Perform family expansion for systemic problems found by sampling or targeted checks; fixes and re-checks are handled by grade per Terminal Findings And Convergence.
+11. Produce the receipt reconciliation, Final Handoff, and Terminal Proof.
 
-终审 findings 按 Terminal Findings And Convergence 分级处置，不因单项 minor 或 major finding 使 task state 整体返回 `active`；未按分级闭环的失败项进入 Required Queue。不能修改报告措辞来绕过失败。
+Terminal Audit findings are handled by grade per Terminal Findings And Convergence; a single minor or major finding does not return the task state to `active` as a whole; failed items not closed by grade enter the Required Queue. Report wording MUST NOT be modified to bypass a failure.
 
-Terminal Proof 至少包含：
+The Terminal Proof contains at least:
 
 ```text
 scope_version
@@ -80,40 +80,40 @@ final_handoff
 time_contract_result
 ```
 
-只有 guidance 三个未决计数为 0、`required_authoring_gaps = 0`、`unverified_batches = 0`、`unresolved_invalidations = 0` 且所有适用 gate 通过时，task state 才能改为 `complete`。
+Only when the three open guidance counters are 0, `required_authoring_gaps = 0`, `unverified_batches = 0`, `unresolved_invalidations = 0`, and all applicable gates pass, may the task state be changed to `complete`.
 
-`full_deterministic_results`：终审对最终冻结快照全量运行的确定性检查的完整结果集引用。`unverified_batches` 计数包含处于 `merge-ready` 但未合并的批次；该值为 0 即要求 merge 队列清空。
+`full_deterministic_results`: a reference to the complete result set of the deterministic checks the Terminal Audit ran in full against the final frozen snapshot. The `unverified_batches` count includes batches that are `merge-ready` but unmerged; a value of 0 therefore requires the merge queue to be empty.
 
-`rendering_evidence` 必须说明最高实际级别和验证结果。没有 visual exception trigger 时，记录 `visual_trigger: not_applicable` 即可；缺少 UI、截图或录屏不得因此阻止完成。
+`rendering_evidence` MUST state the highest level actually used and the verification result. When there is no visual exception trigger, recording `visual_trigger: not_applicable` suffices; the absence of UI, screenshots, or recordings MUST NOT block completion on that account.
 
 ## Terminal Findings And Convergence
 
-终审 findings 按 [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review#Substantive Correctness Review|Substantive Correctness Review]] 的三级分级处置：
+Terminal Audit findings are handled with the three-level grading of [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review#Substantive Correctness Review|Substantive Correctness Review]]:
 
-- `minor`：记录，不阻断完成。
-- `major`：就地修复＋仅对该对象定向重检＋该对象 receipt supersede；不重新冻结快照、不重跑 Batch-close Closed List。
-- `critical`（影响完成谓词）：task state 返回 `active`；重入终审时复用所有未失效 receipts，Batch-close Closed List 只重跑一次。
+- `minor`: record; does not block completion.
+- `major`: fix in place + targeted re-check of that object only + receipt supersede for that object; do not re-freeze the snapshot, do not re-run the Batch-close Closed List.
+- `critical` (affecting a completion predicate): the task state returns to `active`; on re-entering the Terminal Audit, reuse all non-invalidated receipts, and re-run the Batch-close Closed List only once.
 
-终审轮次上限为 2：第 2 轮只确认第 1 轮 findings 已关闭，不引入新审查范围；超出轮次上限时升级用户决策。该轮次上限为 kernel 固定常数，不属于所选 profile 或 task contract 可覆写的默认值。
+The Terminal Audit round cap is 2: round 2 only confirms that round 1's findings are closed and introduces no new review scope; when the round cap is exceeded, escalate to the user for decision. This round cap is a fixed kernel constant, not a default that the selected profile or task contract may override.
 
-终审期间收到的 guidance：仅“改变目标、范围或验收”类使终审失效；修正类按 major 就地处理，不整体作废终审；状态询问类不影响 cutoff。分支细则见 [[kernel/12 Quality Assurance/04 Guidance and Source Review#Guidance During Terminal Audit|Guidance During Terminal Audit]]。
+Guidance received during the Terminal Audit: only the "changes objective, scope, or acceptance" kind invalidates the Terminal Audit; corrective guidance is handled in place as major without voiding the Terminal Audit as a whole; status inquiries do not affect the cutoff. For the branch details see [[kernel/12 Quality Assurance/04 Guidance and Source Review#Guidance During Terminal Audit|Guidance During Terminal Audit]].
 
 ## Final Report
 
-每个大批次完成后报告：
+After each large batch completes, report:
 
-- 新建、扩展、移动和删除了哪些文件。
-- 哪些内容达到目标 `authoring_status`；哪些 profile-owned readiness axes 达到 `Routing And Gate Registry` 登记的完成值。
-- 自动检查结果。
-- 未完成缺口和原因。
-- 是否有未验证的时效性结论。
-- 哪些结论仍处于 signal、single-source、contested 或 superseded。
-- 下一批依赖和风险。
-- 本批接收、应用、排队、延期或 supersede 了哪些 guidance，以及对应版本变化。
-- 执行了哪些 rendering level 和确定性验证；若进入 Level 2–4，报告 trigger、unresolved question、最小检查目标、结果和是否触发扩大检查；若未进入，明确 `visual_trigger: not_applicable`。
-- 哪些 AuditReceipts 被复用、supersede 或 invalidated，增量人工审阅和抽样覆盖了哪些范围，以及是否触发 systemic expansion。
+- Which files were created, expanded, moved, and deleted.
+- Which content reached the target `authoring_status`; which profile-owned readiness axes reached the completion values registered in the `Routing And Gate Registry`.
+- Automated check results.
+- Unfinished gaps and their reasons.
+- Whether there are unverified time-sensitive conclusions.
+- Which conclusions remain signal, single-source, contested, or superseded.
+- Next-batch dependencies and risks.
+- Which guidance this batch received, applied, queued, deferred, or superseded, and the corresponding version changes.
+- Which rendering levels and deterministic verifications were performed; if Levels 2–4 were entered, report the trigger, unresolved question, minimal check target, result, and whether expanded checking was triggered; if not entered, state `visual_trigger: not_applicable` explicitly.
+- Which AuditReceipts were reused, superseded, or invalidated, what scope the incremental manual review and sampling covered, and whether systemic expansion was triggered.
 
-最终任务报告还必须附 Amendment Log 摘要、Guidance Reconciliation、Coverage Ledger 汇总、Terminal Proof、optional / deferred work 和 external evidence backlog。
+The final task report MUST also attach the Amendment Log summary, Guidance Reconciliation, Coverage Ledger summary, Terminal Proof, optional / deferred work, and the external evidence backlog.
 
 ## Related
 

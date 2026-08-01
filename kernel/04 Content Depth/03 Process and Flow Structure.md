@@ -6,7 +6,7 @@
 
 ## Process And Flow Structure
 
-Process / Flow 页面需要解释“系统如何推进”，不能只罗列步骤名称。通常应覆盖：
+A Process / Flow page needs to explain "how the system advances"; it MUST NOT merely list step names. It SHOULD usually cover:
 
 ```text
 Position And Scope（位置与范围）
@@ -31,22 +31,22 @@ Expression Layer Link（表达层链接）
 Sources（来源）
 ```
 
-Process / Flow 页面至少回答以下四个角色问题：
+A Process / Flow page answers at least the following four role questions:
 
-- `proposer`：谁提议下一动作、参数或解释。
-- `gatekeeper`：谁验证、授权、调度、控制预算、提交状态并判断完成。
-- `executor`：谁在外部环境实际产生效果。
-- `stopper`：在高风险、歧义或策略要求下，谁批准、拒绝、修改、接管或叫停。
+- `proposer`: who proposes the next action, parameters, or interpretation.
+- `gatekeeper`: who validates, authorizes, schedules, controls budget, commits state, and judges completion.
+- `executor`: who actually produces effects in the external environment.
+- `stopper`: who approves, rejects, modifies, takes over, or halts under high risk, ambiguity, or policy requirements.
 
-四问不要求四个不同主体；同一主体可以承担多个角色。所选 profile 可以增加角色，但不能降低四问下限。不能把 proposer“提出动作”写成 executor 已经实际产生了外部效果。
+The four questions do not require four distinct actors; the same actor MAY hold multiple roles. The selected profile MAY add roles, but MUST NOT lower the four-question floor. A proposer "proposing an action" MUST NOT be written as the executor having actually produced an external effect.
 
-流程图只是结构视图，正文还必须解释：
+A flow diagram is only a structural view; the body MUST additionally explain:
 
-- 每个关键 transition 为什么存在。
-- branch 和 loop 的触发条件。
-- authoritative state 在哪里提交。
-- timeout 后结果是 failed、unknown 还是已经产生副作用。
-- stop condition 和 completion verification 是否由同一个主体判断。
-- 失败如何被检测、归因、恢复和审计。
+- Why each key transition exists.
+- The trigger conditions of branches and loops.
+- Where authoritative state is committed.
+- Whether the result after a timeout is failed, unknown, or a side effect has already been produced.
+- Whether the stop condition and completion verification are judged by the same actor.
+- How failures are detected, attributed, recovered, and audited.
 
-重要 Process / Flow Note 至少包含一个 worked trace，从具体输入沿状态、决策、工具结果和 Terminal Proof 走完一次执行；还应包含一个 failure trace，展示流程在哪一步偏离以及如何恢复。
+An important Process / Flow Note contains at least one worked trace that walks one execution from concrete inputs through states, decisions, tool results, and the Terminal Proof; it SHOULD also contain a failure trace showing at which step the flow deviates and how it recovers.

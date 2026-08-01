@@ -8,20 +8,20 @@
 
 | State | Owner | Meaning | Must Not Be Used As |
 |---|---|---|---|
-| `task_state` | Progress Ledger | planned、active、paused、blocked、completion-candidate、complete、cancelled | 页面内容质量 |
-| `authoring_status` | Coverage Ledger / page metadata | unassessed、outline、drafted、reviewed | 用户学习进度或证据强度 |
-| `Expression Status Axis` | Selected profile registry | 由所选 profile 注册的表达产物 coverage 与 readiness 取值 | canonical note 深度 |
-| `evidence_maturity` | Canonical / Source / Synthesis note | signal、single-source、corroborated、validated、contested、superseded | 写作是否完成 |
-| `learning_status` | User learning workflow | not-started、learning、self-tested、mastered | 知识库建设进度 |
+| `task_state` | Progress Ledger | planned, active, paused, blocked, completion-candidate, complete, cancelled | page content quality |
+| `authoring_status` | Coverage Ledger / page metadata | unassessed, outline, drafted, reviewed | user learning progress or evidence strength |
+| `Expression Status Axis` | Selected profile registry | expression-artifact coverage and readiness values registered by the selected profile | canonical note depth |
+| `evidence_maturity` | Canonical / Source / Synthesis note | signal, single-source, corroborated, validated, contested, superseded | whether writing is complete |
+| `learning_status` | User learning workflow | not-started, learning, self-tested, mastered | knowledge-base build progress |
 
-本表为控制面速览；完整词表以各 owner 为准：task_state 见 [[kernel/02 Build Execution/01 Contract Time and Task State|02/01]]，其余 kernel 轴见 [[kernel/08 Metadata and Status/03 Status Axes|08/03]]，表达状态值由 `Expression Status Axis` role 提供。
+This table is a control-plane quick view; the complete vocabularies are authoritative at each owner: for task_state see [[kernel/02 Build Execution/01 Contract Time and Task State|02/01]], for the remaining kernel axes see [[kernel/08 Metadata and Status/03 Status Axes|08/03]], and expression status values are provided by the `Expression Status Axis` role.
 
-`coverage_disposition` 另外说明页面在当前 scope 中是 required、optional、deferred 还是 excluded。
+`coverage_disposition` additionally states whether a page is required, optional, deferred, or excluded in the current scope.
 
 ## Scope
 
-本标准适用于由所选 `Profile Scope` 明确登记、并采用本控制面的知识语料范围。具体目标、知识结构、内容目录与扩展范围由该 role 提供，kernel 不固化部署清单。
+This Standard applies to the knowledge-corpus scope explicitly registered by the selected `Profile Scope` and governed by this control plane. The specific goals, knowledge structure, content catalog, and expansion scope are provided by that role; the kernel does not hard-code a deployment inventory.
 
-明确排除项必须写入 `Excluded Scope` slot；未登记排除项时该 slot 也必须显式为空。迁移、重构或验收不得越过当前 task contract 与该 slot，任何范围变化都需要相应授权。
+Explicit exclusions MUST be written into the `Excluded Scope` slot; when no exclusions are registered, that slot MUST still be explicitly empty. Migration, refactoring, or acceptance MUST NOT go beyond the current task contract and that slot; any scope change requires corresponding authorization.
 
-Kernel Standards 属于控制面，不计入普通内容建设成果。只有单独授权的 governance task 可以修改；普通内容任务必须把它作为只读保护范围。
+Kernel Standards belong to the control plane and do not count as ordinary content-building output. Only a separately authorized governance task MAY modify them; ordinary content tasks MUST treat them as a read-only protected scope.

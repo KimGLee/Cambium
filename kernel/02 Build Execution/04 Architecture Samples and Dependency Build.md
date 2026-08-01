@@ -6,36 +6,36 @@
 
 ## Phase 2: Architecture And Mapping
 
-- 建立 Knowledge Base Overview。
-- 建立 Competency Matrix。
-- 建立 Knowledge Gap Tracker。
-- 建立 prerequisite graph。
-- 建立所选 profile 的 `Profile Scope` / `Knowledge Spine` 与 foundation dependency mapping。
-- 标记重复或 ownership 不清的概念。
-- 标记需要 source intake、cross-source synthesis 或重新核验的结论。
-- 制定目录迁移表，并通过所选 profile 的 `Runtime Card Provider` 与 `Expression Layer Entry` 角色建立表达产物 mapping。
+- Build the Knowledge Base Overview.
+- Build the Competency Matrix.
+- Build the Knowledge Gap Tracker.
+- Build the prerequisite graph.
+- Build the mapping between the selected profile's `Profile Scope` / `Knowledge Spine` and foundation dependencies.
+- Mark concepts that are duplicated or have unclear ownership.
+- Mark conclusions that need source intake, cross-source synthesis, or re-verification.
+- Draw up the directory migration table, and build the expression-artifact mapping via the selected profile's `Runtime Card Provider` and `Expression Layer Entry` roles.
 
-在 mapping 完成前，不批量删除原内容。
+Before the mapping is complete, do not bulk-delete original content.
 
 ## Phase 3: Representative Samples
 
-先选择不同 note types 的样板。样板类型的具体取值由所选 profile 注册的 `Representative Sample Set` 提供；kernel 只要求该集合覆盖足以检验不同模板行为的代表性类型，不复制 profile 的类型清单。
+First select samples for the different note types. The concrete values of the sample types are provided by the `Representative Sample Set` registered by the selected profile; the kernel only requires that the set cover representative types sufficient to test the behavior of the different templates, and does not copy the profile's type list.
 
-样板用于验证模板是否过重、过浅或产生重复。用户确认样板后再批量应用。
+Samples are used to verify whether templates are too heavy, too shallow, or produce duplication. Apply in bulk only after the user confirms the samples.
 
 ## Phase 4: Dependency-ordered Build
 
-推荐使用 dependency-ordered vertical slices，而不是先把所有基础写完或直接跳到应用主线。具体流程站名与顺序由所选 profile 的 `Dependency-ordered Build Sequence` 角色提供。
+Dependency-ordered vertical slices SHOULD be used, rather than writing all foundations first or jumping straight to the application mainline. The concrete pipeline stage names and order are provided by the selected profile's `Dependency-ordered Build Sequence` role.
 
-每个 vertical slice 都要从基础机制走到运行时使用、生产链路、评估与表达层输出。完整 foundation coverage 仍在 competency matrix 中持续推进，不能因为主线已经可运行就宣告基础完成。
+Each vertical slice runs from the foundational mechanism through runtime use, the production chain, evaluation, and expression-layer output. Full foundation coverage still advances continuously in the competency matrix; foundations cannot be declared complete merely because the mainline is already runnable.
 
-实际顺序可根据用户优先级调整，但必须记录依赖缺口和补齐批次。
+The actual order MAY be adjusted per user priorities, but dependency gaps and the batches that fill them MUST be recorded.
 
-Dependency order 必须从 Coverage Ledger 的 Required Queue 产生。Progress Ledger 至少保留：
+The dependency order MUST be produced from the Coverage Ledger's Required Queue. The Progress Ledger keeps at least:
 
-- Active batch。
-- Ordered Required Queue。
-- Optional backlog。
-- Deferred items and re-entry conditions。
+- Active batch.
+- Ordered Required Queue.
+- Optional backlog.
+- Deferred items and re-entry conditions.
 
-`Next dependency` 只是 Required Queue 的第一个候选，不能替代完整队列。状态为 `active` 时，不允许长期记录 `In-progress batch: None`；关闭一个 batch 后应先完成 reconciliation，再选择下一个 Required batch。
+`Next dependency` is only the first candidate in the Required Queue and cannot replace the full queue. While the state is `active`, recording `In-progress batch: None` for an extended period is not allowed; after closing a batch, complete reconciliation first, then select the next Required batch.

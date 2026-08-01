@@ -5,31 +5,31 @@
 
 ## Anti-patterns
 
-- 按文章标题直接创建 canonical concept。
-- 把官方公司文章当作无条件行业事实。
-- 把社区热度当作机制已经被验证。
-- 把用户兴趣、判断或优先级直接写成行业事实。
-- 把“用户提供了这个链接”误当作来源已经可靠或 claim 已经成立。
-- 将有明确边界的用户项目经历推广为普遍生产规律。
-- Source Note、Research Synthesis 和 canonical note 复制同一整段正文。
-- 只有 Sources 列表，没有 claim-level provenance。
-- 为每个外部 URL 创建低价值文件。
-- 新建页面但不检查现有同义概念。
-- 为追赶趋势而降低 depth、QA 或 ownership 标准。
-- 结论被推翻后静默改写，不保留 supersession 关系。
+- Creating a canonical concept directly from an article title.
+- Treating official company articles as unconditional industry fact.
+- Treating community buzz as a mechanism already validated.
+- Writing user interest, judgment, or priority directly as industry fact.
+- Mistaking "the user provided this link" for the source being reliable or the claim being established.
+- Generalizing a user's clearly bounded project experience into a universal production law.
+- A Source Note, Research Synthesis, and canonical note copying the same full passage of body text.
+- Having only a Sources list, with no claim-level provenance.
+- Creating a low-value file for every external URL.
+- Creating a new page without checking existing synonymous concepts.
+- Lowering depth, QA, or ownership standards to chase trends.
+- Silently rewriting an overturned conclusion without retaining the supersession relationship.
 
 ## Acceptance Criteria
 
-- 外部来源到知识图谱变更的路径可追踪。
-- Source、claim、knowledge object 和 file 已明确区分。
-- 社区、官方、论文、benchmark 和 postmortem 的证据角色已区分。
-- 新 canonical note 通过 promotion gate。
-- 基础知识缺口会被补足，不会全部塞进 `Profile Scope` 所声明的 application page。
-- 不同厂商观点被比较但未被强行等同。
-- Emerging、contested 和 superseded 结论有明确状态。
-- 新知识已进入正文链接、Overview、Case Study 和由 `Expression Layer Entry` 注册的必要表达产物。
-- User hypothesis、source lead、task amendment 和最终 graph change 之间可以沿 guidance ID 追踪。
-- 没有未经核验就从用户观点直接提升的 canonical claim。
+- The path from external source to knowledge-graph change is traceable.
+- Source, claim, knowledge object, and file are clearly distinguished.
+- The evidence roles of community, official, paper, benchmark, and postmortem sources are distinguished.
+- New canonical notes pass the promotion gate.
+- Foundational knowledge gaps are filled, not all crammed into the application pages declared by `Profile Scope`.
+- Different vendor views are compared but not forcibly equated.
+- Emerging, contested, and superseded conclusions have explicit status.
+- New knowledge has entered body links, Overviews, Case Studies, and the necessary expression artifacts registered by `Expression Layer Entry`.
+- User hypothesis, source lead, task amendment, and the final graph change can be traced along the guidance ID.
+- No canonical claim has been promoted directly from a user opinion without verification.
 
 ## Related
 

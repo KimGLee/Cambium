@@ -5,27 +5,27 @@
 
 ## Purpose
 
-本标准定义文件命名、标题结构、段落和列表。reader-facing language、identity 保留边界及显示顺序由所选 profile 的 `Language Contract` 单独维护。
+This standard defines file naming, heading structure, paragraphs, and lists. Reader-facing language, identity preservation boundaries, and display order are maintained separately by the selected profile's `Language Contract`.
 
 ## Naming
 
-- 文件夹和文件名使用由所选 profile 的 `Language Contract` 注册的 canonical identity。
-- 文件名使用行业最常见正式名称。
-- 缩写与全称通过 aliases 处理，不创建重复文件。
-- 不在文件名中添加日期，除非文件本质是日志或时间记录。
-- 不使用含义模糊的名称，例如 `Notes`、`Basics 2`、`Advanced Stuff`。
-- Overview、Sequence Guide、Checklist、Cheat Sheet、Expression Layer Artifact 等类型在文件名中明确表达。
-- Source Note 文件名应识别 organization / author 与来源主题，例如 `Example Organization - Reliable Distributed Systems`；publication date 放 metadata，不默认放文件名。
-- Research Synthesis 使用研究问题或现象命名，不使用某一篇文章标题，也不在结论未稳定时伪装成 canonical Term Note。
+- Folder and file names use the canonical identity registered by the selected profile's `Language Contract`.
+- File names use the most common formal name in the industry.
+- Abbreviations and full names are handled through aliases; duplicate files MUST NOT be created.
+- Dates MUST NOT be added to file names, unless the file is inherently a log or a time record.
+- Names with vague meaning MUST NOT be used, for example `Notes`, `Basics 2`, `Advanced Stuff`.
+- Types such as Overview, Sequence Guide, Checklist, Cheat Sheet, and Expression Layer Artifact are expressed explicitly in the file name.
+- A Source Note file name SHOULD identify the organization / author and the source topic, for example `Example Organization - Reliable Distributed Systems`; the publication date goes in metadata and is not placed in the file name by default.
+- A Research Synthesis is named after the research question or phenomenon; it does not use the title of one particular article, nor does it masquerade as a canonical Term Note while conclusions are not yet stable.
 
 ## Language Routing（语言规则路由）
 
-- 所有正文、标题、表格、图表、Source Note 和 `Expression Layer Artifact` 的 reader-facing language 选择，统一读取所选 profile 的 `Language Contract`。
-- 具体显示顺序、identity 保留值和例外边界由 `Language Contract` 提供。
-- 一个问题只能有一个 canonical owner；其它规则通过 slot 引用语言合同，不能复制一份略有不同的政策。
-- 本页不复制语言政策，避免 Naming、Terminology、Expression Layer 和 Formatting 产生多个 owner。
+- Reader-facing language choices for all body text, headings, tables, diagrams, Source Notes, and `Expression Layer Artifact` uniformly read the selected profile's `Language Contract`.
+- Concrete display order, identity preservation values, and exception boundaries are provided by the `Language Contract`.
+- One question can have only one canonical owner; other rules reference the language contract through a slot and MUST NOT copy a slightly different policy.
+- This page does not copy the language policy, so that Naming, Terminology, Expression Layer, and Formatting do not develop multiple owners.
 
-通用决策骨架：
+General decision skeleton:
 
 ```text
 Machine-consumed identifier? -> preserve exact identity
@@ -37,21 +37,21 @@ Otherwise -> use the Language Contract default prose form
 
 ## Titles
 
-- 不重复显示文件名和 H1。
-- 默认从 `## Definition`、`## Purpose` 或内容需要的首个二级标题开始。
-- 不在普通知识页显示日期、主题、今日交付等冗余字段。
-- Heading 应稳定、明确，并考虑 heading links。
-- 同一层级标题使用一致语义，不混用过多同义标题。
-- reader-facing 标题的显示顺序与文件名注释边界由所选 profile 的 `Language Contract` 约束。
+- Do not display the file name and the H1 redundantly.
+- By default, start from `## Definition`, `## Purpose`, or the first second-level heading the content requires.
+- Do not display redundant fields such as date, subject, or today's deliverables on ordinary knowledge pages.
+- Headings SHOULD be stable and unambiguous, with heading links taken into account.
+- Headings at the same level use consistent semantics; do not mix in too many synonymous headings.
+- The display order of reader-facing headings and the file-name annotation boundary are constrained by the selected profile's `Language Contract`.
 
 ### Stable Heading Migration
 
-当 `Language Contract` 的 display change 会改变已有 heading anchor 时，必须先盘点 incoming heading links，再原子更新 heading 与引用，运行 missing / ambiguous / heading resolution 检查并记录 migration evidence。当前 batch 无法安全迁移时保留旧 heading、登记 Required repair，不得静默断开引用或把临时兼容状态宣告为最终合规。
+When a `Language Contract` display change would alter an existing heading anchor, incoming heading links MUST first be inventoried, then the heading and its references updated atomically, the missing / ambiguous / heading resolution checks run, and the migration evidence recorded. When the current batch cannot migrate safely, keep the old heading and register a Required repair; references MUST NOT be silently broken, and a temporary compatibility state MUST NOT be declared as final compliance.
 
 ## Paragraphs And Lists
 
-- 段落负责解释因果和机制，列表负责枚举，不用列表代替全部推理。
-- 每个 section 不能长期只有一句话。
-- 避免连续多个只有名词和短句的 bullet list。
-- 比较多个方案时使用统一维度，而不是各写一段不对称描述。
-- 复杂层级优先拆 section，避免过深 nested bullets。
+- Paragraphs are responsible for explaining causality and mechanism; lists are responsible for enumeration; lists MUST NOT replace all reasoning.
+- A section MUST NOT consist of only one sentence long-term.
+- Avoid multiple consecutive bullet lists containing only nouns and short phrases.
+- When comparing multiple options, use unified dimensions instead of writing an asymmetric description paragraph for each.
+- For complex hierarchies, prefer splitting into sections; avoid overly deep nested bullets.

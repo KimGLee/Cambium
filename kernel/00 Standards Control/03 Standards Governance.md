@@ -14,7 +14,7 @@
 | Change authority | User's explicit governance instruction |
 | Content-task behavior | Frozen; read-only control plane |
 
-Standards 生命周期为：
+The Standards lifecycle is:
 
 ```text
 draft
@@ -22,47 +22,47 @@ draft
  -> superseded
 ```
 
-修改规则时必须：
+When modifying rules, you MUST:
 
-1. 明确这是 governance change，而不是普通内容编辑。
-2. 记录受影响 Standards 和原因。
-3. 提升 `standards_version`。
-4. 更新 `00` 的 routing 和 change summary。
-5. 按修订记录的 changed-predicate 清单执行 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] 的 Active-task Adoption；清单为空即 no-op，一行 adoption receipt 即完成。
+1. Make explicit that this is a governance change, not ordinary content editing.
+2. Record the affected Standards and the reason.
+3. Bump `standards_version`.
+4. Update the routing and change summary in `00`.
+5. Execute the Active-task Adoption of [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] per the changed-predicate list recorded for the revision; an empty list is a no-op, completed by a one-line adoption receipt.
 
-用户批准 Standards 不等于批准对全部旧页面立即批量迁移 Frontmatter。迁移范围仍需进入具体 task contract。
+User approval of the Standards does not equal approval of an immediate bulk Frontmatter migration of all legacy pages. The migration scope still needs to enter a specific task contract.
 
 ## Revision Write-back Checklist
 
-任何 Standards 修订在关闭前，必须核对并同步以下快照位置；修订未完成回写不得关闭。无 predicate 变化的修订走 no-op 轻量路径：仅核对实际被改文件涉及的位置，字节 diff＋一行 adoption receipt 即完成：
+Before any Standards revision closes, the following snapshot locations MUST be checked and synchronized; a revision MUST NOT close with write-back incomplete. A revision with no predicate change takes the no-op lightweight path: check only the locations involving the actually modified files; a byte diff + a one-line adoption receipt completes it:
 
-- [[kernel/00 Standards Control/04 Control State and Scope|Control State and Scope]] 的状态表。
-- [[kernel/00 Standards Overview|00 Standards Overview]] 的 Protected Defaults 与 Task Router。
-- 相关 domain MOC 的 Module Index。
-- 相关 Read Set 的 target 列表。
-- [[kernel/00 Standards Control/05 Core Principles and Standards Map#Cross-domain Rule Registry|Cross-domain Rule Registry]]。
-- 通过所选 profile 注册的 `Runtime Card Provider` 重新生成受影响的 Runtime Cards；这些 artifacts（包括 provider 解析的 index artifact）均为编译产物，禁止手改。受影响 = `source_files` 含被改文件的卡。用 `Tools/stamp_cards.py` 盖戳（`--set-version` 同步 provider 解析的 index artifact 版本戳）；修订关闭前必须运行 `Tools/stamp_cards.py --check` 并通过。
-- 重新生成 `Tools/vocab.yaml`（编译产物，词表 owner 为各标准原文）。
+- The state table of [[kernel/00 Standards Control/04 Control State and Scope|Control State and Scope]].
+- The Protected Defaults and Task Router of [[kernel/00 Standards Overview|00 Standards Overview]].
+- The Module Index of the affected domain MOCs.
+- The target lists of the affected Read Sets.
+- The [[kernel/00 Standards Control/05 Core Principles and Standards Map#Cross-domain Rule Registry|Cross-domain Rule Registry]].
+- Regenerate the affected Runtime Cards through the `Runtime Card Provider` registered by the selected profile; these artifacts (including the provider-resolved index artifact) are all compiled artifacts and must not be hand-edited. Affected = cards whose `source_files` include a modified file. Stamp with `Tools/stamp_cards.py` (`--set-version` synchronizes the version stamp of the provider-resolved index artifact); before the revision closes, `Tools/stamp_cards.py --check` MUST be run and pass.
+- Regenerate `Tools/vocab.yaml` (a compiled artifact; the vocabulary owner is each Standard's source text).
 
-执行端为 gate 或审计自建的持久工具，必须经轻量 governance 登记纳入 Tools/ 管理并指定 owner；存量自建工具在下一次 governance 时补登记，登记前其输出仅作参考、不作为 gate 唯一证据。
+Persistent tools self-built by the execution side for gates or audits MUST be brought under Tools/ management through a lightweight governance registration with a designated owner; existing self-built tools are registered retroactively at the next governance pass, and before registration their output is advisory only and MUST NOT serve as a gate's sole evidence.
 
 ## Control Accretion Rule
 
-任何新增检查、冻结、失效或对账义务的修订，Amendment 必须回答三问：
+For any revision that adds a check, freeze, invalidation, or reconciliation obligation, the Amendment MUST answer three questions:
 
-1. 该风险现有哪一层负责？为何不足？
-2. 新义务的 canonical gate 归属哪一层？（不得多层并存）
-3. 被替代的旧层是否删除？不删除的理由？
+1. Which layer currently owns this risk? Why is it insufficient?
+2. Which layer owns the new obligation's canonical gate? (Multiple coexisting layers are not allowed.)
+3. Is the superseded old layer deleted? If not, why?
 
-三问不全，修订不得通过。控制义务与内容规则一样纳入 Registry 管理。
+If the three questions are not fully answered, the revision MUST NOT pass. Control obligations are managed in the Registry just like content rules.
 
 ## Leaf Module Size Budget
 
-- Leaf module 目标 ≤5KB，软上限 6KB。
-- 超限时优先削减示例；仍超限再考虑拆分，拆分走本页 governance change 流程。
-- MOC 与 Read Set 不设此限，但同样从简。
-- 示例每个规则点默认 good / bad 各一。
-- 每个获批例外必须登记对象、测量值、必要性、增长上限与后续处置；未经新的 governance change，不得超过登记上限。
+- Leaf module target ≤5KB, soft cap 6KB.
+- When over the limit, cut examples first; if still over, then consider a split, which follows this page's governance change process.
+- MOCs and Read Sets have no such limit, but are likewise kept lean.
+- Examples default to one good / one bad per rule point.
+- Each approved exception MUST register the object, the measured value, the necessity, the growth cap, and the follow-up disposition; the registered cap MUST NOT be exceeded without a new governance change.
 
 | Exception register | Active entries |
 |---|---|
@@ -71,12 +71,12 @@ draft
 
 ## Execution-Acceptance Ownership Convention
 
-- `02 Build Execution` 域持有执行原则与触发时点；`12 Quality Assurance` 域持有验收清单。
-- 同一事项两侧不得各自全文持有；执行侧通过 Wiki Link 引用验收侧的细目，不复制清单内容。
+- The `02 Build Execution` domain holds execution principles and trigger points; the `12 Quality Assurance` domain holds acceptance checklists.
+- The same item MUST NOT be held in full text on both sides; the execution side references the acceptance side's detail items via Wiki Link and does not copy checklist content.
 
 ## Change Summary
 
-Active release register：empty until the first governance change。每次登记必须填写 version、date、change、changed-predicate 清单与 Active-task Adoption 要求；清单为空时记录 no-op adoption receipt。
+Active release register: empty until the first governance change. Each entry MUST record version, date, change, the changed-predicate list, and the Active-task Adoption requirement; when the list is empty, record a no-op adoption receipt.
 
 | Version | Date | Change | Changed predicates | Adoption requirement |
 |---|---|---|---|---|

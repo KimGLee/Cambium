@@ -5,8 +5,8 @@
 
 ## Purpose
 
-本标准定义知识库的目标边界、逻辑层次和目录职责，防止内容随着扩展变成相互重叠的文件集合。
+This standard defines the knowledge base's objective boundaries, logical hierarchy, and directory responsibilities, preventing the content from becoming a set of mutually overlapping files as it expands.
 
 ## Profile Scope Interface
 
-具体目标、内容优先因素、基础层承诺和排除清单由所选 profile 的 `Profile Scope` 提供。Kernel 只要求这些承诺显式注册，并与本域的逻辑结构、保全和 ownership 规则合读。
+Concrete objectives, content priority factors, foundation layer commitments, and the exclusion list are provided by the `Profile Scope` of the selected profile. The kernel only requires that these commitments be explicitly registered and read together with this domain's logical structure, preservation, and ownership rules.

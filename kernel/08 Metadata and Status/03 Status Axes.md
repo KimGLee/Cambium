@@ -6,9 +6,9 @@
 
 ## Status Axes
 
-`authoring_status`、profile 注册的表达就绪状态、`evidence_maturity` 和 `learning_status` 是四个独立维度，不能合并成一条状态链。
+`authoring_status`, the profile-registered expression readiness status, `evidence_maturity`, and `learning_status` are four independent dimensions and MUST NOT be merged into a single status chain.
 
-例如，一个页面可以同时满足：
+For example, a page MAY simultaneously satisfy:
 
 ```yaml
 authoring_status: reviewed
@@ -17,20 +17,20 @@ evidence_maturity: single-source
 learning_status:
 ```
 
-这表示知识页已经完成写作审阅，但 profile 注册的表达层材料尚未建立，经验性结论仍只有单一来源，用户学习状态未知。
+This means the knowledge page has completed authoring review, but the profile-registered expression-layer material has not yet been built, the empirical conclusion is still supported by only a single source, and the user's learning status is unknown.
 
-文件存在、Wiki link 可解析、外部清单项存在或页面字数较多，都不能自动改变任一状态。
+File existence, a resolvable wiki link, the existence of an external checklist item, or a large page word count MUST NOT automatically change any status.
 
 ### Authoring Status
 
-`authoring_status` 只表示知识文件的写作与质量审阅进度：
+`authoring_status` represents only the authoring and quality-review progress of a knowledge file:
 
-- `unassessed`：旧页面或新纳入范围的页面尚未按当前 Standards 审阅。没有 metadata 的既有页面在 Coverage Ledger 中默认归入此状态。
-- `outline`：只有标题、结构或零散要点，不算内容完成。
-- `drafted`：主要内容已经写入，但事实、公式、链接、来源、profile 表达产物迁移或渲染尚未全面检查。
-- `reviewed`：通过对应 note type 的内容、来源、公式、链接、重复性、格式和必要渲染检查。
+- `unassessed`: an old page, or a page newly brought into scope, not yet reviewed against the current Standards. Existing pages without metadata default to this status in the Coverage Ledger.
+- `outline`: only headings, structure, or scattered points; does not count as completed content.
+- `drafted`: the main content has been written, but facts, formulas, links, sources, profile expression artifact migration, or rendering have not been fully checked.
+- `reviewed`: has passed the content, source, formula, link, duplication, formatting, and required rendering checks for the corresponding note type.
 
-状态转换为：
+The status transitions are:
 
 ```text
 unassessed
@@ -39,30 +39,30 @@ unassessed
  -> reviewed
 ```
 
-发现回归、来源失效或重大结构缺口时，`reviewed` 可以降回 `drafted`。不能因为文件存在、篇幅达到阈值或自动检查通过而直接升级。
+When a regression, source invalidation, or major structural gap is found, `reviewed` MAY be downgraded back to `drafted`. A status MUST NOT be upgraded directly because the file exists, its length reaches a threshold, or automated checks pass.
 
 ### Profile Readiness Status
 
-第四个状态轴的字段、允许值和升级规则由所选 profile 的 `Vocabulary Extensions` 注册，并指向唯一 prose owner。该状态不能从文件存在、链接可解析或其它状态轴自动推断。
+The field, allowed values, and upgrade rules of the fourth status axis are registered by the selected profile's `Vocabulary Extensions` and point to a single prose owner. This status MUST NOT be inferred automatically from file existence, link resolvability, or the other status axes.
 
 ### Learning Status
 
-`learning_status` 属于用户个人学习进度，不由批量知识库建设自动写入：
+`learning_status` belongs to the user's personal learning progress and is not written automatically by bulk knowledge-base building:
 
 - `not-started`
 - `learning`
 - `self-tested`
 - `mastered`
 
-`mastered` 需要口述、自测、实践或用户明确确认。外部进度清单和 `learning_status` 不能用于证明页面写作完成。
+`mastered` requires oral recall, self-testing, practice, or explicit user confirmation. External progress lists and `learning_status` MUST NOT be used to prove that page authoring is complete.
 
 ### Coverage Disposition
 
-`coverage_disposition` 表示页面在当前建设范围中的处理方式：
+`coverage_disposition` represents how a page is handled within the current build scope:
 
-- `required`：当前范围内必须完成；未达到目标状态时阻止 task completion。
-- `optional`：有价值但不阻断当前任务。
-- `deferred`：当前暂缓，必须填写 `deferred_reason`、重新进入条件或目标批次。
-- `excluded`：明确不属于当前任务，必须能回溯到 scope contract。
+- `required`: MUST be completed within the current scope; blocks task completion until the target status is reached.
+- `optional`: valuable but does not block the current task.
+- `deferred`: postponed for now; `deferred_reason`, the re-entry condition, or the target batch MUST be filled in.
+- `excluded`: explicitly not part of the current task; MUST be traceable back to the scope contract.
 
-`next_batch` 用于把未完成页面映射到明确批次，不能只写模糊的“以后补充”。Coverage disposition 的权威汇总保存在 Coverage Ledger；Frontmatter 只是页面本地投影。
+`next_batch` maps unfinished pages to an explicit batch; a vague "fill in later" MUST NOT be the only record. The authoritative summary of coverage disposition is kept in the Coverage Ledger; Frontmatter is only the page-local projection.

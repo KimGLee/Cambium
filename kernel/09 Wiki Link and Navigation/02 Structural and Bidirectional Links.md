@@ -6,21 +6,21 @@
 
 ## Structural Links
 
-核心笔记至少应能导航到：
+A core note SHOULD at minimum be able to navigate to:
 
-- 一个 Parent / Overview。
-- 必要 Prerequisites。
-- 关键 Components 或子概念。
-- 至少一个 Application、Alternative 或 Failure link。
-- 适用时链接至少一个由 `Expression Layer Entry` 注册的 `Expression Layer Artifact`。
+- One Parent / Overview.
+- The necessary Prerequisites.
+- Key Components or sub-concepts.
+- At least one Application, Alternative, or Failure link.
+- Where applicable, at least one `Expression Layer Artifact` registered by the `Expression Layer Entry`.
 
-Source Note 还应链接受影响的 knowledge notes；Research Synthesis 应链接 source set、现有 owners 和建议改变的 graph nodes。Canonical note 不要求列出所有 Source Notes，但关键时效性 claim 必须保留可追溯 evidence link。
+A Source Note SHOULD also link the affected knowledge notes; a Research Synthesis SHOULD link the source set, the existing owners, and the graph nodes it proposes to change. A canonical note is not required to list all Source Notes, but key time-sensitive claims MUST retain a traceable evidence link.
 
-不能机械要求固定链接数量，关系真实性优先。
+A fixed link count MUST NOT be required mechanically; relationship authenticity comes first.
 
 ## Bidirectional Knowledge Flow
 
-推荐关系：
+Recommended relationships:
 
 ```text
 Overview -> Topic
@@ -33,4 +33,4 @@ Canonical Note <-> Expression Layer Artifact
 Cheat Sheet -> Canonical Note
 ```
 
-所选 knowledge host 的 backlinks capability 可以提供反向发现，但关键导航仍应在正文中显式存在。
+The selected knowledge host's backlinks capability MAY provide reverse discovery, but key navigation SHOULD still exist explicitly in the body.

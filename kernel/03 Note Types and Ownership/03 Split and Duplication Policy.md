@@ -5,66 +5,66 @@
 
 ## Purpose
 
-本模块是页面生命周期政策（Split Merge and Retirement Policy）的 canonical owner，覆盖拆分、合并与退役。文件名保持不变以避免断链。
+This module is the canonical owner of the page lifecycle policy (Split Merge and Retirement Policy), covering split, merge, and retirement. The file name stays unchanged to avoid breaking links.
 
 ## When To Split A Note
 
-满足以下情况时考虑拆分：
+Consider splitting when the following apply:
 
-- 子主题被多个页面复用。
-- 子主题有独立机制、公式、生命周期或失败模式。
-- 当前页面因解释该子主题而偏离主线。
-- 子主题能产生独立的学习问题或所选 profile 注册的表达问题。
-- 拆分后仍能通过明确承接关系保持连贯。
-- 新来源揭示了多个具有不同 owner 的独立知识对象。
+- The subtopic is reused by multiple pages.
+- The subtopic has an independent mechanism, formula, lifecycle, or failure mode.
+- The current page drifts off its mainline because it explains this subtopic.
+- The subtopic can generate independent learning questions or expression questions registered by the selected profile.
+- After the split, coherence can still be maintained through an explicit continuation relationship.
+- A new source reveals multiple independent knowledge objects with different owners.
 
 ## When Not To Split
 
-- 只有一句普通定义。
-- 只在当前页面使用。
-- 拆分后新页面只有两三句话。
-- 子主题必须依赖当前页面上下文才能理解。
-- 只是为了增加图谱节点或文件数量。
-- 只是某篇文章使用的临时标签，尚未证明具有稳定、可复用含义。
+- Only one ordinary definition sentence.
+- Used only on the current page.
+- The new page would contain only two or three sentences after the split.
+- The subtopic can only be understood by depending on the current page's context.
+- The split is only to increase graph nodes or file count.
+- It is only a temporary label used by one article and has not yet been shown to have a stable, reusable meaning.
 
 ## Duplication Policy
 
-允许重复：
+Duplication is allowed:
 
-- 为保证段落可读而提供的一句上下文解释。
-- 受限长度表达中的最小必要定义。
-- Case Study 中对决策背景的简短复述。
-- Research Synthesis 中为比较来源而提供的最小 claim 摘要。
+- A one-sentence contextual explanation provided to keep a paragraph readable.
+- The minimal necessary definition within a length-limited expression.
+- A brief restatement of decision background in a Case Study.
+- A minimal claim summary in a Research Synthesis for comparing sources.
 
-不允许重复：
+Duplication is not allowed:
 
-- 多个页面复制同一整段机制说明。
-- 多个 profile 表达产物保存同一个完整答案。
-- Roadmap 或 Cheat Sheet 重新撰写知识页正文。
-- 通过改名制造实际相同的概念页。
+- Multiple pages copying the same full mechanism explanation.
+- Multiple profile expression artifacts storing the same complete answer.
+- A Roadmap or Cheat Sheet rewriting the body of a knowledge page.
+- Creating effectively identical concept pages by renaming.
 
 ## Retirement
 
-退役不删除文件：
+Retirement does not delete files:
 
-- Frontmatter 设置 `lifecycle: retired`。
-- 正文顶部加入 tombstone 块：退役原因、退役日期、`superseded_by` 链接指向接替页；没有接替页时说明原因。
-- 从 coverage 的 Required 集合移除。
-- 退役 gate 硬条件：先运行 `Tools/check_links.py` 找出全部入链，并逐条改指到接替页，之后才能退役。
-- 高入度页面退役的入链改指工作，按所选 profile 未覆写时的内核默认值“改指数 ÷ 6”折算为页数计入维护轮预算（规则 owner：[[kernel/00 Standards Control/02 Task Routing and Pre-execution|00/02]] Maintenance Run Envelope，此处引用）；profile 可以显式覆写该折算参数。
+- Set `lifecycle: retired` in the frontmatter.
+- Add a tombstone block at the top of the body: retirement reason, retirement date, a `superseded_by` link pointing to the successor page; when there is no successor page, state the reason.
+- Remove the page from the Required set of coverage.
+- Hard condition of the retirement gate: first run `Tools/check_links.py` to find all incoming links and retarget each one to the successor page; only then may the page be retired.
+- For retiring high in-degree pages, the incoming-link retargeting work is converted into a page count at the kernel default of "retargeted-link count ÷ 6" when the selected profile has not overridden it, and counted against the maintenance run budget (rule owner: [[kernel/00 Standards Control/02 Task Routing and Pre-execution|00/02]] Maintenance Run Envelope, referenced here); a profile MAY explicitly override this conversion parameter.
 
 ## Merge
 
-- 处置优先序：确认重复后，**合并义务优先**于其它处置；不得以授权缺失为由搁置已确认的重复。
-- 被并页按 Retirement 的 tombstone 与入链改指流程处理，`superseded_by` 指向合并后页面。
-- 合并后页面必须吸收被并页的独有内容与 Sources，不得静默丢弃。
-- 被并页含无法确认来源的修改时：独有内容一律全部吸收进 canonical 页，并在 tombstone 中记录来源不明段落的原文位置与吸收去向——保全的是内容，而非保留页面本身。
-- 合并与退役不需要逐条 governance 授权；仅**物理删除文件**需要 governance 授权。
+- Disposition precedence: once duplication is confirmed, the **merge obligation takes precedence** over other dispositions; confirmed duplication MUST NOT be shelved on the grounds of missing authorization.
+- The absorbed page is handled through the Retirement tombstone and incoming-link retargeting process, with `superseded_by` pointing to the merged page.
+- The merged page MUST absorb the absorbed page's unique content and Sources; silent discarding is prohibited.
+- When the absorbed page contains changes whose source cannot be confirmed: absorb all unique content into the canonical page without exception, and record in the tombstone the original location of the source-unclear passages and where they were absorbed — what is preserved is the content, not the page itself.
+- Merge and retirement do not require item-by-item governance authorization; only **physical deletion of files** requires governance authorization.
 
 ## Downgrade And Subtree Deprecation
 
-- priority 下调不走退役流程，把理由记入 Ledger 即可。
-- 整个技术分支过时时，按依赖顺序自底向上批量退役，作为维护批次的一种类型执行。
+- Lowering priority does not go through the retirement process; recording the reason in the Ledger is sufficient.
+- When an entire technology branch becomes obsolete, retire it in batches bottom-up in dependency order, executed as one type of maintenance batch.
 
 ## Related
 

@@ -6,10 +6,10 @@
 
 ## Source Note And Research Synthesis Depth
 
-Source Note 的深度来自忠实性和证据边界，不要求扩写成完整教材。Source Note 和 Research Synthesis 不通过字数判断深度，而通过 claim coverage、来源边界和 graph impact 是否清楚判断。结构模板的 canonical 定义见 [[kernel/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles|06/04]]。
+The depth of a Source Note comes from faithfulness and evidence boundary; expanding it into a complete textbook is not required. Depth for Source Note and Research Synthesis is not judged by word count, but by whether claim coverage, source boundary, and graph impact are clear. The canonical definition of the structure templates is in [[kernel/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles|06/04]].
 
 ## Evaluation Provenance Depth
 
-出现 Accuracy、success rate、pass rate、benchmark improvement 或生产效果数字时，正文必须能够回答完整的测量链路；要素清单的 canonical 定义见 [[kernel/07 Sources and Accuracy/04 Evaluation and Source Quality|07/04]]。
+When Accuracy, success rate, pass rate, benchmark improvement, or production-effect numbers appear, the body MUST be able to answer the complete measurement path; the canonical definition of the element checklist is in [[kernel/07 Sources and Accuracy/04 Evaluation and Source Quality|07/04]].
 
-只解释指标公式而不解释测量链路，不能视为讲清了系统效果。
+Explaining only the metric formula without explaining the measurement path MUST NOT be treated as having explained the system's effect clearly.

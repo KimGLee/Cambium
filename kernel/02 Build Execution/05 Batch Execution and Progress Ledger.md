@@ -6,71 +6,71 @@
 
 ## Batch Policy
 
-每个 batch 应是一个可独立验收的小模块，而不是任意数量的文件。
+Each batch SHOULD be a small module that can be accepted independently, not an arbitrary number of files.
 
-一个 batch 至少完成：
+A batch completes at least:
 
-1. Canonical notes。
-2. 本批 delta 写出：页面状态、缺口与 next batch 更新经 delta 进入 Coverage Ledger；Progress Ledger 与 `Tools/state/watermark.yaml` 由 integrator 在合并时更新，来源或维护批次把水位线推进值写入 delta 的 `watermark_advance` 字段。
+1. Canonical notes.
+2. This batch's delta written out: page status, gaps, and next-batch updates enter the Coverage Ledger via the delta; the Progress Ledger and `Tools/state/watermark.yaml` are updated by the integrator at merge time, and source or maintenance batches write the watermark advance value into the delta's `watermark_advance` field.
 
-batch 关闭的验收清单以 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Batch Review|12/03 Batch Review]] 为准；批内项在 `merge-ready` 前完成，全局项在串行合并时核验。
+The batch-close acceptance checklist is governed by [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Batch Review|12/03 Batch Review]]; in-batch items are completed before `merge-ready`, and global items are verified at serial merge.
 
-批次规模按主导档位分级：S 档 ≤24 页、M 档 ≤10 页、L 档 ≤6 页；混合批按其中最高档的上限执行。24 / 10 / 6 是 kernel defaults；所选 profile 可以在 manifest 中显式覆写，运行时必须加载并记录解析后的上限。
+Batch size is tiered by the dominant tier: tier S ≤24 pages, tier M ≤10 pages, tier L ≤6 pages; a mixed batch follows the cap of the highest tier among them. 24 / 10 / 6 are kernel defaults; the selected profile MAY explicitly override them in the manifest, and the resolved caps MUST be loaded and recorded at runtime.
 
-不允许只批量创建文件名和 headings 后把整个 batch 标记完成。
+Bulk-creating only file names and headings and then marking the whole batch complete is not allowed.
 
 ## Concurrent Batches
 
-批次默认可并发执行，上限由 contract 的 `concurrency_cap` 字段控制；`3` 是 kernel default，所选 profile manifest 或 task contract 可显式覆写，运行时必须记录解析后的上限。批次 B 可在其它批次 active 时激活，当且仅当同时满足：
+Batches may execute concurrently by default; the cap is controlled by the contract's `concurrency_cap` field. `3` is the kernel default; the selected profile manifest or task contract MAY explicitly override it, and the resolved cap MUST be recorded at runtime. Batch B MAY be activated while other batches are active, if and only if all of the following hold:
 
-1. B 的页面清单与所有 active 批次的清单不相交；integrator 在激活时按 Coverage `next_batch` 判定。
-2. B 不编辑枢纽页，包括 MOC、Overview、共享术语页，以及由 `Runtime Card Provider`、`Expression Layer Entry` 或其它 profile-registered hub roles 绑定的页面。枢纽页同步由 integrator 在该批串行合并完成后、下一批合并开始前作为独立小步执行；该内容编辑动作不属于串行区的确定性动作清单。
-3. B 的依赖前置全部位于已合并的批次中，不依赖在途批次的页面。
+1. B's page manifest is disjoint from the manifests of all active batches; the integrator determines this at activation per Coverage `next_batch`.
+2. B does not edit hub pages, including MOCs, the Overview, shared terminology pages, and pages bound by the `Runtime Card Provider`, the `Expression Layer Entry`, or other profile-registered hub roles. Hub page synchronization is performed by the integrator as a separate small step after that batch's serial merge completes and before the next batch's merge begins; this content-editing action is not part of the serial zone's deterministic action list.
+3. All of B's prerequisites are located in already-merged batches; B does not depend on pages of in-flight batches.
 
-迁移或重构批次必然编辑枢纽页与跨批页面，不满足并发准入，必须独占执行；迁移批 active 期间不激活其它批次。
+Migration or refactor batches necessarily edit hub pages and cross-batch pages, do not meet concurrency admission, and MUST execute exclusively; while a migration batch is active, no other batch is activated.
 
-写入权分区：并发批次只写三处——自己清单内的页面、自己的 receipts 目录、自己的增量文件 `Machine State/Deltas/<batch>.yaml`，其 schema 见 `Tools/schemas/coverage_delta.template.yaml`。Coverage Ledger、Progress Ledger、Required Queue、Amendment Log 与 watermark 仅 integrator 可写。
+Write partition: a concurrent batch writes only three places — the pages in its own manifest, its own receipts directory, and its own delta file `Machine State/Deltas/<batch>.yaml`, whose schema is at `Tools/schemas/coverage_delta.template.yaml`. The Coverage Ledger, Progress Ledger, Required Queue, Amendment Log, and watermark are writable only by the integrator.
 
-关批分为两个阶段：批内工作并行完成后，批次进入 `merge-ready`；批内工作包括写作、`--scope` 自查、复核回执到齐、12/03 批内项完成与 delta 写出。随后 integrator 逐个串行合并，只执行确定性动作与全局核验：经 `Tools/apply_delta.py` 应用 delta、对合并后的完整快照运行 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|Batch-close Closed List]]、核验 12/03 全局项、产出 gate receipts 并关闭。每次串行合并只处理一个批次。
+Batch close has two phases: after in-batch work completes in parallel, the batch enters `merge-ready`; in-batch work includes writing, the `--scope` self-check, all review receipts present, completion of the 12/03 in-batch items, and the delta written out. The integrator then merges batches serially one by one, performing only deterministic actions and global verification: apply the delta via `Tools/apply_delta.py`, run the [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|Batch-close Closed List]] against the merged full snapshot, verify the 12/03 global items, produce gate receipts, and close. Each serial merge handles exactly one batch.
 
-串行区已知例外保留显式登记机制，当前登记为空。
+Known exceptions to the serial zone keep an explicit registration mechanism; the current register is empty.
 
-控制面始终由 integrator 单线程执行，包括 guidance 处置、queue 修订、contract 变更、标准 adoption、批次激活与合并。停滞报警按批各自计时。
+The control plane is always executed single-threaded by the integrator, including guidance disposition, queue revision, contract changes, standards adoption, batch activation, and merging. Stall alarms are timed per batch.
 
 ## Source-driven Expansion Batch
 
-从一手或厂商来源、论文、postmortem 或社区讨论扩展知识库时，batch 必须遵循 [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]：来源驱动批次必须完整走 [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] 的全部阶段（Stage 1–10）。
+When expanding the knowledge base from primary or vendor sources, papers, postmortems, or community discussions, the batch MUST follow the [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]: a source-driven batch MUST run all stages (Stage 1–10) of the [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] in full.
 
-来源 batch 可以产生零个、一个或多个 canonical notes。
+A source batch MAY produce zero, one, or multiple canonical notes.
 
 ## Progress Ledger
 
-超长任务需要单独记录：
+An ultra-long task requires separate records of:
 
-- Task state。
-- Objective、contract version、scope version、queue revision、active batch revision、exclusions 和 standards version。
-- Selected Runtime Card IDs 与 Read Sets、loaded set（`Runtime Card Provider` 解析的 artifacts 与升级回读的 module paths）、版本解析结果和 pending gate 项。
-- `minimum_run_until`、`checkpoint_at`、`hard_stop_at`。
-- Current phase。
-- Active batches（≤ `concurrency_cap`）、merge 队列和 ordered Required Queue。
-- Completed files。
-- Coverage counts by authoring status and disposition。
-- Batch review status。
-- Audit snapshot、AuditPlan、receipt register reference、reused / superseded / invalidated receipts、unresolved invalidations 和 systemic expansion。
-- Evidence maturity and source review status。
-- Link and rendering checks。
-- Open questions。
-- Known gaps。
-- Deferred signals、contested claims 和 superseded conclusions。
-- Next dependency。
-- Amendment Log、pending guidance 和 last reconciled guidance ID。
-- Last accepted checkpoint。
-- Terminal Audit status 和 Terminal Proof。
+- Task state.
+- Objective, contract version, scope version, queue revision, active batch revision, exclusions, and standards version.
+- Selected Runtime Card IDs and Read Sets, the loaded set (artifacts resolved by the `Runtime Card Provider` and module paths read back on escalation), version resolution results, and pending gate items.
+- `minimum_run_until`, `checkpoint_at`, `hard_stop_at`.
+- Current phase.
+- Active batches (≤ `concurrency_cap`), the merge queue, and the ordered Required Queue.
+- Completed files.
+- Coverage counts by authoring status and disposition.
+- Batch review status.
+- Audit snapshot, AuditPlan, receipt register reference, reused / superseded / invalidated receipts, unresolved invalidations, and systemic expansion.
+- Evidence maturity and source review status.
+- Link and rendering checks.
+- Open questions.
+- Known gaps.
+- Deferred signals, contested claims, and superseded conclusions.
+- Next dependency.
+- Amendment Log, pending guidance, and last reconciled guidance ID.
+- Last accepted checkpoint.
+- Terminal Audit status and Terminal Proof.
 
-进度以质量状态为准，不以累计创建文件数为准。
+Progress is measured by quality state, not by the cumulative count of created files.
 
-Progress Ledger 不能使用 profile-registered hub checkbox 或用户 `learning_status` 计算建设进度。页面写作完成、Expression Layer coverage and readiness、证据成熟度和个人学习进度必须分别汇总。
+The Progress Ledger cannot use profile-registered hub checkboxes or the user's `learning_status` to compute build progress. Page writing completion, Expression Layer coverage and readiness, evidence maturity, and personal learning progress MUST be summarized separately.
 
 ## Machine-readable Ledger
 
-Progress Ledger 的 canonical 形态为 YAML，schema 见 `Tools/schemas/progress_ledger.template.yaml`，只允许模板头注释声明的受限子集语法。markdown 散文视图可选、由 YAML 派生，不作为对账依据。恢复任务时直接加载 YAML Ledger（连同 Coverage Ledger），而不是重读散文 checkpoint。
+The canonical form of the Progress Ledger is YAML; the schema is at `Tools/schemas/progress_ledger.template.yaml`, and only the restricted subset syntax declared in the template header comment is allowed. A markdown prose view is optional, derived from the YAML, and not a basis for reconciliation. When resuming a task, load the YAML Ledger directly (together with the Coverage Ledger) instead of re-reading a prose checkpoint.

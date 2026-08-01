@@ -5,44 +5,44 @@
 
 ## Physical Folder Policy
 
-逻辑上属于某一层，不代表必须立即移动现有文件。
+Belonging logically to a layer does not mean existing files must be moved immediately.
 
-目录迁移必须满足：
+A directory migration MUST satisfy:
 
-1. 新 ownership 已明确。
-2. 所有 incoming links 已盘点。
-3. 新路径不会产生同名歧义。
-4. Overview、Roadmap 和 graph group 可以同步更新。
-5. 迁移所在批次关闭的 Batch-close Closed List（[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）覆盖全库链接验证。
+1. The new ownership is explicit.
+2. All incoming links have been inventoried.
+3. The new path does not create same-name ambiguity.
+4. The Overview, Roadmap, and graph group can be updated in sync.
+5. The Batch-close Closed List of the batch in which the migration closes ([[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]) covers knowledge-base-wide link verification.
 
-禁止为了目录看起来整齐而进行没有知识收益的大规模移动。
+Large-scale moves with no knowledge benefit, made only so directories look tidy, MUST NOT be performed.
 
 ## Shared Ownership Rule
 
-一个概念的归属由“最低合理公共层”决定：
+A concept's placement is decided by the "lowest reasonable common layer":
 
-- 只服务单一领域：放在该领域。
-- 多领域复用且有自然基础归属：放在所选 profile 注册的 `Shared Foundation Layer`。
-- 生产系统通用：放在所选 profile 注册的 `Production Systems Layer`。
-- 只满足所选 profile 注册的 `Expression Layer Predicate`：放在所选 profile 注册的 `Expression Layer`。
-- 只描述案例中的使用方式：放在所选 profile 注册的 `Case Study Layer`，但定义仍回链 canonical note。
-- 只记录单一外部来源：放在所选 profile 注册的 `Source Note Layer`，不拥有通用结论。
-- 综合多个来源但结论仍在形成：放在所选 profile 注册的 `Research Synthesis Layer`，不提前伪装成稳定定义。
+- Serves a single domain only: place it in that domain.
+- Reused across domains with a natural foundational home: place it in the `Shared Foundation Layer` registered by the selected profile.
+- Generic to production systems: place it in the `Production Systems Layer` registered by the selected profile.
+- Satisfies only the `Expression Layer Predicate` registered by the selected profile: place it in the `Expression Layer` registered by the selected profile.
+- Describes only its usage within a case: place it in the `Case Study Layer` registered by the selected profile, but the definition still links back to the canonical note.
+- Records only a single external source: place it in the `Source Note Layer` registered by the selected profile; it does not own general conclusions.
+- Synthesizes multiple sources but conclusions are still forming: place it in the `Research Synthesis Layer` registered by the selected profile; it does not prematurely pose as a stable definition.
 
 ## Architecture Anti-patterns
 
-- 每出现一个新词就新建顶层文件夹。
-- 同一概念在多个领域目录下分别复制一份。
-- Roadmap、Cheat Sheet 和主题页都保存同一段解释。
-- 把所有共享概念丢进一个无分类的 Glossary。
-- 先移动文件，再考虑引用和 ownership。
-- 用图谱颜色代替真实的知识层级设计。
-- 为突出某个应用主线而删除或过度压缩它依赖的基础层。
-- 按文章标题建立 canonical note，未经过 claim extraction 和 graph impact 判断。
+- Creating a new top-level folder for every new term that appears.
+- Copying the same concept separately into multiple domain directories.
+- The Roadmap, Cheat Sheet, and topic page all storing the same explanation.
+- Dumping all shared concepts into one uncategorized Glossary.
+- Moving files first, then considering references and ownership.
+- Using graph colors as a substitute for real knowledge-layer design.
+- Deleting or over-compressing the foundation layers an application mainline depends on in order to highlight that mainline.
+- Creating a canonical note from an article title without claim extraction and graph impact judgment.
 
 ## Related
 
 - [[kernel/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]
 - [[kernel/05 Terminology Standard|Terminology Standard]]
-- 所选 profile 注册的 `Expression Layer Entry`
+- The `Expression Layer Entry` registered by the selected profile
 - [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]

@@ -1,10 +1,10 @@
 ## Purpose
 
-用于批量移动、重命名、拆分、合并或重构目录，同时保护用户修改、canonical ownership、incoming links 和恢复边界。
+Used for bulk moving, renaming, splitting, merging, or restructuring directories, while protecting user modifications, canonical ownership, incoming links, and recovery boundaries.
 
 ## Start
 
-先读取 [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
+First read [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]], then read:
 
 - [[kernel/02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]]
 - [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
@@ -15,13 +15,13 @@
 - [[kernel/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - [[kernel/09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]]
 
-迁移前必须建立 source path、target path、incoming links、heading anchors、content owner 和 rollback boundary 清单。迁移批次必须独占执行，不与其它批次并发（[[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches）。
+Before migration, a manifest of source paths, target paths, incoming links, heading anchors, content owners, and the rollback boundary MUST be established. Migration batches MUST run in exclusive execution, not concurrently with other batches ([[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches).
 
 ## Triggered
 
-- 多批次迁移：组合 [[kernel/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]。
-- 内容 owner 同时变化：读取 [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]。
-- Standards 本身变化：组合 [[kernel/Read Sets/09 Standards Governance Read Set|Standards Governance]]。
+- Multi-batch migration: combine [[kernel/Read Sets/07 Long-running Execution Read Set|Long-running Execution]].
+- Content owners change at the same time: read [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]].
+- The Standards themselves change: combine [[kernel/Read Sets/09 Standards Governance Read Set|Standards Governance]].
 
 ## Gate
 

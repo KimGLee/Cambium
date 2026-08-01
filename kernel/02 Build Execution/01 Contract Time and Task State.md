@@ -5,9 +5,9 @@
 
 ## Purpose
 
-本标准规定超长知识库建设任务如何规划、执行、验证和恢复，防止一次性铺设大量空壳页面、后期失去一致性或中断后重复工作。
+This standard specifies how ultra-long knowledge base build tasks are planned, executed, verified, and resumed, preventing mass up-front creation of empty-shell pages, later loss of consistency, or repeated work after interruption.
 
-本文件只管理“建设知识库的长任务”，不定义部署运行主体自身如何执行长任务。所选知识主线中的 long-horizon reliability、checkpoint、context continuity 和 execution recovery，由所选 profile 注册的 `Profile Scope` 提供具体角色与 canonical knowledge 路由。
+This document governs only "long tasks that build the knowledge base"; it does not define how the deployed runtime agent itself executes long tasks. Long-horizon reliability, checkpoint, context continuity, and execution recovery within the selected knowledge mainline are provided, with concrete roles and canonical knowledge routing, by the `Profile Scope` registered by the selected profile.
 
 ## Core Execution Principle
 
@@ -25,45 +25,45 @@ Every in-scope page must have an explicit disposition.
 
 ## Phase 0: Freeze The Contract
 
-正式执行前确认：
+Before formal execution, confirm:
 
-- 目标岗位和知识边界。
-- 所选 `Profile Scope` 注册的组织主线，以及基础知识必须完整保留的约束。
-- 排除范围。
-- 顶层目录和 ownership。
-- Note type、depth、metadata 和语言规范。
-- 所选 `Expression Layer Entry` 注册的表达产物拆分方式。
-- Sources、图表和质量门槛。
-- Source-to-knowledge intake、evidence maturity 和 canonical promotion 方式。
-- Contract version、scope version、queue revision、initial batch revision 和 Standards version。
-- 并发批次上限 `concurrency_cap`（kernel 默认值为 `3`；所选 profile manifest 或 task contract 可显式覆写）；批次并发准入与合并规则见 [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches。
-- Selected Runtime Card IDs 与 Read Sets、实际 loaded set（`Runtime Card Provider` 解析的 artifacts 与升级回读的 module paths）、triggered 项和尚未执行的 gate 项。
-- 允许修改 scope、priority、batch 和 Standards 的 authority。
-- `minimum_run_until`、`checkpoint_at`、`hard_stop_at` 和 Completion Gate。
-- Pause、cancel、block 和 resume 的处理方式。
-- Mid-task guidance 的记录、acknowledgement、safe switching 和 amendment policy。
-- Required、optional、deferred 和 excluded coverage 的判定方式。
+- The target role and knowledge boundaries.
+- The organizing mainline registered by the selected `Profile Scope`, and the constraint that foundational knowledge MUST be preserved in full.
+- The excluded scope.
+- Top-level directories and ownership.
+- Note type, depth, metadata, and language conventions.
+- The expression-artifact split registered by the selected `Expression Layer Entry`.
+- Sources, diagrams, and quality gates.
+- The source-to-knowledge intake, evidence maturity, and canonical promotion approach.
+- Contract version, scope version, queue revision, initial batch revision, and Standards version.
+- The concurrent batch cap `concurrency_cap` (the kernel default is `3`; the selected profile manifest or task contract MAY explicitly override it); batch concurrency admission and merge rules are in [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches.
+- Selected Runtime Card IDs and Read Sets, the actual loaded set (artifacts resolved by the `Runtime Card Provider` and module paths read back on escalation), triggered items, and gate items not yet executed.
+- The authority allowed to modify scope, priority, batches, and Standards.
+- `minimum_run_until`, `checkpoint_at`, `hard_stop_at`, and the Completion Gate.
+- Handling of pause, cancel, block, and resume.
+- The recording, acknowledgement, safe switching, and amendment policy for mid-task guidance.
+- How Required, optional, deferred, and excluded coverage is determined.
 
-标准未确认前，不进行大规模迁移。
+Before the standards are confirmed, no large-scale migration is performed.
 
-任务开始后冻结 `standards_version`。内容建设过程中不得顺手修改 Standards；只有用户明确授权的 governance change 才能修改。Standards 变更后必须提升版本，并按修订记录的 changed-predicate 清单执行 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] Active-task Adoption（清单为空即 no-op）。
+Freeze `standards_version` once the task starts. The Standards MUST NOT be modified in passing during content build; only a governance change explicitly authorized by the user may modify them. After a Standards change, the version MUST be bumped, and [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] Active-task Adoption MUST be executed per the changed-predicate list of the revision record (an empty list is a no-op).
 
 ## Time And Stop Semantics
 
-时间字段必须使用明确语义，不能统一写成含义模糊的“截止时间”：
+Time fields MUST use explicit semantics; they cannot all be written as an ambiguous "deadline":
 
-- `minimum_run_until`：在此时间前不得主动停止。达到该时间只解除最早停止限制，不表示任务完成。
-- `checkpoint_at`：在该时间记录进度、重新验证计划或向用户汇报；任务默认继续。
-- `hard_stop_at`：到达该时间必须停止执行并写入 checkpoint。若 Completion Gate 未通过，状态必须是 `paused`，不能写成 `complete`。
-- `completion_gate`：与时间无关的质量和覆盖条件，定义真正完成需要哪些证据。
+- `minimum_run_until`: MUST NOT voluntarily stop before this time. Reaching this time only lifts the earliest-stop restriction; it does not mean the task is complete.
+- `checkpoint_at`: at this time, record progress, re-verify the plan, or report to the user; the task continues by default.
+- `hard_stop_at`: on reaching this time, execution MUST stop and a checkpoint MUST be written. If the Completion Gate has not passed, the state MUST be `paused` and cannot be written as `complete`.
+- `completion_gate`: quality and coverage conditions independent of time, defining what evidence true completion requires.
 
-当用户说“某时间之前不允许停止”时，必须记录为 `minimum_run_until`。当用户说“某时间停止”时，才记录为 `hard_stop_at`。语义不明确时必须在大规模执行前解决歧义。
+When the user says "no stopping before some time", it MUST be recorded as `minimum_run_until`. Only when the user says "stop at some time" is it recorded as `hard_stop_at`. When the semantics are unclear, the ambiguity MUST be resolved before large-scale execution.
 
-没有 `hard_stop_at` 时，任务持续到 Completion Gate 通过、用户暂停或取消、或者出现真实 blocker。达到 `minimum_run_until` 后仍有 Required gaps 时必须继续。
+Without a `hard_stop_at`, the task continues until the Completion Gate passes, the user pauses or cancels, or a real blocker appears. When Required gaps remain after reaching `minimum_run_until`, the task MUST continue.
 
 ## Task State Machine
 
-长任务状态只记录在 task Progress Ledger，不使用知识页的 `authoring_status` 表达：
+Long-task state is recorded only in the task Progress Ledger; it is not expressed via the `authoring_status` of knowledge pages:
 
 ```text
 planned
@@ -77,12 +77,12 @@ completion-candidate -> active
 planned / active / paused / blocked / completion-candidate -> cancelled
 ```
 
-- `planned`：contract、scope 或 inventory 尚未满足执行门槛。
-- `active`：正在执行或已经确定下一 Required batch。
-- `paused`：任务未完成，但因用户要求、`hard_stop_at`、运行中断或显式 checkpoint 暂停；必须保存恢复信息。
-- `blocked`：存在无法在当前环境中解决的外部依赖，且没有其它 Required work 可以推进。
-- `completion-candidate`：执行者认为范围已满足，等待 Terminal Audit。
-- `complete`：Terminal Audit 产生有效 Terminal Proof。
-- `cancelled`：用户明确终止当前 contract；不代表知识范围完成。
+- `planned`: the contract, scope, or inventory has not yet met the execution threshold.
+- `active`: executing, or the next Required batch has been determined.
+- `paused`: the task is not complete but is paused due to user request, `hard_stop_at`, a run interruption, or an explicit checkpoint; resume information MUST be saved.
+- `blocked`: an external dependency exists that cannot be resolved in the current environment, and no other Required work can proceed.
+- `completion-candidate`: the executor believes the scope is satisfied and awaits the Terminal Audit.
+- `complete`: the Terminal Audit has produced a valid Terminal Proof.
+- `cancelled`: the user has explicitly terminated the current contract; it does not mean the knowledge scope is complete.
 
-`paused`、`blocked`、`cancelled` 和 `complete` 必须区分。运行环境结束、没有正在编辑的文件、达到时间点或 `In-progress batch: None` 都不能自动产生 `complete`。
+`paused`, `blocked`, `cancelled`, and `complete` MUST be distinguished. The runtime environment ending, no files being under edit, reaching a point in time, or `In-progress batch: None` cannot automatically produce `complete`.

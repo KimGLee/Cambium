@@ -6,39 +6,39 @@
 
 ## Mid-task Guidance And Contract Amendment
 
-长任务执行中，用户新增的看法、纠正、主题、优先级、来源线索、格式偏好或停止指令统称为 `Guidance Event`。Guidance Event 必须被保留、分类和处置，不能只依赖当前上下文记忆，也不能未经判断就直接写入 canonical knowledge。
+During long-task execution, opinions, corrections, topics, priorities, source leads, format preferences, or stop instructions newly added by the user are collectively called `Guidance Event`s. Guidance Events MUST be preserved, classified, and dispositioned; they cannot rely solely on current context memory, nor be written directly into canonical knowledge without judgment.
 
-**重要 Guidance Event** 指改变目标、范围、验收、优先级或内容判断的消息；本页与 [[kernel/12 Quality Assurance/04 Guidance and Source Review|12/04]] 的处置义务均以此门槛为准。纯状态询问或确认类消息记一行 log，不占 guidance_id、不进入 Amendment Log。
+An **important Guidance Event** is a message that changes objective, scope, acceptance, priority, or content judgment; the disposition obligations of both this page and [[kernel/12 Quality Assurance/04 Guidance and Source Review|12/04]] use this threshold. Pure status inquiries or confirmation messages get a one-line log entry, do not consume a guidance_id, and do not enter the Amendment Log.
 
 ### Cumulative Amendment Rule
 
-最新用户指令具有最高 task authority，但它默认只修改明确涉及的 contract 维度：
+The latest user instruction has the highest task authority, but by default it modifies only the contract dimensions it explicitly touches:
 
-- 新增主题不自动取消原 scope。
-- 调整优先级不自动降低原 acceptance criteria。
-- 表达个人看法不自动成为知识事实。
-- 提供来源线索不自动证明来源中的 claim。
-- 修改图表偏好不自动要求重写所有历史页面。
-- 与旧要求不冲突的 constraints 继续有效。
+- Adding a topic does not automatically cancel the original scope.
+- Adjusting priority does not automatically lower the original acceptance criteria.
+- Expressing a personal opinion does not automatically become a knowledge fact.
+- Providing a source lead does not automatically prove the claims in the source.
+- Changing a diagram preference does not automatically require rewriting all historical pages.
+- Constraints that do not conflict with old requirements remain in effect.
 
-只有新旧要求在同一维度直接冲突时，最新明确指令才覆盖旧值。高影响歧义无法从上下文可靠解决时，将相关 guidance 标记为 `clarification-required`，暂停受影响动作，同时继续不受影响的 Required work。
+Only when new and old requirements conflict directly on the same dimension does the latest explicit instruction override the old value. When a high-impact ambiguity cannot be reliably resolved from context, mark the relevant guidance `clarification-required`, pause the affected actions, and continue unaffected Required work.
 
 ### Guidance Classification
 
 | Guidance Type | Example | Default Route |
 |---|---|---|
-| Operational control | 暂停、停止、持续到某时间、立即切换 | 更新 task state 或 time contract |
-| Scope amendment | 增加索引策略、会话状态策略或新领域 | 更新 scope version 和 Coverage Ledger |
-| Priority or sequence | 先做主题甲，再做主题乙 | 更新 queue revision |
-| Acceptance or quality feedback | 核心处理流程没有讲清 | 触发定向审计，确认后登记 gap |
-| Presentation preference | 流程图改为横向 | 更新当前 batch constraint；可复用时评估 Standards amendment |
-| Knowledge hypothesis | 某主题是当前行业热点 | 记录为 research signal，进入证据调查 |
-| Source lead | 上游提供方甲或乙有相关文章 | 进入 source capture 和 claim extraction |
-| Correction | 当前定义、公式或系统链路可能错误 | 评估传播范围，必要时立即中断修正 |
-| Project or first-party context | 用户描述自己的系统、指标或事故 | 保留为有边界的 first-party context，不泛化为行业事实 |
-| Governance candidate | 以后所有流程图都不能牺牲完整性 | 只有用户明确授权后才修改 Standards |
+| Operational control | Pause, stop, run until some time, switch immediately | Update task state or time contract |
+| Scope amendment | Add an indexing strategy, a session-state strategy, or a new domain | Update scope version and Coverage Ledger |
+| Priority or sequence | Do topic A first, then topic B | Update queue revision |
+| Acceptance or quality feedback | The core processing flow is not explained clearly | Trigger a targeted audit; register a gap once confirmed |
+| Presentation preference | Change flowcharts to horizontal | Update the current batch constraint; when reusable, evaluate a Standards amendment |
+| Knowledge hypothesis | Some topic is a current industry hotspot | Record as a research signal; enter evidence investigation |
+| Source lead | Upstream provider A or B has a relevant article | Enter source capture and claim extraction |
+| Correction | The current definition, formula, or system chain may be wrong | Assess the propagation scope; interrupt and correct immediately if necessary |
+| Project or first-party context | The user describes their own system, metrics, or incidents | Preserve as bounded first-party context; do not generalize into industry fact |
+| Governance candidate | From now on no flowchart may sacrifice completeness | Modify the Standards only after explicit user authorization |
 
-同一 Guidance Event 可以同时属于多类。例如“某主题是行业热点，需要优先补全”同时是 scope amendment、priority change 和 research signal。
+The same Guidance Event MAY belong to multiple types at once. For example, "some topic is an industry hotspot and needs to be completed first" is simultaneously a scope amendment, a priority change, and a research signal.
 
 ### Intake And Impact Analysis
 
@@ -56,56 +56,56 @@ Receive Guidance
  -> Verify And Close
 ```
 
-Impact analysis 至少检查：
+Impact analysis checks at least:
 
-- 是否改变 objective、scope、exclusions、acceptance、time 或 Standards。
-- 是否影响当前 batch 的有效性和已写内容。
-- 是否暴露新的 prerequisite、canonical owner 或跨模块依赖。
-- 是否需要 source intake、external verification 或 evidence maturity 限定。
-- 是否改变 Required / optional / deferred disposition。
-- 是否需要回查已经关闭的页面或 batch（仅当 guidance 为 correction 类且明确指向已关闭对象时）。
-- 是否改变 Completion Gate 或预计的 Terminal Audit scope。
+- Whether it changes the objective, scope, exclusions, acceptance, time, or Standards.
+- Whether it affects the validity of the current batch and content already written.
+- Whether it exposes new prerequisites, canonical owners, or cross-module dependencies.
+- Whether it requires source intake, external verification, or evidence maturity qualification.
+- Whether it changes the Required / optional / deferred disposition.
+- Whether it requires re-checking already-closed pages or batches (only when the guidance is a correction and explicitly targets closed objects).
+- Whether it changes the Completion Gate or the expected Terminal Audit scope.
 
 ### Disposition
 
-每条重要 guidance 必须选择一个明确 disposition：
+Each important guidance MUST be given one explicit disposition:
 
-- `interrupt-now`：立即保存一致 checkpoint 并切换。
-- `apply-to-current-batch`：与当前 owner 和 acceptance 一致，可在不扩大 batch 边界的情况下整合。
-- `queue-next`：当前最小可验收单元完成后立即执行。
-- `queue-by-dependency`：加入 Required Queue，由 prerequisite order 决定位置。
-- `research-first`：先做 source inventory、claim extraction 和 gap analysis。
-- `deferred`：暂缓，必须记录原因、re-entry condition 和 authority。
-- `clarification-required`：高影响语义不能可靠判断，等待用户澄清。
-- `superseded`：被后续明确 guidance 替代，并保留替代关系。
-- `not-applicable`：与当前 contract 无关或已被现有工作完整覆盖，必须说明依据。
+- `interrupt-now`: immediately save a consistent checkpoint and switch.
+- `apply-to-current-batch`: consistent with the current owner and acceptance; can be integrated without expanding the batch boundary.
+- `queue-next`: execute immediately after the current smallest acceptable unit completes.
+- `queue-by-dependency`: add to the Required Queue; position determined by prerequisite order.
+- `research-first`: do source inventory, claim extraction, and gap analysis first.
+- `deferred`: postponed; the reason, re-entry condition, and authority MUST be recorded.
+- `clarification-required`: high-impact semantics cannot be reliably judged; await user clarification.
+- `superseded`: replaced by later explicit guidance, with the replacement relationship preserved.
+- `not-applicable`: unrelated to the current contract or already fully covered by existing work; the basis MUST be stated.
 
-不得使用 `deferred` 或 `not-applicable` 静默丢弃用户新增要求。
+`deferred` or `not-applicable` MUST NOT be used to silently drop requirements newly added by the user.
 
 ### Safe Switching Policy
 
-默认在最小安全边界切换，而不是在文件或验证中间留下不一致状态。通常先完成当前原子编辑、保存文件并运行必要的局部检查，再 checkpoint 和重排队列。并发执行时，中断与切换由 integrator 执行：按 Amendment Record 的 `affected_batches` 定位受影响批次，未受影响批次不中断。
+By default, switch at the smallest safe boundary rather than leaving inconsistent state in the middle of a file or a verification. Usually first complete the current atomic edit, save the file, and run the necessary local checks, then checkpoint and re-order the queue. Under concurrent execution, interruption and switching are performed by the integrator: locate the affected batches per the Amendment Record's `affected_batches`; unaffected batches are not interrupted.
 
-以下情况必须立即中断：
+The following cases MUST interrupt immediately:
 
-- 用户明确要求立即停止、暂停或切换。
-- 新 constraint 禁止继续当前动作。
-- 当前工作存在安全、数据完整性或严重事实错误。
-- 新信息使当前 batch 的基础假设失效。
-- 继续执行会扩大错误、覆盖用户修改或产生不可逆副作用。
+- The user explicitly requests an immediate stop, pause, or switch.
+- A new constraint forbids continuing the current action.
+- The current work contains a safety, data-integrity, or serious factual error.
+- New information invalidates the current batch's underlying assumptions.
+- Continuing would enlarge an error, overwrite user modifications, or produce irreversible side effects.
 
-以下情况通常不立即中断：
+The following cases usually do not interrupt immediately:
 
-- 新增一个与当前 batch 无直接依赖的跨领域主题。
-- 只改变后续优先级。
-- 需要先研究来源才能确认的用户 hypothesis。
-- 可在当前原子操作后安全处理的格式或导航要求。
+- Adding a cross-domain topic with no direct dependency on the current batch.
+- Only changing subsequent priorities.
+- A user hypothesis that requires source research before confirmation.
+- Formatting or navigation requirements that can be handled safely after the current atomic operation.
 
-小型、同 owner、同 acceptance 的补充可以进入当前 batch；跨 owner 或跨系统的新主题必须形成独立 vertical slice。不得把持续到来的 guidance 全部塞进当前 batch，造成 batch 无边界扩张。
+Small additions with the same owner and the same acceptance MAY enter the current batch; new topics that cross owners or systems MUST form an independent vertical slice. Continuously arriving guidance MUST NOT all be stuffed into the current batch, causing unbounded batch expansion.
 
 ### Amendment Record
 
-重要 Guidance Event 必须进入 Progress Ledger 的 Amendment Log。记录至少包括：
+Important Guidance Events MUST enter the Amendment Log of the Progress Ledger. The record includes at least:
 
 ```text
 guidance_id
@@ -132,11 +132,11 @@ status
 verification_evidence
 ```
 
-`raw_guidance_summary` 应保留原意，但不复制无关对话或敏感信息。`normalized_intent` 说明执行者如何理解要求。`evidence_role` 区分 user authority、research signal、source lead、first-party context 和 externally verified claim。
+`raw_guidance_summary` SHOULD preserve the original meaning but not copy irrelevant conversation or sensitive information. `normalized_intent` states how the executor understood the requirement. `evidence_role` distinguishes user authority, research signal, source lead, first-party context, and externally verified claim.
 
-`guidance_id` 使用 task-local、单调递增且不复用的标识，例如 `G-001`、`G-002`。这样 checkpoint 和 Terminal Audit 才能用 `last_reconciled_guidance_id` 与 `guidance_cutoff_id` 建立明确边界。
+`guidance_id` uses a task-local, monotonically increasing, never-reused identifier, e.g. `G-001`, `G-002`. Only then can checkpoints and the Terminal Audit use `last_reconciled_guidance_id` and `guidance_cutoff_id` to establish explicit boundaries.
 
-Guidance status 建议使用：
+Recommended guidance status values:
 
 ```text
 received
@@ -152,21 +152,21 @@ received / classified / mapped -> superseded
 
 ### Versioning Rules
 
-- `contract_version`：objective、constraints、acceptance、time、exclusions 或 pause policy 改变时提升。
-- `scope_version`：in-scope domains、Required objects 或 coverage disposition 改变时提升。
-- `queue_revision`：只改变优先级和 dependency order 时提升。
-- `batch_revision`：当前 batch 的 pages、acceptance 或 verification plan 改变时提升。
-- `standards_version`：只有可复用 governance rule 且用户明确授权修改 Standards 时提升。
+- `contract_version`: bump when the objective, constraints, acceptance, time, exclusions, or pause policy changes.
+- `scope_version`: bump when in-scope domains, Required objects, or coverage disposition change.
+- `queue_revision`: bump when only priority and dependency order change.
+- `batch_revision`: bump when the current batch's pages, acceptance, or verification plan changes.
+- `standards_version`: bump only for a reusable governance rule with explicit user authorization to modify the Standards.
 
-一次 guidance 可以提升多个版本。仅新增研究线索但尚未接受为 scope 时，不提前修改 scope version。
+One guidance MAY bump multiple versions. When only a research lead is added and it has not yet been accepted into scope, do not bump the scope version early.
 
 ### User-facing Acknowledgement
 
-收到影响任务的重要 guidance 后，应在简短进度更新中说明：
+After receiving important guidance that affects the task, a brief progress update SHOULD state:
 
-- 被理解为什么类型。
-- 影响哪些 scope、batch 或 evidence work。
-- 将立即应用、在安全边界后切换、按依赖排队，还是先研究。
-- 是否改变 contract、scope、queue 或 Standards version。
+- What type it was understood as.
+- Which scope, batches, or evidence work it affects.
+- Whether it will be applied immediately, switched to after a safe boundary, queued by dependency, or researched first.
+- Whether it changes the contract, scope, queue, or Standards version.
 
-没有实质歧义时不需要反复请求确认；但不能让用户直到最终报告才发现其 guidance 被延期或忽略。
+When there is no substantive ambiguity, repeated confirmation requests are not needed; but the user must not discover only in the final report that their guidance was deferred or ignored.

@@ -6,25 +6,25 @@
 
 ## Ownership
 
-术语使用“最低合理归属”规则：
+Terminology uses the "lowest reasonable ownership" rule:
 
-1. 有明确领域归属：放在该领域。
-2. 多领域复用且有基础学科归属：放在所选 profile 注册的 `Shared Foundation Layer`。
-3. 生产系统通用：放在所选 profile 注册的 `Production Systems Layer`。
-4. 真正跨领域且无自然 owner：放在所选 profile 注册的 `Cross-domain Concepts Layer`。
-5. 表达层不改变术语 owner，`Expression Layer Artifact` 只引用它。
+1. Clear domain ownership: place it in that domain.
+2. Reused across multiple domains with a foundation-discipline home: place it in the `Shared Foundation Layer` registered by the selected profile.
+3. Generic to production systems: place it in the `Production Systems Layer` registered by the selected profile.
+4. Truly cross-domain with no natural owner: place it in the `Cross-domain Concepts Layer` registered by the selected profile.
+5. The expression layer does not change a term's owner; the `Expression Layer Artifact` only references it.
 
-不建议建立一个无分类、无限增长的全局 Glossary 文件夹。
+Creating an uncategorized, unboundedly growing global Glossary folder is not recommended.
 
 ## Suggested Structure
 
-具体目录树由所选 profile 的 `Profile Scope` 在 `Terminology Structure` 中登记。
+The concrete directory tree is registered by the selected profile's `Profile Scope` under `Terminology Structure`.
 
-该结构需要在整体架构确认后再创建，当前规则不自动移动现有术语页。
+This structure is to be created only after the overall architecture is confirmed; the current rule does not automatically move existing term pages.
 
 ## Term Note Structure
 
-一个完整 Term Note 通常包含：
+A complete Term Note usually contains:
 
 ```text
 Full Name And Aliases（全称与别名）
@@ -42,4 +42,4 @@ Related Terms（相关术语）
 Sources（来源）
 ```
 
-涉及数学时增加公式；涉及系统时增加输入输出和生命周期；涉及协议时增加角色、边界和版本信息。
+When mathematics is involved, add formulas; when systems are involved, add inputs, outputs, and lifecycle; when protocols are involved, add roles, boundaries, and version information.

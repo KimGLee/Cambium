@@ -6,22 +6,22 @@
 
 ## User Guidance, Hypotheses And Source Leads
 
-用户在长任务中提供的引导可能同时改变 task contract 并触发知识调查。执行控制遵循 [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment#Mid-task Guidance And Contract Amendment|Mid-task Guidance And Contract Amendment]]；本节只规定其证据角色。
+Guidance provided by the user during a long task can simultaneously change the task contract and trigger knowledge investigation. Execution control follows [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment#Mid-task Guidance And Contract Amendment|Mid-task Guidance And Contract Amendment]]; this section specifies only its evidence role.
 
-必须区分：
+The following MUST be distinguished:
 
 | User Input | Authority | Evidence Treatment |
 |---|---|---|
-| 学习目标、scope、优先级、格式和停止要求 | 用户对当前任务具有 authority | 直接进入 task amendment，不需要外部来源证明用户偏好 |
-| 技术看法或行业判断 | 用户可以触发调查 | 默认是 `research signal`，不能直接成为 canonical fact |
-| 官方文章、论文、链接或文档线索 | 用户决定需要检查该来源 | 实际文档是 Source，仍需核验 identity、date、claim 和 scope |
-| 用户项目经历、指标或事故描述 | 用户是该上下文的一方 | 作为 bounded first-party context；未经其它证据不能推广为行业规律 |
-| 对现有知识的纠正 | 触发定向审计 | 根据公式、规范、原始来源或实现证据确认后再改 canonical note |
-| 可复用的建设规则 | 用户可以授权 governance change | 只有明确要求修改 Standards 时才改变 `standards_version` |
+| Learning goals, scope, priorities, format, and stop requirements | The user has authority over the current task | Goes directly into a task amendment; no external source is needed to prove user preferences |
+| Technical opinions or industry judgments | The user can trigger investigation | Defaults to a `research signal`; MUST NOT directly become a canonical fact |
+| Official articles, papers, links, or documentation leads | The user decides that source needs to be checked | The actual document is the Source; identity, date, claim, and scope still require verification |
+| The user's project experience, metrics, or incident descriptions | The user is a party to that context | Treated as bounded first-party context; MUST NOT be generalized into an industry law without other evidence |
+| Corrections to existing knowledge | Triggers a targeted audit | Change the canonical note only after confirmation against formulas, specifications, original sources, or implementation evidence |
+| Reusable build rules | The user can authorize a governance change | `standards_version` changes only when a Standards modification is explicitly requested |
 
-用户提出“Topic X 是近期热点”可以提升研究优先级并触发 environmental scanning，但在找到和比较来源前只能写成 signal。用户提出“增加 Topic X 部分”则同时是 scope amendment；是否建立新页面、扩写现有页面或形成 system vertical slice，仍由 gap analysis 和 canonical ownership 决定。
+A user stating "Topic X is a recent hot topic" can raise research priority and trigger environmental scanning, but until sources are found and compared it MAY only be written as a signal. A user stating "add a Topic X section" is at the same time a scope amendment; whether to create a new page, expand an existing page, or form a system vertical slice is still decided by gap analysis and canonical ownership.
 
-处理流程为：
+The processing flow is:
 
 ```text
 User Guidance Event
@@ -34,11 +34,11 @@ User Guidance Event
  -> Canonical Integration Or Justified Deferral
 ```
 
-以下规则始终适用：
+The following rules always apply:
 
-- 不为一条没有外部证据的用户观点单独创建 Source Note。
-- 用户提供 URL 时，记录文档自身的 organization、author、date 和 applicability，不把“用户发来的”当作 source authority。
-- 用户提供的项目事实必须注明 system、time、dataset、role 和可验证边界；缺失信息保持 unknown。
-- 用户观点与可靠来源冲突时，保留冲突并说明，不静默选择更方便的说法。
-- 用户只是表达兴趣时，不自动把所有相关页面改为 P0；priority 仍要结合 `Profile Scope` 声明的目标、依赖和明确 task intent。
-- 用户要求立即纳入范围时，先更新 scope / queue，再按 source-to-knowledge pipeline 建设，不能把未经验证的观点直接写成稳定结论。
+- A standalone Source Note MUST NOT be created for a user opinion that has no external evidence.
+- When the user provides a URL, record the document's own organization, author, date, and applicability; "sent by the user" MUST NOT be treated as source authority.
+- Project facts provided by the user MUST note system, time, dataset, role, and verifiable boundary; missing information stays unknown.
+- When a user opinion conflicts with a reliable source, keep the conflict and explain it; the more convenient account MUST NOT be silently chosen.
+- When the user merely expresses interest, all related pages MUST NOT be automatically set to P0; priority still combines the goals declared by `Profile Scope`, dependencies, and explicit task intent.
+- When the user requests immediate inclusion in scope, first update scope / queue, then build via the source-to-knowledge pipeline; an unverified opinion MUST NOT be written directly as a stable conclusion.

@@ -1,24 +1,24 @@
 ## Purpose
 
-本页是 Note Types and Ownership 标准的稳定入口。详细规则已经按职责拆分到下列模块，原始内容没有缩减。
+This page is the stable entry point for the Note Types and Ownership standard. The detailed rules have been split by responsibility into the modules below; the original content has not been reduced.
 
 ## Reading Rule
 
-- 先用本 MOC 定位规则 owner，再读取当前任务、事件或质量门需要的模块。
-- 不要求因为进入本领域就一次性读取全部模块。
-- 每个模块通过 `Navigation` 返回父级，并连接前后相邻模块。
+- First use this MOC to locate the rule owner, then read the modules required by the current task, event, or quality gate.
+- Entering this domain does not require reading all modules at once.
+- Each module returns to its parent via `Navigation` and connects to the adjacent modules before and after it.
 
 ## Module Index
 
 | Module | Canonical sections |
 |---|---|
-| [[kernel/03 Note Types and Ownership/01 Note Type Catalog\|Note Type Catalog]] | `Purpose`、`Note Types`、`Type And Depth Fit` |
-| [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes\|Ownership and Canonical Notes]] | `Ownership Rules`、`Canonical Note Rules` |
-| [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy\|Split and Duplication Policy]] | `Purpose`、`When To Split A Note`、`When Not To Split`、`Duplication Policy`、`Retirement`、`Merge`、`Downgrade And Subtree Deprecation`、`Related` |
+| [[kernel/03 Note Types and Ownership/01 Note Type Catalog\|Note Type Catalog]] | `Purpose`, `Note Types`, `Type And Depth Fit` |
+| [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes\|Ownership and Canonical Notes]] | `Ownership Rules`, `Canonical Note Rules` |
+| [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy\|Split and Duplication Policy]] | `Purpose`, `When To Split A Note`, `When Not To Split`, `Duplication Policy`, `Retirement`, `Merge`, `Downgrade And Subtree Deprecation`, `Related` |
 
 ## Post-migration Extensions（迁移后扩展）
 
-迁移与版本历史不进入 active standard；扩展登记表当前为空：
+Migration and version history do not enter the active standard; the extension register is currently empty:
 
 | Version | New section | Canonical module | Responsibility |
 |---|---|---|---|
@@ -32,7 +32,7 @@
 
 ## Related Standards
 
-- 所选 profile 注册的 `Expression Layer Entry`
+- The `Expression Layer Entry` registered by the selected profile
 - [[kernel/04 Content Depth Standard|04 Content Depth Standard]]
 - [[kernel/05 Terminology Standard|05 Terminology Standard]]
 - [[kernel/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]]

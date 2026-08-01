@@ -6,35 +6,35 @@
 
 ## Naming And Aliases
 
-- 文件名使用由所选 profile 的 `Language Contract` 登记的 canonical identity。
-- 全称、缩写、同义词和多语言名称放入 `aliases`；具体语言取值由 `Language Contract` 登记。
-- 不为缩写和全称分别创建两份文件。
-- 同名但语义不同的术语通过领域路径消歧。
-- 重命名 Term Note 前先检查 incoming links 和 aliases。
+- File names use the canonical identity registered by the selected profile's `Language Contract`.
+- Full names, abbreviations, synonyms, and multilingual names go into `aliases`; the concrete language values are registered by the `Language Contract`.
+- Do not create two separate files for an abbreviation and its full name.
+- Terms with the same name but different semantics are disambiguated by domain path.
+- Before renaming a Term Note, first check incoming links and aliases.
 
-具体命名与 alias 示例由 `Language Contract` 的 `Terminology Naming And Aliases` 提供。
+Concrete naming and alias examples are provided by the `Language Contract`'s `Terminology Naming And Aliases`.
 
 ## Contextual Use
 
-不推荐：
+Not recommended:
 
 ```markdown
 系统使用 [[Idempotency]]。
 ```
 
-推荐：
+Recommended:
 
 ```markdown
 工具发生 timeout 后可能已经产生副作用，因此 retry 前必须通过
 [[Idempotency]]（幂等机制）避免重复扣款或重复写入。
 ```
 
-当前页面解释“为什么这里需要幂等”，Term Note 解释“幂等完整是什么”。
+The current page explains "why idempotency is needed here"; the Term Note explains "what idempotency fully is".
 
 ## Link Frequency
 
-- 第一次有意义地出现术语时建立链接。
-- 同一页面后续重复出现通常不反复链接。
-- 链接不能代替当前段落必要的上下文。
-- 不为了图谱密度链接普通词。
-- 路径歧义时使用 path-qualified wiki link。
+- Create the link at the first meaningful occurrence of the term.
+- Later repeated occurrences on the same page are usually not linked again.
+- A link cannot replace the context the current paragraph itself needs.
+- Do not link ordinary words for the sake of graph density.
+- Use a path-qualified wiki link when the path is ambiguous.

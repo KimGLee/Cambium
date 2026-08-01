@@ -6,64 +6,64 @@
 
 ## Module Review
 
-一个模块完成前检查：
+Before a module is complete, check:
 
-- Overview 是否反映真实模块结构。
-- Coverage matrix 是否还有未解释的 P0 / P1 概念。
-- Prerequisite chain 是否连续。
-- 所选 profile 的 `Profile Scope` 声明的主线依赖与基础保全要求是否仍然完整。
-- 是否存在重复 canonical notes。
-- 是否存在 orphan notes。
-- `Routing And Gate Registry` 注册的 profile artifact synchronization gates 是否通过。
-- Case Study 是否能使用该模块知识。
-- 新外部来源是否经过 gap analysis，而不是按文章标题产生孤立页面。
-- 文件深度是否均衡，核心主题不能明显薄于边缘主题。
-- Standards 模块还必须确认 domain MOC 与实际 leaf files 一致、每个原章节只有一个 owner、Applicable Read Sets 可双向导航。
+- Whether the Overview reflects the real module structure.
+- Whether the coverage matrix still has unexplained P0 / P1 concepts.
+- Whether the prerequisite chain is continuous.
+- Whether the mainline dependencies and foundation preservation requirements declared by the selected profile's `Profile Scope` remain intact.
+- Whether duplicate canonical notes exist.
+- Whether orphan notes exist.
+- Whether the profile artifact synchronization gates registered by the `Routing And Gate Registry` pass.
+- Whether the Case Study can use the module's knowledge.
+- Whether new external sources went through gap analysis rather than producing isolated pages by article title.
+- Whether file depth is balanced; core topics MUST NOT be visibly thinner than peripheral topics.
+- Standards modules MUST additionally confirm that the domain MOC matches the actual leaf files, that each original section has exactly one owner, and that Applicable Read Sets are navigable in both directions.
 
-Module Review 先消费已关闭 batches 的有效 AuditReceipts，再审查跨 batch 才能判断的 owner、dependency、coverage 和 navigation invariants。没有相关变化的局部 mechanism 不应被逐页重审；receipt 缺失、失效或抽样暴露系统问题时，按 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] 扩大范围。
+Module Review first consumes the valid AuditReceipts of closed batches, then reviews the owner, dependency, coverage, and navigation invariants that can only be judged across batches. Local mechanisms with no relevant change SHOULD NOT be re-reviewed page by page; when receipts are missing or invalidated, or sampling exposes a systemic problem, expand the scope per [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]].
 
 ## Coverage Reconciliation Review
 
-模块或长任务完成前，必须把 Coverage Ledger 与实际文件系统、scope contract 和 competency matrix 对账：
+Before a module or long task completes, the Coverage Ledger MUST be reconciled against the actual file system, the scope contract, and the competency matrix:
 
-- 每个 in-scope 文件恰好有一个 inventory 记录。
-- 每个 Required 但尚未创建的知识对象仍有明确记录。
-- 排除目录没有被计入成果或误改。
-- P0 / P1 的 core、process-flow、system、risk/control 页面不存在 `unassessed`。
-- 每个未达到目标状态的 Required 项都有 active 或 queued batch。
-- `deferred` 有原因、re-entry condition 和 owner；`excluded` 有 scope 依据。
-- 序列或进度 checkbox、文件存在、Wiki link 可解析和 `Related` 引用没有被当作 authoring completion；状态分离见 [[kernel/11 Expression Layer/06 Sequence and Progress Semantics|Sequence And Progress Semantics]]。
-- 核心页面没有明显薄于新建的边缘或前沿页面。
-- Coverage Ledger 汇总数量与自动扫描数量一致。
+- Every in-scope file has exactly one inventory record.
+- Every Required knowledge object not yet created still has an explicit record.
+- Excluded directories are not counted as deliverables or accidentally modified.
+- No P0 / P1 core, process-flow, system, or risk/control page is `unassessed`.
+- Every Required item that has not reached its target state has an active or queued batch.
+- `deferred` has a reason, a re-entry condition, and an owner; `excluded` has a scope basis.
+- Sequence or progress checkboxes, file existence, resolvable wiki links, and `Related` references are not treated as authoring completion; for status separation see [[kernel/11 Expression Layer/06 Sequence and Progress Semantics|Sequence And Progress Semantics]].
+- Core pages are not visibly thinner than newly created peripheral or frontier pages.
+- Coverage Ledger summary counts match the automated scan counts.
 
-行数和 section 数量只能触发审阅候选。Atomic Term Note 可以有意保持简洁；Core、Process、System 和 Risk/Control 页面必须按 note type 检查问题覆盖。
+Line counts and section counts can only trigger review candidates. An Atomic Term Note MAY deliberately stay concise; Core, Process, System, and Risk/Control pages MUST have their question coverage checked by note type.
 
 ## Batch Review
 
-并发执行时，批次正文只能链接到已合并内容或本批清单内的页面；指向在途批次页面的链接留待双方批次合并后补充：作者把缺链记入本批 delta 的 `open_gaps_added`（type: link），由维护轮按预算消化；补链位置遵循 [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]]（Related 不是唯一引用位置）。
+Under concurrent execution, a batch's body may link only to already-merged content or pages within the batch's own manifest; links to pages in an in-flight batch are deferred until both batches have merged: the author records the missing link in the batch's delta under `open_gaps_added` (type: link), to be absorbed by a maintenance run within budget; link placement follows [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]] (Related is not the only place a reference appears).
 
-Gate 合并规则（分档判定见 [[kernel/00 Standards Control/02 Task Routing and Pre-execution|00/02]] Effort Tiering）：
+Gate merge rules (for tier determination see [[kernel/00 Standards Control/02 Task Routing and Pre-execution|00/02]] Effort Tiering):
 
-- S/M 档页面的 note 级验收并入 Batch Review 执行，不单独开 note gate。
-- S 档页面按抽样复核：默认抽取 `max(2, 20%)` 的本批 S 档页面（不足 2 个则全查）；抽样发现问题时按 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] 扩大范围。
-- M 档页面在 batch gate 内逐页通过 `Runtime Card Provider` 提供的对应 Gate 清单。
-- L 档页面保留独立 note gate，按 [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]] 全量执行，不并入本节。
+- Note-level acceptance for S/M-tier pages is folded into Batch Review; no separate note gate is opened.
+- S-tier pages are reviewed by sampling: by default sample `max(2, 20%)` of the batch's S-tier pages (check all if fewer than 2); when sampling finds problems, expand the scope per [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]].
+- M-tier pages pass, page by page within the batch gate, the corresponding Gate checklist provided by the `Runtime Card Provider`.
+- L-tier pages keep an independent note gate, executed in full per [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]], and are not folded into this section.
 
-关批清单分两组：**批内项**在批次进入 `merge-ready` 前由批次自身完成（可与其它批次并行）；**全局项**由 integrator 在串行合并时核验。串行区只执行确定性动作与全局核验，不做批内人工审阅。
+The batch close checklist has two groups: **in-batch items** are completed by the batch itself before it enters `merge-ready` (may run in parallel with other batches); **global items** are verified by the integrator during serial merge. The serial zone performs only deterministic actions and global verification, not in-batch manual review.
 
-批内项（merge-ready 前提）：
+In-batch items (merge-ready preconditions):
 
-- Batch contract 中的 Required pages 全部达到目标 `authoring_status`。
-- Canonical ownership、Sources、metadata、正文 Wiki links 和导航已同步。
-- 由 `Expression Layer Entry` 注册的 Required migration 已完成或有明确 disposition；具体 gate 由 `Routing And Gate Registry` 绑定。
-- 自动检查（`--scope` 级）、人工内容审阅和适用的 rendering level 已完成。
-- 已从 changed objects、acceptance predicates 和 dependency changes 生成 AuditPlan；仍有效的历史证据有明确 `reused_receipt_id`，新检查产生 dimension-specific AuditReceipts。
-- delta 已写出，没有把未验证修改留给下一个 batch。
+- All Required pages in the batch contract have reached the target `authoring_status`.
+- Canonical ownership, Sources, metadata, body wiki links, and navigation are synchronized.
+- Required migrations registered by the `Expression Layer Entry` are complete or have an explicit disposition; the concrete gate is bound by the `Routing And Gate Registry`.
+- Automated checks (`--scope` level), manual content review, and the applicable rendering level are complete.
+- An AuditPlan has been generated from changed objects, acceptance predicates, and dependency changes; still-valid historical evidence has an explicit `reused_receipt_id`, and new checks produce dimension-specific AuditReceipts.
+- The delta has been written out; no unverified modifications are left to the next batch.
 
-全局项（integrator 串行合并时核验）：
+Global items (verified by the integrator during serial merge):
 
-- guidance 对账见 [[kernel/12 Quality Assurance/04 Guidance and Source Review|12/04]]（增量）。
-- 当前 batch 影响的 direct / dependency invalidations 已关闭，`unresolved_invalidations = 0`。
-- delta 经 `Tools/apply_delta.py` 应用，Coverage Ledger 与 Progress Ledger 同步更新。
+- Guidance reconciliation per [[kernel/12 Quality Assurance/04 Guidance and Source Review|12/04]] (incremental).
+- The direct / dependency invalidations affected by the current batch are closed, `unresolved_invalidations = 0`.
+- The delta is applied via `Tools/apply_delta.py`, and the Coverage Ledger and Progress Ledger are updated in sync.
 
-未通过 Batch Review 时，batch 不得关闭；缺口回到执行阶段处理，batch 保持未验收状态，不能为了开始下一主题而标记关闭。
+When Batch Review does not pass, the batch MUST NOT be closed; gaps return to the execution phase, the batch stays unaccepted, and it MUST NOT be marked closed in order to start the next topic.

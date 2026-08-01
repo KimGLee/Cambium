@@ -6,9 +6,9 @@
 
 ## Guidance Reconciliation Review
 
-每个 batch 关闭前和长任务进入 `completion-candidate` 前，必须对 [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment#Mid-task Guidance And Contract Amendment|Mid-task Guidance And Contract Amendment]] 执行 reconciliation。batch 关闭对账为增量：只对 `last_reconciled_guidance_id` 之后的新 guidance 执行对账，加上既有未决项；三计数语义不变，仅计算范围收窄为增量＋既有未决项。
+Before every batch close and before a long task enters `completion-candidate`, reconciliation MUST be performed against [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment#Mid-task Guidance And Contract Amendment|Mid-task Guidance And Contract Amendment]]. Batch-close reconciliation is incremental: reconcile only new guidance after `last_reconciled_guidance_id`, plus existing open items; the three-counter semantics are unchanged, only the counting scope narrows to increment + existing open items.
 
-最低通过条件为：
+The minimum pass condition is:
 
 ```text
 unclassified_guidance = 0
@@ -16,46 +16,46 @@ accepted_unmapped_guidance = 0
 implemented_unverified_guidance = 0
 ```
 
-检查内容包括：
+The checks include:
 
-- 所有**重要 Guidance**（正面定义：改变目标、范围、验收、优先级或内容判断的消息）都有 `guidance_id` 和 Amendment Record；纯状态询问或确认类消息记一行 log，不占 `guidance_id`、不入 Amendment。
-- Raw guidance 与 normalized intent 含义一致，没有把建议扩大为命令或把命令降级为建议。
-- 新要求只修改明确涉及的 contract 维度；未冲突的旧 constraints 仍然有效。
-- Scope、contract、queue、batch 和 Standards 的版本提升与实际影响一致。
-- Accepted guidance 已映射到 current batch、Required Queue、Coverage Ledger、source intake 或明确 deferred record。
-- `research-first` 的用户 hypothesis 没有在来源验证前写成 canonical fact。
-- 用户提供的 URL 以实际文档作为 Source；first-party context 没有被无边界泛化。
-- `deferred` 有 authority、原因和 re-entry condition；`not-applicable` 有可检查依据。
-- `superseded` 保留前后 guidance 关系。
-- Safe switching policy 已遵守，没有因切换留下半写文件、未验证修改或失去当前 batch 的一致性。
-- 影响 Required completion 的 `clarification-required` 已解决；否则不能进入 `completion-candidate`。
+- All **significant Guidance** (positively defined: messages that change objective, scope, acceptance, priority, or content judgment) has a `guidance_id` and an Amendment Record; pure status inquiries or confirmation-type messages get one log line, consume no `guidance_id`, and do not enter an Amendment.
+- Raw guidance and normalized intent have the same meaning, with no suggestion widened into a command and no command downgraded into a suggestion.
+- New requirements modify only the contract dimensions explicitly involved; non-conflicting old constraints remain in effect.
+- Version bumps of scope, contract, queue, batch, and Standards match the actual impact.
+- Accepted guidance has been mapped to the current batch, the Required Queue, the Coverage Ledger, source intake, or an explicit deferred record.
+- `research-first` user hypotheses are not written as canonical facts before source verification.
+- User-provided URLs use the actual documents as Sources; first-party context has not been generalized without bounds.
+- `deferred` has authority, a reason, and a re-entry condition; `not-applicable` has a checkable basis.
+- `superseded` preserves the before/after guidance relationship.
+- The safe switching policy was followed; switching left no half-written files, unverified modifications, or loss of the current batch's consistency.
+- `clarification-required` items affecting Required completion are resolved; otherwise `completion-candidate` MUST NOT be entered.
 
-对用户有 task authority 的明确 scope 或 acceptance requirement，不能由执行者自行改成 optional 或 deferred。Dependency-based queueing 可以调整执行时点，但不能静默取消要求。
+An explicit scope or acceptance requirement from a user with task authority MUST NOT be changed to optional or deferred by the executor unilaterally. Dependency-based queueing MAY adjust execution timing, but MUST NOT silently cancel a requirement.
 
 ### Guidance During Terminal Audit
 
-Terminal Audit 开始时记录 `guidance_cutoff_id`。之后收到新 guidance 时：
+Record `guidance_cutoff_id` when the Terminal Audit starts. When new guidance arrives afterwards:
 
-- 改变当前 objective、scope、acceptance、exclusions、time contract 或 Required content：Terminal Audit 失效，task state 返回 `active`。
-- 修正候选结果中的事实、链接、来源或 QA 问题：按 [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report#Terminal Findings And Convergence|Terminal Findings And Convergence]] 的 major 就地处理（定向重检＋receipt supersede），不整体作废终审。
-- 用户明确指定为未来任务或 optional backlog：记录新的 contract / backlog 归属，不改变当前 Terminal Proof。
-- 只询问状态且不改变任务：正常答复，不改变 cutoff。
+- Changes the current objective, scope, acceptance, exclusions, time contract, or Required content: the Terminal Audit is invalidated and the task state returns to `active`.
+- Fixes factual, link, source, or QA problems in the candidate results: handle in place as major per [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report#Terminal Findings And Convergence|Terminal Findings And Convergence]] (targeted re-check + receipt supersede); the Terminal Audit is not voided as a whole.
+- The user explicitly designates it as a future task or optional backlog: record the new contract / backlog assignment without changing the current Terminal Proof.
+- Only asks about status and does not change the task: answer normally without changing the cutoff.
 
-不能通过“Terminal Audit 已经开始”忽略新要求，也不能把明确属于未来任务的 guidance 强行塞入当前 scope。
+New requirements MUST NOT be ignored on the grounds that "the Terminal Audit has already started", nor may guidance that explicitly belongs to a future task be forced into the current scope.
 
 ## Source Intake And Promotion Review
 
-Source-driven expansion 需要额外检查：
+Source-driven expansion requires additional checks:
 
-- Source identity、日期、URL、source type 和 applicability boundary 是否清楚。
-- Key claims 是否可以定位到原始来源。
-- Source authority 和 evidence role 是否分别判断。
-- 社区信号是否被误写成已验证规律。
-- 官方公司文章是否只用于支撑其实际披露范围。
-- 用户 hypothesis、source lead 和 first-party context 是否按 [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads#User Guidance, Hypotheses And Source Leads|User Guidance, Hypotheses And Source Leads]] 保留证据边界。
-- 多来源是否真正独立，术语和实验条件是否可比。
-- 新信息为何更新、新建、拆分、合并或暂缓是否有 graph impact 理由。
-- 新 canonical note 是否通过 [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline#Stage 9: Verification And Promotion|canonical promotion gate]]。
-- Contested 或 superseded 结论是否保留状态、来源和替代关系。
+- Whether source identity, date, URL, source type, and applicability boundary are clear.
+- Whether key claims can be located in the original source.
+- Whether source authority and evidence role are judged separately.
+- Whether community signals have been miswritten as verified regularities.
+- Whether official company articles are used only to support their actual disclosure scope.
+- Whether user hypotheses, source leads, and first-party context preserve evidence boundaries per [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads#User Guidance, Hypotheses And Source Leads|User Guidance, Hypotheses And Source Leads]].
+- Whether multiple sources are genuinely independent, and whether terminology and experimental conditions are comparable.
+- Whether the choice to update, create, split, merge, or defer for new information has a graph impact rationale.
+- Whether new canonical notes pass the [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline#Stage 9: Verification And Promotion|canonical promotion gate]].
+- Whether contested or superseded conclusions retain their status, sources, and supersession relationships.
 
-单个 source-driven batch 负责当时的 claim 和 promotion correctness；后续 Source Audit 负责跨批次 identity/currentness、冲突、supersession 和 affected-note propagation。若 artifact、source dependency、review due 或 acceptance predicate 未变化，可以复用局部 source receipt；不能借专项 Audit 重写与其 global invariant 无关的稳定机制。
+A single source-driven batch is responsible for claim and promotion correctness at that time; the subsequent Source Audit is responsible for cross-batch identity/currentness, conflicts, supersession, and affected-note propagation. If the artifact, source dependency, review due date, and acceptance predicates are unchanged, local source receipts MAY be reused; a specialized Audit MUST NOT be used to rewrite stable mechanisms unrelated to its global invariant.

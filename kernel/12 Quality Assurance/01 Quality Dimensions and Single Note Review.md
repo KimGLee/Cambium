@@ -5,102 +5,102 @@
 
 ## Purpose
 
-本标准定义单篇笔记、模块和全库的验收方式。文件创建完成、测试脚本通过或字数足够，都不能单独代表知识完成。
+This standard defines how a single note, a module, and the whole vault are accepted. File creation completed, test scripts passing, or sufficient word count cannot individually represent knowledge completion.
 
 ## Quality Dimensions
 
-每项内容从以下 kernel 维度验收：
+Every piece of content is accepted against the following kernel dimensions:
 
-- Coverage：应该回答的问题是否覆盖。
-- Correctness：事实、公式和术语是否准确。
-- Depth：是否解释原因、机制、假设和失败。
-- Structure：章节是否有逻辑承接。
-- Reuse：专有名词是否 canonicalize。
-- Integration：正文和上级入口是否正确链接。
-- Application：是否有例子、评估和工程考虑。
-- Provenance：关键 claims、指标和案例是否能追溯到证据与测量过程。
-- Evidence maturity：正文语气是否符合 signal、corroborated、validated 或 contested 状态。
-- Maintainability：来源、元数据和 ownership 是否明确。
-- Rendering：Markdown、公式、表格和图片是否正常。
+- Coverage: whether the questions that should be answered are covered.
+- Correctness: whether facts, formulas, and terminology are accurate.
+- Depth: whether reasons, mechanisms, assumptions, and failures are explained.
+- Structure: whether sections follow a logical progression.
+- Reuse: whether proper nouns are canonicalized.
+- Integration: whether the body and the parent entry are correctly linked.
+- Application: whether there are examples, evaluation, and engineering considerations.
+- Provenance: whether key claims, metrics, and cases can be traced back to evidence and the measurement process.
+- Evidence maturity: whether the body's tone matches the signal, corroborated, validated, or contested state.
+- Maintainability: whether sources, metadata, and ownership are explicit.
+- Rendering: whether Markdown, formulas, tables, and images render properly.
 
-所选 profile 可以通过 `Audit Dimension Registry` 增加语言、表达 readiness 或其它扩展维度，但不能删除、替换或降低上述 kernel 维度。
+The selected profile MAY add language, expression readiness, or other extension dimensions through the `Audit Dimension Registry`, but MUST NOT delete, replace, or weaken the kernel dimensions above.
 
 ## Single Note Review
 
-适用范围：本节全量清单适用于 L 档页面；M 档页面按 `Runtime Card Provider` 提供的对应 Gate 清单验收并并入 batch gate；S 档页面仅做确定性脚本检查，批次关闭时抽样复核（分档规则见 [[kernel/00 Standards Control/02 Task Routing and Pre-execution|分档规则]]）。
+Applicability: the full checklist in this section applies to L-tier pages; M-tier pages are accepted against the corresponding Gate checklist provided by the `Runtime Card Provider` and folded into the batch gate; S-tier pages receive only deterministic script checks, with sampled re-review at batch close (for tiering rules see [[kernel/00 Standards Control/02 Task Routing and Pre-execution|tiering rules]]).
 
 ### Structure
 
-- Note type 明确。
-- 开头说明主题位置或要解决的问题。
-- 章节顺序符合从问题到机制再到应用和失败的逻辑。
-- 没有重复标题、日期或无意义元信息。
+- The note type is explicit.
+- The opening states the topic's position or the problem to be solved.
+- Section order follows the logic from problem to mechanism to application and failure.
+- No duplicate headings, dates, or meaningless meta-information.
 
 ### Content
 
-- 不只有定义和列表。
-- 关键机制有解释，不只陈述结果。
-- 重要假设和边界已说明。
-- 至少有适合该 note type 的例子。
-- Failure Mode 包含 trigger、symptom、cause、detection、mitigation。
-- 术语解释没有不必要地挤占当前主题。
-- 基础知识页能够独立解释其学科机制，不能压缩成只服务所选 profile 应用主线的说明；具体完整性谓词由 `Profile Scope` 提供。
-- System 页面覆盖 execution、state、coordination、evidence 和 recovery paths。
-- 语言验收由所选 profile 的 `Language Contract` 提供，并通过 `Audit Dimension Registry` 纳入适用 gate。
+- Not just definitions and lists.
+- Key mechanisms are explained, not merely stated as results.
+- Important assumptions and boundaries are stated.
+- At least one example appropriate to the note type.
+- Failure Mode includes trigger, symptom, cause, detection, mitigation.
+- Terminology explanations do not unnecessarily crowd out the current topic.
+- Foundational knowledge pages can explain their discipline's mechanisms independently and MUST NOT be compressed into explanations that serve only the selected profile's application mainline; the concrete completeness predicates are provided by `Profile Scope`.
+- System pages cover execution, state, coordination, evidence, and recovery paths.
+- Language acceptance is provided by the selected profile's `Language Contract` and incorporated into the applicable gate via the `Audit Dimension Registry`.
 
 ### Accuracy
 
-- 公式、符号和数值例子已检查。
-- 时效性事实已验证。
-- Sources 能直接支撑关键结论。
-- 没有把经验性建议写成绝对事实。
-- Reported claim、inference、cross-source synthesis 和 recommendation 已区分。
-- 指标能够追溯到 task、dataset、trial、execution runtime、grader 和 aggregation；具体 runtime 角色名由所选 profile 的 `Role Registry` 绑定。
+- Formulas, symbols, and numeric examples have been checked.
+- Time-sensitive facts have been verified.
+- Sources directly support the key conclusions.
+- Empirical advice is not written as absolute fact.
+- Reported claim, inference, cross-source synthesis, and recommendation are distinguished.
+- Metrics can be traced back to task, dataset, trial, execution runtime, grader, and aggregation; the concrete runtime role names are bound by the selected profile's `Role Registry`.
 
 ### Links
 
-- Parent、prerequisites 和关键依赖可导航。
-- 正文第一次有意义出现的术语已链接。
-- Related 不是唯一引用位置。
-- Source Note、Research Synthesis、canonical note 和 Case Study 之间的关系可导航。
-- 没有 unresolved 或 ambiguous link。
-- 适用的表达层结构 links 由所选 profile 的 `Expression Layer Entry` 声明，并由 `Routing And Gate Registry` 提供 gate。
+- Parent, prerequisites, and key dependencies are navigable.
+- Terms are linked at their first meaningful occurrence in the body.
+- Related is not the only place a reference appears.
+- The relationships among Source Note, Research Synthesis, canonical note, and Case Study are navigable.
+- No unresolved or ambiguous link.
+- The applicable expression layer structural links are declared by the selected profile's `Expression Layer Entry`, with gates provided by the `Routing And Gate Registry`.
 
 ### Rendering
 
-- 数学公式正常显示。
-- 表格列没有被 wiki alias pipe 破坏。
-- 图片路径和尺寸可用。
-- 代码块有正确 fence 和语言。
-- Mermaid、SVG、embed 和 callout 按实际使用方式可读。
-- 图表完整表达知识结构，没有为了适配视口删除关键节点、分支或失败路径。
+- Mathematical formulas display properly.
+- Table columns are not broken by wiki alias pipes.
+- Image paths and dimensions are usable.
+- Code blocks have correct fences and languages.
+- Mermaid, SVG, embeds, and callouts are readable in the way they are actually used.
+- Diagrams express the knowledge structure completely, without deleting key nodes, branches, or failure paths to fit the viewport.
 
-Rendering pass 只能证明展示层满足要求，不能证明 Coverage、Correctness、Depth 或 Provenance。
+A rendering pass proves only that the presentation layer meets requirements; it does not prove Coverage, Correctness, Depth, or Provenance.
 
 ## Substantive Correctness Review
 
-L 档页面强制执行实质正确性复核；S / M 档不强制，由批次抽查覆盖。
+Substantive correctness review is mandatory for L-tier pages; it is not mandatory for S / M tiers, which are covered by batch spot checks.
 
-执行方式：由独立执行上下文执行——以干净上下文启动、不携带作者上下文的 subagent 或新会话，输入仅为笔记正文及其 Sources，即满足独立性。主线程不得自行产出复核 receipt；receipt 须标注复核者的执行上下文标识。复核在页面成稿（drafted 且通过 `--scope` 自查）时即可触发，与后续页面写作并行；批次关闭仅要求复核回执到齐。复核内容：
+Execution: performed by an independent execution context — a subagent started with a clean context and carrying no author context, or a new session, whose input is only the note body and its Sources, satisfies independence. The main thread MUST NOT produce the review receipt itself; the receipt MUST record the reviewer's execution context identifier. The review MAY be triggered as soon as the page is drafted (drafted and passing the `--scope` self-check), in parallel with subsequent page writing; batch close requires only that the review receipts have all arrived. Review content:
 
-- 重推关键推理链，确认结论确实由前提得出。
-- 抽查 2–3 个关键 claim，对照来源原文核对。
-- 检查“来源没说这么强”的过度引申。
+- Re-derive the key reasoning chains and confirm the conclusions actually follow from the premises.
+- Spot check 2–3 key claims against the source's original text.
+- Check for over-extension of the "the source does not say it that strongly" kind.
 
-复核产出 receipt（`check: substantive_review`，schema 同 `Tools/schemas/receipt.template.jsonl`）。
+The review produces a receipt (`check: substantive_review`, schema as in `Tools/schemas/receipt.template.jsonl`).
 
-触发时机：
+Trigger points:
 
-- 页面新建时。
-- 页面被标记 `needs_rereview` 时。
-- `review_by` 过期复验时。
+- When the page is newly created.
+- When the page is marked `needs_rereview`.
+- When `review_by` expires and re-verification is due.
 
-审查对象与收敛规则：
+Review object and convergence rules:
 
-- 复核判定的是**文档级正确性**——推理链是否成立、claim 是否有来源支撑、是否过度引申；不判定所描述系统、协议或设计在对抗环境下是否无懈可击。设计类内容的已知弱点、未决攻击面与工程取舍，如实记入该页 Limitations / Open Questions 即视为正确陈述，不构成复核失败。
-- Findings 三级分级：`critical`（结论错误、推理不成立、claim 与来源矛盾）必须修复；`major`（过度引申、缺关键限定）修复或降级措辞；`minor`（表述改进）记录即可，不阻断。仅 critical / major 阻断关闭。
-- 轮次上限为 2：第 1 轮复核产出分级 findings；修复后第 2 轮**只确认第 1 轮 findings 是否关闭，不得引入新的审查范围**。确认轮新发现的问题记入 Open Questions 或标记 `needs_rereview` 交由维护轮消化，不重开本轮复核。
-- 两轮后仍无法关闭，或复核范围在轮间持续扩张，必须升级用户裁决，不得自行续轮。
-- 本节的两轮上限为 kernel 固定常数，不属于所选 profile 或 task contract 可覆写的默认值。
+- The review judges **document-level correctness** — whether the reasoning chains hold, whether claims are supported by sources, whether there is over-extension; it does not judge whether the described system, protocol, or design is unassailable in an adversarial environment. For design-type content, known weaknesses, open attack surfaces, and engineering trade-offs recorded faithfully in the page's Limitations / Open Questions count as correct statements and do not constitute a review failure.
+- Findings are graded on three levels: `critical` (wrong conclusion, reasoning does not hold, claim contradicts the source) MUST be fixed; `major` (over-extension, missing a key qualification) is fixed or the wording downgraded; `minor` (wording improvement) is merely recorded and does not block. Only critical / major findings block close.
+- The round cap is 2: round 1 of the review produces graded findings; after fixes, round 2 **only confirms whether round 1's findings are closed and MUST NOT introduce new review scope**. Issues newly found in the confirmation round are recorded in Open Questions or marked `needs_rereview` for a maintenance run to absorb; the current review round is not reopened.
+- If the review still cannot close after two rounds, or the review scope keeps expanding between rounds, it MUST be escalated to the user for decision; additional rounds MUST NOT be added unilaterally.
+- The two-round cap in this section is a fixed kernel constant, not a default that the selected profile or task contract may override.
 
-存量豁免：触发时机以上述三种情形为限。Standards 版本升级本身不触发存量页面的补做——已处于 `reviewed`、`review_by` 未过期且未被标记 `needs_rereview` 的页面，不因标准变更重开实质正确性复核；标准变更导致的 receipts 失效仅要求按 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] 重跑确定性检查，不等于重开人工复核。
+Existing-content exemption: the trigger points are limited to the three cases above. A Standards version upgrade does not by itself trigger back-fill work on existing pages — a page already `reviewed`, with `review_by` not expired and not marked `needs_rereview`, does not reopen substantive correctness review because of a standards change; receipt invalidation caused by a standards change only requires re-running the deterministic checks per [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]], and does not amount to reopening manual review.

@@ -6,6 +6,6 @@
 
 ## Sequence And Progress Semantics
 
-序列位置、checkbox 或其它进度标记只表示相应工作或用户活动的进展，不能证明 canonical note、表达产物或知识语料建设已经完成。
+A sequence position, checkbox, or other progress marker indicates only the progress of the corresponding work or user activity; it does not prove that a canonical note, an expression artifact, or the knowledge corpus build is complete.
 
-写作、证据、profile readiness 与学习进度分别由各自状态轴和 gates 判定；一个轴的变化不得自动升级另一个轴。状态独立规则见 [[kernel/08 Metadata and Status/03 Status Axes#Status Axes|Status Axes]]。
+Authoring, evidence, profile readiness, and learning progress are each judged by their own status axes and gates; a change on one axis MUST NOT automatically promote another axis. For the status independence rules, see [[kernel/08 Metadata and Status/03 Status Axes#Status Axes|Status Axes]].

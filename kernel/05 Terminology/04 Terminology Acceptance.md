@@ -5,21 +5,21 @@
 
 ## Expression Layer Interface
 
-术语的表达层关系由所选 profile 的 `Expression Layer Entry` 提供；kernel 只拥有以下 acceptance rules。
+The expression-layer relationships of terminology are provided by the selected profile's `Expression Layer Entry`; the kernel owns only the following acceptance rules.
 
 ## Acceptance Criteria
 
-- 一个术语只有一个 canonical note。
-- 没有缩写和全称重复文件。
-- Term Note 不是两三句空壳。
-- 使用页面保留必要的上下文说明。
-- 正文第一次有意义出现时已链接。
-- 没有 orphan Term Notes。
-- 所有术语链接可以解析且无歧义。
+- A term has only one canonical note.
+- No duplicate files for an abbreviation and its full name.
+- The Term Note is not a two-or-three-sentence empty shell.
+- Pages that use a term retain the necessary contextual explanation.
+- The first meaningful occurrence in the body is already linked.
+- No orphan Term Notes.
+- All terminology links resolve and are unambiguous.
 
 ## Related
 
 - [[kernel/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]
 - [[kernel/09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]
-- 所选 profile 的 `Expression Layer Entry`
+- The selected profile's `Expression Layer Entry`
 - [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]

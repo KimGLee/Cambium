@@ -6,36 +6,36 @@
 
 ## Evidence Maturity
 
-`authoring_status` 表示页面写作与审阅进度；`evidence_maturity` 表示时效性或经验性结论的证据强度。两者不能互相替代。
+`authoring_status` represents page authoring and review progress; `evidence_maturity` represents the evidence strength of time-sensitive or empirical conclusions. The two MUST NOT substitute for each other.
 
-旧页面中的 `status` 字段在迁移期间视为 `authoring_status` 的兼容别名，不再用于表达 profile readiness 或学习状态。
+During migration, the `status` field on old pages is treated as a compatibility alias of `authoring_status`; it is no longer used to express profile readiness or learning status.
 
-允许值：
+Allowed values:
 
-- `signal`：值得调查，但尚无充分证据。
-- `single-source`：有一个可追踪来源支持。
-- `corroborated`：多个相互独立来源支持关键观察。
-- `validated`：存在可靠实验、复现或稳定生产证据。
-- `contested`：可信来源之间存在实质冲突。
-- `superseded`：结论已被更新证据或更准确的解释取代。
+- `signal`: worth investigating, but without sufficient evidence yet.
+- `single-source`: supported by one traceable source.
+- `corroborated`: multiple mutually independent sources support the key observation.
+- `validated`: reliable experiments, reproduction, or stable production evidence exists.
+- `contested`: substantive conflict exists between credible sources.
+- `superseded`: the conclusion has been superseded by newer evidence or a more accurate explanation.
 
-稳定数学定义通常不需要 `evidence_maturity`。前沿系统 / 运行控制模式、行业经验、benchmark 结论和 Research Synthesis 应填写。
+Stable mathematical definitions usually do not need `evidence_maturity`. Frontier systems / operational control patterns, industry experience, benchmark conclusions, and Research Synthesis SHOULD fill it in.
 
-一篇 Source Note 可以是 `authoring_status: reviewed`，同时仍然只有 `evidence_maturity: single-source`。这表示来源记录准确，不表示其结论已经普遍成立。
+A Source Note MAY be `authoring_status: reviewed` while still having only `evidence_maturity: single-source`. This means the source is recorded accurately, not that its conclusion has been established generally.
 
 ## Prerequisites
 
-- 只记录真正必须先理解的内容。
-- 使用 canonical note 路径或稳定名称。
-- 不把所有 Related links 都放进 prerequisites。
-- 循环依赖需要人工检查。
+- Record only content that genuinely MUST be understood first.
+- Use canonical note paths or stable names.
+- Do not put all Related links into prerequisites.
+- Circular dependencies require manual inspection.
 
 ## Aliases
 
-Aliases 用于：
+Aliases are used for:
 
-- 英文全称和缩写。
-- `Language Contract` 注册的其它语言常用名称。
-- 行业常用替代拼写。
+- English full names and abbreviations.
+- Common names in other languages registered by the `Language Contract`.
+- Common alternative spellings in the industry.
 
-Aliases 不能用来掩盖两个实际不同的概念。
+Aliases MUST NOT be used to mask two actually distinct concepts.

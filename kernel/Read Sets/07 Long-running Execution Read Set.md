@@ -1,10 +1,10 @@
 ## Purpose
 
-用于需要多个 batch、持续时间约束、checkpoint、resume、Coverage Ledger 或 Terminal Proof 的长任务。
+Used for long tasks requiring multiple batches, sustained time constraints, checkpoints, resume, the Coverage Ledger, or the Terminal Proof.
 
 ## Start
 
-先读取 [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
+First read [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]], then read:
 
 - [[kernel/02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]]
 - [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
@@ -15,18 +15,18 @@
 - [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
 
-同时组合实际内容类型对应的 authoring、source、`Expression Layer` 或 migration Read Set。
+Also combine the authoring, source, `Expression Layer`, or migration Read Set matching the actual content type.
 
 ## Triggered
 
-- 收到中途指导、范围变化、纠正或优先级变化：读取 [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]]。
-- 用户 guidance 同时包含技术 hypothesis 或 source lead：读取 [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]]。
-- 关闭 guidance amendment：读取 [[kernel/12 Quality Assurance/04 Guidance and Source Review|Guidance and Source Review]]。
-- 新 source-driven batch：读取 [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]]。
+- Mid-task guidance, scope change, correction, or priority change received: read [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]].
+- User guidance also contains a technical hypothesis or source lead: read [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]].
+- Closing a guidance amendment: read [[kernel/12 Quality Assurance/04 Guidance and Source Review|Guidance and Source Review]].
+- New source-driven batch: read [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]].
 
 ## Gate
 
-每个 batch 使用 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]，并按 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] 生成、复用或失效验证证据；任务完成候选必须组合 [[kernel/Read Sets/08 Audit and Completion Read Set|Audit and Completion]]。
+Each batch uses [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]], and generates, reuses, or invalidates verification evidence per [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]; a task completion candidate MUST combine [[kernel/Read Sets/08 Audit and Completion Read Set|Audit and Completion]].
 
 ## Related
 

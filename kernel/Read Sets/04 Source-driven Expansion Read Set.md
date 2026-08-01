@@ -1,10 +1,10 @@
 ## Purpose
 
-用于把官方文档、论文、代码、benchmark、postmortem、社区信号或用户 source lead 转化为可追踪的知识库更新。
+Used for turning official documentation, papers, code, benchmarks, postmortems, community signals, or user source leads into traceable knowledge base updates.
 
 ## Start
 
-先读取 [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
+First read [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]], then read:
 
 - [[kernel/06 Knowledge Intake and Evolution/01 Intake Scope and Knowledge Model|Intake Scope and Knowledge Model]]
 - [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]]
@@ -15,15 +15,15 @@
 - [[kernel/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]]
 - [[kernel/08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]]
 - [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
-- 所选 profile 注册的 `Language Contract`，用于区分 source identity 原文与中文 claim 转述，并作为本 Read Set 的必读 `Start` module。
+- The `Language Contract` registered by the selected profile, used to distinguish original source identity text from claim paraphrases written in the body language declared by the selected profile, and serving as a mandatory `Start` module of this Read Set.
 
 ## Triggered
 
-- 用户观点、source lead 或 first-party context：读取 [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]]。
-- Benchmark、accuracy、回测或生产指标：读取 [[kernel/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]]。
-- 时效性、公式、术语冲突或来源分歧：读取 [[kernel/07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty|Time Formula Terminology and Uncertainty]]。
-- 来源产出新术语时：读取 [[kernel/05 Terminology/01 Terminology Extraction|Terminology Extraction]]。
-- 创建或修改 canonical note：组合 [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]。
+- User opinions, source leads, or first-party context: read [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]].
+- Benchmark, accuracy, backtest, or production metrics: read [[kernel/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]].
+- Freshness, formulas, terminology conflicts, or source disagreement: read [[kernel/07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty|Time Formula Terminology and Uncertainty]].
+- When a source yields new terminology: read [[kernel/05 Terminology/01 Terminology Extraction|Terminology Extraction]].
+- Creating or modifying a canonical note: combine [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]].
 
 ## Gate
 

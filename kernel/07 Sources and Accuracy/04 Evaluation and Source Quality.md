@@ -6,7 +6,7 @@
 
 ## Evaluation Provenance
 
-任何 Accuracy、success rate、pass rate、benchmark improvement 或生产效果数字，都必须说明：
+Any Accuracy, success rate, pass rate, benchmark improvement, or production-effect figure MUST state:
 
 ```text
 Task Definition
@@ -21,15 +21,15 @@ Task Definition
  -> Reproduction Boundary
 ```
 
-Reproduction Boundary 必须说明结论可以复现到什么程度以及复现边界在哪里。无法获得的要素必须显式记录为 `unknown` 并说明原因。
+Reproduction Boundary MUST state to what degree the conclusion can be reproduced and where the reproduction boundary lies. Elements that cannot be obtained MUST be explicitly recorded as `unknown` with the reason stated.
 
-所选 profile 的额外 evaluation provenance 要求由 `Source Policy` 注册。
+The selected profile's additional evaluation provenance requirements are registered by `Source Policy`.
 
 ## Source Quality
 
-- 链接必须直接支持对应结论。
-- 不使用搜索结果页作为来源。
-- 不用一篇无关文章支撑多个不同结论。
-- 不把厂商营销语言当作中立事实。
-- 多种实现不同的地方明确标注“implementation-specific”。
-- 经验性建议标注适用环境和限制。
+- Links MUST directly support the corresponding conclusion.
+- Search result pages MUST NOT be used as sources.
+- One unrelated article MUST NOT be used to support multiple different conclusions.
+- Vendor marketing language MUST NOT be treated as neutral fact.
+- Where multiple implementations differ, explicitly mark "implementation-specific".
+- Empirical recommendations state their applicable environment and limitations.

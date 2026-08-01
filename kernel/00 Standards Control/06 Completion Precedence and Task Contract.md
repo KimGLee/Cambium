@@ -5,50 +5,50 @@
 
 ## Definition Of Complete
 
-一个模块只有同时满足以下条件才算完成：
+A module counts as complete only when all of the following conditions hold:
 
-- 主题覆盖符合 competency matrix，而不是只覆盖用户最先列出的名词。
-- 所选 `Profile Scope` 注册的主线与共享基础层之间 prerequisite chain 连续，基础页面没有因架构调整而被降级为空壳。
-- 核心概念达到规定深度，并有前置、子概念、应用和失败模式链接。
-- 专有名词已经 canonicalize，没有重复定义。
-- 重要页面有例子、评估方法、工程考虑和可靠来源。
-- 所选 `Expression Layer Entry` 注册的表达产物已经与 canonical knowledge 建立双向链接。
-- 所选 `Routing And Gate Registry` 登记的 Overview、进度、参考与表达层同步 routes 已反映当前 module structure 和 canonical owners。
-- Wiki links 达到 `missing=0`、`ambiguous=0`。
-- Markdown、表格、公式、图片和 graph 配置均可正常使用。
-- 来源驱动的新知识保留 claim-level provenance，并通过 canonical promotion gate。
+- Topic coverage matches the competency matrix, not merely the nouns the user listed first.
+- The prerequisite chain between the mainline registered by the selected `Profile Scope` and the shared foundational layer is continuous, and no foundational page has been demoted to an empty shell by architectural adjustment.
+- Core concepts reach the required depth, with links to prerequisites, sub-concepts, applications, and failure modes.
+- Proper nouns have been canonicalized, with no duplicate definitions.
+- Important pages have examples, evaluation methods, engineering considerations, and reliable sources.
+- Expression artifacts registered by the selected `Expression Layer Entry` have bidirectional links with canonical knowledge.
+- The Overview, progress, reference, and expression-layer synchronization routes registered by the selected `Routing And Gate Registry` reflect the current module structure and canonical owners.
+- Wiki links reach `missing=0`, `ambiguous=0`.
+- Markdown, tables, formulas, images, and graph configuration all work correctly.
+- Source-driven new knowledge retains claim-level provenance and passes the canonical promotion gate.
 
-一个长任务只有同时满足以下条件才算完成：
+A long-running task counts as complete only when all of the following conditions hold:
 
-- Coverage Ledger 已与文件系统、scope、exclusions 和 competency matrix 对账。
-- Amendment Log 已覆盖所有 cutoff 内 guidance，不存在未分类、accepted-but-unmapped 或 implemented-but-unverified 项。
-- 所有 Required authoring gaps 已关闭，或者用户明确修改了 disposition。
-- 没有未验证 batch 或遗留修改。
-- 没有仍处于 direct、dependency、overdue 或 systemic `unresolved_invalidations` 的 Required 审计证据。
-- 所有适用的 Single Note、Batch、Module、所选 `Routing And Gate Registry` 注册的表达层扩展、Source Promotion 和 Rendering gates 已通过。
-- 已达到 `minimum_run_until`，且没有违反 `hard_stop_at`。
-- 已写 Final Handoff，明确 optional、deferred 和 external evidence backlog。
-- Terminal Audit 已产生 Terminal Proof。
+- The Coverage Ledger has been reconciled against the file system, scope, exclusions, and the competency matrix.
+- The Amendment Log covers all guidance within the cutoff, with no unclassified, accepted-but-unmapped, or implemented-but-unverified items.
+- All Required authoring gaps are closed, or the user has explicitly changed the disposition.
+- There are no unverified batches or leftover modifications.
+- No Required audit evidence remains in direct, dependency, overdue, or systemic `unresolved_invalidations`.
+- All applicable Single Note, Batch, Module, the expression-layer extension gates registered by the selected `Routing And Gate Registry`, Source Promotion, and Rendering gates have passed.
+- `minimum_run_until` has been reached, and `hard_stop_at` has not been violated.
+- The Final Handoff has been written, making explicit the optional, deferred, and external evidence backlog.
+- The Terminal Audit has produced the Terminal Proof.
 
-task_complete 的机器可校验公式的 canonical 定义位于 [[kernel/02 Build Execution/07 Completion and Handoff|Completion and Handoff]] 的 Completion Policy 一节。
+The canonical definition of the machine-checkable formula for task_complete is located in the Completion Policy section of [[kernel/02 Build Execution/07 Completion and Handoff|Completion and Handoff]].
 
-Authoring completion 不要求所有前沿结论达到 `validated`；但不能用外部证据缺口掩盖未完成的正文、来源、表达层迁移或 QA。
+Authoring completion does not require every frontier conclusion to reach `validated`; but external evidence gaps MUST NOT mask unfinished body text, sources, expression-layer migration, or QA.
 
 ## Maintenance Completion
 
-完成语义分为两种，任务 contract 冻结时必须声明其一，两种语义不得混用：
+Completion semantics come in two kinds; when the task contract is frozen, one of them MUST be declared, and the two semantics MUST NOT be mixed:
 
-- Build completion：现有闭环语义，按本页 Definition Of Complete 执行，Terminal Proof 适用。
-- Maintenance completion：有界语义，同时满足以下条件即完成：
-  - 本轮预算封套内的候选清单已关闭（封套定义见 [[kernel/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]] 的 Maintenance Run Envelope）。
-  - Ledger 与 `Tools/state/watermark.yaml` 已推进。
-  - 各批次通过适用的 QA gates。
+- Build completion: the existing closed-loop semantics, executed per this page's Definition Of Complete; the Terminal Proof applies.
+- Maintenance completion: bounded semantics; complete when all of the following conditions hold:
+  - The candidate list within this run's budget envelope is closed (the envelope is defined in the Maintenance Run Envelope section of [[kernel/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]).
+  - The Ledger and `Tools/state/watermark.yaml` have been advanced.
+  - Each batch has passed the applicable QA gates.
 
-Maintenance completion 不要求全库 Terminal Proof；预算截掉的 deferred 项由下一轮维护消化，不构成缺口。
+Maintenance completion does not require a corpus-wide Terminal Proof; deferred items truncated by the budget are digested by the next maintenance run and do not constitute a gap.
 
 ## Standard Precedence
 
-当规则冲突时，按以下优先级处理：
+When rules conflict, resolve by the following precedence:
 
 ```text
 User's latest explicit instruction
@@ -58,23 +58,23 @@ User's latest explicit instruction
  -> Existing local style
 ```
 
-`User's latest explicit instruction` 采用 incremental amendment 语义：只覆盖同一维度中冲突的旧要求，不自动删除其它 scope、acceptance、safety、quality 或时间约束。用户对当前 task 的目标和优先级具有 authority；用户提出的技术判断仍需按 Sources 和 evidence maturity 验证。
+`User's latest explicit instruction` uses incremental amendment semantics: it overrides only conflicting old requirements in the same dimension, and does not automatically delete other scope, acceptance, safety, quality, or time constraints. The user has authority over the current task's goals and priorities; technical judgments raised by the user still require verification per Sources and evidence maturity.
 
 ## Task Contract Decisions
 
-每个超长任务只需确认会改变默认值的事项：
+Each ultra-long task only needs to confirm the items that change the defaults:
 
-- Objective、contract version、scope version、queue revision、in-scope domains 和 exclusions。
-- Standards version、所选 Runtime Card Provider routes 与 Read Sets、实际 loaded set（provider artifacts 与升级回读的 module paths）和尚未触发的 gate 项；内容任务默认冻结。
-- P0 / P1 的目标 authoring status 与所选 `Expression Status Axis` 值。
-- `minimum_run_until`、`checkpoint_at`、`hard_stop_at`。
-- Required、optional、deferred 和 excluded 的边界。
-- 当前任务是否包含 Frontmatter migration、目录迁移或全局 UI / graph 配置。
-- 时效性来源的 review window 和允许保留的 external evidence backlog。
-- Mid-task guidance 的默认 acknowledgement、safe switching 和 amendment policy；未特别说明时采用 `02` 默认值。
-- Audit Receipt Register 的存储位置、legacy-evidence adoption 和任何改变默认 invalidation/review policy 的决定。
+- Objective, contract version, scope version, queue revision, in-scope domains, and exclusions.
+- Standards version, the selected Runtime Card Provider routes and Read Sets, the actual loaded set (provider artifacts and module paths read back on escalation), and gate items not yet triggered; frozen by default for content tasks.
+- The target authoring status for P0 / P1 and the selected `Expression Status Axis` values.
+- `minimum_run_until`, `checkpoint_at`, `hard_stop_at`.
+- The boundaries of Required, optional, deferred, and excluded.
+- Whether the current task includes Frontmatter migration, directory migration, or global UI / graph configuration.
+- The review window for time-sensitive sources and the external evidence backlog allowed to remain.
+- The default acknowledgement, safe switching, and amendment policy for mid-task guidance; the `02` defaults apply unless otherwise specified.
+- The storage location of the Audit Receipt Register, legacy-evidence adoption, and any decision changing the default invalidation/review policy.
 
-所选 profile manifest 已声明且当前 task 没有覆写的目录、source-to-knowledge、`Language Contract`、`Expression Layer Entry` 与 `Profile Scope` defaults 不重复讨论；只有改变默认值的事项才进入本节决策清单。
+Directory, source-to-knowledge, `Language Contract`, `Expression Layer Entry`, and `Profile Scope` defaults already declared by the selected profile manifest and not overridden by the current task are not re-discussed; only items that change the defaults enter this section's decision list.
 
 ## Related
 

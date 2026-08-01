@@ -1,23 +1,23 @@
 ## Purpose
 
-本页是 Scope and Architecture 标准的稳定入口。详细规则已经按职责拆分到下列模块，原始内容没有缩减。
+This page is the stable entry point of the Scope and Architecture standard. The detailed rules have been split into the modules below by responsibility; the original content has not been reduced.
 
 ## Reading Rule
 
-- 先用本 MOC 定位规则 owner，再读取当前任务、事件或质量门需要的模块。
-- 不要求因为进入本领域就一次性读取全部模块。
-- 每个模块通过 `Navigation` 返回父级，并连接前后相邻模块。
+- First use this MOC to locate the rule owner, then read the modules required by the current task, event, or quality gate.
+- Entering this domain does not require reading all modules at once.
+- Each module returns to its parent via `Navigation` and links to the adjacent modules before and after it.
 
 ## Module Index
 
 | Module | Canonical sections |
 |---|---|
-| [[kernel/01 Scope and Architecture/01 Scope Boundaries\|Scope Boundaries]] | `Purpose`、`Profile Scope Interface` |
-| [[kernel/01 Scope and Architecture/02 Logical Architecture and Knowledge Spine\|Logical Architecture and Knowledge Spine]] | `Logical Architecture`、`Knowledge Spine` |
+| [[kernel/01 Scope and Architecture/01 Scope Boundaries\|Scope Boundaries]] | `Purpose`, `Profile Scope Interface` |
+| [[kernel/01 Scope and Architecture/02 Logical Architecture and Knowledge Spine\|Logical Architecture and Knowledge Spine]] | `Logical Architecture`, `Knowledge Spine` |
 | [[kernel/01 Scope and Architecture/03 Foundation Preservation\|Foundation Preservation]] | `Foundation Preservation Rule` |
-| [[kernel/01 Scope and Architecture/04 Folder and Shared Ownership\|Folder and Shared Ownership]] | `Physical Folder Policy`、`Shared Ownership Rule`、`Architecture Anti-patterns`、`Related` |
+| [[kernel/01 Scope and Architecture/04 Folder and Shared Ownership\|Folder and Shared Ownership]] | `Physical Folder Policy`, `Shared Ownership Rule`, `Architecture Anti-patterns`, `Related` |
 
-完整生效时还必须加载所选 profile 注册的 `Profile Scope`，由它提供具体目标、逻辑层、knowledge spine、基础层目录、共享层名和排除清单。
+For full effect, the `Profile Scope` registered by the selected profile MUST also be loaded; it provides the concrete objectives, logical layers, knowledge spine, foundation layer directories, shared layer names, and exclusion list.
 
 ## Applicable Read Sets
 
@@ -28,6 +28,6 @@
 
 - [[kernel/04 Content Depth Standard|04 Content Depth Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
-- 所选 profile 注册的 `Expression Layer Entry`
+- The `Expression Layer Entry` registered by the selected profile
 - [[kernel/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]]
 - [[kernel/05 Terminology Standard|05 Terminology Standard]]

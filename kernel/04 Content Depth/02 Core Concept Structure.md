@@ -6,7 +6,7 @@
 
 ## Core Concept Structure
 
-核心概念通常应包含：
+A core concept SHOULD usually include:
 
 ```text
 Position In The Knowledge System（在知识体系中的位置）
@@ -30,4 +30,4 @@ Related（相关）
 Sources（来源）
 ```
 
-不要求机械使用全部标题，但这些问题不能长期缺失。
+Mechanical use of all headings is not required, but these questions MUST NOT remain unanswered over the long term.
