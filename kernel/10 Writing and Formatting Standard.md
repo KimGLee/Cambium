@@ -18,13 +18,12 @@ This page is the stable entry point for the Writing and Formatting standard. The
 | [[kernel/10 Writing and Formatting/04 Rendering and Formatting Review\|Rendering and Formatting Review]] | `Rendering Workflow`, `Formatting Anti-patterns`, `Related` |
 | `Language Contract` | profile-owned reader-facing language, identity display, exceptions, audit and migration rules |
 
-## Post-migration Extensions（迁移后扩展）
+## Extension Registry
 
-Migration and version history do not enter the active standard; the extension register is currently empty:
+Sections added to this domain after a frozen baseline are registered here for conservation accounting. Registering an extension does not retroactively change the content-conservation denominator of that baseline. Migration and version history do not enter the active standard; the registry is currently empty:
 
-| Version | New section | Canonical module | Responsibility |
+| Version | Extension | Canonical owner | Responsibility |
 |---|---|---|---|
-
 ## Applicable Read Sets
 
 - [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]

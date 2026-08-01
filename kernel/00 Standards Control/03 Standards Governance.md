@@ -56,6 +56,18 @@ For any revision that adds a check, freeze, invalidation, or reconciliation obli
 
 If the three questions are not fully answered, the revision MUST NOT pass. Control obligations are managed in the Registry just like content rules.
 
+## Structural Migration Conservation
+
+For any structural migration of the standards corpus (splits, moves, renames, or re-ownership), the following conservation rules apply:
+
+- Every original H2 block MUST have an owner in one and only one leaf module.
+- Newly added Navigation, MOCs, and Read Sets do not replace the original rule text.
+- When modifying outdated routing, the superseded source text and version status MUST be preserved.
+- Apparent duplicates are not deleted during migration; deduplication requires separate governance authorization.
+- Corpus-wide heading links MUST be retargeted to the canonical leaf module.
+- Path-only links MAY continue to point to the stable domain MOC.
+- Before completion, content conservation, Wiki link, heading, table, fence, and routing validation MUST be re-run.
+
 ## Leaf Module Size Budget
 
 - Leaf module target ≤5KB, soft cap 6KB.

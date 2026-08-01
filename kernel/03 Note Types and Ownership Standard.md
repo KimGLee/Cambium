@@ -16,13 +16,12 @@ This page is the stable entry point for the Note Types and Ownership standard. T
 | [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes\|Ownership and Canonical Notes]] | `Ownership Rules`, `Canonical Note Rules` |
 | [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy\|Split and Duplication Policy]] | `Purpose`, `When To Split A Note`, `When Not To Split`, `Duplication Policy`, `Retirement`, `Merge`, `Downgrade And Subtree Deprecation`, `Related` |
 
-## Post-migration Extensions（迁移后扩展）
+## Extension Registry
 
-Migration and version history do not enter the active standard; the extension register is currently empty:
+Sections added to this domain after a frozen baseline are registered here for conservation accounting. Registering an extension does not retroactively change the content-conservation denominator of that baseline. Migration and version history do not enter the active standard; the registry is currently empty:
 
-| Version | New section | Canonical module | Responsibility |
+| Version | Extension | Canonical owner | Responsibility |
 |---|---|---|---|
-
 ## Applicable Read Sets
 
 - [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]

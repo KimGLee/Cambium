@@ -21,13 +21,12 @@ This page is the stable entry for the Quality Assurance standard. The detailed r
 | [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation\|Audit Evidence Reuse and Invalidation]] | `Purpose`, `Audit Layers`, `Dimension-specific Audit Receipt`, `Reuse Gate`, `Invalidation`, `Content-level Propagation`, `Incremental Audit Planning`, `Batch-close Closed List`, `Incremental By Default`, `Specialized Audit Boundary`, `Terminal Reconciliation Rules`, `Active-task Adoption`, `Related` |
 | `Audit Dimension Registry` + `Registered Scan Registry` + `Routing And Gate Registry` | profile-owned QA dimensions, scans, and extension gates |
 
-## Post-migration Extensions
+## Extension Registry
 
-The content-conservation denominator of a frozen baseline does not change retroactively because an extension is registered later. Migration and version history do not enter the active standard; the kernel extension registry is currently empty:
+Sections added to this domain after a frozen baseline are registered here for conservation accounting. Registering an extension does not retroactively change the content-conservation denominator of that baseline. Migration and version history do not enter the active standard; the registry is currently empty:
 
-| Extension | Canonical owner | Responsibility |
-|---|---|---|
-
+| Version | Extension | Canonical owner | Responsibility |
+|---|---|---|---|
 ## Applicable Read Sets
 
 - [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
