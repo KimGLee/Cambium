@@ -19,30 +19,61 @@ Method:
   unresolved_invalidations) that is not 0 -> fail;
 - a top-level proof field outside the list -> candidate (whether it is
   reasonable is a human call);
+- semantic checks (12/06 completion conditions are semantic, not just
+  structural): guidance_reconciliation_result /
+  coverage_reconciliation_result / automated_QA_result / manual_review_result
+  must be exactly "passed" -> otherwise fail; rendering_evidence /
+  time_contract_result containing an explicit fail/failed/failure statement
+  -> fail;
+- when --root (vault root) is given, path-valued fields (selected_read_sets,
+  loaded_module_paths, audit_receipt_register, full_deterministic_results)
+  must exist under it -> otherwise fail;
 - when --ledger (Coverage Ledger) is given, cross-check: open_gaps non-empty
   while the proof claims required_authoring_gaps=0 -> fail.
+
+This script verifies proof consistency, not the work itself: a proof can
+still lie consistently. The receipts, ledgers, and snapshots it references
+are the actual evidence; 12/06 owns the human side of the terminal audit.
 
 Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
 
 Usage: python3 check_proof.py <proof.yaml> [--ledger coverage_ledger.yaml]
-       [--template PATH] [--receipts PATH]
+       [--root VAULT_ROOT] [--template PATH] [--receipts PATH]
 """
 
 import argparse
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_proof"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 
 # 12/06: fields that must be 0 among the completion conditions (the three open
 # guidance counts are covered by the review of guidance_reconciliation_result
 # and get no numeric assertion here)
 ZERO_FIELDS = ("required_authoring_gaps", "unverified_batches",
                "unresolved_invalidations")
+
+# Result fields whose value must be exactly "passed" for completion (12/06:
+# Guidance Reconciliation step 3, Coverage Reconciliation step 4, automated
+# checks 12/05, note-type-aware manual review step 7). Any other value fails.
+PASSED_FIELDS = ("guidance_reconciliation_result",
+                 "coverage_reconciliation_result",
+                 "automated_QA_result",
+                 "manual_review_result")
+
+# Free-text evidence fields: deterministically reject an explicit failure
+# statement; anything else stays a human call.
+NO_FAIL_TOKEN_FIELDS = ("rendering_evidence", "time_contract_result")
+
+# Fields whose values are vault-relative paths that must exist when --root is
+# given (12/06 steps 1-2: Read Sets, loaded modules, register, full results).
+PATH_FIELDS = ("selected_read_sets", "loaded_module_paths",
+               "audit_receipt_register", "full_deterministic_results")
 
 
 def main():
@@ -53,6 +84,9 @@ def main():
                     default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                          "schemas", "terminal_proof.template.yaml"),
                     help="field-list template (default Tools/schemas/terminal_proof.template.yaml)")
+    ap.add_argument("--root", help="vault root; when given, path-valued proof "
+                    "fields (Read Sets, loaded modules, receipt register, "
+                    "full deterministic results) must exist under it")
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
     args = ap.parse_args()
 
@@ -112,6 +146,56 @@ def main():
             "list; whether extra fields are reasonable is a human call)"
             % field, seq))
 
+    # ---- semantic checks: statuses, failure tokens, path existence ----
+    # (12/06 completion conditions are semantic, not just structural; a proof
+    # whose reconciliation says "failed" must never pass this script.)
+    status_bad = []
+    for field in PASSED_FIELDS:
+        if field in missing or field not in proof:
+            continue
+        value = str(proof.get(field)).strip()
+        if value != "passed":
+            status_bad.append(field)
+            seq += 1
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, "proof-status-not-passed",
+                "%s#%s" % (proof_name, field), "fail",
+                "%s = %r; completion requires this result to be \"passed\" "
+                "(12/06)" % (field, value), seq))
+    for field in NO_FAIL_TOKEN_FIELDS:
+        if field in missing or field not in proof:
+            continue
+        value = str(proof.get(field))
+        if re.search(r"\bfail(ed|ure)?\b", value, re.IGNORECASE):
+            status_bad.append(field)
+            seq += 1
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, "proof-evidence-declares-failure",
+                "%s#%s" % (proof_name, field), "fail",
+                "%s contains an explicit failure statement: %r (12/06: "
+                "evidence recording a failure cannot support completion)"
+                % (field, value), seq))
+
+    path_bad = 0
+    if args.root:
+        for field in PATH_FIELDS:
+            if field in missing or field not in proof:
+                continue
+            value = proof.get(field)
+            for p in (value if isinstance(value, list) else [value]):
+                p = str(p).strip()
+                if not p:
+                    continue
+                if not os.path.exists(os.path.join(args.root, p)):
+                    path_bad += 1
+                    seq += 1
+                    receipts.append(kblib.make_receipt(
+                        TOOL, TOOL_VERSION, "proof-path-missing",
+                        "%s#%s" % (proof_name, field), "fail",
+                        "path %r recorded in %s does not exist under root %s "
+                        "(12/06 steps 1-2 require these references to be "
+                        "resolvable)" % (p, field, args.root), seq))
+
     cross_fail = 0
     if args.ledger:
         try:
@@ -145,8 +229,9 @@ def main():
                 ", consistent with Coverage Ledger open_gaps" if args.ledger else ""), seq))
 
     print("check_proof: checking %s against %d required template field(s)" % (args.proof, len(required_fields)))
-    print("  missing_fields=%d zero_condition_violations=%d extra_fields(candidate)=%d ledger_cross_failures=%d"
-          % (len(missing), len(zero_bad), len(extra), cross_fail))
+    print("  missing_fields=%d zero_condition_violations=%d status_violations=%d "
+          "path_failures=%d extra_fields(candidate)=%d ledger_cross_failures=%d"
+          % (len(missing), len(zero_bad), len(status_bad), path_bad, len(extra), cross_fail))
     for r in receipts:
         if r["result"] != "pass":
             print("  [%s %s] %s — %s" % (r["result"].upper()[:4], r["check"],

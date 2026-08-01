@@ -29,6 +29,17 @@ Result semantics: missing / ambiguous / bad heading are always result=fail
 (09/05 requires all three to be zero); a target page whose lifecycle is
 retired / merged is only result=candidate (suggest repointing to its
 superseded_by successor page, 03/03), not a fail.
+
+Scope semantics: --scope may be a directory or a single .md file (note-close
+self-check, 00/05). A --scope that matches no files is result=fail -- a
+zero-file scan is an invocation error, never a pass.
+
+Exclusion semantics: --exclude keeps files out of content scanning and out of
+basename disambiguation, but exact vault-relative-path links into an excluded
+area (e.g. frozen legacy snapshots) still resolve -- excluded means
+"not audited", not "nonexistent". Such links are counted as excluded_target
+and get no heading/lifecycle verification.
+
 Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
 
 Usage: python3 check_links.py <vault_root> [--scope SUBPATH]
@@ -45,7 +56,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_links"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 
 LINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
 
@@ -121,8 +132,9 @@ def main():
     ap.add_argument("--exclude", action="append", default=[],
                     help="path component to exclude (repeatable); files whose "
                          "path contains the component are neither scanned for "
-                         "outgoing links nor used as resolution targets in "
-                         "basename disambiguation")
+                         "outgoing links nor used in basename disambiguation, "
+                         "but exact full-path links into them still resolve "
+                         "(excluded means not audited, not nonexistent)")
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
     args = ap.parse_args()
 
@@ -132,20 +144,40 @@ def main():
         return not any(part in excludes
                        for part in rel.replace(os.sep, "/").split("/"))
 
-    all_files = [(f, r) for f, r in kblib.iter_md_files(args.vault_root) if keep(r)]
+    every_file = kblib.iter_md_files(args.vault_root)
+    all_files = [(f, r) for f, r in every_file if keep(r)]
+    excluded_files = [(f, r) for f, r in every_file if not keep(r)]
     if args.scope:
         scan_files = [(f, r) for f, r in kblib.iter_md_files(args.vault_root, args.scope)
                       if keep(r)]
+        if not scan_files:
+            # A gate that scans nothing must fail, not silently pass (00/05
+            # note close; a nonexistent or empty --scope is an invocation
+            # error, never evidence of quality).
+            receipts = [kblib.make_receipt(
+                TOOL, TOOL_VERSION, "scope-empty",
+                args.scope + " @ " + os.path.abspath(args.vault_root), "fail",
+                "--scope matched no .md files (path missing, empty, or fully "
+                "excluded); a zero-file scan cannot serve as a gate result", 1)]
+            print("check_links: scanned 0 file(s) — FAIL: --scope %r matched no files" % args.scope)
+            kblib.write_receipts(args.receipts, receipts)
+            return kblib.exit_code(receipts)
     else:
         scan_files = all_files
     by_path, by_base = build_index(all_files)
+    # Excluded files (e.g. frozen legacy snapshots) are indexed as resolution
+    # targets for exact vault-relative paths only: --exclude means "do not
+    # audit these files' contents and keep them out of basename
+    # disambiguation", not "pretend they do not exist". Explicit full-path
+    # links into an excluded area therefore still resolve.
+    by_path_excluded, _ = build_index(excluded_files)
     heading_cache = {}
     lifecycle_cache = {}
 
     receipts = []
     seq = 0
     counts = {"links": 0, "missing": 0, "ambiguous": 0, "bad_heading": 0,
-              "block_ref_skipped": 0, "retired_target": 0}
+              "block_ref_skipped": 0, "retired_target": 0, "excluded_target": 0}
 
     for full, rel in scan_files:
         text = kblib.strip_code(open(full, encoding="utf-8", errors="replace").read())
@@ -159,6 +191,13 @@ def main():
                     status, resolved = "resolved", rel_key  # [[#heading]] self-reference
                 else:
                     status, resolved = resolve(target, by_path, by_base)
+                    if (status == "missing" and "/" in target
+                            and target in by_path_excluded):
+                        # Exact-path link into an excluded (e.g. frozen
+                        # legacy) area: the file exists; treat as resolved
+                        # but skip lifecycle/heading checks against it.
+                        counts["excluded_target"] += 1
+                        continue
                 if status == "missing":
                     counts["missing"] += 1
                     seq += 1
@@ -209,7 +248,8 @@ def main():
 
     print("check_links: scanned %d file(s), %d link(s)" % (len(scan_files), counts["links"]))
     print("  missing=%(missing)d ambiguous=%(ambiguous)d bad_heading=%(bad_heading)d "
-          "block_ref_skipped=%(block_ref_skipped)d retired_target(candidate)=%(retired_target)d" % counts)
+          "block_ref_skipped=%(block_ref_skipped)d retired_target(candidate)=%(retired_target)d "
+          "excluded_target(resolved)=%(excluded_target)d" % counts)
     for r in receipts:
         if r["result"] == "fail":
             print("  [FAIL %s] %s — %s" % (r["check"], r["target"], r["details"]))

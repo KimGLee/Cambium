@@ -12,15 +12,25 @@ Behavior:
   (authoring_status / interview_status / tier / lifecycle / next_batch etc. --
   whatever scalar keys appear in the delta's page entry get updated; keys not
   present in the block are appended at the block's indentation).
-- gate_receipts are merged by appending (deduplicated).
+- gate_receipts are merged by appending (deduplicated); both legal Ledger
+  forms are read (inline `[...]` and block list), and the merged result is
+  always written back in the schema's block-list form with the existing
+  items replaced in place (no orphan list lines).
+- Scalar keys outside the Coverage Ledger core schema are applied but warned
+  about ([WARN unknown-key]); they are legal for registered profile
+  extensions and the warning is the visibility hook.
 - Out-of-scope protection: a page is rejected when the entry block's
   next_batch or batch does not equal delta.batch (--force overrides, with a
   per-page reason recorded).
 - open_gaps_added / open_gaps_closed are printed as a todo list (gap structure
   varies by task; the integrator handles them in the Ledger's open_gaps
-  section manually or via a follow-up script).
-- Default is a dry run that prints the plan; --apply writes to disk, creating
-  a <ledger>.bak backup first.
+  section manually or via a follow-up script); watermark_advance entries are
+  likewise printed as integrator todos (02/05: applied to
+  Tools/state/watermark.yaml at merge, not by this script).
+- Default is a dry run that prints the plan; --apply first re-parses the
+  merged output with the restricted-subset parser and ABORTS without writing
+  when it no longer parses; on success it writes atomically (temp file +
+  rename) after creating a <ledger>.bak backup.
 - --receipts appends one JSONL receipt (check: delta_apply).
 
 Usage: python3 apply_delta.py <ledger.yaml> <delta.yaml> [--apply] [--force] [--receipts R]
@@ -29,7 +39,15 @@ import argparse, os, re, sys, shutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
-TOOL, TOOL_VERSION = "apply_delta", "1.0.0"
+TOOL, TOOL_VERSION = "apply_delta", "1.1.0"
+
+# Scalar keys expected in a Coverage Ledger page entry (schema:
+# Tools/schemas/coverage_ledger.template.yaml; profile extensions such as an
+# Expression Status Axis are legal, so unknown keys are warned about and
+# still applied, never silently absorbed).
+KNOWN_SCALAR_KEYS = {"authoring_status", "interview_status", "tier",
+                     "lifecycle", "batch", "next_batch", "volatility",
+                     "review_by", "priority", "coverage_disposition"}
 
 def load_delta(path):
     text = "\n".join(l for l in open(path, encoding="utf-8") if not l.lstrip().startswith("#"))
@@ -64,6 +82,32 @@ def block_get(lines, start, end, key):
             return i, m.group(1), m.group(2).strip().strip('"\'')
     return None, None, None
 
+
+def get_receipt_ids(lines, start, end):
+    """Read the existing gate_receipts of a page block, in either legal form.
+
+    Returns (key_line_idx, indent, ids, last_item_idx): inline `[...]` values
+    come from the key line itself; block-list `- "id"` items are collected
+    from the lines following the key line. last_item_idx is the index of the
+    final line belonging to gate_receipts (== key line for inline/empty form).
+    Returns (None, None, [], None) when the key is absent.
+    """
+    li, ind, raw = block_get(lines, start, end, "gate_receipts")
+    if li is None:
+        return None, None, [], None
+    if raw:
+        ids = [x.strip().strip('"\'') for x in raw.strip("[]").split(",") if x.strip()]
+        return li, ind, ids, li
+    ids, last = [], li
+    item_pat = re.compile(r'^(\s+)-\s+(.*?)\s*$')
+    for j in range(li + 1, end):
+        m = item_pat.match(lines[j])
+        if not m or len(m.group(1)) <= len(ind):
+            break
+        ids.append(m.group(2).strip().strip('"\''))
+        last = j
+    return li, ind, ids, last
+
 def main():
     ap = argparse.ArgumentParser(description="Deterministic Coverage Delta application")
     ap.add_argument("ledger"); ap.add_argument("delta")
@@ -77,7 +121,7 @@ def main():
     pages = delta.get("pages") or []
     lines = open(args.ledger, encoding="utf-8").read().splitlines(keepends=True)
 
-    planned, rejected = [], []
+    planned, rejected, unknown_keys = [], [], []
     for page in pages:
         path = str(page.get("path", "")).strip()
         if not path:
@@ -95,15 +139,25 @@ def main():
             if key in ("path",):
                 continue
             if key == "gate_receipts":
-                li, ind, cur = block_get(lines, start, end, "gate_receipts")
+                # Merge by appending (deduplicated) and always emit the
+                # schema's block-list form; the replacement range covers the
+                # key line plus any existing block-list items, so no orphan
+                # `- "id"` lines survive (they would break the restricted
+                # YAML subset).
+                li, ind, cur_ids, last = get_receipt_ids(lines, start, end)
                 new_ids = [str(v) for v in (val or [])]
+                merged = cur_ids + [x for x in new_ids if x not in cur_ids]
                 if li is not None:
-                    cur_ids = [x.strip().strip('"\'') for x in cur.strip("[]").split(",") if x.strip()]
-                    merged = cur_ids + [x for x in new_ids if x not in cur_ids]
-                    edits.append((li, f'{ind}gate_receipts: [{", ".join(chr(34)+x+chr(34) for x in merged)}]\n'))
+                    block = [f'{ind}gate_receipts:\n'] + [
+                        f'{ind}  - "{x}"\n' for x in merged]
+                    edits.append(("range", li, last + 1, block))
                 else:
-                    edits.append((start, f'    gate_receipts: [{", ".join(chr(34)+x+chr(34) for x in new_ids)}]\n', "append"))
+                    block = ['    gate_receipts:\n'] + [
+                        f'      - "{x}"\n' for x in merged]
+                    edits.append(("range", end, end, block))
                 continue
+            if key not in KNOWN_SCALAR_KEYS:
+                unknown_keys.append((path, key))
             sval = "" if val is None else str(val)
             li, ind, _ = block_get(lines, start, end, key)
             if li is not None:
@@ -117,28 +171,60 @@ def main():
         print(f"  [PLAN] {p}: {len(eds)} field update(s)")
     for p, r in rejected:
         print(f"  [REJECT] {p}: {r}")
+    for p, k in unknown_keys:
+        print(f"  [WARN unknown-key] {p}: scalar key '{k}' is outside the "
+              f"Coverage Ledger core schema (applied anyway; legal for "
+              f"registered profile extensions, verify it is one)")
     for g in (delta.get("open_gaps_added") or []):
         print(f"  [TODO gaps+] {g}")
     for g in (delta.get("open_gaps_closed") or []):
         print(f"  [TODO gaps-] {g}")
     for s in (delta.get("next_batch_updates") or []):
         print(f"  [SUGGEST] {s}")
+    for w in (delta.get("watermark_advance") or []):
+        print(f"  [TODO watermark] {w} — integrator applies to "
+              f"Tools/state/watermark.yaml at merge (02/05); this script "
+              f"does not apply watermark advances")
 
     result = "fail" if rejected and not args.force else ("pass" if planned else "candidate")
     if args.apply and result != "fail":
-        shutil.copyfile(args.ledger, args.ledger + ".bak")
         # Apply block by block (descending line order to avoid offset shifts)
         flat = []
         for _, _, eds in planned:
             for e in eds:
                 flat.append(e)
-        for e in sorted(flat, key=lambda x: -x[0]):
-            if len(e) == 3 and e[2] in ("insert", "append"):
-                lines.insert(e[0], e[1])
+
+        def edit_pos(e):
+            return e[1] if e[0] == "range" else e[0]
+
+        new_lines = list(lines)
+        for e in sorted(flat, key=lambda x: -edit_pos(x)):
+            if e[0] == "range":
+                _, rstart, rstop, block = e
+                new_lines[rstart:rstop] = block
+            elif len(e) == 3 and e[2] in ("insert", "append"):
+                new_lines.insert(e[0], e[1])
             else:
-                lines[e[0]] = e[1]
-        open(args.ledger, "w", encoding="utf-8").write("".join(lines))
-        print(f"apply_delta: written to disk (backup {args.ledger}.bak)")
+                new_lines[e[0]] = e[1]
+        new_text = "".join(new_lines)
+
+        # Self-verification: the output must reparse under the restricted
+        # YAML subset before it may replace the authoritative Ledger. On
+        # failure nothing is written and the exit code is 1.
+        try:
+            kblib.parse_yaml_subset(new_text)
+        except kblib.YamlSubsetError as exc:
+            print(f"apply_delta: ABORT — merged output no longer parses "
+                  f"({exc}); the Ledger was NOT modified")
+            result = "fail"
+        else:
+            shutil.copyfile(args.ledger, args.ledger + ".bak")
+            tmp_path = args.ledger + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write(new_text)
+            os.replace(tmp_path, args.ledger)
+            print(f"apply_delta: written to disk (backup {args.ledger}.bak; "
+                  f"output re-parsed OK)")
     elif not args.apply:
         print("apply_delta: dry run (add --apply to write)")
 

@@ -1,11 +1,12 @@
 # =============================================================================
 # AuditPlan template (machine-readable state layer; the template is the schema doc)
 # Owner standard: "12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md"
-#   -- Incremental Audit Planning: generate an AuditPlan at the start of each
-#      batch and before closing it; freeze snapshot -> diff -> resolve
-#      direct/dependency invalidation -> partition the checks
-#      -> run them and produce new receipts -> reconcile -> close only when
-#      required invalidations reach zero.
+#   -- Incremental Audit Planning: each batch generates an AuditPlan exactly
+#      once, before close; at batch start only the Audit Receipt Register is
+#      loaded, with no separate AuditPlan (12/07). The close-time sequence:
+#      freeze snapshot -> diff -> resolve direct/dependency invalidation ->
+#      partition the checks -> run them and produce new receipts ->
+#      reconcile -> close only when required invalidations reach zero.
 #
 # Only the restricted YAML subset is allowed (parseable by Tools/kblib.py parse_yaml_subset):
 #   - `key: value` scalars (string/number/boolean/null, quoted strings, inline `[]`);

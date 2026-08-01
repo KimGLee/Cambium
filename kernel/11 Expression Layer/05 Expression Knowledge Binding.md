@@ -20,6 +20,6 @@ For relationship meaning and structural requirements, see [[kernel/09 Wiki Link 
 
 ## Evidence Maturity Boundary
 
-Key conclusions entering stable expression SHOULD already have been promoted to reviewed canonical knowledge; conclusions still at `emerging` or `contested` MUST retain the same qualification in expression artifacts, and evidence strength MUST NOT be inflated for the sake of expressive fluency.
+Key conclusions entering stable expression SHOULD already have been promoted to reviewed canonical knowledge; conclusions still at `signal` / `single-source` or `contested` MUST retain the same qualification in expression artifacts, and evidence strength MUST NOT be inflated for the sake of expressive fluency.
 
 The canonical owner of evidence maturity is [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy#Evidence Maturity|Evidence Maturity]].

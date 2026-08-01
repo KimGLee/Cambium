@@ -223,9 +223,19 @@ def strip_code(text):
 
 
 def iter_md_files(vault_root, scope=None):
-    """Walk all .md files under the vault (sorted by relative path); scope is an optional subpath."""
+    """Walk all .md files under the vault (sorted by relative path); scope is an optional subpath.
+
+    scope may also point at a single .md file (note-close self-check, 00/05);
+    in that case exactly that file is returned. A scope that exists as neither
+    a directory nor an .md file yields an empty list -- callers implementing a
+    gate MUST treat an empty scan set as a failure, not a pass.
+    """
     base = os.path.join(vault_root, scope) if scope else vault_root
     base = os.path.normpath(base)
+    if os.path.isfile(base):
+        if base.lower().endswith(".md"):
+            return [(base, os.path.relpath(base, vault_root))]
+        return []
     result = []
     for dirpath, dirnames, filenames in os.walk(base):
         dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))

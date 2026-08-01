@@ -25,6 +25,10 @@ Method:
 - a file without any frontmatter -> one candidate; frontmatter beyond the
   subset grammar and thus unparseable -> one candidate.
 
+Scope semantics: --scope may be a directory or a single .md file (note-close
+self-check, 00/05). A --scope that matches no files is result=fail -- a
+zero-file scan is an invocation error, never a pass.
+
 Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
 
 Usage: python3 check_vocab.py <vault_root> [--scope SUBPATH]
@@ -40,7 +44,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_vocab"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 
 
 def load_vocab(path):
@@ -87,7 +91,19 @@ def main():
     dist = {"priority": {}, "tier": {}}  # 00/02 Priority Quota distribution stats
 
     excludes = [e.strip("/").replace(os.sep, "/") for e in args.exclude]
-    for full, rel in kblib.iter_md_files(args.vault_root, args.scope):
+    scan_files = kblib.iter_md_files(args.vault_root, args.scope)
+    if args.scope and not scan_files:
+        # A gate that scans nothing must fail, not silently pass (00/05 note
+        # close; a nonexistent or empty --scope is an invocation error).
+        receipts = [kblib.make_receipt(
+            TOOL, TOOL_VERSION, "scope-empty",
+            args.scope + " @ " + os.path.abspath(args.vault_root), "fail",
+            "--scope matched no .md files (path missing, empty, or fully "
+            "excluded); a zero-file scan cannot serve as a gate result", 1)]
+        print("check_vocab: scanned 0 file(s) — FAIL: --scope %r matched no files" % args.scope)
+        kblib.write_receipts(args.receipts, receipts)
+        return kblib.exit_code(receipts)
+    for full, rel in scan_files:
         rel_disp = rel.replace(os.sep, "/")
         if any(rel_disp == e or rel_disp.startswith(e + "/") for e in excludes):
             continue
@@ -113,10 +129,6 @@ def main():
                 "frontmatter is beyond the restricted YAML subset grammar and "
                 "cannot be judged deterministically: %s" % exc, seq))
             continue
-        for _axis in ("priority", "tier"):
-            _v = fm.get(_axis)
-            if isinstance(_v, str) and _v.strip():
-                dist[_axis][_v.strip()] = dist[_axis].get(_v.strip(), 0) + 1
         if not isinstance(fm, dict):
             counts["unparseable"] += 1
             seq += 1
@@ -124,6 +136,10 @@ def main():
                 TOOL, TOOL_VERSION, "frontmatter-unparseable", rel_disp, "candidate",
                 "top level of frontmatter is not a mapping", seq))
             continue
+        for _axis in ("priority", "tier"):
+            _v = fm.get(_axis)
+            if isinstance(_v, str) and _v.strip():
+                dist[_axis][_v.strip()] = dist[_axis].get(_v.strip(), 0) + 1
 
         # Legacy `status` field: treated as a migration-period compatibility
         # alias of authoring_status (08/04)

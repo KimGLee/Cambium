@@ -42,5 +42,5 @@ For the candidate boundary of similar automated checks, see [[kernel/10 Writing 
 - The necessary links between canonical owners and expression artifacts are bidirectional, resolvable, and unambiguous.
 - Every migration candidate has an explicit disposition; after migration there is no content loss, duplicate owner, or broken link.
 - Definitions, mechanisms, metrics, and case conclusions can be traced back to canonical knowledge, evidence, and evaluation provenance.
-- `emerging`, `contested`, `unknown`, and other evidence qualifications remain preserved after migration.
+- `signal`, `single-source`, `contested`, `unknown`, and other evidence qualifications remain preserved after migration.
 - Automated scan results serve only as candidate evidence and are never treated as automatic deletion authorization or proof of completion.

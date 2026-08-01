@@ -14,6 +14,8 @@
 | Change authority | User's explicit governance instruction |
 | Content-task behavior | Frozen; read-only control plane |
 
+The `{{ ... }}` values above are release placeholders, not values: an adopting instance MUST instantiate them in its first governance release (its initial adoption counts as one), recording the release in the Change Summary below. While the placeholders remain uninstantiated, the composed standard is in pre-release state — content tasks MUST NOT treat it as a frozen Standards version, and a task contract cannot record a frozen `standards_version` from it.
+
 The Standards lifecycle is:
 
 ```text

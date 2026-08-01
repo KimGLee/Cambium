@@ -23,7 +23,12 @@ rounds and governance tasks.
 
 Usage: python3 Tools/check_moc.py <root> [--exclude COMPONENT ...] [--receipts PATH]
 """
-import argparse, json, os, re, sys, time
+import argparse, os, re, sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import kblib
+
+TOOL, TOOL_VERSION = "check_moc", "1.2.0"
 
 DEFAULT_EXCLUDES = ("legacy", "docs", "_to_delete")
 
@@ -118,14 +123,22 @@ def main():
     for moc, target, kind, h in cands:
         print(f"  [CAND] {moc} -> {target}: {kind}: {h}")
     print(f"check_moc: {len(cands)} candidate(s) ({len(mocs)} MOC file(s) scanned)")
-    if args.receipts:
-        rec = {"receipt_id": f"audit-moc-{int(time.time())}-1",
-               "check": "moc_index_consistency", "scope": "full-vault",
-               "result": "candidates" if cands else "passed",
-               "candidates": len(cands)}
-        with open(args.receipts, "a", encoding="utf-8") as f:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    return 2 if cands else 0
+    # Receipts follow the shared convention (kblib.make_receipt; same schema
+    # as every other check_*.py -- Tools/schemas/receipt.template.jsonl).
+    receipts = []
+    for seq, (moc, target, kind, h) in enumerate(cands, 1):
+        receipts.append(kblib.make_receipt(
+            TOOL, TOOL_VERSION, "moc-index-drift",
+            "%s -> %s" % (moc, target), "candidate",
+            "%s: %s (Module Index vs actual H2 headings, 12/05; candidates "
+            "only, disposition is a human call)" % (kind, h), seq))
+    if not cands:
+        receipts.append(kblib.make_receipt(
+            TOOL, TOOL_VERSION, "moc-check-summary", "full-vault", "pass",
+            "Module Index sections match actual H2 headings "
+            "(%d MOC file(s) scanned)" % len(mocs), 1))
+    kblib.write_receipts(args.receipts, receipts)
+    return kblib.exit_code(receipts)
 
 
 if __name__ == "__main__":

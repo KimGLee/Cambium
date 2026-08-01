@@ -31,11 +31,17 @@ Usage: python3 duplicate_check.py [vault_path] [--scope SUBPATH]
 """
 
 import argparse
+import os
 import re
 import sys
 from collections import defaultdict
 from itertools import combinations
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import kblib
+
+TOOL, TOOL_VERSION = "duplicate_check", "1.1.0"
 
 MIN_PARA_LEN = 40      # minimum paragraph length (characters) to compete
 SHINGLE_SIZE = 12      # shingle window length (characters)
@@ -151,6 +157,9 @@ def main():
                     metavar="COMPONENT",
                     help="skip files whose path contains this component "
                          "(repeatable; default: legacy)")
+    ap.add_argument("--receipts",
+                    help="JSONL path to append machine-readable receipts to "
+                         "(shared convention, Tools/schemas/receipt.template.jsonl)")
     args = ap.parse_args()
 
     vault = Path(args.vault)
@@ -169,13 +178,20 @@ def main():
             if path_in_scope(key[0], scope) or path_in_scope(key[1], scope)
         }
 
+    receipts = []
     if not pairs:
         print("No cross-file similar paragraphs above the thresholds.")
-        return
+        receipts.append(kblib.make_receipt(
+            TOOL, TOOL_VERSION, "duplicate-check-summary",
+            (args.scope or ".") + " @ " + str(vault.resolve()), "pass",
+            "no cross-file similar paragraphs above the thresholds", 1))
+        kblib.write_receipts(args.receipts, receipts)
+        return kblib.exit_code(receipts)
 
     scope_note = f" (scope: {args.scope})" if scope is not None else ""
     print(f"Found {len(pairs)} file pair(s) with similar paragraphs "
           f"(candidates, human judgement required){scope_note}:\n")
+    seq = 0
     for (file_a, file_b), records in sorted(pairs.items(), key=lambda kv: -len(kv[1])):
         print(f"[{len(records)} match(es)] {file_a} <-> {file_b}")
         for score, para_a, para_b in records[:MAX_EXAMPLES_PER_PAIR]:
@@ -183,7 +199,16 @@ def main():
             print(f"    A: {summarize(para_a)}")
             print(f"    B: {summarize(para_b)}")
         print()
+        seq += 1
+        receipts.append(kblib.make_receipt(
+            TOOL, TOOL_VERSION, "duplicate-paragraphs",
+            f"{file_a} <-> {file_b}", "candidate",
+            "%d similar paragraph pair(s) above thresholds (03/03 split and "
+            "duplication policy; candidates only, disposition is a human "
+            "call)" % len(records), seq))
+    kblib.write_receipts(args.receipts, receipts)
+    return kblib.exit_code(receipts)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

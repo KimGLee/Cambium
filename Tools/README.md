@@ -14,24 +14,34 @@ scan); check_freshness/duplicate_check are maintenance tooling.
 
 | Script | Purpose | Typical invocation |
 |---|---|---|
-| `check_links.py` | Wiki link missing / ambiguous / heading verification (09/03, 09/05); `--exclude` skips path components | `python3 Tools/check_links.py . --exclude legacy --receipts Tools/receipts/links.jsonl` |
-| `check_vocab.py` | Frontmatter controlled-vocabulary check (08 domain; vocabulary from `vocab.yaml`); `--quota-p0` / `--quota-p1` cap P0/P1 shares, defaults 15/35 (kernel defaults; a profile or task contract may override) | `python3 Tools/check_vocab.py . --scope kernel --quota-p0 15 --quota-p1 35 --receipts Tools/receipts/vocab.jsonl` |
+| `check_links.py` | Wiki link missing / ambiguous / heading verification (09/03, 09/05); `--scope` accepts a directory or a single page (an empty scan set fails); `--exclude` keeps files out of scanning and basename disambiguation, while exact full-path links into excluded areas still resolve (`excluded_target`) | `python3 Tools/check_links.py . --exclude legacy --receipts Tools/receipts/links.jsonl` |
+| `check_vocab.py` | Frontmatter controlled-vocabulary check (08 domain; vocabulary from `vocab.yaml`); `--scope` accepts a directory or a single page (an empty scan set fails); `--quota-p0` / `--quota-p1` cap P0/P1 shares, defaults 15/35 (kernel defaults; a profile or task contract may override) | `python3 Tools/check_vocab.py . --scope kernel --quota-p0 15 --quota-p1 35 --receipts Tools/receipts/vocab.jsonl` |
 | `check_moc.py` | Domain MOC Module Index vs. actual H2 headings consistency candidates (12/05; **candidates only**); recursively scans for Module Index sections and is fence-aware (fenced code blocks ignored); maintenance runs and governance | `python3 Tools/check_moc.py . --exclude legacy` |
-| `check_proof.py` | Terminal Proof completeness and zero-condition check (12/06); required fields come from `schemas/terminal_proof.template.yaml`; optional Coverage Ledger cross-check | `python3 Tools/check_proof.py proof.yaml --ledger coverage_ledger.yaml` |
-| `apply_delta.py` | Deterministic application of a coverage delta during the serial merge (02/05 Concurrent Batches; `--apply` writes to disk, out-of-manifest pages rejected, automatic backup) | `python3 Tools/apply_delta.py ledger.yaml delta.yaml --apply` |
+| `check_proof.py` | Terminal Proof consistency check (12/06): field completeness, zero conditions, reconciliation/QA/review results must read `passed`, evidence fields must not declare failure; `--root` additionally requires path-valued fields to resolve; optional Coverage Ledger cross-check. Verifies the proof's consistency, not the work itself | `python3 Tools/check_proof.py proof.yaml --root . --ledger coverage_ledger.yaml` |
+| `apply_delta.py` | Deterministic application of a coverage delta during the serial merge (02/05 Concurrent Batches); merges `gate_receipts` in block-list form, warns on non-core scalar keys, re-parses the merged output before writing and aborts if it no longer parses; atomic write with automatic backup; gap/watermark entries are printed as integrator todos | `python3 Tools/apply_delta.py ledger.yaml delta.yaml --apply` |
 | `compose_vocab.py` | Persistent vocabulary compiler: composes `vocab.yaml` from the kernel base and the selected profile's extensions; `--check` recomputes and compares | `python3 Tools/compose_vocab.py --check` |
 | `stamp_cards.py` | Runtime Cards source_hash stamping and verification (00/03 Write-back Checklist); `--cards-dir` defaults to `Cards` and a missing directory exits 0; `--check` verifies only; `--set-version` stamps a uniform version incl. the Card Index | `python3 Tools/stamp_cards.py . --check` |
 | `check_language.py` | Language-policy candidate detection for the agent-atlas profile (10/05; **candidates only**); exemptions come only from `--exempt` -- there is no built-in path exemption | `python3 Tools/check_language.py . --scope profiles --exempt kernel --receipts Tools/receipts/lang.jsonl` |
-| `check_freshness.py` | Freshness check: computes review_by from volatility and last_verified, outputs the overdue list sorted by priority (maintenance-run input); `--exclude` skips path components, `--defaults` supplies volatility defaults -- the script ships no built-in domain default table | `python3 Tools/check_freshness.py . --as-of 2026-07-21 --exclude legacy --receipts Tools/receipts/fresh.jsonl` |
-| `duplicate_check.py` | Cross-file duplicate paragraph candidate detection; full vault by default; `--exclude` defaults to `legacy` | `python3 Tools/duplicate_check.py . --scope kernel` |
+| `check_freshness.py` | Freshness check: computes review_by from volatility and last_verified (fallback: last_reviewed, then file modification time per 08/05, flagged pending first verification); `--defaults` accepts a flat mapping or `Tools/vocab.yaml` / a profile's `vocabulary-extensions.yaml` (their `volatility_defaults`); an all-skip run reports NOTHING CHECKED as a candidate, not a pass | `python3 Tools/check_freshness.py . --as-of 2026-07-21 --exclude legacy --defaults Tools/vocab.yaml --receipts Tools/receipts/fresh.jsonl` |
+| `duplicate_check.py` | Cross-file duplicate paragraph candidate detection; full vault by default; `--exclude` defaults to `legacy`; supports `--receipts` and exits 2 when candidates exist | `python3 Tools/duplicate_check.py . --scope kernel --receipts Tools/receipts/dup.jsonl` |
 | `kblib.py` | Shared library (restricted YAML subset parser, Markdown helpers, receipt helpers); not invoked directly | imported by all scripts above |
+
+## Canonical full-tree configuration
+
+The full-tree link check for this repository is `python3 Tools/check_links.py
+. --exclude legacy`: frozen `legacy/` snapshots are byte-verbatim historical
+artifacts whose contents are not audited (they may contain links that were
+valid at snapshot time), while explicit full-path links into them from active
+files still resolve. Running without `--exclude legacy` audits the snapshots
+themselves and reports their historical dead links.
 
 ## Invocation split
 
 - **Batch close** = the Batch-close Closed List (owner: 12/07; a seven-item
   closed list, including full-vault `check_links` and `check_vocab`).
 - **Note close** = `check_links.py` / `check_vocab.py` with `--scope` set to
-  the page itself (self-check; no receipts produced).
+  the page itself (self-check; no receipts produced). Both tools fail on an
+  empty scan set, so a mistyped page path cannot pass silently.
 - **Maintenance run** = `check_freshness.py` (once at the start of the run)
   plus `duplicate_check.py` (full vault or `--scope`; candidates go into the
   candidates pool). Neither is invoked at batch or single-page level.

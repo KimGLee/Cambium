@@ -12,16 +12,22 @@ Method:
 - skip files whose path contains a component given via --exclude
   (repeatable; default: none);
 - volatility: an explicit frontmatter declaration always wins; when a
-  domain -> volatility mapping file is supplied via --defaults, pages
-  without an explicit declaration fall back to the mapping through their
-  `domain`; otherwise (no --defaults, or domain missing / unmapped) the
-  page is skipped and counted in the summary;
+  domain -> volatility mapping is supplied via --defaults (a flat file, or
+  Tools/vocab.yaml / a profile's vocabulary-extensions.yaml via their
+  volatility_defaults section), pages without an explicit declaration fall
+  back to the mapping through their `domain`; otherwise (no --defaults, or
+  domain missing / unmapped) the page is skipped and counted in the summary;
 - re-verification interval: fast = 120 days, slow = 365 days, stable = no
   due date (never produces candidates);
-- baseline date is `last_verified`, falling back to `last_reviewed`; if
-  both are missing the page is flagged "pending first verification";
+- baseline date is `last_verified`, falling back to `last_reviewed`; when
+  both are missing, the file's modification time is used as the most recent
+  substantive modification date (08/05) and the page is flagged "pending
+  first verification" with its computed due date;
 - `review_by` = baseline + interval; --as-of (default: today) >= review_by
-  counts as overdue.
+  counts as overdue;
+- when every scanned file is skipped for lack of a resolvable volatility,
+  the run reports NOTHING CHECKED as a candidate result -- an all-skip run
+  is not evidence of freshness.
 
 Result semantics: overdue and pending-first-verification pages are always
 result=candidate -- they only feed the maintenance-run candidate list and
@@ -46,7 +52,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_freshness"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 
 # Re-verification interval (days) per volatility tier.
 INTERVAL_DAYS = {"fast": 120, "slow": 365, "stable": None}
@@ -84,7 +90,12 @@ def load_frontmatter(path):
 
 
 def load_defaults(path):
-    """Load a domain -> volatility mapping file (restricted YAML subset).
+    """Load a domain -> volatility mapping (restricted YAML subset).
+
+    Accepts either a flat `domain: volatility` file, or a composed vocabulary
+    artifact / profile extensions file carrying a nested `volatility_defaults`
+    mapping (Tools/vocab.yaml, profiles/*/vocabulary-extensions.yaml) -- in
+    that case the nested mapping is used.
 
     Returns a dict; raises ValueError on a malformed file or on a volatility
     value outside fast / slow / stable.
@@ -94,8 +105,11 @@ def load_defaults(path):
         mapping = kblib.parse_yaml_subset(text)
     except kblib.YamlSubsetError as exc:
         raise ValueError("defaults file is not parseable YAML subset: %s" % exc)
+    if isinstance(mapping, dict) and isinstance(mapping.get("volatility_defaults"), dict):
+        mapping = mapping["volatility_defaults"]
     if not isinstance(mapping, dict):
-        raise ValueError("defaults file must be a flat domain -> volatility mapping")
+        raise ValueError("defaults file must be a flat domain -> volatility "
+                         "mapping or contain a volatility_defaults mapping")
     result = {}
     for domain, volatility in mapping.items():
         volatility = str(volatility)
@@ -188,22 +202,33 @@ def main():
         prio_rank = PRIORITY_ORDER.get(priority, len(PRIORITY_ORDER))
         prio_disp = priority or "no-priority"
 
-        # ---- baseline date: last_verified > last_reviewed > pending ----
+        # ---- baseline date: last_verified > last_reviewed > file
+        # modification time (08/05: with no last_verified, the creation date
+        # or the date of the most recent substantive modification is used
+        # instead and the page is marked awaiting first verification) ----
+        pending_first = False
         baseline = parse_date(fm.get("last_verified"))
         baseline_field = "last_verified"
         if baseline is None:
             baseline = parse_date(fm.get("last_reviewed"))
             baseline_field = "last_reviewed"
         if baseline is None:
-            counts["pending_first_verification"] += 1
-            details = ("pending first verification: no last_verified / "
-                       "last_reviewed baseline date (volatility=%s, priority=%s)"
-                       % (volatility, prio_disp))
-            candidates.append((prio_rank, 1, rel_disp, details))
-            continue
+            pending_first = True
+            baseline = datetime.date.fromtimestamp(os.path.getmtime(full))
+            baseline_field = "file-modified"
 
         review_by = baseline + datetime.timedelta(days=interval)
-        if as_of >= review_by:
+        if pending_first:
+            counts["pending_first_verification"] += 1
+            state = ("overdue %d days" % (as_of - review_by).days
+                     if as_of >= review_by else "due %s" % review_by.isoformat())
+            details = ("pending first verification, %s: no last_verified / "
+                       "last_reviewed; baseline %s=%s + %d days (08/05; "
+                       "volatility=%s, priority=%s)"
+                       % (state, baseline_field, baseline.isoformat(),
+                          interval, volatility, prio_disp))
+            candidates.append((prio_rank, 1, rel_disp, details))
+        elif as_of >= review_by:
             overdue_days = (as_of - review_by).days
             counts["overdue"] += 1
             details = ("overdue %d days: review_by=%s (%s=%s + %d days, "
@@ -226,13 +251,28 @@ def main():
             TOOL, TOOL_VERSION, "freshness", rel_disp, "candidate",
             details + "; enters the maintenance-run candidate list; "
                       "does not change any status axis", seq))
+    all_skipped = (counts["files"] > 0
+                   and counts["skipped_no_volatility"] == counts["files"])
     if not candidates:
         seq += 1
-        receipts.append(kblib.make_receipt(
-            TOOL, TOOL_VERSION, "freshness-check-summary",
-            (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
-            "as_of=%s no overdue or pending-first-verification pages"
-            % as_of.isoformat(), seq))
+        if all_skipped:
+            # "Nothing was checked" must not read as "nothing is stale":
+            # every scanned file lacked a resolvable volatility, so the run
+            # produced no freshness evidence at all (08/05).
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, "freshness-check-summary",
+                (args.scope or ".") + " @ " + os.path.abspath(args.vault_root),
+                "candidate",
+                "as_of=%s: all %d scanned file(s) were skipped for lack of a "
+                "resolvable volatility (no explicit field and no --defaults "
+                "match); this run checked nothing and is not evidence of "
+                "freshness" % (as_of.isoformat(), counts["files"]), seq))
+        else:
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, "freshness-check-summary",
+                (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
+                "as_of=%s no overdue or pending-first-verification pages"
+                % as_of.isoformat(), seq))
 
     print("check_freshness: as_of=%s checked %d files (plus %d excluded, "
           "%d retired/merged)" % (as_of.isoformat(), counts["files"],
@@ -246,8 +286,14 @@ def main():
     for _, _, rel_disp, details in candidates:
         print("  [CANDIDATE] %s — %s" % (rel_disp, details))
     if not candidates:
-        print("  Conclusion: no maintenance-run candidates (overdue=0, "
-              "pending_first_verification=0).")
+        if all_skipped:
+            print("  Conclusion: NOTHING CHECKED — all %d file(s) skipped for "
+                  "lack of a resolvable volatility; supply --defaults (e.g. "
+                  "Tools/vocab.yaml) or add volatility frontmatter. This is "
+                  "not evidence of freshness." % counts["files"])
+        else:
+            print("  Conclusion: no maintenance-run candidates (overdue=0, "
+                  "pending_first_verification=0).")
 
     kblib.write_receipts(args.receipts, receipts)
     return kblib.exit_code(receipts)
