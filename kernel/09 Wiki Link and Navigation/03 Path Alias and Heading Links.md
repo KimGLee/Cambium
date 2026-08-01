@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]].
-- Previous: [[Knowledge Base Standards/09 Wiki Link and Navigation/02 Structural and Bidirectional Links|Structural and Bidirectional Links]].
-- Next: [[Knowledge Base Standards/09 Wiki Link and Navigation/04 MOC Related and Link Creation|MOC Related and Link Creation]].
+- Parent: [[kernel/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]].
+- Previous: [[kernel/09 Wiki Link and Navigation/02 Structural and Bidirectional Links|Structural and Bidirectional Links]].
+- Next: [[kernel/09 Wiki Link and Navigation/04 MOC Related and Link Creation|MOC Related and Link Creation]].
 
 ## Path And Alias Rules
 
@@ -19,7 +19,7 @@
 当引用的是一个具体结论或流程时，优先链接 heading：
 
 ```markdown
-[[Agent Knowledge/Harness/Agent Harness#Runtime Flow|Agent Harness Runtime Flow]]
+[[kernel/09 Wiki Link and Navigation/04 MOC Related and Link Creation#Link Creation Policy|Link Creation Policy]]
 ```
 
 Heading 重命名会破坏这种链接，因此稳定的核心 heading 不应随意修改。

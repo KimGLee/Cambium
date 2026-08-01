@@ -1,7 +1,7 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]].
-- Previous: [[Knowledge Base Standards/09 Wiki Link and Navigation/04 MOC Related and Link Creation|MOC Related and Link Creation]].
+- Parent: [[kernel/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]].
+- Previous: [[kernel/09 Wiki Link and Navigation/04 MOC Related and Link Creation|MOC Related and Link Creation]].
 
 ## Verification
 
@@ -10,7 +10,7 @@
 - `missing=0`：不存在指向不存在目标的 wiki link。
 - `ambiguous=0`：不存在可解析到多个不同目标的 wiki link。
 
-Link verification 通过不等于内容完成；Coverage、Depth、Sources 和 Interview migration 仍需按 [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]] 独立验收。
+Link verification 通过不等于内容完成；Coverage、Depth、Sources 和 profile expression migration 仍需按 [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]] 独立验收。
 
 ## Anti-patterns
 
@@ -26,6 +26,6 @@ Link verification 通过不等于内容完成；Coverage、Depth、Sources 和 I
 ## Related
 
 - [[kernel/05 Terminology Standard|Terminology Standard]]
-- [[Knowledge Base Standards/11 Interview Content Standard|Interview Content Standard]]
+- `Expression Layer Entry`（由所选 profile 绑定）
 - [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]

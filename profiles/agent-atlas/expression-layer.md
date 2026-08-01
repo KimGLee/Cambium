@@ -14,3 +14,11 @@
 
 - Kernel field owner: [[kernel/05 Terminology/02 Ownership and Term Structure#Term Note Structure|Term Note Structure]]
 - Profile terminology rules: [[profiles/agent-atlas/interview/05 Knowledge Links and Preparation|Knowledge Links and Preparation]]
+
+## Link And Navigation Entry
+
+- Kernel contract: [[kernel/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]].
+- Interview relationship: [[profiles/agent-atlas/interview/05 Knowledge Links and Preparation#Interview Link Relationship|Interview Link Relationship]].
+- P0 / P1 structural link: [[profiles/agent-atlas/interview/05 Knowledge Links and Preparation#P0 / P1 Structural Link|P0 / P1 Structural Link]].
+- Bidirectional routes: [[profiles/agent-atlas/interview/05 Knowledge Links and Preparation#Bidirectional Link Routes|Bidirectional Link Routes]].
+- Roadmap routing: [[profiles/agent-atlas/interview/05 Knowledge Links and Preparation#Roadmap Routing|Roadmap Routing]].

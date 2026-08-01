@@ -41,7 +41,7 @@
 - `06` [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]：用户 hypothesis / source lead、source-to-knowledge pipeline、synthesis、graph impact 和 promotion。
 - `07` [[kernel/07 Sources and Accuracy Standard|Sources and Accuracy Standard]]：来源角色、claim、公式、指标和时效性核验。
 - `08` [[kernel/08 Metadata and Status Standard|Metadata and Status Standard]]：type、domain、priority、authoring / interview / learning status、coverage disposition 和 evidence maturity。
-- `09` [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]：正文链接、结构导航、path、alias 和验证。
+- `09` [[kernel/09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]：正文链接、结构导航、path、alias 和验证。
 - `10` [[Knowledge Base Standards/10 Writing and Formatting Standard|Writing and Formatting Standard]]：英文文件名、中文优先技术表达、`English（中文）` 显示合同、公式、表格、图方向、图完整性和 rendering workflow。
 - `11` [[Knowledge Base Standards/11 Interview Content Standard|Interview Content Standard]]：Interview Cards、coverage status、双语回答、系统深挖和 migration audit。
 - `12` [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]：单篇、batch、Guidance / Coverage reconciliation、模块、source promotion、面试、分层渲染和 Terminal Audit。

@@ -236,7 +236,7 @@ Task output -> decision policy -> action -> outcome evidence.
 - [[Knowledge Base Standards/10 Writing and Formatting/02 Mathematics Tables and Code|Mathematics Tables and Code]]
 - [[Knowledge Base Standards/10 Writing and Formatting/04 Rendering and Formatting Review|Rendering and Formatting Review]]
 - [[kernel/05 Terminology/03 Naming Context and Linking|Naming Context and Linking]]
-- [[Knowledge Base Standards/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
+- [[kernel/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]]
 - [[Knowledge Base Standards/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]]
 - [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]

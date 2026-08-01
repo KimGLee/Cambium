@@ -12,8 +12,8 @@
 - [[kernel/01 Scope and Architecture/04 Folder and Shared Ownership|Folder and Shared Ownership]]
 - [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]
 - [[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]]
-- [[Knowledge Base Standards/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
-- [[Knowledge Base Standards/09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]]
+- [[kernel/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
+- [[kernel/09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]]
 
 迁移前必须建立 source path、target path、incoming links、heading anchors、content owner 和 rollback boundary 清单。迁移批次必须独占执行，不与其它批次并发（[[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches）。
 
@@ -33,5 +33,5 @@
 
 - [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
 - [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|Build Execution]]
-- [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|Wiki Link and Navigation]]
+- [[kernel/09 Wiki Link and Navigation Standard|Wiki Link and Navigation]]
 

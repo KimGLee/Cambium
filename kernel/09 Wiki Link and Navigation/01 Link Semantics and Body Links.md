@@ -1,11 +1,11 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]].
-- Next: [[Knowledge Base Standards/09 Wiki Link and Navigation/02 Structural and Bidirectional Links|Structural and Bidirectional Links]].
+- Parent: [[kernel/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]].
+- Next: [[kernel/09 Wiki Link and Navigation/02 Structural and Bidirectional Links|Structural and Bidirectional Links]].
 
 ## Purpose
 
-本标准规定 wiki links 如何表达真实知识关系，并保证 Overview、Roadmap、主题页、术语页、Source Notes、Research Synthesis、案例和 Interview Cards 之间可以双向导航。
+本标准规定 wiki links 如何表达真实知识关系，并保证 Overview、序列视图、主题页、术语页、Source Notes、Research Synthesis、案例和 `Expression Layer Artifact` 之间可以双向导航。
 
 ## Link Meaning
 
@@ -20,7 +20,7 @@
 - Failure / Control：它解释失败原因或缓解方式。
 - Source / Evidence：来源或 synthesis 支撑、限制或反驳当前 claim。
 - Supersession：新证据或页面替代旧结论。
-- Interview：知识页与 Interview Card 的关系。
+- Derived Expression：canonical knowledge 与 `Expression Layer Artifact` 的关系，具体绑定由 `Expression Layer Entry` 提供。
 
 不为了图谱密度链接普通词或语义弱相关页面。
 

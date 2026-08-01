@@ -13,7 +13,7 @@
 - [[kernel/08 Metadata and Status/01 Frontmatter and Core Vocabularies|Frontmatter and Core Vocabularies]]
 - [[kernel/08 Metadata and Status/02 Scope Level Depth and Priority|Scope Level Depth and Priority]]
 - [[kernel/08 Metadata and Status/03 Status Axes|Status Axes]]
-- [[Knowledge Base Standards/09 Wiki Link and Navigation/01 Link Semantics and Body Links|Link Semantics and Body Links]]
+- [[kernel/09 Wiki Link and Navigation/01 Link Semantics and Body Links|Link Semantics and Body Links]]
 - [[Knowledge Base Standards/10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]
 - [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|Chinese-first Technical Language]]
 

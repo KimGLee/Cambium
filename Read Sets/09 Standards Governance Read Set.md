@@ -15,7 +15,7 @@
 - [[Knowledge Base Standards/00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
 - [[Knowledge Base Standards/00 Standards Control/07 v1.1 to v1.2 Migration Map|v1.1 to v1.2 Migration Map]]（结构迁移时的先例与映射）
 - [[Knowledge Base Standards/02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]]（修订流程涉及 Amendment Log）
-- [[Knowledge Base Standards/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
+- [[kernel/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|Chinese-first Technical Language]]
 - [[Knowledge Base Standards/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 
@@ -33,7 +33,7 @@
 
 - 使用 [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]] 验证目录、MOC 和 coverage。
 - 使用 [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] 记录受影响 active task 的 receipt compatibility、失效范围和 adoption plan。
-- 使用 [[Knowledge Base Standards/09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]] 验证全库 incoming links。
+- 使用 [[kernel/09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]] 验证全库 incoming links。
 - 涉及 rendering policy、diagram、table、formula、asset 或 host behavior 时，使用 [[Knowledge Base Standards/12 Quality Assurance/02 Rendering Verification|Rendering Verification]] 选择并记录实际级别。
 - 使用 [[Knowledge Base Standards/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]] 关闭 governance task。
 

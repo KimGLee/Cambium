@@ -12,7 +12,7 @@
 - [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]]
 - [[11 Interview Content/05 Knowledge Links and Preparation|Knowledge Links and Preparation]]
 - [[kernel/04 Content Depth/01 Depth Model and Foundation|Depth Model and Foundation]]
-- [[Knowledge Base Standards/09 Wiki Link and Navigation/01 Link Semantics and Body Links|Link Semantics and Body Links]]
+- [[kernel/09 Wiki Link and Navigation/01 Link Semantics and Body Links|Link Semantics and Body Links]]
 - [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|Chinese-first Technical Language]]，用于区分中文知识表达与独立 English Answer 例外。
 
 Interview expression 必须依赖已经足够完整的 canonical knowledge；不能用卡片替代知识正文。

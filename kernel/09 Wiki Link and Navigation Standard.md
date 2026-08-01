@@ -12,17 +12,17 @@
 
 | Module | Canonical sections |
 |---|---|
-| [[Knowledge Base Standards/09 Wiki Link and Navigation/01 Link Semantics and Body Links\|Link Semantics and Body Links]] | `Purpose`、`Link Meaning`、`In-body Links` |
-| [[Knowledge Base Standards/09 Wiki Link and Navigation/02 Structural and Bidirectional Links\|Structural and Bidirectional Links]] | `Structural Links`、`Bidirectional Knowledge Flow` |
-| [[Knowledge Base Standards/09 Wiki Link and Navigation/03 Path Alias and Heading Links\|Path Alias and Heading Links]] | `Path And Alias Rules`、`Heading Links` |
-| [[Knowledge Base Standards/09 Wiki Link and Navigation/04 MOC Related and Link Creation\|MOC Related and Link Creation]] | `Overview And MOC`、`Related Section`、`Link Creation Policy` |
-| [[Knowledge Base Standards/09 Wiki Link and Navigation/05 Verification and Anti-patterns\|Verification and Anti-patterns]] | `Verification`、`Anti-patterns`、`Related` |
+| [[kernel/09 Wiki Link and Navigation/01 Link Semantics and Body Links\|Link Semantics and Body Links]] | `Purpose`、`Link Meaning`、`In-body Links` + `Expression Layer Entry` |
+| [[kernel/09 Wiki Link and Navigation/02 Structural and Bidirectional Links\|Structural and Bidirectional Links]] | `Structural Links`、`Bidirectional Knowledge Flow` + `Expression Layer Entry` |
+| [[kernel/09 Wiki Link and Navigation/03 Path Alias and Heading Links\|Path Alias and Heading Links]] | `Path And Alias Rules`、`Heading Links` |
+| [[kernel/09 Wiki Link and Navigation/04 MOC Related and Link Creation\|MOC Related and Link Creation]] | `Overview And MOC`、`Related Section`、`Link Creation Policy` + `Expression Layer Entry` |
+| [[kernel/09 Wiki Link and Navigation/05 Verification and Anti-patterns\|Verification and Anti-patterns]] | `Verification`、`Anti-patterns`、`Related` |
 
 ## Applicable Read Sets
 
 - [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
 - [[Knowledge Base Standards/Read Sets/03 Module Build Read Set|Module Build]]
-- [[Knowledge Base Standards/Read Sets/05 Interview Content Read Set|Interview Content]]
+- `Expression Layer Read Set`（由 `Routing And Gate Registry` 注册）
 - [[Knowledge Base Standards/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]
 - [[Knowledge Base Standards/Read Sets/09 Standards Governance Read Set|Standards Governance]]
 
@@ -33,4 +33,4 @@
 - [[kernel/05 Terminology Standard|05 Terminology Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
 - [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]]
-- [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]]
+- `Expression Layer Entry`（由所选 profile 绑定）
