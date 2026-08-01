@@ -69,7 +69,7 @@ Source-driven expansion 需要额外检查：
 - 中英文含义是否一致。
 - Strong / Weak Signals 是否可以用于评分。
 - Interview Card 是否回链 canonical knowledge。
-- System / Project Deep Dive 是否按 [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|11/04]] 的骨架要素逐项覆盖。
+- System / Project Deep Dive 是否按 [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy|11/04]] 的骨架要素逐项覆盖。
 - Emerging 或 contested 结论是否有明确限定。
 - L 档 Interview 集的实质正确性复核按 [[Knowledge Base Standards/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]] 的 Substantive Correctness Review 规则执行。
 

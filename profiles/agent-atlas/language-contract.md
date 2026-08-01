@@ -69,7 +69,7 @@ aliases:
 | [[kernel/10 Writing and Formatting/01 Naming Language and Prose\|Naming Language and Prose]] | 文件命名、标题层级、段落与列表 | 英文词是否应保留 |
 | [[kernel/05 Terminology/03 Naming Context and Linking\|Naming Context and Linking]] | canonical term、aliases、首次链接和复用 | 当前句子和表格使用哪种叙述语言 |
 | [[kernel/10 Writing and Formatting/02 Mathematics Tables and Code\|Mathematics Tables and Code]] | 表格、公式和代码的结构与渲染 | 表头和解释性单元格的语言 |
-| [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy\|System Deep Dive and Bilingual Policy]] | Interview Card 的中英文答案结构和语义一致性 | 普通知识正文的大段英文 |
+| [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy\|System Deep Dive and Bilingual Policy]] | Interview Card 的中英文答案结构和语义一致性 | 普通知识正文的大段英文 |
 
 一个问题只能有一个 canonical owner。其它规则通过 Wiki Link 引用本页，不能复制一份略有不同的语言政策。
 
@@ -198,7 +198,7 @@ Otherwise
 - 中文回答和英文回答按 Interview Standard 分区，不要求把英文回答逐句改成中文。
 - 中文解释区、评分信号、误区和系统分析遵循本规则。
 - 英文标题若不位于明确的 English Answer 区域，仍需中文注释。
-- Interview 双语政策的 canonical owner 是 [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|11/04]]，本页不复制其规则。
+- Interview 双语政策的 canonical owner 是 [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy|11/04]]，本页不复制其规则。
 
 ## Terminology And Wiki Links（术语与链接）
 
@@ -293,6 +293,6 @@ Task output -> decision policy -> action -> outcome evidence.
 - [[kernel/10 Writing and Formatting/04 Rendering and Formatting Review|Rendering and Formatting Review]]
 - [[kernel/05 Terminology/03 Naming Context and Linking|Naming Context and Linking]]
 - [[kernel/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
-- [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]]
+- [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]]
 - [[Knowledge Base Standards/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]]
 - [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]

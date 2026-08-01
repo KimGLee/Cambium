@@ -2,6 +2,18 @@
 
 - Profile: [[profiles/agent-atlas/profile|Agent Atlas Profile]].
 - Kernel contract: [[kernel/04 Content Depth Standard|04 Content Depth Standard]].
+- Expression layer contract: [[kernel/11 Expression Layer Standard|11 Expression Layer Standard]].
+
+## Interview Standard Routing
+
+- Profile standard: [[profiles/agent-atlas/interview/11 Interview Content Standard|Interview Content Standard]].
+- Architecture and separation: [[profiles/agent-atlas/interview/01 Interview Architecture and Separation|Interview Architecture and Separation]].
+- Granularity, coverage, and categories: [[profiles/agent-atlas/interview/02 Card Granularity Coverage and Categories|Card Granularity Coverage and Categories]].
+- Card structure and answer levels: [[profiles/agent-atlas/interview/03 Card Structure and Answer Levels|Card Structure and Answer Levels]].
+- System deep dive and bilingual policy: [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]].
+- Knowledge links and preparation: [[profiles/agent-atlas/interview/05 Knowledge Links and Preparation|Knowledge Links and Preparation]].
+- Roadmap and question bank: [[profiles/agent-atlas/interview/06 Roadmap and Question Bank|Roadmap and Question Bank]].
+- Migration audit and acceptance: [[profiles/agent-atlas/interview/07 Migration Audit and Acceptance|Migration Audit and Acceptance]].
 
 ## Expression Layer Link
 

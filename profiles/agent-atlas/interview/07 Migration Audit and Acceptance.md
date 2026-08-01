@@ -1,7 +1,9 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]].
-- Previous: [[Knowledge Base Standards/11 Interview Content/06 Roadmap and Question Bank|Roadmap and Question Bank]].
+- Profile: [[profiles/agent-atlas/profile|Agent Atlas Profile]].
+- Parent: [[profiles/agent-atlas/interview/11 Interview Content Standard|11 Interview Content Standard]].
+- Previous: [[profiles/agent-atlas/interview/06 Roadmap and Question Bank|Roadmap and Question Bank]].
+- Expression layer contract: [[kernel/11 Expression Layer Standard|11 Expression Layer Standard]].
 
 ## Migration Policy
 
@@ -53,7 +55,7 @@
 - 30 秒、90 秒和 Deep Dive 层次明确。
 - 中英文表达一致。
 - Follow-ups 能追问原因、假设、失败和工程实现。
-- System / Project Deep Dive 按 [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|11/04]] 的骨架要素逐项覆盖。
+- System / Project Deep Dive 按 [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy|11/04]] 的骨架要素逐项覆盖。
 - 所有项目指标都能回溯到 evaluation provenance，而不是只有孤立数字。
 - Emerging 或 contested 结论在答案中有清楚限定。
 - Strong / Weak Signals 可以实际用于评分。

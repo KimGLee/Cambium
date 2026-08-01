@@ -1,8 +1,11 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]].
-- Previous: [[11 Interview Content/05 Knowledge Links and Preparation|Knowledge Links and Preparation]].
-- Next: [[Knowledge Base Standards/11 Interview Content/07 Migration Audit and Acceptance|Migration Audit and Acceptance]].
+- Profile: [[profiles/agent-atlas/profile|Agent Atlas Profile]].
+- Parent: [[profiles/agent-atlas/interview/11 Interview Content Standard|11 Interview Content Standard]].
+- Previous: [[profiles/agent-atlas/interview/05 Knowledge Links and Preparation|Knowledge Links and Preparation]].
+- Next: [[profiles/agent-atlas/interview/07 Migration Audit and Acceptance|Migration Audit and Acceptance]].
+- Expression layer contract: [[kernel/11 Expression Layer Standard|11 Expression Layer Standard]].
+- Status contract: [[kernel/08 Metadata and Status/03 Status Axes|Status Axes]].
 
 ## Roadmap Policy
 

@@ -1,8 +1,11 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]].
-- Previous: [[11 Interview Content/02 Card Granularity Coverage and Categories|Card Granularity Coverage and Categories]].
-- Next: [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]].
+- Profile: [[profiles/agent-atlas/profile|Agent Atlas Profile]].
+- Parent: [[profiles/agent-atlas/interview/11 Interview Content Standard|11 Interview Content Standard]].
+- Previous: [[profiles/agent-atlas/interview/02 Card Granularity Coverage and Categories|Card Granularity Coverage and Categories]].
+- Next: [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]].
+- Expression layer contract: [[kernel/11 Expression Layer Standard|11 Expression Layer Standard]].
+- Language contract: [[profiles/agent-atlas/language-contract|Language Contract]].
 
 ## Interview Card Structure
 

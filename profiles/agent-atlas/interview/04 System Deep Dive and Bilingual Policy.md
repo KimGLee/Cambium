@@ -1,8 +1,11 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/11 Interview Content Standard|11 Interview Content Standard]].
-- Previous: [[Knowledge Base Standards/11 Interview Content/03 Card Structure and Answer Levels|Card Structure and Answer Levels]].
-- Next: [[11 Interview Content/05 Knowledge Links and Preparation|Knowledge Links and Preparation]].
+- Profile: [[profiles/agent-atlas/profile|Agent Atlas Profile]].
+- Parent: [[profiles/agent-atlas/interview/11 Interview Content Standard|11 Interview Content Standard]].
+- Previous: [[profiles/agent-atlas/interview/03 Card Structure and Answer Levels|Card Structure and Answer Levels]].
+- Next: [[profiles/agent-atlas/interview/05 Knowledge Links and Preparation|Knowledge Links and Preparation]].
+- Expression layer contract: [[kernel/11 Expression Layer Standard|11 Expression Layer Standard]].
+- Language contract: [[profiles/agent-atlas/language-contract|Language Contract]].
 
 ## System And Project Deep Dive
 
@@ -31,7 +34,7 @@ Alternatives And Rejected Designs
 - “中断后如何恢复，副作用如何回滚？”
 - “如果模型、prompt、工具或数据变化，如何知道系统退化了？”
 
-答案必须链接回 canonical evaluation、orchestration、state、reliability 和 case-study pages。Interview Card 负责表达顺序，不独立发明系统事实。
+答案必须链接回 canonical evaluation、orchestration、state、reliability 和 case-study pages。Interview Card 负责表达顺序，不独立发明系统事实。通用的 evidence-bound expression 约束由 [[kernel/11 Expression Layer Standard|11 Expression Layer Standard]] 持有。
 
 ## Bilingual Policy
 
@@ -40,3 +43,5 @@ Alternatives And Rejected Designs
 - 支撑推理以中文为主，保留准确英文术语。
 - 每个需要实际口述的 follow-up 应提供英文回答或英文回答骨架。
 - 中英文答案含义必须一致，不能英文版遗漏关键限制。
+
+本节是 Interview 回答双语语义的 canonical owner；通用显示与语言例外由 [[profiles/agent-atlas/language-contract|Language Contract]] 持有。

@@ -43,7 +43,7 @@
 - `08` [[kernel/08 Metadata and Status Standard|Metadata and Status Standard]]：type、domain、priority、authoring / interview / learning status、coverage disposition 和 evidence maturity。
 - `09` [[kernel/09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]：正文链接、结构导航、path、alias 和验证。
 - `10` [[kernel/10 Writing and Formatting Standard|Writing and Formatting Standard]]：英文文件名、中文优先技术表达、`English（中文）` 显示合同、公式、表格、图方向、图完整性和 rendering workflow。
-- `11` [[Knowledge Base Standards/11 Interview Content Standard|Interview Content Standard]]：Interview Cards、coverage status、双语回答、系统深挖和 migration audit。
+- `11` [[profiles/agent-atlas/interview/11 Interview Content Standard|Interview Content Standard]]：Interview Cards、coverage status、双语回答、系统深挖和 migration audit。
 - `12` [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]：单篇、batch、Guidance / Coverage reconciliation、模块、source promotion、面试、分层渲染和 Terminal Audit。
 
 ## Cross-domain Rule Registry
@@ -62,8 +62,8 @@
 | Evaluation provenance 要素清单 | [[kernel/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]] |
 | 官方来源政策 | [[kernel/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]] |
 | 语言政策 | [[profiles/agent-atlas/language-contract|Language Contract]] |
-| Interview 双语政策 | [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]] |
-| System Deep Dive 骨架 | [[Knowledge Base Standards/11 Interview Content/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]] |
+| Interview 双语政策 | [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]] |
+| System Deep Dive 骨架 | [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]] |
 | Batch / Coverage 验收清单 | [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]] |
 | Source-to-Knowledge pipeline | [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] |
 | 保质期与 volatility 词表 | [[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]] |

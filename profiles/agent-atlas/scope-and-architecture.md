@@ -158,7 +158,7 @@ Case Study 必须基于已核验来源，区分公开事实、合理推断和知
 
 ### Interview Preparation
 
-负责表达、题库、追问、系统设计面试、项目深挖和评分，详细规则见 [[Knowledge Base Standards/11 Interview Content Standard|Interview Content Standard]]。
+负责表达、题库、追问、系统设计面试、项目深挖和评分，详细规则见 [[profiles/agent-atlas/interview/11 Interview Content Standard|Interview Content Standard]]。
 
 ## Shared Ownership Rule
 
