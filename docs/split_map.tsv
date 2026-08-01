@@ -8,7 +8,7 @@ file	heading	tag	note
 00 Standards Overview.md	Protected Defaults	mixed	canonical owner、用户修改保护、pipeline、Amendment、receipt、守恒、渲染、完成 gate 各条是 kernel；中文优先语言合同条是 profile；`Python Algorithm Agent Training` 排除条是 instance
 00 Standards Overview.md	Migration Compatibility	instance	v1.1→v1.2 迁移史与 Archive/ 归档引用，开源时删除
 00 Standards Overview.md	Related	nav
-00 Standards Control/01 Operating Role and Reading Protocol.md	Purpose	mixed	"目标不是文件数而是支持能力清单"框架是 kernel；"大厂面试：中英文分层回答"目标条是 profile
+00 Standards Control/01 Operating Role and Reading Protocol.md	Purpose	mixed	"目标不是文件数而是支持能力清单"框架是 kernel；"大厂面试：中英文分层回答"目标条是 profile；施工中改判+理由：将首句的具名 `Obsidian` knowledge-host 部署绑定抽入 agent-atlas `Role Registry`，kernel 仅保留面向所选 knowledge host 的通用适用范围，避免具体宿主名进入 active kernel
 00 Standards Control/01 Operating Role and Reading Protocol.md	Operating Role	kernel	00 作为唯一入口和规则路由器的职责定义
 00 Standards Control/01 Operating Role and Reading Protocol.md	Mandatory Reading Protocol	kernel	Card-first 解析顺序、禁止整域全量加载、loaded set 记录义务（examples）
 00 Standards Control/01 Operating Role and Reading Protocol.md	Card-first Reading Mode	kernel	卡片为编译产物、四类回读例外、冲突以原文为准并触发重编译
@@ -17,7 +17,7 @@ file	heading	tag	note
 00 Standards Control/02 Task Routing and Pre-execution.md	Effort Tiering	mixed	【含裁决④】S/M/L 分档机制、争议上调、配额与超配降级机制均是 kernel；配额比例 15%/35% 为内核默认值、profile 可覆写；P0/P1 授予定义与 L 档判定中 System Deep Dive、Interview Card 集条目是 profile
 00 Standards Control/02 Task Routing and Pre-execution.md	Maintenance Run Envelope	kernel	【含裁决④】预算封套三选一、四源候选池、降级 log-only、改指折算、批次边界停点；3 轮降级与 ÷6 折算为内核默认值、profile 可覆写
 00 Standards Control/02 Task Routing and Pre-execution.md	Pre-execution Gate	mixed	十条开工条件是 kernel；条 7 "不能把前置内容塞进 Agent/Harness 页面"主线措辞是 profile
-00 Standards Control/02 Task Routing and Pre-execution.md	Default Constraints Snapshot	mixed	过程各条是 kernel；"Agent/Harness 主线+基础学科清单"与中文语言合同条是 profile；`Python Algorithm Agent Training` 排除条是 instance
+00 Standards Control/02 Task Routing and Pre-execution.md	Default Constraints Snapshot	mixed	过程各条是 kernel；"Agent/Harness 主线+基础学科清单"与中文语言合同条是 profile；`Python Algorithm Agent Training` 排除条是 instance；施工中改判+理由：将渲染条中的 `Obsidian UI` 部署绑定抽入 agent-atlas `Role Registry`，kernel 改为引用所选 profile 绑定的 knowledge-host UI，避免具体宿主名进入 active kernel
 00 Standards Control/02 Task Routing and Pre-execution.md	Batch Execution Checklist	kernel	批次循环 11 步（版本自检、增量对账、AuditPlan 一次、integrator 串行合并）
 00 Standards Control/03 Standards Governance.md	Standards Control	mixed	生命周期与修订五步是 kernel；表中 2.3/2026-07-30 取值是 instance
 00 Standards Control/03 Standards Governance.md	Revision Write-back Checklist	kernel	修订回写快照位置清单、no-op 轻量路径、Cards/vocab 重编译、自建工具登记
