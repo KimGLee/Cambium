@@ -1,6 +1,6 @@
 ## Navigation
 
-- Profile: [[profiles/eng-handbook/profile|Eng Handbook Profile]].
+- Profile: [[profiles/examples/eng-handbook/profile|Eng Handbook Profile]].
 - Kernel contract: [[kernel/04 Content Depth Standard|04 Content Depth Standard]].
 - Quality kernel: [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]].
 
@@ -19,4 +19,4 @@ Additional L-tier triggers for this profile (the kernel S / M / L axis, dispute 
 
 ## Extension Gates
 
-None registered. The kernel's batch gates, note gates, and Terminal Audit apply as-is. The expression-layer synchronization gates are `not_applicable` for this profile because [[profiles/eng-handbook/expression-layer|Expression Layer]] registers no artifacts.
+None registered. The kernel's batch gates, note gates, and Terminal Audit apply as-is. The expression-layer synchronization gates are `not_applicable` for this profile because [[profiles/examples/eng-handbook/expression-layer|Expression Layer]] registers no artifacts.

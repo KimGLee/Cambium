@@ -13,13 +13,13 @@ frontmatter_extensions:
 
 fields:
   type:
-    owner: "profiles/eng-handbook/vocabulary-extensions.yaml"
+    owner: "profiles/examples/eng-handbook/vocabulary-extensions.yaml"
     values:
       - runbook
       - incident-review
       - adr-digest
   domain:
-    owner: "profiles/eng-handbook/vocabulary-extensions.yaml"
+    owner: "profiles/examples/eng-handbook/vocabulary-extensions.yaml"
     values:
       - infrastructure
       - services

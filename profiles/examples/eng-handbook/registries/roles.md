@@ -1,6 +1,6 @@
 ## Navigation
 
-- Profile: [[profiles/eng-handbook/profile|Eng Handbook Profile]].
+- Profile: [[profiles/examples/eng-handbook/profile|Eng Handbook Profile]].
 - Kernel contract: [[kernel/04 Content Depth/03 Process and Flow Structure|Process And Flow Structure]].
 
 ## Process And Flow Role Bindings

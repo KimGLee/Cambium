@@ -1,19 +1,23 @@
 ## Profile Identity
 
 - `profile_id`: `eng-handbook`
+- Status: non-normative example. This profile is a worked illustration of one way an engineering-documentation domain could fill the profile interface. It is not a standard, not a default configuration, and not a source of requirements for any other profile.
+- Purpose: to show the form and the level of specificity each slot answer needs. The domain choices made here — the four-layer architecture, the incident-centred priority rubric, the English-only language contract — belong to this example alone and do not bind other profiles.
+- Not a copy-and-edit starting point. The official starting point is the domain-neutral `profiles/_template/`, which does not yet exist in this repository. Until it does, read `profiles/README.md` for the normative slot interface — which slots exist, and what constrains each — and write your own profile against that, using this example only to see what a filled answer looks like.
+- Once `profiles/_template/` exists, the official flow will be: copy the template, reference this example, fill and validate your own profile, then have the agent load `kernel/` plus your profile.
 
 ## Implemented Slots
 
-- `Profile Scope`: [[profiles/eng-handbook/scope-and-architecture|Scope And Architecture]]
-- `Priority Rubric`: [[profiles/eng-handbook/priority-rubric|Priority Rubric]]
+- `Profile Scope`: [[profiles/examples/eng-handbook/scope-and-architecture|Scope And Architecture]]
+- `Priority Rubric`: [[profiles/examples/eng-handbook/priority-rubric|Priority Rubric]]
 - `Vocabulary Extensions`: [Vocabulary Extensions](vocabulary-extensions.yaml)
-- `Language Contract`: [[profiles/eng-handbook/language-contract|Language Contract]]
-- `Expression Layer Entry`: [[profiles/eng-handbook/expression-layer|Expression Layer]]
-- `Source Policy`: [[profiles/eng-handbook/source-policy|Source Policy]]
-- `Role Registry`: [[profiles/eng-handbook/registries/roles|Role Registry]]
-- `Audit Dimension Registry`: [[profiles/eng-handbook/registries/audit-dimensions|Audit Dimension Registry]]
-- `Registered Scan Registry`: [[profiles/eng-handbook/registries/registered-scans|Registered Scan Registry]]
-- `Routing And Gate Registry`: [[profiles/eng-handbook/registries/routing-and-gates|Routing And Gate Registry]]
+- `Language Contract`: [[profiles/examples/eng-handbook/language-contract|Language Contract]]
+- `Expression Layer Entry`: [[profiles/examples/eng-handbook/expression-layer|Expression Layer]]
+- `Source Policy`: [[profiles/examples/eng-handbook/source-policy|Source Policy]]
+- `Role Registry`: [[profiles/examples/eng-handbook/registries/roles|Role Registry]]
+- `Audit Dimension Registry`: [[profiles/examples/eng-handbook/registries/audit-dimensions|Audit Dimension Registry]]
+- `Registered Scan Registry`: [[profiles/examples/eng-handbook/registries/registered-scans|Registered Scan Registry]]
+- `Routing And Gate Registry`: [[profiles/examples/eng-handbook/registries/routing-and-gates|Routing And Gate Registry]]
 - `Runtime Card Provider`: declared inline below (`mode: none`)
 
 ## Registered Extensions
