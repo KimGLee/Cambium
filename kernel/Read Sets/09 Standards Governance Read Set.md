@@ -6,17 +6,16 @@
 
 先读取：
 
-- [[Knowledge Base Standards/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]
+- [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]
 - [[Knowledge Base Standards/00 Standards Control/01 Operating Role and Reading Protocol|Operating Role and Reading Protocol]]
 - [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]
 - [[Knowledge Base Standards/00 Standards Control/03 Standards Governance|Standards Governance]]
 - [[Knowledge Base Standards/00 Standards Control/04 Control State and Scope|Control State and Scope]]
 - [[Knowledge Base Standards/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]]
 - [[Knowledge Base Standards/00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
-- [[Knowledge Base Standards/00 Standards Control/07 v1.1 to v1.2 Migration Map|v1.1 to v1.2 Migration Map]]（结构迁移时的先例与映射）
 - [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]]（修订流程涉及 Amendment Log）
 - [[kernel/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
-- [[profiles/agent-atlas/language-contract|Language Contract]]
+- 所选 profile 的 `Language Contract`。
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 
 ## Required Controls
@@ -26,8 +25,8 @@
 - 结构迁移必须建立旧内容块到新 owner 的完整映射。
 - 拆分不能被用作缩减、摘要或静默删除规则。
 - Read Set 和总体 Index 必须与模块路径同步。
-- 受影响的 active、paused 和 completion-candidate tasks 必须重新解析 loaded set（Cards 与升级回读的 modules）。
-- Governance change 仍遵循确定性优先的渲染边界；仅修改 Markdown 规则不自动触发 Obsidian UI、截图或录屏。
+- 受影响的 active、paused 和 completion-candidate tasks 必须重新解析 loaded set（`Runtime Card Provider` artifacts 与升级回读的 modules）。
+- Governance change 仍遵循确定性优先的渲染边界；仅修改 Markdown 规则不自动触发所选 knowledge-host role 的 interactive UI、截图或录屏。
 
 ## Gate
 
@@ -39,5 +38,5 @@
 
 ## Related
 
-- [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
+- [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]
 - [[Knowledge Base Standards/00 Standards Overview|Standards Overview]]

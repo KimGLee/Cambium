@@ -22,11 +22,11 @@
 
 ## Applicable Read Sets
 
-- [[Knowledge Base Standards/Read Sets/03 Module Build Read Set|Module Build]]
-- [[Knowledge Base Standards/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]
-- [[Knowledge Base Standards/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]
-- [[Knowledge Base Standards/Read Sets/08 Audit and Completion Read Set|Audit and Completion]]
-- [[Knowledge Base Standards/Read Sets/09 Standards Governance Read Set|Standards Governance]]
+- [[kernel/Read Sets/03 Module Build Read Set|Module Build]]
+- [[kernel/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]
+- [[kernel/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]
+- [[kernel/Read Sets/08 Audit and Completion Read Set|Audit and Completion]]
+- [[kernel/Read Sets/09 Standards Governance Read Set|Standards Governance]]
 
 ## Related Standards
 

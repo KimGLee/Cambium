@@ -35,7 +35,7 @@ Open Standards Overview
 3. 回读时只加载当前事件和当前 gate 所需的 leaf modules。
 4. MOC 用于定位，不等于已经读取其中全部规则。
 5. Long-running task 必须组合内容 Card 与 [[Knowledge Base Standards/Cards/07 Long-running Execution Card|Card 07]]。
-6. Completion candidate 必须组合 [[Knowledge Base Standards/Cards/08 Audit and Completion Card|Card 08]]；Governance 任务必须通读 [[Knowledge Base Standards/Read Sets/09 Standards Governance Read Set|RS 09]] 原文。
+6. Completion candidate 必须组合 [[Knowledge Base Standards/Cards/08 Audit and Completion Card|Card 08]]；Governance 任务必须通读 [[kernel/Read Sets/09 Standards Governance Read Set|RS 09]] 原文。
 
 编译产物层：`Cards/` 下的 Runtime Cards 是各 Read Set 的编译产物（标准原文是源码，卡片是编译产物），入口为 [[Knowledge Base Standards/Cards/00 Card Index|Card Index]]。日常任务卡片优先，例外情形回读原文，详见 [[Knowledge Base Standards/00 Standards Control/01 Operating Role and Reading Protocol|00/01]] 的 Card-first Reading Mode。
 
@@ -43,17 +43,17 @@ Open Standards Overview
 
 | Task | Primary route |
 |---|---|
-| 新建或扩展一个 canonical note | [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set\|Single Note Authoring]] |
-| 建设完整知识模块、流程体系或 Agent/Harness system slice | [[Knowledge Base Standards/Read Sets/03 Module Build Read Set\|Module Build]] |
-| 根据官方文档、论文、代码、案例或社区信息扩展知识 | [[Knowledge Base Standards/Read Sets/04 Source-driven Expansion Read Set\|Source-driven Expansion]] |
-| 创建、迁移或审查面试内容 | [[Knowledge Base Standards/Read Sets/05 Interview Content Read Set\|Interview Content]] |
-| 移动、重命名、拆分、合并或目录重构 | [[Knowledge Base Standards/Read Sets/06 Migration and Refactor Read Set\|Migration and Refactor]] |
-| 多 batch、持续执行、checkpoint 或 resume | [[Knowledge Base Standards/Read Sets/07 Long-running Execution Read Set\|Long-running Execution]] |
-| 审查、Completion Gate 或 Terminal Audit | [[Knowledge Base Standards/Read Sets/08 Audit and Completion Read Set\|Audit and Completion]] |
-| 修改 Standards、Read Sets、版本或控制面结构 | [[Knowledge Base Standards/Read Sets/09 Standards Governance Read Set\|Standards Governance]] |
+| 新建或扩展一个 canonical note | [[kernel/Read Sets/02 Single Note Authoring Read Set\|Single Note Authoring]] |
+| 建设完整知识模块、流程体系或 Agent/Harness system slice | [[kernel/Read Sets/03 Module Build Read Set\|Module Build]] |
+| 根据官方文档、论文、代码、案例或社区信息扩展知识 | [[kernel/Read Sets/04 Source-driven Expansion Read Set\|Source-driven Expansion]] |
+| 创建、迁移或审查面试内容 | [[profiles/agent-atlas/interview/05 Interview Content Read Set\|Interview Content]] |
+| 移动、重命名、拆分、合并或目录重构 | [[kernel/Read Sets/06 Migration and Refactor Read Set\|Migration and Refactor]] |
+| 多 batch、持续执行、checkpoint 或 resume | [[kernel/Read Sets/07 Long-running Execution Read Set\|Long-running Execution]] |
+| 审查、Completion Gate 或 Terminal Audit | [[kernel/Read Sets/08 Audit and Completion Read Set\|Audit and Completion]] |
+| 修改 Standards、Read Sets、版本或控制面结构 | [[kernel/Read Sets/09 Standards Governance Read Set\|Standards Governance]] |
 | 中途 guidance、scope、priority 或 correction | [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment\|Mid-task Guidance and Amendment]] |
 
-周期性知识库更新与保鲜任务走 Maintenance Run：[[Knowledge Base Standards/Read Sets/10 Maintenance Run Read Set|RS 10]] / [[Knowledge Base Standards/Cards/10 Maintenance Run Card|Card 10]]。
+周期性知识库更新与保鲜任务走 Maintenance Run：[[kernel/Read Sets/10 Maintenance Run Read Set|RS 10]] / [[Knowledge Base Standards/Cards/10 Maintenance Run Card|Card 10]]。
 
 详细任务组合和 Pre-execution Gate 位于 [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]。
 
@@ -108,7 +108,7 @@ Open Standards Overview
 
 ## Related
 
-- [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
+- [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]
 - [[Knowledge Base Standards/00 Standards Control/03 Standards Governance|Standards Governance]]
 - [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]

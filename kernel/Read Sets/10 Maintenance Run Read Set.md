@@ -4,7 +4,7 @@
 
 ## Start
 
-先读取 [[Knowledge Base Standards/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
+先读取 [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
 
 - [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]（Maintenance Run Envelope 与 Effort Tiering）
 - [[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]]（Freshness And Review Due）
@@ -19,8 +19,8 @@
 - 收到 `needs_rereview` 项：读取 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Content-level Propagation|Content-level Propagation]]。
 - 出现退役或合并候选：读取 [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]。
 - 本轮产出 L 档页面：读取 [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review#Substantive Correctness Review|Substantive Correctness Review]]。
-- 涉及来源驱动内容：组合 [[Knowledge Base Standards/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]。
-- 涉及 interview 内容：组合 [[Knowledge Base Standards/Read Sets/05 Interview Content Read Set|Interview Content]]。
+- 涉及来源驱动内容：组合 [[kernel/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]。
+- 涉及 Expression Layer 内容：组合所选 profile 通过 `Routing And Gate Registry` 登记的 `Expression Layer Read Set`。
 
 ## Gate
 
@@ -29,6 +29,6 @@
 
 ## Related
 
-- [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
+- [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution]]
 - [[kernel/12 Quality Assurance Standard|Quality Assurance]]

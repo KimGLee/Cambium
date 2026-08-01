@@ -24,7 +24,7 @@
 
 ## Applicable Read Sets
 
-- [[Knowledge Base Standards/Read Sets/03 Module Build Read Set|Module Build]]（经 Module Build Read Set 组合触发）
+- [[kernel/Read Sets/03 Module Build Read Set|Module Build]]（经 Module Build Read Set 组合触发）
 - [[profiles/agent-atlas/registries/routing-and-gates#Expression Layer Read Set|Expression Layer Read Set]]
 
 ## Related Standards

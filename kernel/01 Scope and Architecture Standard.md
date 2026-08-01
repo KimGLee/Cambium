@@ -21,8 +21,8 @@
 
 ## Applicable Read Sets
 
-- [[Knowledge Base Standards/Read Sets/03 Module Build Read Set|Module Build]]
-- [[Knowledge Base Standards/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]
+- [[kernel/Read Sets/03 Module Build Read Set|Module Build]]
+- [[kernel/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]
 
 ## Related Standards
 

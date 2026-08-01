@@ -27,12 +27,12 @@
 
 ## Applicable Read Sets
 
-- [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
-- [[Knowledge Base Standards/Read Sets/03 Module Build Read Set|Module Build]]
-- [[Knowledge Base Standards/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]
+- [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
+- [[kernel/Read Sets/03 Module Build Read Set|Module Build]]
+- [[kernel/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]
 - 由所选 profile 的 `Routing And Gate Registry` 注册的 `Expression Layer Read Set`
-- [[Knowledge Base Standards/Read Sets/08 Audit and Completion Read Set|Audit and Completion]]
-- [[Knowledge Base Standards/Read Sets/09 Standards Governance Read Set|Standards Governance]]
+- [[kernel/Read Sets/08 Audit and Completion Read Set|Audit and Completion]]
+- [[kernel/Read Sets/09 Standards Governance Read Set|Standards Governance]]
 
 ## Related Standards
 

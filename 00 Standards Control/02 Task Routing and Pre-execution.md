@@ -6,23 +6,23 @@
 
 ## Task Routing Table
 
-所有任务先加载 [[Knowledge Base Standards/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再按下表组合 task-specific Read Sets 或 event modules。
+所有任务先加载 [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再按下表组合 task-specific Read Sets 或 event modules。
 
 | Task | Required Read Set Or Module | Main Decision |
 |---|---|---|
-| 新建或定向扩展一个概念页 | [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set\|Single Note Authoring]] | note type、owner、depth、sources、links 和 note gate |
-| 新建流程页、系统页或完整模块 | [[Knowledge Base Standards/Read Sets/03 Module Build Read Set\|Module Build]] | logical placement、foundation、dependency order、MOC 和 module gate |
-| 根据 OpenAI、Anthropic、论文、代码、案例或社区信号扩展知识 | [[Knowledge Base Standards/Read Sets/04 Source-driven Expansion Read Set\|Source-driven Expansion]]，并组合 authoring Read Set | claim、evidence role、gap、promotion、update / new / defer / supersede |
-| 建立行业 Case Study | [[Knowledge Base Standards/Read Sets/04 Source-driven Expansion Read Set\|Source-driven Expansion]] + [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set\|Single Note Authoring]] | reported fact、inference、recommendation 和指标 provenance |
-| 创建、迁移或审查面试内容 | [[Knowledge Base Standards/Read Sets/05 Interview Content Read Set\|Interview Content]] | knowledge 与 expression 分离、双语、追问和 migration coverage |
-| 批量重命名、移动、拆分、合并或目录重构 | [[Knowledge Base Standards/Read Sets/06 Migration and Refactor Read Set\|Migration and Refactor]] | source / target map、incoming links、ownership、回滚和内容守恒 |
-| 启动、恢复、暂停或完成长任务 | [[Knowledge Base Standards/Read Sets/07 Long-running Execution Read Set\|Long-running Execution]]，并组合实际内容 Read Set | task state、时间语义、Coverage Ledger、Required Queue 和 Terminal Proof |
-| 内容审查、batch 关闭或完成验收 | [[Knowledge Base Standards/Read Sets/08 Audit and Completion Read Set\|Audit and Completion]]，加上与被审 finding 相关的 Read Sets | correctness、depth、provenance、integration、rendering 和 terminal state |
-| 修改 Standards、Read Sets 或控制面结构 | [[Knowledge Base Standards/Read Sets/09 Standards Governance Read Set\|Standards Governance]] | authority、version、migration map、active task impact 和全库验证 |
+| 新建或定向扩展一个概念页 | [[kernel/Read Sets/02 Single Note Authoring Read Set\|Single Note Authoring]] | note type、owner、depth、sources、links 和 note gate |
+| 新建流程页、系统页或完整模块 | [[kernel/Read Sets/03 Module Build Read Set\|Module Build]] | logical placement、foundation、dependency order、MOC 和 module gate |
+| 根据 OpenAI、Anthropic、论文、代码、案例或社区信号扩展知识 | [[kernel/Read Sets/04 Source-driven Expansion Read Set\|Source-driven Expansion]]，并组合 authoring Read Set | claim、evidence role、gap、promotion、update / new / defer / supersede |
+| 建立行业 Case Study | [[kernel/Read Sets/04 Source-driven Expansion Read Set\|Source-driven Expansion]] + [[kernel/Read Sets/02 Single Note Authoring Read Set\|Single Note Authoring]] | reported fact、inference、recommendation 和指标 provenance |
+| 创建、迁移或审查面试内容 | [[profiles/agent-atlas/interview/05 Interview Content Read Set\|Interview Content]] | knowledge 与 expression 分离、双语、追问和 migration coverage |
+| 批量重命名、移动、拆分、合并或目录重构 | [[kernel/Read Sets/06 Migration and Refactor Read Set\|Migration and Refactor]] | source / target map、incoming links、ownership、回滚和内容守恒 |
+| 启动、恢复、暂停或完成长任务 | [[kernel/Read Sets/07 Long-running Execution Read Set\|Long-running Execution]]，并组合实际内容 Read Set | task state、时间语义、Coverage Ledger、Required Queue 和 Terminal Proof |
+| 内容审查、batch 关闭或完成验收 | [[kernel/Read Sets/08 Audit and Completion Read Set\|Audit and Completion]]，加上与被审 finding 相关的 Read Sets | correctness、depth、provenance、integration、rendering 和 terminal state |
+| 修改 Standards、Read Sets 或控制面结构 | [[kernel/Read Sets/09 Standards Governance Read Set\|Standards Governance]] | authority、version、migration map、active task impact 和全库验证 |
 | 处理中途用户引导、范围或优先级变化 | [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment\|Mid-task Guidance and Amendment]]；涉及 hypothesis 时再加载 [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads\|User Guidance Hypotheses and Source Leads]] | guidance type、authority、evidence role、disposition、safe switching 和 version impact |
 | 拆分专有名词 | [[kernel/05 Terminology/01 Terminology Extraction\|Terminology Extraction]] + [[kernel/05 Terminology/02 Ownership and Term Structure\|Ownership and Term Structure]] | 是否可复用、是否已有 canonical owner、是否值得独立页面 |
-| 数学、公式、表格、图片或渲染修复 | [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set\|Single Note Authoring]] 的 triggered modules + [[kernel/12 Quality Assurance/02 Rendering Verification\|Rendering Verification]] | Level 0 / Level 1 确定性验证；只有未决显示问题才升级视觉识别 |
-| 周期性知识库更新 / 保鲜（Maintenance Run） | [[Knowledge Base Standards/Read Sets/10 Maintenance Run Read Set\|Maintenance Run]] | 预算封套、候选清单、水位线推进和有界完成语义 |
+| 数学、公式、表格、图片或渲染修复 | [[kernel/Read Sets/02 Single Note Authoring Read Set\|Single Note Authoring]] 的 triggered modules + [[kernel/12 Quality Assurance/02 Rendering Verification\|Rendering Verification]] | Level 0 / Level 1 确定性验证；只有未决显示问题才升级视觉识别 |
+| 周期性知识库更新 / 保鲜（Maintenance Run） | [[kernel/Read Sets/10 Maintenance Run Read Set\|Maintenance Run]] | 预算封套、候选清单、水位线推进和有界完成语义 |
 
 ## Effort Tiering
 

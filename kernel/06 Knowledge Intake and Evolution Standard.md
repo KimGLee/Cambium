@@ -21,9 +21,9 @@
 
 ## Applicable Read Sets
 
-- [[Knowledge Base Standards/Read Sets/03 Module Build Read Set|Module Build]]（经 Module Build Read Set 组合触发）
-- [[Knowledge Base Standards/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]
-- [[Knowledge Base Standards/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]
+- [[kernel/Read Sets/03 Module Build Read Set|Module Build]]（经 Module Build Read Set 组合触发）
+- [[kernel/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]
+- [[kernel/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]
 
 ## Related Standards
 

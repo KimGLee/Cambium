@@ -42,7 +42,7 @@
  -> Gate Checks And Scripts
 ```
 
-所有任务从 [[Knowledge Base Standards/Cards/00 Card Index|Card Index]] 进入，读取任务对应的 Runtime Card；Core Bootstrap 约束由 [[Knowledge Base Standards/Cards/01 Core Bootstrap Card|Card 01]] 承载。需要回读原文时，从 [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]] 选择实际任务对应的 Read Set；不得因为任务属于知识库长任务就自动加载 `01`、`02`、`08`、`12` 的全部模块。
+所有任务从 [[Knowledge Base Standards/Cards/00 Card Index|Card Index]] 进入，读取任务对应的 Runtime Card；Core Bootstrap 约束由 [[Knowledge Base Standards/Cards/01 Core Bootstrap Card|Card 01]] 承载。需要回读原文时，从 [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]] 选择实际任务对应的 Read Set；不得因为任务属于知识库长任务就自动加载 `01`、`02`、`08`、`12` 的全部模块。
 
 长任务必须组合实际内容类型对应的 Card 与 [[Knowledge Base Standards/Cards/07 Long-running Execution Card|Card 07]]；回读原文时组合相应 Read Sets。质量规则在任务开始时通过 Gate 列表进入 contract，在到达对应 checkpoint 时再读取完整 gate procedure。
 
@@ -71,15 +71,15 @@ Cards 为编译产物，禁止手改。卡片与标准原文冲突时，以标�
 
 当前 Read Sets：
 
-- [[Knowledge Base Standards/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]：所有任务共同控制边界。
-- [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]：单个 canonical note。
-- [[Knowledge Base Standards/Read Sets/03 Module Build Read Set|Module Build]]：完整知识模块。
-- [[Knowledge Base Standards/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]：外部来源和社区信号。
-- [[Knowledge Base Standards/Read Sets/05 Interview Content Read Set|Interview Content]]：Interview Cards、Roadmap 和 Question Bank。
-- [[Knowledge Base Standards/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]：移动、重命名、拆分和目录重构。
-- [[Knowledge Base Standards/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]：batch、checkpoint、resume 和 Terminal Proof。
-- [[Knowledge Base Standards/Read Sets/08 Audit and Completion Read Set|Audit and Completion]]：质量审查和完成验收。
-- [[Knowledge Base Standards/Read Sets/09 Standards Governance Read Set|Standards Governance]]：控制面规则或结构变更。
-- [[Knowledge Base Standards/Read Sets/10 Maintenance Run Read Set|Maintenance Run]]：周期性更新与保鲜，按预算封套消化过期复验、水位线增量与 needs_rereview。
+- [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]：所有任务共同控制边界。
+- [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]：单个 canonical note。
+- [[kernel/Read Sets/03 Module Build Read Set|Module Build]]：完整知识模块。
+- [[kernel/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]：外部来源和社区信号。
+- [[profiles/agent-atlas/interview/05 Interview Content Read Set|Interview Content]]：Interview Cards、Roadmap 和 Question Bank。
+- [[kernel/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]：移动、重命名、拆分和目录重构。
+- [[kernel/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]：batch、checkpoint、resume 和 Terminal Proof。
+- [[kernel/Read Sets/08 Audit and Completion Read Set|Audit and Completion]]：质量审查和完成验收。
+- [[kernel/Read Sets/09 Standards Governance Read Set|Standards Governance]]：控制面规则或结构变更。
+- [[kernel/Read Sets/10 Maintenance Run Read Set|Maintenance Run]]：周期性更新与保鲜，按预算封套消化过期复验、水位线增量与 needs_rereview。
 
 v1.1 原文已归档至 `Archive/`（vault 根目录），不参与任何 routing。

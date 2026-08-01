@@ -7,7 +7,7 @@
 ## Expression Layer Read Set
 
 - Kernel role: `Expression Layer Read Set`
-- Agent Atlas binding: [[Knowledge Base Standards/Read Sets/05 Interview Content Read Set|Interview Content Read Set]]
+- Agent Atlas binding: [[profiles/agent-atlas/interview/05 Interview Content Read Set|Interview Content Read Set]]
 
 ## Expression Layer Quality Gates
 

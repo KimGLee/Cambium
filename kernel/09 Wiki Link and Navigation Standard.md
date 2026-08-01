@@ -20,11 +20,11 @@
 
 ## Applicable Read Sets
 
-- [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
-- [[Knowledge Base Standards/Read Sets/03 Module Build Read Set|Module Build]]
+- [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
+- [[kernel/Read Sets/03 Module Build Read Set|Module Build]]
 - `Expression Layer Read Set`（由 `Routing And Gate Registry` 注册）
-- [[Knowledge Base Standards/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]
-- [[Knowledge Base Standards/Read Sets/09 Standards Governance Read Set|Standards Governance]]
+- [[kernel/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]
+- [[kernel/Read Sets/09 Standards Governance Read Set|Standards Governance]]
 
 ## Related Standards
 

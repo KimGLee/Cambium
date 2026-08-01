@@ -25,10 +25,10 @@
 
 ## Applicable Read Sets
 
-- [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
-- [[Knowledge Base Standards/Read Sets/03 Module Build Read Set|Module Build]]
-- [[Knowledge Base Standards/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]
-- [[Knowledge Base Standards/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]
+- [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
+- [[kernel/Read Sets/03 Module Build Read Set|Module Build]]
+- [[kernel/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]
+- [[kernel/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]
 
 ## Related Standards
 

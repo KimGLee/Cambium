@@ -26,8 +26,8 @@
 
 ## Applicable Read Sets
 
-- [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
-- [[Knowledge Base Standards/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]
+- [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
+- [[kernel/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]
 - 由所选 profile 的 `Routing And Gate Registry` 注册的 `Expression Layer Read Set`
 
 ## Related Standards

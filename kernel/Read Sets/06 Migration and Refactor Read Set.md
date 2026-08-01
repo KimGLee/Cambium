@@ -4,7 +4,7 @@
 
 ## Start
 
-先读取 [[Knowledge Base Standards/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
+先读取 [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
 
 - [[kernel/02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]]
 - [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
@@ -19,9 +19,9 @@
 
 ## Triggered
 
-- 多批次迁移：组合 [[Knowledge Base Standards/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]。
+- 多批次迁移：组合 [[kernel/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]。
 - 内容 owner 同时变化：读取 [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]。
-- Standards 本身变化：组合 [[Knowledge Base Standards/Read Sets/09 Standards Governance Read Set|Standards Governance]]。
+- Standards 本身变化：组合 [[kernel/Read Sets/09 Standards Governance Read Set|Standards Governance]]。
 
 ## Gate
 
@@ -31,6 +31,6 @@
 
 ## Related
 
-- [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
+- [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]
 - [[kernel/02 Knowledge Base Build Execution Standard|Build Execution]]
 - [[kernel/09 Wiki Link and Navigation Standard|Wiki Link and Navigation]]

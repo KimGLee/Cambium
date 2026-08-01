@@ -1,10 +1,10 @@
 ## Purpose
 
-用于新建、重写或定向补全一个 canonical knowledge note。它不自动覆盖整个模块、Roadmap 或 Interview migration。
+用于新建、重写或定向补全一个 canonical knowledge note。它不自动覆盖整个模块、注册的规划产物或 Expression Layer migration。
 
 ## Start
 
-先读取 [[Knowledge Base Standards/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
+先读取 [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
 
 - [[kernel/03 Note Types and Ownership/01 Note Type Catalog|Note Type Catalog]]
 - [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
@@ -15,11 +15,11 @@
 - [[kernel/08 Metadata and Status/03 Status Axes|Status Axes]]
 - [[kernel/09 Wiki Link and Navigation/01 Link Semantics and Body Links|Link Semantics and Body Links]]
 - [[kernel/10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]
-- [[profiles/agent-atlas/language-contract|Language Contract]]
+- 所选 profile 注册的 `Language Contract`，作为本 Read Set 的必读 `Start` module。
 
 ## Triggered
 
-- 出现可复用专有名词：读取 [[kernel/05 Terminology/01 Terminology Extraction|Terminology Extraction]]、[[kernel/05 Terminology/02 Ownership and Term Structure|Ownership and Term Structure]] 和 [[kernel/05 Terminology/03 Naming Context and Linking|Naming Context and Linking]]；关闭 term note 前读取 [[kernel/05 Terminology/04 Terminology Acceptance|Interview and Acceptance]]。
+- 出现可复用专有名词：读取 [[kernel/05 Terminology/01 Terminology Extraction|Terminology Extraction]]、[[kernel/05 Terminology/02 Ownership and Term Structure|Ownership and Term Structure]] 和 [[kernel/05 Terminology/03 Naming Context and Linking|Naming Context and Linking]]；关闭 term note 前读取 [[kernel/05 Terminology/04 Terminology Acceptance|Terminology Acceptance]]。
 - 关键 claim 或外部文章：读取 [[kernel/07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|Source Hierarchy and Evidence Roles]] 和 [[kernel/07 Sources and Accuracy/02 Claims Sources and Classification|Claims Sources and Classification]]。
 - 官方厂商材料或需要独立核验的结论：读取 [[kernel/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]]。
 - Benchmark、accuracy、回测或生产指标：读取 [[kernel/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]]。
@@ -39,6 +39,6 @@
 
 ## Related
 
-- [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
+- [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]
 - [[kernel/03 Note Types and Ownership Standard|Note Types and Ownership]]
 - [[kernel/04 Content Depth Standard|Content Depth]]

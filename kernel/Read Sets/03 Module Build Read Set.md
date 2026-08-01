@@ -4,7 +4,7 @@
 
 ## Start
 
-先读取 [[Knowledge Base Standards/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
+先读取 [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]，再读取：
 
 - [[kernel/01 Scope and Architecture/01 Scope Boundaries|Scope Boundaries]]
 - [[kernel/01 Scope and Architecture/02 Logical Architecture and Knowledge Spine|Logical Architecture and Knowledge Spine]]
@@ -23,23 +23,23 @@
 - [[kernel/09 Wiki Link and Navigation/02 Structural and Bidirectional Links|Structural and Bidirectional Links]]
 - [[kernel/09 Wiki Link and Navigation/04 MOC Related and Link Creation|MOC Related and Link Creation]]
 - [[kernel/10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]
-- [[profiles/agent-atlas/language-contract|Language Contract]]
+- 所选 profile 注册的 `Language Contract`，作为本 Read Set 的必读 `Start` module。
 
 ## Triggered
 
-- 来源驱动扩展：组合 [[Knowledge Base Standards/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]。
-- 面试同步：组合 [[Knowledge Base Standards/Read Sets/05 Interview Content Read Set|Interview Content]]。
-- 长任务和多批次：组合 [[Knowledge Base Standards/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]。
-- 重命名或移动现有页面：组合 [[Knowledge Base Standards/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]。
+- 来源驱动扩展：组合 [[kernel/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]。
+- 表达层同步：组合所选 profile 通过 `Routing And Gate Registry` 注册的 `Expression Layer Read Set`。
+- 长任务和多批次：组合 [[kernel/Read Sets/07 Long-running Execution Read Set|Long-running Execution]]。
+- 重命名或移动现有页面：组合 [[kernel/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]]。
 
 ## Gate
 
 - [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
-- 完整模块关闭时组合 [[Knowledge Base Standards/Read Sets/08 Audit and Completion Read Set|Audit and Completion]]。
+- 完整模块关闭时组合 [[kernel/Read Sets/08 Audit and Completion Read Set|Audit and Completion]]。
 
 ## Related
 
-- [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
+- [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]
 - [[kernel/01 Scope and Architecture Standard|Scope and Architecture]]
 - [[kernel/02 Knowledge Base Build Execution Standard|Build Execution]]

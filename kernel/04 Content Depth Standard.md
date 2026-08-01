@@ -21,8 +21,8 @@
 
 ## Applicable Read Sets
 
-- [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
-- [[Knowledge Base Standards/Read Sets/03 Module Build Read Set|Module Build]]
+- [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
+- [[kernel/Read Sets/03 Module Build Read Set|Module Build]]
 - 由所选 profile 的 `Routing And Gate Registry` 注册的 `Expression Layer Read Set`
 
 ## Related Standards

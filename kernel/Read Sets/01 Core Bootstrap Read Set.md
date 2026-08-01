@@ -12,15 +12,15 @@ Core Bootstrap 是所有 Knowledge Base Standards 任务的最小共同读取集
 4. [[Knowledge Base Standards/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]]
 5. [[Knowledge Base Standards/00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
 
-随后从 [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]] 选择任务专属 Read Set。
+随后从 [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]] 选择任务专属 Read Set。
 
 ## Required Decisions
 
 - 明确 objective、scope、exclusions 和用户最新指令。
 - 确认当前任务是否有权修改 `Knowledge Base Standards` 或受保护目录。
 - 确认 canonical ownership、事实正确性和用户修改保护仍然优先。
-- 区分 task completion、authoring status、interview status、evidence maturity 和 learning status。
-- 记录当前 Standards version 和实际 loaded set（Cards 与升级回读的 modules）。
+- 区分 task completion、authoring status、注册的 `Expression Status Axis`、evidence maturity 和 learning status。
+- 记录当前 Standards version 和实际 loaded set（Runtime Card IDs、`Runtime Card Provider` 解析的 artifacts 与升级回读的 modules）。
 
 ## Not Sufficient For
 
@@ -28,7 +28,7 @@ Core Bootstrap 单独不能授权开始以下工作：
 
 - Canonical note authoring。
 - Source promotion。
-- Interview migration。
+- Expression Layer migration。
 - Folder refactor。
 - Long-running batch execution。
 - Completion 或 Terminal Audit。
@@ -37,6 +37,5 @@ Core Bootstrap 单独不能授权开始以下工作：
 
 ## Related
 
-- [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
+- [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]
 - [[Knowledge Base Standards/00 Standards Overview|Standards Overview]]
-

@@ -21,9 +21,9 @@
 
 ## Applicable Read Sets
 
-- [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
-- [[Knowledge Base Standards/Read Sets/03 Module Build Read Set|Module Build]]（经 Module Build Read Set 组合触发）
-- [[Knowledge Base Standards/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]
+- [[kernel/Read Sets/02 Single Note Authoring Read Set|Single Note Authoring]]
+- [[kernel/Read Sets/03 Module Build Read Set|Module Build]]（经 Module Build Read Set 组合触发）
+- [[kernel/Read Sets/04 Source-driven Expansion Read Set|Source-driven Expansion]]
 
 ## Related Standards
 
