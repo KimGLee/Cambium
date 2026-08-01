@@ -14,7 +14,7 @@
 - `Audit Dimension Registry`: [[profiles/agent-atlas/registries/audit-dimensions|Audit Dimension Registry]]
 - `Registered Scan Registry`: [[profiles/agent-atlas/registries/registered-scans|Registered Scan Registry]]
 - `Routing And Gate Registry`: [[profiles/agent-atlas/registries/routing-and-gates|Routing And Gate Registry]]
-- `Runtime Card Provider`: [[Cards/00 Card Index|Card Index]]
+- `Runtime Card Provider`: [[profiles/agent-atlas/card-compatibility|Card Compatibility Provider]]
 
 ## Registered Extensions
 
@@ -23,11 +23,13 @@
 
 ## Runtime Card Provider Binding
 
-- Mode: `active-derived-card-layer`。
-- Artifact root: `Cards/`。
-- Index: 使用 `Implemented Slots` 中的 `Runtime Card Provider` binding。
+- Mode: `legacy-v2.3-snapshot-compatibility`。
+- Scope: `agent-atlas-only`；其它 profile 不继承本 binding。
+- Artifact root: `legacy/cards/`（read-only、byte-verbatim v2.3 snapshots）。
+- Index: 使用 `Implemented Slots` 中的 `Runtime Card Provider` binding，按 stable Card ID 解析 snapshot 与 canonical Read Set。
 - Canonical authority: 对应 kernel Read Sets 与 leaf modules；artifact 冲突时升级回读原文。
-- Write-back check: `Tools/stamp_cards.py --check`；provider 无法通过同步检查时 governance task 不得关闭。
+- Historical metadata: archived `source_files` 与 `source_hash` 只描述 pre-split compilation，不作为当前路径或 freshness 证明。
+- Write-back precondition: 当前 `Tools/stamp_cards.py` 仅扫描 `Cards/*.md`，不支持此 legacy provider；zero-match 不构成 pass。未来 governance task 在 active provider 或兼容 tool adapter 完成实际同步检查前不得关闭。
 
 ## Execution Default Overrides
 
