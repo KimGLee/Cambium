@@ -16,9 +16,9 @@
 - Progress Ledger 暂时没有 active batch。
 - 大部分页面已经是 `reviewed`。
 
-任务只能从 `active` 进入 `completion-candidate`，完成 [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]] 的 Terminal Audit 后才能进入 `complete`。
+任务只能从 `active` 进入 `completion-candidate`，完成 [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]] 的 Terminal Audit 后才能进入 `complete`。
 
-Terminal Audit 的 canonical procedure 位于 [[Knowledge Base Standards/12 Quality Assurance/06 Completion Terminal Audit and Final Report#Terminal Audit|Terminal Audit]]。
+Terminal Audit 的 canonical procedure 位于 [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report#Terminal Audit|Terminal Audit]]。
 
 Terminal Proof 至少证明：
 
@@ -44,7 +44,7 @@ AND time_contract_satisfied
 - `final_handoff_written`：剩余 optional、deferred 和 evidence gaps 已明确。
 - `time_contract_satisfied`：若存在 `minimum_run_until`，当前时间已达到；若存在 `hard_stop_at`，没有越过用户要求的停止边界。
 
-Authoring completion 与 evidence closure 分离的 canonical 规则（含四条可执行条件）见 [[Knowledge Base Standards/12 Quality Assurance/06 Completion Terminal Audit and Final Report|12/06]]；缺正文机制、Sources、Interview migration 或 Required QA 的页面仍是 authoring gap。
+Authoring completion 与 evidence closure 分离的 canonical 规则（含四条可执行条件）见 [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|12/06]]；缺正文机制、Sources、Interview migration 或 Required QA 的页面仍是 authoring gap。
 
 用户可以在 Completion Gate 前暂停或取消任务，但该动作不能被报告为完成。
 
@@ -72,6 +72,6 @@ Authoring completion 与 evidence closure 分离的 canonical 规则（含四条
 
 - [[Knowledge Base Standards/00 Standards Overview|Standards Overview]]
 - [[kernel/08 Metadata and Status Standard|Metadata and Status Standard]]
-- [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]
-- [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
+- [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]]
+- [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]

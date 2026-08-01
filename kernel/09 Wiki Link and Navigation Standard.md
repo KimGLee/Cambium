@@ -32,5 +32,5 @@
 - [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]]
 - [[kernel/05 Terminology Standard|05 Terminology Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
-- [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]]
+- [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]]
 - `Expression Layer Entry`（由所选 profile 绑定）

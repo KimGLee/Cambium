@@ -1,7 +1,7 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]].
-- Next: [[Knowledge Base Standards/12 Quality Assurance/02 Rendering Verification|Rendering Verification]].
+- Parent: [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]].
+- Next: [[kernel/12 Quality Assurance/02 Rendering Verification|Rendering Verification]].
 
 ## Purpose
 
@@ -9,25 +9,25 @@
 
 ## Quality Dimensions
 
-每项内容从以下维度验收：
+每项内容从以下 kernel 维度验收：
 
 - Coverage：应该回答的问题是否覆盖。
 - Correctness：事实、公式和术语是否准确。
 - Depth：是否解释原因、机制、假设和失败。
 - Structure：章节是否有逻辑承接。
-- Language clarity：中文解释是否完整，英文 identity 是否精确，双语显示是否统一为 `English（中文）`。
 - Reuse：专有名词是否 canonicalize。
 - Integration：正文和上级入口是否正确链接。
 - Application：是否有例子、评估和工程考虑。
 - Provenance：关键 claims、指标和案例是否能追溯到证据与测量过程。
 - Evidence maturity：正文语气是否符合 signal、corroborated、validated 或 contested 状态。
-- Interview readiness：是否有独立 Interview Card。
 - Maintainability：来源、元数据和 ownership 是否明确。
 - Rendering：Markdown、公式、表格和图片是否正常。
 
+所选 profile 可以通过 `Audit Dimension Registry` 增加语言、表达 readiness 或其它扩展维度，但不能删除、替换或降低上述 kernel 维度。
+
 ## Single Note Review
 
-适用范围：本节全量清单适用于 L 档页面；M 档页面按对应 Runtime Card 的 Gate 清单验收并并入 batch gate；S 档页面仅做确定性脚本检查，批次关闭时抽样复核（分档规则见 [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|分档规则]]）。
+适用范围：本节全量清单适用于 L 档页面；M 档页面按 `Runtime Card Provider` 提供的对应 Gate 清单验收并并入 batch gate；S 档页面仅做确定性脚本检查，批次关闭时抽样复核（分档规则见 [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|分档规则]]）。
 
 ### Structure
 
@@ -44,9 +44,9 @@
 - 至少有适合该 note type 的例子。
 - Failure Mode 包含 trigger、symptom、cause、detection、mitigation。
 - 术语解释没有不必要地挤占当前主题。
-- 语言维度按 [[profiles/agent-atlas/language-contract#Acceptance And Audit（验收与审计）|Language Contract / Acceptance And Audit]] 验收。高频错误提示：双语标题与首次术语必须写成 `English（中文）`，不得写反向 `中文（English）`；正文用完整中文句子承担解释，不用英文关键词堆叠代替推理。
-- 基础知识页能够独立解释其学科机制，没有被压缩成 Agent 使用说明。
+- 基础知识页能够独立解释其学科机制，不能压缩成只服务所选 profile 应用主线的说明；具体完整性谓词由 `Profile Scope` 提供。
 - System 页面覆盖 execution、state、coordination、evidence 和 recovery paths。
+- 语言验收由所选 profile 的 `Language Contract` 提供，并通过 `Audit Dimension Registry` 纳入适用 gate。
 
 ### Accuracy
 
@@ -55,16 +55,16 @@
 - Sources 能直接支撑关键结论。
 - 没有把经验性建议写成绝对事实。
 - Reported claim、inference、cross-source synthesis 和 recommendation 已区分。
-- 指标能够追溯到 task、dataset、trial、Harness、grader 和 aggregation。
+- 指标能够追溯到 task、dataset、trial、execution runtime、grader 和 aggregation；具体 runtime 角色名由所选 profile 的 `Role Registry` 绑定。
 
 ### Links
 
 - Parent、prerequisites 和关键依赖可导航。
 - 正文第一次有意义出现的术语已链接。
 - Related 不是唯一引用位置。
-- Interview Card link 已按优先级建立。
 - Source Note、Research Synthesis、canonical note 和 Case Study 之间的关系可导航。
 - 没有 unresolved 或 ambiguous link。
+- 适用的表达层结构 links 由所选 profile 的 `Expression Layer Entry` 声明，并由 `Routing And Gate Registry` 提供 gate。
 
 ### Rendering
 
@@ -85,7 +85,7 @@ L 档页面强制执行实质正确性复核；S / M 档不强制，由批次抽
 
 - 重推关键推理链，确认结论确实由前提得出。
 - 抽查 2–3 个关键 claim，对照来源原文核对。
-- 检查"来源没说这么强"的过度引申。
+- 检查“来源没说这么强”的过度引申。
 
 复核产出 receipt（`check: substantive_review`，schema 同 `Tools/schemas/receipt.template.jsonl`）。
 
@@ -102,4 +102,4 @@ L 档页面强制执行实质正确性复核；S / M 档不强制，由批次抽
 - 轮次上限为 2：第 1 轮复核产出分级 findings；修复后第 2 轮**只确认第 1 轮 findings 是否关闭，不得引入新的审查范围**。确认轮新发现的问题记入 Open Questions 或标记 `needs_rereview` 交由维护轮消化，不重开本轮复核。
 - 两轮后仍无法关闭，或复核范围在轮间持续扩张，必须升级用户裁决，不得自行续轮。
 
-存量豁免：触发时机以上述三种情形为限。Standards 版本升级本身不触发存量页面的补做——已处于 `reviewed`、`review_by` 未过期且未被标记 `needs_rereview` 的页面，不因标准变更重开实质正确性复核；标准变更导致的 receipts 失效仅要求按 [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] 重跑确定性检查，不等于重开人工复核。
+存量豁免：触发时机以上述三种情形为限。Standards 版本升级本身不触发存量页面的补做——已处于 `reviewed`、`review_by` 未过期且未被标记 `needs_rereview` 的页面，不因标准变更重开实质正确性复核；标准变更导致的 receipts 失效仅要求按 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] 重跑确定性检查，不等于重开人工复核。

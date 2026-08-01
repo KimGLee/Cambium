@@ -6,11 +6,11 @@
 
 ## Rendering Workflow
 
-内容和结构检查以直接提取 Markdown 为主，渲染检查遵循确定性优先、视觉识别例外；渲染分级的 canonical 定义与升级条件见 [[Knowledge Base Standards/12 Quality Assurance/02 Rendering Verification|12/02]]。
+内容和结构检查以直接提取 Markdown 为主，渲染检查遵循确定性优先、视觉识别例外；渲染分级的 canonical 定义与升级条件见 [[kernel/12 Quality Assurance/02 Rendering Verification|12/02]]。
 
 执行侧要点：纯文本编辑不默认需要打开所选 knowledge host 的 UI。新增 diagram、table、formula、image、callout 或 embed 也不自动触发 UI；先执行相应 compiler、parser、path、dimension 和结构验证。
 
-只有 [[Knowledge Base Standards/12 Quality Assurance/02 Rendering Verification#Level 2: Targeted Visual Recognition Exception|Level 2]] 的客观条件成立时，才打开最小页面或查看目标截图。录屏只适用于静态证据无法表达的时序或交互问题。Reading View 通过只表示被检查目标的显示正常，不表示内容、来源、链接和 Completion Gate 已经通过。
+只有 [[kernel/12 Quality Assurance/02 Rendering Verification#Level 2: Targeted Visual Recognition Exception|Level 2]] 的客观条件成立时，才打开最小页面或查看目标截图。录屏只适用于静态证据无法表达的时序或交互问题。Reading View 通过只表示被检查目标的显示正常，不表示内容、来源、链接和 Completion Gate 已经通过。
 
 ## Formatting Anti-patterns
 
@@ -41,6 +41,6 @@
 
 - [[kernel/04 Content Depth Standard|Content Depth Standard]]
 - [[kernel/09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]
-- [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]
+- [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]
 - 所选 profile 的 `Language Contract`

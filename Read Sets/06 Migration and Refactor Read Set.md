@@ -25,13 +25,12 @@
 
 ## Gate
 
-- [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
-- [[Knowledge Base Standards/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
-- [[Knowledge Base Standards/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
+- [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
+- [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
+- [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
 
 ## Related
 
 - [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
 - [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|Build Execution]]
 - [[kernel/09 Wiki Link and Navigation Standard|Wiki Link and Navigation]]
-

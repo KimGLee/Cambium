@@ -44,7 +44,7 @@
 - `09` [[kernel/09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]：正文链接、结构导航、path、alias 和验证。
 - `10` [[kernel/10 Writing and Formatting Standard|Writing and Formatting Standard]]：英文文件名、中文优先技术表达、`English（中文）` 显示合同、公式、表格、图方向、图完整性和 rendering workflow。
 - `11` [[profiles/agent-atlas/interview/11 Interview Content Standard|Interview Content Standard]]：Interview Cards、coverage status、双语回答、系统深挖和 migration audit。
-- `12` [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]：单篇、batch、Guidance / Coverage reconciliation、模块、source promotion、面试、分层渲染和 Terminal Audit。
+- `12` [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]]：单篇、batch、Guidance / Coverage reconciliation、模块、source promotion、面试、分层渲染和 Terminal Audit。
 
 ## Cross-domain Rule Registry
 
@@ -53,7 +53,7 @@
 | 对象 | Canonical owner |
 |---|---|
 | Terminal Proof 公式 | [[Knowledge Base Standards/02 Build Execution/07 Completion and Handoff|Completion and Handoff]] |
-| Terminal Audit 流程与 Proof 字段清单 | [[Knowledge Base Standards/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]] |
+| Terminal Audit 流程与 Proof 字段清单 | [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]] |
 | `task_state` 词表 | [[Knowledge Base Standards/02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]] |
 | authoring / interview / learning 状态词表 | [[kernel/08 Metadata and Status/03 Status Axes|Status Axes]] |
 | `evidence_maturity` 定义 | [[kernel/08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]] |
@@ -64,7 +64,7 @@
 | 语言政策 | [[profiles/agent-atlas/language-contract|Language Contract]] |
 | Interview 双语政策 | [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]] |
 | System Deep Dive 骨架 | [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]] |
-| Batch / Coverage 验收清单 | [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]] |
+| Batch / Coverage 验收清单 | [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]] |
 | Source-to-Knowledge pipeline | [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] |
 | 保质期与 volatility 词表 | [[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]] |
 | 退役与合并流程 | [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]] |
@@ -76,15 +76,15 @@ Cross-domain Rule Registry 管内容规则“规则住在哪”；本控制注�
 
 | 风险对象 | Canonical gate（唯一） | 其它层的行为 |
 |---|---|---|
-| Wiki 链接完整性 | 批次关闭：[[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|封闭清单]] check_links 产 receipt | note 关闭仅本页 `--scope` 自查；迁移/退役仅定向改指；终审验证最后批次 receipt，不重跑 |
-| Frontmatter 词表 | 批次关闭：[[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|封闭清单]]第 7 项 check_vocab 产 receipt | note 关闭 `--scope` 自查；终审信任 receipt |
+| Wiki 链接完整性 | 批次关闭：[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|封闭清单]] check_links 产 receipt | note 关闭仅本页 `--scope` 自查；迁移/退役仅定向改指；终审验证最后批次 receipt，不重跑 |
+| Frontmatter 词表 | 批次关闭：[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|封闭清单]]第 7 项 check_vocab 产 receipt | note 关闭 `--scope` 自查；终审信任 receipt |
 | 并发写冲突 | 批次激活时：integrator 按 Coverage `next_batch` 执行清单相交性检查（[[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches） | 并发批次仅写自身清单页面、receipts 目录与 delta 文件；全局状态文件 integrator 专属 |
-| 内容正确性（人工） | note 关闭：[[Knowledge Base Standards/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]] 按档位审阅 | 批级人工审范围 = changed ∪ invalidated ∪ 抽样；P0 长期保障由 freshness 复验承担；终审验证 receipts＋有界抽样 |
-| Coverage 对账 | 批次关闭仅 file-count（封闭清单第 4 项）；问题清单按 [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|12/03]] 在模块完成与 completion-candidate 前执行 | inventory 后与 scope/guidance 变化时各一次；批次开始不对账；completion-candidate 前与终审步骤 4 合并 |
-| 标准版本一致性 | 批次激活自动版本自检：[[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Active-task Adoption|Active-task Adoption]] | 有 delta 走增量 adoption；无 delta 一行 receipt；终审 check_proof 校验 |
+| 内容正确性（人工） | note 关闭：[[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]] 按档位审阅 | 批级人工审范围 = changed ∪ invalidated ∪ 抽样；P0 长期保障由 freshness 复验承担；终审验证 receipts＋有界抽样 |
+| Coverage 对账 | 批次关闭仅 file-count（封闭清单第 4 项）；问题清单按 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|12/03]] 在模块完成与 completion-candidate 前执行 | inventory 后与 scope/guidance 变化时各一次；批次开始不对账；completion-candidate 前与终审步骤 4 合并 |
+| 标准版本一致性 | 批次激活自动版本自检：[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Active-task Adoption|Active-task Adoption]] | 有 delta 走增量 adoption；无 delta 一行 receipt；终审 check_proof 校验 |
 | Guidance 处置 | intake 一次完整处置：[[Knowledge Base Standards/02 Build Execution/02 Mid-task Guidance and Amendment|02/02]]（门槛为重要 Guidance） | 批关闭仅对 `last_reconciled_guidance_id` 后增量对账；终审只读账验证 disposition |
-| 凭证有效性 | 批次关闭前 AuditPlan 一次：[[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] | 批次开始只加载 Receipt Register；Reuse Gate 条件保留 |
-| 渲染 | note 关闭 Level 0/1：[[Knowledge Base Standards/12 Quality Assurance/02 Rendering Verification|12/02]] | 批关闭枚举检查一项；终审信任 receipt |
-| Interview 迁移扫描 | 批次关闭：[[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|封闭清单]]第 6 项＋changed-scope 扫描 | 其它层引用封闭清单，不另做全库扫描 |
-| 重复检测 | 维护轮与 governance 任务：[[Knowledge Base Standards/12 Quality Assurance/05 Automated and Manual Checks|12/05]] duplicate_check | 批次层面仅封闭清单 basename 级；段落级扫描不每批跑 |
+| 凭证有效性 | 批次关闭前 AuditPlan 一次：[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] | 批次开始只加载 Receipt Register；Reuse Gate 条件保留 |
+| 渲染 | note 关闭 Level 0/1：[[kernel/12 Quality Assurance/02 Rendering Verification|12/02]] | 批关闭枚举检查一项；终审信任 receipt |
+| Interview 迁移扫描 | 批次关闭：[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|封闭清单]]第 6 项＋changed-scope 扫描 | 其它层引用封闭清单，不另做全库扫描 |
+| 重复检测 | 维护轮与 governance 任务：[[kernel/12 Quality Assurance/05 Automated and Manual Checks|12/05]] duplicate_check | 批次层面仅封闭清单 basename 级；段落级扫描不每批跑 |
 | 知识时效 | 维护轮开始 check_freshness：[[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|08/05]] | 不在批次自动检查清单中 |

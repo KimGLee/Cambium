@@ -53,7 +53,7 @@ Coverage reconciliation 至少在以下时点执行：
 
 Reconciliation 只重新计算受文件、scope、Guidance 或 Standards 变化影响的 receipt validity；不能因为一次无关修改让所有内容审阅日期失效，也不能把 `last_reviewed` 当作仍有效的证明。最终图状态相关的 file count、link 和 control-plane invariants仍按 gate 全量计算。
 
-对账检查问题清单以 [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|12/03]] 的 Coverage Reconciliation Review 为准。
+对账检查问题清单以 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|12/03]] 的 Coverage Reconciliation Review 为准。
 
 行数、文件存在和 link resolution 只用于发现候选异常，不能代替 note-type-aware 内容审阅。
 

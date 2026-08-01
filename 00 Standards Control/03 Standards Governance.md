@@ -28,7 +28,7 @@ draft
 2. 记录受影响 Standards 和原因。
 3. 提升 `standards_version`。
 4. 更新 `00` 的 routing 和 change summary。
-5. 按修订记录的 changed-predicate 清单执行 [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] 的 Active-task Adoption；清单为空即 no-op，一行 adoption receipt 即完成。
+5. 按修订记录的 changed-predicate 清单执行 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] 的 Active-task Adoption；清单为空即 no-op，一行 adoption receipt 即完成。
 
 用户批准 Standards 不等于批准对全部旧页面立即批量迁移 Frontmatter。迁移范围仍需进入具体 task contract。
 

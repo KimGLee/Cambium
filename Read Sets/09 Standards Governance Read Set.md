@@ -17,7 +17,7 @@
 - [[Knowledge Base Standards/02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]]（修订流程涉及 Amendment Log）
 - [[kernel/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - [[profiles/agent-atlas/language-contract|Language Contract]]
-- [[Knowledge Base Standards/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
+- [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 
 ## Required Controls
 
@@ -31,11 +31,11 @@
 
 ## Gate
 
-- 使用 [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]] 验证目录、MOC 和 coverage。
-- 使用 [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] 记录受影响 active task 的 receipt compatibility、失效范围和 adoption plan。
+- 使用 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]] 验证目录、MOC 和 coverage。
+- 使用 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] 记录受影响 active task 的 receipt compatibility、失效范围和 adoption plan。
 - 使用 [[kernel/09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]] 验证全库 incoming links。
-- 涉及 rendering policy、diagram、table、formula、asset 或 host behavior 时，使用 [[Knowledge Base Standards/12 Quality Assurance/02 Rendering Verification|Rendering Verification]] 选择并记录实际级别。
-- 使用 [[Knowledge Base Standards/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]] 关闭 governance task。
+- 涉及 rendering policy、diagram、table、formula、asset 或 host behavior 时，使用 [[kernel/12 Quality Assurance/02 Rendering Verification|Rendering Verification]] 选择并记录实际级别。
+- 使用 [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]] 关闭 governance task。
 
 ## Related
 

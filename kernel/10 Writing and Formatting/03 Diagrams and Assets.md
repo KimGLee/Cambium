@@ -51,6 +51,6 @@ Overview Architecture
 - 图片放在所属模块的 `Assets` 文件夹。
 - 图片文件名使用由所选 profile 的 `Language Contract` 注册的 canonical identity，并表达内容。
 - 不使用纯装饰图片。
-- 所有图片先验证路径、格式、尺寸和引用；新增或修改 diagram、image 或 embed 时按 [[Knowledge Base Standards/12 Quality Assurance/02 Rendering Verification#Rendering Verification Levels|Rendering Verification Levels]] 执行 Level 0 / Level 1。
+- 所有图片先验证路径、格式、尺寸和引用；新增或修改 diagram、image 或 embed 时按 [[kernel/12 Quality Assurance/02 Rendering Verification#Rendering Verification Levels|Rendering Verification Levels]] 执行 Level 0 / Level 1。
 - 修改图后先用 compiler、结构提取和尺寸数据验证节点、边、label、顺序和完整性。只有确定性证据无法判断具体的可读性、overflow、occlusion 或 host-specific display 时，才升级到最小范围 visual exception。
 - 内容明确依赖特定 desktop 或 mobile viewport 且存在未决布局问题时，才检查对应 viewport；不能因为存在多个 viewport 就默认逐一操作 UI。

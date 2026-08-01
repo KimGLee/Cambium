@@ -8,7 +8,7 @@
 
 长任务执行中，用户新增的看法、纠正、主题、优先级、来源线索、格式偏好或停止指令统称为 `Guidance Event`。Guidance Event 必须被保留、分类和处置，不能只依赖当前上下文记忆，也不能未经判断就直接写入 canonical knowledge。
 
-**重要 Guidance Event** 指改变目标、范围、验收、优先级或内容判断的消息；本页与 [[Knowledge Base Standards/12 Quality Assurance/04 Guidance Source and Interview Review|12/04]] 的处置义务均以此门槛为准。纯状态询问或确认类消息记一行 log，不占 guidance_id、不进入 Amendment Log。
+**重要 Guidance Event** 指改变目标、范围、验收、优先级或内容判断的消息；本页与 [[kernel/12 Quality Assurance/04 Guidance and Source Review|12/04]] 的处置义务均以此门槛为准。纯状态询问或确认类消息记一行 log，不占 guidance_id、不进入 Amendment Log。
 
 ### Cumulative Amendment Rule
 

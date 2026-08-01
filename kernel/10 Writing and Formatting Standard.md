@@ -37,7 +37,7 @@
 ## Related Standards
 
 - 所选 profile 的 `Expression Layer Entry`
-- [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]]
+- [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]]
 - [[kernel/04 Content Depth Standard|04 Content Depth Standard]]
 - [[kernel/09 Wiki Link and Navigation Standard|09 Wiki Link and Navigation Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]

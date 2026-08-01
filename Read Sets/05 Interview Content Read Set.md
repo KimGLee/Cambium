@@ -26,7 +26,7 @@ Interview expression 必须依赖已经足够完整的 canonical knowledge；不
 
 ## Gate
 
-- [[Knowledge Base Standards/12 Quality Assurance/04 Guidance Source and Interview Review|Guidance Source and Interview Review]]
+- [[profiles/agent-atlas/interview/07 Migration Audit and Acceptance#Interview Review|Interview Review]]
 - 迁移任务还必须通过 [[profiles/agent-atlas/interview/07 Migration Audit and Acceptance|Migration Audit and Acceptance]]。
 
 ## Related

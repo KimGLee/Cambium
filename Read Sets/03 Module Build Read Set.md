@@ -34,8 +34,8 @@
 
 ## Gate
 
-- [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
-- [[Knowledge Base Standards/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
+- [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
+- [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - 完整模块关闭时组合 [[Knowledge Base Standards/Read Sets/08 Audit and Completion Read Set|Audit and Completion]]。
 
 ## Related

@@ -22,7 +22,7 @@
 4. 更新引用。
 5. 确认内容完整迁移。
 6. 再删除重复内容或旧文件。
-7. 全库检查由所在批次关闭的 Batch-close Closed List（[[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）覆盖。
+7. 全库检查由所在批次关闭的 Batch-close Closed List（[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）覆盖。
 
 禁止先删除后补写。
 

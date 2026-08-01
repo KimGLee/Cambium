@@ -11,6 +11,8 @@
 - `Expression Layer Entry`: [[profiles/agent-atlas/expression-layer|Expression Layer]]
 - `Source Policy`: [[profiles/agent-atlas/source-policy|Source Policy]]
 - `Role Registry`: [[profiles/agent-atlas/registries/roles|Role Registry]]
+- `Audit Dimension Registry`: [[profiles/agent-atlas/registries/audit-dimensions|Audit Dimension Registry]]
+- `Registered Scan Registry`: [[profiles/agent-atlas/registries/registered-scans|Registered Scan Registry]]
 - `Routing And Gate Registry`: [[profiles/agent-atlas/registries/routing-and-gates|Routing And Gate Registry]]
 
 ## Registered Extensions

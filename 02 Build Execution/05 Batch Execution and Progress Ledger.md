@@ -13,7 +13,7 @@
 1. Canonical notes。
 2. 本批 delta 写出（页面状态、缺口与 next batch 更新经 delta 进入 Coverage Ledger；Progress Ledger 与 `Tools/state/watermark.yaml` 由 integrator 在合并时更新，来源/维护批次把水位线推进值写入 delta 的 `watermark_advance` 字段）。
 
-batch 关闭的验收清单以 [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|12/03]] 的 Batch Review 为准（批内项在 merge-ready 前完成，全局项在串行合并时核验）。
+batch 关闭的验收清单以 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|12/03]] 的 Batch Review 为准（批内项在 merge-ready 前完成，全局项在串行合并时核验）。
 
 批次规模按主导档位分级：S 档 ≤24 页、M 档 ≤10 页、L 档 ≤6 页；混合批按其中最高档的上限执行。
 
@@ -31,7 +31,7 @@ batch 关闭的验收清单以 [[Knowledge Base Standards/12 Quality Assurance/0
 
 写入权分区：并发批次只写三处——自己清单内的页面、自己的 receipts 目录、自己的增量文件 `Machine State/Deltas/<batch>.yaml`（schema 见 `Tools/schemas/coverage_delta.template.yaml`）。Coverage Ledger、Progress Ledger、Required Queue、Amendment Log 与 watermark 仅 integrator（主线程）可写。
 
-关批两阶段：批内工作（写作、`--scope` 自查、复核回执到齐、12/03 批内项完成、delta 写出）并行完成后批次进入 `merge-ready`；integrator 逐个串行合并——**只执行确定性动作与全局核验**：经 `Tools/apply_delta.py` 应用 delta、对合并后完整快照运行 Batch-close Closed List（[[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）、核验 12/03 全局项、产 gate receipts、关闭。合并一次只处理一个批次。串行区已知例外（登记为待治理项，不再新增）：delta 的 open_gaps 按 `apply_delta.py` 输出清单逐项照抄入 Ledger；Progress Ledger 与 watermark 更新暂由 integrator 按 delta 值手编。
+关批两阶段：批内工作（写作、`--scope` 自查、复核回执到齐、12/03 批内项完成、delta 写出）并行完成后批次进入 `merge-ready`；integrator 逐个串行合并——**只执行确定性动作与全局核验**：经 `Tools/apply_delta.py` 应用 delta、对合并后完整快照运行 Batch-close Closed List（[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）、核验 12/03 全局项、产 gate receipts、关闭。合并一次只处理一个批次。串行区已知例外（登记为待治理项，不再新增）：delta 的 open_gaps 按 `apply_delta.py` 输出清单逐项照抄入 Ledger；Progress Ledger 与 watermark 更新暂由 integrator 按 delta 值手编。
 
 控制面（guidance 处置、queue 修订、contract 变更、标准 adoption、批次激活与合并）始终由 integrator 单线程执行。停滞报警按批各自计时。
 

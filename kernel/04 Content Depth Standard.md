@@ -29,5 +29,5 @@
 
 - [[kernel/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]]
 - [[kernel/07 Sources and Accuracy Standard|07 Sources and Accuracy Standard]]
-- [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]]
+- [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]

@@ -73,7 +73,7 @@ Open Standards Overview
 | `09` | [[kernel/09 Wiki Link and Navigation Standard\|Wiki Link and Navigation]] | semantic links、MOC、path、alias、heading 和 graph verification |
 | `10` | [[kernel/10 Writing and Formatting Standard\|Writing and Formatting]] | language、math、tables、code、diagrams、assets 和 rendering |
 | `11` | [[profiles/agent-atlas/interview/11 Interview Content Standard\|Interview Content]] | Interview Cards、answer levels、bilingual、roadmap 和 migration |
-| `12` | [[Knowledge Base Standards/12 Quality Assurance Standard\|Quality Assurance]] | note、module、batch、source、interview、rendering 和 terminal gates |
+| `12` | [[kernel/12 Quality Assurance Standard\|Quality Assurance]] | note、module、batch、source、interview、rendering 和 terminal gates |
 
 ## Loading Contract
 
@@ -110,5 +110,5 @@ Open Standards Overview
 
 - [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
 - [[Knowledge Base Standards/00 Standards Control/03 Standards Governance|Standards Governance]]
-- [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
-- [[Knowledge Base Standards/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
+- [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
+- [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]

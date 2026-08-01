@@ -13,7 +13,7 @@
 2. 所有 incoming links 已盘点。
 3. 新路径不会产生同名歧义。
 4. Overview、Roadmap 和 graph group 可以同步更新。
-5. 迁移所在批次关闭的 Batch-close Closed List（[[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）覆盖全库链接验证。
+5. 迁移所在批次关闭的 Batch-close Closed List（[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）覆盖全库链接验证。
 
 禁止为了目录看起来整齐而进行没有知识收益的大规模移动。
 

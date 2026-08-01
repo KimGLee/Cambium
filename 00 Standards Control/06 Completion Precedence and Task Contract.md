@@ -78,7 +78,7 @@ User's latest explicit instruction
 
 ## Related
 
-- [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]
-- [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
+- [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]]
+- [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]
 - [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]

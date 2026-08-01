@@ -5,12 +5,12 @@
 
 ## Verification
 
-批次级执行清单以 [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] 的 Batch-close Closed List 为准；本页保留链接规则的定义与 missing / ambiguous 语义（owner 职责不变）：
+批次级执行清单以 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] 的 Batch-close Closed List 为准；本页保留链接规则的定义与 missing / ambiguous 语义（owner 职责不变）：
 
 - `missing=0`：不存在指向不存在目标的 wiki link。
 - `ambiguous=0`：不存在可解析到多个不同目标的 wiki link。
 
-Link verification 通过不等于内容完成；Coverage、Depth、Sources 和 profile expression migration 仍需按 [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]] 独立验收。
+Link verification 通过不等于内容完成；Coverage、Depth、Sources 和 profile expression migration 仍需按 [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]] 独立验收。
 
 ## Anti-patterns
 
@@ -27,5 +27,5 @@ Link verification 通过不等于内容完成；Coverage、Depth、Sources 和 p
 
 - [[kernel/05 Terminology Standard|Terminology Standard]]
 - `Expression Layer Entry`（由所选 profile 绑定）
-- [[Knowledge Base Standards/12 Quality Assurance Standard|Quality Assurance Standard]]
+- [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]

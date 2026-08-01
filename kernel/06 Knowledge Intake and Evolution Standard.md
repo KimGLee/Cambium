@@ -32,4 +32,4 @@
 - [[kernel/01 Scope and Architecture Standard|01 Scope and Architecture Standard]]
 - [[kernel/03 Note Types and Ownership Standard|03 Note Types and Ownership Standard]]
 - [[kernel/08 Metadata and Status Standard|08 Metadata and Status Standard]]
-- [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]]
+- [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]]

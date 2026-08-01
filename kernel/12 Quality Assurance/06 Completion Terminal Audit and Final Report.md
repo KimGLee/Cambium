@@ -1,23 +1,23 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]].
-- Previous: [[Knowledge Base Standards/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]].
+- Parent: [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]].
+- Previous: [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]].
 
 ## Completion Gate
 
-页面升级为 `reviewed` 前必须通过 Single Note Review。
+页面升级为 `reviewed` 前必须通过 [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review#Single Note Review|Single Note Review]]。
 
-来源驱动的新 canonical page 升级为 `reviewed` 前，还必须通过 Source Intake And Promotion Review。
+来源驱动的新 canonical page 升级为 `reviewed` 前，还必须通过 [[kernel/12 Quality Assurance/04 Guidance and Source Review#Source Intake And Promotion Review|Source Intake And Promotion Review]]。
 
-Batch 关闭前必须通过 Batch Review。
+Batch 关闭前必须通过 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Batch Review|Batch Review]]。
 
-模块宣告完成前必须通过 Module Review。
+模块宣告完成前必须通过 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Module Review|Module Review]]。
 
-P0 / P1 topic 的 `interview_status` 升级为 `interview-ready` 前必须通过 Interview Review。
+Profile-owned readiness axis 升级到其完成值前，必须通过 `Routing And Gate Registry` 为该轴登记的 gate；kernel 不点名具体 status value 或表达产物。
 
-长任务只能在完成 Coverage Reconciliation Review、Guidance Reconciliation Review 和 Terminal Audit 后标记 `complete`。
+长任务只能在完成 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Coverage Reconciliation Review|Coverage Reconciliation Review]]、[[kernel/12 Quality Assurance/04 Guidance and Source Review#Guidance Reconciliation Review|Guidance Reconciliation Review]] 和 Terminal Audit 后标记 `complete`。
 
-历史 gate 结果只能通过 [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] 的 Reuse Gate 进入 Terminal Proof；`reviewed`、日期或“此前通过”本身不是可复用证据。
+历史 gate 结果只能通过 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Reuse Gate|Reuse Gate]] 进入 Terminal Proof；`reviewed`、日期或“此前通过”本身不是可复用证据。
 
 任何一个适用的硬性门槛失败，都必须保持原状态，不得因为任务接近结束、达到时间点、已运行较久或创建大量文件而降低标准。
 
@@ -26,21 +26,21 @@ Authoring completion 不要求所有前沿结论达到 `validated`。无法在�
 - 不影响当前正文对已知机制的完整解释。
 - 限制 claim 强度并保留 `evidence_maturity`。
 - 记录缺失证据、重新核验条件和受影响页面。
-- 不用 evidence backlog 掩盖缺少正文、来源、面试迁移或 QA 的 Required authoring gap。
+- 不用 evidence backlog 掩盖缺少正文、来源、profile-registered expression migration 或 QA 的 Required authoring gap。
 
 ## Terminal Audit
 
 任务从 `active` 进入 `completion-candidate` 后执行 Terminal Audit：
 
 1. 冻结新增内容，记录 contract、scope、queue、Standards version、`guidance_cutoff_id` 和候选完成状态。
-   - 同时记录 selected Cards 与 Read Sets，及 loaded set（Cards 与升级回读的 module paths）。
+   - 同时记录 selected runtime guidance、Read Sets 及 loaded set（runtime guidance 与升级回读的 module paths）。
 2. 加载 Audit Receipt Register，计算 changed、directly invalidated、dependency-invalidated、overdue 和 legacy-evidence。
-3. 执行 Guidance Reconciliation Review，确认所有 cutoff 以内的 guidance 都有最终 disposition。
+3. 执行 [[kernel/12 Quality Assurance/04 Guidance and Source Review#Guidance Reconciliation Review|Guidance Reconciliation Review]]，确认所有 cutoff 以内的 guidance 都有最终 disposition。
 4. 将 Coverage Ledger 与文件系统、exclusions、competency matrix 和 Required Queue 对账；若 completion-candidate 冻结前已完成该对账且其后无文件变化，直接复用该结果，不重复执行。
 5. 确认所有 batch 已关闭且 merge 队列清空（无 `merge-ready` 未合并批次、无已写出未应用的 delta），没有未验证修改或 unresolved invalidation。
-6. 运行 [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] 的 Batch-close Closed List（对最终冻结快照）。
-7. 对 changed、invalidated、overdue 与有界抽样对象执行 note-type-aware 内容审阅；其余有效 receipts 按 Reuse Gate 复用。
-8. 检查 Source Promotion、Interview migration、Overview / Roadmap / Cheat Sheet 同步；专项 Audit 只证明跨批次 invariant，不无差别重做局部机制审阅。
+6. 运行 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|Batch-close Closed List]]（对最终冻结快照）。
+7. 对 changed、invalidated、overdue 与有界抽样对象执行 note-type-aware 内容审阅；其余有效 receipts 按 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Reuse Gate|Reuse Gate]] 复用。
+8. 检查 Source Promotion，以及 `Routing And Gate Registry` 登记的 expression-layer migration 与 profile synchronization gates；专项 Audit 只证明跨批次 invariant，不无差别重做局部机制审阅。
 9. 审核本轮 `rendering_mode`、Level 0 / Level 1 确定性证据；只有存在记录的客观 trigger 时才审核 Level 2–4 UI、截图或录屏证据，并按已确认的系统性影响扩大检查。
 10. 对抽样或定向检查发现的系统性问题执行 family expansion；修复与重检按 Terminal Findings And Convergence 分级处置。
 11. 生成 receipt reconciliation、Final Handoff 和 Terminal Proof。
@@ -88,7 +88,7 @@ time_contract_result
 
 ## Terminal Findings And Convergence
 
-终审 findings 按 [[Knowledge Base Standards/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]] 的三级分级处置：
+终审 findings 按 [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review#Substantive Correctness Review|Substantive Correctness Review]] 的三级分级处置：
 
 - `minor`：记录，不阻断完成。
 - `major`：就地修复＋仅对该对象定向重检＋该对象 receipt supersede；不重新冻结快照、不重跑 Batch-close Closed List。
@@ -96,14 +96,14 @@ time_contract_result
 
 终审轮次上限为 2：第 2 轮只确认第 1 轮 findings 已关闭，不引入新审查范围；超出轮次上限时升级用户决策。
 
-终审期间收到的 guidance：仅“改变目标、范围或验收”类使终审失效；修正类按 major 就地处理，不整体作废终审；状态询问类不影响 cutoff。分支细则见 [[Knowledge Base Standards/12 Quality Assurance/04 Guidance Source and Interview Review|12/04]] 的 Guidance During Terminal Audit。
+终审期间收到的 guidance：仅“改变目标、范围或验收”类使终审失效；修正类按 major 就地处理，不整体作废终审；状态询问类不影响 cutoff。分支细则见 [[kernel/12 Quality Assurance/04 Guidance and Source Review#Guidance During Terminal Audit|Guidance During Terminal Audit]]。
 
 ## Final Report
 
 每个大批次完成后报告：
 
 - 新建、扩展、移动和删除了哪些文件。
-- 哪些内容达到 `authoring_status: drafted / reviewed`，哪些主题达到 `interview_status: interview-ready`。
+- 哪些内容达到目标 `authoring_status`；哪些 profile-owned readiness axes 达到 `Routing And Gate Registry` 登记的完成值。
 - 自动检查结果。
 - 未完成缺口和原因。
 - 是否有未验证的时效性结论。

@@ -267,7 +267,7 @@ Otherwise
 | 修改 Interview Card 中英文回答 | `interview` |
 | 修改表格宽度但无具体显示问题 | deterministic structure check；不自动触发视觉识别 |
 
-active、paused 和 completion-candidate task 必须按 [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Active-task Adoption|Active-task Adoption]] 记录版本变化、重新解析本规则，并把受影响 acceptance predicate 纳入 AuditPlan。
+active、paused 和 completion-candidate task 必须按 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Active-task Adoption|Active-task Adoption]] 记录版本变化、重新解析本规则，并把受影响 acceptance predicate 纳入 AuditPlan。
 
 ## Examples（示例）
 
@@ -294,5 +294,5 @@ Task output -> decision policy -> action -> outcome evidence.
 - [[kernel/05 Terminology/03 Naming Context and Linking|Naming Context and Linking]]
 - [[kernel/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy|System Deep Dive and Bilingual Policy]]
-- [[Knowledge Base Standards/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]]
-- [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
+- [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]]
+- [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]

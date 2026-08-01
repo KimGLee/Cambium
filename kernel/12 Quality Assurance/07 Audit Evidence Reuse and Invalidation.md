@@ -1,7 +1,7 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]].
-- Previous: [[Knowledge Base Standards/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]].
+- Parent: [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]].
+- Previous: [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]].
 
 ## Purpose
 
@@ -21,25 +21,26 @@
 | Single Note Review | 一个页面在当前版本下的 type-aware content、source、link 和 rendering quality | 同一页面未受影响维度的有效 receipt | 宣告模块或全库完整 |
 | Batch Review | 本批 Required objects、集成边和控制面闭环 | 本批开始前仍有效的 prerequisite receipts | 无条件重审所有历史页面 |
 | Module Review | owner completeness、dependency continuity、duplicate/orphan 和入口一致性 | 已关闭 batch 的有效局部 receipts | 把局部通过等同于模块完整 |
-| Specialized Audit | 跨批次的 source、case、interview、migration 或 currentness invariant | 已通过的局部内容 receipts | 逐页重做与专项 invariant 无关的内容审阅 |
+| Specialized Audit | 跨批次的 source、case、migration、currentness 或 `Routing And Gate Registry` 登记的 profile invariant | 已通过的局部内容 receipts | 逐页重做与专项 invariant 无关的内容审阅 |
 | Terminal Audit | 最终冻结快照的 scope、guidance、coverage、全局 invariants 和 proof | 所有仍有效的 receipt 与 batch evidence | 盲目信任历史状态或无差别重做全部人工审阅 |
 
 同一个 invariant 可以在多个层被再次确认，但每次必须说明新的审计对象。例如 Batch link check 证明本批写入后图仍可解析，Terminal full-vault link check 证明最终快照没有被后续批次破坏。
 
 ## Dimension-specific Audit Receipt
 
-审计证据按维度保存，不能只记录一个模糊的 `reviewed: true`。至少使用：
+审计证据按维度保存，不能只记录一个模糊的 `reviewed: true`。Kernel 固定以下七个基础维度：
 
 ```text
 structure_and_links
 content_and_depth
 formula_and_numeric
 source_and_currentness
-interview
 coverage_and_integration
 rendering
 guidance_and_contract
 ```
+
+`Audit Dimension Registry` 可以追加 profile-owned dimensions，但不得删除、重命名或重定义上述七个基础维度。
 
 一次验证产生不可变 `AuditReceipt`，例如：
 
@@ -65,7 +66,7 @@ supersedes:
 
 - `scope`：receipt 实际覆盖的页面、module、batch 或全库 snapshot。
 - `acceptance_predicate`：被证明的具体条件；不能只写 `QA passed`。
-- `artifact_fingerprint`：覆盖正文内容、文件路径，以及 frontmatter 中的 `type`、`priority`、`tier`、`coverage_disposition`、`lifecycle`、`prerequisites`。**明确排除**：`authoring_status`、`interview_status`、`learning_status`、`last_reviewed`、`last_verified`、`review_by`、`next_batch`——状态轴与调度字段的回写**不使凭证失效**。
+- `artifact_fingerprint`：覆盖正文内容、文件路径，以及 frontmatter 中的 `type`、`priority`、`tier`、`coverage_disposition`、`lifecycle`、`prerequisites`。**明确排除**：`authoring_status`、`learning_status`、所选 `Vocabulary Extensions` 注册的 readiness status，以及 `last_reviewed`、`last_verified`、`review_by`、`next_batch`——状态轴与调度字段的回写**不使凭证失效**。
 - `dependency_fingerprint`：该维度依赖的 canonical owners、sources、schemas、MOC 或配置。
 - `contract_fingerprint`：scope、acceptance、exclusions、queue/guidance cutoff 等相关控制状态。
 - `verifier` / `method`：脚本、compiler、人工 rubric 或模型审阅的身份与版本。
@@ -125,15 +126,15 @@ AND no applicable invalidation event exists
 |---|---|
 | canonical prerequisite mechanism | content/integration of dependent claims |
 | Source Note or official current contract | source/currentness and dependent claims |
-| Interview Card | interview mapping and migration coverage |
+| `Expression Layer Entry` 注册的表达产物 | `Audit Dimension Registry` 登记的 mapping、migration 与 coverage dimensions |
 | path、heading or alias | structure/link and navigation integration |
 | MOC、Coverage or Required Queue | coverage/integration and contract reconciliation |
 | formula convention or metric denominator | formula/numeric and dependent evaluation claims |
-| language/display contract | content/depth；若改变 heading、path 或 alias，再失效 structure/link 与 integration |
+| `Language Contract` | `Audit Dimension Registry` 登记的 content dimension；若改变 heading、path 或 alias，再失效 structure/link 与 integration |
 | theme、plugin or rendering contract | rendering receipts for affected constructs only |
 | Standards gate semantics | receipts whose acceptance predicate became stricter or different |
 
-Dependency graph 不要求把任意 backlink 视为语义依赖。正文中的 prerequisite、claim evidence、canonical ownership、Card mapping、MOC membership 和 contract mapping 才是主要 invalidation edges。
+Dependency graph 不要求把任意 backlink 视为语义依赖。正文中的 prerequisite、claim evidence、canonical ownership、profile-registered expression mapping、MOC membership 和 contract mapping 才是主要 invalidation edges。
 
 ### Systemic Expansion
 
@@ -180,10 +181,10 @@ Dependency graph 不要求把任意 backlink 视为语义依赖。正文中的 p
 3. graph JSON 与 duplicate **basename** candidates
 4. Coverage file-count 对账
 5. guidance ID 与 contract version 连续性
-6. Interview 残留章节扫描（grep 级）
-7. Frontmatter 受控词表校验（check_vocab，词表取自 `Tools/vocab.yaml`）
+6. `Registered Scan Registry` 登记的 batch-close residual-content scan
+7. Frontmatter 受控词表校验（check_vocab；active vocabulary 由 kernel base 与所选 profile 的 `Vocabulary Extensions` 合成）
 
-新检查进入本清单需 governance 修订，且必须满足：确定性脚本、全库单次运行 ≤60 秒。12/05 与 12/06 对本清单只引用，不另行开列。
+新检查进入本清单需 governance 修订，且必须满足：确定性脚本、全库单次运行 ≤60 秒。[[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]] 与 [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]] 对本清单只引用，不另行开列。
 
 它们是便宜且容易被其它页面修改破坏的全局 invariants。新结果 supersede 前一 receipt，而不是视为无意义重复。
 
@@ -192,11 +193,10 @@ Dependency graph 不要求把任意 backlink 视为语义依赖。正文中的 p
 以下检查默认只覆盖 changed、invalidated、overdue 或 sampled scope（P0/P1 页面的长期保障由 freshness 到期复验承担，不设常驻人工审阅范围）：
 
 - 机制、why-chain、failure 和 production depth 人工审阅；
-- 中文解释完整性、`English（中文）` 顺序、英文保留边界和 reader-facing 表格语言审阅；
 - 来源 claim 与正文语气逐项核验；
-- Interview Card 中英文语义和 deep-dive 质量；
 - 公式推导和数值上下文的深审；
-- host-specific rendering exception。
+- host-specific rendering exception；
+- `Audit Dimension Registry` 登记的 profile-specific semantic review。
 
 ## Specialized Audit Boundary
 
@@ -206,7 +206,7 @@ Dependency graph 不要求把任意 backlink 视为语义依赖。正文中的 p
 |---|---|---|
 | Source Audit | identity/currentness、claim conflicts、promotion 和 affected-note propagation 是否一致 | 不重写未变页面的一般机制 |
 | Case Audit | public fact、inference、recommendation、metric provenance 和 transferability 是否跨案例一致 | 复用已通过 canonical mechanism |
-| Interview Audit | P0/P1 coverage、Card granularity、migration、双向导航和评分结构是否完整 | 不复制 canonical content review |
+| Profile-registered Specialized Audit | `Routing And Gate Registry` 登记的跨批次 invariant 是否完整 | 复用与该 invariant 无关的 canonical content review |
 | Metadata Migration Audit | schema migration 是否守恒、状态是否有证据 | 不把 migration 当 authoring review |
 | Full-scope Reconciliation | owner、scope、coverage、queue 和 graph 是否闭环 | 不替代 Terminal Proof |
 
@@ -214,7 +214,7 @@ Dependency graph 不要求把任意 backlink 视为语义依赖。正文中的 p
 
 ## Terminal Reconciliation Rules
 
-Terminal Audit 的 canonical 流程与 Terminal Proof 字段清单（含 `full_deterministic_results`）的 canonical 定义均位于 [[Knowledge Base Standards/12 Quality Assurance/06 Completion Terminal Audit and Final Report|12/06]]；本节只规定该流程中证据复用与失效对账的规则。
+Terminal Audit 的 canonical 流程与 Terminal Proof 字段清单（含 `full_deterministic_results`）的 canonical 定义均位于 [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report#Terminal Audit|Terminal Audit]]；本节只规定该流程中证据复用与失效对账的规则。
 
 `unresolved_invalidations` 必须为 `0`。复用 receipt 不是降低标准；它要求证明被审对象和验收条件没有发生相关变化。
 
@@ -233,8 +233,8 @@ Standards version 变化且 changed-predicate 清单非空时，active、paused 
 
 ## Related
 
-- [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
-- [[Knowledge Base Standards/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
-- [[Knowledge Base Standards/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
+- [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
+- [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
+- [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
 - [[Knowledge Base Standards/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
 - [[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]]

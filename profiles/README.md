@@ -32,6 +32,14 @@
 
 `Role Registry` 可以为 kernel 的 `proposer`、`gatekeeper`、`executor`、`stopper` 登记 profile 角色名并增加扩展角色，但不能降低四问下限。同一主体可以承担多个角色。
 
+## Audit Dimension Registry Slot
+
+`Audit Dimension Registry` 可以在 kernel 固定的七个基础审计维度之外登记 profile-owned 扩展维度，并为每个扩展维度绑定适用对象与唯一 acceptance predicate owner。它只能追加扩展维度，不能删除、重命名或重定义 kernel base，也不能复制既有 profile owner 的 predicates。
+
+## Registered Scan Registry Slot
+
+`Registered Scan Registry` 将 profile-owned scans 绑定到 kernel 预留的 scan roles，并声明 activation、scope、verifier、candidate boundary 和 acceptance owner。它不能增删 kernel 的 Batch-close Closed List；只产生候选的扫描不得把候选直接提升为 failure，也不能替代人工或模型审阅。
+
 ## Routing And Gate Registry Slot
 
 `Routing And Gate Registry` 将 profile-owned task routes、Read Sets 和扩展 gates 绑定到 kernel role；未注册的 profile route 不能由 kernel 暗示为已加载。

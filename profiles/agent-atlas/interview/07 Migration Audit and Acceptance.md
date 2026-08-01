@@ -20,7 +20,7 @@
 
 ## Migration Audit
 
-每个内容 batch 扫描其 changed/owned scope；全库残留扫描由批次关闭封闭清单第 6 项承担（[[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）；Terminal Audit 仅验证相应 receipts。语义深审复用仍有效的 interview/content receipts，只覆盖 changed、invalidated、overdue 和抽样对象。候选章节扫描至少检查：
+每个内容 batch 扫描其 changed/owned scope；全库残留扫描由批次关闭封闭清单第 6 项承担（[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）；Terminal Audit 仅验证相应 receipts。语义深审复用仍有效的 interview/content receipts，只覆盖 changed、invalidated、overdue 和抽样对象。候选章节扫描至少检查：
 
 - `## Interview Answer`
 - `30-Second Answer` / `90-Second Answer`
@@ -46,6 +46,21 @@
 - 确认合并 Card 的每个 canonical topic 都有双向导航。
 
 自动扫描只能发现候选章节，不能直接删除内容。没有建立完整 Card 前不得清空旧答案。
+
+## Interview Review
+
+- 30 秒回答是否直接、准确。
+- 90 秒回答是否包含问题、机制、tradeoff 和场景。
+- Deep Dive 是否有至少三层有效追问。
+- Follow-up 是否有答案，不只是问题列表。
+- 中英文含义是否一致。
+- Strong / Weak Signals 是否可以用于评分。
+- Interview Card 是否回链 canonical knowledge。
+- System / Project Deep Dive 是否按 [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy|11/04]] 的骨架要素逐项覆盖。
+- Emerging 或 contested 结论是否有明确限定。
+- L 档 Interview 集的实质正确性复核按 [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review#Substantive Correctness Review|12/01]] 的 Substantive Correctness Review 规则执行。
+
+单个 batch 负责其 Card 内容质量和 create-before-remove 迁移；全库 Interview Audit 负责 P0/P1 coverage、Card granularity、重复答案、双向导航和遗漏。后者复用仍有效的 canonical content receipts，只对失效、变化或抽样对象重新进行语义深审。
 
 ## Acceptance Criteria
 

@@ -21,7 +21,7 @@
 | 修改 Standards、Read Sets 或控制面结构 | [[Knowledge Base Standards/Read Sets/09 Standards Governance Read Set\|Standards Governance]] | authority、version、migration map、active task impact 和全库验证 |
 | 处理中途用户引导、范围或优先级变化 | [[Knowledge Base Standards/02 Build Execution/02 Mid-task Guidance and Amendment\|Mid-task Guidance and Amendment]]；涉及 hypothesis 时再加载 [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads\|User Guidance Hypotheses and Source Leads]] | guidance type、authority、evidence role、disposition、safe switching 和 version impact |
 | 拆分专有名词 | [[kernel/05 Terminology/01 Terminology Extraction\|Terminology Extraction]] + [[kernel/05 Terminology/02 Ownership and Term Structure\|Ownership and Term Structure]] | 是否可复用、是否已有 canonical owner、是否值得独立页面 |
-| 数学、公式、表格、图片或渲染修复 | [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set\|Single Note Authoring]] 的 triggered modules + [[Knowledge Base Standards/12 Quality Assurance/02 Rendering Verification\|Rendering Verification]] | Level 0 / Level 1 确定性验证；只有未决显示问题才升级视觉识别 |
+| 数学、公式、表格、图片或渲染修复 | [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set\|Single Note Authoring]] 的 triggered modules + [[kernel/12 Quality Assurance/02 Rendering Verification\|Rendering Verification]] | Level 0 / Level 1 确定性验证；只有未决显示问题才升级视觉识别 |
 | 周期性知识库更新 / 保鲜（Maintenance Run） | [[Knowledge Base Standards/Read Sets/10 Maintenance Run Read Set\|Maintenance Run]] | 预算封套、候选清单、水位线推进和有界完成语义 |
 
 ## Effort Tiering
@@ -30,9 +30,9 @@
 
 | 档 | 判定 | 仪式 |
 |---|---|---|
-| S | priority=P2，或术语存根/占位/链接聚合页 | 仅脚本检查；无 note gate；批次关闭时按 [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review\|12/03]] 抽查 |
+| S | priority=P2，或术语存根/占位/链接聚合页 | 仅脚本检查；无 note gate；批次关闭时按 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review\|12/03]] 抽查 |
 | M | priority=P1 常规页面 | 脚本检查＋对应 Card 的 Gate 清单；note gate 并入 batch gate |
-| L | priority=P0，或 core concept / process-flow / system / risk-control 主线页、System Deep Dive、Interview Card 集 | 完整流程：[[Knowledge Base Standards/12 Quality Assurance/01 Quality Dimensions and Single Note Review\|12/01]] 全量 review＋独立 note gate＋interview 迁移核对 |
+| L | priority=P0，或 core concept / process-flow / system / risk-control 主线页、System Deep Dive、Interview Card 集 | 完整流程：[[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review\|12/01]] 全量 review＋独立 note gate＋interview 迁移核对 |
 
 - 分档存在争议时上调一档。
 - 每个页面的 tier 记入 Coverage Ledger 的 `tier` 字段（schema 见 `Tools/schemas/coverage_ledger.template.yaml`）。
@@ -73,7 +73,7 @@ tier 由 priority 派生，priority 通胀会使分档失效。全库配额：
 7. 已识别基础知识依赖，不能把所有前置内容塞进 Agent/Harness 页面。
 8. 来源驱动任务已建立 source inventory 和 claim extraction 方案。
 9. 已定义当前 batch 的完成条件、`rendering_mode`、确定性验证命令，以及任何视觉升级的客观 trigger 和 unresolved question。
-10. 已加载最新 Audit Receipt Register（[[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）；开工阶段只加载 Register，不构建 AuditPlan——AuditPlan 在批次关闭前构建一次。
+10. 已加载最新 Audit Receipt Register（[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）；开工阶段只加载 Register，不构建 AuditPlan——AuditPlan 在批次关闭前构建一次。
 
 任一条件缺失时，先补计划或调查，不直接进行大规模创建、移动或删除。
 
@@ -91,7 +91,7 @@ tier 由 priority 派生，priority 通胀会使分档失效。全库配额：
 - 不创建空壳页面、长期红链接或只有两三句的 P0 / P1 核心页面。
 - 不回滚、覆盖或删除无法确认来源的现有用户修改。
 - 每个 batch 同步正文链接、metadata、Sources、Interview Preparation 和 QA；Overview / MOC 等枢纽页由 integrator 在批次合并后同步（[[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]]）。
-- Batch、专项审计和 Terminal Audit 通过 [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] 复用仍有效的分维度证据；不能盲信旧状态，也不能无差别重做全部人工审阅。
+- Batch、专项审计和 Terminal Audit 通过 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] 复用仍有效的分维度证据；不能盲信旧状态，也不能无差别重做全部人工审阅。
 - `task_state`、`authoring_status`、`interview_status`、`evidence_maturity` 和 `learning_status` 分别维护。
 - 中途 Guidance Event 必须分类、记录 disposition 并映射到 Amendment Log、Coverage Ledger、Required Queue 或 source intake。
 - 用户对 task scope 和 priority 有 authority；用户 hypothesis 和 source lead 仍需证据核验。
@@ -101,7 +101,7 @@ tier 由 priority 派生，priority 通胀会使分档失效。全库配额：
 
 ## Batch Execution Checklist
 
-1. 版本自检：对比 [[Knowledge Base Standards/00 Standards Control/03 Standards Governance|00/03]] 当前版本与 contract 冻结版本；有 delta 按 [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] Active-task Adoption 增量采纳，无 delta 记一行 receipt。标准变更由批次激活自检发现，用户通知仅作提醒。
+1. 版本自检：对比 [[Knowledge Base Standards/00 Standards Control/03 Standards Governance|00/03]] 当前版本与 contract 冻结版本；有 delta 按 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] Active-task Adoption 增量采纳，无 delta 记一行 receipt。标准变更由批次激活自检发现，用户通知仅作提醒。
 2. Reconcile 增量 guidance：只对账 `last_reconciled_guidance_id` 之后的 Guidance Events 与 Amendment Log。
 3. 从有序 Required Queue 中选择下一个 batch。
 4. 解析 note type、canonical owner 与目标 status。
@@ -109,7 +109,7 @@ tier 由 priority 派生，priority 通胀会使分档失效。全库配额：
 6. 需要时收集并分类 sources。
 7. 写完一个完整的 dependency-aware batch。
 8. 整合正文链接、导航、metadata、sources 和 interview mapping。
-9. 批次关闭前构建一次 AuditPlan 并处理 receipts（[[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）：完成 `--scope` 自查、所需增量人工/渲染 QA 与 [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|12/03]] 批内项，发放或 supersede 分维度 AuditReceipts，写出 delta；批次进入 `merge-ready`。视觉检查仅凭已记录的 exception trigger 升级。
+9. 批次关闭前构建一次 AuditPlan 并处理 receipts（[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）：完成 `--scope` 自查、所需增量人工/渲染 QA 与 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|12/03]] 批内项，发放或 supersede 分维度 AuditReceipts，写出 delta；批次进入 `merge-ready`。视觉检查仅凭已记录的 exception trigger 升级。
 10. integrator 串行合并（[[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches）：应用 delta、运行 Batch-close Closed List、核验 12/03 全局项并更新全局 Ledger 与 Amendment Log；批次自身不写全局账本。
 11. 仅在 Batch Review 通过且 unresolved invalidations = 0 后关闭 batch；否则保持 active 或 merge-ready。
 

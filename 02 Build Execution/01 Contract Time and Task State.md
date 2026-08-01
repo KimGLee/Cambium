@@ -46,7 +46,7 @@ Every in-scope page must have an explicit disposition.
 
 标准未确认前，不进行大规模迁移。
 
-任务开始后冻结 `standards_version`。内容建设过程中不得顺手修改 Standards；只有用户明确授权的 governance change 才能修改。Standards 变更后必须提升版本，并按修订记录的 changed-predicate 清单执行 [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] Active-task Adoption（清单为空即 no-op）。
+任务开始后冻结 `standards_version`。内容建设过程中不得顺手修改 Standards；只有用户明确授权的 governance change 才能修改。Standards 变更后必须提升版本，并按修订记录的 changed-predicate 清单执行 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] Active-task Adoption（清单为空即 no-op）。
 
 ## Time And Stop Semantics
 

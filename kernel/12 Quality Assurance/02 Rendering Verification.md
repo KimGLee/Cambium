@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/12 Quality Assurance Standard|12 Quality Assurance Standard]].
-- Previous: [[Knowledge Base Standards/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]].
-- Next: [[Knowledge Base Standards/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]].
+- Parent: [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]].
+- Previous: [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]].
+- Next: [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]].
 
 ## Rendering Verification Levels
 
@@ -10,7 +10,7 @@
 
 本标准中的“视觉识别”包括：
 
-- 打开 Obsidian 或其它 host UI 后人工观察页面。
+- 打开由所选 profile 的 `Role Registry` 绑定的 knowledge host UI 后人工观察页面。
 - 根据截图判断布局、遮挡、溢出、颜色或可读性。
 - 使用 OCR、视觉模型或屏幕识别代替直接解析源文件。
 
@@ -37,7 +37,7 @@
 
 Level 1 必须优先使用 compiler、parser、structured extraction、文件探测和可重复的非交互 preview。生成静态 artifact 不等于授权视觉判断；只要编译结果、结构数据和几何信息已经能回答验收问题，就不继续打开 UI 或截图。
 
-Level 1 通过不代表任意 Obsidian 主题、插件或 CSS 下一定正常，但这种理论可能性不能单独触发 UI 检查。
+Level 1 通过不代表所选 knowledge host role 的任意 theme、plugin 或 CSS 下一定正常，但这种理论可能性不能单独触发 UI 检查。
 
 ### Level 2: Targeted Visual Recognition Exception
 
@@ -45,7 +45,7 @@ Level 1 通过不代表任意 Obsidian 主题、插件或 CSS 下一定正常，
 
 1. Level 0 / Level 1 结果互相冲突，或者通过后仍无法回答一个具体的最终显示问题。
 2. 用户报告可复现的视觉缺陷，而源文件、compiler 或静态 artifact 无法解释或确认该缺陷。
-3. Obsidian theme、CSS snippet、插件、字体或 host rendering contract 发生变化，且影响无法由配置和静态验证确定。
+3. 所选 profile 的 `Role Registry` 绑定的 knowledge host theme、CSS snippet、plugin、font 或 rendering contract 发生变化，且影响无法由配置和静态验证确定。
 4. 确定性检查发现疑似 overflow、occlusion、clipping、layering 或 viewport-dependent layout，但无法判定最终 host 行为。
 5. 用户明确要求对一个指定页面、区域、主题或 viewport 做视觉验收。
 
@@ -63,7 +63,7 @@ Level 1 通过不代表任意 Obsidian 主题、插件或 CSS 下一定正常，
 只有以下情况需要扩大到模块或全库：
 
 - Level 2 已确认可重复、可能影响同类页面的系统性问题。
-- 修改了全局 CSS、主题、插件、字体或 asset policy。
+- 修改了全局 CSS、theme、plugin、font 或 asset policy。
 - 大规模迁移改变了 host rendering contract、asset loading 或 embed behavior，且确定性验证不足以覆盖。
 - 用户明确要求完整视觉验收。
 
@@ -74,7 +74,7 @@ Level 3 必须定义有界 sample matrix，包括受影响模式、代表页面�
 录屏只用于静态证据无法表达的时间相关或交互问题，例如：
 
 - scroll、hover、focus、animation 或 responsive transition。
-- 插件加载、异步 asset、状态切换或短暂闪烁。
+- plugin loading、asynchronous asset、state transition 或 transient flicker。
 - 必须观察动作前后顺序才能复现的 host-specific failure。
 
 静态 Markdown、表格、公式、普通图片、链接、正文完整性和单帧布局不允许默认使用录屏验证。Level 4 必须记录为什么 source、static artifact 和 targeted screenshot 都不足，并只录制复现问题所需的最短动作序列。

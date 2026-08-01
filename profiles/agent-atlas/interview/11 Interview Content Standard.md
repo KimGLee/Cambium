@@ -18,7 +18,7 @@
 | [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy\|System Deep Dive and Bilingual Policy]] | `System And Project Deep Dive`、`Bilingual Policy` |
 | [[profiles/agent-atlas/interview/05 Knowledge Links and Preparation\|Knowledge Links and Preparation]] | `Knowledge Links`、`Interview Preparation`、`Core Knowledge Links` |
 | [[profiles/agent-atlas/interview/06 Roadmap and Question Bank\|Roadmap and Question Bank]] | `Roadmap Policy`、`Question Bank Policy` |
-| [[profiles/agent-atlas/interview/07 Migration Audit and Acceptance\|Migration Audit and Acceptance]] | `Migration Policy`、`Migration Audit`、`Acceptance Criteria`、`Related` |
+| [[profiles/agent-atlas/interview/07 Migration Audit and Acceptance\|Migration Audit and Acceptance]] | `Migration Policy`、`Migration Audit`、`Interview Review`、`Acceptance Criteria`、`Related` |
 
 - Conserved source-index labels `Interview Preparation` and `Core Knowledge Links` appear only inside fenced templates under `Knowledge Links`; they are not standalone H2 owners.
 

@@ -29,7 +29,7 @@
 
 - [[kernel/06 Knowledge Intake and Evolution/06 Intake Anti-patterns and Acceptance|Intake Anti-patterns and Acceptance]]
 - [[kernel/07 Sources and Accuracy/06 Source Maintenance and Acceptance|Source Maintenance and Acceptance]]
-- [[Knowledge Base Standards/12 Quality Assurance/04 Guidance Source and Interview Review|Guidance Source and Interview Review]]
+- [[kernel/12 Quality Assurance/04 Guidance and Source Review|Guidance and Source Review]]
 
 ## Related
 
