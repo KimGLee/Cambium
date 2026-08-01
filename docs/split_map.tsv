@@ -392,7 +392,7 @@ Tools/schemas/receipt.template.jsonl	<FILE>	kernel	receipt schema；示例行含
 Tools/schemas/terminal_proof.template.yaml	<FILE>	kernel	Proof 28 字段模板；示例含实例路径
 Tools/schemas/watermark.template.yaml	<FILE>	kernel	水位线模板；示例含 profile domain 与实例来源名
 Tools/state/watermark.yaml	<FILE>	instance	运行时状态文件；按新实例 profile 重新初始化
-Cards/00 Card Index.md	<FILE>	derived	编译产物，拆分后重生成；含面试路由行（profile）
+Cards/00 Card Index.md	<FILE>	derived	编译产物，拆分后重生成；含面试路由行（profile）；施工中改判+理由：按已确认 Confirmation Checklist 第 2 项，本期将“拆分后重生成”改为不重编，原文件字节级归档至 legacy/cards，并由 agent-atlas Runtime Card compatibility provider 保留稳定 Card ID → legacy snapshot → canonical Read Set 路由；面试路由由 provider 指向 profile-owned RS 05，未来 governance 的派生产物重编义务不取消
 Cards/01 Core Bootstrap Card.md	<FILE>	derived	编译产物；含 `Python Algorithm Agent Training`（instance）、双语/主线/面试成分（profile）
 Cards/02 Single Note Authoring Card.md	<FILE>	derived	编译产物；含语言三规则与 interview 项（profile）
 Cards/03 Module Build Card.md	<FILE>	derived	编译产物；含排除项（instance）、主线切片与 interview gate（profile）
