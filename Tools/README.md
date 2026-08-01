@@ -6,7 +6,7 @@ library; YAML parsing goes through the restricted-subset parser in `kblib.py`.
 Nothing in this directory modifies any standards `.md` file; the standards
 prose owns every vocabulary and field list.
 
-Layering: check_links/check_vocab/check_moc/check_proof/apply_delta/compose_vocab/kblib
+Layering: check_links/check_vocab/check_moc/check_proof/apply_delta/compose_vocab/check_profile/kblib
 are kernel tooling; check_language is profile tooling (agent-atlas registered
 scan); check_freshness/duplicate_check are maintenance tooling.
 
@@ -20,10 +20,11 @@ scan); check_freshness/duplicate_check are maintenance tooling.
 | `check_proof.py` | Terminal Proof consistency check (12/06): field completeness, zero conditions, reconciliation/QA/review results must read `passed`, evidence fields must not declare failure; `--root` additionally requires path-valued fields to resolve; optional Coverage Ledger cross-check. Verifies the proof's consistency, not the work itself | `python3 Tools/check_proof.py proof.yaml --root . --ledger coverage_ledger.yaml` |
 | `apply_delta.py` | Deterministic application of a coverage delta during the serial merge (02/05 Concurrent Batches); merges `gate_receipts` in block-list form, warns on non-core scalar keys, re-parses the merged output before writing and aborts if it no longer parses; atomic write with automatic backup; gap/watermark entries are printed as integrator todos | `python3 Tools/apply_delta.py ledger.yaml delta.yaml --apply` |
 | `compose_vocab.py` | Persistent vocabulary compiler: composes `vocab.yaml` from the kernel base and the selected profile's extensions; `--check` recomputes and compares | `python3 Tools/compose_vocab.py --check` |
+| `check_profile.py` | Profile manifest completeness and unfilled-template check: derives the slot list from `profiles/README.md`, verifies every slot is bound and resolves, verifies each overridable execution default is registered and that no constitutional constant is, and **fails while the profile is still an unfilled `profiles/_template/` copy** (three independent conditions: a remaining `TODO(profile)` marker, a reserved placeholder `profile_id`, a surviving `Template Usage` section). Checks structure, never answer quality | `python3 Tools/check_profile.py profiles/<profile-id> --receipts Tools/receipts/profile.jsonl` |
 | `stamp_cards.py` | Runtime Cards source_hash stamping and verification (00/03 Write-back Checklist); `--cards-dir` defaults to `Cards` and a missing directory exits 0; `--check` verifies only; `--set-version` stamps a uniform version incl. the Card Index | `python3 Tools/stamp_cards.py . --check` |
 | `check_language.py` | Language-policy candidate detection for the agent-atlas profile (10/05; **candidates only**); exemptions come only from `--exempt` -- there is no built-in path exemption | `python3 Tools/check_language.py . --scope profiles --exempt kernel --receipts Tools/receipts/lang.jsonl` |
 | `check_freshness.py` | Freshness check: computes review_by from volatility and last_verified (fallback: last_reviewed, then file modification time per 08/05, flagged pending first verification); `--defaults` accepts a flat mapping or `Tools/vocab.yaml` / a profile's `vocabulary-extensions.yaml` (their `volatility_defaults`); an all-skip run reports NOTHING CHECKED as a candidate, not a pass | `python3 Tools/check_freshness.py . --as-of 2026-07-21 --exclude legacy --defaults Tools/vocab.yaml --receipts Tools/receipts/fresh.jsonl` |
-| `duplicate_check.py` | Cross-file duplicate paragraph candidate detection; full vault by default; `--exclude` defaults to `legacy`; supports `--receipts` and exits 2 when candidates exist | `python3 Tools/duplicate_check.py . --scope kernel --receipts Tools/receipts/dup.jsonl` |
+| `duplicate_check.py` | Cross-file duplicate paragraph candidate detection; full vault by default; `--exclude` is repeatable and defaults to `legacy`; supports `--receipts` and exits 2 when candidates exist | `python3 Tools/duplicate_check.py . --exclude legacy --exclude _template --receipts Tools/receipts/dup.jsonl` |
 | `kblib.py` | Shared library (restricted YAML subset parser, Markdown helpers, receipt helpers); not invoked directly | imported by all scripts above |
 
 ## Canonical full-tree configuration
@@ -35,6 +36,17 @@ valid at snapshot time), while explicit full-path links into them from active
 files still resolve. Running without `--exclude legacy` audits the snapshots
 themselves and reports their historical dead links.
 
+The full-tree duplicate check is `python3 Tools/duplicate_check.py . --exclude
+legacy --exclude _template`. `profiles/_template/` is a skeleton whose files
+share a deliberate common shape, and each of them parallels its filled
+counterpart under `profiles/examples/eng-handbook/`; that repetition is the
+template working as intended, so it is excluded rather than reported. Measured
+on this repository, the exclusion is the whole difference: 217 candidates
+without it, 167 with it, and the 167 are the same candidates the repository
+reported before the template existed. Excluding `_template` here does not
+weaken the check for real profiles -- a profile a user copies out of the
+template lives under its own directory name and is scanned normally.
+
 ## Invocation split
 
 - **Batch close** = the Batch-close Closed List (owner: 12/07; a seven-item
@@ -45,8 +57,14 @@ themselves and reports their historical dead links.
 - **Maintenance run** = `check_freshness.py` (once at the start of the run)
   plus `duplicate_check.py` (full vault or `--scope`; candidates go into the
   candidates pool). Neither is invoked at batch or single-page level.
-- **Governance** = `stamp_cards.py --check`, `check_moc.py`, and
-  `compose_vocab.py --check`.
+- **Governance** = `stamp_cards.py --check`, `check_moc.py`,
+  `compose_vocab.py --check`, and `check_profile.py` against each profile the
+  repository ships.
+- **Profile bring-up** = `check_profile.py` against a profile freshly copied
+  from `profiles/_template/`. It is expected to fail at first and to keep
+  failing until the copy is filled in; that failure is the tool's purpose, not
+  a defect in the copy. It is not part of any batch or note close, because a
+  profile is authored once and then loaded, not edited per batch.
 
 Shared conventions:
 
@@ -96,6 +114,12 @@ evidence_ref.
 - `terminal_proof.template.yaml` -- Terminal Proof, the 28 fields copied field
   by field from 12/06; also the single source of truth for
   `check_proof.py`'s required field list
+- `execution_defaults.template.yaml` -- the machine-readable registry of which
+  kernel execution defaults a profile may override and which constants it may
+  not, each entry naming the kernel module that owns the value; a hand-kept
+  copy of the Execution Default Overrides Contract in `profiles/README.md`
+  (that file remains the normative owner), and the list `check_profile.py`
+  checks a profile's overrides table against
 
 ## Restricted YAML subset
 

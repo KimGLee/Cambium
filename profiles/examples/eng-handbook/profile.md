@@ -3,8 +3,9 @@
 - `profile_id`: `eng-handbook`
 - Status: non-normative example. This profile is a worked illustration of one way an engineering-documentation domain could fill the profile interface. It is not a standard, not a default configuration, and not a source of requirements for any other profile.
 - Purpose: to show the form and the level of specificity each slot answer needs. The domain choices made here — the four-layer architecture, the incident-centred priority rubric, the English-only language contract — belong to this example alone and do not bind other profiles.
-- Not a copy-and-edit starting point. The official starting point is the domain-neutral `profiles/_template/`, which does not yet exist in this repository. Until it does, read `profiles/README.md` for the normative slot interface — which slots exist, and what constrains each — and write your own profile against that, using this example only to see what a filled answer looks like.
-- Once `profiles/_template/` exists, the official flow will be: copy the template, reference this example, fill and validate your own profile, then have the agent load `kernel/` plus your profile.
+- Not a copy-and-edit starting point. The official starting point is the domain-neutral `profiles/_template/`, which carries the constraints and the TODO markers for every slot and no domain answers at all. Copying this example instead would carry an engineering domain's answers into a profile that is not about engineering, and those answers are easy to leave in place without noticing.
+- The official flow is: copy `profiles/_template/` to `profiles/<your-profile-id>/`, read `profiles/README.md` for the normative slot interface — which slots exist, and what constrains each — consult this example for the form and specificity a filled answer needs, fill in your own profile, run `python3 Tools/check_profile.py profiles/<your-profile-id>` until it passes, then have the agent load `kernel/` plus your profile.
+- That check is mechanical, not advisory. It fails while any part of the copied skeleton is still visible, so a half-filled profile cannot be loaded and reported as working. It checks structure only, and never judges whether a slot answer is a good one.
 
 ## Implemented Slots
 

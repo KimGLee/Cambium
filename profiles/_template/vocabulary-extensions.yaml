@@ -1,0 +1,71 @@
+# Profile vocabulary extensions.
+# Implements the `Vocabulary Extensions` slot.
+#
+# TODO(profile) -- fill in the values below, then delete this comment header down to
+# the `schema_version` line. It restates constraints owned by profiles/README.md, and
+# a copy of them living inside your profile is a second owner that will drift from the
+# first. The regeneration command near the end is worth keeping; the rest is scaffolding.
+#
+# What this slot must answer -------------------------------------------------
+# The kernel owns a base vocabulary: the controlled value lists that frontmatter
+# fields may carry (kernel/08 Metadata and Status/vocabulary-base.yaml). That base
+# deliberately leaves `domain` empty, because domains are what a profile knows and
+# the kernel does not. This file appends the values your knowledge base needs.
+#
+# Composition is append-only. You may add values to a field and add new fields.
+# You may not delete, rename, or redefine anything in the kernel base -- a profile
+# that needs a base value to mean something else needs a kernel change, not an
+# extension.
+#
+# Any field you add that carries a behavioral rule -- a value that changes what
+# the process does, not just how a page is labelled -- must name a single prose
+# owner, and that owner must be registered in the manifest. A rule with two owners
+# is a rule with none.
+#
+# Tools/vocab.yaml is a generated artifact, composed from the kernel base plus one
+# selected profile's extensions. It is never a canonical owner; regenerate it, do
+# not hand-edit it:
+#   python3 Tools/compose_vocab.py --extensions profiles/<your-profile-id>/vocabulary-extensions.yaml
+#
+# A filled version is in profiles/examples/eng-handbook/vocabulary-extensions.yaml.
+#
+# Only the restricted YAML subset is allowed (parseable by Tools/kblib.py):
+#   `key: value` scalars, and `- item` lists indented under a key; list items may
+#   be a one-level flat map. Not allowed: anchors, block scalars, flow maps, tags.
+# -----------------------------------------------------------------------------
+
+schema_version: 1
+
+# TODO(profile) -- set this to your own profile id; it must match `profile_id` in profile.md.
+profile_id: _template
+
+extends: "kernel/08 Metadata and Status/vocabulary-base.yaml"
+composition_policy: append-only
+
+# Frontmatter fields this profile adds beyond the kernel base, and a sample value
+# for each so a page author can see the intended form.
+# TODO(profile) -- add extension fields, or leave the list empty if the kernel
+# base fields are sufficient. An empty list is a legitimate answer.
+frontmatter_extensions:
+  fields: []
+  example_values:
+
+# Appended values for the kernel's controlled fields. `owner` records which file
+# is canonical for the values listed under it.
+fields:
+  type:
+    owner: "profiles/<your-profile-id>/vocabulary-extensions.yaml"
+    # TODO(profile) -- append the page types your domain needs that the kernel base
+    # does not already cover. Check the base list first; most domains need few or none.
+    values: []
+  domain:
+    owner: "profiles/<your-profile-id>/vocabulary-extensions.yaml"
+    # TODO(profile) -- list this profile's subject domains. The kernel base leaves
+    # `domain` empty on purpose, so this list is almost always non-empty.
+    values: []
+
+# The domain -> volatility dispatch table: how fast material in each domain goes
+# stale, which drives the kernel's review scheduling. Every domain value listed
+# above needs an entry here; permitted values are `fast`, `slow`, and `stable`.
+# TODO(profile) -- add one entry per registered domain.
+volatility_defaults:

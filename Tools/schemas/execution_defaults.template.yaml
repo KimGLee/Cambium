@@ -1,0 +1,87 @@
+# =============================================================================
+# Execution default registry (machine-readable; the template is the schema doc)
+# Owner: profiles/README.md "Execution Default Overrides Contract"
+#   -- The two lists below copy, item by item, the overridable / constitutional
+#      split stated in that contract. Each entry additionally names the kernel
+#      module that owns the value itself, so a reader can always reach the
+#      prose definition; that module, not this file, is the canonical owner.
+#
+# Contract restated (profiles/README.md): a profile manifest must declare,
+#   item by item, whether it adopts the kernel default or explicitly overrides
+#   it. Any overridable item left unregistered uses the kernel default. The
+#   two-round caps on substantive review and Terminal Audit are constitutional
+#   constants and are not overridable.
+#
+# This template is the authoritative source of Tools/check_profile.py's
+# Execution Default Overrides item list. It is a copy of prose, kept in sync by
+# hand; when profiles/README.md or a kernel owner changes an item, update this
+# file in the same batch.
+#
+# Only the restricted YAML subset is allowed (parseable by Tools/kblib.py
+# parse_yaml_subset):
+#   - `key: value` scalars (string/number/boolean/null, quoted strings, inline `[]`);
+#   - `- item` lists indented under `key:`; list items may be a one-level flat map.
+#   Not allowed: anchors/aliases, block scalars (| >), flow maps {}, tags, multi-document.
+# =============================================================================
+
+schema_version: 1
+
+# Items a profile manifest must register, each as `use-kernel-default` or an
+# explicit override value. `item` is the exact string check_profile.py looks
+# for in the manifest's Execution Default Overrides table.
+overridable:
+  - item: "concurrency_cap"
+    kernel_default: "3"
+    owner: "kernel/02 Build Execution/01 Contract Time and Task State.md"
+  - item: "batch_size.S"
+    kernel_default: "24"
+    owner: "kernel/02 Build Execution/05 Batch Execution and Progress Ledger.md"
+  - item: "batch_size.M"
+    kernel_default: "10"
+    owner: "kernel/02 Build Execution/05 Batch Execution and Progress Ledger.md"
+  - item: "batch_size.L"
+    kernel_default: "6"
+    owner: "kernel/02 Build Execution/05 Batch Execution and Progress Ledger.md"
+  - item: "priority_quota.P0"
+    kernel_default: "15%"
+    owner: "kernel/00 Standards Control/02 Task Routing and Pre-execution.md"
+  - item: "priority_quota.P1"
+    kernel_default: "35%"
+    owner: "kernel/00 Standards Control/02 Task Routing and Pre-execution.md"
+  - item: "maintenance.unselected_rounds_before_log_only"
+    kernel_default: "3"
+    owner: "kernel/00 Standards Control/02 Task Routing and Pre-execution.md"
+  - item: "maintenance.incoming_retarget_divisor"
+    kernel_default: "6"
+    owner: "kernel/00 Standards Control/02 Task Routing and Pre-execution.md"
+
+# Constitutional constants. A profile that registers one of these in its
+# Execution Default Overrides table is registering something it cannot
+# override, which check_profile.py reports as a failure.
+constitutional:
+  - item: "substantive_review.round_cap"
+    value: "2"
+    owner: "kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review.md"
+  - item: "terminal_audit.round_cap"
+    value: "2"
+    owner: "kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report.md"
+
+# Placeholder profile_id values that a real profile must not carry. The
+# template ships with `_template`; check_profile.py fails while it is still
+# in place, so an unfilled copy cannot be loaded as a running profile.
+reserved_profile_ids:
+  - "_template"
+  - "template"
+  - "example"
+  - "REPLACE-ME"
+  - "your-profile-id"
+  - "TODO"
+
+# The unfilled-answer sentinel. Every TODO left in a copied template carries
+# this exact string; check_profile.py fails on any occurrence anywhere under
+# the profile directory.
+unfilled_sentinel: "TODO(profile)"
+
+# Structural scaffolding that a copied template must remove: an H2 section with
+# this exact heading exists only in profiles/_template/profile.md.
+template_scaffolding_heading: "Template Usage"
