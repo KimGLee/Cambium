@@ -377,21 +377,21 @@ Tools/kblib.py	<FILE>	kernel	共享库，完全领域无关
 Tools/check_links.py	<FILE>	kernel	链接检查，无实例硬编码
 Tools/check_vocab.py	<FILE>	kernel	脚本通用，词表来自 profile；P0≤15% 配额检查数值属内核默认值（裁决④）
 Tools/check_language.py	<FILE>	profile	中文优先规则本体内嵌脚本（行 45–48 正则）；candidate-only 外壳可 kernel 化；行 43 硬编码 "Knowledge Base Standards" 豁免目录（instance）
-Tools/check_freshness.py	<FILE>	kernel	保质期机制通用；行 56–64 DOMAIN_DEFAULT 硬编码 profile 派发表（应改读词表）；行 19/137 硬编码目录名（instance）
+Tools/check_freshness.py	<FILE>	kernel	保质期机制通用；行 56–64 DOMAIN_DEFAULT 硬编码 profile 派发表（应改读词表）；行 19/137 硬编码目录名（instance）；施工中改判+理由：按已确认 Confirmation Checklist 第 6 项，本期脚本保持逐字节不变，DOMAIN_DEFAULT 与目录硬编码不改写，统一登记为 Tooling Deferral，不宣称已支持 profile 注入
 Tools/check_proof.py	<FILE>	kernel	Proof 校验，字段清单读模板
-Tools/check_moc.py	<FILE>	kernel	MOC 一致性检测；行 41 正则硬编码 "Knowledge Base Standards/" 前缀（instance）；需补围栏感知
+Tools/check_moc.py	<FILE>	kernel	MOC 一致性检测；行 41 正则硬编码 "Knowledge Base Standards/" 前缀（instance）；需补围栏感知；施工中改判+理由：按已确认 Confirmation Checklist 第 6 项，本期脚本保持逐字节不变，旧前缀硬编码与围栏感知补强统一延期并登记为 Tooling Deferral
 Tools/apply_delta.py	<FILE>	kernel	delta 确定性应用
 Tools/stamp_cards.py	<FILE>	kernel	卡片盖戳/校验
 Tools/duplicate_check.py	<FILE>	kernel	相似度候选检测；行 23/42 硬编码排除 "v1.1 Legacy"（instance）
 Tools/vocab.yaml	<FILE>	profile-derived	由 08 域编译的词表产物；拆分后由新 profile 重新编译
-Tools/schemas/audit_plan.template.yaml	<FILE>	kernel	schema 模板；示例值含实例路径（随新实例替换）
+Tools/schemas/audit_plan.template.yaml	<FILE>	kernel	schema 模板；示例值含实例路径（随新实例替换）；施工中改判+理由：按已确认 Confirmation Checklist 第 6 项，本期 schema 模板保持逐字节不变，实例路径示例本期不替换，登记为 Tooling Deferral
 Tools/schemas/coverage_delta.template.yaml	<FILE>	kernel	schema 模板；示例值含实例路径
 Tools/schemas/coverage_ledger.template.yaml	<FILE>	kernel	schema 模板；示例值含实例路径
 Tools/schemas/progress_ledger.template.yaml	<FILE>	kernel	schema 模板；示例含实例路径与 profile 领域内容
 Tools/schemas/receipt.template.jsonl	<FILE>	kernel	receipt schema；示例行含实例路径
 Tools/schemas/terminal_proof.template.yaml	<FILE>	kernel	Proof 28 字段模板；示例含实例路径
 Tools/schemas/watermark.template.yaml	<FILE>	kernel	水位线模板；示例含 profile domain 与实例来源名
-Tools/state/watermark.yaml	<FILE>	instance	运行时状态文件；按新实例 profile 重新初始化
+Tools/state/watermark.yaml	<FILE>	instance	运行时状态文件；按新实例 profile 重新初始化；施工中改判+理由：按已确认 Confirmation Checklist 第 6 项，本期删除旧运行状态且不创建替代实例 state；通用 watermark schema 保留，待新实例运行时另行初始化
 Cards/00 Card Index.md	<FILE>	derived	编译产物，拆分后重生成；含面试路由行（profile）；施工中改判+理由：按已确认 Confirmation Checklist 第 2 项，本期将“拆分后重生成”改为不重编，原文件字节级归档至 legacy/cards，并由 agent-atlas Runtime Card compatibility provider 保留稳定 Card ID → legacy snapshot → canonical Read Set 路由；面试路由由 provider 指向 profile-owned RS 05，未来 governance 的派生产物重编义务不取消
 Cards/01 Core Bootstrap Card.md	<FILE>	derived	编译产物；含 `Python Algorithm Agent Training`（instance）、双语/主线/面试成分（profile）
 Cards/02 Single Note Authoring Card.md	<FILE>	derived	编译产物；含语言三规则与 interview 项（profile）
