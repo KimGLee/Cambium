@@ -34,4 +34,4 @@ Machine-readable base values 登记在 `kernel/08 Metadata and Status/vocabulary
 - `Expression Layer Entry`（所选 profile 的表达层标准）
 - [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
-- [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]]
+- [[kernel/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]]

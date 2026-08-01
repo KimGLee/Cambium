@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]].
-- Previous: [[Knowledge Base Standards/02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]].
-- Next: [[Knowledge Base Standards/02 Build Execution/04 Architecture Samples and Dependency Build|Architecture Samples and Dependency Build]].
+- Parent: [[kernel/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]].
+- Previous: [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]].
+- Next: [[kernel/02 Build Execution/04 Architecture Samples and Dependency Build|Architecture Samples and Dependency Build]].
 
 ## Phase 1: Inventory
 
@@ -15,11 +15,11 @@
 - Priority。
 - Canonical owner。
 - Authoring status。
-- Interview status。
+- Profile extension status。
 - Coverage disposition。
 - Missing sections。
 - Existing aliases and incoming links。
-- Interview content migration target。
+- Expression Layer migration target。
 - Source type and evidence maturity，适用于来源驱动页面。
 - Existing Source Notes、Research Synthesis 和 unsupported claims。
 - Rendering mode：`source-only`、`deterministic-static`、`targeted-visual-exception`、`expanded-ui` 或 `temporal-recording`；后三者必须关联客观 trigger 和 unresolved question。
@@ -28,7 +28,7 @@
 - Last audited、last reviewed 和 last verified。
 - 各质量维度最新有效 `receipt_id`、artifact/dependency fingerprint、review due 和 invalidation state；旧任务无法重建时标记 `legacy-evidence`。
 
-Inventory 必须排除 `Python Algorithm Agent Training`。
+Inventory 必须从所选 `Profile Scope` 的 `Excluded Scope` role 读取排除清单，不得在 kernel 内固化具体实例路径。
 
 Inventory 必须形成持久化、可查询的 Coverage Ledger，不能只存在于临时分析或执行者记忆中。Coverage Ledger 可以按领域拆分，但必须有一个汇总入口，并满足：
 

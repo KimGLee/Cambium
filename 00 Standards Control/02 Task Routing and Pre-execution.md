@@ -19,7 +19,7 @@
 | 启动、恢复、暂停或完成长任务 | [[Knowledge Base Standards/Read Sets/07 Long-running Execution Read Set\|Long-running Execution]]，并组合实际内容 Read Set | task state、时间语义、Coverage Ledger、Required Queue 和 Terminal Proof |
 | 内容审查、batch 关闭或完成验收 | [[Knowledge Base Standards/Read Sets/08 Audit and Completion Read Set\|Audit and Completion]]，加上与被审 finding 相关的 Read Sets | correctness、depth、provenance、integration、rendering 和 terminal state |
 | 修改 Standards、Read Sets 或控制面结构 | [[Knowledge Base Standards/Read Sets/09 Standards Governance Read Set\|Standards Governance]] | authority、version、migration map、active task impact 和全库验证 |
-| 处理中途用户引导、范围或优先级变化 | [[Knowledge Base Standards/02 Build Execution/02 Mid-task Guidance and Amendment\|Mid-task Guidance and Amendment]]；涉及 hypothesis 时再加载 [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads\|User Guidance Hypotheses and Source Leads]] | guidance type、authority、evidence role、disposition、safe switching 和 version impact |
+| 处理中途用户引导、范围或优先级变化 | [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment\|Mid-task Guidance and Amendment]]；涉及 hypothesis 时再加载 [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads\|User Guidance Hypotheses and Source Leads]] | guidance type、authority、evidence role、disposition、safe switching 和 version impact |
 | 拆分专有名词 | [[kernel/05 Terminology/01 Terminology Extraction\|Terminology Extraction]] + [[kernel/05 Terminology/02 Ownership and Term Structure\|Ownership and Term Structure]] | 是否可复用、是否已有 canonical owner、是否值得独立页面 |
 | 数学、公式、表格、图片或渲染修复 | [[Knowledge Base Standards/Read Sets/02 Single Note Authoring Read Set\|Single Note Authoring]] 的 triggered modules + [[kernel/12 Quality Assurance/02 Rendering Verification\|Rendering Verification]] | Level 0 / Level 1 确定性验证；只有未决显示问题才升级视觉识别 |
 | 周期性知识库更新 / 保鲜（Maintenance Run） | [[Knowledge Base Standards/Read Sets/10 Maintenance Run Read Set\|Maintenance Run]] | 预算封套、候选清单、水位线推进和有界完成语义 |
@@ -90,7 +90,7 @@ tier 由 priority 派生，priority 通胀会使分档失效。全库配额：
 - 外部来源不能直接等同于 canonical knowledge，必须经过 source-to-knowledge pipeline。
 - 不创建空壳页面、长期红链接或只有两三句的 P0 / P1 核心页面。
 - 不回滚、覆盖或删除无法确认来源的现有用户修改。
-- 每个 batch 同步正文链接、metadata、Sources、Interview Preparation 和 QA；Overview / MOC 等枢纽页由 integrator 在批次合并后同步（[[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]]）。
+- 每个 batch 同步正文链接、metadata、Sources、Interview Preparation 和 QA；Overview / MOC 等枢纽页由 integrator 在批次合并后同步（[[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]]）。
 - Batch、专项审计和 Terminal Audit 通过 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] 复用仍有效的分维度证据；不能盲信旧状态，也不能无差别重做全部人工审阅。
 - `task_state`、`authoring_status`、`interview_status`、`evidence_maturity` 和 `learning_status` 分别维护。
 - 中途 Guidance Event 必须分类、记录 disposition 并映射到 Amendment Log、Coverage Ledger、Required Queue 或 source intake。
@@ -110,7 +110,7 @@ tier 由 priority 派生，priority 通胀会使分档失效。全库配额：
 7. 写完一个完整的 dependency-aware batch。
 8. 整合正文链接、导航、metadata、sources 和 interview mapping。
 9. 批次关闭前构建一次 AuditPlan 并处理 receipts（[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）：完成 `--scope` 自查、所需增量人工/渲染 QA 与 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|12/03]] 批内项，发放或 supersede 分维度 AuditReceipts，写出 delta；批次进入 `merge-ready`。视觉检查仅凭已记录的 exception trigger 升级。
-10. integrator 串行合并（[[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches）：应用 delta、运行 Batch-close Closed List、核验 12/03 全局项并更新全局 Ledger 与 Amendment Log；批次自身不写全局账本。
+10. integrator 串行合并（[[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches）：应用 delta、运行 Batch-close Closed List、核验 12/03 全局项并更新全局 Ledger 与 Amendment Log；批次自身不写全局账本。
 11. 仅在 Batch Review 通过且 unresolved invalidations = 0 后关闭 batch；否则保持 active 或 merge-ready。
 
 注：批开始不执行 Coverage 对账；对账在批次关闭执行。

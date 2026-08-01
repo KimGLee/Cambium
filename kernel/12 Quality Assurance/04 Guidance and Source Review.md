@@ -6,7 +6,7 @@
 
 ## Guidance Reconciliation Review
 
-每个 batch 关闭前和长任务进入 `completion-candidate` 前，必须对 [[Knowledge Base Standards/02 Build Execution/02 Mid-task Guidance and Amendment#Mid-task Guidance And Contract Amendment|Mid-task Guidance And Contract Amendment]] 执行 reconciliation。batch 关闭对账为增量：只对 `last_reconciled_guidance_id` 之后的新 guidance 执行对账，加上既有未决项；三计数语义不变，仅计算范围收窄为增量＋既有未决项。
+每个 batch 关闭前和长任务进入 `completion-candidate` 前，必须对 [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment#Mid-task Guidance And Contract Amendment|Mid-task Guidance And Contract Amendment]] 执行 reconciliation。batch 关闭对账为增量：只对 `last_reconciled_guidance_id` 之后的新 guidance 执行对账，加上既有未决项；三计数语义不变，仅计算范围收窄为增量＋既有未决项。
 
 最低通过条件为：
 

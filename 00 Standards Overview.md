@@ -51,7 +51,7 @@ Open Standards Overview
 | 多 batch、持续执行、checkpoint 或 resume | [[Knowledge Base Standards/Read Sets/07 Long-running Execution Read Set\|Long-running Execution]] |
 | 审查、Completion Gate 或 Terminal Audit | [[Knowledge Base Standards/Read Sets/08 Audit and Completion Read Set\|Audit and Completion]] |
 | 修改 Standards、Read Sets、版本或控制面结构 | [[Knowledge Base Standards/Read Sets/09 Standards Governance Read Set\|Standards Governance]] |
-| 中途 guidance、scope、priority 或 correction | [[Knowledge Base Standards/02 Build Execution/02 Mid-task Guidance and Amendment\|Mid-task Guidance and Amendment]] |
+| 中途 guidance、scope、priority 或 correction | [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment\|Mid-task Guidance and Amendment]] |
 
 周期性知识库更新与保鲜任务走 Maintenance Run：[[Knowledge Base Standards/Read Sets/10 Maintenance Run Read Set|RS 10]] / [[Knowledge Base Standards/Cards/10 Maintenance Run Card|Card 10]]。
 
@@ -63,7 +63,7 @@ Open Standards Overview
 |---|---|---|
 | `00` | [[Knowledge Base Standards/00 Standards Overview\|Standards Overview]] | 总体 Index、Read Set routing 和 Standards control |
 | `01` | [[kernel/01 Scope and Architecture Standard\|Scope and Architecture]] | scope、logical architecture、knowledge spine 和 foundation preservation |
-| `02` | [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard\|Build Execution]] | task contract、state、guidance、batch、checkpoint、resume 和 handoff |
+| `02` | [[kernel/02 Knowledge Base Build Execution Standard\|Build Execution]] | task contract、state、guidance、batch、checkpoint、resume 和 handoff |
 | `03` | [[kernel/03 Note Types and Ownership Standard\|Note Types and Ownership]] | note type、canonical owner、split 和 duplication |
 | `04` | [[kernel/04 Content Depth Standard\|Content Depth]] | concept、flow、system、production、evidence 和 failure depth |
 | `05` | [[kernel/05 Terminology Standard\|Terminology]] | term extraction、ownership、aliases、context 和 reuse |

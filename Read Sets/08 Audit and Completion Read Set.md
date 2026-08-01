@@ -13,7 +13,7 @@
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
-- [[Knowledge Base Standards/02 Build Execution/07 Completion and Handoff|Completion and Handoff]]
+- [[kernel/02 Build Execution/07 Completion and Handoff|Completion and Handoff]]
 - [[profiles/agent-atlas/language-contract|Language Contract]]
 
 ## Triggered

@@ -30,7 +30,7 @@
 - 已写 Final Handoff，明确 optional、deferred 和 external evidence backlog。
 - Terminal Audit 已产生 Terminal Proof。
 
-task_complete 的机器可校验公式的 canonical 定义位于 [[Knowledge Base Standards/02 Build Execution/07 Completion and Handoff|Completion and Handoff]] 的 Completion Policy 一节。
+task_complete 的机器可校验公式的 canonical 定义位于 [[kernel/02 Build Execution/07 Completion and Handoff|Completion and Handoff]] 的 Completion Policy 一节。
 
 Authoring completion 不要求所有前沿结论达到 `validated`；但不能用外部证据缺口掩盖未完成的正文、来源、面试迁移或 QA。
 
@@ -81,4 +81,4 @@ User's latest explicit instruction
 - [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]]
 - [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]
-- [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]
+- [[kernel/02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]

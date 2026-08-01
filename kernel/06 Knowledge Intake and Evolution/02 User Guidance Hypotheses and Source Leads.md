@@ -6,7 +6,7 @@
 
 ## User Guidance, Hypotheses And Source Leads
 
-用户在长任务中提供的引导可能同时改变 task contract 并触发知识调查。执行控制遵循 [[Knowledge Base Standards/02 Build Execution/02 Mid-task Guidance and Amendment#Mid-task Guidance And Contract Amendment|Mid-task Guidance And Contract Amendment]]；本节只规定其证据角色。
+用户在长任务中提供的引导可能同时改变 task contract 并触发知识调查。执行控制遵循 [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment#Mid-task Guidance And Contract Amendment|Mid-task Guidance And Contract Amendment]]；本节只规定其证据角色。
 
 必须区分：
 

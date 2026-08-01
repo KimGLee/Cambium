@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]].
-- Previous: [[Knowledge Base Standards/02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]].
-- Next: [[Knowledge Base Standards/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]].
+- Parent: [[kernel/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]].
+- Previous: [[kernel/02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]].
+- Next: [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]].
 
 ## Mid-task Guidance And Contract Amendment
 
@@ -28,17 +28,17 @@
 | Guidance Type | Example | Default Route |
 |---|---|---|
 | Operational control | 暂停、停止、持续到某时间、立即切换 | 更新 task state 或 time contract |
-| Scope amendment | 增加 Cache、Memory 或新领域 | 更新 scope version 和 Coverage Ledger |
-| Priority or sequence | 先做 Memory，再做 Retrieval | 更新 queue revision |
-| Acceptance or quality feedback | Agent Basic Flow 没有讲清 | 触发定向审计，确认后登记 gap |
+| Scope amendment | 增加索引策略、会话状态策略或新领域 | 更新 scope version 和 Coverage Ledger |
+| Priority or sequence | 先做主题甲，再做主题乙 | 更新 queue revision |
+| Acceptance or quality feedback | 核心处理流程没有讲清 | 触发定向审计，确认后登记 gap |
 | Presentation preference | 流程图改为横向 | 更新当前 batch constraint；可复用时评估 Standards amendment |
-| Knowledge hypothesis | Cache 是当前行业热点 | 记录为 research signal，进入证据调查 |
-| Source lead | OpenAI 或 Anthropic 有相关文章 | 进入 source capture 和 claim extraction |
+| Knowledge hypothesis | 某主题是当前行业热点 | 记录为 research signal，进入证据调查 |
+| Source lead | 上游提供方甲或乙有相关文章 | 进入 source capture 和 claim extraction |
 | Correction | 当前定义、公式或系统链路可能错误 | 评估传播范围，必要时立即中断修正 |
 | Project or first-party context | 用户描述自己的系统、指标或事故 | 保留为有边界的 first-party context，不泛化为行业事实 |
 | Governance candidate | 以后所有流程图都不能牺牲完整性 | 只有用户明确授权后才修改 Standards |
 
-同一 Guidance Event 可以同时属于多类。例如“Cache 是行业热点，需要优先补全”同时是 scope amendment、priority change 和 research signal。
+同一 Guidance Event 可以同时属于多类。例如“某主题是行业热点，需要优先补全”同时是 scope amendment、priority change 和 research signal。
 
 ### Intake And Impact Analysis
 

@@ -38,4 +38,4 @@
 - [[kernel/07 Sources and Accuracy Standard|Sources and Accuracy Standard]]
 - [[kernel/08 Metadata and Status Standard|Metadata and Status Standard]]
 - [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]]
-- [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]
+- [[kernel/02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]

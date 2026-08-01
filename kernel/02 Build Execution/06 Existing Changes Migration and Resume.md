@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]].
-- Previous: [[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]].
-- Next: [[Knowledge Base Standards/02 Build Execution/07 Completion and Handoff|Completion and Handoff]].
+- Parent: [[kernel/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]].
+- Previous: [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]].
+- Next: [[kernel/02 Build Execution/07 Completion and Handoff|Completion and Handoff]].
 
 ## Existing Changes
 
@@ -22,7 +22,7 @@
 4. 更新引用。
 5. 确认内容完整迁移。
 6. 再删除重复内容或旧文件。
-7. 全库检查由所在批次关闭的 Batch-close Closed List（[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]）覆盖。
+7. 全库检查由所在批次关闭的 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|Batch-close Closed List]] 覆盖。
 
 禁止先删除后补写。
 
@@ -31,7 +31,7 @@
 任务中断前必须把 task state 更新为 `paused` 或 `blocked`，并写入 checkpoint。checkpoint 至少包括：
 
 - 当前 contract、scope、queue、active batches 和 standards version。
-- 各 active 批次的状态（active / merge-ready）、merge 队列、已写出未应用的 delta、已接受成果和未验证修改。
+- 各 active 批次的状态（`active` / `merge-ready`）、merge 队列、已写出未应用的 delta、已接受成果和未验证修改。
 - 最近一次 QA 结果。
 - Coverage Ledger 的未完成 Required 项。
 - 尚未完成分类、映射或验证的 guidance。

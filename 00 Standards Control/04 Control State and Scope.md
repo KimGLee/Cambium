@@ -14,7 +14,7 @@
 | `evidence_maturity` | Canonical / Source / Synthesis note | signal、single-source、corroborated、validated、contested、superseded | 写作是否完成 |
 | `learning_status` | User learning workflow | not-started、learning、self-tested、mastered | 知识库建设进度 |
 
-本表为控制面速览；完整词表以各 owner 为准：task_state 见 [[Knowledge Base Standards/02 Build Execution/01 Contract Time and Task State|02/01]]，其余各轴见 [[kernel/08 Metadata and Status/03 Status Axes|08/03]]。
+本表为控制面速览；完整词表以各 owner 为准：task_state 见 [[kernel/02 Build Execution/01 Contract Time and Task State|02/01]]，其余各轴见 [[kernel/08 Metadata and Status/03 Status Axes|08/03]]。
 
 `coverage_disposition` 另外说明页面在当前 scope 中是 required、optional、deferred 还是 excluded。
 

@@ -58,6 +58,34 @@ User Goal
  -> Outcome And Evaluation
 ```
 
+## Representative Sample Set
+
+本节只登记所选 profile 的样板类型取值；“先样板、验证、再批量”的执行机制由 [[kernel/02 Build Execution/04 Architecture Samples and Dependency Build#Phase 3: Representative Samples|Build Execution kernel]] 持有。
+
+- 一个数学 / modeling core concept。
+- 一个算法。
+- 一个深度学习机制。
+- 一个 LLM 或 Retrieval 基础机制。
+- 一个完整 system design。
+- 一个 risk / control note。
+- 一个 Source Note 和一个 Research Synthesis。
+- 对应 Interview Cards。
+
+## Dependency-ordered Build Sequence
+
+本节只登记所选 profile 的 vertical-slice 站名；dependency ordering、Required Queue 与缺口回补规则由 [[kernel/02 Build Execution/04 Architecture Samples and Dependency Build#Phase 4: Dependency-ordered Build|Build Execution kernel]] 持有。
+
+```text
+Architecture And Inventory
+ -> Required Foundation Batch
+ -> Agent / Harness Vertical Slice
+ -> Newly Exposed Foundation Gaps
+ -> Production Systems Integration
+ -> Evaluation / Reliability / Safety
+ -> Case Studies And Research Synthesis
+ -> Interview Preparation Final Integration
+```
+
 ## Foundation Preservation Rule
 
 - Shared Foundations 解释数学、统计、优化、数据和通用系统概念。
@@ -98,6 +126,8 @@ User Goal
 - Tool Calling、MCP、filesystem、shell、browser 和其它 execution environments。
 
 Agent 负责目标驱动的决策过程；Harness 负责把决策约束为可执行、可追踪和可恢复的运行过程。二者必须分别解释，也必须说明接口和耦合关系。
+
+Long-horizon Agent reliability、checkpoint、context continuity 和 execution recovery 属于本层的 canonical knowledge；Build Execution kernel 只管理知识库建设长任务，不定义 Agent 自身如何执行长任务。
 
 ### Retrieval And Application Systems
 

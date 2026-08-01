@@ -150,7 +150,7 @@ Dependency graph 不要求把任意 backlink 视为语义依赖。正文中的 p
 
 ## Content-level Propagation
 
-当一篇笔记的机制性章节（Definition、Mechanism、公式、核心结论）发生实质修改时，作者必须沿本页定义的语义依赖边（prerequisite、claim-evidence）把直接下游笔记标记为 `needs_rereview`，并经本批 delta 的 `open_gaps_added`（type: rereview）记入 Coverage Ledger——并发下作者不直接写 Ledger（[[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] 写入权分区）。该标记汇入维护轮的候选清单按预算消化，不要求当场处理。同一页面在一个维护轮周期内只标记入池一次。复核动作是重读下游推理是否仍成立，不是重跑机械检查。
+当一篇笔记的机制性章节（Definition、Mechanism、公式、核心结论）发生实质修改时，作者必须沿本页定义的语义依赖边（prerequisite、claim-evidence）把直接下游笔记标记为 `needs_rereview`，并经本批 delta 的 `open_gaps_added`（type: rereview）记入 Coverage Ledger——并发下作者不直接写 Ledger（[[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] 写入权分区）。该标记汇入维护轮的候选清单按预算消化，不要求当场处理。同一页面在一个维护轮周期内只标记入池一次。复核动作是重读下游推理是否仍成立，不是重跑机械检查。
 
 ## Incremental Audit Planning
 
@@ -174,7 +174,7 @@ Dependency graph 不要求把任意 backlink 视为语义依赖。正文中的 p
 
 ## Batch-close Closed List
 
-**Batch-close Closed List（批次关闭封闭清单）**：以下七项、仅以下七项，在每个 batch 由 integrator 串行合并关闭时对合并后的完整 in-scope snapshot 运行（并发批次逐个合并，见 [[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches）——
+**Batch-close Closed List（批次关闭封闭清单）**：以下七项、仅以下七项，在每个 batch 由 integrator 串行合并关闭时对合并后的完整 in-scope snapshot 运行（并发批次逐个合并，见 [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches）——
 
 1. Wiki link missing / ambiguous / heading resolution（check_links）
 2. Markdown / YAML / fence / table 结构有效性
@@ -236,5 +236,5 @@ Standards version 变化且 changed-predicate 清单非空时，active、paused 
 - [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
-- [[Knowledge Base Standards/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
-- [[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]]
+- [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
+- [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]]

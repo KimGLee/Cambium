@@ -14,7 +14,7 @@
 
 Overview 不是文件列表，应解释模块之间的依赖和职责。
 
-Coverage map 是 [[Knowledge Base Standards/02 Build Execution/03 Inventory and Coverage Reconciliation#Phase 1: Inventory|Coverage Ledger]] 的读者视图，不独立维护另一套完成状态。页面有 incoming link、sequence-view entry 或可解析 Wiki link，只能证明可导航，不能证明 authoring、profile readiness 或 evidence 状态已经完成。
+Coverage map 是 [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation#Phase 1: Inventory|Coverage Ledger]] 的读者视图，不独立维护另一套完成状态。页面有 incoming link、sequence-view entry 或可解析 Wiki link，只能证明可导航，不能证明 authoring、profile readiness 或 evidence 状态已经完成。
 
 ## Related Section
 

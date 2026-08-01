@@ -10,9 +10,9 @@
 - [[kernel/01 Scope and Architecture/02 Logical Architecture and Knowledge Spine|Logical Architecture and Knowledge Spine]]
 - [[kernel/01 Scope and Architecture/03 Foundation Preservation|Foundation Preservation]]
 - [[kernel/01 Scope and Architecture/04 Folder and Shared Ownership|Folder and Shared Ownership]]
-- [[Knowledge Base Standards/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
-- [[Knowledge Base Standards/02 Build Execution/04 Architecture Samples and Dependency Build|Architecture Samples and Dependency Build]]
-- [[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]]
+- [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
+- [[kernel/02 Build Execution/04 Architecture Samples and Dependency Build|Architecture Samples and Dependency Build]]
+- [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]]
 - [[kernel/03 Note Types and Ownership/01 Note Type Catalog|Note Type Catalog]]
 - [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
 - [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]
@@ -42,4 +42,4 @@
 
 - [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]
 - [[kernel/01 Scope and Architecture Standard|Scope and Architecture]]
-- [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|Build Execution]]
+- [[kernel/02 Knowledge Base Build Execution Standard|Build Execution]]

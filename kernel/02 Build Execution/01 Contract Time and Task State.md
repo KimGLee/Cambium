@@ -1,13 +1,13 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]].
-- Next: [[Knowledge Base Standards/02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]].
+- Parent: [[kernel/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]].
+- Next: [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]].
 
 ## Purpose
 
 本标准规定超长知识库建设任务如何规划、执行、验证和恢复，防止一次性铺设大量空壳页面、后期失去一致性或中断后重复工作。
 
-本文件只管理“建设知识库的长任务”，不定义 Agent 自身如何执行长任务。Long-horizon Agent reliability、checkpoint、context continuity 和 execution recovery 属于 Agent/Harness canonical knowledge。
+本文件只管理“建设知识库的长任务”，不定义部署运行主体自身如何执行长任务。所选知识主线中的 long-horizon reliability、checkpoint、context continuity 和 execution recovery，由所选 profile 注册的 `Profile Scope` 提供具体角色与 canonical knowledge 路由。
 
 ## Core Execution Principle
 
@@ -28,16 +28,16 @@ Every in-scope page must have an explicit disposition.
 正式执行前确认：
 
 - 目标岗位和知识边界。
-- Agent/Harness 作为组织主线，以及基础知识必须完整保留的约束。
+- 所选 `Profile Scope` 注册的组织主线，以及基础知识必须完整保留的约束。
 - 排除范围。
 - 顶层目录和 ownership。
 - Note type、depth、metadata 和语言规范。
-- Interview Preparation 的拆分方式。
+- 所选 `Expression Layer Entry` 注册的表达产物拆分方式。
 - Sources、图表和质量门槛。
 - Source-to-knowledge intake、evidence maturity 和 canonical promotion 方式。
 - Contract version、scope version、queue revision、initial batch revision 和 Standards version。
-- 并发批次上限 `concurrency_cap`（默认 3）；批次并发准入与合并规则见 [[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches。
-- Selected Cards 与 Read Sets、实际 loaded set（Cards 与升级回读的 module paths）、triggered 项和尚未执行的 gate 项。
+- 并发批次上限 `concurrency_cap`（kernel 默认值为 `3`；所选 profile manifest 或 task contract 可显式覆写）；批次并发准入与合并规则见 [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches。
+- Selected Runtime Card IDs 与 Read Sets、实际 loaded set（`Runtime Card Provider` 解析的 artifacts 与升级回读的 module paths）、triggered 项和尚未执行的 gate 项。
 - 允许修改 scope、priority、batch 和 Standards 的 authority。
 - `minimum_run_until`、`checkpoint_at`、`hard_stop_at` 和 Completion Gate。
 - Pause、cancel、block 和 resume 的处理方式。

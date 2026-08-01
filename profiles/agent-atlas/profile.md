@@ -19,3 +19,14 @@
 
 - `Expression Layer Artifact`: [[profiles/agent-atlas/interview/01 Interview Architecture and Separation#Interview Card|Interview Card]]
 - `Expression Status Axis`: [[profiles/agent-atlas/interview/02 Card Granularity Coverage and Categories#Interview Coverage Status|Interview Coverage Status]]
+
+## Execution Default Overrides
+
+| Kernel 默认项 | Profile 选择 | 生效值 |
+|---|---|---:|
+| `concurrency_cap` | `use-kernel-default` | `3` |
+| `batch_size.S` | `use-kernel-default` | `24` |
+| `batch_size.M` | `use-kernel-default` | `10` |
+| `batch_size.L` | `use-kernel-default` | `6` |
+
+未登记其它值即表示本 profile 不覆写这些 kernel defaults；task contract 仍可在 kernel 允许的范围内显式覆写。

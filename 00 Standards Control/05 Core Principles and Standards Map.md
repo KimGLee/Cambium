@@ -34,7 +34,7 @@
 
 - `Read Sets` [[Knowledge Base Standards/Read Sets/00 Read Sets Index|Read Sets Index]]：按任务、事件和执行阶段组合需要读取的 leaf modules。
 - `01` [[kernel/01 Scope and Architecture Standard|Scope and Architecture Standard]]：范围、Agent/Harness 主线、基础层和 logical architecture。
-- `02` [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]：长任务 contract、Mid-task Guidance、时间语义、task state、Coverage Ledger、batch、恢复和 Terminal Proof。
+- `02` [[kernel/02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]：长任务 contract、Mid-task Guidance、时间语义、task state、Coverage Ledger、batch、恢复和 Terminal Proof。
 - `03` [[kernel/03 Note Types and Ownership Standard|Note Types and Ownership Standard]]：note types、Process / Flow、canonical ownership、split 和 duplication。
 - `04` [[kernel/04 Content Depth Standard|Content Depth Standard]]：Atomic / Core / System 深度、Process / Flow、系统链路和 evaluation provenance。
 - `05` [[kernel/05 Terminology Standard|Terminology Standard]]：专有名词提取、aliases、复用和 emerging terminology。
@@ -52,9 +52,9 @@
 
 | 对象 | Canonical owner |
 |---|---|
-| Terminal Proof 公式 | [[Knowledge Base Standards/02 Build Execution/07 Completion and Handoff|Completion and Handoff]] |
+| Terminal Proof 公式 | [[kernel/02 Build Execution/07 Completion and Handoff|Completion and Handoff]] |
 | Terminal Audit 流程与 Proof 字段清单 | [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]] |
-| `task_state` 词表 | [[Knowledge Base Standards/02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]] |
+| `task_state` 词表 | [[kernel/02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]] |
 | authoring / interview / learning 状态词表 | [[kernel/08 Metadata and Status/03 Status Axes|Status Axes]] |
 | `evidence_maturity` 定义 | [[kernel/08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]] |
 | Evidence roles | [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] |
@@ -78,11 +78,11 @@ Cross-domain Rule Registry 管内容规则“规则住在哪”；本控制注�
 |---|---|---|
 | Wiki 链接完整性 | 批次关闭：[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|封闭清单]] check_links 产 receipt | note 关闭仅本页 `--scope` 自查；迁移/退役仅定向改指；终审验证最后批次 receipt，不重跑 |
 | Frontmatter 词表 | 批次关闭：[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|封闭清单]]第 7 项 check_vocab 产 receipt | note 关闭 `--scope` 自查；终审信任 receipt |
-| 并发写冲突 | 批次激活时：integrator 按 Coverage `next_batch` 执行清单相交性检查（[[Knowledge Base Standards/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches） | 并发批次仅写自身清单页面、receipts 目录与 delta 文件；全局状态文件 integrator 专属 |
+| 并发写冲突 | 批次激活时：integrator 按 Coverage `next_batch` 执行清单相交性检查（[[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches） | 并发批次仅写自身清单页面、receipts 目录与 delta 文件；全局状态文件 integrator 专属 |
 | 内容正确性（人工） | note 关闭：[[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]] 按档位审阅 | 批级人工审范围 = changed ∪ invalidated ∪ 抽样；P0 长期保障由 freshness 复验承担；终审验证 receipts＋有界抽样 |
 | Coverage 对账 | 批次关闭仅 file-count（封闭清单第 4 项）；问题清单按 [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|12/03]] 在模块完成与 completion-candidate 前执行 | inventory 后与 scope/guidance 变化时各一次；批次开始不对账；completion-candidate 前与终审步骤 4 合并 |
 | 标准版本一致性 | 批次激活自动版本自检：[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Active-task Adoption|Active-task Adoption]] | 有 delta 走增量 adoption；无 delta 一行 receipt；终审 check_proof 校验 |
-| Guidance 处置 | intake 一次完整处置：[[Knowledge Base Standards/02 Build Execution/02 Mid-task Guidance and Amendment|02/02]]（门槛为重要 Guidance） | 批关闭仅对 `last_reconciled_guidance_id` 后增量对账；终审只读账验证 disposition |
+| Guidance 处置 | intake 一次完整处置：[[kernel/02 Build Execution/02 Mid-task Guidance and Amendment|02/02]]（门槛为重要 Guidance） | 批关闭仅对 `last_reconciled_guidance_id` 后增量对账；终审只读账验证 disposition |
 | 凭证有效性 | 批次关闭前 AuditPlan 一次：[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] | 批次开始只加载 Receipt Register；Reuse Gate 条件保留 |
 | 渲染 | note 关闭 Level 0/1：[[kernel/12 Quality Assurance/02 Rendering Verification|12/02]] | 批关闭枚举检查一项；终审信任 receipt |
 | Interview 迁移扫描 | 批次关闭：[[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|封闭清单]]第 6 项＋changed-scope 扫描 | 其它层引用封闭清单，不另做全库扫描 |

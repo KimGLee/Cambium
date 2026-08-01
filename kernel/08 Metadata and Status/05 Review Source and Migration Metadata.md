@@ -68,4 +68,4 @@ review_due:
 - [[kernel/04 Content Depth Standard|Content Depth Standard]]
 - [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]
-- [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]
+- [[kernel/02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]

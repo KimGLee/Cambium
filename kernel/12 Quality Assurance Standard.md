@@ -41,7 +41,7 @@
 
 ## Related Standards
 
-- [[Knowledge Base Standards/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]]
+- [[kernel/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]
 - [[kernel/04 Content Depth Standard|04 Content Depth Standard]]
 - [[kernel/07 Sources and Accuracy Standard|07 Sources and Accuracy Standard]]
