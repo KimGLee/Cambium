@@ -1,53 +1,53 @@
 ## Profile Loading Contract
 
-生效标准由 `kernel + one selected profile` 合成。Kernel 只引用稳定 slot 名；所选 profile 的 manifest 将这些 slot 绑定到具体实现。缺少当前任务所需 slot 时不得把组合标准判为完整加载。
+The effective standard is composed from `kernel + one selected profile`. The kernel references stable slot names only; the selected profile's manifest binds those slots to concrete implementations. When a slot required by the current task is missing, the composed standard must not be judged fully loaded.
 
 ## Profile Scope Slot
 
-`Profile Scope` 必须声明目标、内容优先因素、排除清单、逻辑架构、knowledge spine、基础层目录和共享层名注册。它可以替换具体领域承诺，但不能覆写 kernel 的保全、ownership、迁移或质量不变量。
+`Profile Scope` must declare the goal, content priority factors, exclusion list, logical architecture, knowledge spine, foundation-layer directories, and shared-layer name registration. It may replace domain-specific commitments, but it must not override the kernel's conservation, ownership, migration, or quality invariants.
 
-对于内容深度，`Profile Scope` 还必须实现 `Foundation Depth Requirements` 和 `Production System Reasoning Applicability` 两个子项。
+For content depth, `Profile Scope` must also implement the `Foundation Depth Requirements` and `Production System Reasoning Applicability` sub-items.
 
 ## Priority Rubric Slot
 
-`Priority Rubric` 绑定所选 profile 的 P0 / P1 授予条件。它必须消费 kernel 固定的 P0 / P1 / P2 三级轴，不能改名、增删或重定义该轴，也不能改写 tier 派生、配额挂钩或豁免机制。Kernel 明确标记为可覆写的默认阈值只能由 profile manifest 的 `Execution Default Overrides` 显式选择；未登记时使用 kernel 默认值。
+`Priority Rubric` binds the selected profile's P0 / P1 grant criteria. It must consume the kernel-fixed P0 / P1 / P2 three-level axis; it must not rename, add to, remove from, or redefine that axis, nor rewrite tier derivation, quota coupling, or the exemption mechanism. Default thresholds the kernel explicitly marks as overridable can only be selected through the profile manifest's `Execution Default Overrides`; unregistered items use kernel defaults.
 
 ## Execution Default Overrides Contract
 
-Profile manifest 必须逐项声明采用 kernel 默认值还是显式覆写。可覆写项包括 P0 / P1 配额、维护候选降级轮数、入链改指折算参数、`concurrency_cap` 和 S / M / L batch 上限；未登记的可覆写项一律使用 kernel 默认值。实质复核与 Terminal Audit 的两轮上限是不可覆写的宪法常数。
+The profile manifest must declare, item by item, whether it adopts the kernel default or explicitly overrides it. Overridable items include the P0 / P1 quotas, the maintenance-candidate demotion round count, the inbound-link conversion parameter, `concurrency_cap`, and the S / M / L batch caps; any overridable item left unregistered uses the kernel default. The two-round caps on substantive review and Terminal Audit are constitutional constants and are not overridable.
 
 ## Vocabulary Extensions Slot
 
-`Vocabulary Extensions` 绑定 profile-owned 的 frontmatter 扩展字段、type / domain / scope / status 追加值和 domain → volatility 派发表。它只能追加已注册值，不能删除、重命名或重定义 kernel base；含行为规则的字段必须指向 manifest 登记的唯一 prose owner。`Tools/vocab.yaml` 是后续由 kernel base 与 selected profile extensions 合成的生成物，不是 canonical owner。
+`Vocabulary Extensions` binds profile-owned frontmatter extension fields, appended values for type / domain / scope / status, and the domain → volatility dispatch table. It may only append registered values; it must not delete, rename, or redefine the kernel base. Any field carrying behavioral rules must point to a single prose owner registered in the manifest. `Tools/vocab.yaml` is a generated artifact later composed from the kernel base and the selected profile's extensions; it is not a canonical owner.
 
 ## Language Contract Slot
 
-`Language Contract` 绑定 profile 的正文语言、显示标签和内容长度单位。它可以把 kernel 的软性篇幅范围解释为 profile 单位，但不能改变数值范围，也不能把软性参考改成硬 gate。
+`Language Contract` binds the profile's body language, display labels, and content length units. It may interpret the kernel's soft length ranges in profile units, but it must not change the numeric ranges, nor turn a soft reference into a hard gate.
 
 ## Expression Layer Entry Slot
 
-`Expression Layer Entry` 把 kernel 的 `Expression Layer Link` 绑定到 profile 的显示标签和已注册表达产物。它只负责路由与命名，不复制表达层规则。
+`Expression Layer Entry` binds the kernel's `Expression Layer Link` to the profile's display labels and registered expression artifacts. It handles routing and naming only; it does not duplicate expression-layer rules.
 
 ## Source Policy Slot
 
-`Source Policy` 绑定 profile-owned 的具名一手来源集合、扫描 / 核验入口、适用范围或 priority trigger、对照与缺失记录规则，以及 profile-specific evaluation provenance extensions。它可以加严，但不得削弱或替代 kernel 的 source hierarchy、authority / evidence role / applicability / bias 四维判断、cross-source independence / comparability、十要素 provenance、`unknown`、source quality 或 promotion gate。
+`Source Policy` binds the profile-owned set of named primary sources, scan / verification entry points, applicability scopes or priority triggers, comparison and gap-recording rules, and profile-specific evaluation provenance extensions. It may tighten, but it must not weaken or replace the kernel's source hierarchy, the four-dimension judgment of authority / evidence role / applicability / bias, cross-source independence / comparability, ten-element provenance, `unknown`, source quality, or the promotion gate.
 
 ## Role Registry Slot
 
-`Role Registry` 可以为 kernel 的 `proposer`、`gatekeeper`、`executor`、`stopper` 登记 profile 角色名并增加扩展角色，但不能降低四问下限。同一主体可以承担多个角色。
+`Role Registry` may register profile role names for the kernel's `proposer`, `gatekeeper`, `executor`, and `stopper`, and may add extension roles, but it must not lower the four-question floor. One party may hold multiple roles.
 
 ## Audit Dimension Registry Slot
 
-`Audit Dimension Registry` 可以在 kernel 固定的七个基础审计维度之外登记 profile-owned 扩展维度，并为每个扩展维度绑定适用对象与唯一 acceptance predicate owner。它只能追加扩展维度，不能删除、重命名或重定义 kernel base，也不能复制既有 profile owner 的 predicates。
+`Audit Dimension Registry` may register profile-owned extension dimensions beyond the kernel's seven fixed base audit dimensions, binding each extension dimension to its applicable objects and a single acceptance predicate owner. It may only append extension dimensions; it must not delete, rename, or redefine the kernel base, nor duplicate predicates already owned by the profile.
 
 ## Registered Scan Registry Slot
 
-`Registered Scan Registry` 将 profile-owned scans 绑定到 kernel 预留的 scan roles，并声明 activation、scope、verifier、candidate boundary 和 acceptance owner。它不能增删 kernel 的 Batch-close Closed List；只产生候选的扫描不得把候选直接提升为 failure，也不能替代人工或模型审阅。
+`Registered Scan Registry` binds profile-owned scans to the scan roles reserved by the kernel, declaring activation, scope, verifier, candidate boundary, and acceptance owner. It must not add to or remove from the kernel's Batch-close Closed List; a scan that only produces candidates must not promote candidates directly to failures, nor substitute for human or model review.
 
 ## Routing And Gate Registry Slot
 
-`Routing And Gate Registry` 将 profile-owned task routes、Read Sets 和扩展 gates 绑定到 kernel role；未注册的 profile route 不能由 kernel 暗示为已加载。
+`Routing And Gate Registry` binds profile-owned task routes, Read Sets, and extension gates to kernel roles; an unregistered profile route must not be implied by the kernel as loaded.
 
 ## Runtime Card Provider Slot
 
-`Runtime Card Provider` 将稳定 Card ID 解析到只读派生产物及其 canonical Read Set。派生产物不是规则正文的 canonical owner；与标准原文冲突时必须升级回读并触发 provider write-back。所选 provider 还必须声明其生成或兼容方式，以及 governance 关闭前可执行的同步检查。
+`Runtime Card Provider` resolves stable Card IDs to read-only derived artifacts and their canonical Read Sets. Derived artifacts are not the canonical owners of rule text; on conflict with the standard's source text, escalate to source read-back and trigger a provider write-back. The selected provider must also declare how it is generated or kept compatible, and which synchronization checks are runnable before governance close.

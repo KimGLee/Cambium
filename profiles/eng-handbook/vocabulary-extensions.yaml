@@ -1,0 +1,37 @@
+# Eng Handbook profile vocabulary extensions.
+# Canonical profile input for the deterministic Tools/vocab.yaml composition.
+
+schema_version: 1
+profile_id: eng-handbook
+extends: "kernel/08 Metadata and Status/vocabulary-base.yaml"
+composition_policy: append-only
+
+frontmatter_extensions:
+  fields: []
+  example_values:
+    domain: operations
+
+fields:
+  type:
+    owner: "profiles/eng-handbook/vocabulary-extensions.yaml"
+    values:
+      - runbook
+      - incident-review
+      - adr-digest
+  domain:
+    owner: "profiles/eng-handbook/vocabulary-extensions.yaml"
+    values:
+      - infrastructure
+      - services
+      - operations
+      - incident-response
+      - onboarding
+      - security
+
+volatility_defaults:
+  operations: fast
+  incident-response: fast
+  services: slow
+  infrastructure: slow
+  security: slow
+  onboarding: stable
