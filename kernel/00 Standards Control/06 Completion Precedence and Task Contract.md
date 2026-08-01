@@ -1,19 +1,19 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/00 Standards Overview|00 Standards Overview]].
-- Previous: [[Knowledge Base Standards/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]].
+- Parent: [[kernel/00 Standards Overview|00 Standards Overview]].
+- Previous: [[kernel/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]].
 
 ## Definition Of Complete
 
 一个模块只有同时满足以下条件才算完成：
 
 - 主题覆盖符合 competency matrix，而不是只覆盖用户最先列出的名词。
-- 基础知识与 Agent/Harness 主线之间的 prerequisite chain 连续，基础页面没有因架构调整而被降级为空壳。
+- 所选 `Profile Scope` 注册的主线与共享基础层之间 prerequisite chain 连续，基础页面没有因架构调整而被降级为空壳。
 - 核心概念达到规定深度，并有前置、子概念、应用和失败模式链接。
 - 专有名词已经 canonicalize，没有重复定义。
 - 重要页面有例子、评估方法、工程考虑和可靠来源。
-- 面试内容已经进入独立 Interview Cards，并反向链接知识页。
-- Overview、Roadmap、Cheat Sheet 和 Question Bank 已同步。
+- 所选 `Expression Layer Entry` 注册的表达产物已经与 canonical knowledge 建立双向链接。
+- 所选 `Routing And Gate Registry` 登记的 Overview、进度、参考与表达层同步 routes 已反映当前 module structure 和 canonical owners。
 - Wiki links 达到 `missing=0`、`ambiguous=0`。
 - Markdown、表格、公式、图片和 graph 配置均可正常使用。
 - 来源驱动的新知识保留 claim-level provenance，并通过 canonical promotion gate。
@@ -25,14 +25,14 @@
 - 所有 Required authoring gaps 已关闭，或者用户明确修改了 disposition。
 - 没有未验证 batch 或遗留修改。
 - 没有仍处于 direct、dependency、overdue 或 systemic `unresolved_invalidations` 的 Required 审计证据。
-- 所有适用的 Single Note、Batch、Module、Interview、Source Promotion 和 Rendering gates 已通过。
+- 所有适用的 Single Note、Batch、Module、所选 `Routing And Gate Registry` 注册的表达层扩展、Source Promotion 和 Rendering gates 已通过。
 - 已达到 `minimum_run_until`，且没有违反 `hard_stop_at`。
 - 已写 Final Handoff，明确 optional、deferred 和 external evidence backlog。
 - Terminal Audit 已产生 Terminal Proof。
 
 task_complete 的机器可校验公式的 canonical 定义位于 [[kernel/02 Build Execution/07 Completion and Handoff|Completion and Handoff]] 的 Completion Policy 一节。
 
-Authoring completion 不要求所有前沿结论达到 `validated`；但不能用外部证据缺口掩盖未完成的正文、来源、面试迁移或 QA。
+Authoring completion 不要求所有前沿结论达到 `validated`；但不能用外部证据缺口掩盖未完成的正文、来源、表达层迁移或 QA。
 
 ## Maintenance Completion
 
@@ -40,7 +40,7 @@ Authoring completion 不要求所有前沿结论达到 `validated`；但不能�
 
 - Build completion：现有闭环语义，按本页 Definition Of Complete 执行，Terminal Proof 适用。
 - Maintenance completion：有界语义，同时满足以下条件即完成：
-  - 本轮预算封套内的候选清单已关闭（封套定义见 [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]] 的 Maintenance Run Envelope）。
+  - 本轮预算封套内的候选清单已关闭（封套定义见 [[kernel/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]] 的 Maintenance Run Envelope）。
   - Ledger 与 `Tools/state/watermark.yaml` 已推进。
   - 各批次通过适用的 QA gates。
 
@@ -65,8 +65,8 @@ User's latest explicit instruction
 每个超长任务只需确认会改变默认值的事项：
 
 - Objective、contract version、scope version、queue revision、in-scope domains 和 exclusions。
-- Standards version、selected Cards 与 Read Sets、实际 loaded set（Cards 与升级回读的 module paths）和尚未触发的 gate 项；内容任务默认冻结。
-- P0 / P1 的目标 authoring 和 interview status。
+- Standards version、所选 Runtime Card Provider routes 与 Read Sets、实际 loaded set（provider artifacts 与升级回读的 module paths）和尚未触发的 gate 项；内容任务默认冻结。
+- P0 / P1 的目标 authoring status 与所选 `Expression Status Axis` 值。
 - `minimum_run_until`、`checkpoint_at`、`hard_stop_at`。
 - Required、optional、deferred 和 excluded 的边界。
 - 当前任务是否包含 Frontmatter migration、目录迁移或全局 UI / graph 配置。
@@ -74,7 +74,7 @@ User's latest explicit instruction
 - Mid-task guidance 的默认 acknowledgement、safe switching 和 amendment policy；未特别说明时采用 `02` 默认值。
 - Audit Receipt Register 的存储位置、legacy-evidence adoption 和任何改变默认 invalidation/review policy 的决定。
 
-没有改变默认值时，不重复讨论已经 approved 的目录、source-to-knowledge、双语 Interview Card 和 Agent/Harness logical center。
+所选 profile manifest 已声明且当前 task 没有覆写的目录、source-to-knowledge、`Language Contract`、`Expression Layer Entry` 与 `Profile Scope` defaults 不重复讨论；只有改变默认值的事项才进入本节决策清单。
 
 ## Related
 

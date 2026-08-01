@@ -10,7 +10,11 @@
 
 ## Priority Rubric Slot
 
-`Priority Rubric` 绑定所选 profile 的 P0 / P1 授予条件。它必须消费 kernel 固定的 P0 / P1 / P2 三级轴，不能改名、增删或重定义该轴，也不能覆写 tier 派生、配额挂钩、默认阈值或豁免机制。
+`Priority Rubric` 绑定所选 profile 的 P0 / P1 授予条件。它必须消费 kernel 固定的 P0 / P1 / P2 三级轴，不能改名、增删或重定义该轴，也不能改写 tier 派生、配额挂钩或豁免机制。Kernel 明确标记为可覆写的默认阈值只能由 profile manifest 的 `Execution Default Overrides` 显式选择；未登记时使用 kernel 默认值。
+
+## Execution Default Overrides Contract
+
+Profile manifest 必须逐项声明采用 kernel 默认值还是显式覆写。可覆写项包括 P0 / P1 配额、维护候选降级轮数、入链改指折算参数、`concurrency_cap` 和 S / M / L batch 上限；未登记的可覆写项一律使用 kernel 默认值。实质复核与 Terminal Audit 的两轮上限是不可覆写的宪法常数。
 
 ## Vocabulary Extensions Slot
 
@@ -43,3 +47,7 @@
 ## Routing And Gate Registry Slot
 
 `Routing And Gate Registry` 将 profile-owned task routes、Read Sets 和扩展 gates 绑定到 kernel role；未注册的 profile route 不能由 kernel 暗示为已加载。
+
+## Runtime Card Provider Slot
+
+`Runtime Card Provider` 将稳定 Card ID 解析到只读派生产物及其 canonical Read Set。派生产物不是规则正文的 canonical owner；与标准原文冲突时必须升级回读并触发 provider write-back。所选 provider 还必须声明其生成或兼容方式，以及 governance 关闭前可执行的同步检查。

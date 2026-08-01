@@ -46,6 +46,6 @@ Open Standards Overview
 
 ## Related
 
-- [[Knowledge Base Standards/00 Standards Overview|Standards Overview]]
-- [[Knowledge Base Standards/00 Standards Control/01 Operating Role and Reading Protocol|Operating Role and Reading Protocol]]
-- [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]
+- [[kernel/00 Standards Overview|Standards Overview]]
+- [[kernel/00 Standards Control/01 Operating Role and Reading Protocol|Operating Role and Reading Protocol]]
+- [[kernel/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]

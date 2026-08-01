@@ -6,11 +6,11 @@ Core Bootstrap 是所有 Knowledge Base Standards 任务的最小共同读取集
 
 按顺序读取：
 
-1. [[Knowledge Base Standards/00 Standards Overview|Standards Overview]]
-2. [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]
-3. [[Knowledge Base Standards/00 Standards Control/04 Control State and Scope|Control State and Scope]]
-4. [[Knowledge Base Standards/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]]
-5. [[Knowledge Base Standards/00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
+1. [[kernel/00 Standards Overview|Standards Overview]]
+2. [[kernel/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]
+3. [[kernel/00 Standards Control/04 Control State and Scope|Control State and Scope]]
+4. [[kernel/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]]
+5. [[kernel/00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
 
 随后从 [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]] 选择任务专属 Read Set。
 
@@ -38,4 +38,4 @@ Core Bootstrap 单独不能授权开始以下工作：
 ## Related
 
 - [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]
-- [[Knowledge Base Standards/00 Standards Overview|Standards Overview]]
+- [[kernel/00 Standards Overview|Standards Overview]]

@@ -28,7 +28,7 @@
 
 ## Related Standards
 
-- [[Knowledge Base Standards/00 Standards Overview|00 Standards Overview]]
+- [[kernel/00 Standards Overview|00 Standards Overview]]
 - [[kernel/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]]
 - [[kernel/05 Terminology Standard|05 Terminology Standard]]
 - [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]]

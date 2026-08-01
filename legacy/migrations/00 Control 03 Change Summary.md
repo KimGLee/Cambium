@@ -1,75 +1,3 @@
-## Navigation
-
-- Parent: [[Knowledge Base Standards/00 Standards Overview|00 Standards Overview]].
-- Previous: [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]].
-- Next: [[Knowledge Base Standards/00 Standards Control/04 Control State and Scope|Control State and Scope]].
-
-## Standards Control
-
-| Field | Value |
-|---|---|
-| Standards version | `2.3` |
-| Status | `approved` |
-| Effective date | `2026-07-30` |
-| Change authority | User's explicit governance instruction |
-| Content-task behavior | Frozen; read-only control plane |
-
-Standards 生命周期为：
-
-```text
-draft
- -> approved
- -> superseded
-```
-
-修改规则时必须：
-
-1. 明确这是 governance change，而不是普通内容编辑。
-2. 记录受影响 Standards 和原因。
-3. 提升 `standards_version`。
-4. 更新 `00` 的 routing 和 change summary。
-5. 按修订记录的 changed-predicate 清单执行 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] 的 Active-task Adoption；清单为空即 no-op，一行 adoption receipt 即完成。
-
-用户批准 Standards 不等于批准对全部旧页面立即批量迁移 Frontmatter。迁移范围仍需进入具体 task contract。
-
-## Revision Write-back Checklist
-
-任何 Standards 修订在关闭前，必须核对并同步以下快照位置；修订未完成回写不得关闭。无 predicate 变化的修订走 no-op 轻量路径：仅核对实际被改文件涉及的位置，字节 diff＋一行 adoption receipt 即完成：
-
-- [[Knowledge Base Standards/00 Standards Control/04 Control State and Scope|Control State and Scope]] 的状态表。
-- [[Knowledge Base Standards/00 Standards Overview|00 Standards Overview]] 的 Protected Defaults 与 Task Router。
-- 相关 domain MOC 的 Module Index。
-- 相关 Read Set 的 target 列表。
-- [[Knowledge Base Standards/00 Standards Control/05 Core Principles and Standards Map#Cross-domain Rule Registry|Cross-domain Rule Registry]]。
-- 重新生成受影响的 Runtime Cards（[[Knowledge Base Standards/Cards/00 Card Index|Card Index]]；Cards 为编译产物，禁止手改）。受影响 = `source_files` 含被改文件的卡。用 `Tools/stamp_cards.py` 盖戳（`--set-version` 同步含 Card Index 的版本戳）；修订关闭前必须运行 `stamp_cards.py --check` 通过。
-- 重新生成 `Tools/vocab.yaml`（编译产物，词表 owner 为各标准原文）。
-
-执行端为 gate 或审计自建的持久工具，必须经轻量 governance 登记纳入 Tools/ 管理并指定 owner；存量自建工具（如执行侧已有的审计脚本）在下一次 governance 时补登记，登记前其输出仅作参考、不作为 gate 唯一证据。
-
-## Control Accretion Rule
-
-任何新增检查、冻结、失效或对账义务的修订，Amendment 必须回答三问：
-
-1. 该风险现有哪一层负责？为何不足？
-2. 新义务的 canonical gate 归属哪一层？（不得多层并存）
-3. 被替代的旧层是否删除？不删除的理由？
-
-三问不全，修订不得通过。控制义务与内容规则一样纳入 Registry 管理。
-
-## Leaf Module Size Budget
-
-- Leaf module 目标 ≤5KB，软上限 6KB。
-- 超限时优先削减示例；仍超限再考虑拆分，拆分走本页 governance change 流程。
-- MOC 与 Read Set 不设此限，但同样从简。
-- 示例每个规则点默认 good / bad 各一。
-- 已知例外：10/05（15.0KB）、12/07（14.2KB）与 12/06（7.6KB）——v2.0 控制面收敛使 12/06、12/07 承接闸门词与终审收敛的 canonical 定义；规范密度过高暂缓拆分，登记为待治理项；三文件此后不得继续增长（v2.3 收尾修订微调后按当前值冻结）。
-- 控制面例外（v2.3 登记）：00/02、00/05、00/03、02/02、06/03、12/01、12/05 超软上限，为控制面与引擎规则密度所致，登记为待治理项，暂缓拆分。
-
-## Execution-Acceptance Ownership Convention
-
-- `02 Build Execution` 域持有执行原则与触发时点；`12 Quality Assurance` 域持有验收清单。
-- 同一事项两侧不得各自全文持有；执行侧通过 Wiki Link 引用验收侧的细目，不复制清单内容。
-
 ## Change Summary
 
 | Version | Date | Change |
@@ -90,3 +18,8 @@ draft
 | `1.2` | `2026-07-17` | 将 `00–12` 全部 Standards 无删减拆分为 folder-based modules；增加 domain MOC、module-level Read Sets、旧章节迁移映射、兼容入口和 loaded module tracking |
 | `1.1` | `2026-07-17` | 增加 Mid-task Guidance、Amendment Record、safe switching、contract / scope / queue / batch versioning、用户 hypothesis 与 source lead 证据边界，以及 Guidance Reconciliation Gate |
 | `1.0` | `2026-07-17` | 分离 task、authoring、interview、evidence 与 learning 状态；增加时间语义、Coverage Ledger、Required Queue、Process / Flow、风险渲染、Migration Audit、Terminal Audit 和 Terminal Proof |
+## Conservation Metadata
+
+- Status: `removed-from-active`
+- Source: `00 Standards Control/03 Standards Governance.md#Change Summary`
+- Evidence: `docs/removed_instance_log.md`

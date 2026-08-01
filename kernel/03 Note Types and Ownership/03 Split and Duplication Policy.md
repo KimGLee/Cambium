@@ -51,7 +51,7 @@
 - 正文顶部加入 tombstone 块：退役原因、退役日期、`superseded_by` 链接指向接替页；没有接替页时说明原因。
 - 从 coverage 的 Required 集合移除。
 - 退役 gate 硬条件：先运行 `Tools/check_links.py` 找出全部入链，并逐条改指到接替页，之后才能退役。
-- 高入度页面退役的入链改指工作，按所选 profile 未覆写时的内核默认值“改指数 ÷ 6”折算为页数计入维护轮预算（规则 owner：[[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|00/02]] Maintenance Run Envelope，此处引用）；profile 可以显式覆写该折算参数。
+- 高入度页面退役的入链改指工作，按所选 profile 未覆写时的内核默认值“改指数 ÷ 6”折算为页数计入维护轮预算（规则 owner：[[kernel/00 Standards Control/02 Task Routing and Pre-execution|00/02]] Maintenance Run Envelope，此处引用）；profile 可以显式覆写该折算参数。
 
 ## Merge
 

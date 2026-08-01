@@ -11,3 +11,10 @@
 - `stopper` → `Human authority`：在高风险、歧义或策略要求下批准、拒绝、修改或接管。
 
 这些是 profile 命名绑定，不要求四个不同主体；同一主体可以承担多个角色。
+
+## Knowledge Host Role Bindings
+
+- `knowledge-host` → `Obsidian vault`。
+- `knowledge-host UI` → `Obsidian UI`。
+
+这些绑定只提供 agent-atlas 的部署取值；kernel 通过稳定 role 引用 host，不直接依赖具体产品名。

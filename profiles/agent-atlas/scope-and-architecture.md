@@ -18,6 +18,21 @@
 - 是否影响生产系统设计和故障判断。
 - 是否能连接多个已有模块。
 
+## Registered Scope
+
+- `Modeling Fundamentals`
+- `Machine Learning Knowledge`
+- `Deep Learning Knowledge`
+- `LLM Knowledge`
+- `Agent Knowledge`
+- `AI Systems Engineering`
+- `Knowledge Sources`
+- `Research Synthesis`
+- `Industry Cases`
+- `Interview Preparation`
+- `Knowledge Base Management`
+- 后续新增的共享基础、评估、安全和治理体系
+
 ## Excluded Scope
 
 本 profile 当前不声明额外排除项。

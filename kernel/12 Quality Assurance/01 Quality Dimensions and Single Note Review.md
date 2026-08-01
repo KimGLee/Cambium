@@ -27,7 +27,7 @@
 
 ## Single Note Review
 
-适用范围：本节全量清单适用于 L 档页面；M 档页面按 `Runtime Card Provider` 提供的对应 Gate 清单验收并并入 batch gate；S 档页面仅做确定性脚本检查，批次关闭时抽样复核（分档规则见 [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|分档规则]]）。
+适用范围：本节全量清单适用于 L 档页面；M 档页面按 `Runtime Card Provider` 提供的对应 Gate 清单验收并并入 batch gate；S 档页面仅做确定性脚本检查，批次关闭时抽样复核（分档规则见 [[kernel/00 Standards Control/02 Task Routing and Pre-execution|分档规则]]）。
 
 ### Structure
 

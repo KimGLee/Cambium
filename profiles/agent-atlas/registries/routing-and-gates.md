@@ -8,6 +8,14 @@
 
 - Kernel role: `Expression Layer Read Set`
 - Agent Atlas binding: [[profiles/agent-atlas/interview/05 Interview Content Read Set|Interview Content Read Set]]
+- Activation: 创建、迁移或审查 Interview content。
+
+## Effort Tier Bindings
+
+- `System Deep Dive`：L 档。
+- `Interview Card` 集：L 档。
+
+这些是 agent-atlas 的额外 L 档触发项；kernel 的 S / M / L 轴、争议上调、配额挂钩和验收仪式保持不变。
 
 ## Expression Layer Quality Gates
 

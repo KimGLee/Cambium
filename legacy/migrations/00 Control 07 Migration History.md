@@ -8,9 +8,9 @@ v1.2 之后的模块与结构演进汇总如下：
 
 | Version | Extension |
 |---|---|
-| `1.3` | 渲染验证 deterministic-first 重写（[[kernel/12 Quality Assurance/02 Rendering Verification\|Rendering Verification]]） |
-| `1.4` | 新增 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation\|Audit Evidence Reuse and Invalidation]] |
-| `1.5` | 新增 [[profiles/agent-atlas/language-contract\|Language Contract]] 与 [[profiles/agent-atlas/language-contract#Display Language Contract（显示语言契约）\|Naming Context and Linking]] 的 Display Language Contract 节 |
+| `1.3` | 渲染验证 deterministic-first 重写（[[Knowledge Base Standards/12 Quality Assurance/02 Rendering Verification\|Rendering Verification]]） |
+| `1.4` | 新增 [[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation\|Audit Evidence Reuse and Invalidation]] |
+| `1.5` | 新增 [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language\|Chinese-first Technical Language]] 与 [[Knowledge Base Standards/05 Terminology/03 Naming Context and Linking\|Naming Context and Linking]] 的 Display Language Contract 节 |
 | `1.6` | 一致性修复（去重、Cross-domain Rule Registry、路由补全） |
 | `1.7` | 新增编译产物层（Runtime Cards）与确定性检查工具层（Tools/） |
 | `1.8` | 瘦身与增量更新引擎，见 [[Knowledge Base Standards/00 Standards Control/03 Standards Governance|00/03]] Change Summary |
@@ -22,18 +22,8 @@ v1.2 之后的模块与结构演进汇总如下：
 
 补丁版本（1.8.1、1.8.2）不涉及模块与结构变化，记录见 [[Knowledge Base Standards/00 Standards Control/03 Standards Governance|00/03]] Change Summary。
 
-## Conservation Rules
+## Conservation Metadata
 
-- 每个原始 H2 block 必须在一个且仅一个 leaf module 中拥有 owner。
-- 新增的 Navigation、MOC 和 Read Set 不替代原规则正文。
-- 修改过时 routing 时必须保留 superseded 原文和版本状态。
-- apparent duplicate 在迁移中不删除；去重需要单独 governance authorization。
-- 全库 heading links 必须改到 canonical leaf module。
-- Path-only links可以继续指向 stable domain MOC。
-- 完成前必须重新执行内容守恒、Wiki link、heading、table、fence 和 routing validation。
-
-## Related
-
-- [[Knowledge Base Standards/00 Standards Overview|Standards Overview]]
-- [[kernel/Read Sets/09 Standards Governance Read Set|Standards Governance Read Set]]
-- [[Knowledge Base Standards/00 Standards Control/03 Standards Governance|Standards Governance]]
+- Status: `removed-from-active`
+- Source: `00 Standards Control/07 v1.1 to v1.2 Migration Map.md#Purpose`; `00 Standards Control/07 v1.1 to v1.2 Migration Map.md#Post-v1.2 Extensions`
+- Evidence: `docs/removed_instance_log.md`

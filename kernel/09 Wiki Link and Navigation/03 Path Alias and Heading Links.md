@@ -7,7 +7,7 @@
 ## Path And Alias Rules
 
 - 同名文件存在歧义时必须使用完整 vault-relative path。
-- 显示文本使用 alias，例如 `[[Knowledge Base Standards/00 Standards Overview|Standards Overview]]`。
+- 显示文本使用 alias，例如 `[[kernel/00 Standards Overview|Standards Overview]]`。
 - Markdown 表格中的 wiki alias pipe 必须转义：`\|`。
 - 文件移动后必须更新显式 path links。
 - 不创建只有 alias 不明确 target 的链接。

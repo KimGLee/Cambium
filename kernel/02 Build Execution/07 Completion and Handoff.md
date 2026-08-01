@@ -70,7 +70,7 @@ Authoring completion 与 evidence closure 分离的 canonical 规则（含四条
 
 ## Related
 
-- [[Knowledge Base Standards/00 Standards Overview|Standards Overview]]
+- [[kernel/00 Standards Overview|Standards Overview]]
 - [[kernel/08 Metadata and Status Standard|Metadata and Status Standard]]
 - [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]]
 - [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]

@@ -7,12 +7,12 @@
 先读取：
 
 - [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]
-- [[Knowledge Base Standards/00 Standards Control/01 Operating Role and Reading Protocol|Operating Role and Reading Protocol]]
-- [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]
-- [[Knowledge Base Standards/00 Standards Control/03 Standards Governance|Standards Governance]]
-- [[Knowledge Base Standards/00 Standards Control/04 Control State and Scope|Control State and Scope]]
-- [[Knowledge Base Standards/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]]
-- [[Knowledge Base Standards/00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
+- [[kernel/00 Standards Control/01 Operating Role and Reading Protocol|Operating Role and Reading Protocol]]
+- [[kernel/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]
+- [[kernel/00 Standards Control/03 Standards Governance|Standards Governance]]
+- [[kernel/00 Standards Control/04 Control State and Scope|Control State and Scope]]
+- [[kernel/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]]
+- [[kernel/00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
 - [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]]（修订流程涉及 Amendment Log）
 - [[kernel/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - 所选 profile 的 `Language Contract`。
@@ -39,4 +39,4 @@
 ## Related
 
 - [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]
-- [[Knowledge Base Standards/00 Standards Overview|Standards Overview]]
+- [[kernel/00 Standards Overview|Standards Overview]]

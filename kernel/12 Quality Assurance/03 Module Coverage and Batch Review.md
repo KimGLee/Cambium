@@ -42,7 +42,7 @@ Module Review 先消费已关闭 batches 的有效 AuditReceipts，再审查跨 
 
 并发执行时，批次正文只能链接到已合并内容或本批清单内的页面；指向在途批次页面的链接留待双方批次合并后补充：作者把缺链记入本批 delta 的 `open_gaps_added`（type: link），由维护轮按预算消化；补链位置遵循 [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]]（Related 不是唯一引用位置）。
 
-Gate 合并规则（分档判定见 [[Knowledge Base Standards/00 Standards Control/02 Task Routing and Pre-execution|00/02]] Effort Tiering）：
+Gate 合并规则（分档判定见 [[kernel/00 Standards Control/02 Task Routing and Pre-execution|00/02]] Effort Tiering）：
 
 - S/M 档页面的 note 级验收并入 Batch Review 执行，不单独开 note gate。
 - S 档页面按抽样复核：默认抽取 `max(2, 20%)` 的本批 S 档页面（不足 2 个则全查）；抽样发现问题时按 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] 扩大范围。

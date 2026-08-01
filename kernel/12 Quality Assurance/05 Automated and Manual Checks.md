@@ -26,7 +26,7 @@
 - Task Contract 中 selected runtime guidance、Read Sets、loaded set 和 Standards version 的可解析性检查。
 - Mermaid compile、asset path、deterministic rendering evidence 和 `rendering_mode` 枚举检查。
 - Level 2–4 记录必须包含 visual trigger、unresolved question、target 和 result；没有 trigger 的 batch 不要求 visual evidence。
-- 跨文件重复块检测——用 `Tools/duplicate_check.py` 跑段落级相似度扫描，相似段落对报为候选，人工判定是否违反 [[Knowledge Base Standards/00 Standards Control/05 Core Principles and Standards Map#Cross-domain Rule Registry|Cross-domain Rule Registry]]。仅维护轮与 governance 任务运行；批次层面仅保留封闭清单中的 basename 级检测。
+- 跨文件重复块检测——用 `Tools/duplicate_check.py` 跑段落级相似度扫描，相似段落对报为候选，人工判定是否违反 [[kernel/00 Standards Control/05 Core Principles and Standards Map#Cross-domain Rule Registry|Cross-domain Rule Registry]]。仅维护轮与 governance 任务运行；批次层面仅保留封闭清单中的 basename 级检测。
 - Terminal Proof 完整性与零值条件校验（canonical 定义见 [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report#Terminal Audit|Terminal Audit]]）——已实现为 `Tools/check_proof.py`，可与 Coverage Ledger 交叉对账。
 - 知识时效检查——`Tools/check_freshness.py` 按 volatility 与 last_verified 计算 review_by，输出过期清单（按 priority 排序），作为维护轮候选输入。维护轮专属，不在批次检查中运行。规则 owner 见 [[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]]。
 
