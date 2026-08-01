@@ -6,8 +6,17 @@ Deterministically composes the selected-profile vocabulary artifact
 
   --base        kernel vocabulary base
                 (default: "kernel/08 Metadata and Status/vocabulary-base.yaml")
-  --extensions  selected profile's vocabulary extensions
-                (default: "profiles/agent-atlas/vocabulary-extensions.yaml")
+  --extensions  selected profile's vocabulary extensions. No default: the
+                kernel does not privilege any profile, so there is no
+                profile this tool may silently compose against. When the
+                flag is omitted, the path is read from the `extensions:`
+                line in the existing --output header, which is how an
+                already-generated artifact declares its own provenance.
+                That makes the governance invocation
+                `compose_vocab.py --check` argument-free while keeping a
+                specific profile id out of this script. If --output does
+                not exist or carries no such header, the run fails and
+                lists the profiles it can find.
 
 Merge policy (matches docs/vocab_build_receipt.json):
   - root keys are emitted in the fixed base-driven order;
@@ -46,11 +55,25 @@ sys.path.insert(0, TOOLS_DIR)
 
 import kblib  # noqa: E402
 
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 
 DEFAULT_BASE = "kernel/08 Metadata and Status/vocabulary-base.yaml"
-DEFAULT_EXTENSIONS = "profiles/agent-atlas/vocabulary-extensions.yaml"
 DEFAULT_OUTPUT = "Tools/vocab.yaml"
+
+# There is deliberately no DEFAULT_EXTENSIONS. Naming one profile here would
+# make that profile the tool's implicit answer to "which vocabulary is the
+# real one", which is a decision the kernel does not make and this script
+# must not make on its behalf. It also breaks silently rather than loudly:
+# in a clone that does not carry the named profile, a hardcoded default
+# resolves to a missing file, and in a clone that carries a different
+# profile, it composes the wrong one without saying so.
+EXTENSIONS_BASENAME = "vocabulary-extensions.yaml"
+PROFILES_DIR = "profiles"
+# Directory names under profiles/ that are not selectable profiles:
+# `_template` is an unfilled skeleton whose value lists are empty by design,
+# so composing against it would yield a base-only artifact that looks valid.
+NON_PROFILE_DIRS = {"_template"}
+HEADER_EXTENSIONS_RE = re.compile(r"^#\s*extensions:\s*(.+?)\s*\(sha256:")
 
 # Fixed root key order of the composed artifact (base-driven; profile-derived
 # keys are interleaved at their canonical positions). Keys absent from the
@@ -79,6 +102,77 @@ def resolve_path(path):
     if os.path.exists(candidate):
         return candidate
     return path
+
+
+def discover_profiles():
+    """Repo-relative extension files, one per profile that carries one.
+
+    Looks one level under profiles/ and one level under any directory there
+    that holds no extensions file of its own, which is how the grouping
+    directory profiles/examples/ is picked up without being special-cased.
+    """
+    root = resolve_path(PROFILES_DIR)
+    found = []
+    if not os.path.isdir(root):
+        return found
+
+    def scan(rel_dir):
+        abs_dir = os.path.join(REPO_ROOT, rel_dir)
+        if not os.path.isdir(abs_dir):
+            return
+        for name in sorted(os.listdir(abs_dir)):
+            if name in NON_PROFILE_DIRS or name.startswith("."):
+                continue
+            child = os.path.join(abs_dir, name)
+            if not os.path.isdir(child):
+                continue
+            rel_child = "%s/%s" % (rel_dir, name)
+            if os.path.isfile(os.path.join(child, EXTENSIONS_BASENAME)):
+                found.append("%s/%s" % (rel_child, EXTENSIONS_BASENAME))
+            elif rel_dir == PROFILES_DIR:
+                scan(rel_child)
+
+    scan(PROFILES_DIR)
+    return found
+
+
+def extensions_from_output_header(output_path):
+    """The extensions path an existing artifact records in its own header."""
+    if not os.path.isfile(output_path):
+        return None
+    try:
+        with open(output_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                if not line.startswith("#"):
+                    break
+                match = HEADER_EXTENSIONS_RE.match(line)
+                if match:
+                    return match.group(1)
+    except OSError:
+        return None
+    return None
+
+
+def report_missing_extensions(output_arg):
+    """Explain that --extensions is required and what the choices are."""
+    print("compose_vocab: --extensions is required.")
+    print("  This tool composes the vocabulary of one selected profile and "
+          "has no default profile:")
+    print("  choosing one here would silently make it the vocabulary of "
+          "every clone of this repository.")
+    print("  It could not fall back to the profile recorded in %s, because "
+          "that file does not exist" % output_arg)
+    print("  or carries no 'extensions:' header line.")
+    candidates = discover_profiles()
+    if candidates:
+        print("  Profiles found in this repository:")
+        for item in candidates:
+            print("    --extensions %s" % item)
+    else:
+        print("  No profile in this repository carries a %s."
+              % EXTENSIONS_BASENAME)
+        print("  Copy profiles/_template/ to profiles/<your-profile-id>/ "
+              "and fill it in first.")
 
 
 def sha256_file(path):
@@ -243,7 +337,11 @@ def build_header(base_arg, ext_arg, base_sha, ext_sha):
         "#   field, kernel values come first and profile additions are",
         "#   appended in source order, deduplicated; extensions must not",
         "#   remove, rename, or redefine base values.",
-        "# regenerate with: python3 Tools/compose_vocab.py",
+        "# regenerate with: python3 Tools/compose_vocab.py --extensions %s"
+        % ext_arg,
+        "# The extensions path above is also what an argument-free run reads "
+        "back;",
+        "# this artifact is the record of which profile it was composed from.",
         "",
     ]
 
@@ -289,7 +387,14 @@ def main(argv=None):
         "from the kernel base and the selected profile's extensions."
     )
     parser.add_argument("--base", default=DEFAULT_BASE)
-    parser.add_argument("--extensions", default=DEFAULT_EXTENSIONS)
+    parser.add_argument(
+        "--extensions",
+        default=None,
+        help="the selected profile's %s. No default profile exists; when "
+        "omitted, the path recorded in the --output header is used, and "
+        "the run fails with the available choices if there is none"
+        % EXTENSIONS_BASENAME,
+    )
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
     parser.add_argument(
         "--check",
@@ -299,11 +404,33 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
+    inferred_extensions = False
+    if args.extensions is None:
+        recorded = extensions_from_output_header(resolve_path(args.output))
+        if recorded is None:
+            report_missing_extensions(args.output)
+            return 1
+        args.extensions = recorded
+        inferred_extensions = True
+        print("compose_vocab: --extensions not given; using the profile "
+              "recorded in %s: %s" % (args.output, recorded))
+
     base_path = resolve_path(args.base)
     ext_path = resolve_path(args.extensions)
     for label, path in (("base", base_path), ("extensions", ext_path)):
         if not os.path.exists(path):
             print("compose_vocab: %s input not found: %s" % (label, path))
+            if label == "extensions" and inferred_extensions:
+                # The path was not asked for on the command line; it came from
+                # the artifact's own header and has since gone stale, which is
+                # what happens when a profile is renamed or removed. Say so,
+                # and name the profiles that do exist now.
+                print("  That path was read from the header of %s, not given "
+                      "on the command line." % args.output)
+                print("  Pass --extensions explicitly to choose a profile and "
+                      "rewrite that header.")
+                for item in discover_profiles():
+                    print("    --extensions %s" % item)
             return 1
 
     try:

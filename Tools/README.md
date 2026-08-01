@@ -19,7 +19,7 @@ scan); check_freshness/duplicate_check are maintenance tooling.
 | `check_moc.py` | Domain MOC Module Index vs. actual H2 headings consistency candidates (12/05; **candidates only**); recursively scans for Module Index sections and is fence-aware (fenced code blocks ignored); maintenance runs and governance | `python3 Tools/check_moc.py . --exclude legacy` |
 | `check_proof.py` | Terminal Proof consistency check (12/06): field completeness, zero conditions, reconciliation/QA/review results must read `passed`, evidence fields must not declare failure; `--root` additionally requires path-valued fields to resolve; optional Coverage Ledger cross-check. Verifies the proof's consistency, not the work itself | `python3 Tools/check_proof.py proof.yaml --root . --ledger coverage_ledger.yaml` |
 | `apply_delta.py` | Deterministic application of a coverage delta during the serial merge (02/05 Concurrent Batches); merges `gate_receipts` in block-list form, warns on non-core scalar keys, re-parses the merged output before writing and aborts if it no longer parses; atomic write with automatic backup; gap/watermark entries are printed as integrator todos | `python3 Tools/apply_delta.py ledger.yaml delta.yaml --apply` |
-| `compose_vocab.py` | Persistent vocabulary compiler: composes `vocab.yaml` from the kernel base and the selected profile's extensions; `--check` recomputes and compares | `python3 Tools/compose_vocab.py --check` |
+| `compose_vocab.py` | Persistent vocabulary compiler: composes `vocab.yaml` from the kernel base and the selected profile's extensions. There is no default profile: `--extensions` names one, and when the flag is omitted the path is read back from the existing `--output` header, so an argument-free run recomposes whichever profile the committed artifact was built from, and a run with no artifact to read from fails and lists the profiles it can find. `--check` recomputes and compares at the value level, ignoring the header comments | `python3 Tools/compose_vocab.py --check` |
 | `check_profile.py` | Profile manifest completeness and unfilled-template check: derives the slot list from `profiles/README.md`, verifies every slot is bound and resolves, verifies each overridable execution default is registered and that no constitutional constant is, and **fails while the profile is still an unfilled `profiles/_template/` copy** (three independent conditions: a remaining `TODO(profile)` marker, a reserved placeholder `profile_id`, a surviving `Template Usage` section). Checks structure, never answer quality | `python3 Tools/check_profile.py profiles/<profile-id> --receipts Tools/receipts/profile.jsonl` |
 | `stamp_cards.py` | Runtime Cards source_hash stamping and verification (00/03 Write-back Checklist); `--cards-dir` defaults to `Cards` and a missing directory exits 0; `--check` verifies only; `--set-version` stamps a uniform version incl. the Card Index | `python3 Tools/stamp_cards.py . --check` |
 | `check_language.py` | Language-policy candidate detection for the agent-atlas profile (10/05; **candidates only**); exemptions come only from `--exempt` -- there is no built-in path exemption | `python3 Tools/check_language.py . --scope profiles --exempt kernel --receipts Tools/receipts/lang.jsonl` |
@@ -140,12 +140,22 @@ tags, multi-document streams, tab indentation.
 ## Generated artifacts
 
 `vocab.yaml` is a **generated artifact**, produced by `compose_vocab.py` from
-`kernel/08 Metadata and Status/vocabulary-base.yaml` plus
-`profiles/agent-atlas/vocabulary-extensions.yaml` (the file header records
-both input hashes). The same applies to interview cards and every other
-machine-readable object derived from the standards: the authoritative
-definitions live in the owner standard files. After revising an owner
-standard, regenerate the artifact (`python3 Tools/compose_vocab.py`); never
-edit only the artifact without the owner, and never cite an artifact as
-standards text. `compose_vocab.py --check` (governance) verifies that the
-committed artifact still matches its inputs.
+`kernel/08 Metadata and Status/vocabulary-base.yaml` plus the
+`vocabulary-extensions.yaml` of one selected profile. Which profile that is,
+is recorded in the artifact's own header, together with the sha256 of both
+inputs. The tool carries no default profile of its own; an argument-free run
+reads the profile back out of that header, which is why the governance
+invocation needs no arguments and still names no profile in its source.
+
+In this repository the committed `vocab.yaml` is composed against
+`profiles/agent-atlas/vocabulary-extensions.yaml`. That is a fact about this
+artifact, not a setting in the tool: a clone that carries a different profile
+regenerates against its own, and running `compose_vocab.py` with no artifact
+to read from fails and lists the profiles present rather than picking one.
+
+The same applies to interview cards and every other machine-readable object
+derived from the standards: the authoritative definitions live in the owner
+standard files. After revising an owner standard, regenerate the artifact
+(`python3 Tools/compose_vocab.py`); never edit only the artifact without the
+owner, and never cite an artifact as standards text. `compose_vocab.py --check`
+(governance) verifies that the committed artifact still matches its inputs.

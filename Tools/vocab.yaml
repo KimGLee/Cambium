@@ -6,7 +6,9 @@
 #   field, kernel values come first and profile additions are
 #   appended in source order, deduplicated; extensions must not
 #   remove, rename, or redefine base values.
-# regenerate with: python3 Tools/compose_vocab.py
+# regenerate with: python3 Tools/compose_vocab.py --extensions profiles/agent-atlas/vocabulary-extensions.yaml
+# The extensions path above is also what an argument-free run reads back;
+# this artifact is the record of which profile it was composed from.
 
 schema_version: 1
 profile_id: "agent-atlas"
