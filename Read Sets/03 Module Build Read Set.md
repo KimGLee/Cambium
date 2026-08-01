@@ -22,8 +22,8 @@
 - [[kernel/08 Metadata and Status/03 Status Axes|Status Axes]]
 - [[kernel/09 Wiki Link and Navigation/02 Structural and Bidirectional Links|Structural and Bidirectional Links]]
 - [[kernel/09 Wiki Link and Navigation/04 MOC Related and Link Creation|MOC Related and Link Creation]]
-- [[Knowledge Base Standards/10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]
-- [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|Chinese-first Technical Language]]
+- [[kernel/10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]
+- [[profiles/agent-atlas/language-contract|Language Contract]]
 
 ## Triggered
 

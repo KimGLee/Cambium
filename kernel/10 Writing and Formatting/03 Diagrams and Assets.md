@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[Knowledge Base Standards/10 Writing and Formatting Standard|10 Writing and Formatting Standard]].
-- Previous: [[Knowledge Base Standards/10 Writing and Formatting/02 Mathematics Tables and Code|Mathematics Tables and Code]].
-- Next: [[Knowledge Base Standards/10 Writing and Formatting/04 Rendering and Formatting Review|Rendering and Formatting Review]].
+- Parent: [[kernel/10 Writing and Formatting Standard|10 Writing and Formatting Standard]].
+- Previous: [[kernel/10 Writing and Formatting/02 Mathematics Tables and Code|Mathematics Tables and Code]].
+- Next: [[kernel/10 Writing and Formatting/04 Rendering and Formatting Review|Rendering and Formatting Review]].
 
 ## Diagrams
 
@@ -40,18 +40,16 @@ Overview Architecture
 ### Diagram Semantics
 
 - 节点名称描述真实对象、状态或动作，不使用含义模糊的 `Process`、`Handle`、`Do Work`。
-- Reader-facing label 的语言和双语顺序遵循
-  [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language#Diagrams Schemas And Code（图表结构与代码）|Chinese-first Technical Language]]；
-  保留英文时写成 `English（中文）`。
+- Reader-facing label 的语言、identity 保留值和显示顺序由所选 profile 的 `Language Contract` 定义；本页只保留 diagram semantics 和结构完整性。
 - 边表示明确的调用、数据、控制、状态 transition 或 authority transfer；需要时使用 label。
-- Model proposal、Harness validation / authorization 和 external execution 使用不同节点或 lane。
+- proposer output、gatekeeper validation / authorization 和 external execution 使用不同节点或 lane。
 - Happy path、retry、timeout、cancel、unknown outcome 和 terminal verification 不应混成同一条无条件边。
 - 图中的顺序、方向和正文描述必须一致。
 
 ## Assets
 
 - 图片放在所属模块的 `Assets` 文件夹。
-- 文件名使用英语并表达内容。
+- 图片文件名使用由所选 profile 的 `Language Contract` 注册的 canonical identity，并表达内容。
 - 不使用纯装饰图片。
 - 所有图片先验证路径、格式、尺寸和引用；新增或修改 diagram、image 或 embed 时按 [[Knowledge Base Standards/12 Quality Assurance/02 Rendering Verification#Rendering Verification Levels|Rendering Verification Levels]] 执行 Level 0 / Level 1。
 - 修改图后先用 compiler、结构提取和尺寸数据验证节点、边、label、顺序和完整性。只有确定性证据无法判断具体的可读性、overflow、occlusion 或 host-specific display 时，才升级到最小范围 visual exception。

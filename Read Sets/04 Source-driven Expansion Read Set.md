@@ -15,7 +15,7 @@
 - [[kernel/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]]
 - [[kernel/08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]]
 - [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
-- [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|Chinese-first Technical Language]]，用于区分 source identity 原文与中文 claim 转述。
+- [[profiles/agent-atlas/language-contract|Language Contract]]，用于区分 source identity 原文与中文 claim 转述。
 
 ## Triggered
 

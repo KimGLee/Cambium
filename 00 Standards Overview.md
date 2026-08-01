@@ -71,7 +71,7 @@ Open Standards Overview
 | `07` | [[kernel/07 Sources and Accuracy Standard\|Sources and Accuracy]] | source authority、evidence role、verification、provenance 和 uncertainty |
 | `08` | [[kernel/08 Metadata and Status Standard\|Metadata and Status]] | frontmatter、vocabulary、status axes、evidence 和 migration metadata |
 | `09` | [[kernel/09 Wiki Link and Navigation Standard\|Wiki Link and Navigation]] | semantic links、MOC、path、alias、heading 和 graph verification |
-| `10` | [[Knowledge Base Standards/10 Writing and Formatting Standard\|Writing and Formatting]] | language、math、tables、code、diagrams、assets 和 rendering |
+| `10` | [[kernel/10 Writing and Formatting Standard\|Writing and Formatting]] | language、math、tables、code、diagrams、assets 和 rendering |
 | `11` | [[Knowledge Base Standards/11 Interview Content Standard\|Interview Content]] | Interview Cards、answer levels、bilingual、roadmap 和 migration |
 | `12` | [[Knowledge Base Standards/12 Quality Assurance Standard\|Quality Assurance]] | note、module、batch、source、interview、rendering 和 terminal gates |
 

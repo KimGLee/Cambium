@@ -44,7 +44,7 @@
 - 至少有适合该 note type 的例子。
 - Failure Mode 包含 trigger、symptom、cause、detection、mitigation。
 - 术语解释没有不必要地挤占当前主题。
-- 语言维度按 [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|10/05]] 的 Acceptance And Audit 验收。高频错误提示：双语标题与首次术语必须写成 `English（中文）`，不得写反向 `中文（English）`；正文用完整中文句子承担解释，不用英文关键词堆叠代替推理。
+- 语言维度按 [[profiles/agent-atlas/language-contract#Acceptance And Audit（验收与审计）|Language Contract / Acceptance And Audit]] 验收。高频错误提示：双语标题与首次术语必须写成 `English（中文）`，不得写反向 `中文（English）`；正文用完整中文句子承担解释，不用英文关键词堆叠代替推理。
 - 基础知识页能够独立解释其学科机制，没有被压缩成 Agent 使用说明。
 - System 页面覆盖 execution、state、coordination、evidence 和 recovery paths。
 

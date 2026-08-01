@@ -84,7 +84,7 @@ tier 由 priority 派生，priority 通胀会使分档失效。全库配额：
 - 知识库以 Agent/Harness 为组织主线，但完整保留 Modeling、ML、DL、LLM、Retrieval 和 RAG 基础。
 - `Python Algorithm Agent Training` 明确排除，除非用户单独授权。
 - `Knowledge Base Standards` 是受保护的控制面；内容建设任务中冻结，只有用户明确授权的 governance change 才能修改。
-- 文件夹和文件名只使用英语，不添加中文注释；知识正文用中文完成解释，英文标题和首次术语统一写成 `English（中文）`，具体边界读取 [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|Chinese-first Technical Language]]。
+- 文件夹和文件名只使用英语，不添加中文注释；知识正文用中文完成解释，英文标题和首次术语统一写成 `English（中文）`，具体边界读取 [[profiles/agent-atlas/language-contract|Language Contract]]。
 - 一个知识对象只有一个 canonical owner；其它页面通过 wiki links 复用。
 - 专有名词的定义、主题机制、系统交互、案例应用和面试表达分层维护。
 - 外部来源不能直接等同于 canonical knowledge，必须经过 source-to-knowledge pipeline。

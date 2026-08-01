@@ -14,8 +14,8 @@
 - [[kernel/08 Metadata and Status/02 Scope Level Depth and Priority|Scope Level Depth and Priority]]
 - [[kernel/08 Metadata and Status/03 Status Axes|Status Axes]]
 - [[kernel/09 Wiki Link and Navigation/01 Link Semantics and Body Links|Link Semantics and Body Links]]
-- [[Knowledge Base Standards/10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]
-- [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|Chinese-first Technical Language]]
+- [[kernel/10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]
+- [[profiles/agent-atlas/language-contract|Language Contract]]
 
 ## Triggered
 
@@ -24,8 +24,8 @@
 - 官方厂商材料或需要独立核验的结论：读取 [[kernel/07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]]。
 - Benchmark、accuracy、回测或生产指标：读取 [[kernel/07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]]。
 - 时效性 claim、公式、术语冲突或不确定性：读取 [[kernel/07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty|Time Formula Terminology and Uncertainty]]。
-- 数学、表格或代码：读取 [[Knowledge Base Standards/10 Writing and Formatting/02 Mathematics Tables and Code|Mathematics Tables and Code]]。
-- 图、图片或可视化：读取 [[Knowledge Base Standards/10 Writing and Formatting/03 Diagrams and Assets|Diagrams and Assets]]。
+- 数学、表格或代码：读取 [[kernel/10 Writing and Formatting/02 Mathematics Tables and Code|Mathematics Tables and Code]]。
+- 图、图片或可视化：读取 [[kernel/10 Writing and Formatting/03 Diagrams and Assets|Diagrams and Assets]]。
 - 需要深挖案例、失败模式或调试：读取 [[kernel/04 Content Depth/06 Examples Deep Dives and Failure Analysis|Examples Deep Dives and Failure Analysis]]。
 
 ## Gate
@@ -34,7 +34,7 @@
 
 - [[Knowledge Base Standards/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]]
 - [[Knowledge Base Standards/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
-- 格式或可渲染构造发生变化时读取 [[Knowledge Base Standards/10 Writing and Formatting/04 Rendering and Formatting Review|Rendering and Formatting Review]]。
+- 格式或可渲染构造发生变化时读取 [[kernel/10 Writing and Formatting/04 Rendering and Formatting Review|Rendering and Formatting Review]]。
 - 页面包含 diagram、table、formula、image、callout、embed，或存在具体显示问题时读取 [[Knowledge Base Standards/12 Quality Assurance/02 Rendering Verification|Rendering Verification]]。默认执行 Level 0 / Level 1；只有记录了客观 trigger 和 unresolved question 才能进入视觉级别。
 
 ## Related

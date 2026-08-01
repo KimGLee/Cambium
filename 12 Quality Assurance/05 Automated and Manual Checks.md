@@ -16,7 +16,7 @@
 - `unassessed`、没有 next batch 的 Required gaps 和无理由 deferred/excluded 检查。
 - 空文件、极短 core/process/system 文件检查；结果只作为审阅候选，不自动判失败。
 - 缺失 Sources、Related、metadata 和 Interview link 检查——其中 frontmatter 受控词表校验已实现为 `Tools/check_vocab.py`（词表取自 `Tools/vocab.yaml`，编译产物）；其批次关闭的全库运行为封闭清单第 7 项（[[Knowledge Base Standards/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]），本处仅 changed-scope 自查。
-- 语言自动检查按 [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|10/05]] 的 Acceptance And Audit 清单执行；高频项：reader-facing 英文-only heading candidates 与反向 `中文（English）` 双语格式检查、文件夹或 Markdown 文件名中的中文字符检查——语言候选检测已实现为 `Tools/check_language.py`（只产生候选，永不直接判失败）。
+- 语言自动检查按 [[profiles/agent-atlas/language-contract#Acceptance And Audit（验收与审计）|Language Contract / Acceptance And Audit]] 清单执行；高频项：reader-facing 英文-only heading candidates 与反向 `中文（English）` 双语格式检查、文件夹或 Markdown 文件名中的中文字符检查——语言候选检测已实现为 `Tools/check_language.py`（只产生候选，永不直接判失败）。
 - Source Note 缺失 source URL、date、evidence role 或 affected notes 检查。
 - Research Synthesis 缺失 source set、disagreement 或 graph decision 检查。
 - `evidence_maturity` 与 source-driven 页面类型一致性检查。
@@ -29,7 +29,7 @@
 - Terminal Proof 完整性与零值条件校验（canonical 定义见 [[Knowledge Base Standards/12 Quality Assurance/06 Completion Terminal Audit and Final Report|12/06]]）——已实现为 `Tools/check_proof.py`，可与 Coverage Ledger 交叉对账。
 - 知识时效检查——`Tools/check_freshness.py` 按 volatility 与 last_verified 计算 review_by，输出过期清单（按 priority 排序），作为维护轮候选输入。维护轮专属，不在批次检查中运行。规则 owner 见 [[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|08/05]]。
 
-语言相关自动检查只能产生候选项，不能按字符比例自动判失败（定义与例外边界见 [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|10/05]]）。自动检查只能发现结构问题，不能代替内容审阅。
+语言相关自动检查只能产生候选项，不能按字符比例自动判失败（定义与例外边界见 [[profiles/agent-atlas/language-contract|Language Contract]]）。自动检查只能发现结构问题，不能代替内容审阅。
 
 ## Manual Checks
 
@@ -42,7 +42,7 @@
 - 内容是否存在重复或空洞扩写。
 - 页面是否能经受进一步追问。
 - 当前主题是否仍然聚焦。
-- 语言维度按 [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|10/05]] 的 Acceptance And Audit 验收；高频项：中文是否真正承担了解释而非机械翻译、双语标题与首次术语是否统一为 `English（中文）`。
+- 语言维度按 [[profiles/agent-atlas/language-contract#Acceptance And Audit（验收与审计）|Language Contract / Acceptance And Audit]] 验收；高频项：中文是否真正承担了解释而非机械翻译、双语标题与首次术语是否统一为 `English（中文）`。
 - 外部来源是否真正改变或补强知识，而不是只增加摘要文件。
 - Agent/Harness 中心与基础知识完整性是否同时成立。
 - Process / Flow 页面是否包含 decision、branch、loop、state mutation、external effect、failure 和 terminal condition。

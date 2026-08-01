@@ -16,7 +16,7 @@
 - [[Knowledge Base Standards/00 Standards Control/07 v1.1 to v1.2 Migration Map|v1.1 to v1.2 Migration Map]]（结构迁移时的先例与映射）
 - [[Knowledge Base Standards/02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]]（修订流程涉及 Amendment Log）
 - [[kernel/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
-- [[Knowledge Base Standards/10 Writing and Formatting/05 Chinese-first Technical Language|Chinese-first Technical Language]]
+- [[profiles/agent-atlas/language-contract|Language Contract]]
 - [[Knowledge Base Standards/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 
 ## Required Controls
