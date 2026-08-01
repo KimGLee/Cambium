@@ -810,3 +810,8 @@ G07 的 semantic determination 与 baseline 一致：governance 仍是 L 档，�
 - 647 个 hash-bearing destinations 全部按 Stage 3 fence-aware H2 / whole-file 口径直接复算一致；不存在 destination hash 例外或未决 blocker。
 - G07 operational precondition 保持 UNSUPPORTED / UNRUN；它是已确认的 future-governance close condition，不伪装为本期 PASS。
 - 本报告自身尚需以英文单行 commit `Add conservation and golden scenario verification report` 提交；提交前后仍不得推送远程。
+
+
+## 附注：Destination 哈希的时点语义（独立复核补充）
+
+`conservation_ledger.jsonl` 中每条 destination 的 `target_block_sha256` 记录并核验于该行所属批次的 `actual_commit` 时点快照，不是最终 HEAD。在最终快照上直接复算时，约 90 个 destination 块的字节已因后续批次的合法变更而不同，全部属于两类：后续批次对共享 profile 块的追加写入（最后写入者哈希与现状一致），以及跨域链接前缀迁移（`Knowledge Base Standards/` → `kernel/`，内容零变）。独立复核已逐处取证确认无内容丢失。在最终 HEAD 上重验 ledger 哈希者应预期此差异，或按各行 `actual_commit` 快照复算。

@@ -94,7 +94,7 @@ time_contract_result
 - `major`：就地修复＋仅对该对象定向重检＋该对象 receipt supersede；不重新冻结快照、不重跑 Batch-close Closed List。
 - `critical`（影响完成谓词）：task state 返回 `active`；重入终审时复用所有未失效 receipts，Batch-close Closed List 只重跑一次。
 
-终审轮次上限为 2：第 2 轮只确认第 1 轮 findings 已关闭，不引入新审查范围；超出轮次上限时升级用户决策。
+终审轮次上限为 2：第 2 轮只确认第 1 轮 findings 已关闭，不引入新审查范围；超出轮次上限时升级用户决策。该轮次上限为 kernel 固定常数，不属于所选 profile 或 task contract 可覆写的默认值。
 
 终审期间收到的 guidance：仅“改变目标、范围或验收”类使终审失效；修正类按 major 就地处理，不整体作废终审；状态询问类不影响 cutoff。分支细则见 [[kernel/12 Quality Assurance/04 Guidance and Source Review#Guidance During Terminal Audit|Guidance During Terminal Audit]]。
 

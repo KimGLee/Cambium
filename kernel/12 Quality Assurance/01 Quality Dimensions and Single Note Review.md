@@ -101,5 +101,6 @@ L 档页面强制执行实质正确性复核；S / M 档不强制，由批次抽
 - Findings 三级分级：`critical`（结论错误、推理不成立、claim 与来源矛盾）必须修复；`major`（过度引申、缺关键限定）修复或降级措辞；`minor`（表述改进）记录即可，不阻断。仅 critical / major 阻断关闭。
 - 轮次上限为 2：第 1 轮复核产出分级 findings；修复后第 2 轮**只确认第 1 轮 findings 是否关闭，不得引入新的审查范围**。确认轮新发现的问题记入 Open Questions 或标记 `needs_rereview` 交由维护轮消化，不重开本轮复核。
 - 两轮后仍无法关闭，或复核范围在轮间持续扩张，必须升级用户裁决，不得自行续轮。
+- 本节的两轮上限为 kernel 固定常数，不属于所选 profile 或 task contract 可覆写的默认值。
 
 存量豁免：触发时机以上述三种情形为限。Standards 版本升级本身不触发存量页面的补做——已处于 `reviewed`、`review_by` 未过期且未被标记 `needs_rereview` 的页面，不因标准变更重开实质正确性复核；标准变更导致的 receipts 失效仅要求按 [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] 重跑确定性检查，不等于重开人工复核。
