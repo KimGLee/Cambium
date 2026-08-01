@@ -1,49 +1,50 @@
 # =============================================================================
-# Progress Ledger 模板（机读状态层，模板即 schema 文档）
-# Owner 标准："02 Build Execution/05 Batch Execution and Progress Ledger.md"
-#            （Progress Ledger 只记录 task 和 batch 进度；页面级状态归 Coverage Ledger）
-# task_state 词表 owner："02 Build Execution/01 Contract Time and Task State.md"
+# Progress Ledger template (machine-readable state layer; the template is the schema doc)
+# Owner standard: "02 Build Execution/05 Batch Execution and Progress Ledger.md"
+#            (the Progress Ledger records task and batch progress only;
+#             page-level status belongs to the Coverage Ledger)
+# task_state vocabulary owner: "02 Build Execution/01 Contract Time and Task State.md"
 #
-# 仅允许受限 YAML 子集语法（Tools/kblib.py parse_yaml_subset 可解析）：
-#   - `key: value` 标量（字符串/数字/布尔/空值、引号字符串、内联 `[]`）；
-#   - `key:` 下缩进的 `- 项` 列表；
-#   - 列表项可为一层平铺 map；两级缩进嵌套 map。
-#   不允许：锚点/别名、多行字符串（| >）、flow map {}、tag、多文档。
+# Only the restricted YAML subset is allowed (parseable by Tools/kblib.py parse_yaml_subset):
+#   - `key: value` scalars (string/number/boolean/null, quoted strings, inline `[]`);
+#   - `- item` lists indented under `key:`;
+#   - list items may be a one-level flat map; two-level indented nested maps.
+#   Not allowed: anchors/aliases, block scalars (| >), flow maps {}, tags, multi-document.
 # =============================================================================
 
-task_id: "kb-build-2026-xx"        # 任务标识；与 Coverage Ledger 的 task_id 一致
-task_state: active                 # planned/active/paused/blocked/completion-candidate/complete/cancelled（02/01 Task State Machine；complete 需有效 Terminal Proof）
-active_batches: ["B7"]             # 当前并发 active 批次（≤ concurrency_cap；02/05 Concurrent Batches）
-merge_queue: []                    # 已 merge-ready、等待 integrator 串行合并的批次（02/05）
+task_id: "kb-build-2026-xx"        # task identifier; must match the Coverage Ledger's task_id
+task_state: active                 # planned/active/paused/blocked/completion-candidate/complete/cancelled (02/01 Task State Machine; complete requires a valid Terminal Proof)
+active_batches: ["B7"]             # currently concurrent active batches (<= concurrency_cap; 02/05 Concurrent Batches)
+merge_queue: []                    # merge-ready batches waiting for the integrator's serial merge (02/05)
 
-contract:                          # Phase 0 冻结的契约要点字段（02/01 Phase 0；完整清单见标准原文）
-  contract_version: "c1"           # contract version（02/01）
-  scope_version: "s1"              # scope version（02/01）
-  queue_revision: "q1"             # Required Queue 修订号（02/01）
-  batch_revision: "b1"             # active batch revision（02/01）
-  concurrency_cap: 3               # 并发批次上限（02/05 Concurrent Batches；默认 3）
-  standards_version: "2.3"         # 任务开始后冻结的 Standards version（02/01：内容建设中不得顺手修改 Standards）
-  minimum_run_until: ""            # 此时间前不得主动停止；到达只解除限制，不代表完成（02/01 Time And Stop Semantics）
-  checkpoint_at: ""                # 到达时记录进度/重新验证计划/汇报，默认继续（02/01）
-  hard_stop_at: ""                 # 到达必须停止并写 checkpoint；Gate 未过时只能 paused，不能 complete（02/01）
-  completion_gate: "guidance 未决=0 AND required_authoring_gaps=0 AND unverified_batches=0 AND unresolved_invalidations=0 AND 全部适用 gate 通过"  # 与时间无关的完成条件（02/01、12/06）
+contract:                          # key contract fields frozen in Phase 0 (02/01 Phase 0; full list in the standard's prose)
+  contract_version: "c1"           # contract version (02/01)
+  scope_version: "s1"              # scope version (02/01)
+  queue_revision: "q1"             # Required Queue revision (02/01)
+  batch_revision: "b1"             # active batch revision (02/01)
+  concurrency_cap: 3               # concurrent batch cap (02/05 Concurrent Batches; default 3)
+  standards_version: "2.3"         # Standards version frozen once the task starts (02/01: Standards must not be casually edited during content builds)
+  minimum_run_until: ""            # no voluntary stop before this time; reaching it only lifts the restriction, it does not imply completion (02/01 Time And Stop Semantics)
+  checkpoint_at: ""                # on reaching it, record progress / re-verify the plan / report; continue by default (02/01)
+  hard_stop_at: ""                 # on reaching it, must stop and write a checkpoint; if gates have not passed, only paused is allowed, never complete (02/01)
+  completion_gate: "guidance pending=0 AND required_authoring_gaps=0 AND unverified_batches=0 AND unresolved_invalidations=0 AND all applicable gates passed"  # time-independent completion condition (02/01, 12/06)
 
-batches:                           # 每个 batch 是可独立验收的小模块（02/05 Batch Policy）
-  - id: "B1"                       # 批次标识；对应 Coverage Ledger 中 pages[].batch
-    state: closed                  # open/merge-ready/closed；关闭前必须通过 12/03 Batch Review，不允许只建文件名和 headings 就关闭（02/05）；merge-ready=批内工作完成待 integrator 串行合并（02/05 Concurrent Batches）
-    pages:                         # 本批 Required 页面路径列表
-      - "Agent Knowledge/Harness/Agent Harness.md"
-    started_at: "2026-07-01T00:00:00Z"  # 批次开始时间
-    closed_at: "2026-07-03T00:00:00Z"   # 批次关闭时间；state=open 时留空
-    batch_gate_receipt: "audit-batch-review-20260703T000000Z-0001"  # Batch Review 通过的 receipt_id（12/07：不能只写"此前已检查"）
+batches:                           # each batch is a small module that can be accepted independently (02/05 Batch Policy)
+  - id: "B1"                       # batch identifier; corresponds to pages[].batch in the Coverage Ledger
+    state: closed                  # open/merge-ready/closed; closing requires passing 12/03 Batch Review, and closing with only file names and headings is not allowed (02/05); merge-ready = in-batch work done, awaiting the integrator's serial merge (02/05 Concurrent Batches)
+    pages:                         # Required page paths of this batch
+      - "Topics/Example Topic.md"
+    started_at: "2026-07-01T00:00:00Z"  # batch start time
+    closed_at: "2026-07-03T00:00:00Z"   # batch close time; empty while state=open
+    batch_gate_receipt: "audit-batch-review-20260703T000000Z-0001"  # receipt_id of the passed Batch Review (12/07: must not just say "already checked before")
 
-amendments:                        # Amendment Log（02/02 Mid-task Guidance and Amendment；02/05 要求记录）
-  - id: "A1"                       # amendment 标识
-    date: "2026-07-05"             # 接受日期
-    summary: "扩大 retrieval-rag 范围至 rerank 页面"  # 中文摘要：改了什么契约要素
-    writeback_done: true           # 是否已回写到 contract/scope/queue 受影响字段（布尔）
+amendments:                        # Amendment Log (02/02 Mid-task Guidance and Amendment; recording required by 02/05)
+  - id: "A1"                       # amendment identifier
+    date: "2026-07-05"             # acceptance date
+    summary: "expanded retrieval-rag scope to the rerank pages"  # summary of which contract elements changed
+    writeback_done: true           # whether it was written back to the affected contract/scope/queue fields (boolean)
 
-guidance_queue:                    # Mid-task guidance 队列（02/02；Terminal Audit 时 guidance 三个未决计数必须为 0，12/06）
-  - id: "G-001"                    # guidance_id：task-local、单调递增且不复用（02/02 Amendment Record；供 last_reconciled_guidance_id / guidance_cutoff_id 划界）
-    class: apply-to-current-batch  # disposition 词表 owner：02/02（interrupt-now/apply-to-current-batch/queue-next/queue-by-dependency/research-first/deferred/clarification-required/superseded/not-applicable）
-    status: verified               # status 词表 owner：02/02（received/classified/mapped/in-progress/verified/clarification-required/deferred/superseded）
+guidance_queue:                    # mid-task guidance queue (02/02; all three pending guidance counts must be 0 at Terminal Audit, 12/06)
+  - id: "G-001"                    # guidance_id: task-local, monotonically increasing, never reused (02/02 Amendment Record; used by last_reconciled_guidance_id / guidance_cutoff_id to draw the boundary)
+    class: apply-to-current-batch  # disposition vocabulary owner: 02/02 (interrupt-now/apply-to-current-batch/queue-next/queue-by-dependency/research-first/deferred/clarification-required/superseded/not-applicable)
+    status: verified               # status vocabulary owner: 02/02 (received/classified/mapped/in-progress/verified/clarification-required/deferred/superseded)

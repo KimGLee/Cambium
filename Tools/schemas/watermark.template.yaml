@@ -1,27 +1,30 @@
 # =============================================================================
-# 外部扫描水位线模板（机读状态层，模板即 schema 文档）
-# Owner 标准："06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline.md"
-#            （Stage 1 增量扫描语义：默认只扫描 scanned_until 之后的新材料；
-#             水位线按 domain 分节记录已覆盖来源与覆盖截止日期；
-#             批次关闭时随 Ledger 一起推进——见 02/05 Batch Policy）
-# 实例位置：Tools/state/watermark.yaml（由维护/来源批次关闭时推进，不手改）
+# External scan watermark template (machine-readable state layer; the template is the schema doc)
+# Owner standard: "06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline.md"
+#            (Stage 1 incremental scan semantics: by default only material
+#             newer than scanned_until is scanned; the watermark records
+#             covered sources and coverage cutoff dates per domain section;
+#             advanced together with the Ledger at batch close -- see
+#             02/05 Batch Policy)
+# Instance location: Tools/state/watermark.yaml (advanced when maintenance/
+#            source batches close; never hand-edited)
 #
-# 仅允许受限 YAML 子集语法（Tools/kblib.py parse_yaml_subset 可解析）：
-#   - `key: value` 标量（字符串/数字/布尔/空值、引号字符串、内联 `[]`）；
-#   - `key:` 下缩进的 `- 项` 列表；列表项可为一层平铺 map；
-#   - 两级缩进嵌套 map。
-#   不允许：锚点/别名、多行字符串（| >）、flow map {}、tag、多文档。
+# Only the restricted YAML subset is allowed (parseable by Tools/kblib.py parse_yaml_subset):
+#   - `key: value` scalars (string/number/boolean/null, quoted strings, inline `[]`);
+#   - `- item` lists indented under `key:`; list items may be a one-level flat map;
+#   - two-level indented nested maps.
+#   Not allowed: anchors/aliases, block scalars (| >), flow maps {}, tags, multi-document.
 # =============================================================================
 
-updated_at: "2026-07-21T00:00:00Z"  # 最近一次推进水位线的时间（批次关闭时点）
-last_run_id: "kb-maint-2026-xx-B1"  # 推进本水位线的批次标识；与 Progress Ledger 的 task/batch id 对应（02/05）
+updated_at: "2026-07-21T00:00:00Z"  # time the watermark was last advanced (batch close point)
+last_run_id: "kb-maint-2026-xx-B1"  # identifier of the batch that advanced this watermark; corresponds to the Progress Ledger's task/batch id (02/05)
 
-domains:                            # 按 domain 分节（domain 词表 owner：08/01）
-  agent:                            # 每个已接入增量扫描的 domain 一节
-    scanned_until: "2026-07-01"     # 该 domain 环境扫描的覆盖截止日期；下次默认只扫此日期之后的新材料
-    sources_covered:                # 该 domain 已覆盖的来源清单
-      - source: "Anthropic engineering blog"  # 来源标识（发布渠道/feed/组织，与 Source Note 的 identity 对应）
-        covered_until: "2026-07-01"           # 该来源已覆盖到的日期（可落后于 domain 的 scanned_until）
+domains:                            # one section per domain (domain vocabulary owner: 08/01)
+  agent:                            # one section per domain onboarded to incremental scanning
+    scanned_until: "2026-07-01"     # environment scan coverage cutoff date for this domain; the next scan defaults to material newer than this date only
+    sources_covered:                # sources already covered for this domain
+      - source: "Anthropic engineering blog"  # source identifier (publication channel/feed/organization, matching the Source Note's identity)
+        covered_until: "2026-07-01"           # date this source is covered up to (may lag behind the domain's scanned_until)
       - source: "OpenAI research index"
         covered_until: "2026-06-15"
   llm:

@@ -1,32 +1,34 @@
 # =============================================================================
-# AuditPlan 模板（机读状态层，模板即 schema 文档）
-# Owner 标准："12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md"
-#   —— Incremental Audit Planning：每个 batch 开始和关闭前生成 AuditPlan；
-#      冻结快照 -> diff -> 解析 direct/dependency invalidation -> 划分检查
-#      -> 运行并产出新 receipts -> 对账 -> required invalidations 为零才关闭。
+# AuditPlan template (machine-readable state layer; the template is the schema doc)
+# Owner standard: "12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md"
+#   -- Incremental Audit Planning: generate an AuditPlan at the start of each
+#      batch and before closing it; freeze snapshot -> diff -> resolve
+#      direct/dependency invalidation -> partition the checks
+#      -> run them and produce new receipts -> reconcile -> close only when
+#      required invalidations reach zero.
 #
-# 仅允许受限 YAML 子集语法（Tools/kblib.py parse_yaml_subset 可解析）：
-#   - `key: value` 标量（字符串/数字/布尔/空值、引号字符串、内联 `[]`）；
-#   - `key:` 下缩进的 `- 项` 列表；
-#   - 列表项可为一层平铺 map；两级缩进嵌套 map。
-#   不允许：锚点/别名、多行字符串（| >）、flow map {}、tag、多文档。
+# Only the restricted YAML subset is allowed (parseable by Tools/kblib.py parse_yaml_subset):
+#   - `key: value` scalars (string/number/boolean/null, quoted strings, inline `[]`);
+#   - `- item` lists indented under `key:`;
+#   - list items may be a one-level flat map; two-level indented nested maps.
+#   Not allowed: anchors/aliases, block scalars (| >), flow maps {}, tags, multi-document.
 # =============================================================================
 
-generated_at: "2026-07-21T00:00:00Z"  # AuditPlan 生成时间 = artifact/contract snapshot 冻结时间（12/07 步骤 1）
+generated_at: "2026-07-21T00:00:00Z"  # AuditPlan generation time = artifact/contract snapshot freeze time (12/07 step 1)
 
-changed_objects:                   # 与最近 accepted snapshot diff 出的变更对象（12/07 步骤 2；invalidation 的输入）
-  - "Agent Knowledge/Harness/Agent Harness.md"
+changed_objects:                   # objects changed relative to the latest accepted snapshot (12/07 step 2; input to invalidation)
+  - "Topics/Example Topic.md"
 
-reused_receipts:                   # 通过 Reuse Gate 的历史 receipt（12/07：复用必须记录 reused_receipt_id 和复用理由）
-  - receipt_id: "audit-check_links-20260701T000000Z-0001"  # 被复用的 receipt_id
-    reason: "artifact/dependency/contract fingerprint 均未变化，acceptance predicate 不变"  # 复用理由（不能只写"此前已检查"）
+reused_receipts:                   # historical receipts that passed the Reuse Gate (12/07: reuse must record reused_receipt_id and a reuse reason)
+  - receipt_id: "audit-check_links-20260701T000000Z-0001"  # the reused receipt_id
+    reason: "artifact/dependency/contract fingerprints all unchanged; acceptance predicate unchanged"  # reuse reason (must not just say "already checked before")
 
-invalidated_receipts:              # 本轮判定失效的 receipt（12/07 Direct / Dependency Invalidation）
-  - receipt_id: "audit-check_vocab-20260701T000000Z-0002"  # 失效的 receipt_id
-    reason: "scope 内文件内容变化（direct invalidation）"    # 失效原因，指向 12/07 的失效条款
+invalidated_receipts:              # receipts judged invalid in this round (12/07 Direct / Dependency Invalidation)
+  - receipt_id: "audit-check_vocab-20260701T000000Z-0002"  # the invalidated receipt_id
+    reason: "file content within scope changed (direct invalidation)"  # invalidation reason, pointing to the 12/07 invalidation clause
 
-required_checks:                   # 本轮必须运行的检查分区（12/07 步骤 4 的六类分区）
-  - check: "check_links full-vault"          # 检查项与范围
-    partition: mandatory-full-deterministic  # 分区词表 owner：12/07（mandatory-full-deterministic/changed-scope-deterministic/invalidated-semantic-review/high-risk-targeted-review/bounded-sampling/reusable-evidence）
+required_checks:                   # check partitions that must run this round (the six partitions of 12/07 step 4)
+  - check: "check_links full-vault"          # check item and scope
+    partition: mandatory-full-deterministic  # partition vocabulary owner: 12/07 (mandatory-full-deterministic/changed-scope-deterministic/invalidated-semantic-review/high-risk-targeted-review/bounded-sampling/reusable-evidence)
   - check: "content_and_depth review of changed pages"
     partition: invalidated-semantic-review

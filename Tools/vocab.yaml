@@ -1,5 +1,12 @@
-# Deterministically generated; do not edit directly.
-# Rebuild instructions and provenance: docs/vocab_build_receipt.json
+# Generated artifact -- do not edit directly.
+# Inputs:
+#   base:       kernel/08 Metadata and Status/vocabulary-base.yaml (sha256: 4b952bbd7f7568f3e022d8956547a345b659171c26b01eebd66333e6c412716b)
+#   extensions: profiles/agent-atlas/vocabulary-extensions.yaml (sha256: 1b2b98a1ccb4f1c84784e685f8fc7bf37a1512dfaa76f82f9452ed331f8908c0)
+# Merge rule: root keys follow the fixed base key order; for each
+#   field, kernel values come first and profile additions are
+#   appended in source order, deduplicated; extensions must not
+#   remove, rename, or redefine base values.
+# regenerate with: python3 Tools/compose_vocab.py
 
 schema_version: 1
 profile_id: "agent-atlas"

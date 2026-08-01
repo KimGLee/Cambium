@@ -1,28 +1,31 @@
 #!/usr/bin/env python3
-"""Terminal Proof 完整性检查脚本。
+"""Terminal Proof completeness check script.
 
-规则 owner：
+Rule owners:
 - "12 Quality Assurance/06 Completion Terminal Audit and Final Report.md"
-  （Terminal Proof 的完整字段清单，含 full_deterministic_results；
-   完成条件：guidance 三个未决计数为 0、required_authoring_gaps=0、
-   unverified_batches=0、unresolved_invalidations=0 且所有适用 gate 通过）；
+  (the complete Terminal Proof field list, including
+   full_deterministic_results; completion conditions: the three open guidance
+   counts are 0, required_authoring_gaps=0, unverified_batches=0,
+   unresolved_invalidations=0, and all applicable gates pass);
 - "12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md"
-  （Terminal Reconciliation Rules：unresolved_invalidations 必须为 0）。
+  (Terminal Reconciliation Rules: unresolved_invalidations must be 0).
 
-方法：
-- 必填字段清单来自 Tools/schemas/terminal_proof.template.yaml 的顶层
-  key（模板逐字段照抄 12/06，是本脚本的单一事实来源；--template 可覆盖）；
-- proof 缺字段或字段为空 -> fail（Terminal Proof 不完整）；
-- 零值条件字段（required_authoring_gaps / unverified_batches /
-  unresolved_invalidations）非 0 -> fail；
-- proof 出现清单外的多余顶层字段 -> candidate（是否合理由人判定）；
-- 给了 --ledger（Coverage Ledger）时交叉校验：open_gaps 非空而 proof
-  声称 required_authoring_gaps=0 -> fail。
+Method:
+- The required-field list comes from the top-level keys of
+  Tools/schemas/terminal_proof.template.yaml (the template copies 12/06 field
+  by field and is this script's single source of truth; --template overrides);
+- a missing or empty proof field -> fail (Terminal Proof incomplete);
+- a zero-condition field (required_authoring_gaps / unverified_batches /
+  unresolved_invalidations) that is not 0 -> fail;
+- a top-level proof field outside the list -> candidate (whether it is
+  reasonable is a human call);
+- when --ledger (Coverage Ledger) is given, cross-check: open_gaps non-empty
+  while the proof claims required_authoring_gaps=0 -> fail.
 
-退出码：0=全过，1=有 fail，2=无 fail 但有 candidate。
+Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
 
-用法：python3 check_proof.py <proof.yaml> [--ledger coverage_ledger.yaml]
-      [--template PATH] [--receipts PATH]
+Usage: python3 check_proof.py <proof.yaml> [--ledger coverage_ledger.yaml]
+       [--template PATH] [--receipts PATH]
 """
 
 import argparse
@@ -35,21 +38,22 @@ import kblib
 TOOL = "check_proof"
 TOOL_VERSION = "1.0.0"
 
-# 12/06：完成条件中必须为 0 的字段（guidance 三个未决计数包含在
-# guidance_reconciliation_result 的审阅里，不在此做数值断言）
+# 12/06: fields that must be 0 among the completion conditions (the three open
+# guidance counts are covered by the review of guidance_reconciliation_result
+# and get no numeric assertion here)
 ZERO_FIELDS = ("required_authoring_gaps", "unverified_batches",
                "unresolved_invalidations")
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Terminal Proof 完整性与零值条件检查")
-    ap.add_argument("proof", help="terminal proof YAML 文件路径")
-    ap.add_argument("--ledger", help="Coverage Ledger YAML，用于 open_gaps 交叉校验")
+    ap = argparse.ArgumentParser(description="Terminal Proof completeness and zero-condition check")
+    ap.add_argument("proof", help="path to the terminal proof YAML file")
+    ap.add_argument("--ledger", help="Coverage Ledger YAML, for the open_gaps cross-check")
     ap.add_argument("--template",
                     default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                          "schemas", "terminal_proof.template.yaml"),
-                    help="字段清单模板（默认 Tools/schemas/terminal_proof.template.yaml）")
-    ap.add_argument("--receipts", help="机读 receipts 追加写入的 JSONL 路径")
+                    help="field-list template (default Tools/schemas/terminal_proof.template.yaml)")
+    ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
     args = ap.parse_args()
 
     template = kblib.parse_yaml_subset(open(args.template, encoding="utf-8").read())
@@ -65,9 +69,9 @@ def main():
         seq += 1
         receipts.append(kblib.make_receipt(
             TOOL, TOOL_VERSION, "proof-unreadable", args.proof, "fail",
-            "无法读取/解析 proof：%s" % exc, seq))
+            "cannot read/parse proof: %s" % exc, seq))
         kblib.write_receipts(args.receipts, receipts)
-        print("check_proof: 无法读取或解析 %s：%s" % (args.proof, exc))
+        print("check_proof: cannot read or parse %s: %s" % (args.proof, exc))
         return 1
     if not isinstance(proof, dict):
         proof = {}
@@ -75,14 +79,15 @@ def main():
     missing = []
     for field in required_fields:
         value = proof.get(field, None)
-        # 注意：空列表 [] 对列表型字段合法（如 systemic_expansions: []），不算缺失
+        # Note: an empty list [] is legal for list-valued fields (e.g.
+        # systemic_expansions: []) and does not count as missing
         if field not in proof or value is None or value == "":
             missing.append(field)
             seq += 1
             receipts.append(kblib.make_receipt(
                 TOOL, TOOL_VERSION, "proof-field-missing",
                 "%s#%s" % (proof_name, field), "fail",
-                "Terminal Proof 缺少必填字段 %s（12/06 字段清单）" % field, seq))
+                "Terminal Proof is missing required field %s (12/06 field list)" % field, seq))
 
     zero_bad = []
     for field in ZERO_FIELDS:
@@ -95,7 +100,7 @@ def main():
             receipts.append(kblib.make_receipt(
                 TOOL, TOOL_VERSION, "proof-zero-field",
                 "%s#%s" % (proof_name, field), "fail",
-                "零值条件字段 %s = %r，完成条件要求必须为 0（12/06）" % (field, value), seq))
+                "zero-condition field %s = %r; the completion conditions require it to be 0 (12/06)" % (field, value), seq))
 
     extra = [k for k in proof if k not in required_fields]
     for field in extra:
@@ -103,7 +108,8 @@ def main():
         receipts.append(kblib.make_receipt(
             TOOL, TOOL_VERSION, "proof-extra-field",
             "%s#%s" % (proof_name, field), "candidate",
-            "字段 %s 不在 12/06 字段清单内（清单是'至少包含'，多余字段是否合理由人判定）"
+            "field %s is not in the 12/06 field list (the list is an 'at least' "
+            "list; whether extra fields are reasonable is a human call)"
             % field, seq))
 
     cross_fail = 0
@@ -114,7 +120,7 @@ def main():
             seq += 1
             receipts.append(kblib.make_receipt(
                 TOOL, TOOL_VERSION, "ledger-unreadable", args.ledger, "fail",
-                "无法读取/解析 Coverage Ledger：%s" % exc, seq))
+                "cannot read/parse Coverage Ledger: %s" % exc, seq))
             ledger = None
         if isinstance(ledger, dict):
             open_gaps = ledger.get("open_gaps") or []
@@ -125,27 +131,28 @@ def main():
                 receipts.append(kblib.make_receipt(
                     TOOL, TOOL_VERSION, "proof-ledger-mismatch",
                     "%s#required_authoring_gaps" % proof_name, "fail",
-                    "Coverage Ledger open_gaps 有 %d 条未闭合缺口，但 proof 声称 "
-                    "required_authoring_gaps=0（02/03：Coverage Ledger 是权威记录）"
+                    "Coverage Ledger open_gaps has %d unclosed gap(s), but the "
+                    "proof claims required_authoring_gaps=0 (02/03: the "
+                    "Coverage Ledger is the authoritative record)"
                     % len(open_gaps), seq))
 
     if not any(r["result"] == "fail" for r in receipts):
         seq += 1
         receipts.append(kblib.make_receipt(
             TOOL, TOOL_VERSION, "proof-check-summary", proof_name, "pass",
-            "字段完整（%d/%d），零值条件字段均为 0%s" % (
+            "fields complete (%d/%d), all zero-condition fields are 0%s" % (
                 len(required_fields), len(required_fields),
-                "，与 Coverage Ledger open_gaps 一致" if args.ledger else ""), seq))
+                ", consistent with Coverage Ledger open_gaps" if args.ledger else ""), seq))
 
-    print("check_proof: 对照模板 %d 个必填字段检查 %s" % (len(required_fields), args.proof))
-    print("  缺失字段=%d 零值条件违规=%d 多余字段(candidate)=%d ledger交叉失败=%d"
+    print("check_proof: checking %s against %d required template field(s)" % (args.proof, len(required_fields)))
+    print("  missing_fields=%d zero_condition_violations=%d extra_fields(candidate)=%d ledger_cross_failures=%d"
           % (len(missing), len(zero_bad), len(extra), cross_fail))
     for r in receipts:
         if r["result"] != "pass":
             print("  [%s %s] %s — %s" % (r["result"].upper()[:4], r["check"],
                                          r["target"], r["details"]))
     if not any(r["result"] == "fail" for r in receipts):
-        print("  结论：Terminal Proof 完整性检查通过。")
+        print("  Conclusion: Terminal Proof completeness check passed.")
 
     kblib.write_receipts(args.receipts, receipts)
     return kblib.exit_code(receipts)

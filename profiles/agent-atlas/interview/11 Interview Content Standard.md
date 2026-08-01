@@ -12,11 +12,11 @@
 
 | Module | Canonical sections |
 |---|---|
-| [[profiles/agent-atlas/interview/01 Interview Architecture and Separation\|Interview Architecture and Separation]] | `Purpose`、`Core Separation`、`Folder Structure` |
+| [[profiles/agent-atlas/interview/01 Interview Architecture and Separation\|Interview Architecture and Separation]] | `Type Registration`、`Interview Card`、`Purpose`、`Core Separation`、`Folder Structure`、`Kernel Binding` |
 | [[profiles/agent-atlas/interview/02 Card Granularity Coverage and Categories\|Card Granularity Coverage and Categories]] | `Interview Card Granularity`、`Interview Coverage Status`、`Interview Card Categories` |
 | [[profiles/agent-atlas/interview/03 Card Structure and Answer Levels\|Card Structure and Answer Levels]] | `Interview Card Structure`、`Answer Levels` |
 | [[profiles/agent-atlas/interview/04 System Deep Dive and Bilingual Policy\|System Deep Dive and Bilingual Policy]] | `System And Project Deep Dive`、`Bilingual Policy` |
-| [[profiles/agent-atlas/interview/05 Knowledge Links and Preparation\|Knowledge Links and Preparation]] | `Knowledge Links`、`Interview Preparation`、`Core Knowledge Links` |
+| [[profiles/agent-atlas/interview/05 Knowledge Links and Preparation\|Knowledge Links and Preparation]] | `Terminology Extraction Trigger`、`Terminology Ownership Boundary`、`Knowledge Links`、`Interview Relationship`、`Interview Link Relationship`、`P0 / P1 Structural Link`、`Bidirectional Link Routes`、`Roadmap Routing`、`Kernel Binding` |
 | [[profiles/agent-atlas/interview/06 Roadmap and Question Bank\|Roadmap and Question Bank]] | `Roadmap Policy`、`Question Bank Policy` |
 | [[profiles/agent-atlas/interview/07 Migration Audit and Acceptance\|Migration Audit and Acceptance]] | `Migration Policy`、`Migration Audit`、`Interview Review`、`Acceptance Criteria`、`Related` |
 

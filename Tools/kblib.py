@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
-"""kbstd 检查脚本共享库（仅标准库，无第三方依赖）。
+"""Shared library for the kbstd check scripts (standard library only, no third-party dependencies).
 
-提供：
-1. 受限 YAML 子集解析器 parse_yaml_subset —— 仅支持以下语法
-   （与 Tools/schemas/*.template.yaml 头注释中声明的子集一致）：
-   - `key: value` 标量（字符串 / 整数 / 浮点 / 布尔 / 空值）；
-   - 带引号字符串与内联空列表 `[]`、简单内联列表 `[a, b]`；
-   - `key:` 之后缩进的 `- 项` 列表；
-   - 列表项可以是一层平铺 map（`- key: value` 后接同缩进的 key 行）；
-   - 两级及以上缩进嵌套 map（解析器递归实现，天然支持更深层级，
-     但标准约定只使用两级）。
-   不支持：锚点/别名、多行字符串（| >）、flow map `{}`、tag、多文档。
-2. Markdown 工具：frontmatter 提取、代码块剔除（保持行号）、heading 提取。
-3. Receipt 工具：机读 JSONL receipt 的构造与追加写入（字段定义见
-   Tools/schemas/receipt.template.jsonl），以及统一退出码约定：
-   0 = 全部 pass；1 = 存在 fail；2 = 无 fail 但存在 candidate。
+Provides:
+1. A restricted YAML subset parser, parse_yaml_subset -- only the following
+   grammar is supported (matching the subset declared in the header comments
+   of Tools/schemas/*.template.yaml):
+   - `key: value` scalars (string / int / float / bool / null);
+   - quoted strings and the inline empty list `[]`, simple inline lists
+     `[a, b]`;
+   - `- item` lists indented under a `key:` line;
+   - a list item may be a one-level flat map (`- key: value` followed by key
+     lines at the same indentation);
+   - nested maps two or more levels deep (the parser is recursive and
+     naturally supports deeper nesting, but the standards convention only
+     uses two levels).
+   Not supported: anchors/aliases, multi-line strings (| >), flow maps `{}`,
+   tags, multiple documents.
+2. Markdown helpers: frontmatter extraction, code-block stripping (preserving
+   line numbers), heading extraction.
+3. Receipt helpers: construction and append-writing of machine-readable JSONL
+   receipts (field definitions in Tools/schemas/receipt.template.jsonl), plus
+   the shared exit-code convention:
+   0 = all pass; 1 = at least one fail; 2 = no fail but candidates.
 """
 
 import json
@@ -25,16 +32,16 @@ import time
 LIB_VERSION = "1.0.0"
 
 # ---------------------------------------------------------------------------
-# 受限 YAML 子集解析器
+# Restricted YAML subset parser
 # ---------------------------------------------------------------------------
 
 
 class YamlSubsetError(ValueError):
-    """输入超出受限 YAML 子集语法时抛出。"""
+    """Raised when the input goes beyond the restricted YAML subset grammar."""
 
 
 def _strip_comment(line):
-    """去掉行内注释（# 前需要是行首或空白；引号内的 # 保留）。"""
+    """Strip inline comments (# must be at start of line or preceded by whitespace; # inside quotes is kept)."""
     out = []
     quote = None
     for idx, ch in enumerate(line):
@@ -54,7 +61,7 @@ def _strip_comment(line):
 
 
 def parse_scalar(text):
-    """解析单个标量：引号字符串、内联列表、布尔、空值、整数、浮点、裸字符串。"""
+    """Parse a single scalar: quoted string, inline list, bool, null, int, float, bare string."""
     s = text.strip()
     if s == "":
         return None
@@ -82,11 +89,11 @@ def parse_scalar(text):
 
 
 def _prepare_lines(text):
-    """预处理：去注释、去空行、去文档围栏，返回 [(indent, content), ...]。"""
+    """Preprocess: strip comments, blank lines and document fences; return [(indent, content), ...]."""
     lines = []
     for raw in text.splitlines():
         if "\t" in raw[: len(raw) - len(raw.lstrip())]:
-            raise YamlSubsetError("缩进不允许使用 Tab: %r" % raw)
+            raise YamlSubsetError("tabs are not allowed in indentation: %r" % raw)
         line = _strip_comment(raw)
         stripped = line.strip()
         if not stripped or stripped in ("---", "..."):
@@ -97,9 +104,10 @@ def _prepare_lines(text):
 
 
 def _looks_like_map_entry(content):
-    """`key: value` 或 `key:`，key 不含空白冒号且不是引号开头的纯标量。"""
+    """`key: value` or `key:`; the key contains no whitespace-colon and is not a quoted plain scalar."""
     if content[0] in "\"'":
-        # 引号开头：可能是 "key": value，子集里不使用引号 key，视为标量
+        # Starts with a quote: could be "key": value, but the subset does not
+        # use quoted keys, so treat it as a scalar
         return False
     return re.match(r"^[^:\s][^:]*:(\s|$)", content) is not None
 
@@ -112,13 +120,13 @@ def _parse_map(lines, i, indent):
             break
         m = re.match(r"^([^:]+?)\s*:\s*(.*)$", content)
         if not m:
-            raise YamlSubsetError("无法解析映射行: %r" % content)
+            raise YamlSubsetError("cannot parse mapping line: %r" % content)
         key, rest = m.group(1).strip(), m.group(2)
         i += 1
         if rest:
             result[key] = parse_scalar(rest)
             continue
-        # `key:` 空值 —— 看后续行决定嵌套 map / 列表 / 空
+        # `key:` with no value -- the following lines decide: nested map / list / empty
         if i < len(lines) and lines[i][0] > indent:
             value, i = _parse_block(lines, i, lines[i][0])
         elif i < len(lines) and lines[i][0] == indent and (
@@ -146,7 +154,8 @@ def _parse_list(lines, i, indent):
                 value = None
             result.append(value)
         elif _looks_like_map_entry(rest):
-            # 列表项为一层平铺 map：`- key: value` 后接同虚拟缩进的 key 行
+            # List item is a one-level flat map: `- key: value` followed by
+            # key lines at the same virtual indentation
             item_indent = cur_indent + (len(content) - len(rest))
             lines[i] = [item_indent, rest]
             value, i = _parse_map(lines, i, item_indent)
@@ -164,26 +173,26 @@ def _parse_block(lines, i, indent):
 
 
 def parse_yaml_subset(text):
-    """解析受限 YAML 子集，返回 dict / list / 标量；空输入返回 {}。"""
+    """Parse the restricted YAML subset; returns a dict / list / scalar; empty input returns {}."""
     lines = _prepare_lines(text)
     if not lines:
         return {}
     value, i = _parse_block(lines, 0, lines[0][0])
     if i != len(lines):
         raise YamlSubsetError(
-            "第 %d 段之后存在无法归属的行（缩进错误或超出子集语法）: %r"
+            "unattachable line after block %d (bad indentation or beyond the subset grammar): %r"
             % (i, lines[i][1])
         )
     return value
 
 
 # ---------------------------------------------------------------------------
-# Markdown 工具
+# Markdown helpers
 # ---------------------------------------------------------------------------
 
 
 def extract_frontmatter(text):
-    """提取 `---` 围栏内的 frontmatter 原文；不存在时返回 None。"""
+    """Extract the raw frontmatter inside the `---` fence; returns None when absent."""
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
         return None
@@ -194,7 +203,7 @@ def extract_frontmatter(text):
 
 
 def strip_code(text):
-    """剔除 fenced code block 与行内代码，保持行数不变（便于报告行号）。"""
+    """Strip fenced code blocks and inline code, preserving the line count (so line numbers stay reportable)."""
     out = []
     fence = None
     for line in text.splitlines():
@@ -214,7 +223,7 @@ def strip_code(text):
 
 
 def iter_md_files(vault_root, scope=None):
-    """遍历 vault 下所有 .md 文件（按相对路径排序）；scope 为可选子路径。"""
+    """Walk all .md files under the vault (sorted by relative path); scope is an optional subpath."""
     base = os.path.join(vault_root, scope) if scope else vault_root
     base = os.path.normpath(base)
     result = []
@@ -228,7 +237,7 @@ def iter_md_files(vault_root, scope=None):
 
 
 def headings_of(text):
-    """返回 [(行号, 级别, heading 文本)]；输入应先经过 strip_code。"""
+    """Return [(lineno, level, heading text)]; the input should have gone through strip_code first."""
     result = []
     for lineno, line in enumerate(text.splitlines(), 1):
         m = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
@@ -238,12 +247,12 @@ def headings_of(text):
 
 
 # ---------------------------------------------------------------------------
-# Receipt 工具（字段定义见 Tools/schemas/receipt.template.jsonl）
+# Receipt helpers (field definitions in Tools/schemas/receipt.template.jsonl)
 # ---------------------------------------------------------------------------
 
 
 def make_receipt(tool, tool_version, check, target, result, details, seq):
-    """构造一条 receipt dict；result 只允许 pass / fail / candidate。"""
+    """Build one receipt dict; result must be pass / fail / candidate."""
     assert result in ("pass", "fail", "candidate"), result
     checked_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
@@ -261,7 +270,7 @@ def make_receipt(tool, tool_version, check, target, result, details, seq):
 
 
 def write_receipts(path, receipts):
-    """把 receipts 以 JSONL 追加写入 path（一行一个 JSON 对象）。"""
+    """Append receipts to path as JSONL (one JSON object per line)."""
     if not path:
         return
     with open(path, "a", encoding="utf-8") as fh:
@@ -270,7 +279,7 @@ def write_receipts(path, receipts):
 
 
 def exit_code(receipts):
-    """统一退出码：1 = 有 fail；2 = 无 fail 但有 candidate；0 = 全 pass。"""
+    """Shared exit codes: 1 = at least one fail; 2 = no fail but candidates; 0 = all pass."""
     results = {r["result"] for r in receipts}
     if "fail" in results:
         return 1

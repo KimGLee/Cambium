@@ -12,10 +12,10 @@ This page is the stable entry point for the Wiki Link and Navigation standard. T
 
 | Module | Canonical sections |
 |---|---|
-| [[kernel/09 Wiki Link and Navigation/01 Link Semantics and Body Links\|Link Semantics and Body Links]] | `Purpose`, `Link Meaning`, `In-body Links` + `Expression Layer Entry` |
-| [[kernel/09 Wiki Link and Navigation/02 Structural and Bidirectional Links\|Structural and Bidirectional Links]] | `Structural Links`, `Bidirectional Knowledge Flow` + `Expression Layer Entry` |
+| [[kernel/09 Wiki Link and Navigation/01 Link Semantics and Body Links\|Link Semantics and Body Links]] + `Expression Layer Entry` | `Purpose`, `Link Meaning`, `In-body Links` |
+| [[kernel/09 Wiki Link and Navigation/02 Structural and Bidirectional Links\|Structural and Bidirectional Links]] + `Expression Layer Entry` | `Structural Links`, `Bidirectional Knowledge Flow` |
 | [[kernel/09 Wiki Link and Navigation/03 Path Alias and Heading Links\|Path Alias and Heading Links]] | `Path And Alias Rules`, `Heading Links` |
-| [[kernel/09 Wiki Link and Navigation/04 MOC Related and Link Creation\|MOC Related and Link Creation]] | `Overview And MOC`, `Related Section`, `Link Creation Policy` + `Expression Layer Entry` |
+| [[kernel/09 Wiki Link and Navigation/04 MOC Related and Link Creation\|MOC Related and Link Creation]] + `Expression Layer Entry` | `Overview And MOC`, `Related Section`, `Link Creation Policy` |
 | [[kernel/09 Wiki Link and Navigation/05 Verification and Anti-patterns\|Verification and Anti-patterns]] | `Verification`, `Anti-patterns`, `Related` |
 
 ## Applicable Read Sets

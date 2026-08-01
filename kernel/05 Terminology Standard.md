@@ -15,7 +15,7 @@ This page is the stable entry point for the Terminology standard. The detailed r
 | [[kernel/05 Terminology/01 Terminology Extraction\|Terminology Extraction]] | `Purpose`, `Core Rule`, `Extraction Criteria`, `Do Not Extract`, `Source-discovered Terminology` |
 | [[kernel/05 Terminology/02 Ownership and Term Structure\|Ownership and Term Structure]] | `Ownership`, `Suggested Structure`, `Term Note Structure` |
 | [[kernel/05 Terminology/03 Naming Context and Linking\|Naming Context and Linking]] + `Language Contract` | `Naming And Aliases`, `Contextual Use`, `Link Frequency`; `Display Language Contract（显示语言契约）` is provided by the profile slot |
-| [[kernel/05 Terminology/04 Terminology Acceptance\|Terminology Acceptance]] + `Expression Layer Entry` | `Acceptance Criteria`, `Related`; the terminology expression relationship is provided by the profile slot |
+| [[kernel/05 Terminology/04 Terminology Acceptance\|Terminology Acceptance]] + `Expression Layer Entry` | `Expression Layer Interface`, `Acceptance Criteria`, `Related`; the terminology expression relationship is provided by the profile slot |
 
 ## Extension Registry
 

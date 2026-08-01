@@ -1,85 +1,117 @@
-# Tools 机读状态层与确定性检查脚本
+# Tools: Machine-readable State Layer and Deterministic Checks
 
-本目录是 Standards v2.3 的"机读状态层 + 确定性检查脚本层"。所有脚本只用
-python3 标准库；YAML 解析使用 `kblib.py` 中的受限子集解析器。
-本目录不修改任何标准 `.md` 文件；标准原文是所有词表与字段清单的 owner。
+This directory is the machine-readable state layer and the deterministic check
+script layer of Standards v2.3. All scripts use only the python3 standard
+library; YAML parsing goes through the restricted-subset parser in `kblib.py`.
+Nothing in this directory modifies any standards `.md` file; the standards
+prose owns every vocabulary and field list.
 
-## 脚本用途与典型调用
+Layering: check_links/check_vocab/check_moc/check_proof/apply_delta/compose_vocab/kblib
+are kernel tooling; check_language is profile tooling (agent-atlas registered
+scan); check_freshness/duplicate_check are maintenance tooling.
 
-| 脚本 | 用途 | 典型调用 |
+## Tool inventory
+
+| Script | Purpose | Typical invocation |
 |---|---|---|
-| `duplicate_check.py` | 跨文件重复段落候选检测；默认全库，维护轮与 governance 使用，批次与单页层面不再调用 | `python3 Tools/duplicate_check.py .` 或 `python3 Tools/duplicate_check.py . --scope "Agent Knowledge"` |
-| `check_links.py` | Wiki link missing / ambiguous / heading 校验（09/03、09/05） | `python3 Tools/check_links.py . --receipts Tools/receipts/links.jsonl` |
-| `check_vocab.py` | frontmatter 受控词表校验（08 域；词表取自 `vocab.yaml`） | `python3 Tools/check_vocab.py . --scope "Agent Knowledge" --receipts Tools/receipts/vocab.jsonl` |
-| `check_language.py` | 中文优先语言候选检测（10/05；**只产生候选**） | `python3 Tools/check_language.py . --receipts Tools/receipts/lang.jsonl` |
-| `check_proof.py` | Terminal Proof 完整性与零值条件校验（12/06），可与 Coverage Ledger 交叉对账 | `python3 Tools/check_proof.py proof.yaml --ledger coverage_ledger.yaml` |
-| `apply_delta.py` | 串行合并时确定性应用 coverage delta（02/05 Concurrent Batches；--apply 写盘、越界页拒绝、自动备份） | `python3 Tools/apply_delta.py ledger.yaml delta.yaml --apply` |
-| `stamp_cards.py` | Runtime Cards source_hash 盖戳与校验（00/03 Write-back Checklist；--check 只校验、--set-version 统一版本戳含 Card Index） | `python3 Tools/stamp_cards.py . --check` |
-| `check_moc.py` | domain MOC Module Index 与实际 H2 headings 一致性候选检测（12/05；**只产生候选**）；维护轮与 governance 使用 | `python3 Tools/check_moc.py .` |
+| `check_links.py` | Wiki link missing / ambiguous / heading verification (09/03, 09/05); `--exclude` skips path components | `python3 Tools/check_links.py . --exclude legacy --receipts Tools/receipts/links.jsonl` |
+| `check_vocab.py` | Frontmatter controlled-vocabulary check (08 domain; vocabulary from `vocab.yaml`); `--quota-p0` / `--quota-p1` cap P0/P1 shares, defaults 15/35 (kernel defaults; a profile or task contract may override) | `python3 Tools/check_vocab.py . --scope kernel --quota-p0 15 --quota-p1 35 --receipts Tools/receipts/vocab.jsonl` |
+| `check_moc.py` | Domain MOC Module Index vs. actual H2 headings consistency candidates (12/05; **candidates only**); recursively scans for Module Index sections and is fence-aware (fenced code blocks ignored); maintenance runs and governance | `python3 Tools/check_moc.py . --exclude legacy` |
+| `check_proof.py` | Terminal Proof completeness and zero-condition check (12/06); required fields come from `schemas/terminal_proof.template.yaml`; optional Coverage Ledger cross-check | `python3 Tools/check_proof.py proof.yaml --ledger coverage_ledger.yaml` |
+| `apply_delta.py` | Deterministic application of a coverage delta during the serial merge (02/05 Concurrent Batches; `--apply` writes to disk, out-of-manifest pages rejected, automatic backup) | `python3 Tools/apply_delta.py ledger.yaml delta.yaml --apply` |
+| `compose_vocab.py` | Persistent vocabulary compiler: composes `vocab.yaml` from the kernel base and the selected profile's extensions; `--check` recomputes and compares | `python3 Tools/compose_vocab.py --check` |
+| `stamp_cards.py` | Runtime Cards source_hash stamping and verification (00/03 Write-back Checklist); `--cards-dir` defaults to `Cards` and a missing directory exits 0; `--check` verifies only; `--set-version` stamps a uniform version incl. the Card Index | `python3 Tools/stamp_cards.py . --check` |
+| `check_language.py` | Language-policy candidate detection for the agent-atlas profile (10/05; **candidates only**); exemptions come only from `--exempt` -- there is no built-in path exemption | `python3 Tools/check_language.py . --scope profiles --exempt kernel --receipts Tools/receipts/lang.jsonl` |
+| `check_freshness.py` | Freshness check: computes review_by from volatility and last_verified, outputs the overdue list sorted by priority (maintenance-run input); `--exclude` skips path components, `--defaults` supplies volatility defaults -- the script ships no built-in domain default table | `python3 Tools/check_freshness.py . --as-of 2026-07-21 --exclude legacy --receipts Tools/receipts/fresh.jsonl` |
+| `duplicate_check.py` | Cross-file duplicate paragraph candidate detection; full vault by default; `--exclude` defaults to `legacy` | `python3 Tools/duplicate_check.py . --scope kernel` |
+| `kblib.py` | Shared library (restricted YAML subset parser, Markdown helpers, receipt helpers); not invoked directly | imported by all scripts above |
 
-调用分工（一险一闸）：
+## Invocation split
 
-- **批次关闭** = Batch-close Closed List（owner：12/07，七项封闭清单，含 check_links 与 check_vocab 全库）；
-- **note 关闭** = `check_links.py` / `check_vocab.py` 带 `--scope 本页` 自查（不产 receipt）；
-- **维护轮** = `check_freshness.py`（轮开始一次）＋ `duplicate_check.py`（全库或 `--scope`，候选入 candidates 池）；
-- `duplicate_check.py` 与 `check_freshness.py` 不在批次或单页检查中调用。
+- **Batch close** = the Batch-close Closed List (owner: 12/07; a seven-item
+  closed list, including full-vault `check_links` and `check_vocab`).
+- **Note close** = `check_links.py` / `check_vocab.py` with `--scope` set to
+  the page itself (self-check; no receipts produced).
+- **Maintenance run** = `check_freshness.py` (once at the start of the run)
+  plus `duplicate_check.py` (full vault or `--scope`; candidates go into the
+  candidates pool). Neither is invoked at batch or single-page level.
+- **Governance** = `stamp_cards.py --check`, `check_moc.py`, and
+  `compose_vocab.py --check`.
 
-公共约定：
-- 人读 summary 输出到 stdout；机读 receipts 用 `--receipts PATH` 追加写 JSONL；
-- 退出码：`0` = 全部 pass；`1` = 存在 fail；`2` = 无 fail 但存在 candidate。
-- `check_language.py` 永不返回 1：按 10/05 Acceptance And Audit，语言信号
-  只能产生 review candidates，最终判定必须交人工/模型审阅。
-- `check_language.py` 默认整体跳过路径含 `Knowledge Base Standards/` 的文件
-  （10/05 Standards Corpus Exemption）；标准语料在别的位置时用 `--exempt` 追加。
+Shared conventions:
 
-## Receipts 流转（12/07 Audit Evidence Reuse and Invalidation）
+- Human-readable summaries go to stdout; machine-readable receipts are
+  appended as JSONL via `--receipts PATH`.
+- Exit codes: `0` = all pass; `1` = at least one fail; `2` = no fail but at
+  least one candidate.
+- `check_language.py` never returns 1: per 10/05 Acceptance And Audit,
+  language signals may only produce review candidates, and the final verdict
+  belongs to human/model review. It is registered as a scan of the
+  agent-atlas profile; kernel-only vaults do not run it.
+
+## Receipts flow (12/07 Audit Evidence Reuse and Invalidation)
 
 ```text
-脚本运行 --receipts 产出 JSONL receipt（receipt_id: audit-<tool>-<时间戳>-<序号>）
- -> receipt 进入 Audit Receipt Register / Batch Contract；Coverage Ledger 的
-    pages[].gate_receipts 只记录最新有效 receipt_id
- -> 批次关闭前生成一次 AuditPlan（schemas/audit_plan.template.yaml）：
-    冻结快照、diff changed_objects、解析 direct/dependency invalidation
- -> 通过 Reuse Gate 的旧 receipt 记入 reused_receipts（必须写复用理由）；
-    受变更影响的记入 invalidated_receipts；新结果 supersede 旧 receipt
- -> Terminal Audit 对最终冻结快照运行 Batch-close Closed List（12/07），结果集引用写入
-    Terminal Proof 的 full_deterministic_results；unresolved_invalidations 必须为 0
+script run with --receipts produces JSONL receipts (receipt_id: audit-<tool>-<timestamp>-<seq>)
+ -> receipts enter the Audit Receipt Register / Batch Contract; the Coverage
+    Ledger's pages[].gate_receipts records only the latest valid receipt_id
+ -> before batch close, generate one AuditPlan (schemas/audit_plan.template.yaml):
+    freeze the snapshot, diff changed_objects, resolve direct/dependency invalidation
+ -> old receipts passing the Reuse Gate go into reused_receipts (a reuse reason
+    is mandatory); receipts affected by changes go into invalidated_receipts;
+    new results supersede old receipts
+ -> the Terminal Audit runs the Batch-close Closed List against the final frozen
+    snapshot (12/07); the result-set reference goes into the Terminal Proof's
+    full_deterministic_results; unresolved_invalidations must be 0
 ```
 
-脚本 receipt 是轻量层（字段见 `schemas/receipt.template.jsonl`）；进入
-Register 时由 AuditPlan 层按 12/07 补齐 scope / acceptance_predicate /
-fingerprint 等完整 AuditReceipt 字段，脚本 receipt_id 作为 evidence_ref。
+Script receipts are the lightweight layer (fields in
+`schemas/receipt.template.jsonl`); on entering the Register, the AuditPlan
+layer completes the full AuditReceipt fields per 12/07 (scope /
+acceptance_predicate / fingerprints), with the script receipt_id serving as
+evidence_ref.
 
-## schemas/ 模板（模板即 schema 文档）
+## schemas/ templates (the template is the schema doc)
 
-- `coverage_ledger.template.yaml` —— Coverage Ledger（owner: 02/03）
-- `progress_ledger.template.yaml` —— Progress Ledger（owner: 02/05、02/01、02/02）
-- `receipt.template.jsonl` —— 脚本级 receipt（概念 owner: 12/07）
-- `coverage_delta.template.yaml` —— 并发批次的状态增量（owner: 02/05 Concurrent Batches；integrator 串行合并时应用；含 `watermark_advance` 水位线传值字段）
-- `watermark.template.yaml` —— 外部水位线（owner: 06/03 Stage 1 增量扫描；实例在 Tools/state/watermark.yaml，由维护批次推进）
-- `audit_plan.template.yaml` —— AuditPlan（owner: 12/07 Incremental Audit Planning）
-- `terminal_proof.template.yaml` —— Terminal Proof 28 个字段逐字段照抄 12/06；
-  同时是 `check_proof.py` 必填字段清单的单一事实来源
+- `coverage_ledger.template.yaml` -- Coverage Ledger (owner: 02/03)
+- `progress_ledger.template.yaml` -- Progress Ledger (owner: 02/05, 02/01, 02/02)
+- `receipt.template.jsonl` -- script-level receipt (concept owner: 12/07)
+- `coverage_delta.template.yaml` -- state increment of a concurrent batch
+  (owner: 02/05 Concurrent Batches; applied by the integrator during the
+  serial merge; includes the `watermark_advance` pass-through field)
+- `watermark.template.yaml` -- external scan watermark (owner: 06/03 Stage 1
+  incremental scanning; the instance lives at Tools/state/watermark.yaml and
+  is advanced by maintenance batches)
+- `audit_plan.template.yaml` -- AuditPlan (owner: 12/07 Incremental Audit Planning)
+- `terminal_proof.template.yaml` -- Terminal Proof, the 28 fields copied field
+  by field from 12/06; also the single source of truth for
+  `check_proof.py`'s required field list
 
-## 受限 YAML 子集语法
+## Restricted YAML subset
 
-所有 `.yaml` 状态文件只允许（`kblib.parse_yaml_subset` 能解析的即合法）：
+All `.yaml` state files may only use what `kblib.parse_yaml_subset` accepts:
 
-- `key: value` 标量：字符串（可带引号）、整数、浮点、布尔、空值、
-  内联空列表 `[]` 与简单内联列表 `[a, b]`；
-- `key:` 之后缩进的 `- 项` 列表；列表项可以是一层平铺 map；
-- 两级缩进嵌套 map（解析器递归实现，但标准约定只用两级）；
-- `#` 注释（引号内的 `#` 不算注释）。
+- `key: value` scalars: strings (optionally quoted), integers, floats,
+  booleans, null, the inline empty list `[]`, and simple inline lists
+  `[a, b]`;
+- `- item` lists indented under `key:`; list items may be a one-level flat
+  map;
+- two-level indented nested maps (the parser is recursive, but the standards
+  convention uses two levels only);
+- `#` comments (a `#` inside quotes is not a comment).
 
-不支持：锚点/别名、多行字符串（`|` `>`）、flow map `{}`、tag、多文档、Tab 缩进。
+Not supported: anchors/aliases, block scalars (`|` `>`), flow maps `{}`,
+tags, multi-document streams, tab indentation.
 
-## 编译产物声明
+## Generated artifacts
 
-`vocab.yaml`（以及 interview cards 等一切由标准派生的机读物）是**编译产物**：
-权威定义在各 owner 标准文件（文件头注释列出映射）。修订 owner 标准后必须
-重新生成这些文件；不得只改编译产物而不改 owner，也不得把编译产物当作
-标准原文引用。
-
-## check_freshness.py（v1.8 新增）
-
-知识时效检查：按 volatility 与 last_verified 计算 review_by，输出按 priority 排序的过期清单（维护轮候选输入）。维护轮专属；不在批次检查中运行。规则 owner：08/05 Freshness And Review Due。典型调用：`python3 Tools/check_freshness.py <vault_root> --as-of 2026-07-21 --receipts receipts.jsonl`
+`vocab.yaml` is a **generated artifact**, produced by `compose_vocab.py` from
+`kernel/08 Metadata and Status/vocabulary-base.yaml` plus
+`profiles/agent-atlas/vocabulary-extensions.yaml` (the file header records
+both input hashes). The same applies to interview cards and every other
+machine-readable object derived from the standards: the authoritative
+definitions live in the owner standard files. After revising an owner
+standard, regenerate the artifact (`python3 Tools/compose_vocab.py`); never
+edit only the artifact without the owner, and never cite an artifact as
+standards text. `compose_vocab.py --check` (governance) verifies that the
+committed artifact still matches its inputs.
