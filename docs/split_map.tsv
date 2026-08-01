@@ -309,7 +309,7 @@ Read Sets/10 Maintenance Run Read Set.md	Related	nav
 10 Writing and Formatting/05 Chinese-first Technical Language.md	Source And Interview Exceptions（来源与面试例外）	profile	双重依赖语言合同与 11 域
 10 Writing and Formatting/05 Chinese-first Technical Language.md	Terminology And Wiki Links（术语与链接）	profile	链接语言合同
 10 Writing and Formatting/05 Chinese-first Technical Language.md	Acceptance And Audit（验收与审计）	profile	语言验收清单（"自动检查只产候选"原则可上浮 kernel）
-10 Writing and Formatting/05 Chinese-first Technical Language.md	Migration And Invalidation（迁移与失效）	profile	语言迁移与失效边界（最小失效机制可上浮 kernel）
+10 Writing and Formatting/05 Chinese-first Technical Language.md	Migration And Invalidation（迁移与失效）	profile	语言迁移与失效边界（最小失效机制可上浮 kernel）；施工中改判+理由：将首句的 `Standards v1.5` 历史版本归属去实例化为通用迁移谓词并登记 instance segment，避免旧版本史进入 active profile
 10 Writing and Formatting/05 Chinese-first Technical Language.md	Examples（示例）	profile	显示合同示例对
 10 Writing and Formatting/05 Chinese-first Technical Language.md	Related（相关规则）	nav
 11 Interview Content Standard.md	Purpose	profile	面试 MOC 入口，整域随可选 profile 模块
