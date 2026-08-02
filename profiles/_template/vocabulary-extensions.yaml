@@ -63,6 +63,26 @@ fields:
     # TODO(profile) -- list this profile's subject domains. The kernel base leaves
     # `domain` empty on purpose, so this list is almost always non-empty.
     values: []
+  scope:
+    owner: "profiles/<your-profile-id>/vocabulary-extensions.yaml"
+    # TODO(profile) -- append scope values beyond the kernel base, or leave empty.
+    # The kernel base already defines the general scope levels and explicitly allows
+    # a profile to append to them; it does not allow you to redefine a base value.
+    # An empty list is the common answer.
+    values: []
+
+# The fourth status axis: profile readiness. The kernel owns three status axes and
+# leaves this one entirely to the profile -- its field name, its allowed values, and
+# the single prose owner of its upgrade rules. The kernel constrains only how it may
+# move: this status MUST NOT be inferred from file existence, link resolvability, or
+# the other status axes; something has to decide it.
+# TODO(profile) -- register the axis by filling in all three keys below, or leave
+# `field` empty and state in the manifest that this profile registers no fourth
+# status axis. Leaving it empty is legitimate; leaving it silent is not.
+profile_readiness:
+  field: ""
+  values: []
+  upgrade_rules_owner: ""
 
 # The domain -> volatility dispatch table: how fast material in each domain goes
 # stale, which drives the kernel's review scheduling. Every domain value listed

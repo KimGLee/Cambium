@@ -49,8 +49,13 @@ Every slot the interface defines must be bound here. A slot required by the curr
 Runtime cards are read-only derived artifacts compiled from the standard's source text, addressed by stable Card IDs. They speed up loading; they are never the canonical owner of rule text.
 
 - Mode: TODO(profile) — `none` if this profile compiles no cards, otherwise the name of the provider.
+- Card Index: TODO(profile) — name the artifact the provider resolves first, and state what membership in it means. Every task enters through this index, so a card that is not a member of it is unreachable no matter where the file sits.
+- Card ID scheme: TODO(profile) — give the form of a Card ID and state which IDs the Core Bootstrap, Long-running Execution, and Audit and Completion roles resolve to. The kernel refers to cards by ID and records the resolved IDs in the Task Contract, so the IDs are an interface, not a filename detail.
+- Read Set mapping: TODO(profile) — state how each kernel Read Set maps to its corresponding card, and what happens when a Read Set has no card. The kernel expects a card per Read Set; a gap is answerable, but only if it is declared here rather than discovered at load time.
 - Generation: TODO(profile) — if a provider exists, state how cards are generated or kept compatible with source, and which synchronization checks are runnable before governance close. If the mode is `none`, write that card synchronization checks are `not_applicable` for this profile.
 - Conflict rule: on any conflict between a card and the standard's source text, the source text wins; escalate to source read-back and trigger a provider write-back. This rule is kernel-owned and is not yours to change.
+
+If the mode is `none`, answer the index, ID, and mapping items with `not_applicable` rather than deleting them. The kernel routes every task through the provider, so a profile that compiles no cards is declaring that all loading escalates to Read Set read-back — a decision worth recording, not an omission.
 
 ## Execution Default Overrides
 

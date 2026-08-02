@@ -22,11 +22,13 @@ A scan never substitutes for human or model review. It narrows what review must 
 
 ## Scan Registrations
 
-TODO(profile) — register each scan as a row: its identifier, the closed-list role it fills and when it activates, its verifier, and its candidate boundary with the party who owns acceptance.
+TODO(profile) — register each scan as a row. The kernel requires three declarations from every registered scan: its scope, its candidate boundary, and its acceptance owner. The remaining columns bind it to the closed-list role it fills and to the verifier that runs it.
 
-| Scan ID | Activation role | Verifier | Candidate boundary and acceptance owner |
-|---|---|---|---|
-| TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) |
+Scope is what the scan actually reads — the paths, the file kinds, and the exclusions. A scan whose scope is unstated cannot be reused as audit evidence, because a receipt is only valid over a scope someone can name.
+
+| Scan ID | Activation role | Scope | Verifier | Candidate boundary and acceptance owner |
+|---|---|---|---|---|
+| TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) |
 
 If this profile registers no scans, delete the table and write that explicitly, stating that the reserved roles are filled by review alone.
 

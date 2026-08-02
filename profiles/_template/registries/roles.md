@@ -29,6 +29,19 @@ TODO(profile) — state how these bindings work when one party holds several of 
 
 TODO(profile) — register any additional roles this profile needs, each with what it does and whether it carries gate authority. A role with no gate authority is fine and should say so explicitly. If you need none, write that this profile registers no extension roles.
 
+## Metric Traceability Roles
+
+A page that reports a metric must let a reader trace it back to the task it measured, the dataset it ran on, the trial it came from, the runtime it executed in, the grader that scored it, and the aggregation that produced the reported number. The kernel fixes those six questions and defers the names to this registry, because what counts as a "trial" or a "grader" differs by domain.
+
+- Task → TODO(profile) — what this profile calls the unit of work a metric measures.
+- Dataset → TODO(profile) — what the metric was computed over, and how a specific version of it is identified.
+- Trial → TODO(profile) — the unit of repetition, and whether a reported number is one trial or several.
+- Execution runtime → TODO(profile) — the environment the measurement ran in, at whatever granularity actually changes results here.
+- Grader → TODO(profile) — what assigns the score, whether that is a script, a rubric, a model, or a person.
+- Aggregation → TODO(profile) — how trial-level results become the reported number, including which statistic.
+
+If a metric of this kind never appears in this profile's material, write that explicitly and say so once here. The Provenance dimension of single-note review reads this section; an unbound role reads as an unanswered question during audit, not as an absent one.
+
 ## Knowledge Host Role Bindings
 
 The kernel refers to the system that stores the knowledge base through a stable role, so it never depends on a product name.

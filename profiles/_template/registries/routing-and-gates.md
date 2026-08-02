@@ -29,6 +29,16 @@ TODO(profile) — state the additional tier triggers for this profile, and give 
 
 TODO(profile) — state the default tier for ordinary pages in this profile, and which material sits below it.
 
+## Specialized Audit Invariants
+
+The kernel runs a Specialized Audit over invariants that no single batch can verify, because they only hold or break across batches. Source identity, case consistency, migration conservation, and currentness are the kernel's own; anything beyond those is a profile invariant, and the kernel looks for it here.
+
+TODO(profile) — register each cross-batch invariant this profile needs audited, or write that it registers none and the Specialized Audit covers only the kernel's own invariants.
+
+Each registered invariant needs the statement that must hold across batches, the objects it ranges over, and how a violation is detected. An invariant with no detection method is a wish, and the audit that consumes this section has no way to reach a verdict on it.
+
+State the reuse boundary too: which passed content receipts an audit of this invariant may reuse. The kernel's rule is that a specialized audit reuses canonical content review unrelated to its invariant rather than redoing page-by-page review — your boundary says which review that is here.
+
 ## Extension Gates
 
 TODO(profile) — register any gate this profile adds beyond the kernel's batch gates, note gates, and Terminal Audit, or write that it registers none.
