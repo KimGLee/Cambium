@@ -8,10 +8,12 @@ First read:
 
 - [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]]
 - The Read Sets relevant to the finding under review.
+- [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]
 - [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]]
 - [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
+- [[kernel/12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]]
 - [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]]
 - [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
 - [[kernel/02 Build Execution/07 Completion and Handoff|Completion and Handoff]]
@@ -25,7 +27,7 @@ First read:
 
 ## Completion Rule
 
-Passing structural checks MUST NOT lead to skipping correctness, depth, provenance, integration, or the applicable deterministic rendering. The audit first derives its scope from AuditReceipts, fingerprints, and invalidation events: the final graph-related checks run per the Batch-close Closed List (12/07), and expensive manual review covers changed, invalidated, overdue, and sampled objects. The Terminal Audit may audit only a completion candidate that already satisfies all applicable gates; without a visual exception trigger, the absence of UI, screenshot, or recording evidence MUST NOT be judged a failure.
+Passing structural checks MUST NOT lead to skipping correctness, depth, provenance, integration, or the applicable deterministic rendering. The audit first derives its scope from AuditReceipts, fingerprints, and invalidation events: the final graph-related checks run per the [[kernel/12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]], and expensive manual review covers changed, invalidated, overdue, and sampled objects. The Terminal Audit may audit only a completion candidate that already satisfies all applicable gates; without a visual exception trigger, the absence of UI, screenshot, or recording evidence MUST NOT be judged a failure.
 
 ## Related
 

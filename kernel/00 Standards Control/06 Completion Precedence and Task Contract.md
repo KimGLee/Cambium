@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/00 Standards Overview|00 Standards Overview]].
 - Previous: [[kernel/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]].
+- Next: [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]].
 
 ## Definition Of Complete
 
@@ -40,7 +41,7 @@ Completion semantics come in two kinds; when the task contract is frozen, one of
 
 - Build completion: the existing closed-loop semantics, executed per this page's Definition Of Complete; the Terminal Proof applies.
 - Maintenance completion: bounded semantics; complete when all of the following conditions hold:
-  - The candidate list within this run's budget envelope is closed (the envelope is defined in the Maintenance Run Envelope section of [[kernel/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]).
+  - The candidate list within this run's budget envelope is closed (the envelope is defined by [[kernel/00 Standards Control/08 Maintenance Run Envelope|Maintenance Run Envelope]]).
   - The Ledger and `Tools/state/watermark.yaml` have been advanced.
   - Each batch has passed the applicable QA gates.
 

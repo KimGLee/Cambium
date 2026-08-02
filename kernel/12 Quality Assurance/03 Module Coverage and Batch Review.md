@@ -42,7 +42,7 @@ Line counts and section counts can only trigger review candidates. An Atomic Ter
 
 Under concurrent execution, a batch's body may link only to already-merged content or pages within the batch's own manifest; links to pages in an in-flight batch are deferred until both batches have merged: the author records the missing link in the batch's delta under `open_gaps_added` (type: link), to be absorbed by a maintenance run within budget; link placement follows [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]] (Related is not the only place a reference appears).
 
-Gate merge rules (for tier determination see [[kernel/00 Standards Control/02 Task Routing and Pre-execution|00/02]] Effort Tiering):
+Gate merge rules (for tier determination see [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|00/07]] Effort Tiering):
 
 - Note-level acceptance for S/M-tier pages is folded into Batch Review; no separate note gate is opened.
 - S-tier pages are reviewed by sampling: by default sample `max(2, 20%)` of the batch's S-tier pages (check all if fewer than 2); when sampling finds problems, expand the scope per [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]].

@@ -13,7 +13,7 @@ A directory migration MUST satisfy:
 2. All incoming links have been inventoried.
 3. The new path does not create same-name ambiguity.
 4. The Overview, Roadmap, and graph group can be updated in sync.
-5. The Batch-close Closed List of the batch in which the migration closes ([[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]) covers knowledge-base-wide link verification.
+5. The Batch-close Closed List of the batch in which the migration closes ([[kernel/12 Quality Assurance/09 Batch-close Closed List|12/09]]) covers knowledge-base-wide link verification.
 
 Large-scale moves with no knowledge benefit, made only so directories look tidy, MUST NOT be performed.
 

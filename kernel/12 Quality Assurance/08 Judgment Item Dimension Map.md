@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]].
 - Previous: [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]].
+- Next: [[kernel/12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]].
 
 ## Purpose
 
@@ -35,7 +36,7 @@ All items in these sections emit under one dimension:
 | Section | Items | Dimension |
 |---|---|---|
 | `12/01 Content` | 8 | content_and_depth |
-| `12/01 Substantive Correctness Review` | 3 | content_and_depth |
+| `12/12 Substantive Correctness Review` | 3 | content_and_depth |
 | `12/02` Level 1 – Level 4 | all | rendering |
 | `12/04 Guidance Reconciliation Review` | 11 | guidance_and_contract |
 | `12/04 Source Intake And Promotion Review` | 9 | source_and_currentness |

@@ -30,7 +30,7 @@ When modifying rules, you MUST:
 2. Record the affected Standards and the reason.
 3. Bump `standards_version`.
 4. Update the routing and change summary in `00`.
-5. Execute the Active-task Adoption of [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] per the changed-predicate list recorded for the revision; an empty list is a no-op, completed by a one-line adoption receipt.
+5. Execute the Active-task Adoption of [[kernel/12 Quality Assurance/10 Standards Version Adoption|12/10]] per the changed-predicate list recorded for the revision; an empty list is a no-op, completed by a one-line adoption receipt.
 
 User approval of the Standards does not equal approval of an immediate bulk Frontmatter migration of all legacy pages. The migration scope still needs to enter a specific task contract.
 
@@ -73,19 +73,23 @@ For any structural migration of the standards corpus (splits, moves, renames, or
 ## Leaf Module Size Budget
 
 - Leaf module target ≤5KB, soft cap 6KB.
+- The cap applies by function, not by folder or file type. It applies to a page that owns rule text: a task that needs one of its rules reads the page whole, so the page's size is what reaching that rule costs.
+- A page that owns no rule text is outside the cap, because every normative sentence in it points to a rule owned elsewhere (Core Principle 20), and splitting such a page raises resolution cost instead of lowering it. Domain MOCs, Read Sets, and the standards maps and registries are the usual cases. These pages are likewise kept lean.
+- Being outside the cap and being a registered exception are exclusive dispositions; a page outside the cap is not registered below.
 - When over the limit, cut examples first; if still over, then consider a split, which follows this page's governance change process.
-- MOCs and Read Sets have no such limit, but are likewise kept lean.
 - Examples default to one good / one bad per rule point.
 - Each approved exception MUST register the object, the measured value, the necessity, the growth cap, and the follow-up disposition; the registered cap MUST NOT be exceeded without a new governance change.
 
 | Exception register | Active entries |
 |---|---|
-| Leaf module exceptions | 1 active; registered below |
+| Leaf module exceptions | 3 active; registered below |
 | Control-plane exceptions | None; register is open for an authorized governance change |
 
 | Leaf module exception | Measured | Necessity | Growth cap | Follow-up |
 |---|---|---|---|---|
-| [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] | 8059 bytes | The module is one lookup table plus the rules for reading it, and it carries no examples to cut. Its reverse check — that every base receipt dimension has at least one emitting item — is performed by reading a single table, and any split removes that property | 8.5KB | Re-measure whenever the kernel's judgment item set changes; if the cap is reached, split by audit layer rather than by section, and restate the reverse check in both halves |
+| [[kernel/00 Standards Control/03 Standards Governance\|Standards Governance]] (this page) | 9471 bytes | Its only routed consumer is the Standards Governance Read Set, which reads it at Start; one governance change consults the change process, the write-back checklist, the accretion questions, the migration conservation rules, and this budget in a single pass. The one other reader, the batch-activation version self-check of [[kernel/00 Standards Control/02 Task Routing and Pre-execution\|00/02]], takes one scalar from the Standards Control table rather than loading the page, and splitting that table out would make every governance change read both halves | 10KB | Re-measure at each governance change; if the cap is reached, the split candidate is the exception register below, and it moves only once a reader needs the register without the rule that requires it |
+| [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation\|Audit Evidence Reuse and Invalidation]] | 14553 bytes | Its three separable tenants are already extracted to [[kernel/12 Quality Assurance/09 Batch-close Closed List\|12/09]], [[kernel/12 Quality Assurance/10 Standards Version Adoption\|12/10]], and [[kernel/12 Quality Assurance/11 Content-level Propagation\|12/11]]. What remains answers one question — may this run reuse the receipt it holds, or must it recompute — and no routed consumer reaches a part of it alone: the receipt schema is unreadable without the audit layers it is keyed by, and the Reuse Gate and Invalidation are the two halves of that one answer, so separating them would leave each half deferring to the other | 15KB | Re-measure whenever an audit layer or a receipt dimension is added; the next split MUST be a whole tenant with its own routed consumer, never a section of the reuse decision |
+| [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] | 8151 bytes | The module is one lookup table plus the rules for reading it, and it carries no examples to cut. Its reverse check — that every base receipt dimension has at least one emitting item — is performed by reading a single table, and any split removes that property | 8.5KB | Re-measure whenever the kernel's judgment item set changes; if the cap is reached, split by audit layer rather than by section, and restate the reverse check in both halves |
 
 ## Execution-Acceptance Ownership Convention
 

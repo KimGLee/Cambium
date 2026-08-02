@@ -1,7 +1,7 @@
 ## Navigation
 
 - Profile: [[profiles/examples/eng-handbook/profile|Eng Handbook Profile]].
-- Kernel closed list: [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|Batch-close Closed List]].
+- Kernel closed list: [[kernel/12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]].
 - Audit dimensions: [[profiles/examples/eng-handbook/registries/audit-dimensions|Audit Dimension Registry]].
 
 ## Scan Registrations

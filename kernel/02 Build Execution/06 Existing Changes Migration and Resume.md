@@ -22,7 +22,7 @@ When moving or splitting files:
 4. Update references.
 5. Confirm the content is fully migrated.
 6. Only then delete duplicate content or old files.
-7. The knowledge-base-wide check is covered by the [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|Batch-close Closed List]] of the batch in which the migration closes.
+7. The knowledge-base-wide check is covered by the [[kernel/12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]] of the batch in which the migration closes.
 
 Deleting first and rewriting afterwards MUST NOT be done.
 

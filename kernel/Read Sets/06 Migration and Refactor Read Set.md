@@ -27,6 +27,7 @@ Before migration, a manifest of source paths, target paths, incoming links, head
 
 - [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
+- [[kernel/12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]], run by the integrator on the batch in which the migration closes
 - [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
 
 ## Related

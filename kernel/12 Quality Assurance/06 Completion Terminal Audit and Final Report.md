@@ -40,7 +40,7 @@ After the task moves from `active` to `completion-candidate`, run the Terminal A
 3. Run [[kernel/12 Quality Assurance/04 Guidance and Source Review#Guidance Reconciliation Review|Guidance Reconciliation Review]] and confirm that all guidance within the cutoff has a final disposition.
 4. Reconcile the Coverage Ledger against the file system, exclusions, competency matrix, and Required Queue; if that reconciliation was already completed before the completion-candidate freeze and no files changed afterwards, reuse that result directly without re-running.
 5. Confirm all batches are closed and the merge queue is empty (no `merge-ready` unmerged batches, no written-out unapplied deltas), and there are no unverified modifications or unresolved invalidations.
-6. Run the [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|Batch-close Closed List]] (against the final frozen snapshot).
+6. Run the [[kernel/12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]] (against the final frozen snapshot).
 7. Run note-type-aware content review on changed, invalidated, overdue, and bounded-sampling objects; reuse the remaining valid receipts per the [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Reuse Gate|Reuse Gate]].
 8. Check Source Promotion, plus the expression-layer migration and profile synchronization gates registered in the `Routing And Gate Registry`; specialized Audits prove only cross-batch invariants and do not indiscriminately redo local mechanism review.
 9. Review this round's `rendering_mode` and Level 0 / Level 1 deterministic evidence; review Level 2–4 UI, screenshot, or recording evidence only when a recorded objective trigger exists, and expand checks according to confirmed systemic impact.
@@ -90,7 +90,7 @@ Only when the three open guidance counters are 0, `required_authoring_gaps = 0`,
 
 ## Terminal Findings And Convergence
 
-Terminal Audit findings are handled with the three-level grading of [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review#Substantive Correctness Review|Substantive Correctness Review]]:
+Terminal Audit findings are handled with the three-level grading of [[kernel/12 Quality Assurance/12 Substantive Correctness Review#Substantive Correctness Review|Substantive Correctness Review]]:
 
 - `minor`: record; does not block completion.
 - `major`: fix in place + targeted re-check of that object only + receipt supersede for that object; do not re-freeze the snapshot, do not re-run the Batch-close Closed List.

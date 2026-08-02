@@ -11,6 +11,7 @@ First read [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]], then 
 - [[kernel/01 Scope and Architecture/03 Foundation Preservation|Foundation Preservation]]
 - [[kernel/01 Scope and Architecture/04 Folder and Shared Ownership|Folder and Shared Ownership]]
 - [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
+- [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]
 - [[kernel/02 Build Execution/04 Architecture Samples and Dependency Build|Architecture Samples and Dependency Build]]
 - [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]]
 - [[kernel/03 Note Types and Ownership/01 Note Type Catalog|Note Type Catalog]]
@@ -31,6 +32,7 @@ First read [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]], then 
 - Expression layer synchronization: combine the `Expression Layer Read Set` registered by the selected profile through the `Routing And Gate Registry`.
 - Long tasks and multiple batches: combine [[kernel/Read Sets/07 Long-running Execution Read Set|Long-running Execution]].
 - Renaming or moving existing pages: combine [[kernel/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]].
+- Mechanism sections of an existing page (Definition, Mechanism, formulas, core conclusions) are substantively modified: read [[kernel/12 Quality Assurance/11 Content-level Propagation|Content-level Propagation]] and mark the direct downstream notes.
 
 ## Gate
 

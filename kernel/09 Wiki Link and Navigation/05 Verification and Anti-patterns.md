@@ -5,7 +5,7 @@
 
 ## Verification
 
-The batch-level execution checklist is governed by the Batch-close Closed List in [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]]; this page retains the definition of the link rules and the missing / ambiguous semantics (owner responsibility unchanged):
+The batch-level execution checklist is governed by the [[kernel/12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]] ([[kernel/12 Quality Assurance/09 Batch-close Closed List|12/09]]); this page retains the definition of the link rules and the missing / ambiguous semantics (owner responsibility unchanged):
 
 - `missing=0`: no wiki link points to a nonexistent target.
 - `ambiguous=0`: no wiki link resolves to multiple different targets.

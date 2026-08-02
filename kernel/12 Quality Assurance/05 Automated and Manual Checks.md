@@ -6,7 +6,7 @@
 
 ## Automated Checks
 
-Each batch of work generates an AuditPlan before batch close per [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]. The full checks at batch close are governed by the [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|Batch-close Closed List]]; this page does not list them separately.
+Each batch of work generates an AuditPlan before batch close per [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]. The full checks at batch close are governed by the [[kernel/12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]]; this page does not list them separately.
 
 ## Domain-specific Checks
 
@@ -16,7 +16,7 @@ The following domain-specific check items run only on the changed / invalidated 
 - Checks for `unassessed`, Required gaps with no next batch, and deferred/excluded without a reason.
 - Checks for empty files and extremely short core/process/system files; results serve only as review candidates and do not fail automatically.
 - Checks for missing Sources, Related, and metadata. Checks of profile-owned expression links, extension metadata, or other profile predicates are registered by the `Registered Scan Registry`; the kernel does not name concrete implementations.
-- Frontmatter controlled vocabulary validation is performed by `check_vocab`; its input MUST be composed from the kernel base vocabulary and the selected profile's `Vocabulary Extensions`. The vault-wide run at batch close is item 7 of the [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|Batch-close Closed List]]; here only the changed-scope self-check is done.
+- Frontmatter controlled vocabulary validation is performed by `check_vocab`; its input MUST be composed from the kernel base vocabulary and the selected profile's `Vocabulary Extensions`. The vault-wide run at batch close is item 7 of the [[kernel/12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]]; here only the changed-scope self-check is done.
 - Candidate scans for the `Language Contract` or other profile contracts are activated by the `Registered Scan Registry`; the kernel only requires that a scan declare its scope, candidate boundary, and acceptance owner.
 - Checks for Source Notes missing source URL, date, evidence role, or affected notes.
 - Checks for Research Synthesis missing source set, disagreement, or graph decision.

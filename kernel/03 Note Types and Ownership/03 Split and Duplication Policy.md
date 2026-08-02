@@ -51,7 +51,7 @@ Retirement does not delete files:
 - Add a tombstone block at the top of the body: retirement reason, retirement date, a `superseded_by` link pointing to the successor page; when there is no successor page, state the reason.
 - Remove the page from the Required set of coverage.
 - Hard condition of the retirement gate: first run `Tools/check_links.py` to find all incoming links and retarget each one to the successor page; only then may the page be retired.
-- For retiring high in-degree pages, the incoming-link retargeting work is converted into a page count at the kernel default of "retargeted-link count ÷ 6" when the selected profile has not overridden it, and counted against the maintenance run budget (rule owner: [[kernel/00 Standards Control/02 Task Routing and Pre-execution|00/02]] Maintenance Run Envelope, referenced here); a profile MAY explicitly override this conversion parameter.
+- For retiring high in-degree pages, the incoming-link retargeting work is converted into a page count at the kernel default of "retargeted-link count ÷ 6" when the selected profile has not overridden it, and counted against the maintenance run budget (rule owner: [[kernel/00 Standards Control/08 Maintenance Run Envelope|00/08]] Maintenance Run Envelope, referenced here); a profile MAY explicitly override this conversion parameter.
 
 ## Merge
 

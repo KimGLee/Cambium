@@ -151,10 +151,6 @@ If a targeted check finds a systemic problem that may affect pages of the same k
 
 A local problem MUST NOT lead to unbounded re-review of the whole vault, and a passing sample MUST NOT override a known failure.
 
-## Content-level Propagation
-
-When a note's mechanism sections (Definition, Mechanism, formulas, core conclusions) are substantively modified, the author MUST mark the direct downstream notes `needs_rereview` along the semantic dependency edges defined on this page (prerequisite, claim-evidence), and record this into the Coverage Ledger via the batch delta's `open_gaps_added` (type: rereview) — under concurrency the author does not write the Ledger directly ([[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] write partition). The marks flow into the maintenance run's candidate pool to be absorbed within budget; on-the-spot handling is not required. The same page is marked into the pool only once per maintenance run cycle. The re-review action is re-reading whether the downstream reasoning still holds, not re-running mechanical checks.
-
 ## Incremental Audit Planning
 
 Each batch generates an `AuditPlan` exactly once, before close; at batch start only the Audit Receipt Register is loaded, with no separate AuditPlan:
@@ -175,21 +171,7 @@ Each batch generates an `AuditPlan` exactly once, before close; at batch start o
 7. Close only when required invalidations are zero.
 ```
 
-## Batch-close Closed List
-
-**Batch-close Closed List**: the following seven items, and only these seven items, run against the merged complete in-scope snapshot when each batch is closed by the integrator during serial merge (concurrent batches merge one by one, see [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches) —
-
-1. Wiki link missing / ambiguous / heading resolution (check_links)
-2. Markdown / YAML / fence / table structural validity
-3. graph JSON and duplicate **basename** candidates
-4. Coverage file-count reconciliation
-5. guidance ID and contract version continuity
-6. The batch-close residual-content scan registered in the `Registered Scan Registry`
-7. Frontmatter controlled vocabulary validation (check_vocab; the active vocabulary is composed from the kernel base and the selected profile's `Vocabulary Extensions`)
-
-Adding a new check to this list requires a governance revision, and the check MUST be: a deterministic script, with a single vault-wide run ≤60 seconds. [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]] and [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]] only reference this list and do not list it separately.
-
-These are global invariants that are cheap and easily broken by modifications to other pages. A new result supersedes the previous receipt rather than being treated as meaningless repetition.
+The mandatory full deterministic partition of step 4 is the [[kernel/12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]]; this module decides the plan, not the list's membership.
 
 ## Incremental By Default
 
@@ -221,21 +203,11 @@ The canonical procedure of the Terminal Audit and the canonical definition of th
 
 `unresolved_invalidations` MUST be `0`. Reusing a receipt is not lowering the standard; it requires proving that the audited object and the acceptance conditions have not undergone relevant change.
 
-## Active-task Adoption
-
-The **affected scope** of a Standards revision = the receipts and batches corresponding to the changed-predicate list explicitly enumerated in the revision record (which acceptance predicates or gate semantics changed). **Whatever the revision record does not list is not affected.** A revision with no predicate change (wording, version stamp, slimming, comments) takes the no-op path: a byte diff + a one-line adoption receipt completes it, triggering no invalidation and producing no Amendment Record table.
-
-When the Standards version changes and the changed-predicate list is non-empty, active, paused, and completion-candidate tasks MUST:
-
-1. Record the old and new Standards versions;
-2. Re-parse this module and the affected gate modules;
-3. Determine whether the new rules change the existing Batch/Terminal acceptance predicates;
-4. Mark old evidence that cannot satisfy the new receipt schema as `legacy-evidence` rather than forging fingerprints;
-5. Allow full receipts to be generated starting from the current batch;
-6. Have the Terminal Audit apply risk-targeted re-review to legacy evidence, without requiring indiscriminate rework of closed batches.
-
 ## Related
 
+- [[kernel/12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]]
+- [[kernel/12 Quality Assurance/10 Standards Version Adoption|Standards Version Adoption]]
+- [[kernel/12 Quality Assurance/11 Content-level Propagation|Content-level Propagation]]
 - [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]

@@ -46,7 +46,7 @@ Before formal execution, confirm:
 
 Before the standards are confirmed, no large-scale migration is performed.
 
-Freeze `standards_version` once the task starts. The Standards MUST NOT be modified in passing during content build; only a governance change explicitly authorized by the user may modify them. After a Standards change, the version MUST be bumped, and [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|12/07]] Active-task Adoption MUST be executed per the changed-predicate list of the revision record (an empty list is a no-op).
+Freeze `standards_version` once the task starts. The Standards MUST NOT be modified in passing during content build; only a governance change explicitly authorized by the user may modify them. After a Standards change, the version MUST be bumped, and [[kernel/12 Quality Assurance/10 Standards Version Adoption|12/10]] Active-task Adoption MUST be executed per the changed-predicate list of the revision record (an empty list is a no-op).
 
 ## Time And Stop Semantics
 

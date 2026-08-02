@@ -98,7 +98,7 @@ Module splitting does not change rule precedence. Conflicts are still resolved p
 - Rendering acceptance defaults to source parsing and deterministic static verification; interactive UI, screenshots, visual models, and screen recording MUST meet the graded escalation conditions.
 - Completion MUST pass the applicable gates; time, file counts, and structural checks cannot alone prove completion.
 
-The complete default constraints are located in the [[kernel/00 Standards Control/02 Task Routing and Pre-execution#Default Constraints Snapshot|Default Constraints Snapshot]].
+The complete default constraints are located in the [[kernel/00 Standards Control/09 Default Constraints Snapshot|Default Constraints Snapshot]].
 
 ## Related
 

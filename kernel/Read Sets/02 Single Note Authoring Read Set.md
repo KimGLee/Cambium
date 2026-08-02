@@ -12,6 +12,7 @@ First read [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]], then 
 - By page type, select [[kernel/04 Content Depth/02 Core Concept Structure|Core Concept Structure]], [[kernel/04 Content Depth/03 Process and Flow Structure|Process and Flow Structure]], [[kernel/04 Content Depth/04 System and Production Reasoning|System and Production Reasoning]], or [[kernel/04 Content Depth/05 Source and Evaluation Depth|Source and Evaluation Depth]].
 - [[kernel/08 Metadata and Status/01 Frontmatter and Core Vocabularies|Frontmatter and Core Vocabularies]]
 - [[kernel/08 Metadata and Status/02 Scope Level Depth and Priority|Scope Level Depth and Priority]]
+- [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]
 - [[kernel/08 Metadata and Status/03 Status Axes|Status Axes]]
 - [[kernel/09 Wiki Link and Navigation/01 Link Semantics and Body Links|Link Semantics and Body Links]]
 - [[kernel/10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]
@@ -27,6 +28,7 @@ First read [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]], then 
 - Mathematics, tables, or code: read [[kernel/10 Writing and Formatting/02 Mathematics Tables and Code|Mathematics Tables and Code]].
 - Diagrams, images, or visualizations: read [[kernel/10 Writing and Formatting/03 Diagrams and Assets|Diagrams and Assets]].
 - Deep-dive cases, failure modes, or debugging needed: read [[kernel/04 Content Depth/06 Examples Deep Dives and Failure Analysis|Examples Deep Dives and Failure Analysis]].
+- Mechanism sections of an existing page (Definition, Mechanism, formulas, core conclusions) are substantively modified: read [[kernel/12 Quality Assurance/11 Content-level Propagation|Content-level Propagation]] and mark the direct downstream notes.
 
 ## Gate
 
@@ -34,6 +36,7 @@ Before closing the page, read:
 
 - [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]]
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
+- For an L-tier page, [[kernel/12 Quality Assurance/12 Substantive Correctness Review|Substantive Correctness Review]]; the author dispatches it to an independent execution context and MUST NOT produce the receipt.
 - When formatting or renderable constructs changed, read [[kernel/10 Writing and Formatting/04 Rendering and Formatting Review|Rendering and Formatting Review]].
 - When the page contains a diagram, table, formula, image, callout, or embed, or a specific display problem exists, read [[kernel/12 Quality Assurance/02 Rendering Verification|Rendering Verification]]. Run Level 0 / Level 1 by default; visual levels may be entered only with a recorded objective trigger and unresolved question.
 
