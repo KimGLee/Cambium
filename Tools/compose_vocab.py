@@ -18,7 +18,7 @@ Deterministically composes the selected-profile vocabulary artifact
                 not exist or carries no such header, the run fails and
                 lists the profiles it can find.
 
-Merge policy (matches docs/vocab_build_receipt.json):
+Merge policy:
   - root keys are emitted in the fixed base-driven order;
   - fields: kernel fields in source order, then profile-only fields in
     source order;
@@ -280,10 +280,9 @@ def compose(base, profile, base_arg, ext_arg):
 
 
 # ---------------------------------------------------------------------------
-# Restricted-YAML-subset emitter (matches the serialization policy recorded
-# in docs/vocab_build_receipt.json: JSON-quoted strings with ensure_ascii
-# false, unquoted integers, null as empty scalar, [] for empty lists,
-# 2-space indentation, final newline).
+# Restricted-YAML-subset emitter (serialization policy: JSON-quoted strings
+# with ensure_ascii false, unquoted integers, null as empty scalar, [] for
+# empty lists, 2-space indentation, final newline).
 # ---------------------------------------------------------------------------
 
 

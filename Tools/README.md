@@ -7,45 +7,44 @@ Nothing in this directory modifies any standards `.md` file; the standards
 prose owns every vocabulary and field list.
 
 Layering: check_links/check_vocab/check_moc/check_proof/apply_delta/compose_vocab/check_profile/kblib
-are kernel tooling; check_language is profile tooling (agent-atlas registered
-scan); check_freshness/duplicate_check are maintenance tooling.
+are kernel tooling; check_freshness/duplicate_check are maintenance tooling.
+A profile may register scans of its own through its `Registered Scans`
+registry; those scripts belong to that profile, not to this directory.
 
 ## Tool inventory
 
 | Script | Purpose | Typical invocation |
 |---|---|---|
-| `check_links.py` | Wiki link missing / ambiguous / heading verification (09/03, 09/05); `--scope` accepts a directory or a single page (an empty scan set fails); `--exclude` keeps files out of scanning and basename disambiguation, while exact full-path links into excluded areas still resolve (`excluded_target`) | `python3 Tools/check_links.py . --exclude legacy --receipts Tools/receipts/links.jsonl` |
-| `check_vocab.py` | Frontmatter controlled-vocabulary check (08 domain; vocabulary from `vocab.yaml`); `--scope` accepts a directory or a single page (an empty scan set fails); `--quota-p0` / `--quota-p1` cap P0/P1 shares, defaults 15/35 (kernel defaults; a profile or task contract may override) | `python3 Tools/check_vocab.py . --scope kernel --quota-p0 15 --quota-p1 35 --receipts Tools/receipts/vocab.jsonl` |
-| `check_moc.py` | Domain MOC Module Index vs. actual H2 headings consistency candidates (12/05; **candidates only**); recursively scans for Module Index sections and is fence-aware (fenced code blocks ignored); maintenance runs and governance | `python3 Tools/check_moc.py . --exclude legacy` |
+| `check_links.py` | Wiki link missing / ambiguous / heading verification (09/03, 09/05); `--scope` accepts a directory or a single page (an empty scan set fails); `--exclude` keeps files out of scanning and basename disambiguation, while exact full-path links into excluded areas still resolve (`excluded_target`) | `python3 Tools/check_links.py . --receipts Tools/receipts/links.jsonl` |
+| `check_vocab.py` | Frontmatter controlled-vocabulary check (08 domain; vocabulary from the composed `vocab.yaml`, which exists only once a profile has been selected and composed -- without it the check reports that and exits 1); `--scope` accepts a directory or a single page (an empty scan set fails); `--quota-p0` / `--quota-p1` cap P0/P1 shares, defaults 15/35 (kernel defaults; a profile or task contract may override) | `python3 Tools/check_vocab.py . --scope kernel --quota-p0 15 --quota-p1 35 --receipts Tools/receipts/vocab.jsonl` |
+| `check_moc.py` | Domain MOC Module Index vs. actual H2 headings consistency candidates (12/05; **candidates only**); recursively scans for Module Index sections and is fence-aware (fenced code blocks ignored); maintenance runs and governance | `python3 Tools/check_moc.py .` |
 | `check_proof.py` | Terminal Proof consistency check (12/06): field completeness, zero conditions, reconciliation/QA/review results must read `passed`, evidence fields must not declare failure; `--root` additionally requires path-valued fields to resolve; optional Coverage Ledger cross-check. Verifies the proof's consistency, not the work itself | `python3 Tools/check_proof.py proof.yaml --root . --ledger coverage_ledger.yaml` |
 | `apply_delta.py` | Deterministic application of a coverage delta during the serial merge (02/05 Concurrent Batches); merges `gate_receipts` in block-list form, warns on non-core scalar keys, re-parses the merged output before writing and aborts if it no longer parses; atomic write with automatic backup; gap/watermark entries are printed as integrator todos | `python3 Tools/apply_delta.py ledger.yaml delta.yaml --apply` |
 | `compose_vocab.py` | Persistent vocabulary compiler: composes `vocab.yaml` from the kernel base and the selected profile's extensions. There is no default profile: `--extensions` names one, and when the flag is omitted the path is read back from the existing `--output` header, so an argument-free run recomposes whichever profile the committed artifact was built from, and a run with no artifact to read from fails and lists the profiles it can find. `--check` recomputes and compares at the value level, ignoring the header comments | `python3 Tools/compose_vocab.py --check` |
 | `check_profile.py` | Profile manifest completeness and unfilled-template check: derives the slot list from `profiles/README.md`, verifies every slot is bound and resolves, verifies each overridable execution default is registered and that no constitutional constant is, and **fails while the profile is still an unfilled `profiles/_template/` copy** (three independent conditions: a remaining `TODO(profile)` marker, a reserved placeholder `profile_id`, a surviving `Template Usage` section). Checks structure, never answer quality | `python3 Tools/check_profile.py profiles/<profile-id> --receipts Tools/receipts/profile.jsonl` |
 | `stamp_cards.py` | Runtime Cards source_hash stamping and verification (00/03 Write-back Checklist); `--cards-dir` defaults to `Cards` and a missing directory exits 0; `--check` verifies only; `--set-version` stamps a uniform version incl. the Card Index | `python3 Tools/stamp_cards.py . --check` |
-| `check_language.py` | Language-policy candidate detection for the agent-atlas profile (10/05; **candidates only**); exemptions come only from `--exempt` -- there is no built-in path exemption | `python3 Tools/check_language.py . --scope profiles --exempt kernel --receipts Tools/receipts/lang.jsonl` |
-| `check_freshness.py` | Freshness check: computes review_by from volatility and last_verified (fallback: last_reviewed, then file modification time per 08/05, flagged pending first verification); `--defaults` accepts a flat mapping or `Tools/vocab.yaml` / a profile's `vocabulary-extensions.yaml` (their `volatility_defaults`); an all-skip run reports NOTHING CHECKED as a candidate, not a pass | `python3 Tools/check_freshness.py . --as-of 2026-07-21 --exclude legacy --defaults Tools/vocab.yaml --receipts Tools/receipts/fresh.jsonl` |
-| `duplicate_check.py` | Cross-file duplicate paragraph candidate detection; full vault by default; `--exclude` is repeatable and defaults to `legacy`; supports `--receipts` and exits 2 when candidates exist | `python3 Tools/duplicate_check.py . --exclude legacy --exclude _template --receipts Tools/receipts/dup.jsonl` |
+| `check_freshness.py` | Freshness check: computes review_by from volatility and last_verified (fallback: last_reviewed, then file modification time per 08/05, flagged pending first verification); `--defaults` accepts a flat mapping or `Tools/vocab.yaml` / a profile's `vocabulary-extensions.yaml` (their `volatility_defaults`); an all-skip run reports NOTHING CHECKED as a candidate, not a pass | `python3 Tools/check_freshness.py . --as-of 2026-07-21 --defaults profiles/<your-profile-id>/vocabulary-extensions.yaml --receipts Tools/receipts/fresh.jsonl` |
+| `duplicate_check.py` | Cross-file duplicate paragraph candidate detection; full vault by default; `--exclude` is repeatable and defaults to the single component `legacy`, the conventional name for a frozen-snapshot area that a vault need not have; supports `--receipts` and exits 2 when candidates exist | `python3 Tools/duplicate_check.py . --exclude _template --receipts Tools/receipts/dup.jsonl` |
 | `kblib.py` | Shared library (restricted YAML subset parser, Markdown helpers, receipt helpers); not invoked directly | imported by all scripts above |
 
 ## Canonical full-tree configuration
 
 The full-tree link check for this repository is `python3 Tools/check_links.py
-. --exclude legacy`: frozen `legacy/` snapshots are byte-verbatim historical
-artifacts whose contents are not audited (they may contain links that were
-valid at snapshot time), while explicit full-path links into them from active
-files still resolve. Running without `--exclude legacy` audits the snapshots
-themselves and reports their historical dead links.
+.`, with no exclusions: every file in the published tree is active and is
+audited. `--exclude` remains available for a vault that carries an unaudited
+area -- byte-verbatim frozen snapshots are the usual case -- and explicit
+full-path links from active files into such an area still resolve, counted
+separately as `excluded_target`.
 
 The full-tree duplicate check is `python3 Tools/duplicate_check.py . --exclude
-legacy --exclude _template`. `profiles/_template/` is a skeleton whose files
-share a deliberate common shape, and each of them parallels its filled
-counterpart under `profiles/examples/eng-handbook/`; that repetition is the
-template working as intended, so it is excluded rather than reported. Measured
-on this repository, the exclusion is the whole difference: 217 candidates
-without it, 167 with it, and the 167 are the same candidates the repository
-reported before the template existed. Excluding `_template` here does not
-weaken the check for real profiles -- a profile a user copies out of the
-template lives under its own directory name and is scanned normally.
+_template`. `profiles/_template/` is a skeleton whose files share a deliberate
+common shape, and each of them parallels its filled counterpart under
+`profiles/examples/eng-handbook/`; that repetition is the template working as
+intended, so it is excluded rather than reported. Measured on this repository,
+the exclusion is the whole difference: 171 candidate file pairs without it, 126
+with it. Excluding `_template` here does not weaken the check for real profiles
+-- a profile a user copies out of the template lives under its own directory
+name and is scanned normally.
 
 ## Invocation split
 
@@ -57,9 +56,12 @@ template lives under its own directory name and is scanned normally.
 - **Maintenance run** = `check_freshness.py` (once at the start of the run)
   plus `duplicate_check.py` (full vault or `--scope`; candidates go into the
   candidates pool). Neither is invoked at batch or single-page level.
-- **Governance** = `stamp_cards.py --check`, `check_moc.py`,
-  `compose_vocab.py --check`, and `check_profile.py` against each profile the
-  repository ships.
+- **Governance** = `stamp_cards.py --check`, `check_moc.py`, and
+  `check_profile.py` against each profile the repository ships.
+  `compose_vocab.py --check` joins that list in a vault that has composed a
+  vocabulary. This repository ships no composed `vocab.yaml`, so here the
+  command reports that no profile is selected and exits 1; see Generated
+  artifacts below.
 - **Profile bring-up** = `check_profile.py` against a profile freshly copied
   from `profiles/_template/`. It is expected to fail at first and to keep
   failing until the copy is filled in; that failure is the tool's purpose, not
@@ -72,10 +74,10 @@ Shared conventions:
   appended as JSONL via `--receipts PATH`.
 - Exit codes: `0` = all pass; `1` = at least one fail; `2` = no fail but at
   least one candidate.
-- `check_language.py` never returns 1: per 10/05 Acceptance And Audit,
-  language signals may only produce review candidates, and the final verdict
-  belongs to human/model review. It is registered as a scan of the
-  agent-atlas profile; kernel-only vaults do not run it.
+- A scan registered by a profile is run only by a vault that loads that
+  profile, and may only produce review candidates: per 10/05 Acceptance And
+  Audit the final verdict belongs to human/model review, so such a scan never
+  returns 1.
 
 ## Receipts flow (12/07 Audit Evidence Reuse and Invalidation)
 
@@ -144,18 +146,30 @@ tags, multi-document streams, tab indentation.
 `vocabulary-extensions.yaml` of one selected profile. Which profile that is,
 is recorded in the artifact's own header, together with the sha256 of both
 inputs. The tool carries no default profile of its own; an argument-free run
-reads the profile back out of that header, which is why the governance
-invocation needs no arguments and still names no profile in its source.
+reads the profile back out of that header, which is how a recompose can name
+no profile on the command line and still be unambiguous.
 
-In this repository the committed `vocab.yaml` is composed against
-`profiles/agent-atlas/vocabulary-extensions.yaml`. That is a fact about this
-artifact, not a setting in the tool: a clone that carries a different profile
-regenerates against its own, and running `compose_vocab.py` with no artifact
-to read from fails and lists the profiles present rather than picking one.
+**This repository ships no composed `vocab.yaml`.** Committing one would write
+a selected profile into the artifact header, and that profile would become the
+vocabulary of every clone -- the outcome `compose_vocab.py` refuses to produce
+when asked for a default. What is published here is a kernel base and an
+interface, not a selection. Until a profile is selected and composed,
+`compose_vocab.py --check` exits 1 and lists the profiles it can find, and
+`check_vocab.py` exits 1 and points at the same step. Both are the
+not-yet-configured signal, not a defect: it is the same signal
+`check_profile.py profiles/_template` gives for an unfilled template.
 
-The same applies to interview cards and every other machine-readable object
+Compose the artifact once, against your own profile:
+
+```text
+python3 Tools/compose_vocab.py --extensions profiles/<your-profile-id>/vocabulary-extensions.yaml
+```
+
+After that, `compose_vocab.py` with no arguments recomposes from the header,
+and `compose_vocab.py --check` verifies the artifact still matches its inputs.
+
+The same applies to Runtime Cards and every other machine-readable object
 derived from the standards: the authoritative definitions live in the owner
-standard files. After revising an owner standard, regenerate the artifact
-(`python3 Tools/compose_vocab.py`); never edit only the artifact without the
-owner, and never cite an artifact as standards text. `compose_vocab.py --check`
-(governance) verifies that the committed artifact still matches its inputs.
+standard files. After revising an owner standard, regenerate the artifact;
+never edit only the artifact without the owner, and never cite an artifact as
+standards text.

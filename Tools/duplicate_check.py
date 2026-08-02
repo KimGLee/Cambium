@@ -22,8 +22,9 @@ Method and thresholds:
 - similarity: 12-character sliding shingle sets; report when Jaccard > 0.5
   or containment > 0.7;
 - automatic exclusions: files whose path contains a component given via
-  --exclude (repeatable; default: legacy, i.e. the repository's legacy/
-  directory); paragraphs dominated by link lists (lines starting with [[
+  --exclude (repeatable; defaults to the single component `legacy`, the
+  conventional name for a frozen-snapshot area, which a vault need not
+  have); paragraphs dominated by link lists (lines starting with [[
   make up > 60%); paragraph pairs within the same file.
 
 Usage: python3 duplicate_check.py [vault_path] [--scope SUBPATH]

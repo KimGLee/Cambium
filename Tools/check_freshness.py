@@ -288,7 +288,8 @@ def main():
     if not candidates:
         if all_skipped:
             print("  Conclusion: NOTHING CHECKED — all %d file(s) skipped for "
-                  "lack of a resolvable volatility; supply --defaults (e.g. "
+                  "lack of a resolvable volatility; supply --defaults (a "
+                  "profile's vocabulary-extensions.yaml, or a composed "
                   "Tools/vocab.yaml) or add volatility frontmatter. This is "
                   "not evidence of freshness." % counts["files"])
         else:
