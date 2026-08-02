@@ -19,6 +19,7 @@ This page is the stable entry for the Quality Assurance standard. The detailed r
 | [[kernel/12 Quality Assurance/05 Automated and Manual Checks\|Automated and Manual Checks]] | `Automated Checks`, `Domain-specific Checks`, `Manual Checks` |
 | [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report\|Completion Terminal Audit and Final Report]] | `Completion Gate`, `Terminal Audit`, `Terminal Findings And Convergence`, `Final Report`, `Related` |
 | [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation\|Audit Evidence Reuse and Invalidation]] | `Purpose`, `Audit Layers`, `Dimension-specific Audit Receipt`, `Reuse Gate`, `Invalidation`, `Content-level Propagation`, `Incremental Audit Planning`, `Batch-close Closed List`, `Incremental By Default`, `Specialized Audit Boundary`, `Terminal Reconciliation Rules`, `Active-task Adoption`, `Related` |
+| [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] | `Purpose`, `Terms`, `Evidence Role`, `Uniform Sections`, `Item Map`, `Reverse Check`, `Profile Registration`, `Related` |
 | `Audit Dimension Registry` + `Registered Scan Registry` + `Routing And Gate Registry` | profile-owned QA dimensions, scans, and extension gates |
 
 ## Extension Registry

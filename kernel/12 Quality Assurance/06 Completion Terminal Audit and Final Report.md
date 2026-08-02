@@ -19,6 +19,8 @@ A long task may be marked `complete` only after completing [[kernel/12 Quality A
 
 Historical gate results may enter the Terminal Proof only through the [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Reuse Gate|Reuse Gate]]; `reviewed`, a date, or "passed previously" is not by itself reusable evidence.
 
+This module states no judgment items of its own. The Completion Gate and the Terminal Audit consume receipts emitted by the modules they point at; see [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]].
+
 If any applicable hard gate fails, the current state MUST be kept; the standard MUST NOT be lowered because the task is near its end, a time point has been reached, the run has lasted long, or many files have been created.
 
 Authoring completion does not require all frontier conclusions to reach `validated`. Independent production data, cross-implementation reproduction, or future monitoring results that cannot be obtained within the current task MAY enter the evidence backlog, but MUST:

@@ -44,7 +44,7 @@
 - `09` [[kernel/09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]: body links, structural navigation, path, alias, and verification.
 - `10` [[kernel/10 Writing and Formatting Standard|Writing and Formatting Standard]]: naming, formulas, tables, diagrams, rendering workflow, and the reader-facing language binding provided by `Language Contract`.
 - `11` [[kernel/11 Expression Layer Standard|Expression Layer Standard]]: expression artifacts, coverage, readiness, evidence binding, and migration audit; the concrete implementation is registered by the `Expression Layer Entry`.
-- `12` [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]]: single-note, batch, Guidance / Coverage reconciliation, module, source promotion, tiered rendering, and Terminal Audit; extension QA dimensions, scans, and gates are activated by the `Audit Dimension Registry`, the `Registered Scan Registry`, and the `Routing And Gate Registry` respectively.
+- `12` [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]]: single-note, batch, Guidance / Coverage reconciliation, module, source promotion, tiered rendering, and Terminal Audit; extension QA dimensions, scans, and gates are activated by the `Audit Dimension Registry`, the `Registered Scan Registry`, and the `Routing And Gate Registry` respectively; which receipt dimension each judgment item files under is fixed by [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map|08]].
 
 ## Cross-domain Rule Registry
 
@@ -69,6 +69,7 @@ The following high-risk objects have a single canonical owner corpus-wide. Modif
 | Freshness and volatility vocabulary | [[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]] |
 | Retirement and merge procedure | [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]] |
 | Maintenance-run budget envelope | [[kernel/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]] |
+| Judgment item to receipt dimension map | [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]] |
 
 ## Control Registry
 
@@ -88,3 +89,6 @@ The Cross-domain Rule Registry governs content rules — "where the rule lives";
 | Registered residual-content scan | Batch close: [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Batch-close Closed List|Closed List]] item 6 + the `Registered Scan Registry` residual-scan hook | Other layers reference the Closed List and the registered hooks; no separate corpus-wide scan |
 | Duplicate detection | Maintenance runs and governance tasks: [[kernel/12 Quality Assurance/05 Automated and Manual Checks|12/05]] duplicate_check | At batch level only the Closed List's basename-level check; paragraph-level scans do not run every batch |
 | Knowledge freshness | check_freshness at maintenance-run start: [[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|08/05]] | Not in the batch automatic check list |
+| Depth balance | Module close: [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Module Review|12/03]] Module Review | Coverage Reconciliation's core-versus-frontier line raises review candidates only and emits no receipt |
+| Prerequisite completeness | Module close: [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Module Review|12/03]] Module Review | check_links owns link resolution; unexplained P0 / P1 concepts and chain continuity are judged from content and are not re-derived from link results |
+| Canonical ownership uniqueness | Module close: [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review#Module Review|12/03]] Module Review duplicate item | Closed List item 3 produces basename candidates only; duplicate headings inside one page are a [[kernel/12 Quality Assurance/02 Rendering Verification|12/02]] Level 0 finding |

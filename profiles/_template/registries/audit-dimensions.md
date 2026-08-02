@@ -4,6 +4,7 @@
 - Slot interface: `profiles/README.md`, `Audit Dimension Registry Slot`
 - Kernel review dimensions: `kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review.md`, section `Quality Dimensions`
 - Kernel receipt dimensions: `kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md`
+- Kernel judgment item map: `kernel/12 Quality Assurance/08 Judgment Item Dimension Map.md`
 
 Implements the `Audit Dimension Registry` slot.
 
@@ -17,13 +18,15 @@ Registration is append-only. You may add extension dimensions; you may not delet
 
 Each extension dimension needs three things to be usable: the objects it applies to, a single owner of its acceptance predicate — the one place that decides pass or fail — and which of the two base lists it appends to. A dimension without a named predicate owner cannot be consumed by a gate, because there is nobody to ask. A dimension that does not say which list it joins cannot be filed as a receipt, because the receipt's `dimension` field has no value to take.
 
-The kernel publishes no mapping between the two lists, so if your dimension appends to the review list, also state which receipt dimension a gate should file its verdict under.
+Adding a dimension and adding a check are different acts, and this slot is the append point for both. A new dimension gives the receipt `dimension` field a new legal value. A new check is a judgment item — one thing that can be run once and returns pass or fail — and the kernel maps its own items to receipt dimensions in `kernel/12 Quality Assurance/08 Judgment Item Dimension Map.md`.
+
+A judgment item registered here MUST declare five things: the receipt dimension it files under, its audit layer, its audit object — what one run of it proves, and at which layer — its evidence role (`emits`, `consumes`, or `triggers`), and the single owner of its acceptance predicate. An entry missing the receipt dimension cannot be filed, because the receipt field has no value to take. An entry missing the audit object cannot be told apart from a check the kernel already runs, which is how the same work ends up filed twice under two names.
 
 Registering nothing is the common answer. The kernel's base dimensions cover most domains.
 
 ## Extension Dimensions
 
-TODO(profile) — register each extension dimension with its name, the objects it applies to, its single acceptance predicate owner, and the base list it appends to. If this profile needs none, write that explicitly and state that the kernel's base dimensions apply unchanged to every page.
+TODO(profile) — register each extension dimension with its name, the objects it applies to, its single acceptance predicate owner, and the base list it appends to; register each judgment item with the five declarations above. If this profile needs neither, write that explicitly and state that the kernel's base dimensions and its judgment item map apply unchanged to every page.
 
 Declaring the registry empty is the minimal legal implementation of this slot: the file exists so the manifest binding resolves, and it says so rather than leaving the slot silent.
 
@@ -37,4 +40,4 @@ If no interpretation notes are needed, write that the base dimensions apply as w
 
 ## Extension Path
 
-TODO(profile) — state what someone must supply to add a dimension later: its applicable objects, its single acceptance predicate owner, and the base list it appends to, all registered here before any gate may consume it. Naming the requirement now prevents a future dimension from being enforced informally before it is registered.
+TODO(profile) — state what someone must supply later to add a dimension, and what to add a judgment item: for a dimension, its applicable objects, its single acceptance predicate owner, and the base list it appends to; for a judgment item, the five declarations above. Both are registered here before any gate may consume them. Naming the requirement now prevents a future check from being enforced informally before it is registered.

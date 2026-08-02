@@ -38,7 +38,7 @@ The profile manifest must declare, item by item, whether it adopts the kernel de
 
 ## Audit Dimension Registry Slot
 
-`Audit Dimension Registry` may register profile-owned extension dimensions beyond the kernel's seven fixed base audit dimensions, binding each extension dimension to its applicable objects and a single acceptance predicate owner. It may only append extension dimensions; it must not delete, rename, or redefine the kernel base, nor duplicate predicates already owned by the profile.
+`Audit Dimension Registry` may register profile-owned extension dimensions beyond the kernel's seven fixed base audit dimensions, and profile-owned judgment items filed under any registered dimension. An extension dimension binds its applicable objects and a single acceptance predicate owner. A judgment item declares its receipt dimension, its audit layer, its audit object, its evidence role, and a single acceptance predicate owner. It may only append; it must not delete, rename, or redefine the kernel base, nor duplicate a predicate already owned by the profile or already mapped in the kernel's judgment item map.
 
 ## Registered Scan Registry Slot
 

@@ -80,8 +80,12 @@ For any structural migration of the standards corpus (splits, moves, renames, or
 
 | Exception register | Active entries |
 |---|---|
-| Leaf module exceptions | None; register is open for an authorized governance change |
+| Leaf module exceptions | 1 active; registered below |
 | Control-plane exceptions | None; register is open for an authorized governance change |
+
+| Leaf module exception | Measured | Necessity | Growth cap | Follow-up |
+|---|---|---|---|---|
+| [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] | 8059 bytes | The module is one lookup table plus the rules for reading it, and it carries no examples to cut. Its reverse check — that every base receipt dimension has at least one emitting item — is performed by reading a single table, and any split removes that property | 8.5KB | Re-measure whenever the kernel's judgment item set changes; if the cap is reached, split by audit layer rather than by section, and restate the reverse check in both halves |
 
 ## Execution-Acceptance Ownership Convention
 

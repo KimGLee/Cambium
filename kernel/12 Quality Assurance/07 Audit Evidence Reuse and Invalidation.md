@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]].
 - Previous: [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]].
+- Next: [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]].
 
 ## Purpose
 
@@ -40,7 +41,9 @@ rendering
 guidance_and_contract
 ```
 
-The `Audit Dimension Registry` MAY append profile-owned dimensions, but MUST NOT delete, rename, or redefine the seven base dimensions above.
+The `Audit Dimension Registry` MAY append profile-owned dimensions, but MUST NOT delete, rename, or redefine the seven base dimensions above. Its append unit is a judgment item, not a dimension name, and the declarations it MUST carry are fixed by [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map#Profile Registration|12/08]].
+
+Which dimension a kernel judgment item files its verdict under, and whether it emits a receipt at all, is fixed by [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map#Item Map|12/08]]; an item that consumes evidence produced elsewhere does not open a second receipt for the same audit object.
 
 One verification produces an immutable `AuditReceipt`, for example:
 

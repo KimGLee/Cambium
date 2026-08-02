@@ -25,9 +25,13 @@ Every piece of content is accepted against the following kernel dimensions:
 
 The selected profile MAY add language, expression readiness, or other extension dimensions through the `Audit Dimension Registry`, but MUST NOT delete, replace, or weaken the kernel dimensions above.
 
+These eleven are acceptance vocabulary and grouping labels, not checks, and they are not the values an `AuditReceipt` `dimension` field may take. The map from each judgment item below to its receipt dimension is held by [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]].
+
 ## Single Note Review
 
 Applicability: the full checklist in this section applies to L-tier pages; M-tier pages are accepted against the corresponding Gate checklist provided by the `Runtime Card Provider` and folded into the batch gate; S-tier pages receive only deterministic script checks, with sampled re-review at batch close (for tiering rules see [[kernel/00 Standards Control/02 Task Routing and Pre-execution|tiering rules]]).
+
+Several items below are satisfied by evidence produced at another layer rather than by a separate single-note verdict; which ones, and what each remaining item files under, is fixed by [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map#Item Map|12/08]].
 
 ### Structure
 

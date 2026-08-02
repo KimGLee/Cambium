@@ -32,6 +32,7 @@ First read:
 
 - Use [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]] to verify directories, MOC, and coverage.
 - Use [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] to record affected active tasks' receipt compatibility, invalidation scope, and adoption plan.
+- When the revision adds, retires, or re-scopes a check, use [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]] to fix the item's receipt dimension, audit layer, audit object, and evidence role before the revision closes.
 - Use [[kernel/09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]] to verify vault-wide incoming links.
 - When rendering policy, diagrams, tables, formulas, assets, or host behavior are involved, use [[kernel/12 Quality Assurance/02 Rendering Verification|Rendering Verification]] to select and record the actual level.
 - Use [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]] to close the governance task.

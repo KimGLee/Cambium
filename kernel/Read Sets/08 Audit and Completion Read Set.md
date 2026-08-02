@@ -12,6 +12,7 @@ First read:
 - [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
+- [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]]
 - [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
 - [[kernel/02 Build Execution/07 Completion and Handoff|Completion and Handoff]]
 - The selected profile's `Language Contract`.
