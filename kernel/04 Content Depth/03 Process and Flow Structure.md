@@ -9,26 +9,26 @@
 A Process / Flow page needs to explain "how the system advances"; it MUST NOT merely list step names. It SHOULD usually cover:
 
 ```text
-Position And Scope（位置与范围）
-Goal And Exit Criteria（目标与退出标准）
-Actors And Authority（参与角色与权限）
-Inputs And Preconditions（输入与前置条件）
-Initial State（初始状态）
-Happy Path（正常路径）
-Decision Points（决策点）
-Branches And Fallbacks（分支与回退）
-Loop And Replanning Conditions（循环与重规划条件）
-State Transitions（状态转换）
-External Effects And Receipts（外部效果与凭据）
-Retry / Timeout / Cancel / Pause（重试 / 超时 / 取消 / 暂停）
-Approval Or Handoff（审批或交接）
-Failure Propagation And Recovery（失败传播与恢复）
-Stop Condition And Terminal Proof（停止条件与终态证明）
-Observability And Evaluation（可观测性与评估）
-Worked Execution Trace（完整执行追踪）
-Related Component Contracts（相关组件契约）
-Expression Layer Link（表达层链接）
-Sources（来源）
+Position And Scope
+Goal And Exit Criteria
+Actors And Authority
+Inputs And Preconditions
+Initial State
+Happy Path
+Decision Points
+Branches And Fallbacks
+Loop And Replanning Conditions
+State Transitions
+External Effects And Receipts
+Retry / Timeout / Cancel / Pause
+Approval Or Handoff
+Failure Propagation And Recovery
+Stop Condition And Terminal Proof
+Observability And Evaluation
+Worked Execution Trace
+Related Component Contracts
+Expression Layer Link
+Sources
 ```
 
 A Process / Flow page answers at least the following four role questions:

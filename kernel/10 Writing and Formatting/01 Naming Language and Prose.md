@@ -18,7 +18,7 @@ This standard defines file naming, heading structure, paragraphs, and lists. Rea
 - A Source Note file name SHOULD identify the organization / author and the source topic, for example `Example Organization - Reliable Distributed Systems`; the publication date goes in metadata and is not placed in the file name by default.
 - A Research Synthesis is named after the research question or phenomenon; it does not use the title of one particular article, nor does it masquerade as a canonical Term Note while conclusions are not yet stable.
 
-## Language Routing（语言规则路由）
+## Language Routing
 
 - Reader-facing language choices for all body text, headings, tables, diagrams, Source Notes, and `Expression Layer Artifact` uniformly read the selected profile's `Language Contract`.
 - Concrete display order, identity preservation values, and exception boundaries are provided by the `Language Contract`.

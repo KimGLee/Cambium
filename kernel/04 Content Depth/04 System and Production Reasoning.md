@@ -9,28 +9,28 @@
 A system design page SHOULD usually include:
 
 ```text
-Goals And Non-goals（目标与非目标）
-Functional Requirements（功能性需求）
-Non-functional Requirements（非功能性需求）
-Architecture（架构）
-Core Components（核心组件）
-End-to-end Flow（端到端流程）
-API And Data Contracts（API 与数据契约）
-State And Lifecycle（状态与生命周期）
-Concurrency And Scheduling（并发与调度）
-Coordination And Handoff（协调与交接）
-Evidence And Verification Path（证据与验证路径）
-Failure Handling（失败处理）
-Reliability（可靠性）
-Recovery And Rollback（恢复与回滚）
-Security And Permissions（安全与权限）
-Observability（可观测性）
-Scalability（可扩展性）
-Latency And Cost（延迟与成本）
-Alternatives And Tradeoffs（替代方案与权衡）
-Worked Scenario（完整场景推演）
-Expression Layer Link（表达层链接）
-Sources（来源）
+Goals And Non-goals
+Functional Requirements
+Non-functional Requirements
+Architecture
+Core Components
+End-to-end Flow
+API And Data Contracts
+State And Lifecycle
+Concurrency And Scheduling
+Coordination And Handoff
+Evidence And Verification Path
+Failure Handling
+Reliability
+Recovery And Rollback
+Security And Permissions
+Observability
+Scalability
+Latency And Cost
+Alternatives And Tradeoffs
+Worked Scenario
+Expression Layer Link
+Sources
 ```
 
 ## Production System Reasoning

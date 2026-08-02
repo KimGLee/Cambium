@@ -19,14 +19,14 @@ Concrete naming and alias examples are provided by the `Language Contract`'s `Te
 Not recommended:
 
 ```markdown
-系统使用 [[Idempotency]]。
+The system uses [[Idempotency]].
 ```
 
 Recommended:
 
 ```markdown
-工具发生 timeout 后可能已经产生副作用，因此 retry 前必须通过
-[[Idempotency]]（幂等机制）避免重复扣款或重复写入。
+A tool may already have produced side effects after a timeout, so before a retry it
+MUST pass through [[Idempotency]] to avoid a duplicate charge or a duplicate write.
 ```
 
 The current page explains "why idempotency is needed here"; the Term Note explains "what idempotency fully is".

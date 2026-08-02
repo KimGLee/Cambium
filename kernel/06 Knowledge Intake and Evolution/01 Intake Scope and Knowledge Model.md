@@ -10,7 +10,7 @@ This standard specifies how external information enters the knowledge base, how 
 The problem it solves is not "how to write a summary of an article", but:
 
 ```text
-外部世界出现新信息后，知识图谱应该发生什么变化？
+When new information appears in the outside world, what should change in the knowledge graph?
 ```
 
 ## Scope

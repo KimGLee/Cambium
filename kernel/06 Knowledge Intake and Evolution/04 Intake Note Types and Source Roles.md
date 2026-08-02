@@ -11,16 +11,16 @@
 A Source Note faithfully describes a single source:
 
 ```text
-Source Identity（来源标识）
-Problem Addressed（针对的问题）
-System Or Experiment Context（系统或实验上下文）
-Key Claims（关键主张）
-Evidence Provided（提供的证据）
-Assumptions And Scope（假设与适用范围）
-Limitations（局限性）
-What The Source Does Not Establish（该来源不能证明什么）
-Affected Knowledge Notes（受影响的知识笔记）
-Open Questions（未决问题）
+Source Identity
+Problem Addressed
+System Or Experiment Context
+Key Claims
+Evidence Provided
+Assumptions And Scope
+Limitations
+What The Source Does Not Establish
+Affected Knowledge Notes
+Open Questions
 ```
 
 A Source Note does not own general definitions or mechanisms.
@@ -30,16 +30,16 @@ A Source Note does not own general definitions or mechanisms.
 A Research Synthesis Note integrates multiple sources around one question:
 
 ```text
-Research Question（研究问题）
-Source Set And Selection Boundary（来源集合与选取边界）
-Terminology Mapping（术语映射）
-Agreements（一致结论）
-Disagreements（分歧）
-Evidence Comparison（证据对比）
-Generalizable Mechanisms（可泛化机制）
-Vendor-specific Choices（厂商特定选择）
-Unresolved Questions（未解决问题）
-Recommended Graph Changes（建议的图谱变更）
+Research Question
+Source Set And Selection Boundary
+Terminology Mapping
+Agreements
+Disagreements
+Evidence Comparison
+Generalizable Mechanisms
+Vendor-specific Choices
+Unresolved Questions
+Recommended Graph Changes
 ```
 
 A Research Synthesis is not a permanent replacement for canonical notes. Once conclusions stabilize, the mechanisms SHOULD be promoted to the correct owner, with the synthesis retaining the research process, disagreements, and source relationships.

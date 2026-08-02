@@ -12,7 +12,7 @@ This page is the stable entry point for the Writing and Formatting standard. The
 
 | Module | Canonical sections |
 |---|---|
-| [[kernel/10 Writing and Formatting/01 Naming Language and Prose\|Naming Language and Prose]] | `Purpose`, `Naming`, `Language Routing（语言规则路由）`, `Titles`, `Paragraphs And Lists` |
+| [[kernel/10 Writing and Formatting/01 Naming Language and Prose\|Naming Language and Prose]] | `Purpose`, `Naming`, `Language Routing`, `Titles`, `Paragraphs And Lists` |
 | [[kernel/10 Writing and Formatting/02 Mathematics Tables and Code\|Mathematics Tables and Code]] | `Mathematics`, `Tables`, `Code And Pseudocode` |
 | [[kernel/10 Writing and Formatting/03 Diagrams and Assets\|Diagrams and Assets]] | `Diagrams`, `Assets` |
 | [[kernel/10 Writing and Formatting/04 Rendering and Formatting Review\|Rendering and Formatting Review]] | `Rendering Workflow`, `Formatting Anti-patterns`, `Related` |

@@ -39,7 +39,7 @@ Page-level acceptance intensity is executed by S/M/L tiering. This section is th
 - Each page's tier is recorded in the Coverage Ledger's `tier` field (schema: `Tools/schemas/coverage_ledger.template.yaml`).
 - Tiering only adjusts the intensity of the acceptance ceremony; it does not change any content quality standard itself.
 
-### Priority Quota（优先级配额）
+### Priority Quota
 
 tier is derived from priority; priority inflation defeats tiering. Kernel default corpus-wide quotas:
 
