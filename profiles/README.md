@@ -2,7 +2,7 @@
 
 The effective standard is composed from `kernel + one selected profile`. The kernel references stable slot names only; the selected profile's manifest binds those slots to concrete implementations. When a slot required by the current task is missing, the composed standard must not be judged fully loaded.
 
-Kernel Runtime Cards are part of `kernel/`, not a profile slot. Every profile uses the same kernel Card Index and required task cards. A profile may register an additional domain route or gate through `Routing And Gate Registry`, but it cannot replace, shadow, or disable a kernel card.
+Kernel Runtime Cards are part of `kernel/`, not a profile slot. Every profile uses the same R01-R10 kernel route registry, Read Sets, and Runtime Cards. A profile may register a namespaced supplemental route or gate through `Routing And Gate Registry`, but it cannot reuse an Rxx identity, replace, shadow, or disable a kernel route or Card.
 
 ## Profile Scope Slot
 
@@ -28,7 +28,7 @@ The profile manifest must declare, item by item, whether it adopts the kernel de
 
 ## Expression Layer Entry Slot
 
-`Expression Layer Entry` binds the kernel's `Expression Layer Link` to the profile's display labels and registered expression artifacts. It handles routing and naming only; it does not duplicate expression-layer rules.
+`Expression Layer Entry` binds concrete expression targets to the kernel-owned R05 Expression Layer route. For each artifact it declares an artifact identity and type, display label, resolvable entry point, single rule owner, readiness binding when applicable, canonical-to-expression dependency mapping, and any supplemental gate. Registering no artifact is valid and means there is no concrete R05 task target; it does not remove or redefine the R05 kernel floor.
 
 ## Source Policy Slot
 
@@ -48,4 +48,4 @@ The profile manifest must declare, item by item, whether it adopts the kernel de
 
 ## Routing And Gate Registry Slot
 
-`Routing And Gate Registry` binds profile-owned task routes, Read Sets, and extension gates to kernel roles; an unregistered profile route must not be implied by the kernel as loaded. A supplemental profile Card, if registered, is loaded alongside the kernel route and must not reuse a kernel Card ID, replace a kernel Card, or weaken its Gate.
+`Routing And Gate Registry` binds profile-owned supplemental task routes, Read Sets, and extension gates to kernel roles; an unregistered profile route must not be implied as loaded. A supplemental route uses `P:<profile_id>:<route_name>`, loads alongside an applicable Rxx route, and must not reuse an Rxx identity, replace a kernel Card, or weaken its Gate.

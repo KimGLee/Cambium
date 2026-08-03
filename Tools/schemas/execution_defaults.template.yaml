@@ -32,28 +32,28 @@ schema_version: 1
 overridable:
   - item: "concurrency_cap"
     kernel_default: "3"
-    owner: "kernel/02 Build Execution/01 Contract Time and Task State.md"
+    owner: "kernel/K02 Build Execution/01 Contract Time and Task State.md"
   - item: "batch_size.S"
     kernel_default: "24"
-    owner: "kernel/02 Build Execution/05 Batch Execution and Progress Ledger.md"
+    owner: "kernel/K02 Build Execution/05 Batch Execution.md"
   - item: "batch_size.M"
     kernel_default: "10"
-    owner: "kernel/02 Build Execution/05 Batch Execution and Progress Ledger.md"
+    owner: "kernel/K02 Build Execution/05 Batch Execution.md"
   - item: "batch_size.L"
     kernel_default: "6"
-    owner: "kernel/02 Build Execution/05 Batch Execution and Progress Ledger.md"
+    owner: "kernel/K02 Build Execution/05 Batch Execution.md"
   - item: "priority_quota.P0"
     kernel_default: "15%"
-    owner: "kernel/00 Standards Control/02 Task Routing and Pre-execution.md"
+    owner: "kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md"
   - item: "priority_quota.P1"
     kernel_default: "35%"
-    owner: "kernel/00 Standards Control/02 Task Routing and Pre-execution.md"
+    owner: "kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md"
   - item: "maintenance.unselected_rounds_before_log_only"
     kernel_default: "3"
-    owner: "kernel/00 Standards Control/02 Task Routing and Pre-execution.md"
+    owner: "kernel/K00 Standards Control/08 Maintenance Run Envelope.md"
   - item: "maintenance.incoming_retarget_divisor"
     kernel_default: "6"
-    owner: "kernel/00 Standards Control/02 Task Routing and Pre-execution.md"
+    owner: "kernel/K00 Standards Control/08 Maintenance Run Envelope.md"
 
 # Constitutional constants. A profile that registers one of these in its
 # Execution Default Overrides table is registering something it cannot
@@ -61,10 +61,10 @@ overridable:
 constitutional:
   - item: "substantive_review.round_cap"
     value: "2"
-    owner: "kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review.md"
+    owner: "kernel/K12 Quality Assurance/12 Substantive Correctness Review.md"
   - item: "terminal_audit.round_cap"
     value: "2"
-    owner: "kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report.md"
+    owner: "kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md"
 
 # Placeholder profile_id values that a real profile must not carry. The
 # template ships with `_template`; check_profile.py fails while it is still

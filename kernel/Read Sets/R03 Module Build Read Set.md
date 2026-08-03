@@ -1,0 +1,53 @@
+---
+type: read-set
+route_id: R03
+---
+
+## Purpose
+
+Used for building or systematically expanding a complete knowledge module, including logical placement, canonical ownership, leaf pages, MOC, cross-module dependencies, and batch acceptance.
+
+## Start
+
+First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then read:
+
+- [[kernel/K01 Scope and Architecture/01 Scope Boundaries|Scope Boundaries]]
+- [[kernel/K01 Scope and Architecture/02 Logical Architecture and Knowledge Spine|Logical Architecture and Knowledge Spine]]
+- [[kernel/K01 Scope and Architecture/03 Foundation Preservation|Foundation Preservation]]
+- [[kernel/K01 Scope and Architecture/04 Folder and Shared Ownership|Folder and Shared Ownership]]
+- [[kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
+- [[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]
+- [[kernel/K02 Build Execution/04 Architecture Samples and Dependency Build|Architecture Samples and Dependency Build]]
+- [[kernel/K02 Build Execution/05 Batch Execution|Batch Execution]]
+- [[kernel/K03 Note Types and Ownership/01 Note Type Catalog|Note Type Catalog]]
+- [[kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
+- [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]
+- [[kernel/K04 Content Depth/01 Depth Model and Foundation|Depth Model and Foundation]]
+- By the page types in the module, load [[kernel/K04 Content Depth/02 Core Concept Structure|Core Concept Structure]], [[kernel/K04 Content Depth/03 Process and Flow Structure|Process and Flow Structure]], [[kernel/K04 Content Depth/04 System and Production Reasoning|System and Production Reasoning]], or [[kernel/K04 Content Depth/05 Source and Evaluation Depth|Source and Evaluation Depth]] respectively.
+- When instances, deep dives, failure modes, or debugging are needed, load [[kernel/K04 Content Depth/06 Examples Deep Dives and Failure Analysis|Examples Deep Dives and Failure Analysis]].
+- [[kernel/K08 Metadata and Status/03 Status Axes|Status Axes]]
+- [[kernel/K09 Wiki Link and Navigation/02 Structural and Bidirectional Links|Structural and Bidirectional Links]]
+- [[kernel/K09 Wiki Link and Navigation/04 MOC Related and Link Creation|MOC Related and Link Creation]]
+- [[kernel/K10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]
+- The `Language Contract` registered by the selected profile, as a mandatory `Start` module of this Read Set.
+
+## Triggered
+
+- Source-driven expansion: combine [[kernel/Read Sets/R04 Source-driven Expansion Read Set|Source-driven Expansion]].
+- Expression-layer work or synchronization: combine [[kernel/Read Sets/R05 Expression Layer Read Set|R05 Expression Layer]] and the artifact's profile binding or supplemental gate.
+- Long tasks and multiple batches: combine [[kernel/Read Sets/R07 Long-running Execution Read Set|Long-running Execution]].
+- Renaming or moving existing pages: combine [[kernel/Read Sets/R06 Migration and Refactor Read Set|Migration and Refactor]].
+- Mechanism sections of an existing page (Definition, Mechanism, formulas, core conclusions) are substantively modified: read [[kernel/K12 Quality Assurance/11 Content-level Propagation|Content-level Propagation]] and mark the direct downstream notes.
+
+## Gate
+
+- [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]]
+- [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]]
+- [[kernel/K12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
+- When closing a complete module, combine [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]].
+
+## Related
+
+- [[kernel/Read Sets/Read Sets Index|Read Sets Index]]
+- [[kernel/K01 Scope and Architecture Standard|Scope and Architecture]]
+- [[kernel/K02 Knowledge Base Build Execution Standard|Build Execution]]

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """apply_delta.py -- deterministically apply a concurrent batch's Coverage Delta to the canonical Coverage Ledger.
 
-Rule owner: 02 Build Execution/05 (Concurrent Batches); see
+Rule owner: kernel/K02 Build Execution/05 Batch Execution.md (Concurrent Batches); see
 Tools/schemas/coverage_delta.template.yaml for the delta schema. Design goal:
 the serial merge zone only executes deterministic actions -- delta application
 is done by this script, not by an LLM hand-editing the large Ledger file.
@@ -25,7 +25,7 @@ Behavior:
 - open_gaps_added / open_gaps_closed are printed as a todo list (gap structure
   varies by task; the integrator handles them in the Ledger's open_gaps
   section manually or via a follow-up script); watermark_advance entries are
-  likewise printed as integrator todos (02/05: applied to
+  likewise printed as integrator todos (K02/05: applied to
   Tools/state/watermark.yaml at merge, not by this script).
 - Default is a dry run that prints the plan; --apply first re-parses the
   merged output with the restricted-subset parser and ABORTS without writing
@@ -183,7 +183,7 @@ def main():
         print(f"  [SUGGEST] {s}")
     for w in (delta.get("watermark_advance") or []):
         print(f"  [TODO watermark] {w} — integrator applies to "
-              f"Tools/state/watermark.yaml at merge (02/05); this script "
+              f"Tools/state/watermark.yaml at merge (K02/05); this script "
               f"does not apply watermark advances")
 
     result = "fail" if rejected and not args.force else ("pass" if planned else "candidate")

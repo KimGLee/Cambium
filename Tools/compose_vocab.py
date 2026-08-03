@@ -5,7 +5,7 @@ Deterministically composes the selected-profile vocabulary artifact
 (Tools/vocab.yaml by default) from two restricted-YAML-subset inputs:
 
   --base        kernel vocabulary base
-                (default: "kernel/08 Metadata and Status/vocabulary-base.yaml")
+                (default: "kernel/K08 Metadata and Status/vocabulary-base.yaml")
   --extensions  selected profile's vocabulary extensions. No default: the
                 kernel does not privilege any profile, so there is no
                 profile this tool may silently compose against. When the
@@ -57,7 +57,7 @@ import kblib  # noqa: E402
 
 TOOL_VERSION = "1.2.0"
 
-DEFAULT_BASE = "kernel/08 Metadata and Status/vocabulary-base.yaml"
+DEFAULT_BASE = "kernel/K08 Metadata and Status/vocabulary-base.yaml"
 DEFAULT_OUTPUT = "Tools/vocab.yaml"
 
 # There is deliberately no DEFAULT_EXTENSIONS. Naming one profile here would

@@ -2,13 +2,13 @@
 """Frontmatter controlled-vocabulary check script.
 
 Rule owners:
-- "08 Metadata and Status/01 Frontmatter and Core Vocabularies.md" (schema and
+- "kernel/K08 Metadata and Status/01 Frontmatter and Core Vocabularies.md" (schema and
   the type/domain vocabularies);
-- "08 Metadata and Status/02 Scope Level Depth and Priority.md"
+- "kernel/K08 Metadata and Status/02 Scope Level Depth and Priority.md"
   (scope/level/depth/priority);
-- "08 Metadata and Status/03 Status Axes.md" (the four status axes and
+- "kernel/K08 Metadata and Status/03 Status Axes.md" (the four status axes and
   coverage_disposition);
-- "08 Metadata and Status/04 Evidence and Relationship Metadata.md"
+- "kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata.md"
   (evidence_maturity; the legacy `status` field is a migration-period
   compatibility alias of authoring_status).
 Vocabulary values come from the composed artifact Tools/vocab.yaml, produced by
@@ -23,13 +23,13 @@ Method:
 - values of controlled fields must be in the vocabulary: unknown value ->
   result=fail;
 - a field missing or empty -> result=candidate (whether absence is allowed is
-  a human call: 08/01 says "use the applicable fields", 08/05 says pages
+  a human call: K08/01 says "use the applicable fields", K08/05 says pages
   without frontmatter default to unassessed);
 - a file without any frontmatter -> one candidate; frontmatter beyond the
   subset grammar and thus unparseable -> one candidate.
 
 Scope semantics: --scope may be a directory or a single .md file (note-close
-self-check, 00/05). A --scope that matches no files is result=fail -- a
+self-check, K00/05). A --scope that matches no files is result=fail -- a
 zero-file scan is an invocation error, never a pass.
 
 Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
@@ -71,7 +71,7 @@ def main():
     ap.add_argument("--exclude", action="append", default=[],
                     help="subpath to exclude (repeatable; e.g. the compiled "
                          "kernel/Cards artifacts, whose frontmatter is not governed "
-                         "by the 08 domain knowledge-page schema)")
+                         "by the K08 module's knowledge-page schema)")
     ap.add_argument("--quota-p0", type=float, default=15.0,
                     help="P0 priority quota in percent (default 15; kernel "
                          "default; the selected profile manifest or task "
@@ -105,12 +105,12 @@ def main():
     seq = 0
     counts = {"files": 0, "no_frontmatter": 0, "unparseable": 0,
               "unknown_value": 0, "missing_field": 0, "ok_values": 0}
-    dist = {"priority": {}, "tier": {}}  # 00/02 Priority Quota distribution stats
+    dist = {"priority": {}, "tier": {}}  # K00/07 Priority Quota distribution stats
 
     excludes = [e.strip("/").replace(os.sep, "/") for e in args.exclude]
     scan_files = kblib.iter_md_files(args.vault_root, args.scope)
     if args.scope and not scan_files:
-        # A gate that scans nothing must fail, not silently pass (00/05 note
+        # A gate that scans nothing must fail, not silently pass (K00/05 note
         # close; a nonexistent or empty --scope is an invocation error).
         receipts = [kblib.make_receipt(
             TOOL, TOOL_VERSION, "scope-empty",
@@ -132,7 +132,7 @@ def main():
             seq += 1
             receipts.append(kblib.make_receipt(
                 TOOL, TOOL_VERSION, "frontmatter-missing", rel_disp, "candidate",
-                "file has no frontmatter; per 08/05 it defaults to "
+                "file has no frontmatter; per K08/05 it defaults to "
                 "authoring_status=unassessed, whether frontmatter must be "
                 "added is a human call", seq))
             continue
@@ -159,7 +159,7 @@ def main():
                 dist[_axis][_v.strip()] = dist[_axis].get(_v.strip(), 0) + 1
 
         # Legacy `status` field: treated as a migration-period compatibility
-        # alias of authoring_status (08/04)
+        # alias of authoring_status (K08/04)
         effective = dict(fm)
         if "authoring_status" not in effective and "status" in effective:
             effective["authoring_status"] = effective["status"]
@@ -206,7 +206,7 @@ def main():
         if r["result"] == "fail":
             print("  [FAIL %s] %s — %s" % (r["check"], r["target"], r["details"]))
 
-    # Distribution stats and Priority Quota check (owner: 00/02 Effort Tiering / Priority Quota)
+    # Distribution stats and Priority Quota check (owner: K00/07 Effort Tiering / Priority Quota)
     for _axis in ("priority", "tier"):
         _tot = sum(dist[_axis].values())
         if _tot:
@@ -220,11 +220,11 @@ def main():
             seq += 1
             receipts.append(kblib.make_receipt(
                 TOOL, TOOL_VERSION, "priority-quota", "vault", "candidate",
-                "%s share %.0f%% (%d/%d) exceeds the 00/02 Priority Quota "
+                "%s share %.0f%% (%d/%d) exceeds the K00/07 Priority Quota "
                 "target <=%.0f%%; over-quota pages must be downgraded or an "
                 "exemption recorded in the Coverage Ledger"
                 % (_pcls, _n * 100.0 / _ptot, _n, _ptot, _quota), seq))
-            print("  [CAND priority-quota] %s share %.0f%% exceeds the <=%.0f%% quota (00/02)"
+            print("  [CAND priority-quota] %s share %.0f%% exceeds the <=%.0f%% quota (K00/07)"
                   % (_pcls, _n * 100.0 / _ptot, _quota))
 
     kblib.write_receipts(args.receipts, receipts)

@@ -8,7 +8,7 @@
 #
 # What this slot must answer -------------------------------------------------
 # The kernel owns a base vocabulary: the controlled value lists that frontmatter
-# fields may carry (kernel/08 Metadata and Status/vocabulary-base.yaml). That base
+# fields may carry (kernel/K08 Metadata and Status/vocabulary-base.yaml). That base
 # deliberately leaves `domain` empty, because domains are what a profile knows and
 # the kernel does not. This file appends the values your knowledge base needs.
 #
@@ -37,7 +37,7 @@ schema_version: 1
 # TODO(profile) -- set this to your own profile id; it must match `profile_id` in profile.md.
 profile_id: _template
 
-extends: "kernel/08 Metadata and Status/vocabulary-base.yaml"
+extends: "kernel/K08 Metadata and Status/vocabulary-base.yaml"
 composition_policy: append-only
 
 # Frontmatter fields this profile adds beyond the kernel base, and a sample value

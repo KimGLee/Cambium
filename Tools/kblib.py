@@ -225,7 +225,7 @@ def strip_code(text):
 def iter_md_files(vault_root, scope=None):
     """Walk all .md files under the vault (sorted by relative path); scope is an optional subpath.
 
-    scope may also point at a single .md file (note-close self-check, 00/05);
+    scope may also point at a single .md file (note-close self-check, K00/05);
     in that case exactly that file is returned. A scope that exists as neither
     a directory nor an .md file yields an empty list -- callers implementing a
     gate MUST treat an empty scan set as a failure, not a pass.

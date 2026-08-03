@@ -1,0 +1,60 @@
+---
+type: runtime-card
+route_id: R06
+read_set: kernel/Read Sets/R06 Migration and Refactor Read Set.md
+compiled_from: "{{standards_version}}"
+source_files:
+  - kernel/Read Sets/R06 Migration and Refactor Read Set.md
+  - kernel/K02 Build Execution/01 Contract Time and Task State.md
+  - kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation.md
+  - kernel/K02 Build Execution/05 Batch Execution.md
+  - kernel/K02 Build Execution/06 Existing Changes Migration and Resume.md
+  - kernel/K01 Scope and Architecture/04 Folder and Shared Ownership.md
+  - kernel/K03 Note Types and Ownership/03 Split and Duplication Policy.md
+  - kernel/K08 Metadata and Status/05 Review Source and Migration Metadata.md
+  - kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links.md
+  - kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns.md
+  - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
+  - kernel/K12 Quality Assurance/14 Batch Review.md
+  - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
+  - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
+  - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
+source_hash: 9bf12ea4a1e4
+---
+# R06 Migration and Refactor Card
+
+> Compiled kernel guidance. Do not hand-edit. Complex conservation, ownership changes, and Standards migration require source read-back.
+
+## Use When
+
+Move, rename, split, merge, retire, or restructure files or directories. Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]]. Migration batches execute exclusively; combine `R07` for multiple batches and `R09` when the Standards change.
+
+## Before Start
+
+- [ ] Freeze a migration manifest containing every source path, target path, incoming link, heading anchor, canonical owner, user modification, and rollback boundary.
+- [ ] Reconcile the manifest with the file system and Coverage Ledger.
+- [ ] Establish an explicit old-content-block → new-owner mapping; every original block has exactly one destination.
+- [ ] Confirm that target ownership, naming, aliases, metadata, and profile language rules are valid before moving content.
+- [ ] Isolate the migration batch from concurrent content batches.
+
+## During
+
+Use the safe order: create and verify the target → update references and heading links → reconcile content conservation and ownership → verify links and navigation → only then remove the superseded object when deletion is authorized.
+
+- Existing changes of uncertain origin belong to the user; preserve rather than reset them.
+- Never delete first, use destructive reset as migration, or hide a rule/content loss inside a split.
+- Preserve unique content and Sources; do not create duplicate canonical owners.
+- Synchronize aliases, metadata, incoming links, MOCs, and replacement/tombstone state.
+- Record a checkpoint with modified paths and the next exact action before pausing.
+
+## Gate
+
+- [ ] Old-block → new-owner reconciliation is complete with no omission or duplicate owner.
+- [ ] New targets are complete and reachable before old paths are retired or deleted.
+- [ ] Missing, ambiguous, path, alias, and heading links are resolved.
+- [ ] Module/Coverage Review, Batch Review, applicable deterministic checks, and the Batch-close Closed List pass on the merged snapshot.
+- [ ] The Coverage Ledger and rollback record match the final file system.
+
+## Read Back When
+
+Read R06 Read Set and the relevant owner for a split/merge dispute, heading compatibility, a simultaneous owner change, resume after interruption, multi-batch migration, or any destructive boundary. Standards migration always reads R09 Read Set in full.

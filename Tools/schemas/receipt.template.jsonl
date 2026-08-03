@@ -1,22 +1,22 @@
 # =============================================================================
 # Script-level Receipt template (machine-readable JSONL: one JSON object per line)
-# Concept owner: "12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md"
+# Concept owner: "kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md"
 #   -- This file is the lightweight receipt schema produced by deterministic
-#      check scripts; the full 12/07 AuditReceipt (with scope /
+#      check scripts; the full K12/07 AuditReceipt (with scope /
 #      acceptance_predicate / the three fingerprint kinds etc.) is completed
 #      by the AuditPlan layer when entering the Audit Receipt Register; a
 #      script receipt's receipt_id can be referenced directly as
 #      evidence_ref / gate_receipts.
 # Note: real receipts files are pure JSONL and contain no # comment lines;
 #      the # lines in this template exist for documentation only. Field meanings:
-#   receipt_id     : "audit-<tool>-<UTC timestamp>-<sequence>", immutable, never reused (12/07: receipt_id: audit-<stable-id>)
+#   receipt_id     : "audit-<tool>-<UTC timestamp>-<sequence>", immutable, never reused (K12/07: receipt_id: audit-<stable-id>)
 #   check          : check item identifier, e.g. "link-missing" / "vocab-unknown-value" / "proof-zero-field"
 #   target         : checked object (vault-relative path[:line] or field name)
-#   result         : pass / fail / candidate (candidate = produces candidates only, requires human judgement; see 10/05 Acceptance And Audit)
-#   details        : detail message stating the concrete evidence; must not just say "QA passed" (12/07)
+#   result         : pass / fail / candidate (candidate = produces candidates only, requires human judgement; see K10/04 Automated Language Review Boundary)
+#   details        : detail message stating the concrete evidence; must not just say "QA passed" (K12/07)
 #   checked_at     : UTC ISO8601 check time
-#   tool           : producing script name (counterpart of 12/07 verifier.name)
-#   tool_version   : script version (counterpart of 12/07 verifier.version; incompatible parser/verifier changes trigger Direct Invalidation)
-#   invalidated_by : invalidation source (successor receipt_id or invalidation event description); null while valid (12/07 Invalidation)
+#   tool           : producing script name (counterpart of K12/07 verifier.name)
+#   tool_version   : script version (counterpart of K12/07 verifier.version; incompatible parser/verifier changes trigger Direct Invalidation)
+#   invalidated_by : invalidation source (successor receipt_id or invalidation event description); null while valid (K12/07 Invalidation)
 # =============================================================================
 {"receipt_id": "audit-check_links-20260721T000000Z-0001", "check": "link-missing", "target": "Topics/Example Topic.md:42", "result": "fail", "details": "[[Example Dependency]] has no matching target (missing)", "checked_at": "2026-07-21T00:00:00Z", "tool": "check_links", "tool_version": "1.0.0", "invalidated_by": null}

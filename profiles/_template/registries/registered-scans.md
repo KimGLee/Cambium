@@ -2,7 +2,7 @@
 
 - Profile manifest: `profiles/<your-profile-id>/profile.md`
 - Slot interface: `profiles/README.md`, `Registered Scan Registry Slot`
-- Kernel closed list: `kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md`, section `Batch-close Closed List`
+- Kernel closed list: `kernel/K12 Quality Assurance/09 Batch-close Closed List.md`, section `Batch-close Closed List`
 
 Implements the `Registered Scan Registry` slot.
 

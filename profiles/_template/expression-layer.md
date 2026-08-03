@@ -6,25 +6,25 @@ TODO(profile) — fill in the sections below, then delete this line and the `Wha
 
 ## What This Slot Must Answer
 
-The expression layer is where derived presentation forms live: flashcards, quiz sets, interview cards, briefing sheets — anything compiled from knowledge pages for a particular way of consuming them. The kernel defines how such artifacts behave once they exist. This file only routes and names them: which artifacts this profile registers, and what each is called.
+The expression layer is where derived presentation forms live: flashcards, quiz sets, interview cards, briefing sheets — anything compiled from knowledge pages for a particular way of consuming them. The kernel-owned R05 route defines how such artifacts behave once they exist. This file identifies the concrete targets to which R05 applies.
 
-This slot handles routing and naming only. Do not restate the kernel's expression-layer rules here; a copy of a rule is a second owner of it.
+This slot supplies bindings, not a replacement route. Do not restate the kernel's expression-layer rules here; a copy of a rule is a second owner of it.
 
 Registering no artifacts is a normal answer. Many profiles have no expression layer at all.
 
 ## Registered Expression Artifacts
 
-TODO(profile) — list each registered artifact with its display label and the page that owns its rules, or write that this profile registers none.
+TODO(profile) — list each registered artifact with its stable artifact ID and type, display label, resolvable entry point, and the one page that owns its profile-specific rules; or write that this profile registers none.
 
-If you register an artifact, it needs three things before it can be used: a display label, a single owner page for its rules, and — if it carries its own progress or readiness axis — a matching entry in `vocabulary-extensions.yaml`. Until all three exist, the artifact is not part of the composed standard and must not be treated as loaded.
+For each artifact, also bind its canonical-to-expression dependency mapping, the event that invalidates or regenerates it, and — if it carries its own progress or readiness axis — the matching field/value owner and promotion gate in `vocabulary-extensions.yaml` and the profile registries. Until all applicable bindings resolve, the artifact is not part of the composed standard and must not be treated as loaded.
 
 ## Consequences
 
 TODO(profile) — state what follows from the list above.
 
-If nothing is registered, the kernel's `Expression Layer Link` resolves to nothing for this profile, expression-related audit items are `not_applicable`, and their absence does not block any gate. Write that out rather than leaving it implied: an unstated `not_applicable` is indistinguishable from an unnoticed gap during audit.
+If nothing is registered, state that the profile supplies no concrete expression target. R05 remains a kernel route, but there is no object on which to invoke it; this is absence of a target, not a profile override or a passed expression gate.
 
-If artifacts are registered, state which gates consume them and what happens when a source page changes after the derived artifact was compiled.
+If artifacts are registered, state which supplemental gates apply and what happens when a canonical source page changes after the derived artifact was compiled. The R05 kernel gate always remains in force for an in-scope artifact.
 
 ## Extension Path
 

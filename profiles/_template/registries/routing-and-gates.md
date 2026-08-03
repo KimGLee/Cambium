@@ -2,8 +2,9 @@
 
 - Profile manifest: `profiles/<your-profile-id>/profile.md`
 - Slot interface: `profiles/README.md`, `Routing And Gate Registry Slot`
-- Kernel contract: `kernel/04 Content Depth Standard.md`
-- Quality kernel: `kernel/12 Quality Assurance Standard.md`
+- Kernel routing contract: `kernel/K00 Standards Control/02 Task Routing and Pre-execution.md`
+- Kernel route registry: `kernel/Read Sets/Read Sets Index.md`
+- Quality kernel: `kernel/K12 Quality Assurance Standard.md`
 
 Implements the `Routing And Gate Registry` slot.
 
@@ -11,15 +12,15 @@ TODO(profile) — fill in the sections below, correct the manifest path above, t
 
 ## What This Slot Must Answer
 
-Three things: the task routes this profile defines, the Read Sets those routes load, and any gates this profile adds beyond the kernel's.
+Three things: the supplemental task routes this profile defines, the Read Sets those routes load, and any gates this profile adds beyond the kernel's.
 
-One rule governs the whole file: a route that is not registered here must not be implied by the kernel as loaded. If an agent believes a profile-specific route exists because it seems natural for the domain, and no such route is registered, the agent is running on an assumption rather than the standard.
+One rule governs the whole file: a profile route that is not registered here must not be implied as loaded. Every registered profile route uses `P:<profile_id>:<route_name>` and loads alongside an applicable Rxx kernel route; it never occupies or replaces the Rxx namespace.
 
 ## Profile Task Routes
 
-TODO(profile) — register each profile-specific task route with the Read Set it loads, or write that this profile registers none and its tasks use the kernel's standard routing.
+TODO(profile) — register each profile-specific supplemental route with its `P:<profile_id>:<route_name>` identity, the Rxx route it supplements, and the Read Set it loads; or write that this profile registers none and its tasks use only the kernel routes.
 
-If you register none, say so in a way that closes the question: the kernel must not imply any route for this profile as loaded, because none exists.
+If you register none, say so in a way that closes the question: no supplemental profile route is loaded. The kernel R01-R10 registry is unaffected.
 
 ## Effort Tier Bindings
 
@@ -45,4 +46,4 @@ TODO(profile) — register any gate this profile adds beyond the kernel's batch 
 
 Each registered gate needs the kernel role it binds to, what it blocks, and who can pass it. A gate that blocks progress without a named party able to clear it stops work permanently rather than governing it.
 
-TODO(profile) — mark any kernel gate that is `not_applicable` to this profile, with the reason. The usual case is a gate over material this profile registers nothing for — for example, expression-layer synchronization gates when the `Expression Layer Entry` slot registers no artifacts. Record it here so a later audit reads the gate as deliberately inapplicable rather than skipped.
+TODO(profile) — state any object class to which a supplemental profile gate does not apply, with the reason. Do not mark an Rxx kernel gate `not_applicable`: when the profile registers no object of that kind there is no task target, and when an object enters scope its kernel gate applies.

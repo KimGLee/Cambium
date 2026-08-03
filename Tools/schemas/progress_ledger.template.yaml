@@ -1,9 +1,9 @@
 # =============================================================================
 # Progress Ledger template (machine-readable state layer; the template is the schema doc)
-# Owner standard: "02 Build Execution/05 Batch Execution and Progress Ledger.md"
+# Owner standard: "kernel/K02 Build Execution/08 Progress Ledger.md"
 #            (the Progress Ledger records task and batch progress only;
 #             page-level status belongs to the Coverage Ledger)
-# task_state vocabulary owner: "02 Build Execution/01 Contract Time and Task State.md"
+# task_state vocabulary owner: "kernel/K02 Build Execution/01 Contract Time and Task State.md"
 #
 # Only the restricted YAML subset is allowed (parseable by Tools/kblib.py parse_yaml_subset):
 #   - `key: value` scalars (string/number/boolean/null, quoted strings, inline `[]`);
@@ -13,38 +13,48 @@
 # =============================================================================
 
 task_id: "kb-build-2026-xx"        # task identifier; must match the Coverage Ledger's task_id
-task_state: active                 # planned/active/paused/blocked/completion-candidate/complete/cancelled (02/01 Task State Machine; complete requires a valid Terminal Proof)
-active_batches: ["B7"]             # currently concurrent active batches (<= concurrency_cap; 02/05 Concurrent Batches)
-merge_queue: []                    # merge-ready batches waiting for the integrator's serial merge (02/05)
+task_state: active                 # planned/active/paused/blocked/completion-candidate/complete/cancelled (K02/01 Task State Machine; complete requires a valid Terminal Proof)
+active_batches: ["B7"]             # currently concurrent active batches (<= concurrency_cap; K02/05 Concurrent Batches)
+merge_queue: []                    # merge-ready batches waiting for the integrator's serial merge (K02/05)
 
-contract:                          # key contract fields frozen in Phase 0 (02/01 Phase 0; full list in the standard's prose)
-  contract_version: "c1"           # contract version (02/01)
-  scope_version: "s1"              # scope version (02/01)
-  queue_revision: "q1"             # Required Queue revision (02/01)
-  batch_revision: "b1"             # active batch revision (02/01)
-  concurrency_cap: 3               # concurrent batch cap (02/05 Concurrent Batches; default 3)
-  standards_version: "2.3"         # Standards version frozen once the task starts (02/01: Standards must not be casually edited during content builds)
-  minimum_run_until: ""            # no voluntary stop before this time; reaching it only lifts the restriction, it does not imply completion (02/01 Time And Stop Semantics)
-  checkpoint_at: ""                # on reaching it, record progress / re-verify the plan / report; continue by default (02/01)
-  hard_stop_at: ""                 # on reaching it, must stop and write a checkpoint; if gates have not passed, only paused is allowed, never complete (02/01)
-  completion_gate: "guidance pending=0 AND required_authoring_gaps=0 AND unverified_batches=0 AND unresolved_invalidations=0 AND all applicable gates passed"  # time-independent completion condition (02/01, 12/06)
+contract:                          # key contract fields frozen in Phase 0 (K02/01 Phase 0; full list in the standard's prose)
+  contract_version: "c1"           # contract version (K02/01)
+  scope_version: "s1"              # scope version (K02/01)
+  queue_revision: "q1"             # Required Queue revision (K02/01)
+  batch_revision: "b1"             # active batch revision (K02/01)
+  concurrency_cap: 3               # concurrent batch cap (K02/05 Concurrent Batches; default 3)
+  standards_version: "2.3"         # Standards version frozen once the task starts (K02/01: Standards must not be casually edited during content builds)
+  selected_route_ids:              # kernel Runtime Routes actually loaded; R01 is mandatory for every task
+    - "R01"
+    - "R07"
+  selected_card_paths:             # exactly one canonical kernel Runtime Card path for each selected_route_ids entry
+    - "kernel/Cards/R01 Core Bootstrap Card.md"
+    - "kernel/Cards/R07 Long-running Execution Card.md"
+  selected_profile_route_ids: []   # supplemental profile routes actually combined, each namespaced P:<profile_id>:<route_name>; never place one in the Rxx list
+  selected_read_sets:              # Read Set paths actually read back; this is evidence of source loading, not the full route registry
+    - "kernel/Read Sets/R07 Long-running Execution Read Set.md"
+  loaded_module_paths: []          # leaf Standards or profile paths actually read back outside the selected Read Sets
+  minimum_run_until: ""            # no voluntary stop before this time; reaching it only lifts the restriction, it does not imply completion (K02/01 Time And Stop Semantics)
+  checkpoint_at: ""                # on reaching it, record progress / re-verify the plan / report; continue by default (K02/01)
+  hard_stop_at: ""                 # on reaching it, must stop and write a checkpoint; if gates have not passed, only paused is allowed, never complete (K02/01)
+  completion_gate: "guidance pending=0 AND required_authoring_gaps=0 AND unverified_batches=0 AND unresolved_invalidations=0 AND all applicable gates passed"  # time-independent completion condition (K02/01, K12/06)
 
-batches:                           # each batch is a small module that can be accepted independently (02/05 Batch Policy)
+batches:                           # each batch is a small module that can be accepted independently (K02/05 Batch Policy)
   - id: "B1"                       # batch identifier; corresponds to pages[].batch in the Coverage Ledger
-    state: closed                  # open/merge-ready/closed; closing requires passing 12/03 Batch Review, and closing with only file names and headings is not allowed (02/05); merge-ready = in-batch work done, awaiting the integrator's serial merge (02/05 Concurrent Batches)
+    state: closed                  # open/merge-ready/closed; closing requires passing K12/14 Batch Review, and closing with only file names and headings is not allowed (K02/05); merge-ready = in-batch work done, awaiting the integrator's serial merge (K02/05 Concurrent Batches)
     pages:                         # Required page paths of this batch
       - "Topics/Example Topic.md"
     started_at: "2026-07-01T00:00:00Z"  # batch start time
     closed_at: "2026-07-03T00:00:00Z"   # batch close time; empty while state=open
-    batch_gate_receipt: "audit-batch-review-20260703T000000Z-0001"  # receipt_id of the passed Batch Review (12/07: must not just say "already checked before")
+    batch_gate_receipt: "audit-batch-review-20260703T000000Z-0001"  # receipt_id of the passed Batch Review (K12/07: must not just say "already checked before")
 
-amendments:                        # Amendment Log (02/02 Mid-task Guidance and Amendment; recording required by 02/05)
+amendments:                        # Amendment Log (K02/02 Mid-task Guidance and Amendment; recording required by K02/05)
   - id: "A1"                       # amendment identifier
     date: "2026-07-05"             # acceptance date
     summary: "expanded retrieval-rag scope to the rerank pages"  # summary of which contract elements changed
     writeback_done: true           # whether it was written back to the affected contract/scope/queue fields (boolean)
 
-guidance_queue:                    # mid-task guidance queue (02/02; all three pending guidance counts must be 0 at Terminal Audit, 12/06)
-  - id: "G-001"                    # guidance_id: task-local, monotonically increasing, never reused (02/02 Amendment Record; used by last_reconciled_guidance_id / guidance_cutoff_id to draw the boundary)
-    class: apply-to-current-batch  # disposition vocabulary owner: 02/02 (interrupt-now/apply-to-current-batch/queue-next/queue-by-dependency/research-first/deferred/clarification-required/superseded/not-applicable)
-    status: verified               # status vocabulary owner: 02/02 (received/classified/mapped/in-progress/verified/clarification-required/deferred/superseded)
+guidance_queue:                    # mid-task guidance queue (K02/02; all three pending guidance counts must be 0 at Terminal Audit, K12/06)
+  - id: "G-001"                    # guidance_id: task-local, monotonically increasing, never reused (K02/02 Amendment Record; used by last_reconciled_guidance_id / guidance_cutoff_id to draw the boundary)
+    class: apply-to-current-batch  # disposition vocabulary owner: K02/02 (interrupt-now/apply-to-current-batch/queue-next/queue-by-dependency/research-first/deferred/clarification-required/superseded/not-applicable)
+    status: verified               # status vocabulary owner: K02/02 (received/classified/mapped/in-progress/verified/clarification-required/deferred/superseded)

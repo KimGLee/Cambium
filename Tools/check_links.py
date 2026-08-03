@@ -2,12 +2,12 @@
 """Deterministic wiki-link check script (missing / ambiguous / heading resolution).
 
 Rule owners:
-- "09 Wiki Link and Navigation/03 Path Alias and Heading Links.md"
+- "kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links.md"
   (path/alias rules, `\\|` escaping inside tables, heading links);
-- "09 Wiki Link and Navigation/05 Verification and Anti-patterns.md"
+- "kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns.md"
   (after each batch of tasks missing=0 and ambiguous=0 are required, and no
   broken heading links);
-- "03 Note Types and Ownership/03 Split and Duplication Policy.md"
+- "kernel/K03 Note Types and Ownership/03 Split and Duplication Policy.md"
   (Retirement / Merge: the retirement gate requires every inbound link to be
   repointed to the successor page; a link whose target frontmatter says
   lifecycle: retired / merged is therefore reported as a candidate suggesting
@@ -26,12 +26,12 @@ Method:
   `#^block` references are skipped).
 
 Result semantics: missing / ambiguous / bad heading are always result=fail
-(09/05 requires all three to be zero); a target page whose lifecycle is
+(K09/05 requires all three to be zero); a target page whose lifecycle is
 retired / merged is only result=candidate (suggest repointing to its
-superseded_by successor page, 03/03), not a fail.
+superseded_by successor page, K03/03), not a fail.
 
 Scope semantics: --scope may be a directory or a single .md file (note-close
-self-check, 00/05). A --scope that matches no files is result=fail -- a
+self-check, K00/05). A --scope that matches no files is result=fail -- a
 zero-file scan is an invocation error, never a pass.
 
 Exclusion semantics: --exclude keeps files out of content scanning and out of
@@ -64,7 +64,7 @@ LINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
 def parse_link(inner):
     """Split out (target_path, heading); drop the alias.
 
-    Inside tables the alias separator is written as `\\|` (09/03: the wiki
+    Inside tables the alias separator is written as `\\|` (K09/03: the wiki
     alias pipe must be escaped in Markdown tables), so both `\\|` and `|` are
     treated as the target/alias separator.
     """
@@ -151,7 +151,7 @@ def main():
         scan_files = [(f, r) for f, r in kblib.iter_md_files(args.vault_root, args.scope)
                       if keep(r)]
         if not scan_files:
-            # A gate that scans nothing must fail, not silently pass (00/05
+            # A gate that scans nothing must fail, not silently pass (K00/05
             # note close; a nonexistent or empty --scope is an invocation
             # error, never evidence of quality).
             receipts = [kblib.make_receipt(
@@ -212,7 +212,7 @@ def main():
                         TOOL, TOOL_VERSION, "link-ambiguous", where, "fail",
                         "[[%s]] has multiple basename matches (ambiguous): %s" % (m.group(1), "; ".join(resolved)), seq))
                     continue
-                # Target page retired/merged: candidate (03/03 requires inbound
+                # Target page retired/merged: candidate (K03/03 requires inbound
                 # links to be repointed to the successor page), not a fail
                 if target != "" and resolved != rel_key:
                     life = lifecycle_cache_get(lifecycle_cache, by_path, resolved)
@@ -224,7 +224,7 @@ def main():
                                 "target page declares no superseded_by; verify its tombstone before repointing")
                         receipts.append(kblib.make_receipt(
                             TOOL, TOOL_VERSION, "link-retired-target", where, "candidate",
-                            "[[%s]] points to page %s with lifecycle: %s; consider repointing to the successor page (%s; 03/03 retirement gate)"
+                            "[[%s]] points to page %s with lifecycle: %s; consider repointing to the successor page (%s; K03/03 retirement gate)"
                             % (m.group(1), resolved, life["lifecycle"], hint), seq))
                 if heading:
                     if heading.startswith("^"):
@@ -256,7 +256,7 @@ def main():
         elif r["result"] == "candidate":
             print("  [CAND %s] %s — %s" % (r["check"], r["target"], r["details"]))
     if problems == 0:
-        print("  Conclusion: all link checks passed (09/05: missing=0, ambiguous=0).")
+        print("  Conclusion: all link checks passed (K09/05: missing=0, ambiguous=0).")
 
     kblib.write_receipts(args.receipts, receipts)
     return kblib.exit_code(receipts)

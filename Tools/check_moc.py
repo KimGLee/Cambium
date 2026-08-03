@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """check_moc.py -- candidate detection for MOC "Module Index" vs. leaf H2 headings.
 
-Rule owner: 12 Quality Assurance/05 (Standards domain MOC / leaf module
-consistency checks).
+Rule owner: kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
+(Standards module MOC / leaf module consistency checks).
 
 Method:
 - Recursively scan <root> for .md files that contain a `## Module Index`
@@ -130,7 +130,7 @@ def main():
         receipts.append(kblib.make_receipt(
             TOOL, TOOL_VERSION, "moc-index-drift",
             "%s -> %s" % (moc, target), "candidate",
-            "%s: %s (Module Index vs actual H2 headings, 12/05; candidates "
+            "%s: %s (Module Index vs actual H2 headings, K12/05; candidates "
             "only, disposition is a human call)" % (kind, h), seq))
     if not cands:
         receipts.append(kblib.make_receipt(

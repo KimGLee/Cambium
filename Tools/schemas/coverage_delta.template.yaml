@@ -1,6 +1,6 @@
 # =============================================================================
 # Coverage Delta template (state increment of a concurrent batch; the template is the schema doc)
-# Owner standard: "02 Build Execution/05 Batch Execution and Progress Ledger.md"
+# Owner standard: "kernel/K02 Build Execution/05 Batch Execution.md"
 #            (Concurrent Batches: concurrent batches never write the
 #             Coverage/Progress Ledger directly; they only produce this file,
 #             and the integrator applies it to the canonical Ledger during
@@ -18,11 +18,11 @@ generated_at: "2026-07-30T12:00:00+08:00"  # time the delta was written out (whe
 
 pages:                             # status updates for pages on this batch's manifest (manifest pages only; out-of-manifest pages are rejected at merge)
   - path: "Topics/Example Topic.md"
-    authoring_status: reviewed     # updated status-axis value (vocabulary owner 08/03)
+    authoring_status: reviewed     # updated status-axis value (vocabulary owner K08/03)
     interview_status: mapped
     gate_receipts: ["r-0311", "r-0312"]  # receipt ids this batch produced for the page
 
 open_gaps_added: []                # open gaps added by this batch (including needs_rereview and cross-batch missing links, type: link; type vocabulary in the coverage_ledger template)
 open_gaps_closed: []               # open gaps closed by this batch (gap id or page+type)
 next_batch_updates: []             # suggested adjustments to later batch manifests (suggestions only; queue revision authority stays with the integrator)
-watermark_advance:                 # optional: watermark advance values from source/maintenance batches (02/05; the integrator applies them to Tools/state/watermark.yaml at merge)
+watermark_advance:                 # optional: watermark advance values from source/maintenance batches (K02/05; the integrator applies them to Tools/state/watermark.yaml at merge)

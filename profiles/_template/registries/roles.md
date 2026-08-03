@@ -2,7 +2,7 @@
 
 - Profile manifest: `profiles/<your-profile-id>/profile.md`
 - Slot interface: `profiles/README.md`, `Role Registry Slot`
-- Kernel contract: `kernel/04 Content Depth/03 Process and Flow Structure.md`
+- Kernel contract: `kernel/K04 Content Depth/03 Process and Flow Structure.md`
 
 Implements the `Role Registry` slot.
 

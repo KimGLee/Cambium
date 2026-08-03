@@ -2,7 +2,7 @@
 """Deterministic freshness (review_by) check.
 
 Invocation tier (v2.0): maintenance-run only; not part of per-batch checks
-(removed from the 12/05 per-batch checklist; run once at the start of a
+(removed from the K12/05 per-batch checklist; run once at the start of a
 maintenance run).
 
 Method:
@@ -21,7 +21,7 @@ Method:
   due date (never produces candidates);
 - baseline date is `last_verified`, falling back to `last_reviewed`; when
   both are missing, the file's modification time is used as the most recent
-  substantive modification date (08/05) and the page is flagged "pending
+  substantive modification date (K08/05) and the page is flagged "pending
   first verification" with its computed due date;
 - `review_by` = baseline + interval; --as-of (default: today) >= review_by
   counts as overdue;
@@ -203,7 +203,7 @@ def main():
         prio_disp = priority or "no-priority"
 
         # ---- baseline date: last_verified > last_reviewed > file
-        # modification time (08/05: with no last_verified, the creation date
+        # modification time (K08/05: with no last_verified, the creation date
         # or the date of the most recent substantive modification is used
         # instead and the page is marked awaiting first verification) ----
         pending_first = False
@@ -223,7 +223,7 @@ def main():
             state = ("overdue %d days" % (as_of - review_by).days
                      if as_of >= review_by else "due %s" % review_by.isoformat())
             details = ("pending first verification, %s: no last_verified / "
-                       "last_reviewed; baseline %s=%s + %d days (08/05; "
+                       "last_reviewed; baseline %s=%s + %d days (K08/05; "
                        "volatility=%s, priority=%s)"
                        % (state, baseline_field, baseline.isoformat(),
                           interval, volatility, prio_disp))
@@ -258,7 +258,7 @@ def main():
         if all_skipped:
             # "Nothing was checked" must not read as "nothing is stale":
             # every scanned file lacked a resolvable volatility, so the run
-            # produced no freshness evidence at all (08/05).
+            # produced no freshness evidence at all (K08/05).
             receipts.append(kblib.make_receipt(
                 TOOL, TOOL_VERSION, "freshness-check-summary",
                 (args.scope or ".") + " @ " + os.path.abspath(args.vault_root),

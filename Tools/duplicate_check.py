@@ -3,14 +3,15 @@
 
 Purpose: paragraph-level similarity scan over all .md files in the vault to
 find copied passages across files that may violate the Cross-domain Rule
-Registry (see 00 Standards Control/05). Output is candidates only; whether
+Registry (see kernel/K00 Standards Control/11 Standards Map and Rule Registry.md).
+Output is candidates only; whether
 a finding is an actual violation is a human call, and candidates are
 digested through the maintenance-run candidates pool.
 
 Invocation tier (v2.0): vault-wide by default, used by maintenance runs and
 governance tasks; no longer invoked at batch or single-page level (batch
 close keeps only the basename-level duplicate candidates in the Batch-close
-Closed List, see 12/07).
+Closed List, see K12/09).
 
 --scope SUBPATH: only report similar pairs where at least one side lives
 under the subpath (the vault-wide index is still built, so pairs between
@@ -204,7 +205,7 @@ def main():
         receipts.append(kblib.make_receipt(
             TOOL, TOOL_VERSION, "duplicate-paragraphs",
             f"{file_a} <-> {file_b}", "candidate",
-            "%d similar paragraph pair(s) above thresholds (03/03 split and "
+            "%d similar paragraph pair(s) above thresholds (K03/03 split and "
             "duplication policy; candidates only, disposition is a human "
             "call)" % len(records), seq))
     kblib.write_receipts(args.receipts, receipts)

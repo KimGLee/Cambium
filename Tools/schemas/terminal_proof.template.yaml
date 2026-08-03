@@ -1,11 +1,12 @@
 # =============================================================================
 # Terminal Proof template (machine-readable state layer; the template is the schema doc)
-# Owner standard: "12 Quality Assurance/06 Completion Terminal Audit and Final Report.md"
-#   -- The field list copies, field by field, the 28 fields of 12/06
-#      "Terminal Proof must contain at least" (canonical definition in 12/06,
-#      including full_deterministic_results; the 12/07 Terminal Reconciliation
-#      Rules also point back to 12/06).
-# Completion condition (12/06): task state may change to complete only when all
+# Field-list owner: "kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md"
+# Completion-condition owner: "kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md"
+#   -- The field list copies, field by field, the 31 fields of K12/15
+#      "Terminal Proof must contain at least" (canonical definition in K12/15,
+#      including full_deterministic_results; the K12/07 Terminal Reconciliation
+#      Rules also point back to K12/15).
+# Completion condition (K12/06): task state may change to complete only when all
 #   three pending guidance counts are 0, required_authoring_gaps = 0,
 #   unverified_batches = 0, unresolved_invalidations = 0, and every applicable
 #   gate has passed.
@@ -19,37 +20,46 @@
 #   Not allowed: anchors/aliases, block scalars (| >), flow maps {}, tags, multi-document.
 # =============================================================================
 
-scope_version: "s1"                # scope version when the candidate snapshot was frozen (12/06 Terminal Audit step 1; 02/02 Versioning Rules)
+scope_version: "s1"                # scope version when the candidate snapshot was frozen (K12/15 Terminal Audit step 1; K02/02 Versioning Rules)
 contract_version: "c1"             # contract version (same as above)
 queue_revision: "q1"               # Required Queue revision (same as above)
 batch_revision: "b1"               # batch revision (same as above)
-standards_version: "2.3"           # frozen Standards version (02/01: frozen once the task starts)
-selected_read_sets:                # Read Sets selected for this task (12/06 step 1 requires recording them as well)
-  - "Read Sets/07 Long-running Execution Read Set.md"
-loaded_module_paths:               # full vault-relative paths of the modules actually loaded (09/03: recording only fuzzy Standard numbers is not allowed)
-  - "02 Build Execution/01 Contract Time and Task State.md"
-guidance_cutoff_id: "G-012"        # guidance boundary ID (12/06 step 1; 02/02: guidance_id is monotonically increasing, never reused)
-guidance_reconciliation_result: "passed"  # Guidance Reconciliation Review result (12/06 step 3; all three pending guidance counts must be 0 to reach complete)
-coverage_reconciliation_result: "passed"  # result of reconciling the Coverage Ledger against the file system / exclusions / competency matrix / Required Queue (12/06 step 4)
-required_authoring_gaps: 0         # count of unclosed Required authoring gaps; completion condition: must be 0 (12/06; reconciled against the Coverage Ledger's open_gaps)
-unverified_batches: 0              # count of batches not verified by Batch Review; completion condition: must be 0 (12/06)
-automated_QA_result: "passed"      # overall automated check result (12/05 Automated and Manual Checks)
-manual_review_result: "passed"     # overall note-type-aware manual review result (12/06 step 7)
-rendering_evidence: "level-0/1 deterministic passed; visual_trigger: not_applicable"  # must state the highest level actually exercised and the verification result; without a visual trigger record visual_trigger: not_applicable (12/06)
-audit_snapshot_id: "snap-20260721-01"     # frozen candidate snapshot identifier (12/06 steps 1, 10)
-audit_receipt_register: "Tools/receipts/register.jsonl"  # Audit Receipt Register reference (12/06 step 2; receipt storage location per 12/07)
-reused_receipts:                   # receipt_ids reused through the Reuse Gate (12/06; Reuse Gate conditions per 12/07)
+standards_version: "2.3"           # frozen Standards version (K02/01: frozen once the task starts)
+selected_route_ids:                # kernel Runtime Route IDs selected for this task (K12/15 step 1); non-empty, unique, and limited to R01-R10
+  - "R01"
+  - "R07"
+  - "R08"
+selected_card_paths:               # exactly one canonical Runtime Card path for every selected Rxx route (K12/15 step 1); non-empty, unique, and registry-checked with --root
+  - "kernel/Cards/R01 Core Bootstrap Card.md"
+  - "kernel/Cards/R07 Long-running Execution Card.md"
+  - "kernel/Cards/R08 Audit and Completion Card.md"
+selected_profile_route_ids: []     # namespaced supplemental routes combined with the Rxx routes, each P:<profile_id>:<route_name>; [] when none (K12/15 step 1)
+selected_read_sets:                # Read Set paths actually read back (not every selected route); may be a kernel subset and/or profile supplemental paths (K12/15 step 1)
+  - "kernel/Read Sets/R07 Long-running Execution Read Set.md"
+loaded_module_paths:               # full vault-relative paths of the modules actually loaded (K09/03: recording only fuzzy Standard numbers is not allowed)
+  - "kernel/K02 Build Execution/01 Contract Time and Task State.md"
+guidance_cutoff_id: "G-012"        # guidance boundary ID (K12/15 step 1; K02/02: guidance_id is monotonically increasing, never reused)
+guidance_reconciliation_result: "passed"  # Guidance Reconciliation Review result (K12/15 step 3; all three pending guidance counts must be 0 to reach complete)
+coverage_reconciliation_result: "passed"  # result of reconciling the Coverage Ledger against the file system / exclusions / competency matrix / Required Queue (K12/15 step 4)
+required_authoring_gaps: 0         # count of unclosed Required authoring gaps; completion condition: must be 0 (K12/06; reconciled against the Coverage Ledger's open_gaps)
+unverified_batches: 0              # count of batches not verified by Batch Review; completion condition: must be 0 (K12/06)
+automated_QA_result: "passed"      # overall automated check result (K12/05 Automated and Manual Checks)
+manual_review_result: "passed"     # overall note-type-aware manual review result (K12/15 step 7)
+rendering_evidence: "level-0/1 deterministic passed; visual_trigger: not_applicable"  # must state the highest level actually exercised and the verification result; without a visual trigger record visual_trigger: not_applicable (K12/15)
+audit_snapshot_id: "snap-20260721-01"     # frozen candidate snapshot identifier (K12/15 steps 1, 10)
+audit_receipt_register: "Tools/receipts/register.jsonl"  # Audit Receipt Register reference (K12/15 step 2; receipt storage location per K12/07)
+reused_receipts:                   # receipt_ids reused through the Reuse Gate (K12/15; Reuse Gate conditions per K12/07)
   - "audit-check_links-20260701T000000Z-0001"
-superseded_receipts:               # receipt_ids superseded by newer results (12/07: a new result supersedes the previous receipt)
+superseded_receipts:               # receipt_ids superseded by newer results (K12/07: a new result supersedes the previous receipt)
   - "audit-check_links-20260601T000000Z-0001"
-invalidated_receipts:              # receipt_ids judged invalid (12/07 Direct / Dependency Invalidation)
+invalidated_receipts:              # receipt_ids judged invalid (K12/07 Direct / Dependency Invalidation)
   - "audit-check_vocab-20260601T000000Z-0002"
-unresolved_invalidations: 0        # count of undisposed invalidations; completion condition: must be 0 (12/06; 12/07 Terminal Reconciliation Rules)
-full_deterministic_results: "Tools/receipts/terminal-full-20260721.jsonl"  # reference to the complete result set of deterministic checks run by the terminal audit over the final frozen snapshot (12/06)
-incremental_manual_scope:          # incremental manual review coverage: changed/invalidated/overdue/P0-P1 high-risk/specially exposed pages (12/06 step 7)
+unresolved_invalidations: 0        # count of undisposed invalidations; completion condition: must be 0 (K12/06; K12/07 Terminal Reconciliation Rules)
+full_deterministic_results: "Tools/receipts/terminal-full-20260721.jsonl"  # reference to the complete result set of deterministic checks run by the terminal audit over the final frozen snapshot (K12/15)
+incremental_manual_scope:          # incremental manual review coverage: changed/invalidated/overdue/P0-P1 high-risk/specially exposed pages (K12/15 step 7)
   - "Topics/Example Topic.md"
-sampling_scope_and_result: "bounded sampling of 12 pages with valid receipts; all passed"  # bounded sampling scope and result (12/06 step 7)
-systemic_expansions: []            # family expansion records; empty list when no systemic issues (12/06 step 10; 12/07 Systemic Expansion)
-deferred_evidence_backlog: []      # external evidence backlog; must not be used to mask Required authoring gaps (12/06 Completion Gate)
-final_handoff: "handoff package reference required by 02 Build Execution/07 Completion and Handoff.md"  # Final Handoff reference (12/06 step 11)
-time_contract_result: "minimum_run_until satisfied; hard_stop_at not triggered"  # time contract execution result (02/01: time boundaries are not completion evidence)
+sampling_scope_and_result: "bounded sampling of 12 pages with valid receipts; all passed"  # bounded sampling scope and result (K12/15 step 7)
+systemic_expansions: []            # family expansion records; empty list when no systemic issues (K12/15 step 10; K12/07 Systemic Expansion)
+deferred_evidence_backlog: []      # external evidence backlog; must not be used to mask Required authoring gaps (K12/06 Completion Gate)
+final_handoff: "handoff package reference required by kernel/K02 Build Execution/07 Completion and Handoff.md"  # Final Handoff reference (K12/15 step 11)
+time_contract_result: "minimum_run_until satisfied; hard_stop_at not triggered"  # time contract execution result (K02/01: time boundaries are not completion evidence)
