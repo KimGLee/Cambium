@@ -1,0 +1,38 @@
+# Agent Systems Atlas profile vocabulary extensions.
+# Interface: profiles/README.md#Vocabulary-Extensions-Slot
+
+schema_version: 1
+
+frontmatter_extensions:
+  fields:
+    - interview_card
+
+fields:
+  type:
+    values:
+      - interview-card
+      - roadmap
+  scope:
+    values:
+      - interview-only
+  interview_status:
+    owner: "profiles/examples/agent-atlas/interview/card-granularity-and-readiness.md"
+    role: Expression Status Axis
+    values:
+      - not-required
+      - missing
+      - mapped
+      - interview-ready
+
+volatility_defaults:
+  modeling-fundamentals: stable
+  machine-learning: slow
+  deep-learning: slow
+  llm: fast
+  retrieval-rag: fast
+  agent: fast
+  ai-systems: slow
+  evaluation: fast
+  safety-governance: fast
+  interview: slow
+  knowledge-management: slow
