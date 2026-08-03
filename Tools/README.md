@@ -9,7 +9,7 @@ strictly read-only. The standards prose owns every vocabulary and rule body.
 
 Layering: check_links/check_vocab/check_moc/check_proof/apply_delta/compose_vocab/check_profile/stamp_cards/kblib
 are kernel tooling; check_freshness/duplicate_check are maintenance tooling.
-A profile may register scans of its own through its `Registered Scans`
+A profile may register scans of its own through its `Registered Scan Registry`
 registry; those scripts belong to that profile, not to this directory.
 
 ## Tool inventory
@@ -19,11 +19,11 @@ registry; those scripts belong to that profile, not to this directory.
 | `check_links.py` | Wiki link missing / ambiguous / heading verification (K09/03, K09/05); `--scope` accepts a directory or a single page (an empty scan set fails); `--exclude` keeps files out of scanning and basename disambiguation, while exact full-path links into excluded areas still resolve (`excluded_target`) | `python3 Tools/check_links.py . --receipts Tools/receipts/links.jsonl` |
 | `check_vocab.py` | Frontmatter controlled-vocabulary check (K08 module; vocabulary from the composed `vocab.yaml`, which exists only once a profile has been selected and composed -- without it the check reports that and exits 1); `--scope` accepts a directory or a single page (an empty scan set fails); `--quota-p0` / `--quota-p1` cap P0/P1 shares, defaults 15/35 (kernel defaults; a profile or task contract may override); compiled kernel Cards are outside the knowledge-page schema | `python3 Tools/check_vocab.py . --scope kernel --exclude kernel/Cards --quota-p0 15 --quota-p1 35 --receipts Tools/receipts/vocab.jsonl` |
 | `check_moc.py` | Standard Module MOC Module Index vs. actual H2 headings consistency candidates (K12/05; **candidates only**); recursively scans for Module Index sections and is fence-aware (fenced code blocks ignored); maintenance runs and governance | `python3 Tools/check_moc.py .` |
-| `check_proof.py` | Terminal Proof consistency check (K12/15): field completeness; R01/R08 presence; Rxx, profile-route, Card-path, and actual-readback structure; zero conditions; reconciliation/QA/review results must read `passed`; evidence fields must not declare failure. With `--root`, all recorded paths must be repository-contained regular files and the Rxx/Card/kernel-Read-Set binding is checked against both canonical indexes. Profile supplemental paths get existence/uniqueness checks only because their registry is prose. Without `--root`, no registry agreement is claimed and the run is structural lint only; it cannot satisfy the Terminal Completion Gate. Optional Coverage Ledger cross-check. Verifies proof consistency, not the work itself | `python3 Tools/check_proof.py proof.yaml --root . --ledger coverage_ledger.yaml` |
+| `check_proof.py` | Terminal Proof consistency check (K12/15): field completeness; R01/R12/R08 presence; Rxx, profile-route, Card-path, and actual-readback structure; zero conditions; reconciliation/QA/review results must read `passed`; evidence fields must not declare failure. With `--root`, all recorded paths must be repository-contained regular files and the Rxx/Card/kernel-Read-Set binding is checked against both canonical indexes. Profile supplemental paths get existence/uniqueness checks only because their registry is prose. Without `--root`, no registry agreement is claimed and the run is structural lint only; it cannot satisfy the Terminal Completion Gate. Optional Coverage Ledger cross-check. Verifies proof consistency, not the work itself | `python3 Tools/check_proof.py proof.yaml --root . --ledger coverage_ledger.yaml` |
 | `apply_delta.py` | Deterministic application of a coverage delta during the serial merge (K02/05 Concurrent Batches); merges `gate_receipts` in block-list form, warns on non-core scalar keys, re-parses the merged output before writing and aborts if it no longer parses; atomic write with automatic backup; gap/watermark entries are printed as integrator todos | `python3 Tools/apply_delta.py ledger.yaml delta.yaml --apply` |
-| `compose_vocab.py` | Persistent vocabulary compiler: composes `vocab.yaml` from the kernel base and the selected profile's extensions. There is no default profile: `--extensions` names one, and when the flag is omitted the path is read back from the existing `--output` header, so an argument-free run recomposes whichever profile the committed artifact was built from, and a run with no artifact to read from fails and lists the profiles it can find. `--check` recomputes and compares at the value level, ignoring the header comments | `python3 Tools/compose_vocab.py --check` |
-| `check_profile.py` | Profile manifest completeness and unfilled-template check: derives the slot list from `profiles/README.md`, verifies every slot is bound and resolves, verifies each overridable execution default is registered and that no constitutional constant is, and **fails while the profile is still an unfilled `profiles/_template/` copy** (three independent conditions: a remaining `TODO(profile)` marker, a reserved placeholder `profile_id`, a surviving `Template Usage` section). Checks structure, never answer quality | `python3 Tools/check_profile.py profiles/<profile-id> --receipts Tools/receipts/profile.jsonl` |
-| `stamp_cards.py` | Kernel route and Runtime Card verification (K00/03 Write-back Checklist): checks the shared `kernel-runtime-routes` registry identity, exact R01-R10 coverage across both indexes and the on-disk Read Set/Card pairs, filename prefixes, source boundaries, `source_hash`, and uniform versions; defaults to `kernel/Cards`; missing, empty, incomplete, or malformed layers fail closed; `--check` is read-only; `--set-version` stamps every Card including the Index | `python3 Tools/stamp_cards.py . --check` |
+| `compose_vocab.py` | Persistent vocabulary compiler: composes `vocab.yaml` from the kernel base and one selected profile. The sibling manifest owns `profile_id`; `volatility_defaults` owns each domain once; the extensions path supplies base-field extension ownership; profile-only controlled fields are added to the frontmatter list automatically. There is no default profile: `--extensions` names one, or an existing output header names the previously selected one. `--check` compares at the value level | `python3 Tools/compose_vocab.py --check` |
+| `check_profile.py` | Filled-profile structural check: derives the slot list from `profiles/README.md`; verifies identity syntax and directory agreement, slot bindings, sparse execution overrides against their closed registry, and `Configured`/inactive table consistency; rejects leftover `TODO(profile)` markers and reserved IDs. It checks structure, never answer quality, and is not run against `_template` itself | `python3 Tools/check_profile.py profiles/<profile-id> --receipts Tools/receipts/profile.jsonl` |
+| `stamp_cards.py` | Kernel route and Runtime Card verification (K00/03 Write-back Checklist): checks the shared `kernel-runtime-routes` registry identity, exact R01-R12 coverage across both indexes and the on-disk Read Set/Card pairs, filename prefixes, source boundaries, `source_hash`, and uniform versions; defaults to `kernel/Cards`; missing, empty, incomplete, or malformed layers fail closed; `--check` is read-only; `--set-version` stamps every Card including the Index | `python3 Tools/stamp_cards.py . --check` |
 | `check_freshness.py` | Freshness check: computes review_by from volatility and last_verified (fallback: last_reviewed, then file modification time per K08/05, flagged pending first verification); `--defaults` accepts a flat mapping or `Tools/vocab.yaml` / a profile's `vocabulary-extensions.yaml` (their `volatility_defaults`); an all-skip run reports NOTHING CHECKED as a candidate, not a pass | `python3 Tools/check_freshness.py . --as-of 2026-07-21 --defaults profiles/<your-profile-id>/vocabulary-extensions.yaml --exclude Cards --receipts Tools/receipts/fresh.jsonl` |
 | `duplicate_check.py` | Cross-file duplicate paragraph candidate detection; full vault by default; `--exclude` is repeatable and defaults to the single component `legacy`, the conventional name for a frozen-snapshot area that a vault need not have; compiled Cards and profile skeletons should be excluded from corpus-duplication review; supports `--receipts` and exits 2 when candidates exist | `python3 Tools/duplicate_check.py . --exclude _template --exclude Cards --receipts Tools/receipts/dup.jsonl` |
 | `kblib.py` | Shared library (restricted YAML subset parser, Markdown helpers, receipt helpers); not invoked directly | imported by all scripts above |
@@ -35,7 +35,7 @@ module; `Rxx` names an execution route. A route may compile several modules,
 and no numeric correspondence between a route and its source modules is
 implied.
 
-Kernel routes are the continuous closed set R01-R10. The Read Set Index has
+Kernel routes are the continuous closed set R01-R12. The Read Set Index has
 `type: route-index`, the Card Index has `type: card-index`, and both declare
 `registry_id: kernel-runtime-routes` plus a `route_registry`. An index is not a
 route and therefore declares neither `route_id` nor the retired `card_id`.
@@ -51,7 +51,7 @@ hidden from the four-way comparison by naming or link indirection.
 
 `stamp_cards.py` compares four representations before it considers hashes:
 the Read Set Index registry, the Read Set files on disk, the Card Index
-registry, and the Runtime Card files on disk. All four must have the same ten
+registry, and the Runtime Card files on disk. All four must have the same twelve
 route IDs and the same route-to-Read-Set bindings, and each concrete filename
 must start with its `route_id`. A structural mismatch exits 1; a structurally
 valid but stale Card layer exits 2 in `--check` mode; only exact agreement and
@@ -68,8 +68,8 @@ full-path links from active files into such an area still resolve, counted
 separately as `excluded_target`.
 
 The full-tree duplicate check is `python3 Tools/duplicate_check.py . --exclude
-_template --exclude Cards`. `profiles/_template/` repeats scaffolding and TODO
-instructions across slot files, while `kernel/Cards/` deliberately compresses
+_template --exclude Cards`. `profiles/_template/` deliberately repeats form
+labels and unfilled sentinels, while `kernel/Cards/` deliberately compresses
 kernel source rules. Both therefore create expected textual similarity and are
 outside a knowledge-corpus duplication review. Excluding `_template` does not
 weaken the check for real profiles -- a profile copied from the template lives
@@ -87,16 +87,17 @@ not skip the canonical rule text, which remains under the rest of `kernel/`.
   plus `duplicate_check.py` (full vault or `--scope`; candidates go into the
   candidates pool). Neither is invoked at batch or single-page level.
 - **Governance** = `stamp_cards.py . --check`, `check_moc.py`, and
-  `check_profile.py` against each profile the repository ships.
+  `check_profile.py` against each filled profile a deployment selects. The
+  published `_template` is a form, not a runnable profile.
   `compose_vocab.py --check` joins that list in a vault that has composed a
   vocabulary. This repository ships no composed `vocab.yaml`, so here the
   command reports that no profile is selected and exits 1; see Generated
   artifacts below.
-- **Profile bring-up** = `check_profile.py` against a profile freshly copied
-  from `profiles/_template/`. It is expected to fail at first and to keep
-  failing until the copy is filled in; that failure is the tool's purpose, not
-  a defect in the copy. It is not part of any batch or note close, because a
-  profile is authored once and then loaded, not edited per batch.
+- **Profile bring-up** = copy `profiles/_template/`, fill the copy, then run
+  `check_profile.py` against that filled profile before loading it. The form
+  itself is not a runtime target. Profile bring-up is not part of batch or note
+  close because a profile is authored once and then loaded, not edited per
+  batch.
 
 Shared conventions:
 
@@ -148,12 +149,11 @@ evidence_ref.
 - `terminal_proof.template.yaml` -- Terminal Proof, the 31 fields copied field
   by field from K12/15; also the single source of truth for
   `check_proof.py`'s required field list
-- `execution_defaults.template.yaml` -- the machine-readable registry of which
-  kernel execution defaults a profile may override and which constants it may
-  not, each entry naming the kernel module that owns the value; a hand-kept
-  copy of the Execution Default Overrides Contract in `profiles/README.md`
-  (that file remains the normative owner), and the list `check_profile.py`
-  checks a profile's overrides table against
+- `execution_defaults.template.yaml` -- the canonical machine-readable
+  membership registry of which kernel execution defaults a profile may
+  override and which constants it may not. Each entry points to the kernel
+  module that owns the item's meaning and value; `check_profile.py` consumes
+  this registry directly
 
 ## Restricted YAML subset
 
@@ -187,9 +187,9 @@ vocabulary of every clone -- the outcome `compose_vocab.py` refuses to produce
 when asked for a default. What is published here is a kernel base and an
 interface, not a selection. Until a profile is selected and composed,
 `compose_vocab.py --check` exits 1 and lists the profiles it can find, and
-`check_vocab.py` exits 1 and points at the same step. Both are the
-not-yet-configured signal, not a defect: it is the same signal
-`check_profile.py profiles/_template` gives for an unfilled template.
+`check_vocab.py` exits 1 and points at the same step. Both report the expected
+not-yet-configured state of a repository with no selected profile; neither is
+a defect in the blank form.
 
 Compose the artifact once, against your own profile:
 

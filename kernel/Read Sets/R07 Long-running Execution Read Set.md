@@ -27,6 +27,8 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 
 Also combine the authoring, source, `Expression Layer`, or migration Read Set matching the actual content type.
 
+When the task also meets the large-scale creation, move, or deletion predicate, it MUST first pass [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]]. R07 owns sustained execution, checkpointing, and resume; it does not replace that admission gate.
+
 ## Triggered
 
 - Mid-task guidance, scope change, correction, or priority change received: read [[kernel/K02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]].

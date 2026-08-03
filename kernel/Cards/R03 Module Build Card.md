@@ -20,7 +20,7 @@ source_files:
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
-source_hash: ff2fca1bde29
+source_hash: 33d53cb27ca3
 ---
 # R03 Module Build Card
 
@@ -28,7 +28,7 @@ source_hash: ff2fca1bde29
 
 ## Use When
 
-Build or systematically expand a complete module. Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]], the selected profile's `Profile Scope` and `Language Contract`, and [[kernel/Cards/R02 Single Note Authoring Card|Single Note Authoring]] for pages being authored.
+Build or systematically expand a complete module. Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]], the selected profile's `Profile Scope` and `Language Contract`, and [[kernel/Cards/R02 Single Note Authoring Card|Single Note Authoring]] for pages being authored. Large-scale work passes R11 before execution; multi-batch work also loads R07.
 
 ## Before Start
 
@@ -45,7 +45,7 @@ Build or systematically expand a complete module. Load [[kernel/Cards/R01 Core B
 - Keep note types, metadata, body links, Sources, MOC membership, and cross-module relationships synchronized.
 - Follow canonical split and duplication conservation; file creation alone never satisfies a gap.
 - Concurrent batches write only their own manifest, receipts, and delta. The integrator alone updates shared ledgers and hub pages during serial merge.
-- Combine R04 for source intake, R05 for expression-layer work, R06 for moves or restructuring, and R07 for multi-batch execution. Load any namespaced profile route or gate only as a supplement to the applicable kernel route.
+- Combine R04 for source intake, R05 for expression-layer work, R06 for moves or restructuring, R11 for large-scale admission, R07 for multi-batch execution, and R12 for an independent targeted or specialized module audit. Load any namespaced profile route or gate only as a supplement to the applicable kernel route.
 
 ## Gate
 
@@ -55,7 +55,7 @@ Build or systematically expand a complete module. Load [[kernel/Cards/R01 Core B
 - [ ] The integrator applies each delta serially, runs the Batch-close Closed List, closes invalidations, and updates both Ledgers.
 - [ ] Module review finds no unexplained prerequisite gap, duplicate owner, orphan, or false Overview claim.
 
-Closing a complete module additionally loads [[kernel/Cards/R08 Audit and Completion Card|Audit and Completion]].
+An independent targeted or specialized module audit loads [[kernel/Cards/R12 Targeted and Specialized Audit Card|R12 Targeted and Specialized Audit]]. Only a whole-task `completion-candidate` loads [[kernel/Cards/R08 Audit and Completion Card|R08 Audit and Completion]].
 
 ## Read Back When
 

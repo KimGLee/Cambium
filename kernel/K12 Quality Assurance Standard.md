@@ -45,6 +45,8 @@ Sections added to this domain after a frozen baseline are registered here for co
 - [[kernel/Read Sets/R07 Long-running Execution Read Set|Long-running Execution]]
 - [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]]
 - [[kernel/Read Sets/R09 Standards Governance Read Set|Standards Governance]]
+- [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]]
+- [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set|Targeted and Specialized Audit]]
 
 ## Related Standards
 

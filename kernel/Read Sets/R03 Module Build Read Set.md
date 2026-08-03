@@ -35,6 +35,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 
 - Source-driven expansion: combine [[kernel/Read Sets/R04 Source-driven Expansion Read Set|Source-driven Expansion]].
 - Expression-layer work or synchronization: combine [[kernel/Read Sets/R05 Expression Layer Read Set|R05 Expression Layer]] and the artifact's profile binding or supplemental gate.
+- Large-scale module work: pass [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]] before execution.
 - Long tasks and multiple batches: combine [[kernel/Read Sets/R07 Long-running Execution Read Set|Long-running Execution]].
 - Renaming or moving existing pages: combine [[kernel/Read Sets/R06 Migration and Refactor Read Set|Migration and Refactor]].
 - Mechanism sections of an existing page (Definition, Mechanism, formulas, core conclusions) are substantively modified: read [[kernel/K12 Quality Assurance/11 Content-level Propagation|Content-level Propagation]] and mark the direct downstream notes.
@@ -44,7 +45,8 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]]
 - [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]]
 - [[kernel/K12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
-- When closing a complete module, combine [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]].
+- When the task is an independent targeted or specialized module audit, combine [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set|Targeted and Specialized Audit]].
+- When the whole task enters `completion-candidate`, combine [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]].
 
 ## Related
 

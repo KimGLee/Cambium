@@ -28,6 +28,7 @@ This page is the stable entry point of the Build Execution standard. The detaile
 - [[kernel/Read Sets/R07 Long-running Execution Read Set|Long-running Execution]]
 - [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]]
 - [[kernel/Read Sets/R09 Standards Governance Read Set|Standards Governance]]
+- [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]]
 
 ## Related Standards
 

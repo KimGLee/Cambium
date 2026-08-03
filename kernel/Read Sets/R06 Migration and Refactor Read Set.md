@@ -5,7 +5,7 @@ route_id: R06
 
 ## Purpose
 
-Used for bulk moving, renaming, splitting, merging, or restructuring directories, while protecting user modifications, canonical ownership, incoming links, and recovery boundaries.
+Used for moving, renaming, splitting, merging, or restructuring files or directories, while protecting user modifications, canonical ownership, incoming links, and recovery boundaries.
 
 ## Start
 
@@ -24,9 +24,12 @@ Before migration, a manifest of source paths, target paths, incoming links, head
 
 ## Triggered
 
+- Large-scale creation, moves, or deletion: pass [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]] before execution.
 - Multi-batch migration: combine [[kernel/Read Sets/R07 Long-running Execution Read Set|Long-running Execution]].
 - Content owners change at the same time: read [[kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]].
 - The Standards themselves change: combine [[kernel/Read Sets/R09 Standards Governance Read Set|Standards Governance]].
+- A targeted or specialized migration audit: combine [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set|Targeted and Specialized Audit]].
+- A whole-task completion candidate: combine [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]].
 
 ## Gate
 

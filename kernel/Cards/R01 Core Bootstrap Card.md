@@ -8,11 +8,12 @@ source_files:
   - kernel/K00 Standards Overview.md
   - kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md
   - kernel/K00 Standards Control/02 Task Routing and Pre-execution.md
+  - kernel/K00 Standards Control/03 Standards Governance.md
   - kernel/K00 Standards Control/04 Control State and Scope.md
   - kernel/K00 Standards Control/05 Core Principles.md
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
   - kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
-source_hash: df17adcc93cf
+source_hash: cea29b496c96
 ---
 # R01 Core Bootstrap Card
 
@@ -35,15 +36,13 @@ The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Co
 ## Before Start
 
 - [ ] State the objective, target scope, exclusions, and latest user instructions.
+- [ ] Confirm the active Standards state is instantiated. If release placeholders remain, stop: a content task cannot freeze or record a `standards_version`.
 - [ ] Confirm modification authority, especially for the Standards and other protected paths.
-- [ ] Inventory existing ownership, incoming links, user modifications, and the Required Queue; do not overwrite changes of unknown origin.
+- [ ] Inspect existing ownership, incoming links, and user modifications in the target scope; do not overwrite changes of unknown origin.
 - [ ] Resolve the task Card, triggered modules, future Gate modules, selected profile slots, and any profile extension route.
-- [ ] Record Standards version, Rxx route IDs and Runtime Card paths, Read Sets actually read back, contract, queue, initial batch, and loaded set.
-- [ ] Make `minimum_run_until`, `checkpoint_at`, `hard_stop_at`, and the Completion Gate explicit; leave unspecified fields explicitly empty.
-- [ ] Create or refresh the Coverage Ledger and reconcile it with the file system and exclusions.
+- [ ] Record Standards version, selected Rxx route IDs and Runtime Card paths, and every Read Set or leaf path actually read back.
 - [ ] Identify foundational dependencies; do not bury shared foundations inside a profile application mainline.
-- [ ] For source work, establish a source inventory and claim-extraction plan.
-- [ ] Define batch acceptance, `rendering_mode`, deterministic checks, and any objective visual escalation trigger; load the Audit Receipt Register but build the AuditPlan only before batch close.
+- [ ] If the task is large-scale creation, moves, or deletion, load and pass [[kernel/Cards/R11 Large-scale Work Admission Card|R11 Large-scale Work Admission]] before execution.
 
 ## During
 
@@ -55,7 +54,7 @@ The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Co
 
 ## Gate
 
-Large-scale creation, moves, or deletion may begin only when every Before Start item is satisfied and the task-specific Card is loaded. If authority, ownership, scope, source evidence, or a required dependency is unresolved, stop at planning or investigation.
+Routine work may begin only when this common boundary and the task-specific Card are resolved. Large-scale creation, moves, or deletion additionally requires R11. If the Standards state, authority, ownership, scope, or a required dependency is unresolved, stop at planning or investigation.
 
 ## Read Back When
 

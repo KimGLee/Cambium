@@ -33,8 +33,10 @@ Open Standards Overview
 2. In exception cases (card does not cover the situation, rule disputes, L-tier depth rules, Governance tasks), read back Read Sets and leaf modules per [[kernel/K00 Standards Control/01 Operating Role and Reading Protocol|K00/01]].
 3. When reading back, load only the leaf modules needed by the current event and the current gate.
 4. MOCs are for locating; using one does not mean all rules within it have been read.
-5. Long-running tasks MUST combine the content Card with the kernel-owned [[kernel/Cards/R07 Long-running Execution Card|Long-running Execution Card]].
-6. Completion candidates MUST combine the kernel-owned [[kernel/Cards/R08 Audit and Completion Card|Audit and Completion Card]]; Governance tasks MUST read the [[kernel/Read Sets/R09 Standards Governance Read Set|R09 Read Set]] source text in full.
+5. Large-scale creation, moves, or deletion MUST pass the kernel-owned [[kernel/Cards/R11 Large-scale Work Admission Card|Large-scale Work Admission Card]] before execution begins.
+6. Long-running tasks MUST combine the content Card with the kernel-owned [[kernel/Cards/R07 Long-running Execution Card|Long-running Execution Card]].
+7. Targeted or specialized audits MUST combine the affected task route with the kernel-owned [[kernel/Cards/R12 Targeted and Specialized Audit Card|Targeted and Specialized Audit Card]].
+8. Task completion candidates MUST combine the kernel-owned [[kernel/Cards/R08 Audit and Completion Card|Audit and Completion Card]]; Governance tasks MUST read the [[kernel/Read Sets/R09 Standards Governance Read Set|R09 Read Set]] source text in full.
 
 Runtime Cards are kernel-owned compiled artifacts of the Read Sets (the Standards source text is the source code; the cards are compiled artifacts). Cards take precedence for routine tasks; exception cases read back the source text — see Card-first Reading Mode in [[kernel/K00 Standards Control/01 Operating Role and Reading Protocol|K00/01]]. `Kxx` identifies a Standards module; `Rxx` identifies a runtime route. These namespaces are independent and their matching numbers imply nothing. A profile may register a namespaced supplemental route or gate, but it loads alongside the kernel route and cannot reuse an Rxx identity, replace a kernel rule, or make a kernel route optional.
 
@@ -47,8 +49,10 @@ Runtime Cards are kernel-owned compiled artifacts of the Read Sets (the Standard
 | Extend knowledge from official docs, papers, code, cases, or community information | [[kernel/Read Sets/R04 Source-driven Expansion Read Set\|Source-driven Expansion]] |
 | Create, migrate, or review expression-layer content | [[kernel/Read Sets/R05 Expression Layer Read Set\|R05 Expression Layer]], plus the selected profile's concrete artifact binding and any supplemental gate |
 | Move, rename, split, merge, or directory restructuring | [[kernel/Read Sets/R06 Migration and Refactor Read Set\|Migration and Refactor]] |
+| Admit large-scale creation, moves, or deletion to execution | [[kernel/Read Sets/R11 Large-scale Work Admission Read Set\|Large-scale Work Admission]], plus the route for the actual work |
 | Multi-batch, sustained execution, checkpoint, or resume | [[kernel/Read Sets/R07 Long-running Execution Read Set\|Long-running Execution]] |
-| Review, Completion Gate, or Terminal Audit | [[kernel/Read Sets/R08 Audit and Completion Read Set\|Audit and Completion]] |
+| Run a targeted or specialized audit | [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set\|Targeted and Specialized Audit]], plus the route relevant to the finding |
+| Enter the task Completion Gate or Terminal Audit | [[kernel/Read Sets/R08 Audit and Completion Read Set\|Audit and Completion]] |
 | Modify Standards, Read Sets, version, or control-plane structure | [[kernel/Read Sets/R09 Standards Governance Read Set\|Standards Governance]] |
 | Mid-task guidance, scope, priority, or correction | [[kernel/K02 Build Execution/02 Mid-task Guidance and Amendment\|Mid-task Guidance and Amendment]] |
 

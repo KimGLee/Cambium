@@ -20,6 +20,8 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 
 Before starting, the budget envelope MUST be declared (N pages, N batches, or N hours — choose one of the three), and the candidate manifest merged from four sources: overdue re-verification list ∪ watermark increment ∪ `needs_rereview` marks ∪ candidates pool (duplicate / vocab / language). A candidate not selected by the budget for 3 consecutive maintenance runs is automatically demoted to log-only, and re-enters the pool when hit again by a new scan; at the start of a maintenance run, output the deferred age distribution, and items lingering more than 3 runs MUST be explicitly dispositioned. The owner of the rules above is [[kernel/K00 Standards Control/08 Maintenance Run Envelope|K00/08]]; this is an execution summary.
 
+For retirement of high-in-degree pages, convert incoming-link retargeting into the page budget at `retargeted links ÷ 6`, as fixed by K00/08.
+
 ## Triggered
 
 - `needs_rereview` items received: read [[kernel/K12 Quality Assurance/11 Content-level Propagation#Content-level Propagation|Content-level Propagation]].

@@ -12,7 +12,7 @@ source_files:
   - kernel/K02 Build Execution/05 Batch Execution.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-source_hash: 730aed669e6b
+source_hash: 4b7143708582
 ---
 # R10 Maintenance Run Card
 
@@ -27,7 +27,8 @@ Perform periodic freshness, re-verification, watermark, `needs_rereview`, or can
 - [ ] Choose exactly one budget envelope: N pages, N batches, or N hours.
 - [ ] Build the candidate manifest from overdue re-verification ∪ watermark delta ∪ `needs_rereview` marks ∪ the registered candidates pool.
 - [ ] Sort by priority, truncate to the envelope, and record the remainder as deferred rather than as a hidden gap.
-- [ ] Output deferred age distribution. Explicitly disposition items lingering beyond the kernel threshold.
+- [ ] Output deferred age distribution. Explicitly disposition items lingering more than 3 runs.
+- [ ] For retirement of high-in-degree pages, count incoming-link retargeting against the page budget at `retargeted links ÷ 6`.
 - [ ] Resolve batch boundaries, selected content Cards, profile scans, source routes, and tier-specific review before editing.
 
 ## During
@@ -36,7 +37,7 @@ Perform periodic freshness, re-verification, watermark, `needs_rereview`, or can
 - Reverify whether each selected object's priority, evidence, owner, content, links, and freshness still hold.
 - Run source updates through `R04`; retire or merge only after canonical ownership and incoming links are reconciled.
 - Update the Ledger and watermark at the owning checkpoint. Stop only at a batch boundary.
-- An item repeatedly outside the envelope moves to log-only under the kernel rule and re-enters only when a new scan hits it.
+- An item outside the envelope for 3 consecutive runs moves to log-only and re-enters only when a new scan hits it.
 
 ## Gate
 

@@ -24,7 +24,7 @@ source_files:
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
-source_hash: 926019b68bce
+source_hash: dfabf738948f
 ---
 # R05 Expression Layer Card
 
@@ -84,7 +84,7 @@ not mean that a profile can disable R05 for an artifact it has registered.
 
 ## Read Back When
 
-Read [[kernel/Read Sets/R05 Expression Layer Read Set|R05 Expression Layer Read Set]] for a disputed separation boundary, evidence qualification, readiness promotion, bidirectional binding, migration disposition, or an unlisted artifact case. Combine R03 for module-scale work, R06 for migration, R07 for multi-batch execution, and R08 for completion.
+Read [[kernel/Read Sets/R05 Expression Layer Read Set|R05 Expression Layer Read Set]] for a disputed separation boundary, evidence qualification, readiness promotion, bidirectional binding, migration disposition, or an unlisted artifact case. Combine R03 for module-scale work, R06 for migration, R11 for large-scale admission, R07 for multi-batch execution, R12 for a targeted or specialized expression audit, and R08 only for whole-task completion.
 
 ## Related
 

@@ -4,10 +4,9 @@
 Rule owners:
 - "profiles/README.md" (the normative profile interface: which slots exist and
   what constrains each; the Execution Default Overrides Contract);
-- "Tools/schemas/execution_defaults.template.yaml" (the machine-readable copy
-  of that contract's item lists, and this script's single source of truth for
-  the overridable / constitutional split, the reserved profile_id values, the
-  unfilled sentinel, and the template scaffolding heading).
+- "Tools/schemas/execution_defaults.template.yaml" (the canonical membership
+  registry for the overridable / constitutional split, reserved profile_id
+  values, and the unfilled sentinel).
 
 What this script is for: a profile copied from `profiles/_template/` is a
 skeleton of constraints and TODOs, not a runnable profile. Nothing in prose can
@@ -26,24 +25,25 @@ Method:
   declared `inline` (then profile.md must carry an H2 section whose heading
   starts with the slot name) -> a single inline-code span that looks like a
   path. Anything else is unrecognized.
-- Execution Default Overrides: profile.md must carry an `## Execution Default
-  Overrides` section whose table registers every overridable item with a
-  non-empty profile choice. Registering a constitutional constant there is a
-  failure -- it is not a value the profile may choose.
+- Execution Default Overrides: the table contains only explicit overrides;
+  sparse-default semantics are owned by the profile interface. Duplicate,
+  unknown, default-restating, and constitutional rows fail.
+- Optional/conditional declarations: `Configured` must be backed by complete
+  table rows; `None` and `Not applicable — <reason>` must not retain active
+  rows. This makes one declaration control one block instead of relying on
+  repeated prose fallbacks.
 
-Three independent incompleteness blocks, any one of which fails the profile:
+Two independent incompleteness blocks, either of which fails the profile:
 1. the unfilled sentinel (default `TODO(profile)`) appearing anywhere under the
    profile directory;
 2. a `profile_id` that is missing or still one of the reserved placeholder
-   values (the template ships as `_template`);
-3. the template scaffolding heading (`## Template Usage`) still present in
-   profile.md.
-Each block is cleared only by editing the file, so clearing all three is the
+   values.
+Each block is cleared only by editing the file, so clearing both is the
 mechanical definition of "this profile has been filled in". None of them is
 evidence that the answers are *good*; content quality stays a human call.
 
-Result semantics: unbound slots, unresolved bindings, unregistered override
-items, and all three incompleteness blocks are result=fail. A manifest binding
+Result semantics: unbound slots, unresolved bindings, invalid override rows,
+and both incompleteness blocks are result=fail. A manifest binding
 for a slot the interface does not define is result=candidate (an extension
 binding may be legitimate; whether it is, is a human call).
 
@@ -68,7 +68,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_profile"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.2.0"
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -89,7 +89,11 @@ WIKI_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
 MDLINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 CODE_RE = re.compile(r"`([^`]+)`")
 PROFILE_ID_RE = re.compile(r"^\s*-\s+`profile_id`\s*:\s*`([^`]*)`")
+PROFILE_ID_VALUE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 INLINE_WORD_RE = re.compile(r"\binline\b", re.IGNORECASE)
+DECLARATION_RE = re.compile(
+    r"^\s*-\s+(Registration|Applicability):\s*(.*?)\s*$"
+)
 
 
 def blank_fenced(text):
@@ -136,6 +140,26 @@ def section_lines(text, heading):
         if inside:
             out.append(line)
     return out
+
+
+def h2_sections(text):
+    """Return [(H2 heading, section lines)] including nested H3+ content."""
+    sections = []
+    current = None
+    body = []
+    for line in blank_fenced(text).splitlines():
+        m = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
+        if m and len(m.group(1)) <= 2:
+            if current is not None:
+                sections.append((current, body))
+            current = m.group(2).strip() if len(m.group(1)) == 2 else None
+            body = []
+            continue
+        if current is not None:
+            body.append(line)
+    if current is not None:
+        sections.append((current, body))
+    return sections
 
 
 def read_text(path):
@@ -217,6 +241,50 @@ def table_rows(lines):
         if all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
             continue
         yield cells
+
+
+def markdown_table_data(lines):
+    """Return (header, data rows) for each Markdown table in a section."""
+    tables = []
+    group = []
+
+    def finish():
+        if not group:
+            return
+        rows = list(table_rows(group))
+        if rows:
+            tables.append((rows[0], rows[1:]))
+
+    for line in lines:
+        if line.strip().startswith("|"):
+            group.append(line)
+        else:
+            finish()
+            group = []
+    finish()
+    return tables
+
+
+def profile_declarations(profile_dir):
+    """Yield explicit Registration/Applicability declarations in Markdown."""
+    for dirpath, dirnames, filenames in os.walk(profile_dir):
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        for name in sorted(filenames):
+            if name.startswith(".") or not name.lower().endswith(".md"):
+                continue
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, profile_dir).replace(os.sep, "/")
+            for heading, lines in h2_sections(read_text(full)):
+                for line in lines:
+                    match = DECLARATION_RE.match(line)
+                    if match:
+                        yield (
+                            rel,
+                            heading,
+                            match.group(1),
+                            match.group(2).strip(),
+                            markdown_table_data(lines),
+                        )
 
 
 def unbacktick(value):
@@ -315,7 +383,6 @@ def main():
         return kblib.exit_code(receipts)
 
     sentinel = str(defaults.get("unfilled_sentinel") or "TODO(profile)")
-    scaffolding = str(defaults.get("template_scaffolding_heading") or "Template Usage")
     reserved_ids = {str(v) for v in (defaults.get("reserved_profile_ids") or [])}
     overridable = [str(e.get("item")) for e in (defaults.get("overridable") or [])
                    if isinstance(e, dict) and e.get("item")]
@@ -324,6 +391,15 @@ def main():
 
     manifest_text = read_text(manifest_path)
     manifest_disp = "%s/%s" % (profile_disp, MANIFEST_NAME)
+
+    manifest_h2s = h2_headings(manifest_text)
+    for heading in ("Profile Identity", SLOTS_SECTION, OVERRIDES_SECTION):
+        count = manifest_h2s.count(heading)
+        if count > 1:
+            add("manifest-section-duplicate", "%s#%s" %
+                (manifest_disp, heading), "fail",
+                "manifest contains %d `%s` sections; exactly one is allowed"
+                % (count, heading))
 
     slots = interface_slots(interface_text)
     if not slots:
@@ -340,29 +416,83 @@ def main():
             % sentinel)
 
     # ---- block 2: placeholder profile_id ----
-    profile_id = None
-    for line in section_lines(manifest_text, "Profile Identity"):
-        m = PROFILE_ID_RE.match(line)
-        if m:
-            profile_id = m.group(1).strip()
-            break
-    if profile_id is None:
+    profile_ids = []
+    for heading, lines in h2_sections(manifest_text):
+        if heading != "Profile Identity":
+            continue
+        for line in lines:
+            m = PROFILE_ID_RE.match(line)
+            if m:
+                profile_ids.append(m.group(1).strip())
+    profile_id = profile_ids[0] if profile_ids else None
+    if not profile_ids:
         add("profile-id-missing", "%s#Profile Identity" % manifest_disp, "fail",
             "no `profile_id`: `<value>` bullet found under Profile Identity; "
             "the manifest must name the profile it composes with the kernel")
+    elif len(profile_ids) > 1:
+        add("profile-id-duplicate", "%s#Profile Identity" % manifest_disp,
+            "fail", "Profile Identity contains %d profile_id entries; exactly "
+            "one manifest identity is allowed" % len(profile_ids))
     elif profile_id in reserved_ids:
         add("profile-id-placeholder", "%s#profile_id" % manifest_disp, "fail",
             "profile_id is still the reserved placeholder %r; replace it with "
             "this profile's own id before the profile may be loaded"
             % profile_id)
+    elif not PROFILE_ID_VALUE_RE.fullmatch(profile_id):
+        add("profile-id-invalid", "%s#profile_id" % manifest_disp, "fail",
+            "profile_id %r is not a lowercase path slug matching "
+            "[a-z0-9][a-z0-9_-]*" % profile_id)
+    elif profile_id != os.path.basename(profile_dir):
+        add("profile-id-directory-mismatch", "%s#profile_id" % manifest_disp,
+            "fail", "profile_id %r must match the profile directory name %r; "
+            "the manifest is the single identity source"
+            % (profile_id, os.path.basename(profile_dir)))
 
-    # ---- block 3: template scaffolding still present ----
-    if scaffolding in h2_headings(manifest_text):
-        add("template-scaffolding-present", "%s#%s" % (manifest_disp, scaffolding),
-            "fail",
-            "the manifest still carries the template's '%s' section; it exists "
-            "only to instruct someone filling the template in and must be "
-            "deleted once the profile is filled" % scaffolding)
+    # ---- explicit optional/conditional block declarations ----
+    declaration_count = 0
+    for rel, heading, kind, value, tables in profile_declarations(profile_dir):
+        declaration_count += 1
+        target = "%s/%s#%s" % (profile_disp, rel, heading)
+        if sentinel in value:
+            continue
+        active = value == "Configured"
+        registration_inactive = value == "None"
+        applicability_inactive = bool(
+            re.fullmatch(r"Not applicable — .+", value)
+        )
+        inactive = registration_inactive or applicability_inactive
+        valid = (
+            kind == "Registration" and (active or registration_inactive)
+        ) or (
+            kind == "Applicability" and (active or applicability_inactive)
+        )
+        if not valid:
+            expected = ("`None` or `Configured`" if kind == "Registration"
+                        else "`Configured` or `Not applicable — <reason>`")
+            add("declaration-invalid", target, "fail",
+                "%s declaration %r is invalid; use %s"
+                % (kind, value, expected))
+            continue
+        if active:
+            if not tables:
+                add("configured-table-missing", target, "fail",
+                    "Configured declares an active block, but the section has "
+                    "no table to carry its bindings")
+            for table_no, (header, rows) in enumerate(tables, 1):
+                if not rows:
+                    add("configured-table-empty", target, "fail",
+                        "Configured table %d has no data row" % table_no)
+                    continue
+                for row_no, cells in enumerate(rows, 1):
+                    if len(cells) != len(header) or any(not cell for cell in cells):
+                        add("configured-table-incomplete", target, "fail",
+                            "Configured table %d row %d has %d/%d cells or an "
+                            "empty cell" %
+                            (table_no, row_no, len(cells), len(header)))
+        elif inactive and any(rows for _, rows in tables):
+            add("inactive-table-has-rows", target, "fail",
+                "%s leaves active table rows behind; remove those rows so the "
+                "single declaration is authoritative" % value)
 
     # ---- slot coverage and binding resolution ----
     bindings = parse_bindings(manifest_text)
@@ -408,55 +538,68 @@ def main():
                 "whether this extension binding is reasonable is a human call"
                 % (name, SLOTS_SECTION))
 
-    # ---- Execution Default Overrides declaration table ----
+    # ---- Execution Default Overrides sparse table ----
     override_lines = section_lines(manifest_text, OVERRIDES_SECTION)
-    registered = {}
-    for cells in table_rows(override_lines):
-        if not cells:
-            continue
-        registered[unbacktick(cells[0])] = unbacktick(cells[1]) if len(cells) > 1 else ""
+    override_rows = list(table_rows(override_lines))
+    data_rows = override_rows[1:] if override_rows else []
+    registered = []
+    for cells in data_rows:
+        item = unbacktick(cells[0]) if cells else ""
+        value = unbacktick(cells[1]) if len(cells) > 1 else ""
+        registered.append((item, value))
+        if len(cells) != 2:
+            add("override-row-shape", "%s#%s" %
+                (manifest_disp, item or "<empty>"), "fail",
+                "override rows must contain exactly two cells; found %d"
+                % len(cells))
     if not override_lines:
         add("overrides-section-missing", "%s#%s" % (manifest_disp, OVERRIDES_SECTION),
             "fail",
-            "the manifest has no %s section; the contract requires the profile "
-            "to declare, item by item, whether it adopts the kernel default or "
-            "overrides it" % OVERRIDES_SECTION)
+            "the manifest has no %s section; the sparse explicit-override "
+            "table is required even when it has no data rows"
+            % OVERRIDES_SECTION)
     else:
-        for item in overridable:
-            if item not in registered:
-                add("override-item-unregistered",
-                    "%s#%s" % (manifest_disp, item), "fail",
-                    "overridable item `%s` is not registered in %s; the "
-                    "contract requires an item-by-item declaration"
-                    % (item, OVERRIDES_SECTION))
-            elif not registered[item]:
-                add("override-choice-empty", "%s#%s" % (manifest_disp, item), "fail",
-                    "overridable item `%s` is registered with an empty profile "
-                    "choice; declare `use-kernel-default` or an explicit "
-                    "override value" % item)
-        for item in sorted(set(registered) & set(constitutional)):
-            add("override-constitutional-item",
-                "%s#%s" % (manifest_disp, item), "fail",
-                "`%s` is a constitutional constant (owner: %s) and is not "
-                "overridable; it must not appear in %s"
-                % (item, constitutional[item].get("owner", "kernel"),
-                   OVERRIDES_SECTION))
+        seen = set()
+        for item, value in registered:
+            target = "%s#%s" % (manifest_disp, item or "<empty>")
+            if item in seen:
+                add("override-item-duplicate", target, "fail",
+                    "override item `%s` appears more than once" % item)
+                continue
+            seen.add(item)
+            if item in constitutional:
+                add("override-constitutional-item", target, "fail",
+                    "`%s` is a constitutional constant (owner: %s) and is not "
+                    "overridable" %
+                    (item, constitutional[item].get("owner", "kernel")))
+            elif item not in overridable:
+                add("override-item-unknown", target, "fail",
+                    "`%s` is not in the closed overridable registry" % item)
+            elif not value:
+                add("override-choice-empty", target, "fail",
+                    "override item `%s` has no explicit profile value" % item)
+            elif value == "use-kernel-default":
+                add("override-redundant-default", target, "fail",
+                    "remove `%s`; unlisted items already use the kernel default"
+                    % item)
 
     fails = [r for r in receipts if r["result"] == "fail"]
     if not fails:
         add("profile-check-summary", profile_disp, "pass",
             "profile_id=%s; %d/%d interface slot(s) bound and resolved; %d "
-            "overridable item(s) registered; no unfilled sentinel, placeholder "
-            "id, or template scaffolding remains"
-            % (profile_id, bound_ok, len(slots), len(overridable)))
+            "explicit override(s) registered; %d optional/conditional "
+            "declaration(s) structurally consistent; no unfilled sentinel, "
+            "placeholder profile id, or unresolved binding remains"
+            % (profile_id, bound_ok, len(slots), len(registered),
+               declaration_count))
 
     # ---- human-readable summary ----
     print("check_profile: %s (profile_id=%s)"
           % (profile_disp, profile_id if profile_id else "<none>"))
-    print("  interface=%s slots=%d bound_ok=%d overridable_items=%d "
+    print("  interface=%s slots=%d bound_ok=%d explicit_overrides=%d "
           "files_scanned=%d files_skipped=%d"
           % (os.path.relpath(interface_path, root).replace(os.sep, "/"),
-             len(slots), bound_ok, len(overridable), files_read, files_skipped))
+             len(slots), bound_ok, len(registered), files_read, files_skipped))
     print("  sentinel_hits(fail)=%d" % len(hits))
     for r in receipts:
         if r["result"] == "fail":

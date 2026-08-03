@@ -7,7 +7,7 @@ source_files:
   - kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md
   - kernel/K00 Standards Control/02 Task Routing and Pre-execution.md
   - kernel/K00 Standards Control/03 Standards Governance.md
-source_hash: 9a1cdd5df870
+source_hash: 21a9596f77f8
 route_registry:
   - route_id: R01
     path: "kernel/Cards/R01 Core Bootstrap Card.md"
@@ -39,6 +39,12 @@ route_registry:
   - route_id: R10
     path: "kernel/Cards/R10 Maintenance Run Card.md"
     read_set: "kernel/Read Sets/R10 Maintenance Run Read Set.md"
+  - route_id: R11
+    path: "kernel/Cards/R11 Large-scale Work Admission Card.md"
+    read_set: "kernel/Read Sets/R11 Large-scale Work Admission Read Set.md"
+  - route_id: R12
+    path: "kernel/Cards/R12 Targeted and Specialized Audit Card.md"
+    read_set: "kernel/Read Sets/R12 Targeted and Specialized Audit Read Set.md"
 ---
 # Kernel Runtime Card Index
 
@@ -54,7 +60,7 @@ route. The two namespaces are independent: R05 is the Expression Layer route,
 not an alias for K05, and one route may compile rules from several K modules.
 
 The index is a registry, not a route, so it has no `route_id` and there is no
-R00. Every R01-R10 route has exactly one Read Set and one Runtime Card sharing
+R00. Every R01-R12 route has exactly one Read Set and one Runtime Card sharing
 the same `route_id`.
 
 ## Kernel Routes
@@ -68,17 +74,21 @@ the same `route_id`.
 | `R05` | [[kernel/Cards/R05 Expression Layer Card\|Expression Layer]] | [[kernel/Read Sets/R05 Expression Layer Read Set\|Read Set]] | Create, migrate, or review a registered expression artifact |
 | `R06` | [[kernel/Cards/R06 Migration and Refactor Card\|Migration and Refactor]] | [[kernel/Read Sets/R06 Migration and Refactor Read Set\|Read Set]] | Move, rename, split, merge, or restructure |
 | `R07` | [[kernel/Cards/R07 Long-running Execution Card\|Long-running Execution]] | [[kernel/Read Sets/R07 Long-running Execution Read Set\|Read Set]] | Run multi-batch work, checkpoint, or resume |
-| `R08` | [[kernel/Cards/R08 Audit and Completion Card\|Audit and Completion]] | [[kernel/Read Sets/R08 Audit and Completion Read Set\|Read Set]] | Review content and run completion gates |
+| `R08` | [[kernel/Cards/R08 Audit and Completion Card\|Audit and Completion]] | [[kernel/Read Sets/R08 Audit and Completion Read Set\|Read Set]] | Run task completion acceptance and Terminal Audit |
 | `R09` | [[kernel/Cards/R09 Standards Governance Card\|Standards Governance]] | [[kernel/Read Sets/R09 Standards Governance Read Set\|Read Set]] | Modify Standards or the control plane |
 | `R10` | [[kernel/Cards/R10 Maintenance Run Card\|Maintenance Run]] | [[kernel/Read Sets/R10 Maintenance Run Read Set\|Read Set]] | Run bounded freshness and maintenance work |
+| `R11` | [[kernel/Cards/R11 Large-scale Work Admission Card\|Large-scale Work Admission]] | [[kernel/Read Sets/R11 Large-scale Work Admission Read Set\|Read Set]] | Pass the large-scale Pre-execution Gate |
+| `R12` | [[kernel/Cards/R12 Targeted and Specialized Audit Card\|Targeted and Specialized Audit]] | [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set\|Read Set]] | Audit bounded affected scope or one specialized invariant |
 
 ## Loading Rules
 
 - Every task loads R01 and the route for the actual work.
+- Large-scale creation, moves, or deletion loads R11 before execution; R11 never replaces the route for the actual work.
 - Expression-layer work loads R05. The selected profile supplies concrete
   artifact bindings and may add supplemental gates, but cannot replace R05.
 - Long-running work combines R07 with the content route.
-- Completion candidates combine R08 with every route relevant to the findings.
+- Targeted or specialized audits combine R12 with every route relevant to the findings.
+- Task completion candidates combine R08 with every route relevant to the completion predicates; R08 uses R12 for the bounded review inside Terminal Audit.
 - Governance decisions load R09 and read its Read Set source text in full; the
   Card is navigation only.
 - A profile extension uses its own namespaced identity and loads alongside a

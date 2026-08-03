@@ -12,10 +12,11 @@ Core Bootstrap is the minimal common read set for all Knowledge Base Standards t
 Read in order:
 
 1. [[kernel/K00 Standards Overview|Standards Overview]]
-2. [[kernel/K00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]
-3. [[kernel/K00 Standards Control/04 Control State and Scope|Control State and Scope]]
-4. [[kernel/K00 Standards Control/05 Core Principles|Core Principles]]
-5. [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
+2. [[kernel/K00 Standards Control/03 Standards Governance#Standards Control|Standards Control]]
+3. [[kernel/K00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]
+4. [[kernel/K00 Standards Control/04 Control State and Scope|Control State and Scope]]
+5. [[kernel/K00 Standards Control/05 Core Principles|Core Principles]]
+6. [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
 
 Then select the task-specific Read Set from the [[kernel/Read Sets/Read Sets Index|Read Sets Index]].
 
@@ -25,6 +26,7 @@ Then select the task-specific Read Set from the [[kernel/Read Sets/Read Sets Ind
 - Confirm whether the current task is authorized to modify `Knowledge Base Standards` or protected directories.
 - Confirm that canonical ownership, factual correctness, and protection of user modifications still take precedence.
 - Distinguish task completion, authoring status, the registered `Expression Status Axis`, evidence maturity, and learning status.
+- Confirm that the active Standards state is instantiated. While release placeholders remain, a content task cannot freeze or record a `standards_version` and MUST stop before execution.
 - Record the current Standards version and actual loaded set: selected Rxx route IDs and Runtime Card paths, any combined namespaced profile route, and every Read Set or leaf path actually read back.
 
 ## Not Sufficient For
@@ -35,6 +37,7 @@ Core Bootstrap alone does not authorize starting the following work:
 - Source promotion.
 - Expression Layer migration.
 - Folder refactor.
+- Large-scale creation, moves, or deletion.
 - Long-running batch execution.
 - Completion or Terminal Audit.
 

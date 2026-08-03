@@ -22,6 +22,10 @@ route_registry:
     path: "kernel/Read Sets/R09 Standards Governance Read Set.md"
   - route_id: R10
     path: "kernel/Read Sets/R10 Maintenance Run Read Set.md"
+  - route_id: R11
+    path: "kernel/Read Sets/R11 Large-scale Work Admission Read Set.md"
+  - route_id: R12
+    path: "kernel/Read Sets/R12 Targeted and Specialized Audit Read Set.md"
 ---
 ## Purpose
 
@@ -30,7 +34,7 @@ A Runtime Route maps one task type to the Standards modules that must be read. I
 ## Identity Namespace
 
 - `K00` through `K12` identify normative kernel module families and their actual repository paths.
-- `R01` through `R10` identify runtime task routes. A Read Set and its Runtime Card share one `route_id`.
+- `R01` through `R12` identify runtime task routes. A Read Set and its Runtime Card share one `route_id`.
 - The numeric parts of `Kxx` and `Rxx` have no mapping. For example, R05 compiles the Expression Layer task route whose principal normative owner is K11.
 - This Index is a registry, not a route, and therefore has no `R00`.
 - A profile supplemental route uses `P:<profile_id>:<route_name>` and loads alongside a kernel route; it cannot reuse an `Rxx` identity.
@@ -67,6 +71,8 @@ A task MAY combine routes. For example, expanding a system topic from primary so
 | `R08` | [[kernel/Read Sets/R08 Audit and Completion Read Set\|Audit and Completion]] | Review, close, or prove completion |
 | `R09` | [[kernel/Read Sets/R09 Standards Governance Read Set\|Standards Governance]] | Modify Standards or the control plane |
 | `R10` | [[kernel/Read Sets/R10 Maintenance Run Read Set\|Maintenance Run]] | Run bounded freshness and maintenance work |
+| `R11` | [[kernel/Read Sets/R11 Large-scale Work Admission Read Set\|Large-scale Work Admission]] | Pass the large-scale Pre-execution Gate before execution |
+| `R12` | [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set\|Targeted and Specialized Audit]] | Audit a bounded affected scope or one specialized invariant |
 
 ## Selection Rules
 
@@ -75,6 +81,9 @@ A task MAY combine routes. For example, expanding a system topic from primary so
 - `Triggered` modules are loaded only when their trigger conditions appear.
 - `Gate` modules are loaded before closing the applicable note, batch, module, or task.
 - R05 is conditional on expression-layer work. If the selected profile registers no expression artifact, there is no valid expression target to create, migrate, or review; the agent stops rather than inventing one.
+- Large-scale creation, moves, or deletion combines R11 with the route for the actual work; R11 authorizes no content operation by itself.
+- Targeted and specialized audits combine R12 with the route relevant to the finding. A local finding expands only by the bounded systemic-expansion rule.
+- R08 is reserved for task completion candidates and Terminal Audit; page, batch, module, and maintenance gates remain with their owning routes.
 - A module's prerequisites take precedence over the current module. When a dependency cannot be satisfied, record the gap first.
 - After the Standards version or route paths change, the affected loaded set MUST be re-resolved.
 - Record the `route_id`, Card path, and every Read Set or leaf path actually read back; do not record a broad K-module number as if it proved loading.

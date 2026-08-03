@@ -19,7 +19,7 @@ source_files:
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 9bf12ea4a1e4
+source_hash: 1a97f9c088e7
 ---
 # R06 Migration and Refactor Card
 
@@ -27,7 +27,7 @@ source_hash: 9bf12ea4a1e4
 
 ## Use When
 
-Move, rename, split, merge, retire, or restructure files or directories. Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]]. Migration batches execute exclusively; combine `R07` for multiple batches and `R09` when the Standards change.
+Move, rename, split, merge, retire, or restructure files or directories. Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]]. Pass R11 before large-scale creation, moves, or deletion. Migration batches execute exclusively; combine R07 for multiple batches, R12 for a targeted or specialized migration audit, and R09 when the Standards change.
 
 ## Before Start
 
@@ -57,4 +57,4 @@ Use the safe order: create and verify the target → update references and headi
 
 ## Read Back When
 
-Read R06 Read Set and the relevant owner for a split/merge dispute, heading compatibility, a simultaneous owner change, resume after interruption, multi-batch migration, or any destructive boundary. Standards migration always reads R09 Read Set in full.
+Read R06 Read Set and the relevant owner for a split/merge dispute, heading compatibility, a simultaneous owner change, resume after interruption, multi-batch migration, or any destructive boundary. Large-scale admission reads R11; a whole-task completion candidate reads R08. Standards migration always reads R09 Read Set in full.

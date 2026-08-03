@@ -6,7 +6,7 @@ Governance. Cards live under kernel/Cards and are compiled from kernel source
 files; they are never profile-selected and never canonical rule owners. The
 Read Set Index and Card Index share registry_id `kernel-runtime-routes`; their
 route registries, the Read Set files, and the Runtime Cards must agree exactly
-on the continuous route set R01-R10. A Read Set and its Card share route_id;
+on the continuous route set R01-R12. A Read Set and its Card share route_id;
 indexes have no route identity of their own.
 
 Hash = the first 12 hexadecimal digits of SHA-256 over each source file's
@@ -40,7 +40,7 @@ CARD_INDEX_NAME = "Card Index.md"
 READ_SET_INDEX_NAME = "Read Sets Index.md"
 REGISTRY_ID = "kernel-runtime-routes"
 ROUTE_ID_RE = re.compile(r"^R([0-9]{2})$")
-EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 11))
+EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 13))
 
 
 def replace_frontmatter_scalar(text, field, value):
@@ -585,7 +585,7 @@ def main():
     for label, route_ids in route_sets.items():
         if route_ids != expected_routes:
             failures.append(
-                "%s routes must be continuous R01-R10; missing=%s extra=%s"
+                "%s routes must be continuous R01-R12; missing=%s extra=%s"
                 % (
                     label,
                     sorted(expected_routes - route_ids),

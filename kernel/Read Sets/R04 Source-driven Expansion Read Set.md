@@ -31,6 +31,10 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - Freshness, formulas, terminology conflicts, or source disagreement: read [[kernel/K07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty|Time Formula Terminology and Uncertainty]].
 - When a source yields new terminology: read [[kernel/K05 Terminology/01 Terminology Extraction|Terminology Extraction]].
 - Creating or modifying a canonical note: combine [[kernel/Read Sets/R02 Single Note Authoring Read Set|Single Note Authoring]].
+- Large-scale source-driven work: pass [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]] before execution.
+- Multi-batch source-driven work: combine [[kernel/Read Sets/R07 Long-running Execution Read Set|Long-running Execution]].
+- A targeted or specialized source audit: combine [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set|Targeted and Specialized Audit]].
+- A whole-task completion candidate: combine [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]].
 
 ## Gate
 

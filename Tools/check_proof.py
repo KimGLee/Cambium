@@ -18,8 +18,9 @@ Method:
   by field and is this script's single source of truth; --template overrides);
 - a missing or empty proof field -> fail (Terminal Proof incomplete);
 - selected_route_ids must be a non-empty list of unique Runtime Route IDs in
-  the closed range R01-R10 and, because this is terminal evidence, must include
-  R01 Core Bootstrap and R08 Audit and Completion;
+  the closed range R01-R12 and, because this is terminal evidence, must include
+  R01 Core Bootstrap, R12 Targeted and Specialized Audit, and R08 Audit and
+  Completion;
 - selected_card_paths must be a non-empty list of unique Card paths;
 - selected_profile_route_ids must be a list of unique namespaced supplemental
   route IDs; an empty list records that no profile route was combined;
@@ -67,7 +68,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_proof"
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.4.0"
 
 # K12/06: fields that must be 0 among the completion conditions (the three open
 # guidance counts are covered by the review of guidance_reconciliation_result
@@ -93,11 +94,11 @@ PATH_FIELDS = ("selected_card_paths", "selected_read_sets", "loaded_module_paths
                "audit_receipt_register", "full_deterministic_results")
 
 # Kernel Runtime Route IDs are a closed registry. Index documents do not occupy
-# R00; the ten executable routes are R01-R10.
-RUNTIME_ROUTE_ID_RE = re.compile(r"R(?:0[1-9]|10)\Z")
+# R00; the twelve executable routes are R01-R12.
+RUNTIME_ROUTE_ID_RE = re.compile(r"R(?:0[1-9]|1[0-2])\Z")
 PROFILE_ROUTE_ID_RE = re.compile(r"P:[^:\s]+:[^:\s]+\Z")
-EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 11))
-TERMINAL_REQUIRED_ROUTE_IDS = frozenset(("R01", "R08"))
+EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 13))
+TERMINAL_REQUIRED_ROUTE_IDS = frozenset(("R01", "R08", "R12"))
 REGISTRY_ID = "kernel-runtime-routes"
 CARD_INDEX_PATH = "kernel/Cards/Card Index.md"
 READ_SET_INDEX_PATH = "kernel/Read Sets/Read Sets Index.md"
@@ -242,7 +243,7 @@ def _registry_map(data, relative_path, card_index):
         path = entry.get("path")
         read_set = entry.get("read_set") if card_index else None
         if not isinstance(route_id, str) or not RUNTIME_ROUTE_ID_RE.fullmatch(route_id):
-            errors.append("%s has invalid route_id %r; expected R01-R10" %
+            errors.append("%s has invalid route_id %r; expected R01-R12" %
                           (label, route_id))
             continue
         if route_id in result:
@@ -288,7 +289,7 @@ def _registry_map(data, relative_path, card_index):
     expected_routes = set(EXPECTED_ROUTE_IDS)
     if actual_routes != expected_routes:
         errors.append(
-            "%s route coverage must be exactly R01-R10; missing=%s extra=%s"
+            "%s route coverage must be exactly R01-R12; missing=%s extra=%s"
             % (relative_path,
                sorted(expected_routes - actual_routes),
                sorted(actual_routes - expected_routes)))
@@ -380,7 +381,7 @@ def main():
                 TOOL, TOOL_VERSION, "proof-route-ids-empty",
                 "%s#selected_route_ids" % proof_name, "fail",
                 "selected_route_ids must be a non-empty list of kernel "
-                "Runtime Route IDs (R01-R10)", seq))
+                "Runtime Route IDs (R01-R12)", seq))
         else:
             seen_route_ids = set()
             for index, route_id in enumerate(route_ids):
@@ -391,7 +392,7 @@ def main():
                     receipts.append(kblib.make_receipt(
                         TOOL, TOOL_VERSION, "proof-route-id-invalid",
                         target, "fail",
-                        "route ID %r is invalid; expected one of R01-R10"
+                        "route ID %r is invalid; expected one of R01-R12"
                         % route_id, seq))
                 else:
                     valid_route_ids.add(route_id)
@@ -416,8 +417,9 @@ def main():
                         TOOL, TOOL_VERSION, "proof-terminal-route-missing",
                         "%s#selected_route_ids" % proof_name, "fail",
                         "%s is mandatory in Terminal Proof: R01 establishes "
-                        "the common control boundary and R08 is the terminal "
-                        "audit/completion route" % route_id, seq))
+                        "the common control boundary, R12 owns the bounded "
+                        "targeted/specialized review scope, and R08 is the "
+                        "terminal audit/completion route" % route_id, seq))
 
     profile_route_id_bad = 0
     profile_route_ids = proof.get("selected_profile_route_ids")

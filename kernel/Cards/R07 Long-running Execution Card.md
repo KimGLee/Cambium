@@ -20,7 +20,7 @@ source_files:
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 325733b68d38
+source_hash: 03384a29906a
 ---
 # R07 Long-running Execution Card
 
@@ -28,12 +28,12 @@ source_hash: 325733b68d38
 
 ## Use When
 
-Run a multi-batch task, sustain checkpoints, resume after interruption, maintain a Coverage Ledger, or approach a Terminal Proof. Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]] and the content Card.
+Run a multi-batch task, sustain checkpoints, resume after interruption, maintain a Coverage Ledger, or approach a Terminal Proof. Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]] and the content Card. If the work also meets the large-scale creation, move, or deletion predicate, pass R11 before execution.
 
 ## Before Start
 
-- [ ] Freeze objective, scope, exclusions, ownership, Standards version, selected profile, Rxx route IDs, Runtime Card paths, Read Sets actually read back, and time semantics in the Task Contract.
-- [ ] Reconcile Coverage and Progress Ledgers with the file system, Required Queue, batch state, merge queue, and user modifications.
+- [ ] Freeze the long-run Task Contract: time semantics, selected profile, route IDs, Card paths, actual read-backs, and completion semantics.
+- [ ] Reconcile Coverage and Progress Ledgers with the file system, Required Queue, active batches, merge queue, and user modifications.
 - [ ] Define batch manifests, tier-derived caps, concurrency admission, write partitions, merge order, and acceptance conditions.
 - [ ] Load the Audit Receipt Register and classify evidence as reusable, invalidated, overdue, or missing.
 - [ ] State the next checkpoint and exact recovery action; a vague “continue improving” is not resumable state.

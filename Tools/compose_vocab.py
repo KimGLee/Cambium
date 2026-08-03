@@ -55,7 +55,7 @@ sys.path.insert(0, TOOLS_DIR)
 
 import kblib  # noqa: E402
 
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.3.0"
 
 DEFAULT_BASE = "kernel/K08 Metadata and Status/vocabulary-base.yaml"
 DEFAULT_OUTPUT = "Tools/vocab.yaml"
@@ -74,6 +74,10 @@ PROFILES_DIR = "profiles"
 # so composing against it would yield a base-only artifact that looks valid.
 NON_PROFILE_DIRS = {"_template"}
 HEADER_EXTENSIONS_RE = re.compile(r"^#\s*extensions:\s*(.+?)\s*\(sha256:")
+MANIFEST_PROFILE_ID_RE = re.compile(
+    r"^\s*-\s+`profile_id`\s*:\s*`([^`]*)`\s*$"
+)
+PROFILE_ID_VALUE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 # Fixed root key order of the composed artifact (base-driven; profile-derived
 # keys are interleaved at their canonical positions). Keys absent from the
@@ -140,6 +144,33 @@ def extensions_from_output_header(output_path):
     return None
 
 
+def sibling_manifest_profile_id(extensions_path):
+    """Return (manifest_exists, profile_ids) from Profile Identity only."""
+    manifest = os.path.join(os.path.dirname(extensions_path), "profile.md")
+    if not os.path.isfile(manifest):
+        return False, None
+    try:
+        with open(manifest, "r", encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        return True, []
+    inside = False
+    profile_ids = []
+    for line in lines:
+        heading = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
+        if heading and len(heading.group(1)) <= 2:
+            inside = (
+                len(heading.group(1)) == 2
+                and heading.group(2).strip() == "Profile Identity"
+            )
+            continue
+        if inside:
+            match = MANIFEST_PROFILE_ID_RE.match(line)
+            if match:
+                profile_ids.append(match.group(1).strip())
+    return True, profile_ids
+
+
 def report_missing_extensions(output_arg):
     """Explain that --extensions is required and what the choices are."""
     print("compose_vocab: --extensions is required.")
@@ -180,18 +211,52 @@ def dedup_append(target, additions):
     return target
 
 
-def compose(base, profile, base_arg, ext_arg):
+def compose(base, profile, base_arg, ext_arg, profile_id):
     """Compose the merged vocabulary. Returns (output_dict, conflicts)."""
     conflicts = []
 
     base_fields = base.get("fields")
-    profile_fields = profile.get("fields") or {}
+    raw_profile_fields = profile.get("fields") or {}
     if not isinstance(base_fields, dict):
         conflicts.append("base: missing or non-mapping 'fields' section")
         return None, conflicts
-    if not isinstance(profile_fields, dict):
+    if not isinstance(raw_profile_fields, dict):
         conflicts.append("extensions: 'fields' section is not a mapping")
         return None, conflicts
+    profile_fields = dict(raw_profile_fields)
+
+    declared_base = profile.get("extends")
+    if declared_base is not None and (
+        os.path.abspath(resolve_path(str(declared_base)))
+        != os.path.abspath(resolve_path(base_arg))
+    ):
+        conflicts.append(
+            "extensions declare base %r but --base resolves to %r"
+            % (declared_base, base_arg)
+        )
+
+    volatility_defaults = profile.get("volatility_defaults") or {}
+    if not isinstance(volatility_defaults, dict):
+        conflicts.append("extensions: 'volatility_defaults' is not a mapping")
+        volatility_defaults = {}
+    domain_values = list(volatility_defaults)
+    if not domain_values:
+        conflicts.append(
+            "extensions: volatility_defaults must register at least one domain"
+        )
+    for domain, volatility in volatility_defaults.items():
+        if volatility not in ("fast", "slow", "stable"):
+            conflicts.append(
+                "volatility_defaults.%s: expected fast, slow, or stable; found %r"
+                % (domain, volatility)
+            )
+    if "domain" in profile_fields:
+        conflicts.append(
+            "fields.domain is a duplicate identity source; register each "
+            "domain only in volatility_defaults"
+        )
+        del profile_fields["domain"]
+    profile_fields["domain"] = {"values": domain_values}
 
     # The profile must not redefine base-owned scalar/mapping sections.
     for section in BASE_OWNED_SECTIONS:
@@ -221,8 +286,7 @@ def compose(base, profile, base_arg, ext_arg):
                     "found extra keys %s (base fields cannot be redefined)"
                     % (name, extra_keys)
                 )
-            if extension.get("owner") is not None:
-                merged["extension_owner"] = extension["owner"]
+            merged["extension_owner"] = extension.get("owner") or ext_arg
             dedup_append(base_values, list(extension.get("values") or []))
         merged["values"] = base_values
         fields[name] = merged
@@ -248,15 +312,39 @@ def compose(base, profile, base_arg, ext_arg):
         spec["values"] = dedup_append([], list(profile_spec.get("values") or []))
         fields[name] = spec
 
+    frontmatter = profile.get("frontmatter_extensions") or {}
+    if not isinstance(frontmatter, dict):
+        conflicts.append("extensions: 'frontmatter_extensions' is not a mapping")
+        frontmatter = {}
+    explicit_frontmatter_fields = frontmatter.get("fields") or []
+    if not isinstance(explicit_frontmatter_fields, list):
+        conflicts.append("extensions: 'frontmatter_extensions.fields' is not a list")
+        explicit_frontmatter_fields = []
+    elif any(not isinstance(name, str) or not name for name in explicit_frontmatter_fields):
+        conflicts.append(
+            "extensions: 'frontmatter_extensions.fields' entries must be "
+            "non-empty strings"
+        )
+        explicit_frontmatter_fields = [
+            name for name in explicit_frontmatter_fields
+            if isinstance(name, str) and name
+        ]
+    derived_frontmatter_fields = dedup_append(
+        list(explicit_frontmatter_fields),
+        [name for name in profile_fields if name not in base_fields],
+    )
+    frontmatter_out = dict(frontmatter)
+    frontmatter_out["fields"] = derived_frontmatter_fields
+
     candidate = {
         "schema_version": base.get("schema_version"),
-        "profile_id": profile.get("profile_id"),
+        "profile_id": profile_id,
         "composition_policy": base.get("composition_policy"),
         "compiled_from": {"kernel": base_arg, "profile": ext_arg},
-        "frontmatter_extensions": profile.get("frontmatter_extensions"),
+        "frontmatter_extensions": frontmatter_out,
         "fields": fields,
         "review_intervals_days": base.get("review_intervals_days"),
-        "volatility_defaults": profile.get("volatility_defaults"),
+        "volatility_defaults": volatility_defaults,
         "task_state": base.get("task_state"),
     }
     output = {}
@@ -426,7 +514,34 @@ def main(argv=None):
         print("compose_vocab: input outside the restricted YAML subset: %s" % exc)
         return 1
 
-    output, conflicts = compose(base, profile, args.base, args.extensions)
+    manifest_exists, manifest_profile_ids = sibling_manifest_profile_id(ext_path)
+    extension_profile_id = profile.get("profile_id")
+    if manifest_exists:
+        if len(manifest_profile_ids) != 1:
+            print("compose_vocab: sibling profile.md must contain exactly one "
+                  "`profile_id` under Profile Identity; found %d"
+                  % len(manifest_profile_ids))
+            return 1
+        profile_id = manifest_profile_ids[0]
+        if extension_profile_id is not None and extension_profile_id != profile_id:
+            print("compose_vocab: profile_id conflict: sibling profile.md declares "
+                  "%r but extensions declare %r"
+                  % (profile_id, extension_profile_id))
+            return 1
+    else:
+        profile_id = extension_profile_id
+        if not profile_id:
+            print("compose_vocab: no sibling profile.md and no profile_id in "
+                  "the extensions input; one identity source is required")
+            return 1
+    if not isinstance(profile_id, str) or not PROFILE_ID_VALUE_RE.fullmatch(profile_id):
+        print("compose_vocab: invalid profile_id %r; use a lowercase path slug "
+              "matching [a-z0-9][a-z0-9_-]*" % profile_id)
+        return 1
+
+    output, conflicts = compose(
+        base, profile, args.base, args.extensions, profile_id
+    )
     if conflicts:
         print("compose_vocab: %d conflict(s); extensions must be append-only:"
               % len(conflicts))

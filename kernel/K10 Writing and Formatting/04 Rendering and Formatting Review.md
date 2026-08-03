@@ -14,20 +14,21 @@ Only when the objective conditions of [[kernel/K12 Quality Assurance/13 Visual V
 
 ## Formatting Anti-patterns
 
-- Duplicated titles.
-- Dates appearing in ordinary concept titles.
-- Only bullet lists, with no explanatory paragraphs.
-- Undefined formula symbols.
-- Markdown tables broken by wiki pipes.
-- Overlong tables replacing full sections.
-- Images with no explanatory relationship to the body.
-- Forcing all flowcharts into the same direction.
-- Deleting key flows or failure paths to fit a single viewport.
-- Treating a newly added visual construct itself as a reason for UI sampling, without first running deterministic verification.
-- Repeatedly opening pages, taking screenshots, or recording video every round, without logging the still-unresolved display issue.
-- Using visual recognition to read body text, links, table structure, or configuration that could be parsed directly.
-- Using heavy bold and decorative symbols to fabricate false hierarchy.
-The canonical definitions and exception boundaries of the reader-facing language anti-patterns above are provided by the selected profile's `Language Contract`.
+- `AP01` — Duplicated titles.
+- `AP02` — Dates appearing in ordinary concept titles.
+- `AP03` — Only bullet lists, with no explanatory paragraphs.
+- `AP04` — Undefined formula symbols.
+- `AP05` — Markdown tables broken by wiki pipes.
+- `AP06` — Overlong tables replacing full sections.
+- `AP07` — Images with no explanatory relationship to the body.
+- `AP08` — Forcing all flowcharts into the same direction.
+- `AP09` — Deleting key flows or failure paths to fit a single viewport.
+- `AP10` — Treating a newly added visual construct itself as a reason for UI sampling, without first running deterministic verification.
+- `AP11` — Repeatedly opening pages, taking screenshots, or recording video every round, without logging the still-unresolved display issue.
+- `AP12` — Using visual recognition to read body text, links, table structure, or configuration that could be parsed directly.
+- `AP13` — Using heavy bold and decorative symbols to fabricate false hierarchy.
+
+These IDs and default meanings are kernel-owned. The selected profile's `Language Contract` may register a domain-scoped exception or an additional anti-pattern; it does not restate or redefine the kernel list.
 
 ### Automated Language Review Boundary
 
@@ -35,7 +36,15 @@ Automated checks such as character ratio, token pattern, and heading or table-he
 
 ### Formatting Migration Invalidation
 
-A formatting or language migration invalidates only the directly affected audit dimensions: heading / link changes invalidate at least structure and links; semantic, source, formula, or `Expression Layer Artifact` changes invalidate the corresponding dimensions respectively. The selected profile's `Language Contract` provides the concrete mapping and exceptions; an active task MUST re-adopt the changed contract and MUST NOT indiscriminately re-run unrelated receipts.
+| Change-kind ID | Direct change | Minimum invalidation |
+|---|---|---|
+| `FM01` | Heading or link | Structure and links |
+| `FM02` | Semantic content | Corresponding content/audit dimension |
+| `FM03` | Source or provenance | Source/evidence dimension |
+| `FM04` | Formula or mathematical notation | Formula/correctness dimension |
+| `FM05` | `Expression Layer Artifact` | Corresponding expression and dependency dimensions |
+
+The selected profile's `Language Contract` may add stricter invalidation or a scoped exception that does not fall below these minima. An active task MUST re-adopt the changed contract and MUST NOT indiscriminately re-run unrelated receipts.
 
 ## Related
 

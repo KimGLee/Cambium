@@ -35,9 +35,11 @@ Before authoring begins, resolve the artifact identity, display label, entry poi
 - A readiness promotion: load the profile's `Vocabulary Extensions`, its registered readiness gate owner, and [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]].
 - Changed canonical support or invalidated evidence: read [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] and mark affected artifacts through the registered dependency mapping.
 - Work spanning multiple artifacts or a module: combine [[kernel/Read Sets/R03 Module Build Read Set|R03 Module Build]].
+- Large-scale expression work: pass [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|R11 Large-scale Work Admission]] before execution.
 - Multi-batch execution, checkpoint, or resume: combine [[kernel/Read Sets/R07 Long-running Execution Read Set|R07 Long-running Execution]].
 - Formulas, tables, code, diagrams, images, embeds, or a display question: load the applicable K10 formatting modules and [[kernel/K12 Quality Assurance/02 Rendering Verification|Rendering Verification]]; visual escalation additionally requires the objective trigger defined by [[kernel/K12 Quality Assurance/13 Visual Verification Escalation|Visual Verification Escalation]].
-- A completion candidate: combine [[kernel/Read Sets/R08 Audit and Completion Read Set|R08 Audit and Completion]].
+- A targeted or specialized expression audit: combine [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set|R12 Targeted and Specialized Audit]].
+- A whole-task completion candidate: combine [[kernel/Read Sets/R08 Audit and Completion Read Set|R08 Audit and Completion]].
 
 ## Gate
 
