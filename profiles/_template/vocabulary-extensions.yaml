@@ -17,12 +17,12 @@ fields:
   # Conditional expression-readiness field. Replace the mapping key with the
   # field name and point `owner` to its promotion rules. Delete this mapping
   # when no registered artifact uses a readiness axis.
-  TODO(profile):
-    owner: "TODO(profile)"
+  TODO(profile):  # replace with the controlled field name
+    owner: "TODO(profile)"  # repo-relative owner path, optionally #heading
     role: Expression Status Axis
     values:
-      - TODO(profile)
+      - TODO(profile)  # one allowed value; repeat as needed
 
-# domain: fast | slow | stable
+# key = domain ID; value = fast | slow | stable
 volatility_defaults:
   TODO(profile): TODO(profile)

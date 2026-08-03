@@ -11,6 +11,8 @@ Interface: [Audit Dimension Registry slot](../../README.md#audit-dimension-regis
 
 ## Judgment Items
 
-| Judgment Item ID | Receipt dimension | Audit layer | Audit object | Evidence role | Predicate owner path |
+The required starter row registers Foundation Depth; copy it for other profile-owned audit predicates.
+
+| Stable Judgment Item ID | Base or registered receipt Dimension ID | Exact kernel audit-layer name | Bounded audit object one run proves | Evidence role: `emits`, `consumes`, or `triggers` | Predicate owner (repo-relative path; optional `#heading`) |
 |---|---|---|---|---|---|
 | TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) |

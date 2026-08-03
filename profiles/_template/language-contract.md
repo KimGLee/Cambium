@@ -6,11 +6,11 @@ Interface: [Language Contract slot](../README.md#language-contract-slot)
 
 | Concern | Profile rule |
 |---|---|
-| Body language | TODO(profile) |
-| Secondary language and disagreement authority (`None — monolingual` allowed) | TODO(profile) |
-| General proper names: localized, original, or bilingual display | TODO(profile) |
-| Official external names: surrounding display around preserved identity | TODO(profile) |
-| Machine identifiers: surrounding display around exact token | TODO(profile) |
+| Body language (language name or tag) | TODO(profile) |
+| Secondary language and canonical form on disagreement (`None — monolingual` allowed) | TODO(profile) |
+| General proper-name display (localized, original, or bilingual; include occurrence scope) | TODO(profile) |
+| Official external-name display around preserved identity | TODO(profile) |
+| Machine-identifier display around the exact token | TODO(profile) |
 
 ## Canonical Naming
 
@@ -25,13 +25,13 @@ Interface: [Language Contract slot](../README.md#language-contract-slot)
 
 | Concern | Profile rule |
 |---|---|
-| Alias forms | TODO(profile) |
-| Headings and labels | TODO(profile) |
-| Abbreviation first use | TODO(profile) |
-| Reader-facing display order | TODO(profile) |
-| File-name annotation boundary | TODO(profile) |
+| Alias forms (included name/language forms) | TODO(profile) |
+| Headings and labels (display pattern) | TODO(profile) |
+| Abbreviation first use (form and page/vault scope) | TODO(profile) |
+| Reader-facing display order (ordered components) | TODO(profile) |
+| File-name annotation boundary (allowed annotations or `None`) | TODO(profile) |
 
-| Canonical term filename | Display label | Aliases |
+| Canonical term filename | Exact reader-facing display label | Aliases resolving to it |
 |---|---|---|
 | TODO(profile) | TODO(profile) | TODO(profile) |
 

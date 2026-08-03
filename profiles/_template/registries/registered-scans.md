@@ -4,6 +4,8 @@ Interface: [Registered Scan Registry slot](../../README.md#registered-scan-regis
 
 ## Scan Registrations
 
-| Scan ID | Activation role | Scope | Verifier command/path | Candidate boundary | Acceptance Judgment Item ID |
+| Stable Scan ID | Activation role | Whole-corpus scope/root | Deterministic verifier command/path | Candidate predicate/boundary | Judgment Item ID reference |
 |---|---|---|---|---|---|
 | TODO(profile) | `K12/09 item 6 — residual-content scan` | TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) |
+
+Copy the row for an additional scan and replace its activation role.

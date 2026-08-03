@@ -5,7 +5,7 @@ Interface and usage: [Profile interface](../README.md)
 ## Profile Identity
 
 - `profile_id`: `TODO(profile)`
-- Accountable owner: TODO(profile)
+- Accountable owner (actor or role): TODO(profile)
 
 ## Implemented Slots
 
@@ -24,5 +24,5 @@ Interface and usage: [Profile interface](../README.md)
 
 Allowed items: [execution-default registry](../../Tools/schemas/execution_defaults.template.yaml).
 
-| Override item | Profile value |
+| Override item ID from the registry | Non-default profile value |
 |---|---|

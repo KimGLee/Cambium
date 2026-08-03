@@ -11,7 +11,7 @@ source_files:
   - kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
-source_hash: b35926979de0
+source_hash: c135c89b2b35
 ---
 # R11 Large-scale Work Admission Card
 

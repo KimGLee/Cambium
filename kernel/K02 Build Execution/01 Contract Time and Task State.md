@@ -7,7 +7,7 @@
 
 This standard specifies how ultra-long knowledge base build tasks are planned, executed, verified, and resumed, preventing mass up-front creation of empty-shell pages, later loss of consistency, or repeated work after interruption.
 
-This document governs only "long tasks that build the knowledge base"; it does not define how the deployed runtime agent itself executes long tasks. Long-horizon reliability, checkpoint, context continuity, and execution recovery within the selected knowledge mainline are provided, with concrete roles and canonical knowledge routing, by the `Profile Scope` registered by the selected profile.
+This document governs long tasks that build the knowledge base; it does not define the deployed runtime agent's internal implementation. Checkpoint, context continuity, pause / resume, and recovery records are governed by K02 and executed through [[kernel/Read Sets/R07 Long-running Execution Read Set|R07 Long-running Execution]] using the Task Contract and Progress Ledger. The selected profile's `Profile Scope` supplies only the organizing knowledge mainline, concrete layer roles, and canonical knowledge placement used by that work.
 
 ## Core Execution Principle
 

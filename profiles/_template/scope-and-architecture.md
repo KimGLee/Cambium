@@ -4,37 +4,39 @@ Interface: [Profile Scope slot](../README.md#profile-scope-slot)
 
 ## Goal
 
-| Knowledge-base goal | Intended readers | Observable reader outcome |
-|---|---|---|
-| TODO(profile) | TODO(profile) | TODO(profile) |
+| Knowledge-base goal (one sentence) | Intended reader role(s) |
+|---|---|
+| TODO(profile) | TODO(profile) |
 
 ## Content Priority Factors
 
-| Rank | Content factor | Relation to the goal |
-|---:|---|---|
-| 1 | TODO(profile) | TODO(profile) |
+| Rank | Ranked content-priority factor |
+|---:|---|
+| 1 | TODO(profile) |
 
 ## Excluded Scope
 
-| Excluded content (`None — no exclusions` allowed) | Destination or handling (`Not applicable` when none) |
+| Bounded excluded content (`None — no exclusions` allowed) | Destination or handling (`Not applicable` when none) |
 |---|---|
 | TODO(profile) | TODO(profile) |
 
 ## Logical Architecture
 
-| Layer ID | Directory | Purpose |
+| Stable Layer ID | Relative directory | Single layer responsibility |
 |---|---|---|
 | TODO(profile) | TODO(profile) | TODO(profile) |
 
 ## Knowledge Spine
 
-| Organizing mainline / Knowledge Spine | What each page declares about its position |
+| Page-to-page organizing logic / Knowledge Spine | Field or statement locating each page on that spine |
 |---|---|
 | TODO(profile) | TODO(profile) |
 
 ## Placement Layer Registrations
 
-| Kernel role | Binding type | Binding |
+Layer roles bind a registered Layer ID; an unused role uses `None` plus its fallback Layer ID. The expression role uses a testable predicate, or `always false` when unused.
+
+| Kernel role | Binding type | Registered binding or inactive form |
 |---|---|---|
 | `Shared Foundation Layer` | Layer ID | TODO(profile) |
 | `Production Systems Layer` | Layer ID | TODO(profile) |
@@ -46,20 +48,20 @@ Interface: [Profile Scope slot](../README.md#profile-scope-slot)
 
 ## New Page Placement Rule
 
-| Order | Page predicate | Target Layer ID |
+| Order | Testable page predicate | Registered target Layer ID |
 |---:|---|---|
 | 1 | TODO(profile) | TODO(profile) |
 | Last | Otherwise | TODO(profile) |
 
 ## Terminology Structure
 
-| Term class | Target Layer ID | Boundary |
+| Bounded term class | Registered target Layer ID | Inclusion/exclusion boundary |
 |---|---|---|
 | TODO(profile) | TODO(profile) | TODO(profile) |
 
 ## Foundation Depth Requirements
 
-| Foundation page class | Acceptance predicate |
+| Bounded foundation page class | Testable completeness predicate |
 |---|---|
 | TODO(profile) | TODO(profile) |
 
@@ -67,7 +69,7 @@ Interface: [Profile Scope slot](../README.md#profile-scope-slot)
 
 - Applicability: TODO(profile)
 
-| Applies to |
+| Page predicate covered by production-system reasoning |
 |---|
 
 ## Representative Sample Plan

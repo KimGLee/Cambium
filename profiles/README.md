@@ -2,7 +2,7 @@
 
 ## Creating A Profile
 
-`profiles/_template/` is a guided, domain-neutral form. Copy it to `profiles/<profile-id>/`, replace every `TODO(profile)` value, keep or update the manifest bindings when files move, and run `python3 Tools/check_profile.py profiles/<profile-id>`. Use a lowercase path slug matching `[a-z0-9][a-z0-9_-]*`; the manifest `profile_id` must equal the directory name. The template itself is neither runnable nor a default profile.
+`profiles/_template/` is a guided, domain-neutral form. Copy it to `profiles/<profile-id>/`, replace every `TODO(profile)` placeholder, keep or update the manifest bindings when files move, and run `python3 Tools/check_profile.py profiles/<profile-id>`. Headings, row or field labels, and YAML comments around a placeholder describe the expected answer shape; they are guidance, not additional values. Use a lowercase path slug matching `[a-z0-9][a-z0-9_-]*`; the manifest `profile_id` must equal the directory name. Fill identity and the core slots before registries so later entries reference existing IDs and paths rather than restating their rules. The template itself is neither runnable nor a default profile.
 
 Use these declarations consistently:
 

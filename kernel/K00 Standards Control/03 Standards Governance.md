@@ -44,7 +44,7 @@ Before any Standards revision closes, the following snapshot locations MUST be c
 - The target lists of the affected Read Sets.
 - The [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-domain Rule Registry|Cross-domain Rule Registry]].
 - Regenerate the affected kernel Runtime Cards under `kernel/Cards`; these artifacts, including the Card Index, are compiled artifacts and must not be hand-edited outside this write-back step. Affected = cards whose `source_files` include a modified file. Stamp with `Tools/stamp_cards.py` (`--set-version` synchronizes every card's version stamp); before the revision closes, `Tools/stamp_cards.py --check` MUST be run and pass. A missing card directory, missing Card Index, missing Read Set mapping, or zero-card scan is a failure, never `not_applicable`.
-- Regenerate `Tools/vocab.yaml` (a compiled artifact; the vocabulary owner is each Standard's source text).
+- Regenerate `Tools/vocab.yaml` only when both conditions hold: the adopting instance has selected a profile, and the revision changes the kernel vocabulary base or that profile's `Vocabulary Extensions`. The artifact is compiled from those inputs; the generic Cambium distribution and an instance with no selected profile carry no composed vocabulary.
 
 Persistent tools self-built by the execution side for gates or audits MUST be brought under Tools/ management through a lightweight governance registration with a designated owner; existing self-built tools are registered retroactively at the next governance pass, and before registration their output is advisory only and MUST NOT serve as a gate's sole evidence.
 

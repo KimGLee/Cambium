@@ -4,19 +4,19 @@ Interface: [Source Policy slot](../README.md#source-policy-slot)
 
 ## Source Authority
 
-| Rank | Source ID and location | Canonical for | Registered source revision |
+| Rank | Stable Source ID and exact location | Bounded canonical claim/content class | Version/release/commit, or retrieval date if unversioned |
 |---:|---|---|---|
 | 1 | TODO(profile) | TODO(profile) | TODO(profile) |
 
 ## Verification Entry Points
 
-| Claim class | Source ID | Verifier entry point | Pin/window requirement for this claim class |
+| Bounded claim class | Registered Source ID | Verifier command, path, URL, or procedure | Version pin or freshness window |
 |---|---|---|---|
 | TODO(profile) | TODO(profile) | TODO(profile) | TODO(profile) |
 
 ## Staleness Triggers
 
-| Event | Affected scope |
+| Observable change event | Bounded affected pages or claims |
 |---|---|
 | TODO(profile) | TODO(profile) |
 
@@ -31,5 +31,5 @@ Interface: [Source Policy slot](../README.md#source-policy-slot)
 
 - Registration: TODO(profile)
 
-| Field | Format or allowed values | Purpose | Rule-owner path |
-|---|---|---|---|
+| Applicability / trigger | Additional provenance requirement | Recording target reference (Vocabulary field ID, body heading, or evidence path) |
+|---|---|---|

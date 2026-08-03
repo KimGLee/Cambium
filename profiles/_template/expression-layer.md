@@ -6,18 +6,18 @@ Interface: [Expression Layer Entry slot](../README.md#expression-layer-entry-slo
 
 - Registration: TODO(profile)
 
-When configured, copy this complete block once per artifact.
+When `Configured`, copy this complete block once per artifact. When `None`, delete the Artifact block.
 
 ### Artifact
 
 | Property | Value |
 |---|---|
-| Artifact ID | TODO(profile) |
-| Type | TODO(profile) |
-| Display label | TODO(profile) |
-| Entry point | TODO(profile) |
-| Profile-rule owner path | TODO(profile) |
-| Canonical dependency-map ID/path | TODO(profile) |
-| Regenerate when | TODO(profile) |
-| Readiness field or `None` | TODO(profile) |
-| Supplemental gate ID or `None` | TODO(profile) |
+| Stable artifact ID | TODO(profile) |
+| Artifact role/type | TODO(profile) |
+| Reader-facing display label | TODO(profile) |
+| Entry point (repo-relative path or resolvable link) | TODO(profile) |
+| Profile-rule owner (repo-relative path; optional `#heading`) | TODO(profile) |
+| Existing canonical dependency-map ID/path | TODO(profile) |
+| Testable regeneration/invalidation predicate | TODO(profile) |
+| Vocabulary Extensions readiness-field ID or `None` | TODO(profile) |
+| Routing/Gate Registry supplemental Gate ID or `None` | TODO(profile) |

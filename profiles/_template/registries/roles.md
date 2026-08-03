@@ -4,7 +4,9 @@ Interface: [Role Registry slot](../../README.md#role-registry-slot)
 
 ## Process Roles
 
-| Kernel role | Bound actor or system |
+Use an actor or system ID/name for each binding.
+
+| Kernel role | Bound actor or system ID/name |
 |---|---|
 | `proposer` | TODO(profile) |
 | `gatekeeper` | TODO(profile) |
@@ -15,12 +17,14 @@ Interface: [Role Registry slot](../../README.md#role-registry-slot)
 
 | Kernel role | Binding |
 |---|---|
-| `knowledge-host` | TODO(profile) |
-| `knowledge-host UI` (`None — headless` allowed) | TODO(profile) |
+| `knowledge-host` (host system ID/name) | TODO(profile) |
+| `knowledge-host UI` (UI system ID/name; `None — headless` allowed) | TODO(profile) |
 
 ## Metric Traceability Roles
 
 - Applicability: TODO(profile)
+
+When configured, bind each role to a profile field or identifier.
 
 | Kernel role | Profile field or identifier |
 |---|---|
@@ -35,5 +39,5 @@ Interface: [Role Registry slot](../../README.md#role-registry-slot)
 
 - Registration: TODO(profile)
 
-| Role ID | Bound actor or system | Responsibility | Related gate IDs |
-|---|---|---|---|
+| Role ID | Bound actor or system ID/name | Responsibility |
+|---|---|---|
