@@ -8,13 +8,14 @@
 
 | Field | Value |
 |---|---|
-| Standards version | `{{ release_version }}` |
-| Status | `{{ release_status }}` |
-| Effective date | `{{ release_effective_date }}` |
+| Standards version | `{{ standards_version }}` |
+| Status | `{{ standards_status }}` |
+| Effective date | `{{ standards_effective_date }}` |
+| Selected profile manifest | `{{ selected_profile_manifest }}` |
 | Change authority | User's explicit governance instruction |
 | Content-task behavior | Frozen; read-only control plane |
 
-The `{{ ... }}` values above are release placeholders, not values: an adopting instance MUST instantiate them in its first governance release (its initial adoption counts as one), recording the release in the Change Summary below. While the placeholders remain uninstantiated, the composed standard is in pre-release state — content tasks MUST NOT treat it as a frozen Standards version, and a task contract cannot record a frozen `standards_version` from it.
+The four `{{ ... }}` entries are placeholders. Initial adoption is the first governance release: fill a copy of `profiles/_template/`; pass `check_profile.py`; record exactly one `profiles/<profile-id>/profile.md`, a version, `approved` status, and date here; record upstream tag, commit, or archive checksum in the Change Summary; compose vocabulary; stamp Cards; pass governance checks. This is adopter state, not Cambium release metadata. Until all four values are instantiated, the standard is pre-release and content tasks cannot freeze a Task Contract.
 
 The Standards lifecycle is:
 
@@ -28,7 +29,7 @@ When modifying rules, you MUST:
 
 1. Make explicit that this is a governance change, not ordinary content editing.
 2. Record the affected Standards and the reason.
-3. Bump `standards_version`.
+3. Bump `standards_version`; changing the selected profile manifest always requires a bump.
 4. Update the routing and change summary in `K00`.
 5. Execute the Active-task Adoption of [[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]] per the changed-predicate list recorded for the revision; an empty list is a no-op, completed by a one-line adoption receipt.
 
@@ -43,8 +44,8 @@ Before any Standards revision closes, the following snapshot locations MUST be c
 - The Module Index of the affected Standard Module MOCs.
 - The target lists of the affected Read Sets.
 - The [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-domain Rule Registry|Cross-domain Rule Registry]].
-- Regenerate the affected kernel Runtime Cards under `kernel/Cards`; these artifacts, including the Card Index, are compiled artifacts and must not be hand-edited outside this write-back step. Affected = cards whose `source_files` include a modified file. Stamp with `Tools/stamp_cards.py` (`--set-version` synchronizes every card's version stamp); before the revision closes, `Tools/stamp_cards.py --check` MUST be run and pass. A missing card directory, missing Card Index, missing Read Set mapping, or zero-card scan is a failure, never `not_applicable`.
-- Regenerate `Tools/vocab.yaml` only when both conditions hold: the adopting instance has selected a profile, and the revision changes the kernel vocabulary base or that profile's `Vocabulary Extensions`. The artifact is compiled from those inputs; the generic Cambium distribution and an instance with no selected profile carry no composed vocabulary.
+- Regenerate the affected kernel Runtime Cards under `kernel/Cards`; these artifacts, including the Card Index, are compiled artifacts and must not be hand-edited outside this write-back step. Affected = cards whose `source_files` include a modified file. `source_files` contains the direct semantic inputs from which Card guidance is compiled; a file linked only as a runtime read-back or navigation target is not added solely because of that link, whose reachability is checked separately. Stamp with `Tools/stamp_cards.py` (`--set-version` synchronizes every card's version stamp); before the revision closes, `Tools/stamp_cards.py --check` MUST be run and pass. A missing card directory, missing Card Index, missing Read Set mapping, or zero-card scan is a failure, never `not_applicable`.
+- Regenerate `Tools/vocab.yaml` only when the adopting instance has selected a profile and the revision changes the selected profile, the kernel vocabulary base, or that profile's `Vocabulary Extensions` binding or content. The artifact is compiled from the active selection and those inputs; the generic Cambium distribution and an instance with no selected profile carry no composed vocabulary.
 
 Persistent tools self-built by the execution side for gates or audits MUST be brought under Tools/ management through a lightweight governance registration with a designated owner; existing self-built tools are registered retroactively at the next governance pass, and before registration their output is advisory only and MUST NOT serve as a gate's sole evidence.
 
@@ -87,7 +88,7 @@ For any structural migration of the standards corpus (splits, moves, renames, or
 
 | Leaf module exception | Measured | Necessity | Growth cap | Follow-up |
 |---|---|---|---|---|
-| [[kernel/K00 Standards Control/03 Standards Governance\|Standards Governance]] (this page) | 14293 bytes | Its only routed consumer is the Standards Governance Read Set, which reads it at Start; one governance change consults the change process, the write-back checklist, the accretion questions, the migration conservation rules, and this budget in a single pass. The one other reader, the batch-activation version self-check of [[kernel/K00 Standards Control/02 Task Routing and Pre-execution\|K00/02]], takes one scalar from the Standards Control table rather than loading the page, and splitting that table out would make every governance change read both halves | 14.5KB | Re-measure at each governance change. No section of this page has a standalone consumer: no page links any of its seven headings, and its only routed consumer reads it whole. Its size therefore grows almost entirely with the register below, which gains a row per approved exception, so raising this cap is a recurring cost rather than a one-time one. Before the next raise, the register MUST first be tested against the outside-the-cap disposition above, which covers registries that own no rule text; the register moves out the first time that test or the split test passes |
+| [[kernel/K00 Standards Control/03 Standards Governance\|Standards Governance]] (this page) | 14383 bytes | R09 reads the whole page for a governance change; R01 reads only Standards Control to resolve the active version and profile. Keeping state with its change process prevents a governance revision from updating one without the other | 14.5KB | Re-measure at each governance change. Split when a routed consumer needs active state without R01 or the governance process; move this exception registry when it passes the outside-the-cap test |
 | [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract\|Completion Precedence and Task Contract]] | 6447 bytes | Splitting saves no reader. All four anchored readers of its sections sit inside tasks that already hold the whole page, because [[kernel/Read Sets/R01 Core Bootstrap Read Set\|Core Bootstrap]] reads it at Start for every task. `Maintenance Completion` further MUST stay with `Definition Of Complete`: the page requires one of the two to be declared when the task contract is frozen and forbids mixing their semantics, so a task holding one half could not make that declaration | 7KB | Re-measure whenever a contract decision or a completion semantic is added; the split condition is a routed consumer that resolves standard precedence without holding a task contract |
 | [[kernel/K02 Build Execution/02 Mid-task Guidance and Amendment\|Mid-task Guidance and Amendment]] | 10158 bytes | One event-triggered procedure. A single guidance event runs classification, impact analysis, disposition, safe switching, the amendment record, versioning, and acknowledgement in one pass, and no consumer reaches a part of it alone: both anchored readers, [[kernel/K12 Quality Assurance/04 Guidance and Source Review\|K12/04]] and [[kernel/K06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads\|K06/02]], link the whole `Mid-task Guidance And Contract Amendment` section, and no Read Set routes to a subsection | 10.5KB | Re-measure whenever a guidance class, a disposition, or an amendment field is added; the split condition is a routed consumer that records an amendment without having classified the guidance that caused it |
 | [[kernel/K03 Note Types and Ownership/01 Note Type Catalog\|Note Type Catalog]] | 6668 bytes | One catalog whose function is choosing among its sixteen types. Both routed consumers, the Single Note Authoring and Module Build Read Sets, load it for that same choice, and no page links an individual type, so a split by type group would make every choice read both groups | 7KB | Re-measure whenever a note type is added. Its seven `Examples:` lines (561 bytes) were tested against the cut-examples remedy and held: they are what a reader compares against to decide which of the sixteen types a page is, so cutting them would remove the judgment the catalog exists to support. The split condition is a routed consumer that already knows its type group before opening the catalog |
@@ -102,7 +103,7 @@ For any structural migration of the standards corpus (splits, moves, renames, or
 
 ## Change Summary
 
-Active release register: empty until the first governance change. Each entry MUST record version, date, change, the changed-predicate list, and the Active-task Adoption requirement; when the list is empty, record a no-op adoption receipt.
+The upstream register is empty; initial adoption creates its first entry. Each entry MUST record version, date, change (including profile selection and upstream provenance when applicable), changed predicates, and Active-task Adoption; an empty predicate list gets a no-op receipt.
 
 | Version | Date | Change | Changed predicates | Adoption requirement |
 |---|---|---|---|---|

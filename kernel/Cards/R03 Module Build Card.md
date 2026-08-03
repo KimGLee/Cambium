@@ -2,7 +2,7 @@
 type: runtime-card
 route_id: R03
 read_set: kernel/Read Sets/R03 Module Build Read Set.md
-compiled_from: "{{standards_version}}"
+compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R03 Module Build Read Set.md
   - kernel/K01 Scope and Architecture/01 Scope Boundaries.md
@@ -20,7 +20,7 @@ source_files:
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
-source_hash: 33d53cb27ca3
+source_hash: '4799050423e7'
 ---
 # R03 Module Build Card
 

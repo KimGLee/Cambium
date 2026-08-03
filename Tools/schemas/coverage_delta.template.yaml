@@ -19,7 +19,6 @@ generated_at: "2026-07-30T12:00:00+08:00"  # time the delta was written out (whe
 pages:                             # status updates for pages on this batch's manifest (manifest pages only; out-of-manifest pages are rejected at merge)
   - path: "Topics/Example Topic.md"
     authoring_status: reviewed     # updated status-axis value (vocabulary owner K08/03)
-    interview_status: mapped
     gate_receipts: ["r-0311", "r-0312"]  # receipt ids this batch produced for the page
 
 open_gaps_added: []                # open gaps added by this batch (including needs_rereview and cross-batch missing links, type: link; type vocabulary in the coverage_ledger template)

@@ -1,5 +1,5 @@
 # Interface: profiles/README.md#Vocabulary-Extensions-Slot
-# Compose after filling: python3 Tools/compose_vocab.py --extensions profiles/<profile-id>/vocabulary-extensions.yaml
+# After check_profile and R09/K00 adoption, compose with: python3 Tools/compose_vocab.py
 
 schema_version: 1
 

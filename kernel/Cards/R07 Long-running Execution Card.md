@@ -2,7 +2,7 @@
 type: runtime-card
 route_id: R07
 read_set: kernel/Read Sets/R07 Long-running Execution Read Set.md
-compiled_from: "{{standards_version}}"
+compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R07 Long-running Execution Read Set.md
   - kernel/K00 Standards Control/09 Default Constraints Snapshot.md
@@ -20,7 +20,7 @@ source_files:
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: ee4709dc89d9
+source_hash: '9002b5b29d06'
 ---
 # R07 Long-running Execution Card
 
@@ -32,7 +32,7 @@ Run a multi-batch task, sustain checkpoints, resume after interruption, maintain
 
 ## Before Start
 
-- [ ] Freeze the long-run Task Contract: time semantics, selected profile, route IDs, Card paths, actual read-backs, and completion semantics.
+- [ ] Freeze the long-run Task Contract: Standards version, exact `selected_profile_manifest`, time semantics, route IDs, Card paths, actual read-backs, and completion semantics.
 - [ ] Reconcile Coverage and Progress Ledgers with the file system, Required Queue, active batches, merge queue, and user modifications.
 - [ ] Define batch manifests, tier-derived caps, concurrency admission, write partitions, merge order, and acceptance conditions.
 - [ ] Load the Audit Receipt Register and classify evidence as reusable, invalidated, overdue, or missing.

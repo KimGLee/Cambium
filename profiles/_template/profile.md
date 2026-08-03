@@ -5,7 +5,6 @@ Interface and usage: [Profile interface](../README.md)
 ## Profile Identity
 
 - `profile_id`: `TODO(profile)`
-- Accountable owner (actor or role): TODO(profile)
 
 ## Implemented Slots
 

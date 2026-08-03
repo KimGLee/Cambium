@@ -1,13 +1,13 @@
 ---
 type: card-index
 registry_id: kernel-runtime-routes
-compiled_from: "{{standards_version}}"
+compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/Read Sets Index.md
   - kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md
   - kernel/K00 Standards Control/02 Task Routing and Pre-execution.md
   - kernel/K00 Standards Control/03 Standards Governance.md
-source_hash: cf751c69e5d5
+source_hash: 'aa927a35b5e2'
 route_registry:
   - route_id: R01
     path: "kernel/Cards/R01 Core Bootstrap Card.md"
@@ -94,9 +94,9 @@ the same `route_id`.
 - A profile extension uses its own namespaced identity and loads alongside a
   kernel route. It cannot reuse an Rxx identity or weaken the kernel gate.
 
-Record the selected `route_id` values and Card paths. Record Read Set and leaf
-paths only when they were actually read back; a broad K-module identifier does
-not prove loading.
+Record the active `selected_profile_manifest`, selected `route_id` values, and
+Card paths. Record Read Set and leaf paths only when actually read back; a
+broad K-module identifier does not prove loading.
 
 ## Synchronization
 

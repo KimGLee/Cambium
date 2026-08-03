@@ -2,7 +2,13 @@
 
 ## Creating A Profile
 
-`profiles/_template/` is a guided, domain-neutral form. Copy it to `profiles/<profile-id>/`, replace every `TODO(profile)` placeholder, keep or update the manifest bindings when files move, and run `python3 Tools/check_profile.py profiles/<profile-id>`. Headings, row or field labels, and YAML comments around a placeholder describe the expected answer shape; they are guidance, not additional values. Use a lowercase path slug matching `[a-z0-9][a-z0-9_-]*`; the manifest `profile_id` must equal the directory name. Fill identity and the core slots before registries so later entries reference existing IDs and paths rather than restating their rules. The template itself is neither runnable nor a default profile.
+`profiles/_template/` is a guided, domain-neutral form. Copy it to `profiles/<profile-id>/`, replace every `TODO(profile)` placeholder, keep or update the manifest bindings when files move inside that profile folder, and run `python3 Tools/check_profile.py profiles/<profile-id>`. Every profile-owned slot must resolve inside the selected profile folder; a manifest cannot borrow another profile's files or a repository-root fallback. Headings, row or field labels, and YAML comments around a placeholder describe the expected answer shape; they are guidance, not additional values. Use a lowercase path slug matching `[a-z0-9][a-z0-9_-]*`; the manifest `profile_id` must equal the directory name. Fill identity and the core slots before registries so later entries reference existing IDs and paths rather than restating their rules. The template itself is neither runnable nor a default profile.
+
+```text
+cp -R profiles/_template profiles/my-profile
+# Fill profiles/my-profile/, then:
+python3 Tools/check_profile.py profiles/my-profile
+```
 
 Use these declarations consistently:
 
@@ -13,7 +19,7 @@ Use these declarations consistently:
 
 ## Profile Loading Contract
 
-The effective standard is `kernel + one selected profile`. The kernel references stable slot names; the selected profile's manifest binds those slots to concrete files. A task that needs an unresolved slot must stop rather than claim the composed standard is loaded.
+The effective standard is `kernel + one selected profile`. The exact manifest path recorded as `selected_profile_manifest` in the active Standards state is the sole selection; a directory's existence, its `profile_id`, a generated vocabulary header, or discovery order does not select it. Multiple filled profiles may coexist, but exactly one is active. After filling and checking a copied profile, adopt it through R09 governance before content work; changing the active selection is a Standards revision and bumps `standards_version`. The kernel references stable slot names, and that manifest binds them to concrete files. A task that needs an unresolved slot must stop rather than claim the composed standard is loaded.
 
 Kernel Runtime Cards belong to `kernel/`. Profiles share the kernel route registry; they do not mirror kernel routes as profile slots, and each task loads only the applicable routes. R11 reads the existing `Profile Scope` together with task-time contract and ledger state. R12 reads existing judgment items, scans, and gates; an ordinary targeted audit needs no profile registration. A profile may only add namespaced supplemental routes or gates through `Routing And Gate Registry`; it cannot replace, shadow, or disable a kernel route or Card.
 
@@ -31,7 +37,7 @@ Kernel Runtime Cards belong to `kernel/`. Profiles share the kernel route regist
 
 ## Vocabulary Extensions Slot
 
-**Required file; extensions are conditional.** Register each domain once in `volatility_defaults`; the composer derives the domain vocabulary from those keys. Register optional additions to other kernel-extensible fields and optional profile-owned fields. The composer reads the profile ID from the sibling manifest, derives each base-field extension owner from the extensions-file path, and adds profile-only controlled fields to the generated frontmatter-field list. An expression-readiness axis, when present, is a profile-owned field with a field name, values, `Expression Status Axis` role, and one prose owner. Extensions cannot delete, rename, or redefine kernel values. `Tools/vocab.yaml` is generated and is not a rule owner.
+**Required file; extensions are conditional.** Register each domain once in `volatility_defaults`; the composer derives the domain vocabulary from those keys. Register optional additions to other kernel-extensible fields and optional profile-owned fields. The composer reads the profile ID and this slot's path from the selected manifest, derives each base-field extension owner from the resolved extensions-file path, and adds profile-only controlled fields to the generated frontmatter-field list. An expression-readiness axis, when present, is a profile-owned field with a field name, values, `Expression Status Axis` role, and one prose owner. Extensions cannot delete, rename, or redefine kernel values. `Tools/vocab.yaml` is generated and is not a rule owner.
 
 ## Language Contract Slot
 

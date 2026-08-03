@@ -32,7 +32,7 @@ Large-scale creation, moves, or deletion selects R11 Large-scale Work Admission 
 
 1. `K00` and Core Bootstrap have been read.
 2. Task-specific Read Sets, triggered modules, and gate modules have been resolved per the Task Routing Table.
-3. Contract / scope / queue / initial batch / Standards version, the loaded set (selected Rxx route IDs and Runtime Card paths, any combined namespaced profile route, and every Read Set or leaf path actually read back), the target scope, the excluded scope, and the latest user requirements have been recorded.
+3. Contract / scope / queue / initial batch / Standards version / selected profile manifest, the loaded set (selected Rxx route IDs and Runtime Card paths, any combined namespaced profile route, and every Read Set or leaf path actually read back), the target scope, the excluded scope, and the latest user requirements have been recorded.
 4. `minimum_run_until`, `checkpoint_at`, `hard_stop_at`, and the Completion Gate have been made explicit; fields not provided are explicitly left empty.
 5. The Coverage Ledger has been created or refreshed and reconciled against the file system and exclusions.
 6. Ownership, incoming links, user modifications, and the Required Queue have been inventoried.

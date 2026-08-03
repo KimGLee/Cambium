@@ -2,7 +2,7 @@
 type: runtime-card
 route_id: R12
 read_set: kernel/Read Sets/R12 Targeted and Specialized Audit Read Set.md
-compiled_from: "{{standards_version}}"
+compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R12 Targeted and Specialized Audit Read Set.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
@@ -11,7 +11,7 @@ source_files:
   - kernel/K12 Quality Assurance/02 Rendering Verification.md
   - kernel/K12 Quality Assurance/04 Guidance and Source Review.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
-source_hash: 885077a1d34a
+source_hash: '3a52467220c4'
 ---
 # R12 Targeted and Specialized Audit Card
 

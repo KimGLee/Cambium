@@ -26,8 +26,8 @@ Then select the task-specific Read Set from the [[kernel/Read Sets/Read Sets Ind
 - Confirm whether the current task is authorized to modify `Knowledge Base Standards` or protected directories.
 - Confirm that canonical ownership, factual correctness, and protection of user modifications still take precedence.
 - Distinguish task completion, authoring status, the registered `Expression Status Axis`, evidence maturity, and learning status.
-- Confirm that the active Standards state is instantiated. While release placeholders remain, a content task cannot freeze or record a `standards_version` and MUST stop before execution.
-- Record the current Standards version and actual loaded set: selected Rxx route IDs and Runtime Card paths, any combined namespaced profile route, and every Read Set or leaf path actually read back.
+- Confirm that the active Standards state is instantiated and its one `selected_profile_manifest` resolves to a filled profile that passed `check_profile.py`. While any placeholder remains, a content task cannot freeze its contract and MUST stop before execution.
+- Record the current Standards version, exact selected profile manifest path, and actual loaded set: selected Rxx route IDs and Runtime Card paths, any combined namespaced profile route, and every Read Set or leaf path actually read back.
 
 ## Not Sufficient For
 

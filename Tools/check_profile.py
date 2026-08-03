@@ -68,7 +68,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_profile"
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.3.0"
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -84,13 +84,6 @@ OVERRIDES_SECTION = "Execution Default Overrides"
 # archives) is skipped and reported in the summary counts.
 TEXT_SUFFIXES = (".md", ".yaml", ".yml", ".txt", ".json", ".jsonl", ".py", ".csv")
 
-BINDING_RE = re.compile(r"^\s*-\s+`([^`]+)`\s*:\s*(.+?)\s*$")
-WIKI_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
-MDLINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
-CODE_RE = re.compile(r"`([^`]+)`")
-PROFILE_ID_RE = re.compile(r"^\s*-\s+`profile_id`\s*:\s*`([^`]*)`")
-PROFILE_ID_VALUE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
-INLINE_WORD_RE = re.compile(r"\binline\b", re.IGNORECASE)
 DECLARATION_RE = re.compile(
     r"^\s*-\s+(Registration|Applicability):\s*(.*?)\s*$"
 )
@@ -173,62 +166,15 @@ def interface_slots(text):
 
 
 def parse_bindings(manifest_text):
-    """Return {slot name: binding text} from the Implemented Slots section."""
-    bindings = {}
-    for line in section_lines(manifest_text, SLOTS_SECTION):
-        m = BINDING_RE.match(line)
-        if m:
-            bindings[m.group(1).strip()] = m.group(2).strip()
-    return bindings
-
-
-def looks_like_path(value):
-    return "/" in value or value.lower().endswith((".md", ".yaml", ".yml"))
-
-
-def candidate_paths(target, root, profile_dir):
-    """Candidate on-disk locations for a binding target, in resolution order."""
-    target = target.strip().lstrip("./")
-    if not target:
-        return []
-    variants = [target]
-    if not target.lower().endswith((".md", ".yaml", ".yml")):
-        variants.append(target + ".md")
-    out = []
-    for variant in variants:
-        out.append(os.path.join(profile_dir, variant))
-        out.append(os.path.join(root, variant))
-    return out
+    """Return the slot mapping and repeated names from Implemented Slots."""
+    return kblib.profile_slot_bindings(
+        manifest_text, include_duplicates=True
+    )
 
 
 def resolve_binding(binding, root, profile_dir):
-    """Classify and resolve one binding.
-
-    Returns (kind, detail): kind is "path" (detail = resolved absolute path),
-    "unresolved" (detail = the target that resolved to nothing), "inline"
-    (detail = None), or "unrecognized" (detail = None).
-    """
-    target = None
-    m = WIKI_RE.search(binding)
-    if m:
-        target = re.split(r"\\\||\|", m.group(1), maxsplit=1)[0].strip()
-    if target is None:
-        m = MDLINK_RE.search(binding)
-        if m:
-            target = m.group(1).strip()
-    if target is None and INLINE_WORD_RE.search(binding):
-        return "inline", None
-    if target is None:
-        for code in CODE_RE.findall(binding):
-            if looks_like_path(code):
-                target = code.strip()
-                break
-    if target is None:
-        return "unrecognized", None
-    for path in candidate_paths(target, root, profile_dir):
-        if os.path.isfile(path):
-            return "path", path
-    return "unresolved", target
+    """Resolve one binding through the shared manifest-binding contract."""
+    return kblib.resolve_profile_binding(binding, root, profile_dir)
 
 
 def table_rows(lines):
@@ -416,37 +362,14 @@ def main():
             % sentinel)
 
     # ---- block 2: placeholder profile_id ----
-    profile_ids = []
-    for heading, lines in h2_sections(manifest_text):
-        if heading != "Profile Identity":
-            continue
-        for line in lines:
-            m = PROFILE_ID_RE.match(line)
-            if m:
-                profile_ids.append(m.group(1).strip())
-    profile_id = profile_ids[0] if profile_ids else None
-    if not profile_ids:
-        add("profile-id-missing", "%s#Profile Identity" % manifest_disp, "fail",
-            "no `profile_id`: `<value>` bullet found under Profile Identity; "
-            "the manifest must name the profile it composes with the kernel")
-    elif len(profile_ids) > 1:
-        add("profile-id-duplicate", "%s#Profile Identity" % manifest_disp,
-            "fail", "Profile Identity contains %d profile_id entries; exactly "
-            "one manifest identity is allowed" % len(profile_ids))
-    elif profile_id in reserved_ids:
-        add("profile-id-placeholder", "%s#profile_id" % manifest_disp, "fail",
-            "profile_id is still the reserved placeholder %r; replace it with "
-            "this profile's own id before the profile may be loaded"
-            % profile_id)
-    elif not PROFILE_ID_VALUE_RE.fullmatch(profile_id):
-        add("profile-id-invalid", "%s#profile_id" % manifest_disp, "fail",
-            "profile_id %r is not a lowercase path slug matching "
-            "[a-z0-9][a-z0-9_-]*" % profile_id)
-    elif profile_id != os.path.basename(profile_dir):
-        add("profile-id-directory-mismatch", "%s#profile_id" % manifest_disp,
-            "fail", "profile_id %r must match the profile directory name %r; "
-            "the manifest is the single identity source"
-            % (profile_id, os.path.basename(profile_dir)))
+    profile_id, identity_errors = kblib.profile_identity(
+        manifest_text, os.path.basename(profile_dir), reserved_ids
+    )
+    for check, details in identity_errors:
+        target = ("%s#Profile Identity" % manifest_disp
+                  if check == "profile-id-missing"
+                  else "%s#profile_id" % manifest_disp)
+        add(check, target, "fail", details)
 
     # ---- explicit optional/conditional block declarations ----
     declaration_count = 0
@@ -495,7 +418,12 @@ def main():
                 "single declaration is authoritative" % value)
 
     # ---- slot coverage and binding resolution ----
-    bindings = parse_bindings(manifest_text)
+    bindings, duplicate_bindings = parse_bindings(manifest_text)
+    for name in duplicate_bindings:
+        add("slot-binding-duplicate", "%s#%s" %
+            (manifest_disp, SLOTS_SECTION), "fail",
+            "slot `%s` is bound more than once; one manifest slot must have "
+            "exactly one authoritative binding" % name)
     if slots and not bindings:
         add("slots-section-empty", "%s#%s" % (manifest_disp, SLOTS_SECTION), "fail",
             "the %s section binds no slots; the composed standard cannot be "
@@ -526,9 +454,15 @@ def main():
             add("slot-binding-unresolved", "%s#%s" % (manifest_disp, slot), "fail",
                 "slot `%s` binds to %r, which does not exist under the profile "
                 "directory or the vault root" % (slot, detail))
+        elif kind == "outside-profile":
+            add("slot-binding-outside-profile", "%s#%s" %
+                (manifest_disp, slot), "fail",
+                "slot `%s` resolves outside the selected profile directory: "
+                "%s; a profile must be a self-contained configuration package"
+                % (slot, detail))
         else:
             add("slot-binding-unrecognized", "%s#%s" % (manifest_disp, slot), "fail",
-                "slot `%s` binding %r is neither a resolvable path nor an "
+                "slot `%s` binding %r is neither a profile-contained path nor an "
                 "inline declaration" % (slot, binding))
 
     for name in sorted(bindings):

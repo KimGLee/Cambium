@@ -15,8 +15,13 @@ Rule owners:
 Method:
 - The required-field list comes from the top-level keys of
   Tools/schemas/terminal_proof.template.yaml (the template copies K12/15 field
-  by field and is this script's single source of truth; --template overrides);
+  by field as this script's machine-readable projection; K12/15 remains the
+  normative field-list owner; --template overrides the projection path);
 - a missing or empty proof field -> fail (Terminal Proof incomplete);
+- selected_profile_manifest must be one exact
+  profiles/<profile_id>/profile.md path; with --root its manifest identity is
+  validated, check_profile.py must accept the filled profile, every profile
+  path must stay within it, and every supplemental route must use its id;
 - selected_route_ids must be a non-empty list of unique Runtime Route IDs in
   the closed range R01-R12 and, because this is terminal evidence, must include
   R01 Core Bootstrap, R12 Targeted and Specialized Audit, and R08 Audit and
@@ -39,14 +44,18 @@ Method:
   must be exactly "passed" -> otherwise fail; rendering_evidence /
   time_contract_result containing an explicit fail/failed/failure statement
   -> fail;
-- when --root (vault root) is given, path-valued fields must exist under it;
+- when --root (vault root) is given, path-valued fields, including every path
+  in incremental_manual_scope, must exist under it;
   the canonical Card and Read Set indexes are parsed, every selected route must
   have exactly its registered Card path, and every recorded Read Set must be
   registered to a selected route -> otherwise fail;
 - without --root, only proof structure is checked; no route-registry agreement
   is claimed;
 - when --ledger (Coverage Ledger) is given, cross-check: open_gaps non-empty
-  while the proof claims required_authoring_gaps=0 -> fail.
+  while the proof claims required_authoring_gaps=0 -> fail;
+- --root requires an instantiated, approved K00/03 active state and
+  --progress-ledger; the active state, frozen contract, and Terminal Proof must
+  carry the same standards_version and selected_profile_manifest.
 
 This script verifies proof consistency, not the work itself: a proof can
 still lie consistently. The receipts, ledgers, and snapshots it references
@@ -55,20 +64,22 @@ are the actual evidence; K12/15 owns the human side of the terminal audit.
 Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
 
 Usage: python3 check_proof.py <proof.yaml> [--ledger coverage_ledger.yaml]
-       [--root VAULT_ROOT] [--template PATH] [--receipts PATH]
+       [--root VAULT_ROOT --progress-ledger progress_ledger.yaml]
+       [--template PATH] [--receipts PATH]
 """
 
 import argparse
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_proof"
-TOOL_VERSION = "1.4.0"
+TOOL_VERSION = "1.6.0"
 
 # K12/06: fields that must be 0 among the completion conditions (the three open
 # guidance counts are covered by the review of guidance_reconciliation_result
@@ -89,9 +100,12 @@ PASSED_FIELDS = ("guidance_reconciliation_result",
 NO_FAIL_TOKEN_FIELDS = ("rendering_evidence", "time_contract_result")
 
 # Fields whose values are vault-relative paths that must exist when --root is
-# given (K12/15 steps 1-2: Cards, Read Sets, loaded modules, register, results).
-PATH_FIELDS = ("selected_card_paths", "selected_read_sets", "loaded_module_paths",
-               "audit_receipt_register", "full_deterministic_results")
+# given (K12/15 steps 1-2 and 7: loaded sources, evidence, and incremental
+# manual-review scope).
+PATH_FIELDS = ("selected_profile_manifest", "selected_card_paths",
+               "selected_read_sets", "loaded_module_paths",
+               "audit_receipt_register", "full_deterministic_results",
+               "incremental_manual_scope")
 
 # Kernel Runtime Route IDs are a closed registry. Index documents do not occupy
 # R00; the twelve executable routes are R01-R12.
@@ -102,6 +116,9 @@ TERMINAL_REQUIRED_ROUTE_IDS = frozenset(("R01", "R08", "R12"))
 REGISTRY_ID = "kernel-runtime-routes"
 CARD_INDEX_PATH = "kernel/Cards/Card Index.md"
 READ_SET_INDEX_PATH = "kernel/Read Sets/Read Sets Index.md"
+EXECUTION_DEFAULTS_PATH = "Tools/schemas/execution_defaults.template.yaml"
+ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
+UNINSTANTIATED_RE = re.compile(r"\{\{.*?\}\}")
 
 
 def _resolve_under_root(root, raw_path):
@@ -128,6 +145,62 @@ def _repo_relative_path_error(raw_path):
     if candidate.is_absolute() or ".." in candidate.parts:
         return "path must be repository-relative; '..' segments are forbidden"
     return None
+
+
+def _selected_profile_manifest_error(raw_path):
+    """Require the one canonical profile-manifest path shape."""
+    path_error = _repo_relative_path_error(raw_path)
+    if path_error:
+        return path_error
+    parts = Path(raw_path).parts
+    if (len(parts) != 3 or parts[0] != "profiles" or
+            parts[2] != "profile.md"):
+        return ("path must be exactly profiles/<profile_id>/profile.md; "
+                "directories, globs, candidate lists, and nested manifests "
+                "do not select a profile")
+    return None
+
+
+def _uninstantiated_value(raw_value):
+    return (not isinstance(raw_value, str) or not raw_value.strip() or
+            UNINSTANTIATED_RE.search(raw_value) is not None)
+
+
+def _load_active_standards_state(root):
+    """Read the canonical four-field state table from K00/03."""
+    state = {}
+    path, resolve_error = _resolve_under_root(root, ACTIVE_STATE_PATH)
+    if resolve_error or not path.is_file():
+        return state, [
+            "%s is missing or unsafe: %s" %
+            (ACTIVE_STATE_PATH, resolve_error or "not a regular file")
+        ]
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        return state, ["cannot read %s: %s" % (ACTIVE_STATE_PATH, exc)]
+
+    state, parse_errors = kblib.active_standards_state(text)
+    errors = ["%s: %s" % (ACTIVE_STATE_PATH, error)
+              for error in parse_errors]
+    for label, key in kblib.ACTIVE_STANDARDS_STATE_LABELS.items():
+        if key in state and _uninstantiated_value(state[key]):
+            errors.append("%s %s is still uninstantiated: %r" %
+                          (ACTIVE_STATE_PATH, label, state[key]))
+    if ("standards_status" in state and
+            not _uninstantiated_value(state["standards_status"]) and
+            state["standards_status"] != "approved"):
+        errors.append("%s Status must be approved for a content task; found %r"
+                      % (ACTIVE_STATE_PATH, state["standards_status"]))
+    if ("selected_profile_manifest" in state and
+            not _uninstantiated_value(state["selected_profile_manifest"])):
+        path_error = _selected_profile_manifest_error(
+            state["selected_profile_manifest"]
+        )
+        if path_error:
+            errors.append("%s Selected profile manifest is invalid: %s" %
+                          (ACTIVE_STATE_PATH, path_error))
+    return state, errors
 
 
 def _load_index(root, relative_path, expected_type):
@@ -325,6 +398,9 @@ def main():
     ap = argparse.ArgumentParser(description="Terminal Proof completeness and zero-condition check")
     ap.add_argument("proof", help="path to the terminal proof YAML file")
     ap.add_argument("--ledger", help="Coverage Ledger YAML, for the open_gaps cross-check")
+    ap.add_argument("--progress-ledger", help="Progress Ledger YAML; required "
+                    "with --root to prove that the Terminal Proof uses the "
+                    "same frozen Standards version and selected profile")
     ap.add_argument("--template",
                     default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                          "schemas", "terminal_proof.template.yaml"),
@@ -369,6 +445,33 @@ def main():
                 TOOL, TOOL_VERSION, "proof-field-missing",
                 "%s#%s" % (proof_name, field), "fail",
                 "Terminal Proof is missing required field %s (K12/15 field list)" % field, seq))
+
+    frozen_string_bad = 0
+    if "standards_version" not in missing:
+        value = proof.get("standards_version")
+        if _uninstantiated_value(value):
+            frozen_string_bad += 1
+            seq += 1
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, "proof-standards-version-invalid",
+                "%s#standards_version" % proof_name, "fail",
+                "standards_version must be an instantiated non-empty string "
+                "copied exactly from the frozen Task Contract", seq))
+
+    profile_manifest_bad = 0
+    selected_profile_manifest = proof.get("selected_profile_manifest")
+    if "selected_profile_manifest" not in missing:
+        manifest_error = _selected_profile_manifest_error(
+            selected_profile_manifest
+        )
+        if manifest_error:
+            profile_manifest_bad += 1
+            seq += 1
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, "proof-profile-manifest-invalid",
+                "%s#selected_profile_manifest" % proof_name, "fail",
+                "selected_profile_manifest %r is invalid: %s" %
+                (selected_profile_manifest, manifest_error), seq))
 
     route_id_bad = 0
     valid_route_ids = set()
@@ -542,7 +645,8 @@ def main():
     # syntax boundary even without --root. Lists additionally carry each path
     # once. Existence, regular-file, and symlink-escape checks need --root.
     for field in PATH_FIELDS:
-        if field in ("selected_card_paths", "selected_read_sets"):
+        if field in ("selected_profile_manifest", "selected_card_paths",
+                     "selected_read_sets"):
             continue
         if field in missing or field not in proof:
             continue
@@ -597,7 +701,17 @@ def main():
                 "%s#%s" % (proof_name, field), "fail",
                 "zero-condition field %s = %r; the completion conditions require it to be 0 (K12/06)" % (field, value), seq))
 
-    extra = [k for k in proof if k not in required_fields]
+    if "selected_profile_id" in proof:
+        profile_manifest_bad += 1
+        seq += 1
+        receipts.append(kblib.make_receipt(
+            TOOL, TOOL_VERSION, "proof-duplicate-profile-identity",
+            "%s#selected_profile_id" % proof_name, "fail",
+            "selected_profile_id is forbidden: profile identity is derived "
+            "only from selected_profile_manifest", seq))
+
+    extra = [k for k in proof
+             if k not in required_fields and k != "selected_profile_id"]
     for field in extra:
         seq += 1
         receipts.append(kblib.make_receipt(
@@ -640,6 +754,11 @@ def main():
     path_bad = 0
     registry_bad = 0
     registry_checked = False
+    active_state_bad = 0
+    active_state_checked = False
+    profile_identity_checked = False
+    profile_manifest_checked = False
+    selected_profile_id = None
     if args.root:
         root = Path(args.root).resolve()
         if not root.is_dir():
@@ -649,6 +768,33 @@ def main():
                 TOOL, TOOL_VERSION, "proof-root-invalid", str(root), "fail",
                 "--root must resolve to an existing directory", seq))
         else:
+            active_state, active_state_errors = _load_active_standards_state(root)
+            for index, details in enumerate(active_state_errors):
+                active_state_bad += 1
+                seq += 1
+                receipts.append(kblib.make_receipt(
+                    TOOL, TOOL_VERSION, "proof-active-state-invalid",
+                    "%s#active_state[%d]" % (proof_name, index), "fail",
+                    details, seq))
+            if not active_state_errors:
+                active_state_checked = True
+                for field in ("standards_version",
+                              "selected_profile_manifest"):
+                    if field in missing:
+                        continue
+                    if active_state.get(field) != proof.get(field):
+                        active_state_checked = False
+                        active_state_bad += 1
+                        seq += 1
+                        receipts.append(kblib.make_receipt(
+                            TOOL, TOOL_VERSION,
+                            "proof-active-state-mismatch",
+                            "%s#%s" % (proof_name, field), "fail",
+                            "Terminal Proof %s=%r does not match active "
+                            "Standards state %r in %s" %
+                            (field, proof.get(field), active_state.get(field),
+                             ACTIVE_STATE_PATH), seq))
+
             for field in PATH_FIELDS:
                 if field in missing or field not in proof:
                     continue
@@ -678,9 +824,145 @@ def main():
                             TOOL, TOOL_VERSION, "proof-path-missing",
                             target, "fail",
                             "path %r recorded in %s is not a regular file "
-                            "under root %s (K12/15 steps 1-2 require these "
+                            "under root %s (K12/15 requires recorded path "
                             "references to be resolvable files)" %
                             (raw_path, field, root), seq))
+
+            if ("selected_profile_manifest" not in missing and
+                    not _selected_profile_manifest_error(
+                        selected_profile_manifest)):
+                manifest_path, manifest_resolve_error = _resolve_under_root(
+                    root, selected_profile_manifest
+                )
+                if (not manifest_resolve_error and manifest_path.is_file()):
+                    defaults_path, defaults_resolve_error = _resolve_under_root(
+                        root, EXECUTION_DEFAULTS_PATH
+                    )
+                    try:
+                        if defaults_resolve_error or not defaults_path.is_file():
+                            raise OSError(
+                                defaults_resolve_error or
+                                "required defaults registry is missing"
+                            )
+                        defaults = kblib.parse_yaml_subset(
+                            defaults_path.read_text(encoding="utf-8")
+                        )
+                        manifest_text = manifest_path.read_text(encoding="utf-8")
+                    except (OSError, UnicodeError,
+                            kblib.YamlSubsetError) as exc:
+                        profile_manifest_bad += 1
+                        seq += 1
+                        receipts.append(kblib.make_receipt(
+                            TOOL, TOOL_VERSION,
+                            "proof-profile-identity-unreadable",
+                            "%s#selected_profile_manifest" % proof_name,
+                            "fail",
+                            "cannot validate the selected profile identity: %s"
+                            % exc, seq))
+                    else:
+                        reserved_ids = (
+                            defaults.get("reserved_profile_ids") or []
+                            if isinstance(defaults, dict) else []
+                        )
+                        selected_profile_id, identity_errors = (
+                            kblib.profile_identity(
+                                manifest_text,
+                                Path(selected_profile_manifest).parts[1],
+                                reserved_ids
+                            )
+                        )
+                        for check, details in identity_errors:
+                            profile_manifest_bad += 1
+                            seq += 1
+                            receipts.append(kblib.make_receipt(
+                                TOOL, TOOL_VERSION,
+                                "proof-%s" % check,
+                                "%s#selected_profile_manifest" % proof_name,
+                                "fail", details, seq))
+                        if not identity_errors:
+                            profile_identity_checked = True
+                            profile_check_path = root / "Tools/check_profile.py"
+                            try:
+                                declared_profile_dir = (
+                                    root / Path(selected_profile_manifest).parent
+                                )
+                                completed = subprocess.run(
+                                    [sys.executable, str(profile_check_path),
+                                     str(declared_profile_dir), "--root",
+                                     str(root)],
+                                    capture_output=True, text=True, timeout=60,
+                                    check=False,
+                                )
+                            except (OSError, subprocess.TimeoutExpired) as exc:
+                                completed = None
+                                profile_manifest_bad += 1
+                                seq += 1
+                                receipts.append(kblib.make_receipt(
+                                    TOOL, TOOL_VERSION,
+                                    "proof-profile-check-unavailable",
+                                    "%s#selected_profile_manifest" % proof_name,
+                                    "fail", "cannot run check_profile.py: %s" %
+                                    exc, seq))
+                            if completed is not None:
+                                if completed.returncode == 0:
+                                    profile_manifest_checked = True
+                                else:
+                                    profile_manifest_bad += 1
+                                    output_lines = [
+                                        line.strip()
+                                        for line in (completed.stdout + "\n" +
+                                                     completed.stderr).splitlines()
+                                        if line.strip()
+                                    ]
+                                    detail = (output_lines[-1]
+                                              if output_lines else
+                                              "no diagnostic output")
+                                    seq += 1
+                                    receipts.append(kblib.make_receipt(
+                                        TOOL, TOOL_VERSION,
+                                        "proof-profile-not-loadable",
+                                        "%s#selected_profile_manifest" %
+                                        proof_name, "fail",
+                                        "check_profile.py exited %d: %s" %
+                                        (completed.returncode, detail), seq))
+
+            if profile_identity_checked:
+                expected_prefix = "P:%s:" % selected_profile_id
+                for index, route_id in enumerate(profile_route_ids or []):
+                    if (isinstance(route_id, str) and
+                            PROFILE_ROUTE_ID_RE.fullmatch(route_id) and
+                            not route_id.startswith(expected_prefix)):
+                        profile_route_id_bad += 1
+                        seq += 1
+                        receipts.append(kblib.make_receipt(
+                            TOOL, TOOL_VERSION,
+                            "proof-profile-route-id-mismatch",
+                            "%s#selected_profile_route_ids[%d]" %
+                            (proof_name, index), "fail",
+                            "profile route ID %r belongs to another profile; "
+                            "the selected manifest declares profile_id %r" %
+                            (route_id, selected_profile_id), seq))
+
+                selected_profile_dir = Path(selected_profile_manifest).parts[1]
+                for field in ("selected_read_sets", "loaded_module_paths"):
+                    value = proof.get(field)
+                    values = value if isinstance(value, list) else [value]
+                    for index, raw_path in enumerate(values):
+                        if not isinstance(raw_path, str):
+                            continue
+                        parts = Path(raw_path).parts
+                        if (len(parts) >= 3 and parts[0] == "profiles" and
+                                parts[1] != selected_profile_dir):
+                            profile_manifest_bad += 1
+                            seq += 1
+                            receipts.append(kblib.make_receipt(
+                                TOOL, TOOL_VERSION,
+                                "proof-profile-path-mismatch",
+                                "%s#%s[%d]" % (proof_name, field, index),
+                                "fail", "profile-owned path %r belongs to %r, "
+                                "but selected_profile_manifest chooses %r" %
+                                (raw_path, parts[1], selected_profile_dir),
+                                seq))
 
             card_map, read_map, registry_errors = _load_route_registry(root)
             registry_bad = len(registry_errors)
@@ -780,7 +1062,81 @@ def main():
                             "Read Set nor a profile supplemental Read Set"
                             % read_set_path, seq))
 
-    cross_fail = 0
+    progress_cross_fail = 0
+    if args.root and not args.progress_ledger:
+        progress_cross_fail += 1
+        seq += 1
+        receipts.append(kblib.make_receipt(
+            TOOL, TOOL_VERSION, "progress-ledger-required", proof_name,
+            "fail", "--progress-ledger is required with --root; without the "
+            "frozen Task Contract snapshot this run cannot support complete",
+            seq))
+
+    if args.progress_ledger:
+        try:
+            progress_ledger = kblib.parse_yaml_subset(
+                open(args.progress_ledger, encoding="utf-8").read()
+            )
+        except (OSError, kblib.YamlSubsetError) as exc:
+            progress_cross_fail += 1
+            seq += 1
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, "progress-ledger-unreadable",
+                args.progress_ledger, "fail",
+                "cannot read/parse Progress Ledger: %s" % exc, seq))
+            progress_ledger = None
+
+        if isinstance(progress_ledger, dict):
+            progress_contract = progress_ledger.get("contract")
+            if not isinstance(progress_contract, dict):
+                progress_cross_fail += 1
+                seq += 1
+                receipts.append(kblib.make_receipt(
+                    TOOL, TOOL_VERSION, "progress-contract-missing",
+                    "%s#contract" % os.path.basename(args.progress_ledger),
+                    "fail", "Progress Ledger must contain a contract mapping "
+                    "with the frozen Standards version and profile selection",
+                    seq))
+            else:
+                for field in ("standards_version",
+                              "selected_profile_manifest"):
+                    ledger_value = progress_contract.get(field)
+                    target = "%s#contract.%s" % (
+                        os.path.basename(args.progress_ledger), field
+                    )
+                    invalid = _uninstantiated_value(ledger_value)
+                    if (field == "selected_profile_manifest" and
+                            not invalid and
+                            _selected_profile_manifest_error(ledger_value)):
+                        invalid = True
+                    if invalid:
+                        progress_cross_fail += 1
+                        seq += 1
+                        receipts.append(kblib.make_receipt(
+                            TOOL, TOOL_VERSION,
+                            "progress-contract-field-invalid", target,
+                            "fail", "%s must be a non-empty canonical string "
+                            "in the frozen Progress Ledger contract" % field,
+                            seq))
+                    elif ledger_value != proof.get(field):
+                        progress_cross_fail += 1
+                        seq += 1
+                        receipts.append(kblib.make_receipt(
+                            TOOL, TOOL_VERSION,
+                            "proof-progress-contract-mismatch", target,
+                            "fail", "Progress Ledger %s=%r does not exactly "
+                            "match Terminal Proof %s=%r" %
+                            (field, ledger_value, field, proof.get(field)),
+                            seq))
+        elif progress_ledger is not None:
+            progress_cross_fail += 1
+            seq += 1
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, "progress-ledger-not-mapping",
+                args.progress_ledger, "fail",
+                "Progress Ledger root must be a mapping", seq))
+
+    coverage_cross_fail = 0
     if args.ledger:
         try:
             ledger = kblib.parse_yaml_subset(open(args.ledger, encoding="utf-8").read())
@@ -794,7 +1150,7 @@ def main():
             open_gaps = ledger.get("open_gaps") or []
             gaps_claim = proof.get("required_authoring_gaps")
             if open_gaps and gaps_claim == 0:
-                cross_fail += 1
+                coverage_cross_fail += 1
                 seq += 1
                 receipts.append(kblib.make_receipt(
                     TOOL, TOOL_VERSION, "proof-ledger-mismatch",
@@ -819,9 +1175,13 @@ def main():
         seq += 1
         receipts.append(kblib.make_receipt(
             TOOL, TOOL_VERSION, "proof-check-summary", proof_name, "pass",
-            "fields complete (%d/%d), all zero-condition fields are 0%s%s%s" % (
+            "fields complete (%d/%d), all zero-condition fields are 0%s%s%s%s%s" % (
                 len(required_fields), len(required_fields),
                 route_summary, profile_summary,
+                ", consistent with the active K00/03 Standards state"
+                if active_state_checked else "",
+                ", consistent with the frozen Progress Ledger contract"
+                if args.progress_ledger else "",
                 ", consistent with Coverage Ledger open_gaps"
                 if args.ledger else ""), seq))
 
@@ -830,13 +1190,24 @@ def main():
           "profile_route_id_violations=%d card_path_violations=%d "
           "read_set_violations=%d registry_violations=%d "
           "path_structure_violations=%d "
+          "frozen_field_violations=%d profile_manifest_violations=%d "
+          "active_state_violations=%d "
           "zero_condition_violations=%d status_violations=%d "
           "path_failures=%d extra_fields(candidate)=%d "
-          "ledger_cross_failures=%d registry_cross_check=%s"
+          "progress_cross_failures=%d coverage_cross_failures=%d "
+          "registry_cross_check=%s active_state_check=%s "
+          "profile_manifest_check=%s"
           % (len(missing), route_id_bad, profile_route_id_bad, card_path_bad,
-             read_set_bad, registry_bad, path_structure_bad, len(zero_bad),
-             len(status_bad), path_bad, len(extra), cross_fail,
+             read_set_bad, registry_bad, path_structure_bad,
+             frozen_string_bad, profile_manifest_bad, active_state_bad,
+             len(zero_bad),
+             len(status_bad), path_bad, len(extra), progress_cross_fail,
+             coverage_cross_fail,
              "passed" if registry_checked else
+             ("failed" if args.root else "not_run"),
+             "passed" if active_state_checked else
+             ("failed" if args.root else "not_run"),
+             "passed" if profile_manifest_checked else
              ("failed" if args.root else "not_run")))
     for r in receipts:
         if r["result"] != "pass":
@@ -845,7 +1216,8 @@ def main():
     if not any(r["result"] == "fail" for r in receipts):
         if args.root:
             print("  Conclusion: Terminal Proof consistency check passed with "
-                  "repository registry validation.")
+                  "active Standards state, filled profile, frozen Progress "
+                  "Ledger, and repository registry validation.")
         else:
             print("  Conclusion: structural lint passed; without --root this "
                   "is not Terminal Completion Gate evidence.")

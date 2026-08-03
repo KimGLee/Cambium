@@ -21,11 +21,11 @@ changed_objects:                   # objects changed relative to the latest acce
   - "Topics/Example Topic.md"
 
 reused_receipts:                   # historical receipts that passed the Reuse Gate (K12/07: reuse must record reused_receipt_id and a reuse reason)
-  - receipt_id: "audit-check_links-20260701T000000Z-0001"  # the reused receipt_id
+  - receipt_id: "audit-check_links-20260701T000000Z-11111111111111111111111111111111-0001"  # the reused receipt_id
     reason: "artifact/dependency/contract fingerprints all unchanged; acceptance predicate unchanged"  # reuse reason (must not just say "already checked before")
 
 invalidated_receipts:              # receipts judged invalid in this round (K12/07 Direct / Dependency Invalidation)
-  - receipt_id: "audit-check_vocab-20260701T000000Z-0002"  # the invalidated receipt_id
+  - receipt_id: "audit-check_vocab-20260701T000000Z-22222222222222222222222222222222-0002"  # the invalidated receipt_id
     reason: "file content within scope changed (direct invalidation)"  # invalidation reason, pointing to the K12/07 invalidation clause
 
 required_checks:                   # check partitions that must run this round (the six partitions of K12/07 step 4)

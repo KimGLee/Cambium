@@ -2,7 +2,7 @@
 type: runtime-card
 route_id: R10
 read_set: kernel/Read Sets/R10 Maintenance Run Read Set.md
-compiled_from: "{{standards_version}}"
+compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R10 Maintenance Run Read Set.md
   - kernel/K00 Standards Control/08 Maintenance Run Envelope.md
@@ -12,7 +12,7 @@ source_files:
   - kernel/K02 Build Execution/05 Batch Execution.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-source_hash: 4b7143708582
+source_hash: '25802b96fc0e'
 ---
 # R10 Maintenance Run Card
 

@@ -9,7 +9,7 @@ is done by this script, not by an LLM hand-editing the large Ledger file.
 Behavior:
 - For each page, locate the Ledger entry block starting at `- path: "<path>"`
   and update its scalar fields according to the delta
-  (authoring_status / interview_status / tier / lifecycle / next_batch etc. --
+  (authoring_status / tier / lifecycle / next_batch etc. --
   whatever scalar keys appear in the delta's page entry get updated; keys not
   present in the block are appended at the block's indentation).
 - gate_receipts are merged by appending (deduplicated); both legal Ledger
@@ -39,13 +39,13 @@ import argparse, os, re, sys, shutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
-TOOL, TOOL_VERSION = "apply_delta", "1.1.0"
+TOOL, TOOL_VERSION = "apply_delta", "1.2.0"
 
 # Scalar keys expected in a Coverage Ledger page entry (schema:
 # Tools/schemas/coverage_ledger.template.yaml; profile extensions such as an
 # Expression Status Axis are legal, so unknown keys are warned about and
 # still applied, never silently absorbed).
-KNOWN_SCALAR_KEYS = {"authoring_status", "interview_status", "tier",
+KNOWN_SCALAR_KEYS = {"authoring_status", "tier",
                      "lifecycle", "batch", "next_batch", "volatility",
                      "review_by", "priority", "coverage_disposition"}
 
@@ -55,10 +55,11 @@ def load_delta(path):
 
 def find_page_block(lines, path):
     """Return the (start, end) line range: from `- path: "<path>"` to the next `- ` at the same indentation or the end of the list."""
-    pat = re.compile(r'^(\s*)-\s+path:\s*["\']?' + re.escape(path) + r'["\']?\s*$')
+    pat = re.compile(r'^(\s*)-\s+path:\s*(.*?)\s*$')
     for i, line in enumerate(lines):
-        m = pat.match(line)
-        if not m:
+        clean = kblib.strip_yaml_comment(line.rstrip("\r\n"))
+        m = pat.match(clean)
+        if not m or str(kblib.parse_scalar(m.group(2))) != path:
             continue
         indent = len(m.group(1))
         j = i + 1
@@ -79,7 +80,10 @@ def block_get(lines, start, end, key):
     for i in range(start + 1, end):
         m = pat.match(lines[i])
         if m:
-            return i, m.group(1), m.group(2).strip().strip('"\'')
+            raw = kblib.strip_yaml_comment(m.group(2)).strip()
+            if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in '"\'':
+                raw = raw[1:-1]
+            return i, m.group(1), raw
     return None, None, None
 
 
@@ -104,7 +108,8 @@ def get_receipt_ids(lines, start, end):
         m = item_pat.match(lines[j])
         if not m or len(m.group(1)) <= len(ind):
             break
-        ids.append(m.group(2).strip().strip('"\''))
+        raw = kblib.strip_yaml_comment(m.group(2)).strip()
+        ids.append(raw.strip('"\''))
         last = j
     return li, ind, ids, last
 

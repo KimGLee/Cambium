@@ -23,7 +23,8 @@ contract:                          # key contract fields frozen in Phase 0 (K02/
   queue_revision: "q1"             # Required Queue revision (K02/01)
   batch_revision: "b1"             # active batch revision (K02/01)
   concurrency_cap: 3               # concurrent batch cap (K02/05 Concurrent Batches; default 3)
-  standards_version: "2.3"         # Standards version frozen once the task starts (K02/01: Standards must not be casually edited during content builds)
+  standards_version: ""            # REQUIRED: exact active adopter Standards version from K00/03; fill before task activation
+  selected_profile_manifest: ""    # REQUIRED: exact active repo-relative manifest path, e.g. profiles/my-profile/profile.md; frozen with standards_version
   selected_route_ids:              # kernel Runtime Routes actually loaded; R01 is mandatory for every task
     - "R01"
     - "R07"
@@ -46,12 +47,12 @@ batches:                           # each batch is a small module that can be ac
       - "Topics/Example Topic.md"
     started_at: "2026-07-01T00:00:00Z"  # batch start time
     closed_at: "2026-07-03T00:00:00Z"   # batch close time; empty while state=open
-    batch_gate_receipt: "audit-batch-review-20260703T000000Z-0001"  # receipt_id of the passed Batch Review (K12/07: must not just say "already checked before")
+    batch_gate_receipt: "audit-batch-review-20260703T000000Z-55555555555555555555555555555555-0001"  # receipt_id of the passed Batch Review (K12/07: must not just say "already checked before")
 
 amendments:                        # Amendment Log (K02/02 Mid-task Guidance and Amendment; recording required by K02/05)
   - id: "A1"                       # amendment identifier
     date: "2026-07-05"             # acceptance date
-    summary: "expanded retrieval-rag scope to the rerank pages"  # summary of which contract elements changed
+    summary: "added required dependency pages after scope review"  # summary of which contract elements changed
     writeback_done: true           # whether it was written back to the affected contract/scope/queue fields (boolean)
 
 guidance_queue:                    # mid-task guidance queue (K02/02; all three pending guidance counts must be 0 at Terminal Audit, K12/06)

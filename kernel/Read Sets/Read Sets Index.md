@@ -51,7 +51,8 @@ Open Standards Overview
  -> Load Each Route's Runtime Card
  -> Resolve Triggered Modules And Profile Bindings
  -> Read Back The Route's Read Set Or Leaf Owner When Required
- -> Record Route IDs, Loaded Artifact Paths, And Standards Version
+ -> Record standards_version, selected_profile_manifest, selected_route_ids,
+    selected_card_paths, selected_read_sets, And loaded_module_paths
  -> Execute
 ```
 

@@ -2,7 +2,7 @@
 type: runtime-card
 route_id: R11
 read_set: kernel/Read Sets/R11 Large-scale Work Admission Read Set.md
-compiled_from: "{{standards_version}}"
+compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R11 Large-scale Work Admission Read Set.md
   - kernel/K00 Standards Control/02 Task Routing and Pre-execution.md
@@ -11,7 +11,7 @@ source_files:
   - kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
-source_hash: c135c89b2b35
+source_hash: 'd2a8ca16b8ac'
 ---
 # R11 Large-scale Work Admission Card
 
@@ -23,7 +23,7 @@ Load before large-scale creation, moves, or deletion, together with [[kernel/Car
 
 ## Admission Checklist
 
-- [ ] Record contract, scope, queue, initial batch, Standards version, selected routes and Cards, actual source read-backs, target scope, exclusions, and latest user requirements.
+- [ ] Record contract, scope, queue, initial batch, Standards version, exact `selected_profile_manifest`, selected routes and Cards, actual source read-backs, target scope, exclusions, and latest user requirements.
 - [ ] Make `minimum_run_until`, `checkpoint_at`, `hard_stop_at`, and the Completion Gate explicit; leave unspecified fields explicitly empty.
 - [ ] Create or refresh the Coverage Ledger and reconcile it with the file system and exclusions.
 - [ ] Inventory ownership, incoming links, user modifications, and the Required Queue.

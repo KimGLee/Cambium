@@ -31,8 +31,9 @@ retired / merged is only result=candidate (suggest repointing to its
 superseded_by successor page, K03/03), not a fail.
 
 Scope semantics: --scope may be a directory or a single .md file (note-close
-self-check, K00/05). A --scope that matches no files is result=fail -- a
-zero-file scan is an invocation error, never a pass.
+self-check, K00/05). After explicit exclusions are applied, an empty effective
+scan set is result=fail for both scoped and whole-root runs -- a zero-file
+scan is an invocation error, never a pass.
 
 Exclusion semantics: --exclude keeps files out of content scanning and out of
 basename disambiguation, but exact vault-relative-path links into an excluded
@@ -56,7 +57,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_links"
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.3.0"
 
 LINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
 
@@ -150,20 +151,21 @@ def main():
     if args.scope:
         scan_files = [(f, r) for f, r in kblib.iter_md_files(args.vault_root, args.scope)
                       if keep(r)]
-        if not scan_files:
-            # A gate that scans nothing must fail, not silently pass (K00/05
-            # note close; a nonexistent or empty --scope is an invocation
-            # error, never evidence of quality).
-            receipts = [kblib.make_receipt(
-                TOOL, TOOL_VERSION, "scope-empty",
-                args.scope + " @ " + os.path.abspath(args.vault_root), "fail",
-                "--scope matched no .md files (path missing, empty, or fully "
-                "excluded); a zero-file scan cannot serve as a gate result", 1)]
-            print("check_links: scanned 0 file(s) — FAIL: --scope %r matched no files" % args.scope)
-            kblib.write_receipts(args.receipts, receipts)
-            return kblib.exit_code(receipts)
     else:
         scan_files = all_files
+    if not scan_files:
+        # A gate that scans nothing must fail, not silently pass. This applies
+        # equally to a scoped run, an empty whole root, and a root whose files
+        # were all removed by explicit exclusions.
+        target = (args.scope or ".") + " @ " + os.path.abspath(args.vault_root)
+        receipts = [kblib.make_receipt(
+            TOOL, TOOL_VERSION, "scan-empty", target, "fail",
+            "effective scan set contains no .md files (path missing, empty, "
+            "or fully excluded); a zero-file scan cannot serve as a gate "
+            "result", 1)]
+        print("check_links: scanned 0 file(s) — FAIL: effective scan set is empty")
+        kblib.write_receipts(args.receipts, receipts)
+        return kblib.exit_code(receipts)
     by_path, by_base = build_index(all_files)
     # Excluded files (e.g. frozen legacy snapshots) are indexed as resolution
     # targets for exact vault-relative paths only: --exclude means "do not

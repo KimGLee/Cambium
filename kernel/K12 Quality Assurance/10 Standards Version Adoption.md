@@ -6,7 +6,7 @@
 
 ## Purpose
 
-This module owns what a task already in flight does when the Standards version it froze at start no longer matches the current one. It is read at batch activation by the version self-check, and by a governance revision when that revision closes. It decides the affected scope of a revision; which receipt dimensions a changed rule invalidates is decided by [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]].
+This module owns what a task already in flight does when the Standards version it froze at start no longer matches the current one. A selected profile change is a Standards change, always bumps the version, and enters this same procedure. It is read at batch activation by the version self-check, and by a governance revision when that revision closes. It decides the affected scope of a revision; which receipt dimensions a changed rule invalidates is decided by [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]].
 
 ## Active-task Adoption
 
@@ -14,12 +14,14 @@ The **affected scope** of a Standards revision = the receipts and batches corres
 
 When the Standards version changes and the changed-predicate list is non-empty, active, paused, and completion-candidate tasks MUST:
 
-1. Record the old and new Standards versions;
-2. Re-parse [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] and the affected gate modules;
+1. Record the old and new Standards versions and selected profile manifest paths;
+2. Re-resolve the selected manifest's slot bindings, vocabulary, supplemental routes, and gates, then re-parse [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] and the affected gate modules;
 3. Determine whether the new rules change the existing Batch/Terminal acceptance predicates;
 4. Mark old evidence that cannot satisfy the new receipt schema as `legacy-evidence` rather than forging fingerprints;
 5. Allow full receipts to be generated starting from the current batch;
 6. Have the Terminal Audit apply risk-targeted re-review to legacy evidence, without requiring indiscriminate rework of closed batches.
+
+Until this adoption is recorded, an affected task cannot activate another batch or enter completion.
 
 ## Related
 

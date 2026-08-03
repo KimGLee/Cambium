@@ -55,7 +55,7 @@ acceptance_predicate: "missing=0 AND ambiguous=0"
 artifact_fingerprint: "sha256:..."
 dependency_fingerprint: "sha256:..."
 contract_fingerprint: "sha256:..."
-standards_version: "2.0"
+standards_version: "<active-instance-standards-version>"
 verifier: {name: "kb-audit", version: "..."}
 method: deterministic-full
 result: passed

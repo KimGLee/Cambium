@@ -20,15 +20,10 @@ updated_at: "2026-07-21T00:00:00Z"  # time the watermark was last advanced (batc
 last_run_id: "kb-maint-2026-xx-B1"  # identifier of the batch that advanced this watermark; corresponds to the Progress Ledger's task/batch identity (K02/08; advancement at batch merge is governed by K02/05)
 
 domains:                            # one section per domain (domain vocabulary owner: K08/01)
-  agent:                            # one section per domain onboarded to incremental scanning
+  example-domain:                   # replace with one domain value registered by the selected profile
     scanned_until: "2026-07-01"     # environment scan coverage cutoff date for this domain; the next scan defaults to material newer than this date only
     sources_covered:                # sources already covered for this domain
-      - source: "Anthropic engineering blog"  # source identifier (publication channel/feed/organization, matching the Source Note's identity)
+      - source: "Example primary-source feed"  # source identifier (publication channel/feed/organization, matching the Source Note's identity)
         covered_until: "2026-07-01"           # date this source is covered up to (may lag behind the domain's scanned_until)
-      - source: "OpenAI research index"
+      - source: "Example maintainer release index"
         covered_until: "2026-06-15"
-  llm:
-    scanned_until: "2026-06-20"
-    sources_covered:
-      - source: "arXiv cs.CL weekly sweep"
-        covered_until: "2026-06-20"

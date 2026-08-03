@@ -2,7 +2,7 @@
 type: runtime-card
 route_id: R01
 read_set: kernel/Read Sets/R01 Core Bootstrap Read Set.md
-compiled_from: "{{standards_version}}"
+compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R01 Core Bootstrap Read Set.md
   - kernel/K00 Standards Overview.md
@@ -13,7 +13,7 @@ source_files:
   - kernel/K00 Standards Control/05 Core Principles.md
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
   - kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
-source_hash: de230adf15a5
+source_hash: '73f67a5ed963'
 ---
 # R01 Core Bootstrap Card
 
@@ -36,11 +36,11 @@ The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Co
 ## Before Start
 
 - [ ] State the objective, target scope, exclusions, and latest user instructions.
-- [ ] Confirm the active Standards state is instantiated. If release placeholders remain, stop: a content task cannot freeze or record a `standards_version`.
+- [ ] Confirm the active Standards state is instantiated and its one selected profile manifest resolves to a filled, checked profile. If a placeholder remains, stop before freezing a content task.
 - [ ] Confirm modification authority, especially for the Standards and other protected paths.
 - [ ] Inspect existing ownership, incoming links, and user modifications in the target scope; do not overwrite changes of unknown origin.
 - [ ] Resolve the task Card, triggered modules, future Gate modules, selected profile slots, and any profile extension route.
-- [ ] Record Standards version, selected Rxx route IDs and Runtime Card paths, and every Read Set or leaf path actually read back.
+- [ ] Record Standards version, exact `selected_profile_manifest`, selected Rxx route IDs and Runtime Card paths, and every Read Set or leaf path actually read back.
 - [ ] Identify foundational dependencies; do not bury shared foundations inside a profile application mainline.
 - [ ] If the task is large-scale creation, moves, or deletion, load and pass [[kernel/Cards/R11 Large-scale Work Admission Card|R11 Large-scale Work Admission]] before execution.
 

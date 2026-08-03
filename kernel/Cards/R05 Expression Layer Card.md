@@ -2,7 +2,7 @@
 type: runtime-card
 route_id: R05
 read_set: kernel/Read Sets/R05 Expression Layer Read Set.md
-compiled_from: "{{standards_version}}"
+compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R05 Expression Layer Read Set.md
   - kernel/K11 Expression Layer Standard.md
@@ -24,7 +24,7 @@ source_files:
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
-source_hash: dfabf738948f
+source_hash: 'e490ac69bb4e'
 ---
 # R05 Expression Layer Card
 

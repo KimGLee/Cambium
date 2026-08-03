@@ -26,13 +26,16 @@ First read:
 - [[kernel/K00 Standards Control/10 Batch Execution Checklist|Batch Execution Checklist]]
 - [[kernel/K02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]] (the revision process involves the Amendment Log)
 - [[kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
-- The selected profile's `Language Contract`.
+- Profile input for the applicable branch:
+  - initial adoption: the filled candidate manifest that passed `check_profile.py` and its bound `Language Contract`; no prior selected profile is required;
+  - later profile change: the active selected profile's `Language Contract`, plus the checked candidate manifest and its bound `Language Contract`.
 - [[kernel/K12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 
 ## Required Controls
 
 - The user MUST explicitly authorize the governance change.
-- Before the change, freeze the Standards version, the affected modules, incoming links, and the active task impact.
+- Before a later revision, freeze the active Standards version and selected profile manifest. For initial adoption, freeze the four uninstantiated K00/03 state values and the upstream tag, commit, or archive checksum instead; an old profile does not exist and is not a prerequisite. In both branches, freeze affected modules, incoming links, and active task impact.
+- Initial profile selection and every later selection change occur only here. Initial adoption validates the candidate, instantiates all four K00/03 state values, and creates the first Change Summary entry. A later change validates the candidate, records old and new selections, and bumps `standards_version`. Both branches recompose vocabulary and stamp Cards; only existing affected tasks enter Active-task Adoption.
 - A structural migration MUST establish a complete mapping from old content blocks to new owners.
 - A split MUST NOT be used as reduction, summarization, or silent deletion of rules.
 - Read Sets and the overall Index MUST stay synchronized with module paths.

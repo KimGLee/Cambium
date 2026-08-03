@@ -29,8 +29,9 @@ Method:
   subset grammar and thus unparseable -> one candidate.
 
 Scope semantics: --scope may be a directory or a single .md file (note-close
-self-check, K00/05). A --scope that matches no files is result=fail -- a
-zero-file scan is an invocation error, never a pass.
+self-check, K00/05). After explicit exclusions are applied, an empty effective
+scan set is result=fail for both scoped and whole-root runs -- a zero-file
+scan is an invocation error, never a pass.
 
 Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
 
@@ -47,7 +48,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_vocab"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 
 
 def load_vocab(path):
@@ -94,9 +95,8 @@ def main():
               "base plus one selected profile's extensions.")
         print("  No profile is selected by default, so a tree that has not "
               "composed one carries no vocabulary to check against.")
-        print("  Compose one, then re-run:")
-        print("    python3 Tools/compose_vocab.py --extensions "
-              "profiles/<your-profile-id>/vocabulary-extensions.yaml")
+        print("  Complete profile adoption in K00/03, compose it, then re-run:")
+        print("    python3 Tools/compose_vocab.py")
         print("  Or point this check at an existing artifact with --vocab PATH.")
         return 1
     vocab = load_vocab(vocab_path)
@@ -108,22 +108,29 @@ def main():
     dist = {"priority": {}, "tier": {}}  # K00/07 Priority Quota distribution stats
 
     excludes = [e.strip("/").replace(os.sep, "/") for e in args.exclude]
-    scan_files = kblib.iter_md_files(args.vault_root, args.scope)
-    if args.scope and not scan_files:
-        # A gate that scans nothing must fail, not silently pass (K00/05 note
-        # close; a nonexistent or empty --scope is an invocation error).
+    scan_files = [
+        (full, rel) for full, rel in
+        kblib.iter_md_files(args.vault_root, args.scope)
+        if not any(
+            rel.replace(os.sep, "/") == excluded or
+            rel.replace(os.sep, "/").startswith(excluded + "/")
+            for excluded in excludes
+        )
+    ]
+    if not scan_files:
+        # The post-exclusion effective set owns the gate result. A scoped run,
+        # an empty whole root, and a fully excluded root all fail closed.
+        target = (args.scope or ".") + " @ " + os.path.abspath(args.vault_root)
         receipts = [kblib.make_receipt(
-            TOOL, TOOL_VERSION, "scope-empty",
-            args.scope + " @ " + os.path.abspath(args.vault_root), "fail",
-            "--scope matched no .md files (path missing, empty, or fully "
-            "excluded); a zero-file scan cannot serve as a gate result", 1)]
-        print("check_vocab: scanned 0 file(s) — FAIL: --scope %r matched no files" % args.scope)
+            TOOL, TOOL_VERSION, "scan-empty", target, "fail",
+            "effective scan set contains no .md files (path missing, empty, "
+            "or fully excluded); a zero-file scan cannot serve as a gate "
+            "result", 1)]
+        print("check_vocab: scanned 0 file(s) — FAIL: effective scan set is empty")
         kblib.write_receipts(args.receipts, receipts)
         return kblib.exit_code(receipts)
     for full, rel in scan_files:
         rel_disp = rel.replace(os.sep, "/")
-        if any(rel_disp == e or rel_disp.startswith(e + "/") for e in excludes):
-            continue
         counts["files"] += 1
         text = open(full, encoding="utf-8", errors="replace").read()
         fm_text = kblib.extract_frontmatter(text)

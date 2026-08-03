@@ -48,6 +48,7 @@ A large-scale task MUST pass [[kernel/Cards/R11 Large-scale Work Admission Card|
 The Task Contract or Progress Ledger MUST record:
 
 - `standards_version`.
+- `selected_profile_manifest`, copied exactly from the active Standards state.
 - The actual loaded set: selected Rxx route IDs and Runtime Card paths, any namespaced profile route explicitly combined with them, and every Read Set or leaf path actually read back.
 - The Runtime Cards used and the Read Sets actually read back.
 - Gate modules registered but not yet triggered.

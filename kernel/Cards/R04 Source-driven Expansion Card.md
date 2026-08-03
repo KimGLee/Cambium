@@ -2,7 +2,7 @@
 type: runtime-card
 route_id: R04
 read_set: kernel/Read Sets/R04 Source-driven Expansion Read Set.md
-compiled_from: "{{standards_version}}"
+compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R04 Source-driven Expansion Read Set.md
   - kernel/K06 Knowledge Intake and Evolution/01 Intake Scope and Knowledge Model.md
@@ -19,7 +19,7 @@ source_files:
   - kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata.md
   - kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes.md
   - kernel/K12 Quality Assurance/04 Guidance and Source Review.md
-source_hash: 568d7fad2be3
+source_hash: '568d7fad2be3'
 ---
 # R04 Source-driven Expansion Card
 

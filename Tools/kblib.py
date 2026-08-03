@@ -28,8 +28,9 @@ import json
 import os
 import re
 import time
+import uuid
 
-LIB_VERSION = "1.0.0"
+LIB_VERSION = "1.2.0"
 
 # ---------------------------------------------------------------------------
 # Restricted YAML subset parser
@@ -40,7 +41,7 @@ class YamlSubsetError(ValueError):
     """Raised when the input goes beyond the restricted YAML subset grammar."""
 
 
-def _strip_comment(line):
+def strip_yaml_comment(line):
     """Strip inline comments (# must be at start of line or preceded by whitespace; # inside quotes is kept)."""
     out = []
     quote = None
@@ -94,7 +95,7 @@ def _prepare_lines(text):
     for raw in text.splitlines():
         if "\t" in raw[: len(raw) - len(raw.lstrip())]:
             raise YamlSubsetError("tabs are not allowed in indentation: %r" % raw)
-        line = _strip_comment(raw)
+        line = strip_yaml_comment(raw)
         stripped = line.strip()
         if not stripped or stripped in ("---", "..."):
             continue
@@ -256,18 +257,270 @@ def headings_of(text):
     return result
 
 
+PROFILE_ID_LINE_RE = re.compile(
+    r"^\s*-\s+`profile_id`\s*:\s*`([^`]*)`\s*$"
+)
+PROFILE_ID_VALUE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+ACTIVE_STANDARDS_STATE_LABELS = {
+    "Standards version": "standards_version",
+    "Status": "standards_status",
+    "Effective date": "standards_effective_date",
+    "Selected profile manifest": "selected_profile_manifest",
+}
+
+PROFILE_SLOT_BINDING_RE = re.compile(
+    r"^\s*-\s+`([^`]+)`\s*:\s*(.+?)\s*$"
+)
+PROFILE_WIKI_BINDING_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
+PROFILE_MARKDOWN_BINDING_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+PROFILE_CODE_BINDING_RE = re.compile(r"`([^`]+)`")
+PROFILE_INLINE_BINDING_RE = re.compile(r"\binline\b", re.IGNORECASE)
+
+
+def active_standards_state(text):
+    """Return ``(state, errors)`` from K00/03's Standards Control table.
+
+    This is deliberately a syntax-only parser.  Consumers decide whether a
+    placeholder, status, or profile path is acceptable for their own mode;
+    every consumer nevertheless reads the same four canonical fields.
+    """
+    state = {}
+    errors = []
+    inside = False
+    section_count = 0
+    fence = None
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        fence_match = re.match(r"^(```+|~~~+)", stripped)
+        if fence is None and fence_match:
+            fence = fence_match.group(1)[0] * 3
+            continue
+        if fence is not None:
+            if fence_match and stripped.startswith(fence):
+                fence = None
+            continue
+        heading = re.match(r"^(#{1,2})\s+(.*?)\s*#*\s*$", line)
+        if heading:
+            is_control = (
+                len(heading.group(1)) == 2
+                and heading.group(2).strip() == "Standards Control"
+            )
+            if is_control:
+                section_count += 1
+            inside = is_control and section_count == 1
+            continue
+        if not inside:
+            continue
+        row = re.match(r"^\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|\s*$", line)
+        if not row:
+            continue
+        label = row.group(1).strip()
+        if label not in ACTIVE_STANDARDS_STATE_LABELS:
+            continue
+        key = ACTIVE_STANDARDS_STATE_LABELS[label]
+        value = row.group(2).strip()
+        if len(value) >= 2 and value[0] == value[-1] == "`":
+            value = value[1:-1].strip()
+        if key in state:
+            errors.append("Standards Control repeats %s" % label)
+        else:
+            state[key] = value
+
+    if section_count != 1:
+        errors.append(
+            "document must contain exactly one non-fenced Standards Control "
+            "H2; found %d" % section_count
+        )
+    for label, key in ACTIVE_STANDARDS_STATE_LABELS.items():
+        if key not in state:
+            errors.append("Standards Control has no %s row" % label)
+    return state, errors
+
+
+def profile_slot_bindings(manifest_text, include_duplicates=False):
+    """Return the Implemented Slots mapping and optionally duplicate names."""
+    bindings = {}
+    duplicates = []
+    inside = False
+    fence = None
+    for line in manifest_text.splitlines():
+        stripped = line.lstrip()
+        fence_match = re.match(r"^(```+|~~~+)", stripped)
+        if fence is None and fence_match:
+            fence = fence_match.group(1)[0] * 3
+            continue
+        if fence is not None:
+            if fence_match and stripped.startswith(fence):
+                fence = None
+            continue
+        heading = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
+        if heading and len(heading.group(1)) <= 2:
+            inside = (
+                len(heading.group(1)) == 2
+                and heading.group(2).strip() == "Implemented Slots"
+            )
+            continue
+        if inside:
+            match = PROFILE_SLOT_BINDING_RE.match(line)
+            if match:
+                name = match.group(1).strip()
+                if name in bindings and name not in duplicates:
+                    duplicates.append(name)
+                bindings[name] = match.group(2).strip()
+    if include_duplicates:
+        return bindings, duplicates
+    return bindings
+
+
+def _profile_binding_looks_like_path(value):
+    return "/" in value or value.lower().endswith((".md", ".yaml", ".yml"))
+
+
+def _profile_binding_candidate_paths(target, root, profile_dir):
+    target = target.strip().lstrip("./")
+    if not target:
+        return []
+    variants = [target]
+    if not target.lower().endswith((".md", ".yaml", ".yml")):
+        variants.append(target + ".md")
+    paths = []
+    for variant in variants:
+        paths.append(os.path.join(profile_dir, variant))
+        paths.append(os.path.join(root, variant))
+    return paths
+
+
+def resolve_profile_binding(binding, root, profile_dir):
+    """Resolve one manifest slot binding with check_profile semantics.
+
+    Returns ``(kind, detail)`` where kind is path, outside-profile,
+    unresolved, inline, or unrecognized. Path resolution accepts either a
+    profile-relative or repository-relative spelling, but the resolved file
+    must stay inside the selected profile directory so one manifest cannot
+    silently compose another profile's slots.
+    """
+    target = None
+    match = PROFILE_WIKI_BINDING_RE.search(binding)
+    if match:
+        target = re.split(r"\\\||\|", match.group(1), maxsplit=1)[0].strip()
+    if target is None:
+        match = PROFILE_MARKDOWN_BINDING_RE.search(binding)
+        if match:
+            target = match.group(1).strip()
+    if target is None and PROFILE_INLINE_BINDING_RE.search(binding):
+        return "inline", None
+    if target is None:
+        for code in PROFILE_CODE_BINDING_RE.findall(binding):
+            if _profile_binding_looks_like_path(code):
+                target = code.strip()
+                break
+    if target is None:
+        return "unrecognized", None
+    for path in _profile_binding_candidate_paths(target, root, profile_dir):
+        if os.path.isfile(path):
+            profile_real = os.path.realpath(profile_dir)
+            path_real = os.path.realpath(path)
+            try:
+                inside = os.path.commonpath((profile_real, path_real)) == profile_real
+            except ValueError:
+                inside = False
+            if inside:
+                return "path", path
+            return "outside-profile", path
+    return "unresolved", target
+
+
+def profile_identity(manifest_text, directory_name, reserved_ids=()):
+    """Return ``(profile_id, errors)`` for one profile manifest.
+
+    ``errors`` contains ``(check_id, details)`` pairs.  The manifest is the
+    sole profile-id source: exactly one ``profile_id`` bullet must occur under
+    the ``Profile Identity`` H2, it must be a lowercase path slug, must not be
+    reserved, and must equal the profile directory name.  Fenced examples are
+    ignored so documentation cannot accidentally become identity data.
+    """
+    profile_ids = []
+    inside_identity = False
+    fence = None
+    for line in manifest_text.splitlines():
+        stripped = line.lstrip()
+        fence_match = re.match(r"^(```+|~~~+)", stripped)
+        if fence is None and fence_match:
+            fence = fence_match.group(1)[0] * 3
+            continue
+        if fence is not None:
+            if fence_match and stripped.startswith(fence):
+                fence = None
+            continue
+
+        heading = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
+        if heading and len(heading.group(1)) <= 2:
+            inside_identity = (
+                len(heading.group(1)) == 2
+                and heading.group(2).strip() == "Profile Identity"
+            )
+            continue
+        if inside_identity:
+            match = PROFILE_ID_LINE_RE.match(line)
+            if match:
+                profile_ids.append(match.group(1).strip())
+
+    profile_id = profile_ids[0] if profile_ids else None
+    errors = []
+    if not profile_ids:
+        errors.append((
+            "profile-id-missing",
+            "no `profile_id`: `<value>` bullet found under Profile Identity; "
+            "the manifest must name the profile it composes with the kernel",
+        ))
+    elif len(profile_ids) > 1:
+        errors.append((
+            "profile-id-duplicate",
+            "Profile Identity contains %d profile_id entries; exactly one "
+            "manifest identity is allowed" % len(profile_ids),
+        ))
+    elif profile_id in {str(value) for value in reserved_ids}:
+        errors.append((
+            "profile-id-placeholder",
+            "profile_id is still the reserved placeholder %r; replace it with "
+            "this profile's own id before the profile may be loaded" % profile_id,
+        ))
+    elif not PROFILE_ID_VALUE_RE.fullmatch(profile_id):
+        errors.append((
+            "profile-id-invalid",
+            "profile_id %r is not a lowercase path slug matching "
+            "[a-z0-9][a-z0-9_-]*" % profile_id,
+        ))
+    elif profile_id != directory_name:
+        errors.append((
+            "profile-id-directory-mismatch",
+            "profile_id %r must match the profile directory name %r; the "
+            "manifest is the single identity source" % (profile_id, directory_name),
+        ))
+    return profile_id, errors
+
+
 # ---------------------------------------------------------------------------
 # Receipt helpers (field definitions in Tools/schemas/receipt.template.jsonl)
 # ---------------------------------------------------------------------------
 
 
+# One random token per process makes receipt IDs collision-resistant across
+# concurrent or same-second tool invocations; seq still preserves order within
+# one invocation.
+_RECEIPT_RUN_TOKEN = uuid.uuid4().hex
+
+
 def make_receipt(tool, tool_version, check, target, result, details, seq):
     """Build one receipt dict; result must be pass / fail / candidate."""
     assert result in ("pass", "fail", "candidate"), result
-    checked_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    now = time.time()
+    checked_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now))
     return {
-        "receipt_id": "audit-%s-%s-%04d" % (tool, stamp, seq),
+        "receipt_id": "audit-%s-%s-%s-%04d" % (
+            tool, stamp, _RECEIPT_RUN_TOKEN, seq),
         "check": check,
         "target": target,
         "result": result,
@@ -283,6 +536,7 @@ def write_receipts(path, receipts):
     """Append receipts to path as JSONL (one JSON object per line)."""
     if not path:
         return
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "a", encoding="utf-8") as fh:
         for receipt in receipts:
             fh.write(json.dumps(receipt, ensure_ascii=False) + "\n")

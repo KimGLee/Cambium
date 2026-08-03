@@ -8,7 +8,7 @@
 An ultra-long task requires separate records of:
 
 - Task state.
-- Objective, contract version, scope version, queue revision, active batch revision, exclusions, and standards version.
+- Objective, contract version, scope version, queue revision, active batch revision, exclusions, standards version, and selected profile manifest.
 - Selected Rxx route IDs and Runtime Card paths, the loaded set (any combined namespaced profile route and every Read Set or leaf path actually read back), version resolution results, and pending gate items.
 - `minimum_run_until`, `checkpoint_at`, `hard_stop_at`.
 - Current phase.

@@ -2,7 +2,7 @@
 # Terminal Proof template (machine-readable state layer; the template is the schema doc)
 # Field-list owner: "kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md"
 # Completion-condition owner: "kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md"
-#   -- The field list copies, field by field, the 31 fields of K12/15
+#   -- The field list copies, field by field, the 32 fields of K12/15
 #      "Terminal Proof must contain at least" (canonical definition in K12/15,
 #      including full_deterministic_results; the K12/07 Terminal Reconciliation
 #      Rules also point back to K12/15).
@@ -10,8 +10,8 @@
 #   three pending guidance counts are 0, required_authoring_gaps = 0,
 #   unverified_batches = 0, unresolved_invalidations = 0, and every applicable
 #   gate has passed.
-# This template is the authoritative source of Tools/check_proof.py's required
-# field list (top-level keys = required fields).
+# Tools/check_proof.py reads the top-level keys here as its machine-readable
+# field projection; K12/15 remains the normative field-list owner.
 #
 # Only the restricted YAML subset is allowed (parseable by Tools/kblib.py parse_yaml_subset):
 #   - `key: value` scalars (string/number/boolean/null, quoted strings, inline `[]`);
@@ -24,7 +24,8 @@ scope_version: "s1"                # scope version when the candidate snapshot w
 contract_version: "c1"             # contract version (same as above)
 queue_revision: "q1"               # Required Queue revision (same as above)
 batch_revision: "b1"               # batch revision (same as above)
-standards_version: "2.3"           # frozen Standards version (K02/01: frozen once the task starts)
+standards_version: ""              # REQUIRED: exact frozen Task Contract value; an empty value is invalid
+selected_profile_manifest: ""      # REQUIRED: exact frozen Task Contract path, e.g. profiles/my-profile/profile.md; must match the Progress Ledger
 selected_route_ids:                # kernel Runtime Route IDs selected for this task (K12/15 step 1); non-empty, unique, and limited to R01-R12
   - "R01"
   - "R07"
@@ -51,11 +52,11 @@ rendering_evidence: "level-0/1 deterministic passed; visual_trigger: not_applica
 audit_snapshot_id: "snap-20260721-01"     # frozen candidate snapshot identifier (K12/15 steps 1, 10)
 audit_receipt_register: "Tools/receipts/register.jsonl"  # Audit Receipt Register reference (K12/15 step 2; receipt storage location per K12/07)
 reused_receipts:                   # receipt_ids reused through the Reuse Gate (K12/15; Reuse Gate conditions per K12/07)
-  - "audit-check_links-20260701T000000Z-0001"
+  - "audit-check_links-20260701T000000Z-11111111111111111111111111111111-0001"
 superseded_receipts:               # receipt_ids superseded by newer results (K12/07: a new result supersedes the previous receipt)
-  - "audit-check_links-20260601T000000Z-0001"
+  - "audit-check_links-20260601T000000Z-66666666666666666666666666666666-0001"
 invalidated_receipts:              # receipt_ids judged invalid (K12/07 Direct / Dependency Invalidation)
-  - "audit-check_vocab-20260601T000000Z-0002"
+  - "audit-check_vocab-20260601T000000Z-77777777777777777777777777777777-0002"
 unresolved_invalidations: 0        # count of undisposed invalidations; completion condition: must be 0 (K12/06; K12/07 Terminal Reconciliation Rules)
 full_deterministic_results: "Tools/receipts/terminal-full-20260721.jsonl"  # reference to the complete result set of deterministic checks run by the terminal audit over the final frozen snapshot (K12/15)
 incremental_manual_scope:          # incremental manual review coverage: changed/invalidated/overdue/P0-P1 high-risk/specially exposed pages (K12/15 step 7)

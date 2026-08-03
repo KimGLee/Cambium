@@ -66,7 +66,7 @@ User's latest explicit instruction
 Each ultra-long task only needs to confirm the items that change the defaults:
 
 - Objective, contract version, scope version, queue revision, in-scope domains, and exclusions.
-- Standards version, the selected Rxx route IDs and Runtime Card paths, the actual loaded set (including any namespaced profile route and every Read Set or leaf path actually read back), and gate items not yet triggered; frozen by default for content tasks.
+- Standards version and `selected_profile_manifest`, copied exactly from the active Standards state; the selected Rxx route IDs and Runtime Card paths; the actual loaded set (including any namespaced profile route and every Read Set or leaf path actually read back); and gate items not yet triggered. These are frozen by default for content tasks, and a task-level amendment cannot select another profile.
 - The target authoring status for P0 / P1 and the selected `Expression Status Axis` values.
 - `minimum_run_until`, `checkpoint_at`, `hard_stop_at`.
 - The boundaries of Required, optional, deferred, and excluded.

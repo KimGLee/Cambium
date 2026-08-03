@@ -2,7 +2,7 @@
 type: runtime-card
 route_id: R09
 read_set: kernel/Read Sets/R09 Standards Governance Read Set.md
-compiled_from: "{{standards_version}}"
+compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R09 Standards Governance Read Set.md
   - kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md
@@ -17,7 +17,7 @@ source_files:
   - kernel/K12 Quality Assurance/08 Judgment Item Dimension Map.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: baa5a1375f45
+source_hash: 'a6b612129625'
 ---
 # R09 Standards Governance Card
 
@@ -31,12 +31,12 @@ Modify kernel rules, Read Sets, Cards, versions, directories, ownership, tooling
 
 - [ ] Obtain explicit user authorization for the governance change.
 - [ ] Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]], then read [[kernel/Read Sets/R09 Standards Governance Read Set|R09 Read Set]] and its Start list in full.
-- [ ] Freeze the current Standards state, affected modules, incoming links, changed predicates, active-task impact, and rollback/conservation boundary.
+- [ ] Choose the branch: for initial adoption, freeze the four K00/03 placeholders and upstream provenance, then load the checked candidate profile; for a later revision, freeze the active Standards version and selected profile manifest. In both branches freeze affected modules, incoming links, changed predicates, active-task impact, and rollback/conservation boundary.
 - [ ] Identify the single canonical owner for every rule being changed and the existing control that is superseded.
 
 ## During
 
-- Record the affected Standards and reason, update version/state when instantiated, update routing, and record the change summary and changed-predicate list.
+- Record the affected Standards and reason, update version/state, routing, Change Summary, and changed predicates. Initial adoption validates the candidate and instantiates all four K00/03 state values without requiring an old profile. Later selection changes record old and new manifests. Both recompose vocabulary and stamp Cards; only existing affected tasks enter Active-task Adoption.
 - For a structural migration, map every original H2 block to exactly one new owner. Never use splitting as reduction, summary, or silent deletion.
 - Keep the Overview, Standard Module MOCs, Read Sets, rule registry, control registry, links, and module paths synchronized.
 - For a new or re-scoped check, register its receipt dimension, audit layer, object, evidence role, and acceptance owner before closure.

@@ -9,7 +9,7 @@ The Terminal Audit is the last gate of a long task; the states it runs between, 
 
 After the task moves from `active` to `completion-candidate`, run the Terminal Audit:
 
-1. Freeze new content; record the contract, scope, queue, Standards version, `guidance_cutoff_id`, and the candidate completion state.
+1. Freeze new content; record the contract, scope, queue, Standards version, selected profile manifest, `guidance_cutoff_id`, and the candidate completion state.
    - Also record the selected Rxx route IDs and their corresponding canonical Runtime Card paths, any combined `P:<profile_id>:<route_name>` supplemental routes, and every Read Set or leaf path actually read back. Terminal evidence MUST include R01 for the common control boundary, R12 for the bounded targeted/specialized review scope, and R08 for this audit/completion route.
 2. Load the Audit Receipt Register; compute changed, directly invalidated, dependency-invalidated, overdue, and legacy-evidence.
 3. Run [[kernel/K12 Quality Assurance/04 Guidance and Source Review#Guidance Reconciliation Review|Guidance Reconciliation Review]] and confirm that all guidance within the cutoff has a final disposition.
@@ -32,6 +32,7 @@ contract_version
 queue_revision
 batch_revision
 standards_version
+selected_profile_manifest
 selected_route_ids
 selected_card_paths
 selected_profile_route_ids
@@ -62,7 +63,7 @@ time_contract_result
 
 `selected_card_paths` is a one-to-one materialization of `selected_route_ids`: every selected Rxx route has exactly its canonical Card path and no other Card path appears. `selected_read_sets` is different: it records only actual source readbacks and may therefore be a subset of the selected routes. With repository-root validation, a kernel Read Set must be registered to one of the selected Rxx routes. A profile Read Set may be recorded only when `selected_profile_route_ids` is non-empty; because the profile route registry is prose rather than a machine-readable canonical map, its exact route-to-path binding remains a manual review item and MUST NOT be reported as deterministically verified.
 
-The Terminal Completion Gate MUST run `python3 Tools/check_proof.py <proof> --root <repository-root>` and receive exit 0. Running `check_proof.py` without `--root` is structural lint only: it deliberately does not resolve files or verify the canonical route/Card/Read Set registry, and therefore cannot support a transition to `complete`.
+The Terminal Completion Gate MUST run `python3 Tools/check_proof.py <proof> --root <repository-root> --progress-ledger <progress-ledger>` and receive exit 0. This proves that K00/03 active state, the frozen Progress Ledger contract, and the proof use the same Standards version and selected profile manifest; the selected profile must also pass `check_profile.py`. Running `check_proof.py` without `--root` is structural lint only: it deliberately does not resolve files or verify the canonical route/Card/Read Set registry, and therefore cannot support a transition to `complete`.
 
 Only when the three open guidance counters are 0, `required_authoring_gaps = 0`, `unverified_batches = 0`, `unresolved_invalidations = 0`, and all applicable gates pass, may the task state be changed to `complete`.
 

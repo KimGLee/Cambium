@@ -6,9 +6,10 @@ This file is the sole overall entry point for the active Standards. It is respon
 
 | Field | Value |
 |---|---|
-| Standards version | `{{standards_version}}` (provided by the active governance state) |
-| Status | `{{standards_status}}` (provided by the active governance state) |
-| Effective date | `{{effective_date}}` (provided by the active governance state) |
+| Standards version | See [[kernel/K00 Standards Control/03 Standards Governance#Standards Control\|active Standards state]] |
+| Status | See [[kernel/K00 Standards Control/03 Standards Governance#Standards Control\|active Standards state]] |
+| Effective date | See [[kernel/K00 Standards Control/03 Standards Governance#Standards Control\|active Standards state]] |
+| Selected profile manifest | See [[kernel/K00 Standards Control/03 Standards Governance#Standards Control\|active Standards state]] |
 | Standard module MOCs | `derived-from-active-kernel-module-registry` |
 | Canonical leaf modules | `derived-from-active-kernel-inventory` |
 | Routing model | Kernel Runtime Cards (Card-first) + Read Sets escalation read-back + Triggered / Gate Modules |
@@ -22,7 +23,7 @@ The complete state rules are maintained by [[kernel/K00 Standards Control/03 Sta
 Open Standards Overview
  -> Open The Kernel Card Index And Load Task Cards
  -> Escalate To Read Sets And Leaf Modules When Required
- -> Record Standards Version And Loaded Set
+ -> Record Standards Version, Selected Profile Manifest, And Loaded Set
  -> Inspect Existing Knowledge And Links
  -> Freeze Task Contract
  -> Execute One Verifiable Batch
@@ -86,6 +87,7 @@ Detailed task combinations and the Pre-execution Gate are located in [[kernel/K0
 - `Read Set`: maps task phases to leaf modules and is the first source read-back boundary.
 - `Triggered module`: loaded only when conditions such as guidance, source, diagram, or migration arise.
 - `Gate module`: loaded before a note, batch, module, or task closes.
+- `selected profile manifest`: the single profile chosen by the active Standards state; the manifest path is frozen in the Task Contract and is not inferred from directories, generated artifacts, or profile IDs.
 - `loaded set`: the selected Rxx route IDs and Runtime Card paths, any namespaced profile route explicitly combined with them, and every Read Set or leaf path actually read back, recorded in the Task Contract; a broad K-module identifier alone MUST NOT be written as proof of loading.
 
 Module splitting does not change rule precedence. Conflicts are still resolved per [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract#Standard Precedence|Standard Precedence]].

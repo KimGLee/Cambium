@@ -35,7 +35,7 @@ Before formal execution, confirm:
 - The expression-artifact split registered by the selected `Expression Layer Entry`.
 - Sources, diagrams, and quality gates.
 - The source-to-knowledge intake, evidence maturity, and canonical promotion approach.
-- Contract version, scope version, queue revision, initial batch revision, and Standards version.
+- Contract version, scope version, queue revision, initial batch revision, Standards version, and the exact `selected_profile_manifest` copied from the active Standards state.
 - The concurrent batch cap `concurrency_cap` (the kernel default is `3`; the selected profile manifest or task contract MAY explicitly override it); batch concurrency admission and merge rules are in [[kernel/K02 Build Execution/05 Batch Execution|K02/05]] Concurrent Batches.
 - Selected Rxx route IDs and Runtime Card paths, the actual loaded set (any combined namespaced profile route and every Read Set or leaf path actually read back), triggered items, and gate items not yet executed.
 - The authority allowed to modify scope, priority, batches, and Standards.
@@ -46,7 +46,7 @@ Before formal execution, confirm:
 
 Before the standards are confirmed, no large-scale migration is performed.
 
-Freeze `standards_version` once the task starts. The Standards MUST NOT be modified in passing during content build; only a governance change explicitly authorized by the user may modify them. After a Standards change, the version MUST be bumped, and [[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]] Active-task Adoption MUST be executed per the changed-predicate list of the revision record (an empty list is a no-op).
+Freeze `standards_version` and `selected_profile_manifest` once the task starts. The Standards MUST NOT be modified in passing during content build; only a governance change explicitly authorized by the user may modify them. After a Standards change, the version MUST be bumped, and [[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]] Active-task Adoption MUST be executed per the changed-predicate list of the revision record (an empty list is a no-op).
 
 ## Time And Stop Semantics
 

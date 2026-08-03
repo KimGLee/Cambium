@@ -9,7 +9,7 @@
 #      evidence_ref / gate_receipts.
 # Note: real receipts files are pure JSONL and contain no # comment lines;
 #      the # lines in this template exist for documentation only. Field meanings:
-#   receipt_id     : "audit-<tool>-<UTC timestamp>-<sequence>", immutable, never reused (K12/07: receipt_id: audit-<stable-id>)
+#   receipt_id     : "audit-<tool>-<UTC timestamp>-<per-invocation random token>-<sequence>", immutable, never reused (K12/07: receipt_id: audit-<stable-id>)
 #   check          : check item identifier, e.g. "link-missing" / "vocab-unknown-value" / "proof-zero-field"
 #   target         : checked object (vault-relative path[:line] or field name)
 #   result         : pass / fail / candidate (candidate = produces candidates only, requires human judgement; see K10/04 Automated Language Review Boundary)
@@ -18,5 +18,6 @@
 #   tool           : producing script name (counterpart of K12/07 verifier.name)
 #   tool_version   : script version (counterpart of K12/07 verifier.version; incompatible parser/verifier changes trigger Direct Invalidation)
 #   invalidated_by : invalidation source (successor receipt_id or invalidation event description); null while valid (K12/07 Invalidation)
+# Existing receipt IDs remain valid immutable references after generator-format changes; never rewrite historical IDs.
 # =============================================================================
-{"receipt_id": "audit-check_links-20260721T000000Z-0001", "check": "link-missing", "target": "Topics/Example Topic.md:42", "result": "fail", "details": "[[Example Dependency]] has no matching target (missing)", "checked_at": "2026-07-21T00:00:00Z", "tool": "check_links", "tool_version": "1.0.0", "invalidated_by": null}
+{"receipt_id": "audit-check_links-20260721T000000Z-4f9c2a7d6e8b4a10b3c5d7e9f1023456-0001", "check": "link-missing", "target": "Topics/Example Topic.md:42", "result": "fail", "details": "[[Example Dependency]] has no matching target (missing)", "checked_at": "2026-07-21T00:00:00Z", "tool": "check_links", "tool_version": "1.3.0", "invalidated_by": null}

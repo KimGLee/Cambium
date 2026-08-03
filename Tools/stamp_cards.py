@@ -7,7 +7,9 @@ files; they are never profile-selected and never canonical rule owners. The
 Read Set Index and Card Index share registry_id `kernel-runtime-routes`; their
 route registries, the Read Set files, and the Runtime Cards must agree exactly
 on the continuous route set R01-R12. A Read Set and its Card share route_id;
-indexes have no route identity of their own.
+indexes have no route identity of their own. Every Card's `compiled_from` must
+equal the active `standards_version` recorded in K00/03; uniform but obsolete
+version stamps are stale, not synchronized.
 
 Hash = the first 12 hexadecimal digits of SHA-256 over each source file's
 bytes, concatenated in source_files order.
@@ -41,6 +43,7 @@ READ_SET_INDEX_NAME = "Read Sets Index.md"
 REGISTRY_ID = "kernel-runtime-routes"
 ROUTE_ID_RE = re.compile(r"^R([0-9]{2})$")
 EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 13))
+ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
 
 
 def replace_frontmatter_scalar(text, field, value):
@@ -52,7 +55,21 @@ def replace_frontmatter_scalar(text, field, value):
     pattern = re.compile(r"(?m)^%s:\s*.*$" % re.escape(field))
     if not pattern.search(front):
         raise ValueError("missing frontmatter field %s" % field)
-    front = pattern.sub("%s: %s" % (field, value), front, count=1)
+    scalar = str(value)
+    if "\n" in scalar or "\r" in scalar:
+        raise ValueError("frontmatter scalar %s must stay on one line" % field)
+    if "'" not in scalar:
+        rendered_value = "'%s'" % scalar
+    elif '"' not in scalar:
+        rendered_value = '"%s"' % scalar
+    else:
+        raise ValueError(
+            "frontmatter scalar %s contains both quote styles and cannot be "
+            "represented by the restricted YAML subset" % field
+        )
+    front = pattern.sub(
+        lambda _match: "%s: %s" % (field, rendered_value), front, count=1
+    )
     return front + text[end:]
 
 
@@ -226,6 +243,48 @@ def main():
         return 1
 
     failures = []
+    active_path = as_repo_path(
+        root, ACTIVE_STATE_PATH, "active Standards state", failures
+    )
+    active_version = ""
+    if active_path is not None:
+        if not active_path.is_file():
+            failures.append(
+                "active Standards state is not a regular file: %s"
+                % ACTIVE_STATE_PATH
+            )
+        else:
+            try:
+                active_text = active_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeError) as exc:
+                failures.append("active Standards state is unreadable: %s" % exc)
+            else:
+                active_state, state_errors = kblib.active_standards_state(
+                    active_text
+                )
+                failures.extend(
+                    "%s: %s" % (ACTIVE_STATE_PATH, error)
+                    for error in state_errors
+                )
+                active_version = str(
+                    active_state.get("standards_version") or ""
+                ).strip()
+                if not active_version:
+                    failures.append(
+                        "%s has no usable Standards version"
+                        % ACTIVE_STATE_PATH
+                    )
+    if args.set_version and active_version and args.set_version != active_version:
+        failures.append(
+            "--set-version %r does not equal active standards_version %r in %s"
+            % (args.set_version, active_version, ACTIVE_STATE_PATH)
+        )
+    if failures:
+        for failure in failures:
+            print("  [FAIL] %s" % failure)
+        print("stamp_cards: FAIL — %d active-state error(s)" % len(failures))
+        return 1
+
     cards_arg = Path(args.cards_dir)
     if cards_arg.is_absolute() or ".." in cards_arg.parts:
         print("stamp_cards: FAIL — --cards-dir must stay inside the repository")
@@ -617,6 +676,22 @@ def main():
         print("stamp_cards: FAIL — %d structural error(s)" % len(failures))
         return 1
 
+    version_mismatches = [
+        record["rel"] for record in records
+        if record["compiled_from"] != active_version
+    ]
+    if version_mismatches and not args.check and not args.set_version:
+        print(
+            "stamp_cards: FAIL — %d Card version stamp(s) do not equal the "
+            "active standards_version %r" %
+            (len(version_mismatches), active_version)
+        )
+        print(
+            "  Re-run with --set-version %s to synchronize compiled_from."
+            % active_version
+        )
+        return 1
+
     stale = []
     rendered = []
     for record in records:
@@ -629,9 +704,7 @@ def main():
             )
             return 1
         hash_stale = record["source_hash"] != expected_hash
-        version_stale = bool(
-            args.set_version and record["compiled_from"] != args.set_version
-        )
+        version_stale = record["compiled_from"] != active_version
         if args.check:
             if hash_stale or version_stale:
                 stale.append(record["rel"])
@@ -641,14 +714,37 @@ def main():
                 if version_stale:
                     details.append(
                         "compiled_from %s -> %s"
-                        % (record["compiled_from"], args.set_version)
+                        % (record["compiled_from"], active_version)
                     )
                 print("  [CAND] %s: %s" % (record["rel"], "; ".join(details)))
             continue
 
-        text = replace_frontmatter_scalar(record["text"], "source_hash", expected_hash)
-        if args.set_version:
-            text = replace_frontmatter_scalar(text, "compiled_from", args.set_version)
+        try:
+            text = replace_frontmatter_scalar(
+                record["text"], "source_hash", expected_hash
+            )
+            if args.set_version:
+                text = replace_frontmatter_scalar(
+                    text, "compiled_from", args.set_version
+                )
+            parsed_front = kblib.parse_yaml_subset(
+                kblib.extract_frontmatter(text) or ""
+            )
+        except (ValueError, kblib.YamlSubsetError) as exc:
+            print(
+                "stamp_cards: FAIL — rendered frontmatter is invalid for %s: %s"
+                % (record["rel"], exc)
+            )
+            return 1
+        if (parsed_front.get("source_hash") != expected_hash or
+                parsed_front.get("compiled_from") != active_version):
+            print(
+                "stamp_cards: FAIL — rendered frontmatter does not round-trip "
+                "for %s (source_hash=%r compiled_from=%r)" %
+                (record["rel"], parsed_front.get("source_hash"),
+                 parsed_front.get("compiled_from"))
+            )
+            return 1
         rendered.append((record["path"], record["rel"], text, expected_hash))
 
     if args.check:
@@ -664,13 +760,34 @@ def main():
         )
         return 2 if stale else 0
 
-    changed = 0
+    changes = []
     for path, rel, text, expected_hash in rendered:
         current = path.read_text(encoding="utf-8")
         if current == text:
             continue
-        atomic_write(path, text)
-        changed += 1
+        changes.append((path, rel, text, expected_hash, current))
+
+    written = []
+    try:
+        for path, rel, text, expected_hash, original in changes:
+            atomic_write(path, text)
+            written.append((path, rel, original))
+    except (OSError, ValueError) as exc:
+        rollback_errors = []
+        for path, rel, original in reversed(written):
+            try:
+                atomic_write(path, original)
+            except (OSError, ValueError) as rollback_exc:
+                rollback_errors.append("%s: %s" % (rel, rollback_exc))
+        print("stamp_cards: FAIL — write transaction aborted: %s" % exc)
+        if rollback_errors:
+            print("  [FAIL] rollback was incomplete: %s" %
+                  "; ".join(rollback_errors))
+        else:
+            print("  No Card changes remain; earlier writes were rolled back.")
+        return 1
+
+    for _path, rel, _text, expected_hash, _original in changes:
         print("  [STAMP] %s -> %s" % (rel, expected_hash))
     print(
         "stamp_cards: routes=%d read_sets=%d runtime_cards=%d indexes=2 "
@@ -679,7 +796,7 @@ def main():
             len(expected_routes),
             len(read_set_records),
             len(runtime_records),
-            changed,
+            len(changes),
         )
     )
     return 0

@@ -6,8 +6,8 @@ Rule owner: kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
 
 Method:
 - Recursively scan <root> for .md files that contain a `## Module Index`
-  section (path components legacy, docs and _to_delete are excluded by
-  default; --exclude appends more components).
+  section. No semantic directory name is excluded by default; --exclude is
+  explicit and repeatable.
 - In that section, take the first [[target\\|alias]] link of each table row;
   the target is resolved directly as a root-relative path (".md" appended).
   The backticked section names in the row are the listed sections.
@@ -28,9 +28,7 @@ import argparse, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
-TOOL, TOOL_VERSION = "check_moc", "1.2.0"
-
-DEFAULT_EXCLUDES = ("legacy", "docs", "_to_delete")
+TOOL, TOOL_VERSION = "check_moc", "1.3.0"
 
 SECTION_RE = re.compile(r"^## Module Index\s*\n(.*?)(?=\n## |\Z)", re.S | re.M)
 LINK_RE = re.compile(r"\[\[([^\]\\|]+)")
@@ -75,12 +73,12 @@ def main():
         description="MOC Module Index consistency candidate detection")
     ap.add_argument("root", help="scan root directory")
     ap.add_argument("--exclude", action="append", default=[],
-                    help="additional path component to exclude (repeatable; "
-                         "legacy, docs and _to_delete are always excluded)")
+                    help="path component to exclude (repeatable); no semantic "
+                         "directory name is excluded by default")
     ap.add_argument("--receipts", help="JSONL path to append a machine-readable receipt to")
     args = ap.parse_args()
 
-    excludes = set(DEFAULT_EXCLUDES) | set(args.exclude)
+    excludes = set(args.exclude)
     root = args.root
     mocs = find_mocs(root, excludes)
 

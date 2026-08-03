@@ -31,10 +31,6 @@ Interface: [Language Contract slot](../README.md#language-contract-slot)
 | Reader-facing display order (ordered components) | TODO(profile) |
 | File-name annotation boundary (allowed annotations or `None`) | TODO(profile) |
 
-| Canonical term filename | Exact reader-facing display label | Aliases resolving to it |
-|---|---|---|
-| TODO(profile) | TODO(profile) | TODO(profile) |
-
 ## Content Length Unit
 
 - Unit (`words` or `characters`): TODO(profile)

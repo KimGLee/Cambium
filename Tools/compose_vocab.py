@@ -6,17 +6,13 @@ Deterministically composes the selected-profile vocabulary artifact
 
   --base        kernel vocabulary base
                 (default: "kernel/K08 Metadata and Status/vocabulary-base.yaml")
-  --extensions  selected profile's vocabulary extensions. No default: the
-                kernel does not privilege any profile, so there is no
-                profile this tool may silently compose against. When the
-                flag is omitted, the path is read from the `extensions:`
-                line in the existing --output header, which is how an
-                already-generated artifact declares its own provenance.
-                That makes the governance invocation
-                `compose_vocab.py --check` argument-free while keeping a
-                specific profile id out of this script. If --output does
-                not exist or carries no such header, the run fails and
-                lists the profiles it can find.
+  --extensions  selected profile's vocabulary extensions. The active
+                `selected_profile_manifest` in K00/03 determines the one
+                allowed `Vocabulary Extensions` binding. The flag may repeat
+                that path
+                explicitly; it cannot choose a different profile. The
+                generated header records provenance only and never selects
+                the active profile.
 
 Merge policy:
   - root keys are emitted in the fixed base-driven order;
@@ -32,8 +28,9 @@ Modes:
   default  recompute and write --output (Tools/vocab.yaml by default),
            with an English provenance header (input paths + sha256).
   --check  recompute and compare against the existing --output at the
-           value level (header comments are ignored). Exit 0 when
-           identical, exit 2 with the first differing key otherwise.
+           value and provenance level. Exit 0 only when the deterministic
+           artifact is byte-identical; exit 2 with the first differing key
+           or a provenance/rendering mismatch otherwise.
 
 Exit codes: 0 = ok / check passed; 1 = conflict or input error;
             2 = --check mismatch.
@@ -48,6 +45,7 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(TOOLS_DIR)
@@ -55,10 +53,12 @@ sys.path.insert(0, TOOLS_DIR)
 
 import kblib  # noqa: E402
 
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.5.0"
 
 DEFAULT_BASE = "kernel/K08 Metadata and Status/vocabulary-base.yaml"
 DEFAULT_OUTPUT = "Tools/vocab.yaml"
+ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
+UNINSTANTIATED_RE = re.compile(r"\{\{.*?\}\}")
 
 # There is deliberately no DEFAULT_EXTENSIONS. Naming one profile here would
 # make that profile the tool's implicit answer to "which vocabulary is the
@@ -73,10 +73,6 @@ PROFILES_DIR = "profiles"
 # `_template` is an unfilled skeleton whose value lists are empty by design,
 # so composing against it would yield a base-only artifact that looks valid.
 NON_PROFILE_DIRS = {"_template"}
-HEADER_EXTENSIONS_RE = re.compile(r"^#\s*extensions:\s*(.+?)\s*\(sha256:")
-MANIFEST_PROFILE_ID_RE = re.compile(
-    r"^\s*-\s+`profile_id`\s*:\s*`([^`]*)`\s*$"
-)
 PROFILE_ID_VALUE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 # Fixed root key order of the composed artifact (base-driven; profile-derived
@@ -94,8 +90,16 @@ ROOT_KEY_ORDER = [
     "task_state",
 ]
 
-# Sections owned by the base input: the profile must not redefine them.
-BASE_OWNED_SECTIONS = ["review_intervals_days", "task_state"]
+# The current Vocabulary Extensions input is deliberately closed. Profile
+# identity and slot selection live in profile.md; base identity and composition
+# policy live in the kernel base. Older extension files repeated those values.
+PROFILE_ROOT_KEYS = {
+    "schema_version",
+    "frontmatter_extensions",
+    "fields",
+    "volatility_defaults",
+}
+FRONTMATTER_EXTENSION_KEYS = {"fields"}
 
 
 def resolve_path(path):
@@ -109,7 +113,7 @@ def resolve_path(path):
 
 
 def discover_profiles():
-    """Repo-relative extension files, one per direct child profile."""
+    """Resolved Vocabulary Extensions bindings of direct child profiles."""
     root = resolve_path(PROFILES_DIR)
     found = []
     if not os.path.isdir(root):
@@ -120,75 +124,181 @@ def discover_profiles():
         child = os.path.join(root, name)
         if not os.path.isdir(child):
             continue
-        extensions = os.path.join(child, EXTENSIONS_BASENAME)
-        if os.path.isfile(extensions):
-            found.append("%s/%s/%s" %
-                         (PROFILES_DIR, name, EXTENSIONS_BASENAME))
+        manifest = os.path.join(child, "profile.md")
+        if not os.path.isfile(manifest):
+            continue
+        try:
+            with open(manifest, "r", encoding="utf-8") as fh:
+                bindings = kblib.profile_slot_bindings(fh.read())
+        except (OSError, UnicodeError):
+            continue
+        binding = bindings.get("Vocabulary Extensions")
+        if binding is None:
+            continue
+        kind, detail = kblib.resolve_profile_binding(
+            binding, REPO_ROOT, child
+        )
+        if kind != "path":
+            continue
+        relative = os.path.relpath(os.path.abspath(detail), REPO_ROOT)
+        if relative != os.pardir and Path(relative).parts[0] != os.pardir:
+            found.append(Path(relative).as_posix())
     return found
 
 
-def extensions_from_output_header(output_path):
-    """The extensions path an existing artifact records in its own header."""
-    if not os.path.isfile(output_path):
-        return None
+def _uninstantiated(value):
+    return (not isinstance(value, str) or not value.strip() or
+            UNINSTANTIATED_RE.search(value) is not None)
+
+
+def _repo_relative_name(raw_path, relative_to_repo=False):
+    """Return a lexical repo-relative path, preserving declared aliases."""
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return None, "path must be a non-empty string"
+    raw_path = raw_path.strip()
+    candidate = raw_path
+    if not os.path.isabs(candidate):
+        cwd_candidate = os.path.abspath(candidate)
+        if relative_to_repo or not os.path.exists(cwd_candidate):
+            candidate = os.path.join(REPO_ROOT, candidate)
+    absolute = os.path.abspath(candidate)
     try:
-        with open(output_path, "r", encoding="utf-8") as fh:
-            for line in fh:
-                if not line.startswith("#"):
-                    break
-                match = HEADER_EXTENSIONS_RE.match(line)
-                if match:
-                    return match.group(1)
-    except OSError:
-        return None
-    return None
+        relative = os.path.relpath(absolute, REPO_ROOT)
+    except ValueError as exc:
+        return None, "path cannot be made repository-relative: %s" % exc
+    parts = Path(relative).parts
+    if relative == os.pardir or not parts or parts[0] == os.pardir:
+        return None, "path escapes the repository"
+    return Path(relative).as_posix(), None
 
 
-def sibling_manifest_profile_id(extensions_path):
-    """Return (manifest_exists, profile_ids) from Profile Identity only."""
-    manifest = os.path.join(os.path.dirname(extensions_path), "profile.md")
-    if not os.path.isfile(manifest):
-        return False, None
+def active_extensions_selection():
+    """Return the sole extension path/profile id selected by K00/03."""
+    errors = []
+    active_path = os.path.join(REPO_ROOT, ACTIVE_STATE_PATH)
     try:
-        with open(manifest, "r", encoding="utf-8") as fh:
-            lines = fh.read().splitlines()
-    except OSError:
-        return True, []
-    inside = False
-    profile_ids = []
-    for line in lines:
-        heading = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
-        if heading and len(heading.group(1)) <= 2:
-            inside = (
-                len(heading.group(1)) == 2
-                and heading.group(2).strip() == "Profile Identity"
-            )
-            continue
-        if inside:
-            match = MANIFEST_PROFILE_ID_RE.match(line)
-            if match:
-                profile_ids.append(match.group(1).strip())
-    return True, profile_ids
+        with open(active_path, "r", encoding="utf-8") as fh:
+            active_text = fh.read()
+    except (OSError, UnicodeError) as exc:
+        return None, None, ["cannot read %s: %s" % (ACTIVE_STATE_PATH, exc)]
+
+    state, parse_errors = kblib.active_standards_state(active_text)
+    errors.extend("%s: %s" % (ACTIVE_STATE_PATH, error)
+                  for error in parse_errors)
+    for label, key in kblib.ACTIVE_STANDARDS_STATE_LABELS.items():
+        if key in state and _uninstantiated(state[key]):
+            errors.append("%s %s is still uninstantiated: %r" %
+                          (ACTIVE_STATE_PATH, label, state[key]))
+    if (not _uninstantiated(state.get("standards_status")) and
+            state.get("standards_status") != "approved"):
+        errors.append("%s Status must be approved before composing a profile; "
+                      "found %r" %
+                      (ACTIVE_STATE_PATH, state.get("standards_status")))
+
+    manifest = state.get("selected_profile_manifest")
+    if not _uninstantiated(manifest):
+        manifest_rel, path_error = _repo_relative_name(
+            manifest, relative_to_repo=True
+        )
+        parts = Path(manifest_rel).parts if manifest_rel else ()
+        if path_error:
+            errors.append("Selected profile manifest is invalid: %s" % path_error)
+        elif (len(parts) != 3 or parts[0] != PROFILES_DIR or
+              parts[2] != "profile.md"):
+            errors.append("Selected profile manifest must be exactly "
+                          "profiles/<profile_id>/profile.md; found %r" %
+                          manifest)
+        else:
+            manifest_path = os.path.join(REPO_ROOT, *parts)
+            try:
+                repo_real = os.path.realpath(REPO_ROOT)
+                manifest_real = os.path.realpath(manifest_path)
+                if os.path.commonpath((repo_real, manifest_real)) != repo_real:
+                    errors.append("Selected profile manifest escapes the repository")
+                elif not os.path.isfile(manifest_path):
+                    errors.append("Selected profile manifest is not a regular file: %s"
+                                  % manifest)
+                else:
+                    with open(manifest_path, "r", encoding="utf-8") as fh:
+                        manifest_text = fh.read()
+                    profile_id, identity_errors = kblib.profile_identity(
+                        manifest_text, parts[1]
+                    )
+                    errors.extend(details for _check, details in identity_errors)
+                    if not identity_errors:
+                        bindings, duplicate_bindings = (
+                            kblib.profile_slot_bindings(
+                                manifest_text, include_duplicates=True
+                            )
+                        )
+                        errors.extend(
+                            "Selected profile manifest repeats slot binding %r"
+                            % name for name in duplicate_bindings
+                        )
+                        binding = bindings.get("Vocabulary Extensions")
+                        if binding is None:
+                            errors.append(
+                                "Selected profile manifest has no Vocabulary "
+                                "Extensions binding"
+                            )
+                        else:
+                            profile_dir = os.path.join(
+                                REPO_ROOT, PROFILES_DIR, parts[1]
+                            )
+                            kind, detail = kblib.resolve_profile_binding(
+                                binding, REPO_ROOT, profile_dir
+                            )
+                            if kind != "path":
+                                errors.append(
+                                    "Vocabulary Extensions binding %r is %s"
+                                    % (binding, kind)
+                                )
+                            else:
+                                extensions, ext_error = _repo_relative_name(
+                                    detail
+                                )
+                                ext_real = os.path.realpath(detail)
+                                if ext_error:
+                                    errors.append(
+                                        "Vocabulary Extensions binding is "
+                                        "invalid: %s" % ext_error
+                                    )
+                                elif os.path.commonpath(
+                                    (repo_real, ext_real)
+                                ) != repo_real:
+                                    errors.append(
+                                        "Vocabulary Extensions binding "
+                                        "escapes the repository"
+                                    )
+                                elif not extensions.lower().endswith(
+                                    (".yaml", ".yml")
+                                ):
+                                    errors.append(
+                                        "Vocabulary Extensions binding must "
+                                        "resolve to YAML; found %s" %
+                                        extensions
+                                    )
+                                else:
+                                    return extensions, profile_id, errors
+            except (OSError, UnicodeError, ValueError) as exc:
+                errors.append("cannot validate selected profile manifest: %s" % exc)
+    return None, None, errors
 
 
-def report_missing_extensions(output_arg):
-    """Explain that --extensions is required and what the choices are."""
-    print("compose_vocab: --extensions is required.")
-    print("  This tool composes the vocabulary of one selected profile and "
-          "has no default profile:")
-    print("  choosing one here would silently make it the vocabulary of "
-          "every clone of this repository.")
-    print("  It could not fall back to the profile recorded in %s, because "
-          "that file does not exist" % output_arg)
-    print("  or carries no 'extensions:' header line.")
+def report_inactive_selection(errors):
+    """Explain why no active profile can be composed."""
+    print("compose_vocab: active profile selection is not usable:")
+    for error in errors:
+        print("  - %s" % error)
     candidates = discover_profiles()
     if candidates:
-        print("  Profiles found in this repository:")
+        print("  Filled profile candidates found (candidates are not active "
+              "until K00/03 selects one):")
         for item in candidates:
-            print("    --extensions %s" % item)
+            print("    %s" % item)
     else:
-        print("  No profile in this repository carries a %s."
-              % EXTENSIONS_BASENAME)
+        print("  No filled profile manifest in this repository resolves a "
+              "Vocabulary Extensions binding.")
         print("  Copy profiles/_template/ to profiles/<your-profile-id>/ "
               "and fill it in first.")
 
@@ -215,6 +325,17 @@ def compose(base, profile, base_arg, ext_arg, profile_id):
     """Compose the merged vocabulary. Returns (output_dict, conflicts)."""
     conflicts = []
 
+    extra_root_keys = sorted(
+        key for key in profile if key not in PROFILE_ROOT_KEYS
+    )
+    if extra_root_keys:
+        conflicts.append(
+            "extensions: unsupported root key(s) %s; profile_id and the "
+            "Vocabulary Extensions binding come only from profile.md, while "
+            "base identity and composition policy come only from the kernel "
+            "base" % extra_root_keys
+        )
+
     base_fields = base.get("fields")
     raw_profile_fields = profile.get("fields") or {}
     if not isinstance(base_fields, dict):
@@ -224,16 +345,6 @@ def compose(base, profile, base_arg, ext_arg, profile_id):
         conflicts.append("extensions: 'fields' section is not a mapping")
         return None, conflicts
     profile_fields = dict(raw_profile_fields)
-
-    declared_base = profile.get("extends")
-    if declared_base is not None and (
-        os.path.abspath(resolve_path(str(declared_base)))
-        != os.path.abspath(resolve_path(base_arg))
-    ):
-        conflicts.append(
-            "extensions declare base %r but --base resolves to %r"
-            % (declared_base, base_arg)
-        )
 
     volatility_defaults = profile.get("volatility_defaults") or {}
     if not isinstance(volatility_defaults, dict):
@@ -258,13 +369,6 @@ def compose(base, profile, base_arg, ext_arg, profile_id):
         del profile_fields["domain"]
     profile_fields["domain"] = {"values": domain_values}
 
-    # The profile must not redefine base-owned scalar/mapping sections.
-    for section in BASE_OWNED_SECTIONS:
-        if section in profile and profile[section] != base.get(section):
-            conflicts.append(
-                "extensions redefine base-owned section %r" % section
-            )
-
     fields = {}
     for name, base_spec in base_fields.items():
         if not isinstance(base_spec, dict):
@@ -279,14 +383,15 @@ def compose(base, profile, base_arg, ext_arg, profile_id):
                     "fields.%s: extension entry is not a mapping" % name
                 )
                 extension = {}
-            extra_keys = [k for k in extension if k not in ("owner", "values")]
+            extra_keys = [k for k in extension if k != "values"]
             if extra_keys:
                 conflicts.append(
-                    "fields.%s: extension may only append owner+values; "
-                    "found extra keys %s (base fields cannot be redefined)"
+                    "fields.%s: a kernel-field extension may only append "
+                    "values; its extension_owner is derived from the selected "
+                    "Vocabulary Extensions file, so found extra keys %s"
                     % (name, extra_keys)
                 )
-            merged["extension_owner"] = extension.get("owner") or ext_arg
+            merged["extension_owner"] = ext_arg
             dedup_append(base_values, list(extension.get("values") or []))
         merged["values"] = base_values
         fields[name] = merged
@@ -316,6 +421,14 @@ def compose(base, profile, base_arg, ext_arg, profile_id):
     if not isinstance(frontmatter, dict):
         conflicts.append("extensions: 'frontmatter_extensions' is not a mapping")
         frontmatter = {}
+    extra_frontmatter_keys = sorted(
+        key for key in frontmatter if key not in FRONTMATTER_EXTENSION_KEYS
+    )
+    if extra_frontmatter_keys:
+        conflicts.append(
+            "extensions: frontmatter_extensions supports only 'fields'; "
+            "found unsupported key(s) %s" % extra_frontmatter_keys
+        )
     explicit_frontmatter_fields = frontmatter.get("fields") or []
     if not isinstance(explicit_frontmatter_fields, list):
         conflicts.append("extensions: 'frontmatter_extensions.fields' is not a list")
@@ -333,8 +446,7 @@ def compose(base, profile, base_arg, ext_arg, profile_id):
         list(explicit_frontmatter_fields),
         [name for name in profile_fields if name not in base_fields],
     )
-    frontmatter_out = dict(frontmatter)
-    frontmatter_out["fields"] = derived_frontmatter_fields
+    frontmatter_out = {"fields": derived_frontmatter_fields}
 
     candidate = {
         "schema_version": base.get("schema_version"),
@@ -411,11 +523,9 @@ def build_header(base_arg, ext_arg, base_sha, ext_sha):
         "#   field, kernel values come first and profile additions are",
         "#   appended in source order, deduplicated; extensions must not",
         "#   remove, rename, or redefine base values.",
-        "# regenerate with: python3 Tools/compose_vocab.py --extensions %s"
-        % ext_arg,
-        "# The extensions path above is also what an argument-free run reads "
-        "back;",
-        "# this artifact is the record of which profile it was composed from.",
+        "# regenerate with: python3 Tools/compose_vocab.py",
+        "# The extensions path above is compilation provenance only; K00/03",
+        "# active Standards state selects the profile for every run.",
         "",
     ]
 
@@ -464,9 +574,8 @@ def main(argv=None):
     parser.add_argument(
         "--extensions",
         default=None,
-        help="the selected profile's %s. No default profile exists; when "
-        "omitted, the path recorded in the --output header is used, and "
-        "the run fails with the available choices if there is none"
+        help="the active profile's %s. K00/03 selects the path; when this "
+        "flag is present it must name that same path"
         % EXTENSIONS_BASENAME,
     )
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
@@ -474,37 +583,45 @@ def main(argv=None):
         "--check",
         action="store_true",
         help="recompute and compare against the existing output; "
-        "exit 0 when identical at the value level, 2 otherwise",
+        "exit 0 when values and provenance are identical, 2 otherwise",
     )
     args = parser.parse_args(argv)
 
-    inferred_extensions = False
+    active_extensions, active_profile_id, selection_errors = (
+        active_extensions_selection()
+    )
+    if selection_errors or not active_extensions or not active_profile_id:
+        report_inactive_selection(selection_errors or [
+            "%s does not yield one selected profile" % ACTIVE_STATE_PATH
+        ])
+        return 1
+
     if args.extensions is None:
-        recorded = extensions_from_output_header(resolve_path(args.output))
-        if recorded is None:
-            report_missing_extensions(args.output)
+        args.extensions = active_extensions
+        print("compose_vocab: using the profile selected by %s: %s" %
+              (ACTIVE_STATE_PATH, active_extensions))
+    else:
+        requested_extensions, requested_error = _repo_relative_name(
+            args.extensions
+        )
+        if requested_error:
+            print("compose_vocab: --extensions is invalid: %s" %
+                  requested_error)
             return 1
-        args.extensions = recorded
-        inferred_extensions = True
-        print("compose_vocab: --extensions not given; using the profile "
-              "recorded in %s: %s" % (args.output, recorded))
+        if requested_extensions != active_extensions:
+            print("compose_vocab: --extensions %r does not match the active "
+                  "profile selected by %s: %s" %
+                  (requested_extensions, ACTIVE_STATE_PATH, active_extensions))
+            print("  Change profile selection through R09 governance; this "
+                  "compiler does not select profiles.")
+            return 1
+        args.extensions = requested_extensions
 
     base_path = resolve_path(args.base)
     ext_path = resolve_path(args.extensions)
     for label, path in (("base", base_path), ("extensions", ext_path)):
         if not os.path.exists(path):
             print("compose_vocab: %s input not found: %s" % (label, path))
-            if label == "extensions" and inferred_extensions:
-                # The path was not asked for on the command line; it came from
-                # the artifact's own header and has since gone stale, which is
-                # what happens when a profile is renamed or removed. Say so,
-                # and name the profiles that do exist now.
-                print("  That path was read from the header of %s, not given "
-                      "on the command line." % args.output)
-                print("  Pass --extensions explicitly to choose a profile and "
-                      "rewrite that header.")
-                for item in discover_profiles():
-                    print("    --extensions %s" % item)
             return 1
 
     try:
@@ -514,26 +631,7 @@ def main(argv=None):
         print("compose_vocab: input outside the restricted YAML subset: %s" % exc)
         return 1
 
-    manifest_exists, manifest_profile_ids = sibling_manifest_profile_id(ext_path)
-    extension_profile_id = profile.get("profile_id")
-    if manifest_exists:
-        if len(manifest_profile_ids) != 1:
-            print("compose_vocab: sibling profile.md must contain exactly one "
-                  "`profile_id` under Profile Identity; found %d"
-                  % len(manifest_profile_ids))
-            return 1
-        profile_id = manifest_profile_ids[0]
-        if extension_profile_id is not None and extension_profile_id != profile_id:
-            print("compose_vocab: profile_id conflict: sibling profile.md declares "
-                  "%r but extensions declare %r"
-                  % (profile_id, extension_profile_id))
-            return 1
-    else:
-        profile_id = extension_profile_id
-        if not profile_id:
-            print("compose_vocab: no sibling profile.md and no profile_id in "
-                  "the extensions input; one identity source is required")
-            return 1
+    profile_id = active_profile_id
     if not isinstance(profile_id, str) or not PROFILE_ID_VALUE_RE.fullmatch(profile_id):
         print("compose_vocab: invalid profile_id %r; use a lowercase path slug "
               "matching [a-z0-9][a-z0-9_-]*" % profile_id)
@@ -567,8 +665,9 @@ def main(argv=None):
             print("compose_vocab --check: output not found: %s" % output_path)
             return 2
         with open(output_path, "r", encoding="utf-8") as fh:
+            existing_text = fh.read()
             try:
-                existing = kblib.parse_yaml_subset(fh.read())
+                existing = kblib.parse_yaml_subset(existing_text)
             except kblib.YamlSubsetError as exc:
                 print("compose_vocab --check: existing output is not "
                       "parseable: %s" % exc)
@@ -577,7 +676,13 @@ def main(argv=None):
         if diff:
             print("compose_vocab --check: MISMATCH at key: %s" % diff)
             return 2
-        print("compose_vocab --check: OK (%s matches composed values)"
+        if existing_text != rendered:
+            print("compose_vocab --check: MISMATCH in generated provenance "
+                  "or canonical rendering; values parse identically but %s "
+                  "is not the artifact produced from the active inputs"
+                  % args.output)
+            return 2
+        print("compose_vocab --check: OK (%s matches composed values and provenance)"
               % args.output)
         return 0
 

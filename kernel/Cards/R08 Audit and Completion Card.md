@@ -2,7 +2,7 @@
 type: runtime-card
 route_id: R08
 read_set: kernel/Read Sets/R08 Audit and Completion Read Set.md
-compiled_from: "{{standards_version}}"
+compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R08 Audit and Completion Read Set.md
   - kernel/Read Sets/R12 Targeted and Specialized Audit Read Set.md
@@ -12,7 +12,7 @@ source_files:
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
   - kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md
   - kernel/K02 Build Execution/07 Completion and Handoff.md
-source_hash: 7c92e3bc90af
+source_hash: '124b34418655'
 ---
 # R08 Audit and Completion Card
 
@@ -24,7 +24,7 @@ Load only after the whole task enters `completion-candidate`. This Card owns Com
 
 ## Before Start
 
-- [ ] Require `completion-candidate`, freeze content and the candidate snapshot, and record contract, scope, queue, Standards version, Guidance cutoff, Cards, Read Sets, and read-back modules.
+- [ ] Require `completion-candidate`, freeze content and the candidate snapshot, and record contract, scope, queue, Standards version, `selected_profile_manifest`, Guidance cutoff, Cards, Read Sets, and read-back modules.
 - [ ] Derive audit scope from changed, invalidated, overdue, legacy-evidence, and bounded-sampling objects; do not indiscriminately redo valid evidence.
 - [ ] Confirm all prerequisite gates have already run. Terminal Audit does not replace an omitted page, batch, module, source, or expression gate.
 
@@ -44,7 +44,7 @@ Load receipts and invalidations → reconcile Guidance → reconcile Coverage �
 - [ ] `unverified_batches = 0`, including no `merge-ready` unmerged batch.
 - [ ] `unresolved_invalidations = 0`.
 - [ ] All applicable page, module, source, expression, rendering, batch, and terminal gates pass.
-- [ ] Final Handoff and machine-readable Terminal Proof are complete, and the completion-gate invocation `python3 Tools/check_proof.py <proof.yaml> --root <repository-root>` passes. A run without `--root` is structural lint only and cannot support `complete`.
+- [ ] Final Handoff and machine-readable Terminal Proof are complete, and `python3 Tools/check_proof.py <proof.yaml> --root <repository-root> --progress-ledger <progress-ledger>` passes. A run without `--root` is structural lint only and cannot support `complete`.
 - [ ] Time contract is satisfied without using time, file count, or check count as proof of completion.
 
 ## Read Back When

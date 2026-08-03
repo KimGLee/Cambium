@@ -2,7 +2,7 @@
 type: runtime-card
 route_id: R06
 read_set: kernel/Read Sets/R06 Migration and Refactor Read Set.md
-compiled_from: "{{standards_version}}"
+compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R06 Migration and Refactor Read Set.md
   - kernel/K02 Build Execution/01 Contract Time and Task State.md
@@ -19,7 +19,7 @@ source_files:
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 8897a64fc1d3
+source_hash: 'daa5939f1bf4'
 ---
 # R06 Migration and Refactor Card
 
