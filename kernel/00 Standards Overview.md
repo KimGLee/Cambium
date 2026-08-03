@@ -11,7 +11,7 @@ This file is the sole overall entry point for the active Standards. It is respon
 | Effective date | `{{effective_date}}` (provided by the active governance state) |
 | Domain MOCs | `derived-from-active-kernel-domain-registry` |
 | Canonical leaf modules | `derived-from-active-kernel-inventory` |
-| Routing model | Runtime Cards (Card-first, resolved by the `Runtime Card Provider`) + Read Sets escalation read-back + Triggered / Gate Modules |
+| Routing model | Kernel Runtime Cards (Card-first) + Read Sets escalation read-back + Triggered / Gate Modules |
 | Change authority | User's explicit governance instruction |
 
 The complete state rules are maintained by [[kernel/00 Standards Control/03 Standards Governance|Standards Governance]].
@@ -20,7 +20,7 @@ The complete state rules are maintained by [[kernel/00 Standards Control/03 Stan
 
 ```text
 Open Standards Overview
- -> Resolve Card Index And Load Task Cards Through Runtime Card Provider
+ -> Open The Kernel Card Index And Load Task Cards
  -> Escalate To Read Sets And Leaf Modules When Required
  -> Record Standards Version And Loaded Set
  -> Inspect Existing Knowledge And Links
@@ -29,14 +29,14 @@ Open Standards Overview
  -> Run Gate Checks And Scripts
 ```
 
-1. All tasks enter through the `Runtime Card Provider` registered by the selected profile, resolving the Card Index and the Runtime Card corresponding to the task; Core Bootstrap constraints are carried by the provider-registered Core Bootstrap Card.
+1. All tasks enter through the kernel-owned [[kernel/Cards/00 Card Index|Card Index]], then load the Core Bootstrap Card and the Runtime Card corresponding to the task. A selected profile cannot replace or disable these cards.
 2. In exception cases (card does not cover the situation, rule disputes, L-tier depth rules, Governance tasks), read back Read Sets and leaf modules per [[kernel/00 Standards Control/01 Operating Role and Reading Protocol|00/01]].
 3. When reading back, load only the leaf modules needed by the current event and the current gate.
 4. MOCs are for locating; using one does not mean all rules within it have been read.
-5. Long-running tasks MUST combine the content Card with the Long-running Execution Card resolved by the `Runtime Card Provider`.
-6. Completion candidates MUST combine the Audit and Completion Card resolved by the `Runtime Card Provider`; Governance tasks MUST read the [[kernel/Read Sets/09 Standards Governance Read Set|RS 09]] source text in full.
+5. Long-running tasks MUST combine the content Card with the kernel-owned [[kernel/Cards/07 Long-running Execution Card|Long-running Execution Card]].
+6. Completion candidates MUST combine the kernel-owned [[kernel/Cards/08 Audit and Completion Card|Audit and Completion Card]]; Governance tasks MUST read the [[kernel/Read Sets/09 Standards Governance Read Set|RS 09]] source text in full.
 
-Runtime Cards are compiled artifacts of the Read Sets (the Standards source text is the source code; the cards are compiled artifacts), with the entry point registered by the selected profile's `Runtime Card Provider`. Cards take precedence for routine tasks; exception cases read back the source text — see Card-first Reading Mode in [[kernel/00 Standards Control/01 Operating Role and Reading Protocol|00/01]].
+Runtime Cards are kernel-owned compiled artifacts of the Read Sets (the Standards source text is the source code; the cards are compiled artifacts). Cards take precedence for routine tasks; exception cases read back the source text — see Card-first Reading Mode in [[kernel/00 Standards Control/01 Operating Role and Reading Protocol|00/01]]. A profile may register an additional domain route or gate, but that extension is loaded alongside the kernel cards and cannot override their IDs, replace their rules, or make them optional.
 
 ## Task Router
 
@@ -52,7 +52,7 @@ Runtime Cards are compiled artifacts of the Read Sets (the Standards source text
 | Modify Standards, Read Sets, version, or control-plane structure | [[kernel/Read Sets/09 Standards Governance Read Set\|Standards Governance]] |
 | Mid-task guidance, scope, priority, or correction | [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment\|Mid-task Guidance and Amendment]] |
 
-Periodic knowledge-base update and freshness tasks go through the Maintenance Run: [[kernel/Read Sets/10 Maintenance Run Read Set|RS 10]], with the corresponding Runtime Card resolved by the `Runtime Card Provider`.
+Periodic knowledge-base update and freshness tasks go through the kernel-owned [[kernel/Cards/10 Maintenance Run Card|Maintenance Run Card]], with [[kernel/Read Sets/10 Maintenance Run Read Set|RS 10]] used for source read-back.
 
 Detailed task combinations and the Pre-execution Gate are located in [[kernel/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]].
 
@@ -60,7 +60,7 @@ Detailed task combinations and the Pre-execution Gate are located in [[kernel/00
 
 | Domain | Stable MOC | Responsibility |
 |---|---|---|
-| `00` | [[kernel/00 Standards Overview\|Standards Overview]] | overall Index, Read Set routing, and Standards control |
+| `00` | [[kernel/00 Standards Overview\|Standards Overview]] | overall Index, Kernel Card and Read Set routing, and Standards control |
 | `01` | [[kernel/01 Scope and Architecture Standard\|Scope and Architecture]] | scope, logical architecture, knowledge spine, and foundation preservation |
 | `02` | [[kernel/02 Knowledge Base Build Execution Standard\|Build Execution]] | task contract, state, guidance, batch, checkpoint, resume, and handoff |
 | `03` | [[kernel/03 Note Types and Ownership Standard\|Note Types and Ownership]] | note type, canonical owner, split, and duplication |
@@ -78,10 +78,11 @@ Detailed task combinations and the Pre-execution Gate are located in [[kernel/00
 
 - `Domain MOC`: states which modules the domain contains, the original section owners, and the applicable Read Sets.
 - `Leaf module`: owns the rule text; the unit that actually needs to be read during execution.
-- `Read Set`: maps task phases to leaf modules.
+- `Runtime Card`: kernel-owned compiled execution guidance for a routine task; it compresses a Read Set but never owns rule text.
+- `Read Set`: maps task phases to leaf modules and is the first source read-back boundary.
 - `Triggered module`: loaded only when conditions such as guidance, source, diagram, or migration arise.
 - `Gate module`: loaded before a note, batch, module, or task closes.
-- `loaded set`: the actual Runtime Card IDs, artifacts resolved by the `Runtime Card Provider`, and module paths read back on escalation, recorded in the Task Contract; a broad `02` or `12` alone MUST NOT be written.
+- `loaded set`: the actual kernel Runtime Card IDs and paths, any profile extension route explicitly combined with them, and module paths read back on escalation, recorded in the Task Contract; a broad `02` or `12` alone MUST NOT be written.
 
 Module splitting does not change rule precedence. Conflicts are still resolved per [[kernel/00 Standards Control/06 Completion Precedence and Task Contract#Standard Precedence|Standard Precedence]].
 

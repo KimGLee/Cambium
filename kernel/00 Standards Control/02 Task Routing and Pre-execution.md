@@ -30,7 +30,7 @@ Large-scale modification MAY begin only after the following conditions are met:
 
 1. `00` and Core Bootstrap have been read.
 2. Task-specific Read Sets, triggered modules, and gate modules have been resolved per the Task Routing Table.
-3. Contract / scope / queue / initial batch / Standards version, the loaded set (Runtime Card IDs, artifacts resolved by the `Runtime Card Provider`, and module paths read back on escalation), the target scope, the excluded scope, and the latest user requirements have been recorded.
+3. Contract / scope / queue / initial batch / Standards version, the loaded set (kernel Runtime Card IDs and paths, any combined profile extension route, and module paths read back on escalation), the target scope, the excluded scope, and the latest user requirements have been recorded.
 4. `minimum_run_until`, `checkpoint_at`, `hard_stop_at`, and the Completion Gate have been made explicit; fields not provided are explicitly left empty.
 5. The Coverage Ledger has been created or refreshed and reconciled against the file system and exclusions.
 6. Ownership, incoming links, user modifications, and the Required Queue have been inventoried.

@@ -54,7 +54,7 @@ The user MAY pause or cancel the task before the Completion Gate, but that actio
 The final handoff needs to state:
 
 - Task state, scope version, and standards version.
-- Selected Runtime Card IDs and Read Sets, and the final loaded set (artifacts resolved by the `Runtime Card Provider` and modules read back on escalation).
+- Selected kernel Runtime Card IDs and Read Sets, and the final loaded set (kernel Card paths, any combined profile extension route, and modules read back on escalation).
 - Contract version, queue revision, and an Amendment Log summary.
 - Knowledge architecture and scope.
 - Completed modules and their maturity.

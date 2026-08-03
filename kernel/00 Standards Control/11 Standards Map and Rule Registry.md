@@ -6,6 +6,7 @@
 
 ## Standards Map
 
+- `Cards` [[kernel/Cards/00 Card Index|Card Index]]: kernel-owned compiled task guidance; every routine task enters here before escalating to Read Sets and leaf owners.
 - `Read Sets` [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]: combines the leaf modules to read by task, event, and execution phase.
 - `01` [[kernel/01 Scope and Architecture Standard|Scope and Architecture Standard]]: generic scope boundaries, foundation preservation, logical architecture, and the concrete scope binding provided by `Profile Scope`.
 - `02` [[kernel/02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]: long-running task contract, Mid-task Guidance, time semantics, task state, Coverage Ledger, batch, resume, and Terminal Proof.
@@ -26,6 +27,8 @@ The following high-risk objects have a single canonical owner corpus-wide. Modif
 
 | Object | Canonical owner |
 |---|---|
+| Runtime Card ownership, required IDs, loading order, and source read-back protocol | [[kernel/00 Standards Control/01 Operating Role and Reading Protocol|Operating Role and Reading Protocol]] |
+| M-tier page acceptance checklist | [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review#M-tier Gate Checklist|M-tier Gate Checklist]] |
 | Terminal Proof formula | [[kernel/02 Build Execution/07 Completion and Handoff|Completion and Handoff]] |
 | Terminal Audit procedure and Proof field list | [[kernel/12 Quality Assurance/15 Terminal Audit and Convergence|Terminal Audit and Convergence]] |
 | `task_state` vocabulary | [[kernel/02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]] |

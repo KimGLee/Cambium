@@ -10,7 +10,7 @@ The Terminal Audit is the last gate of a long task; the states it runs between, 
 After the task moves from `active` to `completion-candidate`, run the Terminal Audit:
 
 1. Freeze new content; record the contract, scope, queue, Standards version, `guidance_cutoff_id`, and the candidate completion state.
-   - Also record the selected runtime guidance, Read Sets, and the loaded set (runtime guidance and the module paths read back on escalation).
+   - Also record the selected kernel Runtime Card IDs and paths, Read Sets, any combined profile extension route, and the module paths read back on escalation.
 2. Load the Audit Receipt Register; compute changed, directly invalidated, dependency-invalidated, overdue, and legacy-evidence.
 3. Run [[kernel/12 Quality Assurance/04 Guidance and Source Review#Guidance Reconciliation Review|Guidance Reconciliation Review]] and confirm that all guidance within the cutoff has a final disposition.
 4. Reconcile the Coverage Ledger against the file system, exclusions, competency matrix, and Required Queue; if that reconciliation was already completed before the completion-candidate freeze and no files changed afterwards, reuse that result directly without re-running.

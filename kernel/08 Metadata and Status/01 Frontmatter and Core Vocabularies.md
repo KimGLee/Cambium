@@ -56,8 +56,8 @@ Allowed values:
 - `overview`
 - `standard`
 - `management`
-- `runtime-card` (used only for compiled artifacts provided by the `Runtime Card Provider`; not a knowledge note type)
-- `card-index` (used only for that provider's compiled-artifact-layer index)
+- `runtime-card` (used only for kernel-owned compiled execution artifacts; not a knowledge note type)
+- `card-index` (used only for the kernel-owned compiled Card Index)
 
 The selected profile MAY append registered type values through `Vocabulary Extensions`, but MUST NOT delete, rename, or redefine kernel base values.
 

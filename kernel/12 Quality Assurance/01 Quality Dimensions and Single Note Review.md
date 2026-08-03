@@ -29,9 +29,21 @@ These eleven are acceptance vocabulary and grouping labels, not checks, and they
 
 ## Single Note Review
 
-Applicability: the full checklist in this section applies to L-tier pages; M-tier pages are accepted against the corresponding Gate checklist provided by the `Runtime Card Provider` and folded into the batch gate; S-tier pages receive only deterministic script checks, with sampled re-review at batch close (for tiering rules see [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|tiering rules]]).
+Applicability: the full checklist in this section applies to L-tier pages; M-tier pages are accepted against the M-tier Gate Checklist below, compiled into the kernel Single Note Authoring Card and folded into the batch gate; S-tier pages receive only deterministic script checks, with sampled re-review at batch close (for tiering rules see [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|tiering rules]]).
 
 Several items below are satisfied by evidence produced at another layer rather than by a separate single-note verdict; which ones, and what each remaining item files under, is fixed by [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map#Item Map|12/08]].
+
+## M-tier Gate Checklist
+
+This is the canonical minimum page-level checklist for an M-tier page. Runtime Cards may compress or link to it, but they MUST NOT add, remove, or redefine its acceptance items.
+
+- The note type, canonical owner, scope, depth, priority, tier, and applicable status fields are explicit and internally consistent.
+- The opening states the problem or position; the body explains the key mechanism or causal chain, its important boundary, and at least one example appropriate to the note type.
+- Applicable failure behavior is concrete enough to identify trigger, symptom, cause, detection, and mitigation; an item that is genuinely not applicable is stated as such rather than silently omitted.
+- Key, time-sensitive, or quantitative claims are supported by evidence whose role is clear; reported claim, inference, synthesis, and recommendation are not conflated.
+- Parent, prerequisite, key dependency, and first meaningful terminology links are present in the body; no missing or ambiguous link remains.
+- The selected profile's `Language Contract` and all triggered source, terminology, propagation, and rendering obligations have been applied.
+- Applicable deterministic checks pass. Rendering remains at Level 0 / Level 1 unless an objective visual exception trigger and unresolved question are recorded.
 
 ### Structure
 

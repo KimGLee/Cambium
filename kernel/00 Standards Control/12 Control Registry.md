@@ -9,6 +9,7 @@ The [[kernel/00 Standards Control/11 Standards Map and Rule Registry#Cross-domai
 
 | Risk object | Canonical gate (sole) | Behavior of other layers |
 |---|---|---|
+| Runtime Card completeness and source synchronization | Governance close: [[kernel/00 Standards Control/03 Standards Governance#Revision Write-back Checklist|Revision Write-back Checklist]] runs `Tools/stamp_cards.py . --check` | Routine tasks consume the kernel Cards; profile loading cannot waive the gate, and knowledge-page scans exclude compiled Cards rather than re-validating them |
 | Wiki link integrity | Batch close: [[kernel/12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Closed List]] check_links produces the receipt | Note close: only this page's `--scope` self-check; migration/retirement: targeted retargeting only; the Terminal Audit verifies the last batch's receipt and does not re-run |
 | Frontmatter vocabulary | Batch close: [[kernel/12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Closed List]] item 7 check_vocab produces the receipt | Note close: `--scope` self-check; the Terminal Audit trusts the receipt |
 | Concurrent write conflicts | At batch activation: the integrator runs the manifest intersection check per Coverage `next_batch` ([[kernel/02 Build Execution/05 Batch Execution|02/05]] Concurrent Batches) | Concurrent batches write only their own manifest pages, receipts directory, and delta files; global state files are integrator-exclusive |

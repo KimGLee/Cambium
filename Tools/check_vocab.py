@@ -70,7 +70,7 @@ def main():
                     help="path to vocab.yaml (defaults to vocab.yaml next to this script)")
     ap.add_argument("--exclude", action="append", default=[],
                     help="subpath to exclude (repeatable; e.g. the compiled "
-                         "Cards/ artifacts, whose frontmatter is not governed "
+                         "kernel/Cards artifacts, whose frontmatter is not governed "
                          "by the 08 domain knowledge-page schema)")
     ap.add_argument("--quota-p0", type=float, default=15.0,
                     help="P0 priority quota in percent (default 15; kernel "

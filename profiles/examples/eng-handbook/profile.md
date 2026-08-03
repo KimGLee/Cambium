@@ -19,17 +19,10 @@
 - `Audit Dimension Registry`: [[profiles/examples/eng-handbook/registries/audit-dimensions|Audit Dimension Registry]]
 - `Registered Scan Registry`: [[profiles/examples/eng-handbook/registries/registered-scans|Registered Scan Registry]]
 - `Routing And Gate Registry`: [[profiles/examples/eng-handbook/registries/routing-and-gates|Routing And Gate Registry]]
-- `Runtime Card Provider`: declared inline below (`mode: none`)
 
 ## Registered Extensions
 
 - None. This profile registers no expression artifacts and no extension status axes; the kernel base vocabularies and the seven base audit dimensions apply unchanged.
-
-## Runtime Card Provider Binding
-
-- Mode: `none`.
-- Meaning: no derived runtime cards exist for this profile; agents load rules from kernel Read Sets and leaf modules directly.
-- Consequence: card synchronization checks (`Tools/stamp_cards.py`) are `not_applicable` for this profile and their absence does not block governance close. If a future task compiles cards for this profile, this binding must be upgraded to an explicit provider before those cards may be loaded.
 
 ## Execution Default Overrides
 

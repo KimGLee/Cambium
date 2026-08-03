@@ -12,7 +12,7 @@ This page is the stable entry for the Quality Assurance standard. The detailed r
 
 | Module | Canonical sections |
 |---|---|
-| [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review\|Quality Dimensions and Single Note Review]] | `Purpose`, `Quality Dimensions`, `Single Note Review` |
+| [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review\|Quality Dimensions and Single Note Review]] | `Purpose`, `Quality Dimensions`, `Single Note Review`, `M-tier Gate Checklist` |
 | [[kernel/12 Quality Assurance/02 Rendering Verification\|Rendering Verification]] | `Rendering Verification Levels`, `Escalation Record` |
 | [[kernel/12 Quality Assurance/03 Module and Coverage Review\|Module and Coverage Review]] | `Module Review`, `Coverage Reconciliation Review` |
 | [[kernel/12 Quality Assurance/04 Guidance and Source Review\|Guidance and Source Review]] | `Guidance Reconciliation Review`, `Source Intake And Promotion Review` |

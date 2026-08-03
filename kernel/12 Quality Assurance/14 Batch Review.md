@@ -12,7 +12,7 @@ Gate merge rules (for tier determination see [[kernel/00 Standards Control/07 Ef
 
 - Note-level acceptance for S/M-tier pages is folded into Batch Review; no separate note gate is opened.
 - S-tier pages are reviewed by sampling: by default sample `max(2, 20%)` of the batch's S-tier pages (check all if fewer than 2); when sampling finds problems, expand the scope per [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]].
-- M-tier pages pass, page by page within the batch gate, the corresponding Gate checklist provided by the `Runtime Card Provider`.
+- M-tier pages pass, page by page within the batch gate, the canonical [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review#M-tier Gate Checklist|M-tier Gate Checklist]] as surfaced by the kernel Single Note Authoring Card.
 - L-tier pages keep an independent note gate, executed in full per [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]], and are not folded into this section.
 
 The batch close checklist has two groups: **in-batch items** are completed by the batch itself before it enters `merge-ready` (may run in parallel with other batches); **global items** are verified by the integrator during serial merge. The serial zone performs only deterministic actions and global verification, not in-batch manual review.

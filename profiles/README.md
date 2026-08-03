@@ -2,6 +2,8 @@
 
 The effective standard is composed from `kernel + one selected profile`. The kernel references stable slot names only; the selected profile's manifest binds those slots to concrete implementations. When a slot required by the current task is missing, the composed standard must not be judged fully loaded.
 
+Kernel Runtime Cards are part of `kernel/`, not a profile slot. Every profile uses the same kernel Card Index and required task cards. A profile may register an additional domain route or gate through `Routing And Gate Registry`, but it cannot replace, shadow, or disable a kernel card.
+
 ## Profile Scope Slot
 
 `Profile Scope` must declare the goal, content priority factors, exclusion list, logical architecture, knowledge spine, foundation-layer directories, and shared-layer name registration. It may replace domain-specific commitments, but it must not override the kernel's conservation, ownership, migration, or quality invariants.
@@ -46,8 +48,4 @@ The profile manifest must declare, item by item, whether it adopts the kernel de
 
 ## Routing And Gate Registry Slot
 
-`Routing And Gate Registry` binds profile-owned task routes, Read Sets, and extension gates to kernel roles; an unregistered profile route must not be implied by the kernel as loaded.
-
-## Runtime Card Provider Slot
-
-`Runtime Card Provider` resolves stable Card IDs to read-only derived artifacts and their canonical Read Sets. Derived artifacts are not the canonical owners of rule text; on conflict with the standard's source text, escalate to source read-back and trigger a provider write-back. The selected provider must also declare how it is generated or kept compatible, and which synchronization checks are runnable before governance close.
+`Routing And Gate Registry` binds profile-owned task routes, Read Sets, and extension gates to kernel roles; an unregistered profile route must not be implied by the kernel as loaded. A supplemental profile Card, if registered, is loaded alongside the kernel route and must not reuse a kernel Card ID, replace a kernel Card, or weaken its Gate.

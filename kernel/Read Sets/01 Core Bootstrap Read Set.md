@@ -20,7 +20,7 @@ Then select the task-specific Read Set from the [[kernel/Read Sets/00 Read Sets 
 - Confirm whether the current task is authorized to modify `Knowledge Base Standards` or protected directories.
 - Confirm that canonical ownership, factual correctness, and protection of user modifications still take precedence.
 - Distinguish task completion, authoring status, the registered `Expression Status Axis`, evidence maturity, and learning status.
-- Record the current Standards version and the actual loaded set (Runtime Card IDs, artifacts resolved by the `Runtime Card Provider`, and modules read back on escalation).
+- Record the current Standards version and the actual loaded set (kernel Runtime Card IDs and paths, any combined profile extension route, and modules read back on escalation).
 
 ## Not Sufficient For
 

@@ -2,7 +2,7 @@
 
 A Read Set maps a task to the specific Standards modules that must be read. It solves the loading boundary; it does not replace any rule body.
 
-Each Read Set has a corresponding Runtime Card, resolved by the `Runtime Card Provider` registered by the selected profile; default cards take precedence, and this index and the Read Sets are used for exception read-back, L-tier, and Governance tasks.
+Each kernel Read Set has a corresponding kernel-owned Runtime Card listed in [[kernel/Cards/00 Card Index|Card Index]]. Profiles cannot replace or disable these cards. This index and the Read Sets are used for exception read-back, L-tier depth rules, and Governance tasks; a profile may register an additional domain route through its `Routing And Gate Registry`, loaded alongside rather than instead of the kernel route.
 
 ## Resolution Order
 

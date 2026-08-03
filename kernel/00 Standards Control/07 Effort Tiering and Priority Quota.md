@@ -10,12 +10,12 @@ This module owns how much acceptance ceremony a page receives, and the priority 
 
 ## Effort Tiering
 
-Page-level acceptance intensity is executed by S/M/L tiering. This section is the canonical owner of the tiering rules; the Tiering tables in the Runtime Cards are compiled from this section.
+Page-level acceptance intensity is executed by S/M/L tiering. This section is the canonical owner of the tiering rules; the shared Tiering table in the kernel Core Bootstrap Card is compiled from this section and task cards do not redefine it.
 
 | Tier | Determination | Ceremony |
 |---|---|---|
 | S | priority=P2, or terminology stub / placeholder / link-aggregation pages | script checks only; no note gate; spot check at batch close per [[kernel/12 Quality Assurance/14 Batch Review\|12/14]] |
-| M | regular priority=P1 pages | script checks + the corresponding Card's Gate list; the note gate is folded into the batch gate |
+| M | regular priority=P1 pages | script checks + the [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review#M-tier Gate Checklist\|M-tier Gate Checklist]] compiled into the Single Note Authoring Card; the note gate is folded into the batch gate |
 | L | priority=P0, or core concept / process-flow / system / risk-control mainline pages, plus the additional L-tier triggers registered in the selected profile's `Routing And Gate Registry` | full procedure: complete [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review\|12/01]] review + a standalone note gate + applicable expression migration checks |
 
 - The specific grant conditions for P0 / P1 are registered by the selected profile's `Priority Rubric`.

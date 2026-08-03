@@ -31,7 +31,7 @@ First read:
 - A structural migration MUST establish a complete mapping from old content blocks to new owners.
 - A split MUST NOT be used as reduction, summarization, or silent deletion of rules.
 - Read Sets and the overall Index MUST stay synchronized with module paths.
-- Affected active, paused, and completion-candidate tasks MUST re-resolve their loaded set (`Runtime Card Provider` artifacts and modules read back on escalation).
+- Affected active, paused, and completion-candidate tasks MUST re-resolve their loaded set (kernel Runtime Card IDs and paths, any combined profile extension route, and modules read back on escalation).
 - Governance changes still follow the deterministic-first rendering boundary; modifying only Markdown rules does not automatically trigger the selected knowledge-host role's interactive UI, screenshots, or recordings.
 
 ## Gate

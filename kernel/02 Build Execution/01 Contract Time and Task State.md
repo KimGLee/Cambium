@@ -37,7 +37,7 @@ Before formal execution, confirm:
 - The source-to-knowledge intake, evidence maturity, and canonical promotion approach.
 - Contract version, scope version, queue revision, initial batch revision, and Standards version.
 - The concurrent batch cap `concurrency_cap` (the kernel default is `3`; the selected profile manifest or task contract MAY explicitly override it); batch concurrency admission and merge rules are in [[kernel/02 Build Execution/05 Batch Execution|02/05]] Concurrent Batches.
-- Selected Runtime Card IDs and Read Sets, the actual loaded set (artifacts resolved by the `Runtime Card Provider` and module paths read back on escalation), triggered items, and gate items not yet executed.
+- Selected kernel Runtime Card IDs and Read Sets, the actual loaded set (kernel Card paths, any combined profile extension route, and module paths read back on escalation), triggered items, and gate items not yet executed.
 - The authority allowed to modify scope, priority, batches, and Standards.
 - `minimum_run_until`, `checkpoint_at`, `hard_stop_at`, and the Completion Gate.
 - Handling of pause, cancel, block, and resume.

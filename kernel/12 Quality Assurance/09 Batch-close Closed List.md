@@ -18,7 +18,7 @@ This module owns the fixed set of deterministic checks run against the merged in
 4. Coverage file-count reconciliation
 5. guidance ID and contract version continuity
 6. The batch-close residual-content scan registered in the `Registered Scan Registry`
-7. Frontmatter controlled vocabulary validation (check_vocab; the active vocabulary is composed from the kernel base and the selected profile's `Vocabulary Extensions`)
+7. Frontmatter controlled vocabulary validation (`check_vocab`; the active vocabulary is composed from the kernel base and the selected profile's `Vocabulary Extensions`; exclude `kernel/Cards`, whose compiled-artifact integrity is owned by `stamp_cards.py`, not the knowledge-page schema)
 
 Adding a new check to this list requires a governance revision, and the check MUST be: a deterministic script, with a single vault-wide run ≤60 seconds. [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]] and [[kernel/12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]] only reference this list and do not list it separately.
 

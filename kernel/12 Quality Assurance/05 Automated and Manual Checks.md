@@ -23,7 +23,7 @@ The following domain-specific check items run only on the changed / invalidated 
 - Consistency checks between `evidence_maturity` and source-driven page types.
 - Consistency checks across Standards domain MOC, leaf modules, and Read Set targets — the consistency of the MOC Module Index with the actual H2 headings is implemented as `Tools/check_moc.py` (candidates only); run in maintenance runs and governance tasks, not in batch checks.
 - Checks in Standards migration for owner uniqueness, omission, and duplication of the original content blocks.
-- Resolvability checks for the selected runtime guidance, Read Sets, loaded set, and Standards version in the Task Contract.
+- Resolvability checks for the selected kernel Runtime Card IDs and paths, Read Sets, any combined profile extension route, the loaded set, and Standards version in the Task Contract.
 - Mermaid compile, asset path, deterministic rendering evidence, and `rendering_mode` enumeration checks.
 - Level 2–4 records MUST include visual trigger, unresolved question, target, and result; a batch without a trigger requires no visual evidence.
 - Cross-file duplicate block detection — run a paragraph-level similarity scan with `Tools/duplicate_check.py`; similar paragraph pairs are reported as candidates, with manual judgment on whether they violate the [[kernel/00 Standards Control/11 Standards Map and Rule Registry#Cross-domain Rule Registry|Cross-domain Rule Registry]]. Run only in maintenance runs and governance tasks; at the batch level only the basename-level detection in the Closed List is kept.

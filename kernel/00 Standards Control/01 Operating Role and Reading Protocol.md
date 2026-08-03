@@ -25,7 +25,7 @@ The goal of these Standards is not to increase file count, but to ensure the kno
 - When modification of the knowledge corpus MAY begin.
 - Which acceptance checks MUST be passed before completion.
 
-The overall Index does not replace the detailed rules. A long-running task MUST NOT read only `00` and then execute directly; the corresponding Runtime Cards MUST be resolved by the selected profile's `Runtime Card Provider`, with Read Sets and leaf modules read back in exception cases.
+The overall Index does not replace the detailed rules. A long-running task MUST NOT read only `00` and then execute directly; it MUST load the corresponding kernel Runtime Cards, with Read Sets and leaf modules read back in exception cases.
 
 ## Mandatory Reading Protocol
 
@@ -33,7 +33,7 @@ Before any knowledge-corpus task starts, resolve rules in the following order:
 
 ```text
 00 Standards Overview
- -> Resolve Card Index And Task Runtime Cards Through Runtime Card Provider
+ -> Open The Kernel Card Index And Load Task Runtime Cards
  -> Escalate To Read Sets And Leaf Modules When Required
  -> Inspect Existing Knowledge And Links
  -> Freeze Task Contract And Loaded Set
@@ -41,21 +41,21 @@ Before any knowledge-corpus task starts, resolve rules in the following order:
  -> Gate Checks And Scripts
 ```
 
-All tasks enter through the `Runtime Card Provider` registered by the selected profile, resolving the Card Index and the Runtime Card corresponding to the task; Core Bootstrap constraints are carried by the provider-registered Core Bootstrap Card. When the source text needs to be read back, select the Read Set corresponding to the actual task from [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]; a task being a knowledge-corpus long-running task MUST NOT by itself cause automatic loading of all modules of `01`, `02`, `08`, and `12`.
+All tasks enter through the kernel-owned [[kernel/Cards/00 Card Index|Card Index]], then load [[kernel/Cards/01 Core Bootstrap Card|Core Bootstrap]] and the Runtime Card corresponding to the task. When the source text needs to be read back, select the Read Set corresponding to the actual task from [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]; a task being a knowledge-corpus long-running task MUST NOT by itself cause automatic loading of all modules of `01`, `02`, `08`, and `12`.
 
-A long-running task MUST combine the Card corresponding to the actual content type with the Long-running Execution Card resolved by the `Runtime Card Provider`; when reading back the source text, combine the corresponding Read Sets. Quality rules enter the contract at task start via the Gate list; the full gate procedure is read only when the corresponding checkpoint is reached.
+A long-running task MUST combine the Card corresponding to the actual content type with [[kernel/Cards/07 Long-running Execution Card|Long-running Execution]]; when reading back the source text, combine the corresponding Read Sets. Quality rules enter the contract at task start via the Gate list; the full gate procedure is read only when the corresponding checkpoint is reached.
 
 The Task Contract or Progress Ledger MUST record:
 
 - `standards_version`.
-- The actual loaded set: Runtime Card IDs, artifacts resolved by the `Runtime Card Provider`, and module paths read back on escalation.
+- The actual loaded set: kernel Runtime Card IDs and paths, any profile extension route explicitly combined with them, and module paths read back on escalation.
 - The Runtime Cards and Read Sets used.
 - Gate modules registered but not yet triggered.
 - Re-resolution results after Standards or task scope changes.
 
 ## Card-first Reading Mode
 
-The default reading mode is to read the task's Runtime Card resolved by the `Runtime Card Provider`. A Card is a faithful compression of the corresponding Read Set's Start/Triggered/Gate modules, covering the determinations, procedures, and Gate lists needed for routine tasks.
+The default reading mode is to read the task's kernel Runtime Card. A Card is a faithful compression of the corresponding Read Set's Start/Triggered/Gate modules, covering the determinations, procedures, and Gate lists needed for routine tasks.
 
 In the following cases the Standards source text MUST be read back; cards alone MUST NOT be relied on:
 
@@ -64,7 +64,7 @@ In the following cases the Standards source text MUST be read back; cards alone 
 - Depth rules for L-tier pages (the complete list is maintained only in the source text).
 - Governance tasks: the RS 09 source text MUST be read in full; cards MUST NOT serve as the basis for a revision.
 
-Runtime Cards are compiled artifacts and must not be hand-edited. When a card conflicts with the Standards source text, the source text prevails, and regeneration is triggered per the Revision Write-back Checklist of [[kernel/00 Standards Control/03 Standards Governance|Standards Governance]].
+Runtime Cards are compiled artifacts shipped under `kernel/Cards` and must not be hand-edited. The kernel owns their required IDs, routes, and synchronization contract. A profile may add a domain-specific route or supplemental card through its `Routing And Gate Registry`, but it cannot replace, shadow, or disable a kernel card. When a card conflicts with the Standards source text, the source text prevails, and regeneration is triggered per the Revision Write-back Checklist of [[kernel/00 Standards Control/03 Standards Governance|Standards Governance]].
 
 ## Default Read Sets
 
