@@ -18,6 +18,8 @@ This page is the stable entry point for the Knowledge Intake and Evolution stand
 | [[kernel/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles\|Intake Note Types and Source Roles]] | `Note Types In The Intake Layer`, `Source Role Policy` |
 | [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy\|Evidence Maturity and Batch Policy]] | `Evidence Maturity`, `Batch Policy` |
 | [[kernel/06 Knowledge Intake and Evolution/06 Intake Anti-patterns and Acceptance\|Intake Anti-patterns and Acceptance]] | `Anti-patterns`, `Acceptance Criteria`, `Related` |
+| [[kernel/06 Knowledge Intake and Evolution/07 Environmental Scanning and Watermark\|Environmental Scanning and Watermark]] | `Environmental Scanning` |
+| [[kernel/06 Knowledge Intake and Evolution/08 Canonical Promotion Gate\|Canonical Promotion Gate]] | `Canonical Promotion Gate` |
 
 ## Applicable Read Sets
 

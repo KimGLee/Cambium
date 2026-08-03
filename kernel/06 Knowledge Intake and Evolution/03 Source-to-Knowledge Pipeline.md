@@ -21,25 +21,7 @@ Environmental Scanning
 
 ### Stage 1: Environmental Scanning
 
-The goal is to discover changes worth investigating, not to immediately write hot topics into conclusions.
-
-The following need to be recorded:
-
-- Newly emerging problems, capabilities, failure modes, or engineering patterns.
-- The discovery source and first-discovery date.
-- The originating guidance ID, for user-provided hypotheses or source leads.
-- The relationship to the Knowledge Spine declared by `Profile Scope`.
-- The existing modules it may affect.
-- Why it is worth further investigation.
-
-Community buzz can trigger investigation, but MUST NOT on its own trigger canonical promotion.
-
-Incremental scanning semantics:
-
-- By default, scan only new material that appeared after `scanned_until` in `Tools/state/watermark.yaml` (schema in `Tools/schemas/watermark.template.yaml`).
-- The watermark records covered sources and the coverage cutoff date in per-domain sections.
-- At batch close, advance the watermark together with the Ledger.
-- A full rescan is an explicit exception, used only when onboarding a new domain or when the watermark is suspect, and the reason MUST be recorded in the Ledger.
+The scanning obligations and the incremental watermark semantics are owned by [[kernel/06 Knowledge Intake and Evolution/07 Environmental Scanning and Watermark#Environmental Scanning|Environmental Scanning and Watermark]], which a maintenance run also enters without running this pipeline.
 
 ### Stage 2: Source Capture
 
@@ -155,18 +137,7 @@ Isolated pages MUST NOT be created with relationships left to be filled in later
 
 ### Stage 9: Verification And Promotion
 
-Before a new page enters canonical knowledge from external sources, it MUST pass the promotion gate:
-
-1. The knowledge object has a clear problem, boundary, and owner.
-2. Key claims can be traced to specific sources.
-3. Reported facts, inferences, syntheses, and recommendations are distinguished.
-4. Source applicability and vendor-specific conditions are stated.
-5. Synonymous pages and duplicate definitions have been checked.
-6. Evidence maturity is consistent with the body tone.
-7. The page reaches the corresponding depth class and is not a source summary or an empty shell.
-8. Wiki links, Sources, metadata, and rendering have been verified.
-
-Content that has not passed the promotion gate MAY remain as a Source Note or Research Synthesis, but MUST NOT be marked as stable canonical knowledge.
+The promotion criteria are owned by [[kernel/06 Knowledge Intake and Evolution/08 Canonical Promotion Gate#Canonical Promotion Gate|Canonical Promotion Gate]], which a review also enters without running this pipeline.
 
 ### Stage 10: Maintenance And Supersession
 

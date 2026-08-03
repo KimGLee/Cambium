@@ -38,7 +38,7 @@ Before closing the page, read:
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - For an L-tier page, [[kernel/12 Quality Assurance/12 Substantive Correctness Review|Substantive Correctness Review]]; the author dispatches it to an independent execution context and MUST NOT produce the receipt.
 - When formatting or renderable constructs changed, read [[kernel/10 Writing and Formatting/04 Rendering and Formatting Review|Rendering and Formatting Review]].
-- When the page contains a diagram, table, formula, image, callout, or embed, or a specific display problem exists, read [[kernel/12 Quality Assurance/02 Rendering Verification|Rendering Verification]]. Run Level 0 / Level 1 by default; visual levels may be entered only with a recorded objective trigger and unresolved question.
+- When the page contains a diagram, table, formula, image, callout, or embed, or a specific display problem exists, read [[kernel/12 Quality Assurance/02 Rendering Verification|Rendering Verification]]. Run Level 0 / Level 1 by default; visual levels are entered only under [[kernel/12 Quality Assurance/13 Visual Verification Escalation|Visual Verification Escalation]], with a recorded objective trigger and unresolved question.
 
 ## Related
 

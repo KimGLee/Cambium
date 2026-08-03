@@ -9,9 +9,9 @@ First read [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]], then 
 - [[kernel/00 Standards Control/08 Maintenance Run Envelope|Maintenance Run Envelope]]
 - [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]
 - [[kernel/08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]] (Freshness And Review Due)
-- [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] (Stage 1's incremental scan and watermark semantics)
-- [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]]
-- [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
+- [[kernel/06 Knowledge Intake and Evolution/07 Environmental Scanning and Watermark|Environmental Scanning and Watermark]]
+- [[kernel/02 Build Execution/05 Batch Execution|Batch Execution]]
+- [[kernel/12 Quality Assurance/14 Batch Review|Batch Review]]
 
 Before starting, the budget envelope MUST be declared (N pages, N batches, or N hours — choose one of the three), and the candidate manifest merged from four sources: overdue re-verification list ∪ watermark increment ∪ `needs_rereview` marks ∪ candidates pool (duplicate / vocab / language). A candidate not selected by the budget for 3 consecutive maintenance runs is automatically demoted to log-only, and re-enters the pool when hit again by a new scan; at the start of a maintenance run, output the deferred age distribution, and items lingering more than 3 runs MUST be explicitly dispositioned. The owner of the rules above is [[kernel/00 Standards Control/08 Maintenance Run Envelope|00/08]]; this is an execution summary.
 
@@ -25,7 +25,7 @@ Before starting, the budget envelope MUST be declared (N pages, N batches, or N 
 
 ## Gate
 
-- Batch close: [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]], then [[kernel/12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]] at serial merge.
+- Batch close: [[kernel/12 Quality Assurance/14 Batch Review|Batch Review]], then [[kernel/12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]] at serial merge.
 - Closing this run's manifest: [[kernel/00 Standards Control/06 Completion Precedence and Task Contract#Maintenance Completion|Maintenance Completion]] — bounded completion semantics: the run is complete when the candidate manifest within the envelope is closed + the Ledger and watermark are advanced + each batch passes the applicable QA gates; the vault-wide Terminal Proof does not apply, and deferred items cut off by the envelope hand over to the next maintenance run and do not constitute a gap.
 
 ## Related

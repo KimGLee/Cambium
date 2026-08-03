@@ -8,6 +8,8 @@ First read [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]], then 
 
 - [[kernel/06 Knowledge Intake and Evolution/01 Intake Scope and Knowledge Model|Intake Scope and Knowledge Model]]
 - [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]]
+- [[kernel/06 Knowledge Intake and Evolution/07 Environmental Scanning and Watermark|Environmental Scanning and Watermark]] (pipeline Stage 1)
+- [[kernel/06 Knowledge Intake and Evolution/08 Canonical Promotion Gate|Canonical Promotion Gate]] (pipeline Stage 9)
 - [[kernel/06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles|Intake Note Types and Source Roles]]
 - [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]]
 - [[kernel/07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|Source Hierarchy and Evidence Roles]]

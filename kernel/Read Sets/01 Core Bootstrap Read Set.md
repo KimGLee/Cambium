@@ -9,7 +9,7 @@ Read in order:
 1. [[kernel/00 Standards Overview|Standards Overview]]
 2. [[kernel/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]
 3. [[kernel/00 Standards Control/04 Control State and Scope|Control State and Scope]]
-4. [[kernel/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]]
+4. [[kernel/00 Standards Control/05 Core Principles|Core Principles]]
 5. [[kernel/00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
 
 Then select the task-specific Read Set from the [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]].

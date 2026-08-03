@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/06 Knowledge Intake and Evolution Standard|06 Knowledge Intake and Evolution Standard]].
 - Previous: [[kernel/06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]].
+- Next: [[kernel/06 Knowledge Intake and Evolution/07 Environmental Scanning and Watermark|Environmental Scanning and Watermark]].
 
 ## Anti-patterns
 

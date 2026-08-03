@@ -1,7 +1,7 @@
 ## Navigation
 
 - Parent: [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]].
-- Previous: [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]].
+- Previous: [[kernel/12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]].
 - Next: [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]].
 
 ## Purpose
@@ -199,7 +199,7 @@ If a specialized Audit finds a local receipt already invalidated, it SHOULD crea
 
 ## Terminal Reconciliation Rules
 
-The canonical procedure of the Terminal Audit and the canonical definition of the Terminal Proof field list (including `full_deterministic_results`) both live in [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report#Terminal Audit|Terminal Audit]]; this section specifies only the evidence reuse and invalidation reconciliation rules within that procedure.
+The canonical procedure of the Terminal Audit and the canonical definition of the Terminal Proof field list (including `full_deterministic_results`) both live in [[kernel/12 Quality Assurance/15 Terminal Audit and Convergence#Terminal Audit|Terminal Audit]]; this section specifies only the evidence reuse and invalidation reconciliation rules within that procedure.
 
 `unresolved_invalidations` MUST be `0`. Reusing a receipt is not lowering the standard; it requires proving that the audited object and the acceptance conditions have not undergone relevant change.
 
@@ -208,8 +208,9 @@ The canonical procedure of the Terminal Audit and the canonical definition of th
 - [[kernel/12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]]
 - [[kernel/12 Quality Assurance/10 Standards Version Adoption|Standards Version Adoption]]
 - [[kernel/12 Quality Assurance/11 Content-level Propagation|Content-level Propagation]]
-- [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
+- [[kernel/12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]]
+- [[kernel/12 Quality Assurance/14 Batch Review|Batch Review]]
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
-- [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
+- [[kernel/12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]]
 - [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
-- [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]]
+- [[kernel/02 Build Execution/05 Batch Execution|Batch Execution]]

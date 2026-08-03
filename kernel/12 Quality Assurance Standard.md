@@ -13,17 +13,20 @@ This page is the stable entry for the Quality Assurance standard. The detailed r
 | Module | Canonical sections |
 |---|---|
 | [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review\|Quality Dimensions and Single Note Review]] | `Purpose`, `Quality Dimensions`, `Single Note Review` |
-| [[kernel/12 Quality Assurance/02 Rendering Verification\|Rendering Verification]] | `Rendering Verification Levels` |
-| [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review\|Module Coverage and Batch Review]] | `Module Review`, `Coverage Reconciliation Review`, `Batch Review` |
+| [[kernel/12 Quality Assurance/02 Rendering Verification\|Rendering Verification]] | `Rendering Verification Levels`, `Escalation Record` |
+| [[kernel/12 Quality Assurance/03 Module and Coverage Review\|Module and Coverage Review]] | `Module Review`, `Coverage Reconciliation Review` |
 | [[kernel/12 Quality Assurance/04 Guidance and Source Review\|Guidance and Source Review]] | `Guidance Reconciliation Review`, `Source Intake And Promotion Review` |
 | [[kernel/12 Quality Assurance/05 Automated and Manual Checks\|Automated and Manual Checks]] | `Automated Checks`, `Domain-specific Checks`, `Manual Checks` |
-| [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report\|Completion Terminal Audit and Final Report]] | `Completion Gate`, `Terminal Audit`, `Terminal Findings And Convergence`, `Final Report`, `Related` |
+| [[kernel/12 Quality Assurance/06 Completion Gate and Reporting\|Completion Gate and Reporting]] | `Completion Gate`, `Final Report`, `Related` |
 | [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation\|Audit Evidence Reuse and Invalidation]] | `Purpose`, `Audit Layers`, `Dimension-specific Audit Receipt`, `Reuse Gate`, `Invalidation`, `Incremental Audit Planning`, `Incremental By Default`, `Specialized Audit Boundary`, `Terminal Reconciliation Rules`, `Related` |
 | [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] | `Purpose`, `Terms`, `Evidence Role`, `Uniform Sections`, `Item Map`, `Reverse Check`, `Profile Registration`, `Related` |
 | [[kernel/12 Quality Assurance/09 Batch-close Closed List\|Batch-close Closed List]] | `Purpose`, `Batch-close Closed List`, `Related` |
 | [[kernel/12 Quality Assurance/10 Standards Version Adoption\|Standards Version Adoption]] | `Purpose`, `Active-task Adoption`, `Related` |
 | [[kernel/12 Quality Assurance/11 Content-level Propagation\|Content-level Propagation]] | `Purpose`, `Content-level Propagation`, `Related` |
 | [[kernel/12 Quality Assurance/12 Substantive Correctness Review\|Substantive Correctness Review]] | `Purpose`, `Substantive Correctness Review`, `Related` |
+| [[kernel/12 Quality Assurance/13 Visual Verification Escalation\|Visual Verification Escalation]] | `Visual Verification Escalation` |
+| [[kernel/12 Quality Assurance/14 Batch Review\|Batch Review]] | `Batch Review` |
+| [[kernel/12 Quality Assurance/15 Terminal Audit and Convergence\|Terminal Audit and Convergence]] | `Terminal Audit`, `Terminal Findings And Convergence` |
 | `Audit Dimension Registry` + `Registered Scan Registry` + `Routing And Gate Registry` | profile-owned QA dimensions, scans, and extension gates |
 
 ## Extension Registry

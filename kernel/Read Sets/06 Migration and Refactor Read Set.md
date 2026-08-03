@@ -15,7 +15,7 @@ First read [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]], then 
 - [[kernel/09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - [[kernel/09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]]
 
-Before migration, a manifest of source paths, target paths, incoming links, heading anchors, content owners, and the rollback boundary MUST be established. Migration batches MUST run in exclusive execution, not concurrently with other batches ([[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches).
+Before migration, a manifest of source paths, target paths, incoming links, heading anchors, content owners, and the rollback boundary MUST be established. Migration batches MUST run in exclusive execution, not concurrently with other batches ([[kernel/02 Build Execution/05 Batch Execution|02/05]] Concurrent Batches).
 
 ## Triggered
 
@@ -25,10 +25,11 @@ Before migration, a manifest of source paths, target paths, incoming links, head
 
 ## Gate
 
-- [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
+- [[kernel/12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]]
+- [[kernel/12 Quality Assurance/14 Batch Review|Batch Review]]
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - [[kernel/12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]], run by the integrator on the batch in which the migration closes
-- [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
+- [[kernel/12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]]
 
 ## Related
 

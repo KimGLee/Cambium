@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]].
 - Previous: [[kernel/12 Quality Assurance/11 Content-level Propagation|Content-level Propagation]].
+- Next: [[kernel/12 Quality Assurance/13 Visual Verification Escalation|Visual Verification Escalation]].
 
 ## Purpose
 
@@ -38,5 +39,5 @@ Existing-content exemption: the trigger points are limited to the three cases ab
 ## Related
 
 - [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]]
-- [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
+- [[kernel/12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]]
 - [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]

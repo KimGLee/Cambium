@@ -27,7 +27,7 @@ Every judgment item has exactly one evidence role:
 - `consumes` — satisfied by a receipt produced elsewhere; records `reused_receipt_id` under the Reuse Gate and does not change that receipt's dimension.
 - `triggers` — raises review candidates only; produces no receipt and cannot fail a gate alone.
 
-An item MUST NOT both emit and consume for the same audit object. Which layer owns a risk object's canonical gate is decided by [[kernel/00 Standards Control/05 Core Principles and Standards Map#Control Registry|Control Registry]]; this module files verdicts under those assignments and does not restate them. The lightweight script receipt of a scoped self-check is evidence toward the canonical receipt, not a second receipt for the same object.
+An item MUST NOT both emit and consume for the same audit object. Which layer owns a risk object's canonical gate is decided by [[kernel/00 Standards Control/12 Control Registry#Control Registry|Control Registry]]; this module files verdicts under those assignments and does not restate them. The lightweight script receipt of a scoped self-check is evidence toward the canonical receipt, not a second receipt for the same object.
 
 ## Uniform Sections
 
@@ -68,16 +68,16 @@ The language-acceptance line of `12/01 Content` is a registry pointer, not a che
 | `12/03 Module` | registered profile synchronization gates | emits | guidance_and_contract |
 | `12/03 Coverage` | the other eight items | emits | coverage_and_integration |
 | `12/03 Coverage` | core pages not thinner than new peripheral or frontier pages | triggers → `12/03 Module` depth balance | — |
-| `12/03 Batch` | Required pages at target `authoring_status`; delta applied, both ledgers in sync | emits | coverage_and_integration |
-| `12/03 Batch` | canonical ownership, body links, navigation synchronized | emits | structure_and_links |
-| `12/03 Batch` | Sources synchronized | emits | source_and_currentness |
-| `12/03 Batch` | metadata; registered migrations; AuditPlan `reused_receipt_id`; delta written out; guidance reconciliation; `unresolved_invalidations = 0` | emits | guidance_and_contract |
+| `12/14 Batch` | Required pages at target `authoring_status`; delta applied, both ledgers in sync | emits | coverage_and_integration |
+| `12/14 Batch` | canonical ownership, body links, navigation synchronized | emits | structure_and_links |
+| `12/14 Batch` | Sources synchronized | emits | source_and_currentness |
+| `12/14 Batch` | metadata; registered migrations; AuditPlan `reused_receipt_id`; delta written out; guidance reconciliation; `unresolved_invalidations = 0` | emits | guidance_and_contract |
 | `12/07` Closed List | 1 `check_links`; 2 structural validity; 3 graph JSON and basename candidates | emits | structure_and_links |
 | `12/07` Closed List | 4 Coverage file-count reconciliation | emits | coverage_and_integration |
 | `12/07` Closed List | 5 guidance ID and contract continuity; 7 `check_vocab` | emits | guidance_and_contract |
 | `12/07` Closed List | 6 registered residual-content scan | declared by the registered scan | declared there |
 
-The `12/03 Batch` roll-up line covering automated checks, manual content review and the applicable rendering level emits nothing of its own. [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|12/06]] states no judgment items: the Completion Gate and the Terminal Audit consume receipts.
+The `12/14 Batch` roll-up line covering automated checks, manual content review and the applicable rendering level emits nothing of its own. [[kernel/12 Quality Assurance/06 Completion Gate and Reporting|12/06]] and [[kernel/12 Quality Assurance/15 Terminal Audit and Convergence|12/15]] state no judgment items: the Completion Gate and the Terminal Audit consume receipts.
 
 Closed List 3 emits a candidate list; whether two candidates are one canonical concept with two owners is decided by the `12/03 Module` duplicate item. Within one page, duplicate headings are a `12/02` Level 0 finding.
 
@@ -93,4 +93,4 @@ An entry appended through the `Audit Dimension Registry` is a judgment item, not
 
 - [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]]
 - [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
-- [[kernel/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]]
+- [[kernel/00 Standards Control/12 Control Registry|Control Registry]]

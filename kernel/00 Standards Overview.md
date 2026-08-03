@@ -105,4 +105,4 @@ The complete default constraints are located in the [[kernel/00 Standards Contro
 - [[kernel/Read Sets/00 Read Sets Index|Read Sets Index]]
 - [[kernel/00 Standards Control/03 Standards Governance|Standards Governance]]
 - [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
-- [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
+- [[kernel/12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]]

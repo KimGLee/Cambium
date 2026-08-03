@@ -16,9 +16,10 @@ This page is the stable entry point of the Build Execution standard. The detaile
 | [[kernel/02 Build Execution/02 Mid-task Guidance and Amendment\|Mid-task Guidance and Amendment]] | `Mid-task Guidance And Contract Amendment` |
 | [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation\|Inventory and Coverage Reconciliation]] | `Phase 1: Inventory`, `Coverage Reconciliation`, `Machine-readable Ledger` |
 | [[kernel/02 Build Execution/04 Architecture Samples and Dependency Build\|Architecture Samples and Dependency Build]] | `Phase 2: Architecture And Mapping`, `Phase 3: Representative Samples`, `Phase 4: Dependency-ordered Build` |
-| [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger\|Batch Execution and Progress Ledger]] | `Batch Policy`, `Concurrent Batches`, `Source-driven Expansion Batch`, `Progress Ledger`, `Machine-readable Ledger` |
+| [[kernel/02 Build Execution/05 Batch Execution\|Batch Execution]] | `Batch Policy`, `Concurrent Batches`, `Source-driven Expansion Batch` |
 | [[kernel/02 Build Execution/06 Existing Changes Migration and Resume\|Existing Changes Migration and Resume]] | `Existing Changes`, `Migration Safety`, `Interruption And Resume` |
 | [[kernel/02 Build Execution/07 Completion and Handoff\|Completion and Handoff]] | `Completion Policy`, `Final Handoff`, `Related` |
+| [[kernel/02 Build Execution/08 Progress Ledger\|Progress Ledger]] | `Progress Ledger`, `Machine-readable Ledger` |
 
 ## Applicable Read Sets
 

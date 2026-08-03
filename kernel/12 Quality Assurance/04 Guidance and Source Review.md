@@ -1,7 +1,7 @@
 ## Navigation
 
 - Parent: [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]].
-- Previous: [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]].
+- Previous: [[kernel/12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]].
 - Next: [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]].
 
 ## Guidance Reconciliation Review
@@ -37,7 +37,7 @@ An explicit scope or acceptance requirement from a user with task authority MUST
 Record `guidance_cutoff_id` when the Terminal Audit starts. When new guidance arrives afterwards:
 
 - Changes the current objective, scope, acceptance, exclusions, time contract, or Required content: the Terminal Audit is invalidated and the task state returns to `active`.
-- Fixes factual, link, source, or QA problems in the candidate results: handle in place as major per [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report#Terminal Findings And Convergence|Terminal Findings And Convergence]] (targeted re-check + receipt supersede); the Terminal Audit is not voided as a whole.
+- Fixes factual, link, source, or QA problems in the candidate results: handle in place as major per [[kernel/12 Quality Assurance/15 Terminal Audit and Convergence#Terminal Findings And Convergence|Terminal Findings And Convergence]] (targeted re-check + receipt supersede); the Terminal Audit is not voided as a whole.
 - The user explicitly designates it as a future task or optional backlog: record the new contract / backlog assignment without changing the current Terminal Proof.
 - Only asks about status and does not change the task: answer normally without changing the cutoff.
 
@@ -55,7 +55,7 @@ Source-driven expansion requires additional checks:
 - Whether user hypotheses, source leads, and first-party context preserve evidence boundaries per [[kernel/06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads#User Guidance, Hypotheses And Source Leads|User Guidance, Hypotheses And Source Leads]].
 - Whether multiple sources are genuinely independent, and whether terminology and experimental conditions are comparable.
 - Whether the choice to update, create, split, merge, or defer for new information has a graph impact rationale.
-- Whether new canonical notes pass the [[kernel/06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline#Stage 9: Verification And Promotion|canonical promotion gate]].
+- Whether new canonical notes pass the [[kernel/06 Knowledge Intake and Evolution/08 Canonical Promotion Gate#Canonical Promotion Gate|canonical promotion gate]].
 - Whether contested or superseded conclusions retain their status, sources, and supersession relationships.
 
 A single source-driven batch is responsible for claim and promotion correctness at that time; the subsequent Source Audit is responsible for cross-batch identity/currentness, conflicts, supersession, and affected-note propagation. If the artifact, source dependency, review due date, and acceptance predicates are unchanged, local source receipts MAY be reused; a specialized Audit MUST NOT be used to rewrite stable mechanisms unrelated to its global invariant.

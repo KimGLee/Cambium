@@ -2,7 +2,7 @@
 
 - Parent: [[kernel/00 Standards Overview|00 Standards Overview]].
 - Previous: [[kernel/00 Standards Control/03 Standards Governance|Standards Governance]].
-- Next: [[kernel/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]].
+- Next: [[kernel/00 Standards Control/05 Core Principles|Core Principles]].
 
 ## Control State Separation
 

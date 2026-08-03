@@ -6,7 +6,7 @@
 
 ## Purpose
 
-This module owns how much acceptance ceremony a page receives, and the priority distribution that keeps that decision honest. It is read when a page is given a tier in the Coverage Ledger, and again by whichever gate is about to accept it. It decides the intensity of the acceptance; what that acceptance actually checks is decided by [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]] and [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|12/03]].
+This module owns how much acceptance ceremony a page receives, and the priority distribution that keeps that decision honest. It is read when a page is given a tier in the Coverage Ledger, and again by whichever gate is about to accept it. It decides the intensity of the acceptance; what that acceptance actually checks is decided by [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|12/01]], [[kernel/12 Quality Assurance/03 Module and Coverage Review|12/03]], and [[kernel/12 Quality Assurance/14 Batch Review|12/14]].
 
 ## Effort Tiering
 
@@ -14,7 +14,7 @@ Page-level acceptance intensity is executed by S/M/L tiering. This section is th
 
 | Tier | Determination | Ceremony |
 |---|---|---|
-| S | priority=P2, or terminology stub / placeholder / link-aggregation pages | script checks only; no note gate; spot check at batch close per [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review\|12/03]] |
+| S | priority=P2, or terminology stub / placeholder / link-aggregation pages | script checks only; no note gate; spot check at batch close per [[kernel/12 Quality Assurance/14 Batch Review\|12/14]] |
 | M | regular priority=P1 pages | script checks + the corresponding Card's Gate list; the note gate is folded into the batch gate |
 | L | priority=P0, or core concept / process-flow / system / risk-control mainline pages, plus the additional L-tier triggers registered in the selected profile's `Routing And Gate Registry` | full procedure: complete [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review\|12/01]] review + a standalone note gate + applicable expression migration checks |
 
@@ -37,4 +37,5 @@ P0/P1 pages exceeding quota MUST be demoted, or an explicit exemption rationale 
 
 - [[kernel/00 Standards Overview|Standards Overview]]
 - [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]]
-- [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
+- [[kernel/12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]]
+- [[kernel/12 Quality Assurance/14 Batch Review|Batch Review]]

@@ -11,7 +11,9 @@ First read:
 - [[kernel/00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]
 - [[kernel/00 Standards Control/03 Standards Governance|Standards Governance]]
 - [[kernel/00 Standards Control/04 Control State and Scope|Control State and Scope]]
-- [[kernel/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]]
+- [[kernel/00 Standards Control/05 Core Principles|Core Principles]]
+- [[kernel/00 Standards Control/11 Standards Map and Rule Registry|Standards Map and Rule Registry]]
+- [[kernel/00 Standards Control/12 Control Registry|Control Registry]]
 - [[kernel/00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
 - [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]
 - [[kernel/00 Standards Control/08 Maintenance Run Envelope|Maintenance Run Envelope]]
@@ -34,12 +36,12 @@ First read:
 
 ## Gate
 
-- Use [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]] to verify directories, MOC, and coverage.
+- Use [[kernel/12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]] to verify directories, MOC, and coverage.
 - Use [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] to record affected active tasks' receipt compatibility and invalidation scope, and [[kernel/12 Quality Assurance/10 Standards Version Adoption|Standards Version Adoption]] to execute the adoption plan.
 - When the revision adds, retires, or re-scopes a check, use [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]] to fix the item's receipt dimension, audit layer, audit object, and evidence role before the revision closes.
 - Use [[kernel/09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]] to verify vault-wide incoming links.
 - When rendering policy, diagrams, tables, formulas, assets, or host behavior are involved, use [[kernel/12 Quality Assurance/02 Rendering Verification|Rendering Verification]] to select and record the actual level.
-- Use [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]] to close the governance task.
+- Use [[kernel/12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]] to close the governance task.
 
 ## Related
 

@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]].
 - Previous: [[kernel/02 Build Execution/06 Existing Changes Migration and Resume|Existing Changes Migration and Resume]].
+- Next: [[kernel/02 Build Execution/08 Progress Ledger|Progress Ledger]].
 
 ## Completion Policy
 
@@ -18,7 +19,7 @@ Completion cannot be declared early for the following reasons:
 
 A task can only move from `active` to `completion-candidate`, and enters `complete` only after completing the Terminal Audit of the [[kernel/12 Quality Assurance Standard|Quality Assurance Standard]].
 
-The canonical procedure of the Terminal Audit is at [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report#Terminal Audit|Terminal Audit]].
+The canonical procedure of the Terminal Audit is at [[kernel/12 Quality Assurance/15 Terminal Audit and Convergence#Terminal Audit|Terminal Audit]].
 
 The Terminal Proof proves at least:
 
@@ -44,7 +45,7 @@ Where:
 - `final_handoff_written`: the remaining optional, deferred, and evidence gaps are made explicit.
 - `time_contract_satisfied`: if `minimum_run_until` exists, the current time has reached it; if `hard_stop_at` exists, the user-required stop boundary has not been crossed.
 
-The canonical rule separating authoring completion from evidence closure (including the four executable conditions) is in [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|12/06]]; pages missing body mechanism, Sources, Expression Layer migration, or Required QA remain authoring gaps.
+The canonical rule separating authoring completion from evidence closure (including the four executable conditions) is in [[kernel/12 Quality Assurance/06 Completion Gate and Reporting|12/06]]; pages missing body mechanism, Sources, Expression Layer migration, or Required QA remain authoring gaps.
 
 The user MAY pause or cancel the task before the Completion Gate, but that action cannot be reported as completion.
 

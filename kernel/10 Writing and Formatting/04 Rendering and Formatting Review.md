@@ -10,7 +10,7 @@ Content and structure checks rely primarily on directly extracted Markdown; rend
 
 Execution-side points: plain-text edits do not by default require opening the selected knowledge host's UI. Adding a diagram, table, formula, image, callout, or embed does not automatically trigger the UI either; first run the corresponding compiler, parser, path, dimension, and structure verification.
 
-Only when the objective conditions of [[kernel/12 Quality Assurance/02 Rendering Verification#Level 2: Targeted Visual Recognition Exception|Level 2]] hold is the minimal page opened or the target screenshot inspected. Screen recording applies only to timing or interaction issues that static evidence cannot express. Passing Reading View only means the inspected target displays correctly; it does not mean content, sources, links, and the Completion Gate have passed.
+Only when the objective conditions of [[kernel/12 Quality Assurance/13 Visual Verification Escalation#Level 2: Targeted Visual Recognition Exception|Level 2]] hold is the minimal page opened or the target screenshot inspected. Screen recording applies only to timing or interaction issues that static evidence cannot express. Passing Reading View only means the inspected target displays correctly; it does not mean content, sources, links, and the Completion Gate have passed.
 
 ## Formatting Anti-patterns
 

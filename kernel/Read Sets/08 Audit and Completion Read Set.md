@@ -10,18 +10,20 @@ First read:
 - The Read Sets relevant to the finding under review.
 - [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]
 - [[kernel/12 Quality Assurance/01 Quality Dimensions and Single Note Review|Quality Dimensions and Single Note Review]]
-- [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
+- [[kernel/12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]]
+- [[kernel/12 Quality Assurance/14 Batch Review|Batch Review]]
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]]
 - [[kernel/12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]]
-- [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
+- [[kernel/12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]]
+- [[kernel/12 Quality Assurance/15 Terminal Audit and Convergence|Terminal Audit and Convergence]]
 - [[kernel/02 Build Execution/07 Completion and Handoff|Completion and Handoff]]
 - The selected profile's `Language Contract`.
 
 ## Triggered
 
-- Diagrams, tables, formulas, images, embeds, or a specific display problem: read [[kernel/12 Quality Assurance/02 Rendering Verification|Rendering Verification]]. Audit Level 0 / Level 1 deterministic evidence first; audit UI, screenshot, or recording evidence only when a recorded visual exception trigger exists.
+- Diagrams, tables, formulas, images, embeds, or a specific display problem: read [[kernel/12 Quality Assurance/02 Rendering Verification|Rendering Verification]]. Audit Level 0 / Level 1 deterministic evidence first; audit UI, screenshot, or recording evidence only when a recorded visual exception trigger exists, judged against [[kernel/12 Quality Assurance/13 Visual Verification Escalation|Visual Verification Escalation]].
 - Guidance or source promotion: read [[kernel/12 Quality Assurance/04 Guidance and Source Review|Guidance and Source Review]]; Expression Layer content: load the specialized-review role registered by the selected profile in the `Routing And Gate Registry`.
 - Directory migration: read the Gate modules of [[kernel/Read Sets/06 Migration and Refactor Read Set|Migration and Refactor]].
 

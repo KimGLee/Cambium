@@ -10,7 +10,7 @@ This module owns the fixed set of deterministic checks run against the merged in
 
 ## Batch-close Closed List
 
-**Batch-close Closed List**: the following seven items, and only these seven items, run against the merged complete in-scope snapshot when each batch is closed by the integrator during serial merge (concurrent batches merge one by one, see [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|02/05]] Concurrent Batches) —
+**Batch-close Closed List**: the following seven items, and only these seven items, run against the merged complete in-scope snapshot when each batch is closed by the integrator during serial merge (concurrent batches merge one by one, see [[kernel/02 Build Execution/05 Batch Execution|02/05]] Concurrent Batches) —
 
 1. Wiki link missing / ambiguous / heading resolution (check_links)
 2. Markdown / YAML / fence / table structural validity
@@ -20,7 +20,7 @@ This module owns the fixed set of deterministic checks run against the merged in
 6. The batch-close residual-content scan registered in the `Registered Scan Registry`
 7. Frontmatter controlled vocabulary validation (check_vocab; the active vocabulary is composed from the kernel base and the selected profile's `Vocabulary Extensions`)
 
-Adding a new check to this list requires a governance revision, and the check MUST be: a deterministic script, with a single vault-wide run ≤60 seconds. [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]] and [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]] only reference this list and do not list it separately.
+Adding a new check to this list requires a governance revision, and the check MUST be: a deterministic script, with a single vault-wide run ≤60 seconds. [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]] and [[kernel/12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]] only reference this list and do not list it separately.
 
 These are global invariants that are cheap and easily broken by modifications to other pages. A new result supersedes the previous receipt rather than being treated as meaningless repetition.
 
@@ -28,5 +28,5 @@ These are global invariants that are cheap and easily broken by modifications to
 
 - [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
-- [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]]
+- [[kernel/02 Build Execution/05 Batch Execution|Batch Execution]]
 - [[kernel/12 Quality Assurance Standard|12 Quality Assurance Standard]]

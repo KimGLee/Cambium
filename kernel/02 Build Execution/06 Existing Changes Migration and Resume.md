@@ -1,7 +1,7 @@
 ## Navigation
 
 - Parent: [[kernel/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]].
-- Previous: [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]].
+- Previous: [[kernel/02 Build Execution/05 Batch Execution|Batch Execution]].
 - Next: [[kernel/02 Build Execution/07 Completion and Handoff|Completion and Handoff]].
 
 ## Existing Changes

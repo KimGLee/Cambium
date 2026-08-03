@@ -13,7 +13,7 @@ First read [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]], then 
 - [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
 - [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]
 - [[kernel/02 Build Execution/04 Architecture Samples and Dependency Build|Architecture Samples and Dependency Build]]
-- [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]]
+- [[kernel/02 Build Execution/05 Batch Execution|Batch Execution]]
 - [[kernel/03 Note Types and Ownership/01 Note Type Catalog|Note Type Catalog]]
 - [[kernel/03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
 - [[kernel/03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]
@@ -36,7 +36,8 @@ First read [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]], then 
 
 ## Gate
 
-- [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
+- [[kernel/12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]]
+- [[kernel/12 Quality Assurance/14 Batch Review|Batch Review]]
 - [[kernel/12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - When closing a complete module, combine [[kernel/Read Sets/08 Audit and Completion Read Set|Audit and Completion]].
 

@@ -11,12 +11,14 @@ First read [[kernel/Read Sets/01 Core Bootstrap Read Set|Core Bootstrap]], then 
 - [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]
 - [[kernel/02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]]
 - [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
-- [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]]
+- [[kernel/02 Build Execution/05 Batch Execution|Batch Execution]]
+- [[kernel/02 Build Execution/08 Progress Ledger|Progress Ledger]]
 - [[kernel/02 Build Execution/06 Existing Changes Migration and Resume|Existing Changes Migration and Resume]]
 - [[kernel/02 Build Execution/07 Completion and Handoff|Completion and Handoff]]
-- [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]]
+- [[kernel/12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]]
+- [[kernel/12 Quality Assurance/14 Batch Review|Batch Review]]
 - [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
-- [[kernel/12 Quality Assurance/06 Completion Terminal Audit and Final Report|Completion Terminal Audit and Final Report]]
+- [[kernel/12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]]
 
 Also combine the authoring, source, `Expression Layer`, or migration Read Set matching the actual content type.
 
@@ -30,7 +32,7 @@ Also combine the authoring, source, `Expression Layer`, or migration Read Set ma
 
 ## Gate
 
-Each batch uses [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|Module Coverage and Batch Review]], and generates, reuses, or invalidates verification evidence per [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]; at serial merge the integrator runs [[kernel/12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]]; a task completion candidate MUST combine [[kernel/Read Sets/08 Audit and Completion Read Set|Audit and Completion]].
+Each batch uses [[kernel/12 Quality Assurance/14 Batch Review|Batch Review]], and generates, reuses, or invalidates verification evidence per [[kernel/12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]; at serial merge the integrator runs [[kernel/12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]]; a task completion candidate MUST combine [[kernel/Read Sets/08 Audit and Completion Read Set|Audit and Completion]].
 
 ## Related
 

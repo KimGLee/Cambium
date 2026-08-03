@@ -2,7 +2,7 @@
 
 - Parent: [[kernel/02 Knowledge Base Build Execution Standard|02 Knowledge Base Build Execution Standard]].
 - Previous: [[kernel/02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]].
-- Next: [[kernel/02 Build Execution/05 Batch Execution and Progress Ledger|Batch Execution and Progress Ledger]].
+- Next: [[kernel/02 Build Execution/05 Batch Execution|Batch Execution]].
 
 ## Phase 2: Architecture And Mapping
 

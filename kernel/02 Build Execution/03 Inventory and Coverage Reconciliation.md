@@ -53,7 +53,7 @@ Coverage reconciliation is executed at least at the following points:
 
 Reconciliation recomputes only the receipt validity affected by file, scope, guidance, or Standards changes; one unrelated modification cannot invalidate all content review dates, nor can `last_reviewed` be treated as proof of continued validity. File count, link, and control-plane invariants concerning the final graph state are still computed in full per gate.
 
-The reconciliation question checklist is governed by the Coverage Reconciliation Review in [[kernel/12 Quality Assurance/03 Module Coverage and Batch Review|12/03]].
+The reconciliation question checklist is governed by the Coverage Reconciliation Review in [[kernel/12 Quality Assurance/03 Module and Coverage Review|12/03]].
 
 Line counts, file existence, and link resolution are used only to surface candidate anomalies; they cannot replace note-type-aware content review.
 

@@ -1,7 +1,7 @@
 ## Navigation
 
 - Parent: [[kernel/00 Standards Overview|00 Standards Overview]].
-- Previous: [[kernel/00 Standards Control/05 Core Principles and Standards Map|Core Principles and Standards Map]].
+- Previous: [[kernel/00 Standards Control/05 Core Principles|Core Principles]].
 - Next: [[kernel/00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]].
 
 ## Definition Of Complete
