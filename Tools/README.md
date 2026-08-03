@@ -38,11 +38,11 @@ full-path links from active files into such an area still resolve, counted
 separately as `excluded_target`.
 
 The full-tree duplicate check is `python3 Tools/duplicate_check.py . --exclude
-_template --exclude Cards`. `profiles/_template/` deliberately parallels a
-filled profile, while `kernel/Cards/` deliberately compresses kernel source
-rules. Both therefore create expected textual similarity and are outside a
-knowledge-corpus duplication review. Excluding `_template` does not weaken the
-check for real profiles -- a profile a user copies out of the template lives
+_template --exclude Cards`. `profiles/_template/` repeats scaffolding and TODO
+instructions across slot files, while `kernel/Cards/` deliberately compresses
+kernel source rules. Both therefore create expected textual similarity and are
+outside a knowledge-corpus duplication review. Excluding `_template` does not
+weaken the check for real profiles -- a profile copied from the template lives
 under its own directory name and is scanned normally. Excluding `Cards` does
 not skip the canonical rule text, which remains under the rest of `kernel/`.
 

@@ -10,8 +10,6 @@ The kernel fixes a three-level priority axis — P0, P1, P2 — and uses it for 
 
 You must consume the P0 / P1 / P2 axis as it stands. Do not rename the levels, add a fourth, remove one, or redefine what they mean structurally. Do not rewrite tier derivation, quota coupling, or the exemption mechanism; those are kernel-owned. Overridable numeric thresholds — the P0 and P1 quotas among them — are selected in the manifest's `Execution Default Overrides` table, not here.
 
-A filled version is in `profiles/examples/eng-handbook/priority-rubric.md`.
-
 ## P0 Grant Criteria
 
 TODO(profile) — state the test a page must meet to be P0. P0 is the scarcest grade and is quota-limited, so the criteria must exclude most pages; if your P0 test admits half the vault, it is not a test.

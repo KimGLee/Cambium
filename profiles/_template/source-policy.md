@@ -10,8 +10,6 @@ Which sources this knowledge base treats as authoritative, in what order, how a 
 
 You may tighten the kernel's source rules. You may not weaken or replace them. Specifically, the following remain in force regardless of what you write here: the source hierarchy, the four-dimension judgment of authority, evidence role, applicability, and bias, the requirement that independent sources be genuinely independent and comparable, the ten-element provenance record, the `unknown` marking for missing provenance, source quality assessment, and the promotion gate.
 
-A filled version is in `profiles/examples/eng-handbook/source-policy.md`.
-
 ## Named Primary Sources
 
 TODO(profile) — list this profile's authoritative sources in descending authority, and state what each one is canonical *for*. A source is rarely canonical for everything: a decision record may be canonical for why a choice was made while telling you nothing reliable about current behavior.

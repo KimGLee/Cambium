@@ -10,8 +10,6 @@ This is the largest slot, and the one the rest of the profile leans on. It decla
 
 You may replace every domain-specific commitment below. You may not override the kernel's conservation, ownership, migration, or quality invariants — this slot decides what your knowledge base contains, not whether the kernel's rules apply to it.
 
-A filled version of every section below is in `profiles/examples/eng-handbook/scope-and-architecture.md`. Read it for the level of specificity, not for its answers; that example governs an engineering handbook, and its four-layer architecture is one domain's choice, not a requirement for yours.
-
 ## Goal
 
 TODO(profile) — state what this knowledge base is for and who reads it. Then state how you would know it is succeeding: name the question a reader should be able to answer without asking a person. A goal that cannot fail any test is not usable by the reviewer downstream.

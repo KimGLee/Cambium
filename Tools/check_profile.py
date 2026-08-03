@@ -249,7 +249,7 @@ def main():
     ap = argparse.ArgumentParser(
         description="Profile manifest completeness and unfilled-template check")
     ap.add_argument("profile_dir", help="the profile directory to check "
-                                        "(e.g. profiles/examples/eng-handbook)")
+                                        "(e.g. profiles/<profile-id>)")
     ap.add_argument("--root", default=REPO_ROOT,
                     help="vault root that vault-relative bindings resolve "
                          "against (default: this script's repository root)")

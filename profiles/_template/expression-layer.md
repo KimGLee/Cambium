@@ -12,8 +12,6 @@ This slot handles routing and naming only. Do not restate the kernel's expressio
 
 Registering no artifacts is a normal answer. Many profiles have no expression layer at all.
 
-A filled version — one that registers nothing, and states the consequences of that — is in `profiles/examples/eng-handbook/expression-layer.md`.
-
 ## Registered Expression Artifacts
 
 TODO(profile) — list each registered artifact with its display label and the page that owns its rules, or write that this profile registers none.

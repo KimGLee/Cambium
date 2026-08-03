@@ -8,7 +8,7 @@
 
 Implements the `Audit Dimension Registry` slot.
 
-TODO(profile) — fill in the sections below, correct the manifest path above, then delete this line and the `What This Slot Must Answer` section. Both are scaffolding, not part of your profile. A filled version to read for form is `profiles/examples/eng-handbook/registries/audit-dimensions.md`.
+TODO(profile) — fill in the sections below, correct the manifest path above, then delete this line and the `What This Slot Must Answer` section. Both are scaffolding, not part of your profile.
 
 ## What This Slot Must Answer
 

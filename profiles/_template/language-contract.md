@@ -12,8 +12,6 @@ This slot is referenced from more kernel modules than any other, because the ker
 
 You may interpret the kernel's soft length ranges in your own units. You may not change the numeric ranges, and you may not turn a soft length reference into a hard gate — length is a signal for review, never a pass/fail condition.
 
-A filled version is in `profiles/examples/eng-handbook/language-contract.md`.
-
 ## Body Language
 
 TODO(profile) — state the language body text is written in, and whether a second language is registered. If two languages are in play, state which one is canonical when they disagree.
@@ -32,7 +30,7 @@ TODO(profile) — give concrete naming and alias examples for term notes: one te
 
 TODO(profile) — state which language forms belong in `aliases` for this profile, so an author does not have to guess whether a translated name is registered or omitted.
 
-Examples here are normative for this profile, unlike the illustrations under `profiles/examples/`. An author copies the form from this section.
+The concrete naming and alias examples written here become part of this profile's contract and demonstrate the form authors must follow.
 
 ## Display Labels
 

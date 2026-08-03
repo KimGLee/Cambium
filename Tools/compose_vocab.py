@@ -55,7 +55,7 @@ sys.path.insert(0, TOOLS_DIR)
 
 import kblib  # noqa: E402
 
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 
 DEFAULT_BASE = "kernel/08 Metadata and Status/vocabulary-base.yaml"
 DEFAULT_OUTPUT = "Tools/vocab.yaml"
@@ -105,34 +105,21 @@ def resolve_path(path):
 
 
 def discover_profiles():
-    """Repo-relative extension files, one per profile that carries one.
-
-    Looks one level under profiles/ and one level under any directory there
-    that holds no extensions file of its own, which is how the grouping
-    directory profiles/examples/ is picked up without being special-cased.
-    """
+    """Repo-relative extension files, one per direct child profile."""
     root = resolve_path(PROFILES_DIR)
     found = []
     if not os.path.isdir(root):
         return found
-
-    def scan(rel_dir):
-        abs_dir = os.path.join(REPO_ROOT, rel_dir)
-        if not os.path.isdir(abs_dir):
-            return
-        for name in sorted(os.listdir(abs_dir)):
-            if name in NON_PROFILE_DIRS or name.startswith("."):
-                continue
-            child = os.path.join(abs_dir, name)
-            if not os.path.isdir(child):
-                continue
-            rel_child = "%s/%s" % (rel_dir, name)
-            if os.path.isfile(os.path.join(child, EXTENSIONS_BASENAME)):
-                found.append("%s/%s" % (rel_child, EXTENSIONS_BASENAME))
-            elif rel_dir == PROFILES_DIR:
-                scan(rel_child)
-
-    scan(PROFILES_DIR)
+    for name in sorted(os.listdir(root)):
+        if name in NON_PROFILE_DIRS or name.startswith("."):
+            continue
+        child = os.path.join(root, name)
+        if not os.path.isdir(child):
+            continue
+        extensions = os.path.join(child, EXTENSIONS_BASENAME)
+        if os.path.isfile(extensions):
+            found.append("%s/%s/%s" %
+                         (PROFILES_DIR, name, EXTENSIONS_BASENAME))
     return found
 
 

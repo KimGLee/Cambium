@@ -27,8 +27,6 @@
 # not hand-edit it:
 #   python3 Tools/compose_vocab.py --extensions profiles/<your-profile-id>/vocabulary-extensions.yaml
 #
-# A filled version is in profiles/examples/eng-handbook/vocabulary-extensions.yaml.
-#
 # Only the restricted YAML subset is allowed (parseable by Tools/kblib.py):
 #   `key: value` scalars, and `- item` lists indented under a key; list items may
 #   be a one-level flat map. Not allowed: anchors, block scalars, flow maps, tags.

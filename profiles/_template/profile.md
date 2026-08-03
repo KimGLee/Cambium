@@ -4,9 +4,9 @@ This directory is the official starting point for a new profile. It is a skeleto
 
 To create your own profile:
 
-1. Copy the whole directory to `profiles/<your-profile-id>/`. Copy it — do not edit this one in place, and do not copy `profiles/examples/eng-handbook/` instead. That directory is a filled illustration of one domain's answers, not a starting point.
+1. Copy the whole directory to `profiles/<your-profile-id>/`. Copy it — do not edit this one in place.
 2. Set `profile_id` under `Profile Identity` to your own id, and replace the rest of that section with your own description.
-3. Work through each slot file. Every file states what the slot must answer and which kernel invariants you may not override, then leaves the answer to you. Read the matching file under `profiles/examples/eng-handbook/` alongside it to see the level of specificity a real answer needs — read it for form, not for content.
+3. Work through each slot file. Every file states what the slot must answer and which kernel invariants you may not override, then leaves the answer to you. Use `profiles/README.md` as the authoritative interface when a slot needs clarification.
 4. Answer every `TODO(profile)` marker. "This profile registers nothing here" is a legitimate answer for several slots, but it must be written explicitly; a slot left silent is not the same as a slot that declares itself empty.
 5. Delete the scaffolding as you go. That means this `Template Usage` section, the `What This Slot Must Answer` section at the top of each slot file, the comment header of `vocabulary-extensions.yaml`, and the two guidance paragraphs above the `Execution Default Overrides` table below. All of it restates `profiles/README.md`; a copy living inside your profile is a second owner that will drift from the first. Each slot file carries a marker reminding you, so nothing here has to be remembered.
 6. Validate: `python3 Tools/check_profile.py profiles/<your-profile-id>`.
@@ -20,7 +20,7 @@ The normative definition of the slots is `profiles/README.md`. It states which s
 ## Profile Identity
 
 - `profile_id`: `_template`
-- Status: TODO(profile) — state what this profile is and whether it is a running profile for a real knowledge base or another illustration.
+- Status: TODO(profile) — state what this profile is and whether it is active for the knowledge base named below.
 - Purpose: TODO(profile) — state in one or two sentences which knowledge base this profile governs and who reads it.
 - Owner: TODO(profile) — name the person or role accountable for this profile's answers, so a later reader knows whom to ask when a slot answer is disputed.
 
