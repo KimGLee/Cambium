@@ -6,7 +6,7 @@ This directory is a non-normative, filled example of the Cambium profile interfa
 
 The normative interface is [profiles/README.md](../../README.md), and cross-domain rules remain in the kernel. A real adopter copies [profiles/_template/](../../_template/profile.md) to `profiles/<profile-id>/`, fills and validates that copy, and selects it through governance.
 
-The example does not contain or synchronize the live Agent Systems Atlas vault. Existing Atlas pages, metadata, Interview artifacts, and migration states remain inputs to a future adoption task rather than evidence that the profile has already passed.
+The example does not contain or synchronize the live Agent Systems Atlas vault. Agent Systems Atlas has since completed a separate formal adoption of Cambium `3.0.0` using a materialized `profiles/agent-atlas/` profile. That instance state, migration evidence, and private corpus are not distributed here, so this example remains a reference rather than an adoption certificate or proof of corpus-wide acceptance.
 
 ## Directory Structure
 

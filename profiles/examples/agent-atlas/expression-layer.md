@@ -68,7 +68,7 @@ These names are Atlas bindings, not replacements for the resolvable, bidirection
 
 ### Existing Corpus Adoption Boundary
 
-The current Agent Systems Atlas corpus predates this filled example. Its existing `interview_status` values, Card headings, and Roadmap/Cheat Sheet locations are migration inputs, not proof that this profile's current predicates have passed. If the example is materialized and selected as an active profile, the adopting revision re-evaluates affected Cards under the registered gate, migrates the named pre-adoption paths through K11/07, and records new receipts before claiming `interview-ready` or profile-wide acceptance. Existing content is not silently grandfathered, and migration never deletes an old answer or route before its target has been created and verified.
+The live Agent Systems Atlas corpus predates Cambium and has since completed a separate formal adoption of Cambium `3.0.0` using a materialized profile. That adoption does not make this example an adoption certificate or imply that every existing `interview_status` value, Card heading, or Roadmap/Cheat Sheet path satisfies the current profile predicates. Each affected object must be re-evaluated under the registered gate and migrated through K11/07 before the relevant `interview-ready` or profile-wide acceptance claim. Existing content is not silently grandfathered, and migration never deletes an old answer or route before its target has been created and verified.
 
 ### Card Granularity
 
