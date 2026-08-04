@@ -14,8 +14,8 @@ Provides:
    - nested maps two or more levels deep (the parser is recursive and
      naturally supports deeper nesting, but the standards convention only
      uses two levels).
-   Not supported: anchors/aliases, multi-line strings (| >), flow maps `{}`,
-   tags, multiple documents.
+   Not supported: duplicate mapping keys, anchors/aliases, multi-line strings
+   (| >), flow maps `{}`, tags, multiple documents.
 2. Markdown helpers: frontmatter extraction, code-block stripping (preserving
    line numbers), heading extraction.
 3. Receipt helpers: construction and append-writing of machine-readable JSONL
@@ -30,7 +30,7 @@ import re
 import time
 import uuid
 
-LIB_VERSION = "1.2.0"
+LIB_VERSION = "1.3.0"
 
 # ---------------------------------------------------------------------------
 # Restricted YAML subset parser
@@ -92,14 +92,34 @@ def parse_scalar(text):
 def _prepare_lines(text):
     """Preprocess: strip comments, blank lines and document fences; return [(indent, content), ...]."""
     lines = []
+    document_started = False
+    document_ended = False
+    has_content = False
     for raw in text.splitlines():
         if "\t" in raw[: len(raw) - len(raw.lstrip())]:
             raise YamlSubsetError("tabs are not allowed in indentation: %r" % raw)
         line = strip_yaml_comment(raw)
         stripped = line.strip()
-        if not stripped or stripped in ("---", "..."):
+        if not stripped:
             continue
         indent = len(line) - len(line.lstrip(" "))
+        if stripped == "---":
+            if indent:
+                raise YamlSubsetError("YAML document markers must start at column 0")
+            if document_started or has_content or document_ended:
+                raise YamlSubsetError("multiple YAML documents are not supported")
+            document_started = True
+            continue
+        if stripped == "...":
+            if indent:
+                raise YamlSubsetError("YAML document markers must start at column 0")
+            if document_ended:
+                raise YamlSubsetError("multiple YAML document endings are not supported")
+            document_ended = True
+            continue
+        if document_ended:
+            raise YamlSubsetError("content after a YAML document ending is not supported")
+        has_content = True
         lines.append([indent, stripped])
     return lines
 
@@ -123,6 +143,8 @@ def _parse_map(lines, i, indent):
         if not m:
             raise YamlSubsetError("cannot parse mapping line: %r" % content)
         key, rest = m.group(1).strip(), m.group(2)
+        if key in result:
+            raise YamlSubsetError("duplicate mapping key: %r" % key)
         i += 1
         if rest:
             result[key] = parse_scalar(rest)

@@ -39,7 +39,7 @@ import argparse, os, re, sys, shutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
-TOOL, TOOL_VERSION = "apply_delta", "1.2.0"
+TOOL, TOOL_VERSION = "apply_delta", "1.3.0"
 
 # Scalar keys expected in a Coverage Ledger page entry (schema:
 # Tools/schemas/coverage_ledger.template.yaml; profile extensions such as an

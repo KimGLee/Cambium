@@ -12,7 +12,11 @@ Interface: [Language Contract slot](../../README.md#language-contract-slot)
 | Official external-name display around preserved identity | Preserve the organization's, product's, model's, protocol's, framework's, library's, or algorithm's official English name and explain its role in Chinese nearby. |
 | Machine-identifier display around the exact token | Preserve code identifiers, fields, enum values, commands, paths, formulas, and configuration literals exactly in code formatting; explain their semantics in adjacent Chinese prose. |
 
-Interview-specific English/Chinese answer parity is owned only by `profiles/examples/agent-atlas/interview/system-and-project-deep-dive.md#Bilingual Answer Contract`.
+## Bilingual Answer Contract
+
+For an Interview Card, the 30-second and 90-second answers are complete in both English and Chinese. Follow-up prompts use bilingual labels, and every follow-up intended for spoken delivery includes an English answer or a usable English answer skeleton. The two language versions preserve the same claim, limitation, uncertainty, and metric meaning.
+
+This section owns only Interview Card answer parity. General body language, naming, display order, protected identifiers, and formatting remain owned by the other sections of this Language Contract. Interview Card structure and evidence requirements remain owned by [[profiles/examples/agent-atlas/expression-layer#Interview Card Contract|Expression Layer]].
 
 ## Canonical Naming
 

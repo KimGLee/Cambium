@@ -1,11 +1,30 @@
 # Profile Examples
 
-The profiles in this directory are non-normative, filled reference cases. They show the form and level of specificity that a profile may use; they do not define the profile interface, supply kernel defaults, or constrain another profile.
+## Purpose
 
-These examples are not templates and are not the starting point for adoption. Create a profile from `profiles/_template/`, place the filled copy at `profiles/<profile-id>/`, and validate that copy independently.
+This directory contains non-normative, filled reference cases. An example shows what concrete, testable answers to the profile interface can look like in one domain. It does not define the interface, supply kernel defaults, or constrain another profile.
 
-The current active-selection contract accepts exactly `profiles/<profile-id>/profile.md`. Because examples are nested below `profiles/examples/`, their manifests are intentionally not selectable in place and must never be treated as the active profile merely because they exist.
+The distinction is deliberate:
 
-## Included Example
+- `profiles/README.md` defines the slots and their constraints.
+- `profiles/_template/` asks an adopter to provide its own answers.
+- `profiles/examples/` shows completed domain-specific answers for reference.
 
-- [Agent Systems Atlas](agent-atlas/profile.md) — a Chinese-first engineering knowledge corpus with source traceability, production-system depth, and a profile-owned Interview expression layer.
+## Selection Boundary
+
+Examples are not templates or adoption starting points. The active-selection contract accepts exactly `profiles/<profile-id>/profile.md`; manifests nested under `profiles/examples/` are intentionally not selectable in place.
+
+Start from `_template`, create `profiles/<profile-id>/`, fill and validate that copy, and then select it through governance. Consult examples for answer shape and specificity without inheriting their domain choices.
+
+## Example Package Shape
+
+Every example contains the filled template skeleton and may also contain:
+
+- an example-specific README that explains its domain and reading order;
+- machine parameters or other support data explicitly consumed by an existing slot registration.
+
+Additional support files do not create slots or extend the profile interface. Policy remains in the bound slot owners, and persistent executable code shipped by Cambium remains under `Tools/`. An example must identify auxiliary files and explain why they exist.
+
+## Included Examples
+
+- [Agent Systems Atlas](agent-atlas/README.md) — a Chinese-first engineering knowledge corpus that uses kernel route R05 for an Interview expression layer and binds an Atlas-specific residual scan to the generic tool implementation.

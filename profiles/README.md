@@ -2,13 +2,17 @@
 
 ## Creating A Profile
 
-`profiles/_template/` is a guided, domain-neutral form. Copy it to `profiles/<profile-id>/`, replace every `TODO(profile)` placeholder, keep or update the manifest bindings when files move inside that profile folder, and run `python3 Tools/check_profile.py profiles/<profile-id>`. Every profile-owned slot must resolve inside the selected profile folder; a manifest cannot borrow another profile's files or a repository-root fallback. Headings, row or field labels, and YAML comments around a placeholder describe the expected answer shape; they are guidance, not additional values. Use a lowercase path slug matching `[a-z0-9][a-z0-9_-]*`; the manifest `profile_id` must equal the directory name. Fill identity and the core slots before registries so later entries reference existing IDs and paths rather than restating their rules. The template itself is neither runnable nor a default profile.
+`profiles/_template/` is a static, domain-neutral form. Copy it to `profiles/<profile-id>/`, replace every `TODO(profile)` placeholder, keep or update the manifest bindings when files move inside that profile folder, and run `python3 Tools/check_profile.py profiles/<profile-id>`. Every profile-owned slot must resolve inside the selected profile folder; a manifest cannot borrow another profile's files or a repository-root fallback. Headings, row or field labels, and YAML comments around a placeholder describe the expected answer shape; they are guidance, not additional values. Use a lowercase path slug matching `[a-z0-9][a-z0-9_-]*`; the manifest `profile_id` must equal the directory name. Fill identity and the core slots before registries so later entries reference existing IDs and paths rather than restating their rules. The template itself is neither runnable nor a default profile.
 
 ```text
 cp -R profiles/_template profiles/my-profile
 # Fill profiles/my-profile/, then:
 python3 Tools/check_profile.py profiles/my-profile
 ```
+
+Profile setup is currently manual and file-based. `check_profile.py` validates
+a filled copy but does not ask questions, generate domain decisions, author the
+profile, approve it, or select it for use.
 
 Use these declarations consistently:
 
@@ -61,7 +65,7 @@ Kernel Runtime Cards belong to `kernel/`. Profiles share the kernel route regist
 
 ## Registered Scan Registry Slot
 
-**Required.** Bind a deterministic residual-content verifier to `K12/09 item 6`, including its scope, verifier, candidate boundary, and an Acceptance Judgment Item ID from Audit Dimension Registry. It must satisfy the kernel single-vault-wide-run and ≤60-second limit. Additional profile candidate scans are optional. Review judges candidates but cannot replace execution of the required scan.
+**Required.** Bind a deterministic residual-content verifier to `K12/09 item 6`, including its scope, verifier, candidate boundary, and an Acceptance Judgment Item ID from Audit Dimension Registry. It must satisfy the kernel single-vault-wide-run and ≤60-second limit. The profile owns the registration, machine configuration, predicate, and judgment binding; a persistent executable shipped by Cambium belongs to `Tools/`, not inside the profile. When exact frontmatter and heading matching is sufficient, use `Tools/check_residual_content.py` with a profile-owned copy of [the residual scan config template](../Tools/schemas/residual_scan_config.template.yaml). Additional profile candidate scans are optional. Review judges candidates but cannot replace execution of the required scan.
 
 ## Routing And Gate Registry Slot
 

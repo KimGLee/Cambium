@@ -121,68 +121,6 @@ def markdown_paths(directory):
     )
 
 
-def validate_unique_frontmatter_keys(front, rel, failures):
-    """Reject duplicate top-level and route-registry-entry keys.
-
-    The shared restricted YAML parser intentionally keeps its last value for a
-    duplicate key. Identity-bearing Card metadata must instead fail closed, so
-    this verifier checks the two mapping levels that own route identity.
-    """
-    prepared = []
-    for lineno, raw in enumerate(front.splitlines(), 1):
-        stripped = raw.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        indent = len(raw) - len(raw.lstrip(" "))
-        prepared.append((indent, stripped, lineno))
-
-    def mapping_key(content):
-        match = re.match(r"^([^:\s][^:]*):(?:\s|$)", content)
-        return match.group(1).strip() if match else ""
-
-    top_level = set()
-    registry_starts = []
-    for index, (indent, content, lineno) in enumerate(prepared):
-        if indent != 0 or content == "-" or content.startswith("- "):
-            continue
-        key = mapping_key(content)
-        if not key:
-            continue
-        if key in top_level:
-            failures.append(
-                "%s repeats top-level frontmatter key %s (line %d)"
-                % (rel, key, lineno)
-            )
-        else:
-            top_level.add(key)
-        if key == "route_registry":
-            registry_starts.append(index)
-
-    for start in registry_starts:
-        base_indent = prepared[start][0]
-        entry_number = 0
-        entry_keys = None
-        for indent, content, lineno in prepared[start + 1 :]:
-            if indent <= base_indent:
-                break
-            if content == "-" or content.startswith("- "):
-                entry_number += 1
-                entry_keys = set()
-                content = content[1:].strip()
-            if entry_keys is None or not content:
-                continue
-            key = mapping_key(content)
-            if not key:
-                continue
-            if key in entry_keys:
-                failures.append(
-                    "%s route_registry entry %d repeats key %s (line %d)"
-                    % (rel, entry_number, key, lineno)
-                )
-            else:
-                entry_keys.add(key)
-
-
 def parse_document(path, root, failures):
     """Return (root-relative path, text, frontmatter mapping), or mapping=None."""
     rel = path.relative_to(root).as_posix()
@@ -206,7 +144,6 @@ def parse_document(path, root, failures):
     if not isinstance(data, dict):
         failures.append("%s frontmatter must be a mapping" % rel)
         return rel, text, None
-    validate_unique_frontmatter_keys(front, rel, failures)
     return rel, text, data
 
 

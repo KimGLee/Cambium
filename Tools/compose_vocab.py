@@ -53,7 +53,7 @@ sys.path.insert(0, TOOLS_DIR)
 
 import kblib  # noqa: E402
 
-TOOL_VERSION = "1.5.0"
+TOOL_VERSION = "1.6.0"
 
 DEFAULT_BASE = "kernel/K08 Metadata and Status/vocabulary-base.yaml"
 DEFAULT_OUTPUT = "Tools/vocab.yaml"

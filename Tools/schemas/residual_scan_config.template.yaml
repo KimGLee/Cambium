@@ -1,0 +1,35 @@
+# Restricted-YAML configuration for Tools/check_residual_content.py.
+# Copy this file into a selected profile and replace every TODO(profile).
+# The Registered Scan Registry remains the owner of the scan ID, invocation,
+# candidate predicate, and Judgment Item binding; this file contains only
+# machine matching parameters. Pass that registry ID separately through
+# `--scan-id`; each receipt binds it to this file's SHA-256 fingerprint.
+
+residual_scan_config_version: 1
+
+# Residual structures are valid under these vault-relative roots. Every root
+# must exist as a real directory when the scan runs.
+allowed_roots:
+  - TODO(profile)
+
+# Vault-relative subtrees outside the scan scope. The profile must name every
+# content/control subtree it excludes; the tool only omits VCS metadata
+# directories named .git/.hg/.svn. Missing excluded roots are allowed;
+# absolute paths, parent traversal, and overlaps are rejected.
+excluded_roots: []
+
+frontmatter_match:
+  field: type
+  values:
+    - TODO(profile)
+
+heading_match:
+  # Any one exact heading is enough to report a candidate. List variants
+  # explicitly; the generic tool does not remove numbering or parentheticals.
+  any:
+    - TODO(profile)
+  # These weaker headings report a candidate only in combination.
+  combination:
+    - TODO(profile)
+    - TODO(profile)
+  minimum_distinct: 2

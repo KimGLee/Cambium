@@ -1,0 +1,61 @@
+# Machine matching parameters for the Agent Atlas residual-content scan.
+# Scan identity, activation, candidate semantics, and judgment binding remain
+# owned by registries/registered-scans.md.
+
+residual_scan_config_version: 1
+
+allowed_roots:
+  - Interview Preparation
+
+excluded_roots:
+  - .obsidian
+  - Archive
+  - Knowledge Base Standards
+  - Python Algorithm Agent Training
+  - Tools
+  - kernel
+  - profiles
+
+frontmatter_match:
+  field: type
+  values:
+    - interview-card
+
+heading_match:
+  any:
+    - Interview Card
+    - Interview Answer
+    - Interview Answer（待迁移）
+    - Interview Question
+    - 30-Second Answer
+    - 90-Second Answer
+    - Common Follow-ups
+    - Common Follow-ups（常见追问）
+    - Common Followups
+    - Follow-up Answers
+    - Strong Answer Signals
+    - Weak Answer Signals
+    - 面试卡
+    - 面试卡片
+    - 面试回答
+    - 面试问题
+    - 30 秒回答
+    - 90 秒回答
+    - 常见追问
+    - 追问答案
+    - 强回答信号
+    - 弱回答信号
+  combination:
+    - Core Knowledge Links
+    - Deep Dive Follow-up Tree
+    - Common Misconceptions
+    - Comparison Questions
+    - Scenario Questions
+    - Self-test Questions
+    - 核心知识链接
+    - 深挖追问树
+    - 常见误解
+    - 比较类问题
+    - 场景类问题
+    - 自测问题
+  minimum_distinct: 2

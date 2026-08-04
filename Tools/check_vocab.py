@@ -48,7 +48,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_vocab"
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.3.0"
 
 
 def load_vocab(path):

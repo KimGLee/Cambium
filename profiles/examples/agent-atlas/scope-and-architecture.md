@@ -41,6 +41,24 @@ Interface: [Profile Scope slot](../../README.md#profile-scope-slot)
 | `L-INTERVIEW` | `Interview Preparation/` | Derive Interview Cards, Roadmaps, and Cheat Sheets from canonical knowledge for spoken recall and review. |
 | `L-MANAGEMENT` | `Knowledge Base Management/` | Hold task contracts, queues, inventories, ledgers, receipts, coverage projections, and other mutable operating state. |
 
+## Interview Layer Organization
+
+The registered `L-INTERVIEW` layer uses this internal organization:
+
+```text
+Interview Preparation/
+├── Interview Overview.md
+├── Roadmaps/
+├── Topic Cards/
+│   ├── Modeling/
+│   ├── Machine Learning/
+│   ├── Deep Learning/
+│   ├── LLM/
+│   ├── Agent/
+│   └── AI Systems Engineering/
+└── Cheat Sheets/
+```
+
 ## Knowledge Spine
 
 | Page-to-page organizing logic / Knowledge Spine | Field or statement locating each page on that spine |

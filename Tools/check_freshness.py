@@ -52,7 +52,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_freshness"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 
 # Re-verification interval (days) per volatility tier.
 INTERVAL_DAYS = {"fast": 120, "slow": 365, "stable": None}

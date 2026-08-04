@@ -68,7 +68,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_profile"
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.4.0"
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

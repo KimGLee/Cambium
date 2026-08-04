@@ -79,7 +79,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_proof"
-TOOL_VERSION = "1.6.0"
+TOOL_VERSION = "1.7.0"
 
 # K12/06: fields that must be 0 among the completion conditions (the three open
 # guidance counts are covered by the review of guidance_reconciliation_result
@@ -224,7 +224,6 @@ def _load_index(root, relative_path, expected_type):
         return None, ["cannot parse %s frontmatter: %s" % (relative_path, exc)]
     if not isinstance(data, dict):
         return None, ["%s frontmatter must be a mapping" % relative_path]
-    errors.extend(_duplicate_registry_key_errors(front, relative_path))
     if data.get("type") != expected_type:
         errors.append("%s must declare type: %s" % (relative_path, expected_type))
     if data.get("registry_id") != REGISTRY_ID:
@@ -239,62 +238,6 @@ def _load_index(root, relative_path, expected_type):
     if not isinstance(registry, list) or not registry:
         errors.append("%s must declare a non-empty route_registry" % relative_path)
     return data, errors
-
-
-def _duplicate_registry_key_errors(front, relative_path):
-    """Reject duplicate top-level and route-registry-entry identity keys."""
-    errors = []
-    prepared = []
-    for line_number, raw in enumerate(front.splitlines(), 1):
-        stripped = raw.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        prepared.append((len(raw) - len(raw.lstrip(" ")), stripped,
-                         line_number))
-
-    def key_of(content):
-        match = re.match(r"^([^:\s][^:]*):(?:\s|$)", content)
-        return match.group(1).strip() if match else ""
-
-    top_keys = set()
-    registry_starts = []
-    for item_index, (indent, content, line_number) in enumerate(prepared):
-        if indent or content == "-" or content.startswith("- "):
-            continue
-        key = key_of(content)
-        if not key:
-            continue
-        if key in top_keys:
-            errors.append("%s repeats top-level key %s at line %d" %
-                          (relative_path, key, line_number))
-        else:
-            top_keys.add(key)
-        if key == "route_registry":
-            registry_starts.append(item_index)
-
-    for start in registry_starts:
-        base_indent = prepared[start][0]
-        entry_number = 0
-        entry_keys = None
-        for indent, content, line_number in prepared[start + 1:]:
-            if indent <= base_indent:
-                break
-            if content == "-" or content.startswith("- "):
-                entry_number += 1
-                entry_keys = set()
-                content = content[1:].strip()
-            if entry_keys is None or not content:
-                continue
-            key = key_of(content)
-            if not key:
-                continue
-            if key in entry_keys:
-                errors.append(
-                    "%s route_registry entry %d repeats key %s at line %d"
-                    % (relative_path, entry_number, key, line_number))
-            else:
-                entry_keys.add(key)
-    return errors
 
 
 def _registry_map(data, relative_path, card_index):

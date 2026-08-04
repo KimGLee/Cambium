@@ -16,7 +16,7 @@ fields:
     values:
       - interview-only
   interview_status:
-    owner: "profiles/examples/agent-atlas/interview/card-granularity-and-readiness.md"
+    owner: "profiles/examples/agent-atlas/expression-layer.md#Interview Readiness Values"
     role: Expression Status Axis
     values:
       - not-required

@@ -4,11 +4,10 @@ Interface: [Routing And Gate Registry slot](../../../README.md#routing-and-gate-
 
 ## Supplemental Routes
 
-- Registration: Configured
+- Registration: None
 
 | Profile route ID: `P:<profile_id>:<route_name>` | Kernel route ID reference | Repo-relative Profile Read Set path |
 |---|---|---|
-| `P:agent-atlas:interview-content` | `R05` | `profiles/examples/agent-atlas/interview/interview-content-read-set.md` |
 
 ## Additional L-tier Triggers
 
@@ -25,7 +24,7 @@ Interface: [Routing And Gate Registry slot](../../../README.md#routing-and-gate-
 
 | Judgment Item ID reference | Applicability / trigger predicate | Verification procedure or existing Scan/receipt-source reference | Evidence-reuse predicate/boundary |
 |---|---|---|---|
-| `agent-atlas-profile-wide-interview-acceptance` | A terminal or release claim declares the Agent Systems Atlas Interview layer profile-wide complete. | Apply `profiles/examples/agent-atlas/interview/interview-review-and-acceptance.md#Profile-wide Interview Acceptance` through `P:agent-atlas:interview-content`, including the latest residual-scan evidence. | Reuse only still-valid canonical content, source, link, residual, and coverage receipts whose fingerprints cover the complete in-scope snapshot; never infer profile-wide Interview acceptance from a Card-level or other status-axis verdict. |
+| `agent-atlas-profile-wide-interview-acceptance` | A terminal or release claim declares the Agent Systems Atlas Interview layer profile-wide complete. | Apply `profiles/examples/agent-atlas/registries/audit-dimensions.md#Profile-wide Interview Acceptance`, including the latest residual-scan evidence. | Reuse only still-valid canonical content, source, link, residual, and coverage receipts whose fingerprints cover the complete in-scope snapshot; never infer profile-wide Interview acceptance from a Card-level or other status-axis verdict. |
 
 ## Extension Gates
 

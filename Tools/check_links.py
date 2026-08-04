@@ -57,7 +57,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_links"
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.4.0"
 
 LINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
 
