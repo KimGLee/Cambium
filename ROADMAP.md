@@ -17,6 +17,7 @@ bypass R09 adoption.
 | Profile setup | Copy the 11-file `_template`, fill it manually, and run `check_profile.py` |
 | Execution | The kernel defines sequential work, concurrent disjoint batches, independent review contexts, and serial integration |
 | Runtime | No bundled orchestrator, scheduler, workspace manager, or host adapter |
+| Dependency propagation | The kernel defines semantic dependency invalidation and downstream `needs_rereview`, but no bundled compiler or change detector calculates the affected set |
 | Tools | Deterministic checks, schemas, receipts, vocabulary/Card compilation, and single-delta application |
 
 ## Profile Onboarding Assistant
@@ -88,6 +89,117 @@ isolation, cancellation, event delivery, and context identifiers. It must
 declare unsupported capabilities and fall back safely rather than simulating
 evidence it cannot produce.
 
+## Typed Dependency Runtime
+
+Turn the kernel's existing dependency, invalidation, and downstream re-review
+semantics into a host-independent executable projection. This runtime is an
+implementation of current governance rules, not a new source of dependency
+policy and not a requirement that every knowledge link become an invalidation
+edge.
+
+### Compiled Dependency Model
+
+Compile explicit relationship sources into a normalized typed dependency
+graph. Eligible inputs include:
+
+- frontmatter `prerequisites`;
+- canonical-to-derived-artifact bindings;
+- source and supported-claim bindings;
+- registered MOC or collection membership;
+- schema, profile, and Standards contract bindings;
+- profile-registered relationship extensions that do not redefine kernel
+  semantics.
+
+Each normalized edge identifies the dependency, the dependent object, the
+relationship type, its invalidation policy, and the declaration from which the
+edge was compiled. The generated graph is a deterministic artifact. Knowledge
+pages, profiles, registries, and ledgers remain authoritative, and rebuilding
+the graph from the same accepted inputs must produce the same result.
+
+Raw backlinks are discovery input, not dependency authority. A wiki link may
+mean prerequisite, ownership, evidence, comparison, alternative, application,
+or navigation. Only an explicit kernel relationship or profile-registered
+extension participates in automatic semantic propagation. This prevents a
+popular navigation target from invalidating every page that merely mentions
+it.
+
+### Change-impact Planning
+
+Compare the latest accepted snapshot with the current candidate snapshot and
+classify changes to content, paths, headings, aliases, governed metadata,
+canonical ownership, evidence, schemas, profiles, or Standards contracts.
+Resolve the directly affected dependents through the compiled graph and emit
+an explainable impact plan containing:
+
+- the changed object and change kind;
+- the dependency edge that caused propagation;
+- the affected object;
+- the invalidated quality dimension;
+- the required deterministic check or semantic review;
+- the evidence needed to close or reuse the affected receipt.
+
+The impact plan must integrate with the existing AuditPlan, Coverage Delta,
+`needs_rereview` candidate pool, and AuditReceipt reconciliation contracts. It
+discovers and plans affected work; it does not edit knowledge pages or write
+the canonical ledgers directly.
+
+Propagation remains bounded. Direct dependents are the default affected set.
+Further expansion requires a registered transitive relationship, an observed
+systemic failure, or explicit task authority. A local change must not trigger
+an unconditional full-corpus LLM review, while a declared dependency must not
+be ignored merely to reduce review cost.
+
+### Host Independence
+
+The core compiler and impact planner must operate on ordinary Markdown, YAML
+frontmatter, profiles, registries, ledgers, and receipts without requiring
+Obsidian or another knowledge host.
+
+A host adapter may contribute wiki-link extraction, backlinks, rename events,
+or host-specific identities. It must normalize them into the same dependency
+model and must not make host configuration an authority for semantic edges.
+In particular, the runtime must not depend on Obsidian Graph View state or
+`.obsidian/graph.json`. A plain filesystem corpus and a host-backed corpus with
+equivalent declarations must compile to equivalent normalized relationships.
+
+### Runtime Boundary
+
+The Typed Dependency Runtime may compile relationships, detect changes,
+validate declared targets, produce affected sets, and emit receipts. It must
+not:
+
+- infer an unconfirmed domain dependency from semantic similarity alone;
+- treat every backlink as a dependency;
+- rewrite affected content automatically;
+- promote authoring, evidence, learning, or expression-readiness status;
+- bypass AuditPlan, Coverage Delta, or integrator authority;
+- perform unbounded transitive review;
+- declare batch or task completion.
+
+This roadmap item is limited to note- and governed-object-level dependencies.
+Inline or block-level dependency markup is outside its scope.
+
+### Acceptance
+
+The capability is complete only when:
+
+1. identical accepted inputs produce a byte-identical normalized graph;
+2. every declared dependency resolves or carries an explicit future, deferred,
+   retired, or otherwise profile-authorized disposition;
+3. an upstream change finds every directly affected dependent and explains
+   each propagation path;
+4. ordinary comparison, alternative, and navigation links do not trigger
+   semantic invalidation;
+5. path, heading, alias, content, evidence, and contract changes invalidate
+   only their applicable dimensions;
+6. the output can be consumed by existing AuditPlan and Coverage Delta flows;
+7. empty scans, malformed declarations, and missing required inputs fail
+   closed;
+8. the runtime never modifies knowledge content while calculating impact;
+9. bounded propagation and receipt reuse remain consistent with the kernel;
+10. the conformance suite passes against both a plain Markdown fixture and a
+    host-adapter fixture without host-specific semantic differences.
+
 ## Observability And Conformance
 
 Make orchestration inspectable and testable:
@@ -101,8 +213,11 @@ Make orchestration inspectable and testable:
 
 ## Implementation Order
 
-Profile onboarding can progress independently of the runtime work. Within the
-runtime line, assignment state and the deterministic integrator loop precede
-parallel worker automation; observability and recovery tests accompany every
-stage. This order protects the shared control plane while still making
-multi-context execution the intended scaling path.
+Profile onboarding and typed dependency compilation can progress independently
+of agent orchestration. The dependency runtime consumes accepted corpus state
+and emits plans; the reference execution runtime may later schedule those plans
+without owning their semantic policy. Within the orchestration line, assignment
+state and the deterministic integrator loop precede parallel worker automation;
+observability and recovery tests accompany every stage. This order protects the
+shared control plane while still making multi-context execution the intended
+scaling path.
