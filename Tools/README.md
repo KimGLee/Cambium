@@ -28,7 +28,7 @@ The core distribution tools are `check_links`, `check_vocab`, `check_moc`,
 
 | Script | Purpose | Typical invocation |
 |---|---|---|
-| `check_links.py` | Wiki link missing / ambiguous / heading verification (K09/03, K09/05); `--scope` accepts a directory or a single page; the effective scan set is checked after exclusions, and zero files fail for both scoped and whole-root runs; exact full-path links into excluded areas still resolve (`excluded_target`) | `python3 Tools/check_links.py . --receipts Tools/receipts/links.jsonl` |
+| `check_links.py` | Wiki link missing / ambiguous / heading verification (K09/03, K09/05); `--scope` accepts a directory or a single page; the effective scan set is checked after exclusions, and zero files fail for both scoped and whole-root runs; an exact full-path link into an excluded area resolves as `excluded_target` before any active basename fallback | `python3 Tools/check_links.py . --receipts Tools/receipts/links.jsonl` |
 | `check_vocab.py` | Frontmatter controlled-vocabulary check (K08 module; vocabulary from the composed `vocab.yaml`, which exists only once a profile has been selected and composed -- without it the check reports that and exits 1); `--scope` accepts a directory or a single page; the post-exclusion effective scan set must be nonempty; `--quota-p0` / `--quota-p1` cap P0/P1 shares, defaults 15/35 (kernel defaults; a profile or task contract may override); compiled kernel Cards are outside the knowledge-page schema | `python3 Tools/check_vocab.py . --scope kernel --exclude kernel/Cards --quota-p0 15 --quota-p1 35 --receipts Tools/receipts/vocab.jsonl` |
 | `check_moc.py` | Standard Module MOC Module Index vs. actual H2 headings consistency candidates (K12/05; **candidates only**); recursively scans every non-hidden directory unless the caller explicitly supplies `--exclude`, and is fence-aware (fenced code blocks ignored); maintenance runs and governance | `python3 Tools/check_moc.py .` |
 | `check_proof.py` | Terminal Proof consistency check (K12/15): field completeness; active K00/03, Progress Ledger, Standards-version, and profile agreement; selected profile loadability through `check_profile.py`; R01/R12/R08 presence; Rxx, profile-route, Card-path, actual-readback, and incremental-manual-scope path structure; zero conditions; reconciliation/QA/review results must read `passed`; evidence fields must not declare failure. With `--root`, every recorded path, including `incremental_manual_scope`, must be a repository-contained regular file and the Rxx/Card/kernel-Read-Set binding is checked against both canonical indexes; `--progress-ledger` is then required. Without `--root`, no registry agreement is claimed and the run is structural lint only. Optional Coverage Ledger cross-check. Verifies proof consistency, not the underlying content judgments | `python3 Tools/check_proof.py proof.yaml --root . --progress-ledger progress_ledger.yaml --ledger coverage_ledger.yaml` |
@@ -80,7 +80,15 @@ The full-tree link check for this repository is `python3 Tools/check_links.py
 audited. `--exclude` remains available for a vault that carries an unaudited
 area -- byte-verbatim frozen snapshots are the usual case -- and explicit
 full-path links from active files into such an area still resolve, counted
-separately as `excluded_target`.
+separately as `excluded_target`. Because the path is explicit, that exact
+excluded target takes precedence over an active page that merely has the same
+basename; excluded targets are not inspected for headings or lifecycle state.
+
+The focused standard-library regression suite is:
+
+```text
+python3 -m unittest discover -s Tools/tests -p 'test_*.py'
+```
 
 The full-tree duplicate check is `python3 Tools/duplicate_check.py . --exclude
 _template --exclude Cards`. `profiles/_template/` deliberately repeats form

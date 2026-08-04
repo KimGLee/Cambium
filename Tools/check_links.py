@@ -57,7 +57,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_links"
-TOOL_VERSION = "1.4.0"
+TOOL_VERSION = "1.4.1"
 
 LINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
 
@@ -191,15 +191,15 @@ def main():
                 where = "%s:%d" % (rel.replace(os.sep, "/"), lineno)
                 if target == "":
                     status, resolved = "resolved", rel_key  # [[#heading]] self-reference
+                elif "/" in target and target in by_path_excluded:
+                    # An explicit path names one object and therefore wins
+                    # before any active basename fallback. The excluded target
+                    # exists but is outside content, lifecycle, and heading
+                    # audit scope.
+                    counts["excluded_target"] += 1
+                    continue
                 else:
                     status, resolved = resolve(target, by_path, by_base)
-                    if (status == "missing" and "/" in target
-                            and target in by_path_excluded):
-                        # Exact-path link into an excluded (e.g. frozen
-                        # legacy) area: the file exists; treat as resolved
-                        # but skip lifecycle/heading checks against it.
-                        counts["excluded_target"] += 1
-                        continue
                 if status == "missing":
                     counts["missing"] += 1
                     seq += 1
