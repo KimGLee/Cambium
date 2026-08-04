@@ -149,3 +149,21 @@ Begin with the
 route, profile bindings, and source modules required by the current task.
 Combine additional routes only when their Card Index triggers apply; they do
 not replace the route for the work itself.
+
+## License
+
+Cambium assigns licenses by path to its maintained, tracked release files:
+
+- Software and implementation materials under [`Tools/`](Tools/) are licensed
+  under the Apache License 2.0.
+- The standards, profile materials, and project documentation under
+  [`kernel/`](kernel/), [`profiles/`](profiles/), this README, and
+  [`ROADMAP.md`](ROADMAP.md) are licensed under CC BY 4.0.
+
+See [`LICENSE.md`](LICENSE.md) for the authoritative scope,
+[`ATTRIBUTION.md`](ATTRIBUTION.md) for attribution guidance, and
+[`LICENSES/`](LICENSES/) for the complete license texts.
+
+Adopter-generated profiles, vocabularies, receipts, and runtime evidence do
+not acquire a Cambium license merely because they are stored inside these
+directories.
