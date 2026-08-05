@@ -25,5 +25,8 @@ Incremental scanning semantics:
 
 - By default, scan only new material that appeared after `scanned_until` in `Tools/state/watermark.yaml` (schema in `Tools/schemas/watermark.template.yaml`).
 - The watermark records covered sources and the coverage cutoff date in per-domain sections.
-- At batch close, advance the watermark together with the Ledger.
+- At batch close, advance the watermark together with the Ledger. The state
+  records both the enclosing maintenance `last_run_id` and the exact Queue
+  `last_batch_id` that performed the final advance; one identifier cannot stand
+  in for the other.
 - A full rescan is an explicit exception, used only when onboarding a new domain or when the watermark is suspect, and the reason MUST be recorded in the Ledger.

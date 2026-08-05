@@ -31,11 +31,6 @@ Each vertical slice runs from the foundational mechanism through runtime use, th
 
 The actual order MAY be adjusted per user priorities, but dependency gaps and the batches that fill them MUST be recorded.
 
-The dependency order MUST be produced from the Coverage Ledger's Required Queue. The Progress Ledger keeps at least:
+Coverage records the Required objects, their explicit prerequisites, and their approved batch projection. `Tools/compile_queue.py` uses only those explicit inputs and approved before/after overrides to produce a deterministic Required Queue proposal; it MUST NOT infer dependencies from semantic similarity or backlinks. The canonical Queue then owns the complete batch order, frozen manifests, and dependency graph as defined by [[kernel/K02 Build Execution/09 Required Queue|K02/09]].
 
-- Active batch.
-- Ordered Required Queue.
-- Optional backlog.
-- Deferred items and re-entry conditions.
-
-`Next dependency` is only the first candidate in the Required Queue and cannot replace the full queue. While the state is `active`, recording `In-progress batch: None` for an extended period is not allowed; after closing a batch, complete reconciliation first, then select the next Required batch.
+The Progress Ledger records only the accepted Queue path, revisions, and fingerprint; any `next dependency`, ready list, active list, or merge queue shown there is a derived view that MUST be reproducible from the Queue. A derived first candidate cannot replace the full Queue. After closing a batch, reconcile Coverage and Queue before asking `check_queue.py --require-ready <batch-id>` to admit the next batch.

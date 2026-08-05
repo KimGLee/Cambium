@@ -15,7 +15,7 @@ Gate merge rules (for tier determination see [[kernel/K00 Standards Control/07 E
 - M-tier pages pass, page by page within the batch gate, the canonical [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review#M-tier Gate Checklist|M-tier Gate Checklist]] as surfaced by the kernel Single Note Authoring Card.
 - L-tier pages keep an independent note gate, executed in full per [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review|K12/01]], and are not folded into this section.
 
-The batch close checklist has two groups: **in-batch items** are completed by the batch itself before it enters `merge-ready` (may run in parallel with other batches); **global items** are verified by the integrator during serial merge. The serial zone performs only deterministic actions and global verification, not in-batch manual review.
+The batch close checklist has two groups: **in-batch items** are completed by the batch before it is eligible for `merge-ready` (may run in parallel with other batches); the integrator verifies that boundary and writes the Queue transition. **Global items** are verified by the integrator during serial merge. The serial zone performs only deterministic actions and global verification, not in-batch manual review.
 
 In-batch items (merge-ready preconditions):
 
@@ -30,6 +30,8 @@ Global items (verified by the integrator during serial merge):
 
 - Guidance reconciliation per [[kernel/K12 Quality Assurance/04 Guidance and Source Review|K12/04]] (incremental).
 - The direct / dependency invalidations affected by the current batch are closed, `unresolved_invalidations = 0`.
-- The delta is applied via `Tools/apply_delta.py`, and the Coverage Ledger and Progress Ledger are updated in sync.
+- The exact delta is applied through canonical `Tools/apply_delta.py --root`; then the current full snapshot and Coverage/Queue relation pass their global checks. A current `Tools/check_queue.py` consistency receipt binds the Queue revisions and fingerprint consumed by the close transition.
+
+Only after the global items pass may the integrator record `merge-ready -> closed` through `Tools/update_queue.py`; that guarded close also derives the Coverage `next_batch` projection and updates the Progress Queue reference. Delta application and close are ordered, independently evidenced integrator writes—not one falsely atomic multi-file step. A failed merge records the failure and returns the item to `open`; a worker cannot write either transition.
 
 When Batch Review does not pass, the batch MUST NOT be closed; gaps return to the execution phase, the batch stays unaccepted, and it MUST NOT be marked closed in order to start the next topic.

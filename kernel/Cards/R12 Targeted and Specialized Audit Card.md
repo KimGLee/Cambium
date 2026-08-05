@@ -11,7 +11,7 @@ source_files:
   - kernel/K12 Quality Assurance/02 Rendering Verification.md
   - kernel/K12 Quality Assurance/04 Guidance and Source Review.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
-source_hash: '3a52467220c4'
+source_hash: '775bcd776445'
 ---
 # R12 Targeted and Specialized Audit Card
 

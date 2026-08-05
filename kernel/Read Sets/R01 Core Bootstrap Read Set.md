@@ -13,16 +13,22 @@ Read in order:
 
 1. [[kernel/K00 Standards Overview|Standards Overview]]
 2. [[kernel/K00 Standards Control/03 Standards Governance#Standards Control|Standards Control]]
-3. [[kernel/K00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]
-4. [[kernel/K00 Standards Control/04 Control State and Scope|Control State and Scope]]
-5. [[kernel/K00 Standards Control/05 Core Principles|Core Principles]]
-6. [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
+3. [[kernel/K00 Standards Control/02 Task Routing|Task Routing]]
+4. [[kernel/K00 Standards Control/13 Runtime Admission and Recovery|Runtime Admission and Recovery]]
+5. [[kernel/K00 Standards Control/04 Control State and Scope|Control State and Scope]]
+6. [[kernel/K00 Standards Control/05 Core Principles|Core Principles]]
+7. [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
 
 Then select the task-specific Read Set from the [[kernel/Read Sets/Read Sets Index|Read Sets Index]].
 
 ## Required Decisions
 
 - Make the objective, scope, exclusions, and the user's latest instructions explicit.
+- Apply the [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Runtime Startup Gate|Runtime Startup Gate]]: inspect the repository root for `.cambium/` before any content or state
+  write. If it exists, run `python3 Tools/check_queue.py . --resume-status`
+  and reconcile the recorded task and exact `next_action`; never infer a fresh
+  start from a new Agent context. If it is absent, only a selected persistent,
+  resumable, or multi-batch route may initialize it.
 - Confirm whether the current task is authorized to modify `Knowledge Base Standards` or protected directories.
 - Confirm that canonical ownership, factual correctness, and protection of user modifications still take precedence.
 - Distinguish task completion, authoring status, the registered `Expression Status Axis`, evidence maturity, and learning status.

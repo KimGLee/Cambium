@@ -12,6 +12,7 @@ source_files:
   - kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation.md
   - kernel/K02 Build Execution/05 Batch Execution.md
   - kernel/K02 Build Execution/08 Progress Ledger.md
+  - kernel/K02 Build Execution/09 Required Queue.md
   - kernel/K02 Build Execution/06 Existing Changes Migration and Resume.md
   - kernel/K02 Build Execution/07 Completion and Handoff.md
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
@@ -20,7 +21,7 @@ source_files:
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '9002b5b29d06'
+source_hash: '726b1558e1ca'
 ---
 # R07 Long-running Execution Card
 
@@ -32,26 +33,28 @@ Run a multi-batch task, sustain checkpoints, resume after interruption, maintain
 
 ## Before Start
 
-- [ ] Freeze the long-run Task Contract: Standards version, exact `selected_profile_manifest`, time semantics, route IDs, Card paths, actual read-backs, and completion semantics.
-- [ ] Reconcile Coverage and Progress Ledgers with the file system, Required Queue, active batches, merge queue, and user modifications.
+- [ ] If `.cambium/` exists, run `python3 Tools/check_queue.py . --resume-status` before any state write; resume the recorded task instead of initializing a replacement.
+- [ ] Freeze the long-run Task Contract: Standards version, exact `selected_profile_manifest`, time semantics, route IDs, Card paths, actual read-backs, completion semantics, and the Queue path/revisions/fingerprint.
+- [ ] Reconcile `.cambium/` Coverage, Queue, and Progress with the file system and user modifications. Ready, open, and merge-ready lists are derived from the Queue, never edited in Progress as a second authority.
 - [ ] Define batch manifests, tier-derived caps, concurrency admission, write partitions, merge order, and acceptance conditions.
 - [ ] Load the Audit Receipt Register and classify evidence as reusable, invalidated, overdue, or missing.
 - [ ] State the next checkpoint and exact recovery action; a vague “continue improving” is not resumable state.
 
 ## During
 
-Each batch follows the fixed loop: version self-check → incremental Guidance reconciliation → select next Required work → resolve type/owner/target → close prerequisites → collect sources → author the batch → integrate links/metadata/sources → build one AuditPlan and complete in-batch QA → write the delta and enter `merge-ready` → integrator serially applies the delta, runs global checks, updates Ledgers, and closes the batch.
+Each batch follows the fixed loop: version/Guidance self-check → `check_queue.py --require-ready` → integrator records `queued -> open` → execute the frozen manifest → build one AuditPlan, finish in-batch QA, and write the delta → integrator records `open -> merge-ready` → serially applies the delta and global gates → reconciles Coverage/Queue/Progress → records `merge-ready -> closed`.
 
 - Concurrent batches have disjoint manifests and merged prerequisites; only the integrator writes shared control state and hub pages.
+- After one canonical delta apply passes, perform checks and close that batch before any other Queue/Coverage write; the apply receipt opens a strict serial critical section.
 - Treat meaningful user changes to objective, scope, acceptance, priority, or content judgment as Guidance: classify, disposition, record, switch safely, and verify closure.
 - Reuse a receipt only when its predicate remains compatible, fingerprints match, and no relevant invalidation exists.
 - A Standards delta triggers the registered adoption procedure before the batch continues.
-- Pause or block with a complete checkpoint; resume from the machine-readable Ledgers and verify the contract before returning to active.
+- Pause or block with a complete checkpoint. Resume from the machine-readable state only after the Queue path, revisions, fingerprint, holds, unapplied deltas, and cross-state `check_queue.py` result are reconciled.
 
 ## Gate
 
-- [ ] Every batch passes its in-batch review before `merge-ready` and its global checks during serial merge.
-- [ ] The merge queue has no unapplied delta for a batch reported closed.
+- [ ] Every Queue transition is written by the integrator and passes its owning readiness, in-batch, or serial-merge gate.
+- [ ] No batch reported `closed` has an unapplied delta; open and merge-ready work remains explicit in the Queue.
 - [ ] Guidance counters, Required gaps, unverified batches, and unresolved invalidations stay explicit.
 - [ ] Ledger, receipt, source, link, rendering, and watermark state are updated at the layer that owns them.
 - [ ] A completion candidate loads [[kernel/Cards/R08 Audit and Completion Card|Audit and Completion]]; elapsed time or exhausted context never substitutes for it.

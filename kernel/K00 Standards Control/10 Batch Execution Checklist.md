@@ -12,15 +12,15 @@ This module owns the ordered sequence one batch runs, from the version self-chec
 
 1. Version self-check: compare the current version in [[kernel/K00 Standards Control/03 Standards Governance|K00/03]] with the contract-frozen version; with a delta, adopt incrementally per [[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]] Active-task Adoption; with no delta, record a one-line receipt. Standards changes are discovered by the batch-activation self-check; user notification serves only as a reminder.
 2. Reconcile incremental guidance: reconcile only the Guidance Events after `last_reconciled_guidance_id` against the Amendment Log.
-3. Select the next batch from the ordered Required Queue.
+3. Select the next `queued` batch from the canonical Required Queue only after `python3 Tools/check_queue.py . --require-ready <batch-id>` passes; the integrator then records `queued -> open` through `Tools/update_queue.py` with the expected state revision and fingerprint.
 4. Resolve note type, canonical owner, and target status.
 5. Resolve prerequisite and foundation gaps.
 6. Collect and classify sources when needed.
 7. Write one complete dependency-aware batch.
 8. Integrate body links, navigation, metadata, sources, and Expression Layer mapping.
-9. Before batch close, build the AuditPlan once and process receipts ([[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|K12/07]]): complete the `--scope` self-check, the required incremental manual / rendering QA, and the [[kernel/K12 Quality Assurance/14 Batch Review|K12/14]] in-batch items; issue or supersede dimension-specific AuditReceipts and write out the delta; the batch enters `merge-ready`. Visual checks escalate only on a recorded exception trigger.
-10. The integrator performs the serial merge ([[kernel/K02 Build Execution/05 Batch Execution|K02/05]] Concurrent Batches): apply the delta, run the [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]], verify the K12/14 global items, and update the global Ledger and Amendment Log; batches themselves do not write the global ledger.
-11. Close the batch only after Batch Review passes and unresolved invalidations = 0; otherwise it stays active or merge-ready.
+9. Before batch close, build the AuditPlan once and process receipts ([[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|K12/07]]): complete the `--scope` self-check, the required incremental manual / rendering QA, and the [[kernel/K12 Quality Assurance/14 Batch Review|K12/14]] in-batch items; issue or supersede dimension-specific AuditReceipts and write out the delta. After the integrator verifies those preconditions, it records `open -> merge-ready`. Visual checks escalate only on a recorded exception trigger.
+10. The integrator performs the serial merge ([[kernel/K02 Build Execution/05 Batch Execution|K02/05]] Concurrent Batches): apply the delta, run the [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]], verify the K12/14 global items, and reconcile Coverage, Queue, Progress, and the Amendment Log; batches themselves do not write global state.
+11. Close the batch only after Batch Review passes, unresolved invalidations = 0, and a current `check_queue.py` receipt covers the merged state; the integrator records `merge-ready -> closed`. A failed merge returns the batch to `open` with the failure recorded; it is never marked closed to unblock later work.
 
 Note: Coverage reconciliation is not executed at batch start; reconciliation is executed at batch close.
 
@@ -28,4 +28,5 @@ Note: Coverage reconciliation is not executed at batch start; reconciliation is 
 
 - [[kernel/Read Sets/R07 Long-running Execution Read Set|Long-running Execution Read Set]]
 - [[kernel/K02 Build Execution/05 Batch Execution|Batch Execution]]
+- [[kernel/K02 Build Execution/09 Required Queue|Required Queue]]
 - [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]]

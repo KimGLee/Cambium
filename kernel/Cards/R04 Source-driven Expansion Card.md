@@ -19,7 +19,7 @@ source_files:
   - kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata.md
   - kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes.md
   - kernel/K12 Quality Assurance/04 Guidance and Source Review.md
-source_hash: '568d7fad2be3'
+source_hash: '24e09bdd897a'
 ---
 # R04 Source-driven Expansion Card
 

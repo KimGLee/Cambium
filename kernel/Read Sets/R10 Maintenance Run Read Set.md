@@ -20,6 +20,13 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 
 Before starting, the budget envelope MUST be declared (N pages, N batches, or N hours — choose one of the three), and the candidate manifest merged from four sources: overdue re-verification list ∪ watermark increment ∪ `needs_rereview` marks ∪ candidates pool (duplicate / vocab / language). A candidate not selected by the budget for 3 consecutive maintenance runs is automatically demoted to log-only, and re-enters the pool when hit again by a new scan; at the start of a maintenance run, output the deferred age distribution, and items lingering more than 3 runs MUST be explicitly dispositioned. The owner of the rules above is [[kernel/K00 Standards Control/08 Maintenance Run Envelope|K00/08]]; this is an execution summary.
 
+Before any write, probe the adopting repository for `.cambium/`. If it exists,
+resume its recorded task through `check_queue.py --resume-status`; do not
+initialize or overwrite it. If it is absent, initialize only when this run is
+persistent, resumable, or multi-batch, and declare
+`--completion-semantics maintenance`. A bounded single-note maintenance run
+does not create an empty runtime namespace merely to use R10.
+
 For retirement of high-in-degree pages, convert incoming-link retargeting into the page budget at `retargeted links ÷ 6`, as fixed by K00/08.
 
 ## Triggered
@@ -29,11 +36,23 @@ For retirement of high-in-degree pages, convert incoming-link retargeting into t
 - This run produces L-tier pages: read [[kernel/K12 Quality Assurance/12 Substantive Correctness Review#Substantive Correctness Review|Substantive Correctness Review]].
 - Source-driven content involved: combine [[kernel/Read Sets/R04 Source-driven Expansion Read Set|Source-driven Expansion]].
 - Expression Layer content involved: combine [[kernel/Read Sets/R05 Expression Layer Read Set|R05 Expression Layer]] and the artifact's profile binding or supplemental gate.
+- Persistent, resumable, or multi-batch run: combine [[kernel/Read Sets/R07 Long-running Execution Read Set|R07 Long-running Execution]] and load [[kernel/K02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]], [[kernel/K02 Build Execution/08 Progress Ledger|Progress Ledger]], and [[kernel/K02 Build Execution/09 Required Queue|Required Queue]].
 
 ## Gate
 
 - Batch close: [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]], then [[kernel/K12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]] at serial merge.
 - Closing this run's manifest: [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract#Maintenance Completion|Maintenance Completion]] — bounded completion semantics: the run is complete when the candidate manifest within the envelope is closed + the Ledger and watermark are advanced + each batch passes the applicable QA gates; the vault-wide Terminal Proof does not apply, and deferred items cut off by the envelope hand over to the next maintenance run and do not constitute a gap.
+- When persistent state applies, close only after
+  `check_queue.py --require-maintenance-complete` passes with explicit
+  `--budget-manifest-receipt`, `--ledger-advance-receipt`, and
+  `--watermark-advance-receipt` IDs. The gate also proves a nonempty Queue with
+  zero remaining work, reconciled controls, terminal batches, and persisted
+  applicable batch/close gates. Supply that canonical pass to the
+  `--maintenance-completion-receipt` argument of
+  `update_task.py --transition complete`; never enter `completion-candidate`
+  and never run `check_proof.py`. If the task stops between gate and transition, reuse the
+  pass only when resume reports it still compatible with current state and
+  evidence.
 
 ## Related
 

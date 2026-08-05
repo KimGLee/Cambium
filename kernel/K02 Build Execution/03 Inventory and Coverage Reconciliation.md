@@ -24,6 +24,7 @@ Build an inventory of the existing knowledge base:
 - Existing Source Notes, Research Synthesis, and unsupported claims.
 - Rendering mode: `source-only`, `deterministic-static`, `targeted-visual-exception`, `expanded-ui`, or `temporal-recording`; the latter three MUST be associated with an objective trigger and an unresolved question.
 - Deferred reason, re-entry condition, and next batch.
+- Assigned batch and the current Queue manifest projection.
 - Originating guidance IDs and amendment version.
 - Last audited, last reviewed, and last verified.
 - The latest valid `receipt_id` for each quality dimension, artifact/dependency fingerprint, review due, and invalidation state; mark `legacy-evidence` when an old task cannot reconstruct them.
@@ -39,7 +40,9 @@ The inventory MUST form a persistent, queryable Coverage Ledger; it cannot exist
 - Every unfinished Required item has an explicit `next_batch`.
 - Every `deferred` and `excluded` item has a reason and a re-entry condition or scope basis.
 
-The Coverage Ledger is the authoritative record of page-level coverage; the Progress Ledger records only task and batch progress.
+The Coverage Ledger is the authoritative record of page/object-level coverage. Its object-side `batch` / `next_batch` projection MUST equal the frozen manifests in the canonical [[kernel/K02 Build Execution/09 Required Queue|Required Queue]]; the Queue owns batch lifecycle, while the Progress Ledger owns only whole-task state and accepted Queue references.
+
+The Ledger also carries top-level `batch_specs` as explicit Queue-compiler proposal inputs: one entry per proposed batch, with family, order hint, source route, execution mode, dependencies, and confirmation requirement. These inputs do not own accepted order or lifecycle. They remain separate from page records so a historical `batch` and a different `next_batch` successor can have different configurations without rewriting closed history.
 
 ## Coverage Reconciliation
 
@@ -51,6 +54,8 @@ Coverage reconciliation is executed at least at the following points:
 4. After accepted guidance changes coverage or priority.
 5. Before the task enters `completion-candidate`.
 
+At every reconciliation, the set of objects projected to each batch in Coverage MUST equal that Queue item's explicit manifest, and its count MUST equal `record_count`. Required objects may not be orphaned from the Queue, assigned to an unknown batch, or silently disappear through a cancelled item. `Tools/check_queue.py` is the sole deterministic owner of this cross-ledger set comparison.
+
 Reconciliation recomputes only the receipt validity affected by file, scope, guidance, or Standards changes; one unrelated modification cannot invalidate all content review dates, nor can `last_reviewed` be treated as proof of continued validity. File count, link, and control-plane invariants concerning the final graph state are still computed in full per gate.
 
 The reconciliation question checklist is governed by the Coverage Reconciliation Review in [[kernel/K12 Quality Assurance/03 Module and Coverage Review|K12/03]].
@@ -59,4 +64,4 @@ Line counts, file existence, and link resolution are used only to surface candid
 
 ## Machine-readable Ledger
 
-The canonical form of the Coverage Ledger is YAML; the schema is at `Tools/schemas/coverage_ledger.template.yaml`, and only the restricted subset syntax declared in the template header comment is allowed. A markdown prose view is optional, derived from the YAML, and not a basis for reconciliation; reconciliation and the Terminal Audit recognize only the YAML form. When resuming a task, load the YAML Ledger directly instead of re-reading the prose view.
+The canonical form of the Coverage Ledger is YAML; the schema is at `Tools/schemas/coverage_ledger.template.yaml`, and the runtime path is `.cambium/state/coverage_ledger.yaml`. Only the restricted subset syntax declared in the template header comment is allowed. A markdown prose view is optional, derived from the YAML, and not a basis for reconciliation; reconciliation and the Terminal Audit recognize only the YAML form. When resuming a task, load the YAML Ledger directly instead of re-reading the prose view.

@@ -1,245 +1,775 @@
 #!/usr/bin/env python3
-"""apply_delta.py -- deterministically apply a concurrent batch's Coverage Delta to the canonical Coverage Ledger.
+"""Deterministically apply one batch Coverage Delta.
 
-Rule owner: kernel/K02 Build Execution/05 Batch Execution.md (Concurrent Batches); see
-Tools/schemas/coverage_delta.template.yaml for the delta schema. Design goal:
-the serial merge zone only executes deterministic actions -- delta application
-is done by this script, not by an LLM hand-editing the large Ledger file.
-
-Behavior:
-- For each page, locate the Ledger entry block starting at `- path: "<path>"`
-  and update its scalar fields according to the delta
-  (authoring_status / tier / lifecycle / next_batch etc. --
-  whatever scalar keys appear in the delta's page entry get updated; keys not
-  present in the block are appended at the block's indentation).
-- gate_receipts are merged by appending (deduplicated); both legal Ledger
-  forms are read (inline `[...]` and block list), and the merged result is
-  always written back in the schema's block-list form with the existing
-  items replaced in place (no orphan list lines).
-- Scalar keys outside the Coverage Ledger core schema are applied but warned
-  about ([WARN unknown-key]); they are legal for registered profile
-  extensions and the warning is the visibility hook.
-- Out-of-scope protection: a page is rejected when the entry block's
-  next_batch or batch does not equal delta.batch (--force overrides, with a
-  per-page reason recorded).
-- open_gaps_added / open_gaps_closed are printed as a todo list (gap structure
-  varies by task; the integrator handles them in the Ledger's open_gaps
-  section manually or via a follow-up script); watermark_advance entries are
-  likewise printed as integrator todos (K02/05: applied to
-  Tools/state/watermark.yaml at merge, not by this script).
-- Default is a dry run that prints the plan; --apply first re-parses the
-  merged output with the restricted-subset parser and ABORTS without writing
-  when it no longer parses; on success it writes atomically (temp file +
-  rename) after creating a <ledger>.bak backup.
-- --receipts appends one JSONL receipt (check: delta_apply).
-
-Usage: python3 apply_delta.py <ledger.yaml> <delta.yaml> [--apply] [--force] [--receipts R]
+Every mode rejects page-level attempts to mutate Coverage control fields.  The
+legacy two-path mode remains available for detached ledgers.  Supplying
+``--root`` selects the canonical runtime mode: paths and Queue state are
+bound, writes use the shared runtime lock and optimistic fingerprints, and a
+post-write Queue reconciliation must pass before a receipt is published.
 """
-import argparse, os, re, sys, shutil
+
+import argparse
+import copy
+import json
+import os
+import re
+import shutil
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import check_queue
 import kblib
 
-TOOL, TOOL_VERSION = "apply_delta", "1.3.0"
+TOOL, TOOL_VERSION = "apply_delta", "1.4.0"
 
-# Scalar keys expected in a Coverage Ledger page entry (schema:
-# Tools/schemas/coverage_ledger.template.yaml; profile extensions such as an
-# Expression Status Axis are legal, so unknown keys are warned about and
-# still applied, never silently absorbed).
-KNOWN_SCALAR_KEYS = {"authoring_status", "tier",
-                     "lifecycle", "batch", "next_batch", "volatility",
-                     "review_by", "priority", "coverage_disposition"}
+# These fields are owned by Coverage reconciliation / Queue compilation, not
+# by a worker-produced page delta.  Their presence is an operation-wide error
+# even when the supplied value is identical to the current value.
+CONTROL_FIELDS = frozenset((
+    "coverage_disposition", "canonical_owner", "batch", "next_batch",
+    "priority", "tier", "type", "prerequisites", "deferred_reason",
+    "reentry_condition",
+))
+
+# Known non-control scalar fields in the generic Coverage contract.  Profile
+# extension fields remain legal and visible through warnings.
+KNOWN_SCALAR_KEYS = frozenset((
+    "authoring_status", "lifecycle", "volatility", "review_by",
+))
+
+
+def _parse_delta_bytes(raw):
+    text = raw.decode("utf-8")
+    parseable = "\n".join(
+        line for line in text.splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    value = kblib.parse_yaml_subset(parseable)
+    if not isinstance(value, dict):
+        raise kblib.YamlSubsetError("delta top level must be a mapping")
+    return value
+
 
 def load_delta(path):
-    text = "\n".join(l for l in open(path, encoding="utf-8") if not l.lstrip().startswith("#"))
-    return kblib.parse_yaml_subset(text)
+    with open(path, "rb") as handle:
+        return _parse_delta_bytes(handle.read())
+
 
 def find_page_block(lines, path):
-    """Return the (start, end) line range: from `- path: "<path>"` to the next `- ` at the same indentation or the end of the list."""
-    pat = re.compile(r'^(\s*)-\s+path:\s*(.*?)\s*$')
-    for i, line in enumerate(lines):
+    """Return the line range for one ``- path:`` Coverage entry."""
+    pattern = re.compile(r'^(\s*)-\s+path:\s*(.*?)\s*$')
+    for index, line in enumerate(lines):
         clean = kblib.strip_yaml_comment(line.rstrip("\r\n"))
-        m = pat.match(clean)
-        if not m or str(kblib.parse_scalar(m.group(2))) != path:
+        match = pattern.match(clean)
+        if not match or str(kblib.parse_scalar(match.group(2))) != path:
             continue
-        indent = len(m.group(1))
-        j = i + 1
-        while j < len(lines):
-            s = lines[j]
-            if s.strip() and not s.startswith(" " * (indent + 1)) and not s.startswith(" " * indent + " "):
-                stripped_indent = len(s) - len(s.lstrip(" "))
-                if stripped_indent <= indent and s.strip():
-                    break
-            if re.match(r'^\s{%d}-\s' % indent, s):
+        indent = len(match.group(1))
+        end = index + 1
+        while end < len(lines):
+            candidate = lines[end]
+            if re.match(r'^\s{%d}-\s' % indent, candidate):
                 break
-            j += 1
-        return i, j
+            if candidate.strip():
+                candidate_indent = len(candidate) - len(candidate.lstrip(" "))
+                if candidate_indent <= indent:
+                    break
+            end += 1
+        return index, end
     return None, None
 
+
 def block_get(lines, start, end, key):
-    pat = re.compile(r'^(\s+)' + re.escape(key) + r':\s*(.*)$')
-    for i in range(start + 1, end):
-        m = pat.match(lines[i])
-        if m:
-            raw = kblib.strip_yaml_comment(m.group(2)).strip()
-            if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in '"\'':
+    pattern = re.compile(r'^(\s+)' + re.escape(key) + r':\s*(.*)$')
+    for index in range(start + 1, end):
+        match = pattern.match(lines[index])
+        if match:
+            raw = kblib.strip_yaml_comment(match.group(2)).strip()
+            if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
                 raw = raw[1:-1]
-            return i, m.group(1), raw
+            return index, match.group(1), raw
     return None, None, None
 
 
 def get_receipt_ids(lines, start, end):
-    """Read the existing gate_receipts of a page block, in either legal form.
-
-    Returns (key_line_idx, indent, ids, last_item_idx): inline `[...]` values
-    come from the key line itself; block-list `- "id"` items are collected
-    from the lines following the key line. last_item_idx is the index of the
-    final line belonging to gate_receipts (== key line for inline/empty form).
-    Returns (None, None, [], None) when the key is absent.
-    """
-    li, ind, raw = block_get(lines, start, end, "gate_receipts")
-    if li is None:
+    """Read inline or block-list gate receipt ids from one page block."""
+    line_index, indent, raw = block_get(lines, start, end, "gate_receipts")
+    if line_index is None:
         return None, None, [], None
     if raw:
-        ids = [x.strip().strip('"\'') for x in raw.strip("[]").split(",") if x.strip()]
-        return li, ind, ids, li
-    ids, last = [], li
-    item_pat = re.compile(r'^(\s+)-\s+(.*?)\s*$')
-    for j in range(li + 1, end):
-        m = item_pat.match(lines[j])
-        if not m or len(m.group(1)) <= len(ind):
+        values = [item.strip().strip("\"'")
+                  for item in raw.strip("[]").split(",") if item.strip()]
+        return line_index, indent, values, line_index
+    values, last = [], line_index
+    item_pattern = re.compile(r'^(\s+)-\s+(.*?)\s*$')
+    for index in range(line_index + 1, end):
+        match = item_pattern.match(lines[index])
+        if not match or len(match.group(1)) <= len(indent):
             break
-        raw = kblib.strip_yaml_comment(m.group(2)).strip()
-        ids.append(raw.strip('"\''))
-        last = j
-    return li, ind, ids, last
+        raw_item = kblib.strip_yaml_comment(match.group(2)).strip()
+        values.append(raw_item.strip("\"'"))
+        last = index
+    return line_index, indent, values, last
 
-def main():
-    ap = argparse.ArgumentParser(description="Deterministic Coverage Delta application")
-    ap.add_argument("ledger"); ap.add_argument("delta")
-    ap.add_argument("--apply", action="store_true", help="actually write to disk (default is a dry run)")
-    ap.add_argument("--force", action="store_true", help="allow out-of-scope pages (reason recorded)")
-    ap.add_argument("--receipts", help="JSONL receipt output path")
-    args = ap.parse_args()
 
-    delta = load_delta(args.delta)
-    batch = str(delta.get("batch", "")).strip()
-    pages = delta.get("pages") or []
-    lines = open(args.ledger, encoding="utf-8").read().splitlines(keepends=True)
-
-    planned, rejected, unknown_keys = [], [], []
-    for page in pages:
-        path = str(page.get("path", "")).strip()
-        if not path:
+def _delta_policy_errors(delta):
+    errors = []
+    pages = delta.get("pages")
+    if not isinstance(pages, list):
+        return ["delta pages must be an explicit list"]
+    seen_paths = set()
+    for index, page in enumerate(pages):
+        label = "pages[%d]" % index
+        if not isinstance(page, dict):
+            errors.append("%s must be a mapping" % label)
             continue
+        forbidden = sorted(CONTROL_FIELDS.intersection(page))
+        if forbidden:
+            errors.append(
+                "%s contains worker-forbidden Coverage control field(s): %s" %
+                (label, ", ".join(forbidden))
+            )
+        path = page.get("path")
+        if not isinstance(path, str) or not path.strip():
+            errors.append("%s path must be a non-empty string" % label)
+        elif path in seen_paths:
+            errors.append("delta repeats page path %s" % path)
+        else:
+            seen_paths.add(path)
+        receipts = page.get("gate_receipts")
+        if receipts is not None and (
+                not isinstance(receipts, list) or
+                not all(isinstance(value, str) and value.strip()
+                        for value in receipts)):
+            errors.append("%s gate_receipts must be a list of non-empty ids" %
+                          label)
+    generated_at = delta.get("generated_at")
+    if (not isinstance(generated_at, str) or
+            not check_queue._valid_timestamp(generated_at)):
+        errors.append("delta generated_at must be a timezone-aware RFC 3339 timestamp")
+    additions = delta.get("open_gaps_added")
+    closures = delta.get("open_gaps_closed")
+    if not isinstance(additions, list):
+        errors.append("open_gaps_added must be an explicit list")
+        additions = []
+    if not isinstance(closures, list):
+        errors.append("open_gaps_closed must be an explicit list")
+        closures = []
+    for index, gap in enumerate(additions):
+        label = "open_gaps_added[%d]" % index
+        if not isinstance(gap, dict):
+            errors.append("%s must be a mapping" % label)
+            continue
+        if not isinstance(gap.get("page"), str) or not gap["page"].strip():
+            errors.append("%s page must be a non-empty string" % label)
+        if not isinstance(gap.get("type"), str) or not gap["type"].strip():
+            errors.append("%s type must be a non-empty string" % label)
+        if "id" in gap and (not isinstance(gap["id"], str) or
+                            not gap["id"].strip()):
+            errors.append("%s id must be a non-empty string when present" % label)
+    for index, selector in enumerate(closures):
+        label = "open_gaps_closed[%d]" % index
+        if isinstance(selector, str):
+            if not selector.strip():
+                errors.append("%s id must be non-empty" % label)
+        elif isinstance(selector, dict):
+            has_id = isinstance(selector.get("id"), str) and bool(
+                selector["id"].strip())
+            has_pair = (isinstance(selector.get("page"), str) and
+                        bool(selector["page"].strip()) and
+                        isinstance(selector.get("type"), str) and
+                        bool(selector["type"].strip()))
+            if not has_id and not has_pair:
+                errors.append("%s must identify id or page+type" % label)
+        else:
+            errors.append("%s must be a gap id or mapping" % label)
+    return errors
+
+
+def _gap_key(gap):
+    """Return the stable identity used for open-gap reconciliation."""
+    if isinstance(gap, dict) and isinstance(gap.get("id"), str) and \
+            gap["id"].strip():
+        return ("id", gap["id"])
+    if isinstance(gap, dict):
+        return ("page-type", gap.get("page"), gap.get("type"))
+    if isinstance(gap, str):
+        return ("id", gap)
+    return None
+
+
+def _merge_coverage_sections(text, delta):
+    """Apply canonical non-page Coverage sections declared by a delta."""
+    coverage = kblib.parse_yaml_subset(text)
+    if not isinstance(coverage, dict):
+        raise ValueError("Coverage Ledger top level must be a mapping")
+    result = copy.deepcopy(coverage)
+    gaps = result.get("open_gaps")
+    if not isinstance(gaps, list):
+        raise ValueError("Coverage open_gaps must be an explicit list")
+    indexed = {}
+    for index, gap in enumerate(gaps):
+        key = _gap_key(gap)
+        if key is None or key[0] == "page-type" and (not key[1] or not key[2]):
+            raise ValueError("Coverage open_gaps[%d] has no stable id or page+type" %
+                             index)
+        if key in indexed:
+            raise ValueError("Coverage repeats open gap identity %r" % (key,))
+        indexed[key] = gap
+
+    additions = delta.get("open_gaps_added") or []
+    closures = delta.get("open_gaps_closed") or []
+    close_keys = [_gap_key(selector) for selector in closures]
+    if len(close_keys) != len(set(close_keys)):
+        raise ValueError("open_gaps_closed repeats a gap identity")
+    add_keys = [_gap_key(gap) for gap in additions]
+    if len(add_keys) != len(set(add_keys)):
+        raise ValueError("open_gaps_added repeats a gap identity")
+    overlap = set(close_keys).intersection(add_keys)
+    if overlap:
+        raise ValueError("one delta cannot close and add the same gap: %r" %
+                         sorted(overlap))
+    for key in close_keys:
+        if key not in indexed:
+            raise ValueError("open_gaps_closed references absent gap %r" % (key,))
+        indexed.pop(key)
+    page_paths = {page.get("path") for page in result.get("pages", [])
+                  if isinstance(page, dict)}
+    for gap, key in zip(additions, add_keys):
+        if key in indexed:
+            raise ValueError("open_gaps_added already exists: %r" % (key,))
+        if gap.get("page") not in page_paths:
+            raise ValueError("open gap page is absent from Coverage: %s" %
+                             gap.get("page"))
+        indexed[key] = copy.deepcopy(gap)
+    result["open_gaps"] = list(indexed.values())
+    if delta.get("generated_at") is not None:
+        result["updated_at"] = delta["generated_at"]
+    return kblib.canonical_yaml(result)
+
+
+def _build_plan(lines, delta, force=False):
+    """Return ``(new_text, planned, rejected, unknown_keys)``."""
+    batch = str(delta.get("batch", "")).strip()
+    planned, rejected, unknown_keys = [], [], []
+    for page in delta.get("pages") or []:
+        path = page["path"]
         start, end = find_page_block(lines, path)
         if start is None:
-            rejected.append((path, "not-found-in-ledger")); continue
-        # Out-of-scope protection
-        _, _, nb = block_get(lines, start, end, "next_batch")
-        _, _, bt = block_get(lines, start, end, "batch")
-        if batch and nb != batch and bt != batch and not args.force:
-            rejected.append((path, f"manifest-mismatch(next_batch={nb},batch={bt})")); continue
+            rejected.append((path, "not-found-in-ledger"))
+            continue
+        _, _, next_batch = block_get(lines, start, end, "next_batch")
+        _, _, historical_batch = block_get(lines, start, end, "batch")
+        if (batch and next_batch != batch and historical_batch != batch and
+                not force):
+            rejected.append((
+                path,
+                "manifest-mismatch(next_batch=%s,batch=%s)" %
+                (next_batch, historical_batch),
+            ))
+            continue
         edits = []
-        for key, val in page.items():
-            if key in ("path",):
+        for key, value in page.items():
+            if key == "path":
                 continue
             if key == "gate_receipts":
-                # Merge by appending (deduplicated) and always emit the
-                # schema's block-list form; the replacement range covers the
-                # key line plus any existing block-list items, so no orphan
-                # `- "id"` lines survive (they would break the restricted
-                # YAML subset).
-                li, ind, cur_ids, last = get_receipt_ids(lines, start, end)
-                new_ids = [str(v) for v in (val or [])]
-                merged = cur_ids + [x for x in new_ids if x not in cur_ids]
-                if li is not None:
-                    block = [f'{ind}gate_receipts:\n'] + [
-                        f'{ind}  - "{x}"\n' for x in merged]
-                    edits.append(("range", li, last + 1, block))
+                line_index, indent, current, last = get_receipt_ids(
+                    lines, start, end
+                )
+                incoming = [str(item) for item in (value or [])]
+                merged = current + [item for item in incoming
+                                    if item not in current]
+                if line_index is not None:
+                    block = [f"{indent}gate_receipts:\n"] + [
+                        f'{indent}  - "{item}"\n' for item in merged
+                    ]
+                    edits.append(("range", line_index, last + 1, block))
                 else:
-                    block = ['    gate_receipts:\n'] + [
-                        f'      - "{x}"\n' for x in merged]
+                    block = ["    gate_receipts:\n"] + [
+                        f'      - "{item}"\n' for item in merged
+                    ]
                     edits.append(("range", end, end, block))
                 continue
             if key not in KNOWN_SCALAR_KEYS:
                 unknown_keys.append((path, key))
-            sval = "" if val is None else str(val)
-            li, ind, _ = block_get(lines, start, end, key)
-            if li is not None:
-                edits.append((li, f'{ind}{key}: {sval}\n' if sval else f'{ind}{key}:\n'))
+            scalar = "" if value is None else str(value)
+            line_index, indent, _ = block_get(lines, start, end, key)
+            if line_index is not None:
+                rendered = (f"{indent}{key}: {scalar}\n" if scalar else
+                            f"{indent}{key}:\n")
+                edits.append((line_index, rendered))
             else:
-                edits.append((end, f'    {key}: {sval}\n', "insert"))
-        planned.append((path, start, edits))
+                edits.append((end, f"    {key}: {scalar}\n", "insert"))
+        planned.append((path, edits))
 
-    print(f"apply_delta: batch={batch} planning to update {len(planned)} page(s), rejected {len(rejected)} page(s)")
-    for p, s, eds in planned:
-        print(f"  [PLAN] {p}: {len(eds)} field update(s)")
-    for p, r in rejected:
-        print(f"  [REJECT] {p}: {r}")
-    for p, k in unknown_keys:
-        print(f"  [WARN unknown-key] {p}: scalar key '{k}' is outside the "
-              f"Coverage Ledger core schema (applied anyway; legal for "
-              f"registered profile extensions, verify it is one)")
-    for g in (delta.get("open_gaps_added") or []):
-        print(f"  [TODO gaps+] {g}")
-    for g in (delta.get("open_gaps_closed") or []):
-        print(f"  [TODO gaps-] {g}")
-    for s in (delta.get("next_batch_updates") or []):
-        print(f"  [SUGGEST] {s}")
-    for w in (delta.get("watermark_advance") or []):
-        print(f"  [TODO watermark] {w} — integrator applies to "
-              f"Tools/state/watermark.yaml at merge (K02/05); this script "
-              f"does not apply watermark advances")
+    flat_edits = [edit for _, edits in planned for edit in edits]
 
-    result = "fail" if rejected and not args.force else ("pass" if planned else "candidate")
+    def edit_position(edit):
+        return edit[1] if edit[0] == "range" else edit[0]
+
+    new_lines = list(lines)
+    for edit in sorted(flat_edits, key=lambda item: -edit_position(item)):
+        if edit[0] == "range":
+            _, begin, finish, block = edit
+            new_lines[begin:finish] = block
+        elif len(edit) == 3 and edit[2] == "insert":
+            new_lines.insert(edit[0], edit[1])
+        else:
+            new_lines[edit[0]] = edit[1]
+    return "".join(new_lines), planned, rejected, unknown_keys
+
+
+def _print_plan(delta, planned, rejected, unknown_keys):
+    batch = str(delta.get("batch", "")).strip()
+    print("apply_delta: batch=%s planning to update %d page(s), rejected %d "
+          "page(s)" % (batch, len(planned), len(rejected)))
+    for path, edits in planned:
+        print("  [PLAN] %s: %d field update(s)" % (path, len(edits)))
+    for path, reason in rejected:
+        print("  [REJECT] %s: %s" % (path, reason))
+    for path, key in unknown_keys:
+        print("  [WARN unknown-key] %s: scalar key %r is outside the "
+              "Coverage Ledger core schema; verify its profile registration" %
+              (path, key))
+    for gap in delta.get("open_gaps_added") or []:
+        print("  [PLAN gaps+] %s" % gap)
+    for gap in delta.get("open_gaps_closed") or []:
+        print("  [PLAN gaps-] %s" % gap)
+    for suggestion in delta.get("next_batch_updates") or []:
+        print("  [SUGGEST only; not applied] %s" % suggestion)
+    for watermark in delta.get("watermark_advance") or []:
+        print("  [TODO watermark] %s" % watermark)
+
+
+def _canonical_paths(args, batch):
+    expected_ledger = check_queue.COVERAGE_PATH
+    expected_delta = ".cambium/deltas/%s.yaml" % batch
+    errors = []
+    if args.ledger != expected_ledger:
+        errors.append("canonical ledger argument must be exactly %s" %
+                      expected_ledger)
+    if args.delta != expected_delta:
+        errors.append("canonical delta argument must be exactly %s" %
+                      expected_delta)
+    return expected_ledger, expected_delta, errors
+
+
+def _prepare_receipt(result, batch, delta_path, delta_sha,
+                     before_coverage_sha, after_coverage_sha, actor_role):
+    receipt = kblib.make_receipt(
+        TOOL, TOOL_VERSION, "delta_apply", batch, "pass",
+        "canonical Coverage delta applied and Queue post-check passed", 1,
+    )
+    receipt.update({
+        "task_id": result["queue"].get("task_id"),
+        "batch_id": batch,
+        "actor_role": actor_role,
+        "coverage_ledger_path": check_queue.COVERAGE_PATH,
+        "delta_path": delta_path,
+        "delta_sha256": delta_sha,
+        "before_coverage_sha256": before_coverage_sha,
+        "after_coverage_sha256": after_coverage_sha,
+        "before_required_queue_sha256": result.get("queue_sha256"),
+        "after_required_queue_sha256": result.get("queue_sha256"),
+        "before_progress_sha256": result.get("progress_sha256"),
+        "after_progress_sha256": result.get("progress_sha256"),
+        "required_queue_sha256": result.get("queue_sha256"),
+        "queue_revision": result["queue"].get("queue_revision"),
+        "queue_state_revision": result["queue"].get("state_revision"),
+    })
+    return receipt
+
+
+def _canonical_apply(args, delta, new_text, planned, rejected,
+                     planned_coverage_sha, planned_delta_sha):
+    root = os.path.realpath(os.path.abspath(args.root))
+    batch = str(delta.get("batch", "")).strip()
+    _, expected_delta, path_errors = _canonical_paths(args, batch)
+    if args.force:
+        path_errors.append("--force is forbidden in canonical runtime mode")
+    if delta.get("watermark_advance") not in (None, [], {}):
+        path_errors.append(
+            "watermark_advance needs a registered instance adapter; canonical "
+            "Coverage apply cannot silently ignore it"
+        )
+    for error in path_errors:
+        print("[FAIL] %s" % error)
+    if path_errors:
+        return 1
+
+    try:
+        ledger_path = kblib.managed_repository_path(
+            root, args.ledger, ".cambium/state",
+            suffixes=(".yaml",), must_exist=True,
+        )
+        delta_path = kblib.managed_repository_path(
+            root, args.delta, ".cambium/deltas",
+            suffixes=(".yaml",), must_exist=True,
+        )
+        if not os.path.isfile(ledger_path) or not os.path.isfile(delta_path):
+            raise ValueError("canonical ledger and delta must be regular files")
+        current = check_queue.validate_runtime(root)
+    except (OSError, ValueError, kblib.YamlSubsetError) as exc:
+        print("[FAIL] canonical runtime cannot be loaded: %s" % exc)
+        return 1
+    if current["errors"]:
+        for error in current["errors"]:
+            print("[FAIL] current runtime state: %s" % error)
+        return 1
+    if args.apply:
+        barrier = check_queue.delta_apply_write_barrier(
+            current, TOOL, "apply", batch)
+        if barrier:
+            print("[FAIL] %s" % barrier)
+            return 1
+    if current.get("progress", {}).get("task_state") != "active":
+        print("[FAIL] canonical delta apply requires task_state=active")
+        return 1
+    if current.get("writer_locks"):
+        print("[FAIL] runtime has an active or interrupted writer lock")
+        return 1
+    if (kblib.sha256_file(ledger_path) != planned_coverage_sha or
+            kblib.sha256_file(delta_path) != planned_delta_sha):
+        print("[FAIL] Coverage or delta changed while the merge plan was built")
+        return 1
+    item = current.get("items_by_id", {}).get(batch)
+    if item is None:
+        print("[FAIL] delta batch %s is absent from Required Queue" % batch)
+        return 1
+    if item.get("state") != "merge-ready":
+        print("[FAIL] batch %s is %s, expected merge-ready" %
+              (batch, item.get("state")))
+        return 1
+    if item.get("delta_path") != expected_delta:
+        print("[FAIL] batch delta_path does not match %s" % expected_delta)
+        return 1
+    if item.get("delta_sha256") != planned_delta_sha:
+        print("[FAIL] delta bytes do not match the SHA frozen at merge-ready")
+        return 1
+    delta_manifest = [page.get("path") for page in delta.get("pages", [])]
+    frozen_manifest = item.get("manifest") or []
+    if (rejected or not planned or len(delta_manifest) != len(frozen_manifest) or
+            set(delta_manifest) != set(frozen_manifest)):
+        print("[FAIL] canonical delta must update exactly every frozen manifest page")
+        return 1
+    try:
+        parsed_new = kblib.parse_yaml_subset(new_text)
+        if not isinstance(parsed_new, dict):
+            raise kblib.YamlSubsetError("merged Coverage must be a mapping")
+    except kblib.YamlSubsetError as exc:
+        print("[FAIL] merged Coverage does not parse: %s" % exc)
+        return 1
+
+    before_coverage_sha = planned_coverage_sha
+    before_queue_sha = current.get("queue_sha256")
+    before_progress_sha = current.get("progress_sha256")
+    after_coverage_sha = kblib.sha256_bytes(new_text)
+    receipt = _prepare_receipt(
+        current, batch, expected_delta, planned_delta_sha, before_coverage_sha,
+        after_coverage_sha, args.actor_role,
+    )
+    receipt_relative = args.receipts or (
+        ".cambium/receipts/%s.jsonl" % receipt["receipt_id"]
+    )
+    try:
+        receipt_path = kblib.managed_repository_path(
+            root, receipt_relative, ".cambium/receipts",
+            suffixes=(".jsonl",), must_exist=False,
+        )
+    except (OSError, ValueError) as exc:
+        print("[FAIL] unsafe receipt path: %s" % exc)
+        return 1
+    if os.path.lexists(receipt_path):
+        print("[FAIL] canonical receipt target already exists: %s" %
+              receipt_relative)
+        return 1
+    if not os.path.isdir(os.path.dirname(receipt_path)):
+        print("[FAIL] canonical receipt parent must already exist")
+        return 1
+    receipt["receipt_path"] = receipt_relative
+
+    print("canonical delta plan: batch=%s coverage %s -> %s queue=%s" %
+          (batch, before_coverage_sha, after_coverage_sha, before_queue_sha))
+    if not args.apply:
+        print("dry run; add --apply --actor-role integrator with both expected hashes")
+        return 0
+    if args.actor_role != "integrator":
+        print("[FAIL] only actor-role integrator may apply canonical Coverage")
+        return 1
+    if not args.expected_coverage_sha256 or not args.expected_queue_sha256:
+        print("[FAIL] --apply requires --expected-coverage-sha256 and "
+              "--expected-queue-sha256")
+        return 1
+    if args.expected_coverage_sha256 != before_coverage_sha:
+        print("[FAIL] expected Coverage fingerprint is stale")
+        return 1
+    if args.expected_queue_sha256 != before_queue_sha:
+        print("[FAIL] expected Queue fingerprint is stale")
+        return 1
+
+    lock_operation = {
+        "tool": TOOL,
+        "action": "apply-canonical-coverage-delta",
+        "batch_id": batch,
+        "task_id": current["queue"].get("task_id"),
+        "before_coverage_sha256": before_coverage_sha,
+        "planned_after_coverage_sha256": after_coverage_sha,
+        "before_required_queue_sha256": before_queue_sha,
+        "planned_after_required_queue_sha256": before_queue_sha,
+        "before_progress_sha256": before_progress_sha,
+        "planned_after_progress_sha256": before_progress_sha,
+        "delta_sha256": planned_delta_sha,
+        # Retained as the receipt-era spelling consumed by existing tooling;
+        # the explicit before/planned-after pair above owns recovery.
+        "required_queue_sha256": before_queue_sha,
+        "receipt_id": receipt["receipt_id"],
+        "receipt_path": receipt_relative,
+    }
+    try:
+        with kblib.runtime_write_lock(root, owner_metadata=lock_operation) as lock:
+            with kblib.no_authoritative_write_guard(lock):
+                # Re-read under the lock.  Queue validation sees our own lock
+                # but does not treat it as a state error; fingerprints provide
+                # CAS.  Any rejection in this region is a proven no-write
+                # outcome and must not manufacture an interrupted-write lock.
+                locked = check_queue.validate_runtime(root)
+                if locked["errors"]:
+                    raise ValueError("runtime changed before write: %s" %
+                                     "; ".join(locked["errors"]))
+                barrier = check_queue.delta_apply_write_barrier(
+                    locked, TOOL, "apply", batch)
+                if barrier:
+                    raise ValueError(barrier)
+                if kblib.sha256_file(ledger_path) != before_coverage_sha:
+                    raise ValueError("Coverage changed after validation")
+                if kblib.sha256_file(delta_path) != planned_delta_sha:
+                    raise ValueError("delta changed after validation")
+                if locked.get("queue_sha256") != before_queue_sha:
+                    raise ValueError("Required Queue changed after validation")
+                if locked.get("progress_sha256") != before_progress_sha:
+                    raise ValueError("Progress Ledger changed after validation")
+                if os.path.lexists(receipt_path):
+                    raise ValueError("receipt target appeared after validation")
+                locked_item = locked.get("items_by_id", {}).get(batch)
+                if (locked_item is None or
+                        locked_item.get("state") != "merge-ready" or
+                        locked_item.get("delta_path") != expected_delta or
+                        locked_item.get("delta_sha256") != planned_delta_sha):
+                    raise ValueError(
+                        "batch is no longer the validated merge-ready delta")
+
+                with open(ledger_path, encoding="utf-8") as handle:
+                    old_text = handle.read()
+                receipt_before = kblib.receipt_append_observation(
+                    receipt_path, [receipt]
+                )
+            wrote_coverage = False
+            receipt_attempted = False
+            try:
+                kblib.atomic_write_text(
+                    ledger_path, new_text, validator=kblib.parse_yaml_subset
+                )
+                wrote_coverage = True
+                post = check_queue.validate_runtime(
+                    root, extra_receipts=[receipt]
+                )
+                if post["errors"]:
+                    raise ValueError("post-write Queue reconciliation failed: %s" %
+                                     "; ".join(post["errors"]))
+                if post.get("queue_sha256") != before_queue_sha:
+                    raise ValueError("Queue changed during Coverage write")
+                if post.get("progress_sha256") != before_progress_sha:
+                    raise ValueError("Progress Ledger changed during Coverage write")
+                if kblib.sha256_file(delta_path) != planned_delta_sha:
+                    raise ValueError("delta changed during Coverage write")
+                receipt_attempted = True
+                kblib.write_receipts(
+                    receipt_path, [receipt], exclusive=True
+                )
+            except Exception as write_error:
+                rollback_failures = []
+                if receipt_attempted:
+                    try:
+                        receipt_after = kblib.receipt_append_observation(
+                            receipt_path, [receipt]
+                        )
+                        receipt_outcome = kblib.receipt_append_outcome(
+                            receipt_before, receipt_after
+                        )
+                        # O_EXCL can create the name before a later write or
+                        # fsync failure.  A new but exact-record-free file is
+                        # therefore not proven external unless the append
+                        # failed specifically because another creator won the
+                        # name race.
+                        if (receipt_outcome == "absent" and
+                                not receipt_before.get("exists") and
+                                receipt_after.get("exists") and
+                                not isinstance(write_error, FileExistsError)):
+                            receipt_outcome = "uncertain"
+                    except Exception as exc:
+                        receipt_outcome = "uncertain"
+                        rollback_failures.append(
+                            "receipt inspection: %s" % exc
+                        )
+                    if receipt_outcome != "absent":
+                        rollback_failures.append(
+                            "append-only receipt publication requires "
+                            "recovery: %s" % receipt_outcome
+                        )
+                if wrote_coverage:
+                    try:
+                        kblib.atomic_write_text(
+                            ledger_path, old_text,
+                            validator=kblib.parse_yaml_subset,
+                        )
+                    except Exception as exc:
+                        rollback_failures.append("coverage: %s" % exc)
+                if rollback_failures:
+                    raise ValueError(
+                        "delta apply failed and rollback is incomplete: %s; %s" %
+                        (write_error, "; ".join(rollback_failures))
+                    )
+                lock.mark_reconciled()
+                raise
+    except (OSError, ValueError, kblib.YamlSubsetError,
+            kblib.RuntimeStateLockedError) as exc:
+        print("[FAIL] canonical delta write failed; rollback attempted: %s" % exc)
+        return 1
+
+    print("[PASS] canonical Coverage delta applied; receipt=%s" %
+          receipt_relative)
+    return 0
+
+
+def _legacy_apply(args, delta, new_text, planned, rejected):
+    result = "fail" if rejected and not args.force else (
+        "pass" if planned else "candidate"
+    )
+    wrote = False
     if args.apply and result != "fail":
-        # Apply block by block (descending line order to avoid offset shifts)
-        flat = []
-        for _, _, eds in planned:
-            for e in eds:
-                flat.append(e)
-
-        def edit_pos(e):
-            return e[1] if e[0] == "range" else e[0]
-
-        new_lines = list(lines)
-        for e in sorted(flat, key=lambda x: -edit_pos(x)):
-            if e[0] == "range":
-                _, rstart, rstop, block = e
-                new_lines[rstart:rstop] = block
-            elif len(e) == 3 and e[2] in ("insert", "append"):
-                new_lines.insert(e[0], e[1])
-            else:
-                new_lines[e[0]] = e[1]
-        new_text = "".join(new_lines)
-
-        # Self-verification: the output must reparse under the restricted
-        # YAML subset before it may replace the authoritative Ledger. On
-        # failure nothing is written and the exit code is 1.
         try:
             kblib.parse_yaml_subset(new_text)
         except kblib.YamlSubsetError as exc:
-            print(f"apply_delta: ABORT — merged output no longer parses "
-                  f"({exc}); the Ledger was NOT modified")
+            print("apply_delta: ABORT — merged output no longer parses (%s); "
+                  "the Ledger was NOT modified" % exc)
             result = "fail"
         else:
             shutil.copyfile(args.ledger, args.ledger + ".bak")
-            tmp_path = args.ledger + ".tmp"
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                f.write(new_text)
-            os.replace(tmp_path, args.ledger)
-            print(f"apply_delta: written to disk (backup {args.ledger}.bak; "
-                  f"output re-parsed OK)")
+            temporary = args.ledger + ".tmp"
+            try:
+                with open(temporary, "w", encoding="utf-8") as handle:
+                    handle.write(new_text)
+                os.replace(temporary, args.ledger)
+                wrote = True
+            except Exception:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
+                raise
+            print("apply_delta: written to disk (backup %s.bak; output "
+                  "re-parsed OK)" % args.ledger)
     elif not args.apply:
         print("apply_delta: dry run (add --apply to write)")
-
     if args.receipts:
-        r = kblib.make_receipt(TOOL, TOOL_VERSION, "delta_apply",
-                               f"{os.path.basename(args.delta)} -> {os.path.basename(args.ledger)}",
-                               result,
-                               f"planned={len(planned)} rejected={len(rejected)} applied={bool(args.apply and result != 'fail')}", 1)
-        kblib.write_receipts(args.receipts, [r])
+        receipt = kblib.make_receipt(
+            TOOL, TOOL_VERSION, "delta_apply",
+            "%s -> %s" % (os.path.basename(args.delta),
+                           os.path.basename(args.ledger)),
+            result,
+            "planned=%d rejected=%d applied=%s" %
+            (len(planned), len(rejected), bool(wrote)), 1,
+        )
+        kblib.write_receipts(args.receipts, [receipt])
     return 0 if result == "pass" else (1 if result == "fail" else 2)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Deterministic Coverage Delta application"
+    )
+    parser.add_argument("ledger")
+    parser.add_argument("delta")
+    parser.add_argument("--root", help="adopting repository root (canonical mode)")
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--actor-role", choices=("worker", "integrator"),
+                        default="worker")
+    parser.add_argument("--expected-coverage-sha256")
+    parser.add_argument("--expected-queue-sha256")
+    parser.add_argument("--receipts")
+    args = parser.parse_args(argv)
+
+    if args.root is None:
+        detached_paths = [("ledger", args.ledger), ("delta", args.delta)]
+        if args.receipts:
+            detached_paths.append(("receipt", args.receipts))
+        for label, raw_path in detached_paths:
+            lexical = os.path.abspath(raw_path).split(os.sep)
+            resolved = os.path.realpath(os.path.abspath(raw_path)).split(os.sep)
+            if ".cambium" in lexical or ".cambium" in resolved:
+                print("[FAIL] detached mode may not access a .cambium namespace; "
+                      "canonical %s access requires --root" % label)
+                return 1
+
+    try:
+        if args.root is not None:
+            root = os.path.realpath(os.path.abspath(args.root))
+            delta_file = kblib.repository_path(root, args.delta, must_exist=True,
+                                               reject_symlink=True)
+            ledger_file = kblib.repository_path(root, args.ledger,
+                                                must_exist=True,
+                                                reject_symlink=True)
+        else:
+            delta_file, ledger_file = args.delta, args.ledger
+        with open(delta_file, "rb") as handle:
+            delta_raw = handle.read()
+        delta = _parse_delta_bytes(delta_raw)
+        with open(ledger_file, "rb") as handle:
+            ledger_raw = handle.read()
+        ledger_text = ledger_raw.decode("utf-8")
+        lines = ledger_text.splitlines(keepends=True)
+    except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
+        print("[FAIL] cannot load Coverage delta inputs: %s" % exc)
+        return 1
+
+    policy_errors = _delta_policy_errors(delta)
+    batch = delta.get("batch")
+    if not isinstance(batch, str) or not check_queue.BATCH_ID_RE.fullmatch(batch):
+        policy_errors.append("delta batch must be a path-safe Required Queue id")
+    if policy_errors:
+        for error in policy_errors:
+            print("[FAIL] %s" % error)
+        print("apply_delta: entire operation rejected; no files were written")
+        return 1
+
+    if args.root is not None and args.apply:
+        preflight = check_queue.validate_runtime(args.root)
+        if preflight["errors"]:
+            for error in preflight["errors"]:
+                print("[FAIL] current runtime state: %s" % error)
+            return 1
+        barrier = check_queue.delta_apply_write_barrier(
+            preflight, TOOL, "apply", batch)
+        if barrier:
+            print("[FAIL] %s" % barrier)
+            return 1
+
+    new_text, planned, rejected, unknown_keys = _build_plan(
+        lines, delta, force=args.force
+    )
+    try:
+        new_text = _merge_coverage_sections(new_text, delta)
+    except (TypeError, ValueError, kblib.YamlSubsetError) as exc:
+        print("[FAIL] Coverage gap reconciliation failed: %s" % exc)
+        return 1
+    _print_plan(delta, planned, rejected, unknown_keys)
+    if args.root is not None:
+        return _canonical_apply(
+            args, delta, new_text, planned, rejected,
+            kblib.sha256_bytes(ledger_raw), kblib.sha256_bytes(delta_raw),
+        )
+    return _legacy_apply(args, delta, new_text, planned, rejected)
+
 
 if __name__ == "__main__":
     sys.exit(main())

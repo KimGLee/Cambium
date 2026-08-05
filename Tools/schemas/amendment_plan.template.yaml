@@ -1,0 +1,27 @@
+# =============================================================================
+# Cross-Ledger Amendment transaction plan
+# Owner standard: kernel/K02 Build Execution/09 Required Queue.md
+# Implemented by: Tools/apply_amendment.py
+# Location: .cambium/deltas/amendments/<amendment-id>.yaml
+#
+# The plan binds one approved Progress Amendment to one complete proposed
+# Coverage document and the exact Queue revision edges that must accompany it.
+# It is an input to a transaction, not canonical runtime state.
+# =============================================================================
+
+schema_version: 1
+amendment_id: "A-SCOPE-001"
+operation: scope-replan               # scope-replan | cancel-batch
+affected_pages:
+  - "Topics/New Required Topic.md"
+affected_batches:
+  - "B3"
+scope_version_before: "s1"
+scope_version_after: "s2"
+queue_revision_before: 4
+queue_revision_after: 5
+state_revision_before: 9
+state_revision_after: 9
+coverage_proposal_path: ".cambium/deltas/amendments/A-SCOPE-001.coverage.yaml"
+coverage_proposal_sha256: "sha256:replace-with-proposal-fingerprint"
+cancel_batch_id: null                 # required batch id for cancel-batch

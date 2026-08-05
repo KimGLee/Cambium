@@ -5,7 +5,7 @@ route_id: R07
 
 ## Purpose
 
-Used for long tasks requiring multiple batches, sustained time constraints, checkpoints, resume, the Coverage Ledger, or the Terminal Proof.
+Used for persistent, resumable, or multi-batch tasks requiring sustained time constraints, checkpoints, the Coverage Ledger, Required Queue, or the completion path selected by the Task Contract.
 
 ## Start
 
@@ -18,6 +18,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - [[kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
 - [[kernel/K02 Build Execution/05 Batch Execution|Batch Execution]]
 - [[kernel/K02 Build Execution/08 Progress Ledger|Progress Ledger]]
+- [[kernel/K02 Build Execution/09 Required Queue|Required Queue]]
 - [[kernel/K02 Build Execution/06 Existing Changes Migration and Resume|Existing Changes Migration and Resume]]
 - [[kernel/K02 Build Execution/07 Completion and Handoff|Completion and Handoff]]
 - [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]]
@@ -39,7 +40,7 @@ When the task also meets the large-scale creation, move, or deletion predicate, 
 
 ## Gate
 
-Each batch uses [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]], and generates, reuses, or invalidates verification evidence per [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]; at serial merge the integrator runs [[kernel/K12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]]; a task completion candidate MUST combine [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]].
+Each batch uses [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]], and generates, reuses, or invalidates verification evidence per [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]. Every writer first passes the [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Runtime Startup Gate|Runtime Startup Gate]] loaded through R01; an existing namespace is inspected with `check_queue.py --resume-status` and never overwritten, while an absent namespace is initialized only for persistent, resumable, or multi-batch work. Activation consumes `--require-ready`; at serial merge the integrator runs [[kernel/K12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]] and consumes a current Queue receipt before close. A build task entering `completion-candidate` MUST combine [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]]. A maintenance task never enters that state; a persistent R10 run instead consumes the bounded gate in [[kernel/K02 Build Execution/09 Required Queue#Completion Gates|K02/09]].
 
 ## Related
 

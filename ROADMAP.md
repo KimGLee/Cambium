@@ -16,9 +16,10 @@ bypass R09 adoption.
 |---|---|
 | Profile setup | Copy the 11-file `_template`, fill it manually, and run `check_profile.py` |
 | Execution | The kernel defines sequential work, concurrent disjoint batches, independent review contexts, and serial integration |
+| Persistent work state | `.cambium/` separates object-level Coverage, the canonical Required Queue, and task-level Progress; standard-library tools initialize, compile, validate, transition, apply Amendment-bound cross-Ledger changes, recover interrupted-write evidence, and render Queue state |
 | Runtime | No bundled orchestrator, scheduler, workspace manager, or host adapter |
 | Dependency propagation | The kernel defines semantic dependency invalidation and downstream `needs_rereview`, but no bundled compiler or change detector calculates the affected set |
-| Tools | Deterministic checks, schemas, receipts, vocabulary/Card compilation, and single-delta application |
+| Tools | Deterministic checks, schemas, receipts, vocabulary/Card compilation, Required Queue control, guarded Amendment transactions, and single-delta application |
 
 ## Profile Onboarding Assistant
 
@@ -43,6 +44,8 @@ approve the profile, or bypass R09.
 ## Reference Execution Runtime
 
 Implement the existing batch protocol as a host-neutral reference runtime.
+The runtime consumes the existing `.cambium/state/required_queue.yaml`; it does
+not create a parallel scheduler-owned batch ledger.
 
 ### Assignment State
 
@@ -62,7 +65,8 @@ subagent topology remains runtime metadata rather than profile configuration.
 Implement the single-writer control path before automating parallel workers:
 
 - admit only dependency-ready batches with disjoint manifests;
-- own shared ledgers, queues, batch activation, and guidance disposition;
+- consume Queue readiness, use the integrator-only transition tool for batch
+  activation, and own guidance disposition without bypassing canonical state;
 - collect each batch's receipts and delta;
 - merge one batch at a time and run the global checks after each merge;
 - checkpoint, pause, resume, and reassign interrupted work safely.
@@ -211,13 +215,27 @@ Make orchestration inspectable and testable:
 - conformance fixtures for profile generation, independent review, receipts,
   delta application, and host-adapter capability claims.
 
+The local baseline deliberately treats repository/tool/evidence writers as a
+trust domain. Deployments that include adversarial writers may add signed
+receipts, protected-runner attestations, and authenticated actor/reviewer
+identity through a host adapter; those controls must strengthen the existing
+byte and state bindings rather than replace them.
+
+Add a guarded non-scope Task Contract Amendment transaction for objective,
+exclusion, acceptance, timing, and pause-policy changes. The current baseline
+intentionally fails closed on direct post-materialization edits and ships only
+scope/disposition Amendment writes; until this writer exists, such a change
+rolls into a preserved successor task rather than mutating live Contract bytes.
+
 ## Implementation Order
 
 Profile onboarding and typed dependency compilation can progress independently
-of agent orchestration. The dependency runtime consumes accepted corpus state
-and emits plans; the reference execution runtime may later schedule those plans
-without owning their semantic policy. Within the orchestration line, assignment
-state and the deterministic integrator loop precede parallel worker automation;
-observability and recovery tests accompany every stage. This order protects the
-shared control plane while still making multi-context execution the intended
-scaling path.
+of agent orchestration. The persistent Required Queue is already the execution
+interface; the future reference runtime consumes it rather than redefining it.
+The dependency runtime consumes accepted corpus state and emits plans; the
+reference execution runtime may later schedule those plans without owning their
+semantic policy. Within the orchestration line, assignment state and the
+deterministic integrator loop precede parallel worker automation; observability
+and recovery tests accompany every stage. This order protects the shared
+control plane while still making multi-context execution the intended scaling
+path.

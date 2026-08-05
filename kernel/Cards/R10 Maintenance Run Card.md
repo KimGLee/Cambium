@@ -12,7 +12,7 @@ source_files:
   - kernel/K02 Build Execution/05 Batch Execution.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-source_hash: '25802b96fc0e'
+source_hash: 'a94f4e75dd28'
 ---
 # R10 Maintenance Run Card
 

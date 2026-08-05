@@ -10,7 +10,7 @@
 - `Read Sets` [[kernel/Read Sets/Read Sets Index|Read Sets Index]]: combines the leaf modules to read by task, event, and execution phase.
 - `K00` [[kernel/K00 Standards Overview|Standards Overview]] and [[kernel/K00 Standards Control/03 Standards Governance|Standards Control]]: entry, route loading, precedence, governance, defaults, and control registries.
 - `K01` [[kernel/K01 Scope and Architecture Standard|Scope and Architecture Standard]]: generic scope boundaries, foundation preservation, logical architecture, and the concrete scope binding provided by `Profile Scope`.
-- `K02` [[kernel/K02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]: long-running task contract, Mid-task Guidance, time semantics, task state, Coverage Ledger, batch, resume, and Terminal Proof.
+- `K02` [[kernel/K02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]: long-running task contract, Mid-task Guidance, time semantics, task state, Coverage Ledger, Required Queue, batch execution, resume, and Terminal Proof.
 - `K03` [[kernel/K03 Note Types and Ownership Standard|Note Types and Ownership Standard]]: note types, Process / Flow, canonical ownership, split, and duplication.
 - `K04` [[kernel/K04 Content Depth Standard|Content Depth Standard]]: Atomic / Core / System depth, Process / Flow, system chains, and evaluation provenance.
 - `K05` [[kernel/K05 Terminology Standard|Terminology Standard]]: proper-noun extraction, aliases, reuse, and emerging terminology.
@@ -29,11 +29,16 @@ The following high-risk objects have a single canonical owner corpus-wide. Modif
 | Object | Canonical owner |
 |---|---|
 | Kernel runtime route membership and route-to-Read-Set binding | [[kernel/Read Sets/Read Sets Index|Read Sets Index]] |
+| Task-to-route combinations | [[kernel/K00 Standards Control/02 Task Routing|Task Routing]] |
 | Runtime Card ownership, loading order, and source read-back protocol | [[kernel/K00 Standards Control/01 Operating Role and Reading Protocol|Operating Role and Reading Protocol]] |
+| Runtime namespace startup and interrupted-state recovery | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Runtime Startup Gate|Runtime Startup Gate]] |
+| Large-scale creation, move, or deletion admission | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Large-scale Pre-execution Gate|Large-scale Pre-execution Gate]] |
 | M-tier page acceptance checklist | [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review#M-tier Gate Checklist|M-tier Gate Checklist]] |
 | Terminal Proof formula | [[kernel/K02 Build Execution/07 Completion and Handoff|Completion and Handoff]] |
-| Terminal Audit procedure and Proof field list | [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence|Terminal Audit and Convergence]] |
+| Terminal Audit procedure and finding convergence | [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence|Terminal Audit and Convergence]] |
+| Terminal Proof field contract and deterministic completion gate | [[kernel/K12 Quality Assurance/16 Terminal Proof Contract|Terminal Proof Contract]] |
 | `task_state` vocabulary | [[kernel/K02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]] |
+| Required Queue schema, revisions, batch lifecycle, holds, and transition authority | [[kernel/K02 Build Execution/09 Required Queue|Required Queue]] |
 | authoring / expression / learning status vocabularies | [[kernel/K08 Metadata and Status/03 Status Axes|Status Axes]] + `Expression Status Axis` role |
 | `evidence_maturity` definition | [[kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]] |
 | Evidence roles | [[kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] |

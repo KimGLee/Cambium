@@ -5,9 +5,9 @@ compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/Read Sets Index.md
   - kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md
-  - kernel/K00 Standards Control/02 Task Routing and Pre-execution.md
+  - kernel/K00 Standards Control/02 Task Routing.md
   - kernel/K00 Standards Control/03 Standards Governance.md
-source_hash: 'aa927a35b5e2'
+source_hash: '47d795a00dfc'
 route_registry:
   - route_id: R01
     path: "kernel/Cards/R01 Core Bootstrap Card.md"

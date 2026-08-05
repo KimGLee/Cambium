@@ -28,7 +28,10 @@ The following rules are in effect by default in all long-running tasks:
 - The user has authority over task scope and priority; user hypotheses and source leads still require evidence verification.
 - Direct content extraction and structural checks run in full; static compile / parse is triggered by content; the `knowledge-host UI` bound by the selected profile, screenshots, and visual models are used only when deterministic evidence cannot eliminate a specific display uncertainty.
 - Screen recording is used only for timing or interaction issues that static evidence and targeted screenshots cannot express.
-- Completion MUST satisfy `missing=0`, `ambiguous=0`, Guidance / Coverage Reconciliation, the applicable QA gates, and the Terminal Proof.
+- Completion MUST satisfy `missing=0`, `ambiguous=0`, Guidance / Coverage
+  Reconciliation, the applicable QA gates, and the closure selected by the Task
+  Contract: Terminal Proof for `completion_semantics: build`, or the bounded
+  maintenance completion gate for `completion_semantics: maintenance`.
 
 ## Related
 

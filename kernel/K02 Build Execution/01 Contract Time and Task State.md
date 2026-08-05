@@ -5,18 +5,17 @@
 
 ## Purpose
 
-This standard specifies how ultra-long knowledge base build tasks are planned, executed, verified, and resumed, preventing mass up-front creation of empty-shell pages, later loss of consistency, or repeated work after interruption.
-
-This document governs long tasks that build the knowledge base; it does not define the deployed runtime agent's internal implementation. Checkpoint, context continuity, pause / resume, and recovery records are governed by K02 and executed through [[kernel/Read Sets/R07 Long-running Execution Read Set|R07 Long-running Execution]] using the Task Contract and Progress Ledger. The selected profile's `Profile Scope` supplies only the organizing knowledge mainline, concrete layer roles, and canonical knowledge placement used by that work.
+This page owns contract freezing, time semantics, and whole-task state for
+persistent knowledge work. R07 executes checkpoint/resume through the Progress
+Ledger; a persistent R10 run uses the same state machine but the bounded
+completion predicate owned by [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract#Maintenance Completion|K00/06]]. It does not
+define an Agent runtime implementation.
 
 ## Core Execution Principle
 
 ```text
 Architecture before expansion.
 Canonical ownership before writing.
-Foundations before unsupported system claims.
-Evidence before canonical promotion.
-Representative samples before bulk migration.
 Complete batches before claiming progress.
 Verification after every batch.
 Time boundaries are not completion evidence.
@@ -25,28 +24,25 @@ Every in-scope page must have an explicit disposition.
 
 ## Phase 0: Freeze The Contract
 
-Before formal execution, confirm:
+Before formal execution, freeze the decisions listed in K00/06, including:
 
-- The target role and knowledge boundaries.
-- The organizing mainline registered by the selected `Profile Scope`, and the constraint that foundational knowledge MUST be preserved in full.
-- The excluded scope.
-- Top-level directories and ownership.
-- Note type, depth, metadata, and language conventions.
-- The expression-artifact split registered by the selected `Expression Layer Entry`.
-- Sources, diagrams, and quality gates.
-- The source-to-knowledge intake, evidence maturity, and canonical promotion approach.
-- Contract version, scope version, queue revision, initial batch revision, Standards version, and the exact `selected_profile_manifest` copied from the active Standards state.
-- The concurrent batch cap `concurrency_cap` (the kernel default is `3`; the selected profile manifest or task contract MAY explicitly override it); batch concurrency admission and merge rules are in [[kernel/K02 Build Execution/05 Batch Execution|K02/05]] Concurrent Batches.
-- Selected Rxx route IDs and Runtime Card paths, the actual loaded set (any combined namespaced profile route and every Read Set or leaf path actually read back), triggered items, and gate items not yet executed.
-- The authority allowed to modify scope, priority, batches, and Standards.
-- `minimum_run_until`, `checkpoint_at`, `hard_stop_at`, and the Completion Gate.
-- Handling of pause, cancel, block, and resume.
-- The recording, acknowledgement, safe switching, and amendment policy for mid-task guidance.
-- How Required, optional, deferred, and excluded coverage is determined.
+- Objective, scope/exclusions, ownership and profile bindings, source and gate
+  policy, coverage dispositions, and amendment authority.
+- Contract/scope/Standards versions, selected profile and loaded routes, exactly
+  one `completion_semantics` value (`build` or `maintenance`), time fields, and
+  the Completion Gate.
+- When persistent state applies, the Queue path, revisions/fingerprint,
+  concurrency cap, checkpoint/recovery policy, and identity shared by Coverage,
+  Queue, and Progress.
 
-Before the standards are confirmed, no large-scale migration is performed.
+Every writer first probes for `.cambium/`. Only R07/R11, resumable,
+multi-batch, or otherwise persistent Required work initializes it when absent;
+bounded single-note work does not. Existing state is resumed, never
+overwritten. K02/09 owns the runtime namespace and cross-state contract.
 
-Freeze `standards_version` and `selected_profile_manifest` once the task starts. The Standards MUST NOT be modified in passing during content build; only a governance change explicitly authorized by the user may modify them. After a Standards change, the version MUST be bumped, and [[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]] Active-task Adoption MUST be executed per the changed-predicate list of the revision record (an empty list is a no-op).
+Freeze `standards_version` and `selected_profile_manifest` once work starts.
+Only an authorized governance change may modify them; afterward run K12/10
+Active-task Adoption against the revision's changed predicates.
 
 ## Time And Stop Semantics
 
@@ -57,32 +53,56 @@ Time fields MUST use explicit semantics; they cannot all be written as an ambigu
 - `hard_stop_at`: on reaching this time, execution MUST stop and a checkpoint MUST be written. If the Completion Gate has not passed, the state MUST be `paused` and cannot be written as `complete`.
 - `completion_gate`: quality and coverage conditions independent of time, defining what evidence true completion requires.
 
-When the user says "no stopping before some time", it MUST be recorded as `minimum_run_until`. Only when the user says "stop at some time" is it recorded as `hard_stop_at`. When the semantics are unclear, the ambiguity MUST be resolved before large-scale execution.
+"Do not stop before" maps to `minimum_run_until`; "stop at" maps to
+`hard_stop_at`. Resolve ambiguity before large-scale execution.
 
-Without a `hard_stop_at`, the task continues until the Completion Gate passes, the user pauses or cancels, or a real blocker appears. When Required gaps remain after reaching `minimum_run_until`, the task MUST continue.
+Without a `hard_stop_at`, work continues until the selected Completion Gate
+passes, the user pauses/cancels, or a real blocker appears. Required gaps after
+`minimum_run_until` still require continuation.
 
 ## Task State Machine
 
-Long-task state is recorded only in the task Progress Ledger; it is not expressed via the `authoring_status` of knowledge pages:
+Long-task state is recorded only in the task Progress Ledger; it is not expressed via the `authoring_status` of knowledge pages. The common transitions are:
 
 ```text
-planned
- -> active
- -> completion-candidate
- -> complete
-
-active <-> paused
-active <-> blocked
-completion-candidate -> active
-planned / active / paused / blocked / completion-candidate -> cancelled
+planned -> active / paused / blocked / cancelled
+active -> paused / blocked / cancelled
+paused -> active / blocked / cancelled
+blocked -> active / paused / cancelled
 ```
 
+The frozen completion semantics adds exactly one mutually exclusive closure path:
+
+```text
+build:       planned / active -> completion-candidate -> complete
+maintenance: planned / active -> complete
+```
+
+The direct `planned` closure edge exists only for a materialized nonempty Queue
+whose batches were all validly cancelled by Amendment before any opened. It
+still requires the selected full completion gate; it is not an empty-Queue
+shortcut.
+
 - `planned`: the contract, scope, or inventory has not yet met the execution threshold.
-- `active`: executing, or the next Required batch has been determined.
-- `paused`: the task is not complete but is paused due to user request, `hard_stop_at`, a run interruption, or an explicit checkpoint; resume information MUST be saved.
+- `active`: executing, or the next Required batch is known.
+- `paused`: unfinished work stopped by request, `hard_stop_at`, interruption, or checkpoint; resume information MUST be saved.
 - `blocked`: an external dependency exists that cannot be resolved in the current environment, and no other Required work can proceed.
-- `completion-candidate`: the executor believes the scope is satisfied and awaits the Terminal Audit.
-- `complete`: the Terminal Audit has produced a valid Terminal Proof.
+- `completion-candidate`: a build-only state in which the executor believes the scope is satisfied and awaits the Terminal Audit; a maintenance task MUST NOT enter it.
+- `complete`: the selected closure passed: a valid Terminal Proof for build, or a valid maintenance completion gate for maintenance.
 - `cancelled`: the user has explicitly terminated the current contract; it does not mean the knowledge scope is complete.
+
+`Tools/update_task.py` is the sole ordinary task-state writer. The first batch
+opening may invoke its helper for `planned -> active`; direct operator use of
+that edge is rejected. Every transition records a receipt and refreshes the
+checkpoint. Build closure consumes K02/09 `--require-complete`, then the K12/16
+Proof pass. Maintenance closure consumes K02/09
+`--require-maintenance-complete` directly and never invokes `check_proof.py`.
+Progress keeps mutually exclusive `terminal_audit` and
+`maintenance_completion` blocks; K02/08 owns their separation.
+
+While task state is not `active`, Queue lifecycle/hold writes and canonical
+delta application are prohibited, except that first atomic
+`planned -> active` activation. Resume a `paused` or `blocked` task through
+`update_task.py` before continuing batch execution.
 
 `paused`, `blocked`, `cancelled`, and `complete` MUST be distinguished. The runtime environment ending, no files being under edit, reaching a point in time, or `In-progress batch: None` cannot automatically produce `complete`.

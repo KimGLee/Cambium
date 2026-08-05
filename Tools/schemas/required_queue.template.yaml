@@ -1,0 +1,47 @@
+# =============================================================================
+# Required Queue template (canonical batch/work-unit state)
+# Owner standard: "kernel/K02 Build Execution/09 Required Queue.md"
+#
+# The Queue owns ordered batch membership, explicit object manifests,
+# dependencies, execution mode, lifecycle, holds, and transition evidence.
+# Coverage owns each object's disposition and assignment; Progress owns the
+# whole task.  Tools/check_queue.py reconciles the three documents.
+#
+# Only the restricted YAML subset accepted by Tools/kblib.py is allowed.
+# A real adopting repository materializes an initially empty copy under
+# .cambium/state/ with Tools/init_state.py; this distribution template is not
+# adopter runtime state.
+# =============================================================================
+
+schema_version: 1
+task_id: "kb-build-2026-xx"
+scope_version: "s1"
+queue_revision: 1
+state_revision: 0
+standards_version: ""
+selected_profile_manifest: ""
+
+# Each item explicitly carries all fields below.  Its manifest is non-empty,
+# record_count is positive and equals len(manifest), and execution_mode is
+# concurrent-worker or serial-integrator.  Aggregate/zero-record items are
+# forbidden.  A missing field never means
+# "none". Conditional evidence fields are added by the owning lifecycle tool:
+# transition_receipts, opened_at, activation_receipt, merge_ready_at,
+# delta_path, delta_sha256, batch_receipts, delta_apply_receipt,
+# closed_at, queue_consistency_receipt, close_gate_receipt, cancelled_at,
+# cancellation_amendment,
+# hold_reason, confirmation_receipt, successor_of, and the append-only
+# invalidation_history created by each merge-ready -> open rollback.  Every
+# invalidation record freezes the prior batch_receipts, delta_gate_receipts,
+# and revalidation_receipts; none may be reused by a later attempt.
+# update_queue.py owns ordinary lifecycle/hold edges and close-time Coverage
+# projection. apply_amendment.py is the sole cancellation writer.
+# Every batch_receipts entry is an uninvalidated pass receipt with
+# check=batch_gate and target equal to this item id. After delta application,
+# no other Queue/Coverage write may intervene before this item closes. Closure
+# separately consumes a current Queue consistency receipt and a canonical
+# batch_close_gate receipt. The latter binds the recomputed current repository
+# snapshot SHA, the global review receipt, and seven distinct Closed List
+# evidence receipts; matching strings alone and batch-local review cannot
+# substitute for this post-merge global gate.
+required_queue: []

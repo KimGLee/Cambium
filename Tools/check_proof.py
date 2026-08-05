@@ -2,7 +2,7 @@
 """Terminal Proof completeness check script.
 
 Rule owners:
-- "kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md"
+- "kernel/K12 Quality Assurance/16 Terminal Proof Contract.md"
   (the complete Terminal Proof field list, including
    selected_route_ids, selected_card_paths, and full_deterministic_results);
 - "kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md"
@@ -11,11 +11,14 @@ Rule owners:
    unresolved_invalidations=0, and all applicable gates pass);
 - "kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md"
   (Terminal Reconciliation Rules: unresolved_invalidations must be 0).
+- "kernel/K02 Build Execution/09 Required Queue.md"
+  (the Queue path, structure/state revisions, byte fingerprint, completion
+   receipt, and remaining Required work-unit count).
 
 Method:
 - The required-field list comes from the top-level keys of
-  Tools/schemas/terminal_proof.template.yaml (the template copies K12/15 field
-  by field as this script's machine-readable projection; K12/15 remains the
+  Tools/schemas/terminal_proof.template.yaml (the template copies K12/16 field
+  by field as this script's machine-readable projection; K12/16 remains the
   normative field-list owner; --template overrides the projection path);
 - a missing or empty proof field -> fail (Terminal Proof incomplete);
 - selected_profile_manifest must be one exact
@@ -35,7 +38,8 @@ Method:
   uniqueness checks only because the profile registry is prose, not a
   machine-readable canonical map;
 - a zero-condition field (required_authoring_gaps / unverified_batches /
-  unresolved_invalidations) that is not 0 -> fail;
+  remaining_required_work_units / unresolved_invalidations) that is not 0 ->
+  fail;
 - a top-level proof field outside the list -> candidate (whether it is
   reasonable is a human call);
 - semantic checks (K12/06 completion conditions are semantic, not just
@@ -53,22 +57,40 @@ Method:
   is claimed;
 - when --ledger (Coverage Ledger) is given, cross-check: open_gaps non-empty
   while the proof claims required_authoring_gaps=0 -> fail;
-- --root requires an instantiated, approved K00/03 active state and
-  --progress-ledger; the active state, frozen contract, and Terminal Proof must
-  carry the same standards_version and selected_profile_manifest.
+- --root requires an instantiated, approved K00/03 active state,
+  --progress-ledger, and --ledger; the active state, frozen contract,
+  Coverage, Queue, and Terminal Proof must carry the same task, scope,
+  Standards, and profile identity, while Proof and Progress also agree on the
+  contract version.  Proof records the exact Coverage, Progress, and Queue
+  byte fingerprints, and a pass receipt also binds the Proof bytes.  The two
+  Ledger arguments must identify the exact
+  canonical files under .cambium/state/; aliases and symlinks are rejected.
+  Progress must be completion-candidate or complete and contain no pending
+  Guidance or Amendment.  The canonical Required Queue is
+  then checked live in completion mode, and its revisions, SHA-256, remaining
+  count, and current check_queue receipt must match the proof and Progress
+  Ledger.
 
-This script verifies proof consistency, not the work itself: a proof can
-still lie consistently. The receipts, ledgers, and snapshots it references
-are the actual evidence; K12/15 owns the human side of the terminal audit.
+This script verifies local proof consistency, not the work itself or the
+provenance of the evidence: a proof can still lie consistently. Producer and
+version fields are declared labels, actor/reviewer fields are assertions, and
+SHA-256 values bind bytes without authenticating the executable, OS principal,
+or human that produced them. Without an external signature or controlled
+execution attestation, a writer who controls the repository, tools, and
+evidence can construct an internally consistent history. K12/15 owns the human
+audit and K12/16 owns the proof contract and trust boundary.
 
 Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
 
 Usage: python3 check_proof.py <proof.yaml> [--ledger coverage_ledger.yaml]
-       [--root VAULT_ROOT --progress-ledger progress_ledger.yaml]
+       [--root REPOSITORY_ROOT
+        --progress-ledger .cambium/state/progress_ledger.yaml
+        --ledger .cambium/state/coverage_ledger.yaml]
        [--template PATH] [--receipts PATH]
 """
 
 import argparse
+import json
 import os
 from pathlib import Path
 import re
@@ -77,15 +99,16 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import check_queue
 
 TOOL = "check_proof"
-TOOL_VERSION = "1.7.0"
+TOOL_VERSION = "1.12.0"
 
 # K12/06: fields that must be 0 among the completion conditions (the three open
 # guidance counts are covered by the review of guidance_reconciliation_result
 # and get no numeric assertion here)
 ZERO_FIELDS = ("required_authoring_gaps", "unverified_batches",
-               "unresolved_invalidations")
+               "remaining_required_work_units", "unresolved_invalidations")
 
 # Result fields whose value must be exactly "passed" for completion (K12/06
 # condition; procedures in K12/15 steps 3, 4, and 7 plus automated checks in
@@ -104,6 +127,7 @@ NO_FAIL_TOKEN_FIELDS = ("rendering_evidence", "time_contract_result")
 # manual-review scope).
 PATH_FIELDS = ("selected_profile_manifest", "selected_card_paths",
                "selected_read_sets", "loaded_module_paths",
+               "required_queue_path",
                "audit_receipt_register", "full_deterministic_results",
                "incremental_manual_scope")
 
@@ -119,6 +143,14 @@ READ_SET_INDEX_PATH = "kernel/Read Sets/Read Sets Index.md"
 EXECUTION_DEFAULTS_PATH = "Tools/schemas/execution_defaults.template.yaml"
 ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
 UNINSTANTIATED_RE = re.compile(r"\{\{.*?\}\}")
+SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
+CANONICAL_COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
+CANONICAL_QUEUE_PATH = ".cambium/state/required_queue.yaml"
+CANONICAL_PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
+TERMINAL_TASK_STATES = frozenset(("completion-candidate", "complete"))
+FINAL_GUIDANCE_STATUSES = frozenset(
+    ("verified", "deferred", "superseded", "not-applicable")
+)
 
 
 def _resolve_under_root(root, raw_path):
@@ -133,6 +165,50 @@ def _resolve_under_root(root, raw_path):
     except (OSError, RuntimeError, ValueError) as exc:
         return None, "path cannot be resolved under the repository root: %s" % exc
     return resolved, None
+
+
+def _canonical_state_argument(root, raw_path, canonical_relative):
+    """Resolve one CLI state argument to its sole canonical runtime object.
+
+    Terminal validation is not allowed to substitute a caller-selected Ledger
+    that merely has plausible bytes.  Relative arguments therefore name the
+    exact repository-relative contract path; absolute arguments are accepted
+    only when they are the exact lexical absolute path to that same object.
+    Symlinks in any managed component are rejected even when they resolve back
+    inside the repository.
+    """
+    root = Path(root).resolve()
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return None, "path must be a non-empty string"
+    if raw_path != raw_path.strip():
+        return None, "path must not have leading or trailing whitespace"
+
+    supplied = Path(raw_path)
+    expected = root / Path(canonical_relative)
+    if ".." in supplied.parts:
+        return None, "'..' segments are forbidden"
+    if supplied.is_absolute():
+        if supplied != expected:
+            return None, "must be exactly %s" % expected
+        candidate = supplied
+    else:
+        if supplied.as_posix() != canonical_relative:
+            return None, "must be exactly %s" % canonical_relative
+        candidate = root / supplied
+
+    current = root
+    for component in Path(canonical_relative).parts:
+        current = current / component
+        if current.is_symlink():
+            return None, "canonical state path contains symlink component %s" % current
+    try:
+        if not candidate.is_file():
+            return None, "canonical state object is not a regular file"
+        if candidate.resolve(strict=True) != expected:
+            return None, "canonical state object does not resolve to %s" % expected
+    except (OSError, RuntimeError, ValueError) as exc:
+        return None, "canonical state object cannot be resolved: %s" % exc
+    return candidate, None
 
 
 def _repo_relative_path_error(raw_path):
@@ -337,13 +413,518 @@ def _load_route_registry(root):
     return card_map, read_map, errors
 
 
+def _queue_linkage_failure(check, target, details):
+    """Return one check_proof failure tuple for Queue linkage validation."""
+    return check, target, details
+
+
+def _validate_required_queue_linkage(root, proof, progress_ledger,
+                                     coverage_sha256,
+                                     proof_progress_sha256):
+    """Validate the live Required Queue evidence bound into Terminal Proof.
+
+    The Queue location is deliberately not caller-selectable.  ``--root``
+    means that completion evidence is checked against the canonical runtime
+    object at ``.cambium/state/required_queue.yaml`` even when a malformed
+    proof attempts to name another path.  The return value is
+    ``(failures, live_check_passed)``; every failure is a
+    ``(check, target, details)`` tuple suitable for a check_proof receipt.
+    """
+    failures = []
+    root = Path(root).resolve()
+    queue_path, queue_path_error = _canonical_state_argument(
+        root, CANONICAL_QUEUE_PATH, CANONICAL_QUEUE_PATH
+    )
+    queue = None
+    queue_sha256 = None
+    remaining = None
+
+    if queue_path_error or not queue_path.is_file():
+        failures.append(_queue_linkage_failure(
+            "proof-required-queue-unreadable", CANONICAL_QUEUE_PATH,
+            "canonical Required Queue is missing or unsafe: %s" %
+            (queue_path_error or "not a regular file"),
+        ))
+    else:
+        try:
+            queue_bytes = queue_path.read_bytes()
+            queue_text = queue_bytes.decode("utf-8")
+            queue = kblib.parse_yaml_subset(queue_text)
+        except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
+            failures.append(_queue_linkage_failure(
+                "proof-required-queue-unreadable", CANONICAL_QUEUE_PATH,
+                "cannot read/parse the canonical Required Queue: %s" % exc,
+            ))
+        else:
+            if not isinstance(queue, dict):
+                failures.append(_queue_linkage_failure(
+                    "proof-required-queue-not-mapping", CANONICAL_QUEUE_PATH,
+                    "canonical Required Queue top level must be a mapping",
+                ))
+                queue = None
+            else:
+                queue_sha256 = kblib.sha256_bytes(queue_bytes)
+                items = queue.get("required_queue")
+                if not isinstance(items, list):
+                    failures.append(_queue_linkage_failure(
+                        "proof-required-queue-items-invalid",
+                        CANONICAL_QUEUE_PATH + "#required_queue",
+                        "required_queue must be an explicit list",
+                    ))
+                else:
+                    remaining = sum(
+                        1 for item in items
+                        if (not isinstance(item, dict) or
+                            item.get("state") not in ("closed", "cancelled"))
+                    )
+
+    if queue is not None:
+        queue_expected = {
+            "task_id": queue.get("task_id"),
+            "scope_version": queue.get("scope_version"),
+            "standards_version": queue.get("standards_version"),
+            "selected_profile_manifest":
+                queue.get("selected_profile_manifest"),
+            "required_queue_path": CANONICAL_QUEUE_PATH,
+            "queue_revision": queue.get("queue_revision"),
+            "queue_state_revision": queue.get("state_revision"),
+            "required_queue_sha256": queue_sha256,
+            "remaining_required_work_units": remaining,
+        }
+        for field, expected in queue_expected.items():
+            if proof.get(field) != expected:
+                failures.append(_queue_linkage_failure(
+                    "proof-required-queue-mismatch", "Terminal Proof#" + field,
+                    "Terminal Proof %s=%r does not match the canonical "
+                    "Required Queue value %r" %
+                    (field, proof.get(field), expected),
+                ))
+
+        if not isinstance(progress_ledger, dict):
+            failures.append(_queue_linkage_failure(
+                "proof-queue-progress-unavailable", "Progress Ledger",
+                "a parsed Progress Ledger mapping is required to bind "
+                "Terminal Proof to the canonical Required Queue",
+            ))
+        else:
+            progress_contract = progress_ledger.get("contract")
+            if not isinstance(progress_contract, dict):
+                progress_contract = {}
+            progress_expected = {
+                "task_id": progress_ledger.get("task_id"),
+                "scope_version": progress_contract.get("scope_version"),
+                "standards_version":
+                    progress_contract.get("standards_version"),
+                "selected_profile_manifest":
+                    progress_contract.get("selected_profile_manifest"),
+                "required_queue_path":
+                    progress_ledger.get("required_queue_path"),
+                "queue_revision": progress_ledger.get("queue_revision"),
+                "queue_state_revision":
+                    progress_ledger.get("queue_state_revision"),
+                "required_queue_sha256":
+                    progress_ledger.get("required_queue_sha256"),
+            }
+            current_expected = {
+                "task_id": queue.get("task_id"),
+                "scope_version": queue.get("scope_version"),
+                "standards_version": queue.get("standards_version"),
+                "selected_profile_manifest":
+                    queue.get("selected_profile_manifest"),
+                "required_queue_path": CANONICAL_QUEUE_PATH,
+                "queue_revision": queue.get("queue_revision"),
+                "queue_state_revision": queue.get("state_revision"),
+                "required_queue_sha256": queue_sha256,
+            }
+            for field, actual in progress_expected.items():
+                expected = current_expected[field]
+                if actual != expected:
+                    failures.append(_queue_linkage_failure(
+                        "progress-required-queue-mismatch",
+                        "Progress Ledger#" + field,
+                        "Progress Ledger %s=%r does not match the canonical "
+                        "Required Queue value %r" % (field, actual, expected),
+                    ))
+
+    # Completion is not inferred from the proof's counters.  Re-run the one
+    # canonical Queue gate over the current repository bytes.
+    live_check_passed = False
+    checker_path, checker_path_error = _resolve_under_root(
+        root, "Tools/check_queue.py"
+    )
+    if checker_path_error or not checker_path.is_file():
+        failures.append(_queue_linkage_failure(
+            "proof-queue-live-check-unavailable", "Tools/check_queue.py",
+            "canonical Queue checker is missing or unsafe: %s" %
+            (checker_path_error or "not a regular file"),
+        ))
+    else:
+        try:
+            completed = subprocess.run(
+                [sys.executable, str(checker_path), str(root),
+                 "--require-complete"],
+                cwd=str(root), capture_output=True, text=True, timeout=60,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            failures.append(_queue_linkage_failure(
+                "proof-queue-live-check-unavailable", "Tools/check_queue.py",
+                "cannot run the canonical Queue completion gate: %s" % exc,
+            ))
+        else:
+            if completed.returncode != 0:
+                output_lines = [
+                    line.strip()
+                    for line in (completed.stdout + "\n" +
+                                 completed.stderr).splitlines()
+                    if line.strip()
+                ]
+                detail = (" | ".join(output_lines[-3:])
+                          if output_lines else "no diagnostic output")
+                failures.append(_queue_linkage_failure(
+                    "proof-queue-live-check-failed", "Tools/check_queue.py",
+                    "check_queue.py --require-complete exited %d: %s" %
+                    (completed.returncode, detail),
+                ))
+            else:
+                live_check_passed = True
+
+    # The cited receipt is immutable evidence for the exact bytes just
+    # checked.  A missing, malformed, duplicated, invalidated, or stale receipt
+    # fails closed even when a fresh live run happens to pass.
+    receipt_path_raw = proof.get("audit_receipt_register")
+    receipt_id = proof.get("queue_check_receipt")
+    try:
+        receipt_path = Path(kblib.managed_repository_path(
+            str(root), receipt_path_raw, ".cambium/receipts",
+            suffixes=(".jsonl",), must_exist=True,
+        ))
+        receipt_path_error = None
+    except (OSError, TypeError, ValueError) as exc:
+        receipt_path = None
+        receipt_path_error = str(exc)
+    matching_receipts = []
+    if receipt_path_error or receipt_path is None or not receipt_path.is_file():
+        failures.append(_queue_linkage_failure(
+            "proof-queue-receipt-register-unreadable",
+            str(receipt_path_raw),
+            "audit_receipt_register is missing or unsafe: %s" %
+            (receipt_path_error or "not a regular file"),
+        ))
+    else:
+        try:
+            receipt_lines = receipt_path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError) as exc:
+            failures.append(_queue_linkage_failure(
+                "proof-queue-receipt-register-unreadable",
+                str(receipt_path_raw),
+                "cannot read audit_receipt_register: %s" % exc,
+            ))
+        else:
+            seen_receipt_ids = set()
+            register_reliable = True
+            for line_number, line in enumerate(receipt_lines, 1):
+                if not line.strip():
+                    continue
+                try:
+                    receipt = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    register_reliable = False
+                    failures.append(_queue_linkage_failure(
+                        "proof-queue-receipt-register-invalid",
+                        "%s:%d" % (receipt_path_raw, line_number),
+                        "malformed JSONL receipt: %s" % exc,
+                    ))
+                    continue
+                if not isinstance(receipt, dict):
+                    register_reliable = False
+                    failures.append(_queue_linkage_failure(
+                        "proof-queue-receipt-register-invalid",
+                        "%s:%d" % (receipt_path_raw, line_number),
+                        "receipt line must be a JSON object",
+                    ))
+                    continue
+                current_id = receipt.get("receipt_id")
+                if current_id in seen_receipt_ids:
+                    register_reliable = False
+                    failures.append(_queue_linkage_failure(
+                        "proof-queue-receipt-id-duplicate",
+                        "%s:%d" % (receipt_path_raw, line_number),
+                        "receipt_id %r appears more than once" % current_id,
+                    ))
+                seen_receipt_ids.add(current_id)
+                if current_id == receipt_id:
+                    matching_receipts.append(receipt)
+
+            if register_reliable and len(matching_receipts) != 1:
+                failures.append(_queue_linkage_failure(
+                    "proof-queue-receipt-missing", str(receipt_path_raw),
+                    "queue_check_receipt %r must identify exactly one receipt; "
+                    "found %d" % (receipt_id, len(matching_receipts)),
+                ))
+
+    if len(matching_receipts) == 1 and queue is not None:
+        receipt = matching_receipts[0]
+        for field, expected in (
+                ("tool", "check_queue"),
+                ("tool_version", check_queue.TOOL_VERSION),
+                ("check", "required_queue"),
+                ("queue_check_mode", "require-complete"),
+                ("result", "pass"),
+                ("invalidated_by", None),
+                ("task_id", queue.get("task_id")),
+                ("queue_revision", queue.get("queue_revision")),
+                ("queue_state_revision", queue.get("state_revision")),
+                ("required_queue_sha256", queue_sha256),
+                ("coverage_ledger_sha256", coverage_sha256),
+                ("progress_ledger_sha256", proof_progress_sha256),
+                ("remaining_required_work_units", remaining)):
+            if field not in receipt or receipt.get(field) != expected:
+                failures.append(_queue_linkage_failure(
+                    "proof-queue-receipt-stale",
+                    "%s#%s" % (receipt_path_raw, receipt_id),
+                    "Queue receipt %s=%r does not match required current "
+                    "value %r" % (field, receipt.get(field), expected),
+                ))
+
+    return failures, live_check_passed
+
+
+def _terminal_progress_binding(root, progress_ledger, current_progress_sha256):
+    """Return the Progress fingerprint that a durable proof must bind.
+
+    A proof is created from frozen ``completion-candidate`` bytes.  The sole
+    subsequent ``complete`` transition necessarily changes Progress.  In that
+    terminal state the transition's receipt-recorded before-image remains the
+    proof binding, while its after-image must equal current Progress bytes.
+    """
+    if (not isinstance(progress_ledger, dict) or
+            progress_ledger.get("task_state") != "complete"):
+        return current_progress_sha256, []
+    runtime = check_queue.validate_runtime(str(root))
+    if runtime.get("errors"):
+        return current_progress_sha256, [(
+            "complete-runtime-invalid", CANONICAL_PROGRESS_PATH,
+            "complete runtime cannot establish the Terminal Proof transition: %s" %
+            "; ".join(runtime["errors"]),
+        )]
+    latest = (runtime.get("task_runtime") or {}).get("latest_receipt")
+    if (not isinstance(latest, dict) or
+            latest.get("after_task_state") != "complete" or
+            latest.get("after_progress_sha256") != current_progress_sha256 or
+            not SHA256_RE.fullmatch(str(latest.get(
+                "before_progress_sha256", "")))):
+        return current_progress_sha256, [(
+            "complete-transition-binding-invalid", CANONICAL_PROGRESS_PATH,
+            "latest task transition must bind candidate Progress as before-image "
+            "and current complete Progress as after-image",
+        )]
+    return latest["before_progress_sha256"], []
+
+
+def _validate_terminal_progress_state(proof, progress_ledger,
+                                      progress_sha256=None):
+    """Require a terminal-candidate Progress state with no pending controls."""
+    failures = []
+    if not isinstance(progress_ledger, dict):
+        return [(
+            "progress-ledger-not-mapping", "Progress Ledger",
+            "canonical Progress Ledger root must be a mapping",
+        )]
+
+    task_state = progress_ledger.get("task_state")
+    if task_state not in TERMINAL_TASK_STATES:
+        failures.append((
+            "progress-task-state-not-terminal-candidate",
+            "Progress Ledger#task_state",
+            "Terminal Proof requires task_state completion-candidate or "
+            "complete; found %r" % task_state,
+        ))
+
+    if (progress_sha256 is not None and
+            proof.get("progress_ledger_sha256") != progress_sha256):
+        failures.append((
+            "proof-progress-fingerprint-mismatch",
+            "Terminal Proof#progress_ledger_sha256",
+            "Terminal Proof progress_ledger_sha256=%r does not match the "
+            "canonical Progress Ledger bytes %r" %
+            (proof.get("progress_ledger_sha256"), progress_sha256),
+        ))
+
+    contract = progress_ledger.get("contract")
+    if not isinstance(contract, dict):
+        failures.append((
+            "progress-contract-missing", "Progress Ledger#contract",
+            "canonical Progress Ledger must contain a contract mapping",
+        ))
+        contract = {}
+    if contract.get("completion_semantics") != "build":
+        failures.append((
+            "progress-completion-semantics-not-build",
+            "Progress Ledger#contract.completion_semantics",
+            "Terminal Proof applies only to completion_semantics=build; "
+            "maintenance tasks must use the maintenance completion gate",
+        ))
+
+    progress_values = {
+        "task_id": progress_ledger.get("task_id"),
+        "scope_version": contract.get("scope_version"),
+        "contract_version": contract.get("contract_version"),
+        "standards_version": contract.get("standards_version"),
+        "selected_profile_manifest": contract.get(
+            "selected_profile_manifest"
+        ),
+    }
+    for field, actual in progress_values.items():
+        expected = proof.get(field)
+        if actual != expected:
+            failures.append((
+                "proof-progress-contract-mismatch",
+                "Progress Ledger#%s" % (
+                    field if field == "task_id" else "contract." + field
+                ),
+                "Progress Ledger %s=%r does not match Terminal Proof value "
+                "%r" % (field, actual, expected),
+            ))
+
+    guidance = progress_ledger.get("guidance_queue")
+    if not isinstance(guidance, list):
+        failures.append((
+            "progress-guidance-queue-invalid",
+            "Progress Ledger#guidance_queue",
+            "guidance_queue must be an explicit list",
+        ))
+    else:
+        for index, entry in enumerate(guidance):
+            if not isinstance(entry, dict):
+                failures.append((
+                    "progress-guidance-entry-invalid",
+                    "Progress Ledger#guidance_queue[%d]" % index,
+                    "guidance entry must be a mapping",
+                ))
+                continue
+            status = entry.get("status")
+            if status not in FINAL_GUIDANCE_STATUSES:
+                failures.append((
+                    "progress-guidance-pending",
+                    "Progress Ledger#guidance_queue[%d]" % index,
+                    "guidance %r has non-final status %r" %
+                    (entry.get("id"), status),
+                ))
+
+    amendments = progress_ledger.get("amendments")
+    if not isinstance(amendments, list):
+        failures.append((
+            "progress-amendments-invalid",
+            "Progress Ledger#amendments",
+            "amendments must be an explicit list",
+        ))
+    else:
+        for index, entry in enumerate(amendments):
+            if not isinstance(entry, dict):
+                failures.append((
+                    "progress-amendment-entry-invalid",
+                    "Progress Ledger#amendments[%d]" % index,
+                    "Amendment entry must be a mapping",
+                ))
+                continue
+            status = entry.get("status")
+            if status not in FINAL_GUIDANCE_STATUSES:
+                failures.append((
+                    "progress-amendment-pending",
+                    "Progress Ledger#amendments[%d]" % index,
+                    "Amendment %r has non-final status %r" %
+                    (entry.get("id"), status),
+                ))
+            elif (status == "verified" and
+                  entry.get("writeback_done") is not True):
+                failures.append((
+                    "progress-amendment-writeback-pending",
+                    "Progress Ledger#amendments[%d]" % index,
+                    "verified Amendment %r has not completed Progress "
+                    "write-back" % entry.get("id"),
+                ))
+    return failures
+
+
+def _validate_terminal_coverage_state(proof, progress_ledger, coverage_ledger,
+                                      coverage_sha256=None):
+    """Bind Terminal Proof to canonical Coverage identity and open-gap state."""
+    failures = []
+    if not isinstance(coverage_ledger, dict):
+        return [(
+            "coverage-ledger-not-mapping", "Coverage Ledger",
+            "canonical Coverage Ledger root must be a mapping",
+        )]
+
+    if (coverage_sha256 is not None and
+            proof.get("coverage_ledger_sha256") != coverage_sha256):
+        failures.append((
+            "proof-coverage-fingerprint-mismatch",
+            "Terminal Proof#coverage_ledger_sha256",
+            "Terminal Proof coverage_ledger_sha256=%r does not match the "
+            "canonical Coverage Ledger bytes %r" %
+            (proof.get("coverage_ledger_sha256"), coverage_sha256),
+        ))
+
+    progress_contract = (
+        progress_ledger.get("contract")
+        if isinstance(progress_ledger, dict) and
+        isinstance(progress_ledger.get("contract"), dict)
+        else {}
+    )
+    progress_values = {
+        "task_id": (progress_ledger.get("task_id")
+                    if isinstance(progress_ledger, dict) else None),
+        "scope_version": progress_contract.get("scope_version"),
+        "standards_version": progress_contract.get("standards_version"),
+        "selected_profile_manifest": progress_contract.get(
+            "selected_profile_manifest"
+        ),
+    }
+    for field in ("task_id", "scope_version", "standards_version",
+                  "selected_profile_manifest"):
+        actual = coverage_ledger.get(field)
+        expected = proof.get(field)
+        if actual != expected:
+            failures.append((
+                "proof-coverage-identity-mismatch",
+                "Coverage Ledger#%s" % field,
+                "Coverage Ledger %s=%r does not match Terminal Proof value "
+                "%r" % (field, actual, expected),
+            ))
+        progress_value = progress_values[field]
+        if actual != progress_value:
+            failures.append((
+                "coverage-progress-identity-mismatch",
+                "Coverage Ledger#%s" % field,
+                "Coverage Ledger %s=%r does not match Progress Ledger value "
+                "%r" % (field, actual, progress_value),
+            ))
+
+    open_gaps = coverage_ledger.get("open_gaps")
+    if not isinstance(open_gaps, list):
+        failures.append((
+            "coverage-open-gaps-invalid", "Coverage Ledger#open_gaps",
+            "open_gaps must be an explicit list",
+        ))
+    elif open_gaps:
+        failures.append((
+            "coverage-open-gaps-remaining", "Coverage Ledger#open_gaps",
+            "canonical Coverage Ledger still has %d open gap(s); Terminal "
+            "Proof cannot claim completion" % len(open_gaps),
+        ))
+    return failures
+
+
 def main():
     ap = argparse.ArgumentParser(description="Terminal Proof completeness and zero-condition check")
     ap.add_argument("proof", help="path to the terminal proof YAML file")
-    ap.add_argument("--ledger", help="Coverage Ledger YAML, for the open_gaps cross-check")
+    ap.add_argument("--ledger", help="Coverage Ledger YAML; with --root this "
+                    "must be exactly .cambium/state/coverage_ledger.yaml")
     ap.add_argument("--progress-ledger", help="Progress Ledger YAML; required "
-                    "with --root to prove that the Terminal Proof uses the "
-                    "same frozen Standards version and selected profile")
+                    "with --root and must be exactly .cambium/state/"
+                    "progress_ledger.yaml")
     ap.add_argument("--template",
                     default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                          "schemas", "terminal_proof.template.yaml"),
@@ -354,21 +935,40 @@ def main():
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
     args = ap.parse_args()
 
+    receipt_output = args.receipts
+    if receipt_output:
+        try:
+            if args.root:
+                receipt_output = kblib.managed_repository_path(
+                    os.path.realpath(os.path.abspath(args.root)),
+                    receipt_output, ".cambium/receipts",
+                    suffixes=(".jsonl",), must_exist=False,
+                )
+            else:
+                receipt_output = kblib.validate_receipt_output_path(
+                    receipt_output)
+        except (OSError, ValueError) as exc:
+            print("[FAIL] unsafe receipt path: %s" % exc)
+            return 1
+
     template = kblib.parse_yaml_subset(open(args.template, encoding="utf-8").read())
     required_fields = list(template.keys())
 
     receipts = []
     seq = 0
     proof_name = os.path.basename(args.proof)
+    proof_sha256 = None
 
     try:
-        proof = kblib.parse_yaml_subset(open(args.proof, encoding="utf-8").read())
-    except (OSError, kblib.YamlSubsetError) as exc:
+        proof_bytes = Path(args.proof).read_bytes()
+        proof_sha256 = kblib.sha256_bytes(proof_bytes)
+        proof = kblib.parse_yaml_subset(proof_bytes.decode("utf-8"))
+    except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
         seq += 1
         receipts.append(kblib.make_receipt(
             TOOL, TOOL_VERSION, "proof-unreadable", args.proof, "fail",
             "cannot read/parse proof: %s" % exc, seq))
-        kblib.write_receipts(args.receipts, receipts)
+        kblib.write_receipts(receipt_output, receipts)
         print("check_proof: cannot read or parse %s: %s" % (args.proof, exc))
         return 1
     if not isinstance(proof, dict):
@@ -387,7 +987,7 @@ def main():
             receipts.append(kblib.make_receipt(
                 TOOL, TOOL_VERSION, "proof-field-missing",
                 "%s#%s" % (proof_name, field), "fail",
-                "Terminal Proof is missing required field %s (K12/15 field list)" % field, seq))
+                "Terminal Proof is missing required field %s (K12/16 field list)" % field, seq))
 
     frozen_string_bad = 0
     if "standards_version" not in missing:
@@ -415,6 +1015,69 @@ def main():
                 "%s#selected_profile_manifest" % proof_name, "fail",
                 "selected_profile_manifest %r is invalid: %s" %
                 (selected_profile_manifest, manifest_error), seq))
+
+    queue_structure_bad = 0
+    if "task_id" not in missing and _uninstantiated_value(proof.get("task_id")):
+        queue_structure_bad += 1
+        seq += 1
+        receipts.append(kblib.make_receipt(
+            TOOL, TOOL_VERSION, "proof-task-id-invalid",
+            "%s#task_id" % proof_name, "fail",
+            "task_id must be an instantiated non-empty string", seq))
+
+    if "required_queue_path" not in missing:
+        queue_path = proof.get("required_queue_path")
+        if queue_path != CANONICAL_QUEUE_PATH:
+            queue_structure_bad += 1
+            seq += 1
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, "proof-queue-path-noncanonical",
+                "%s#required_queue_path" % proof_name, "fail",
+                "required_queue_path must be exactly %s; found %r" %
+                (CANONICAL_QUEUE_PATH, queue_path), seq))
+
+    for field, minimum in (("queue_revision", 1),
+                           ("queue_state_revision", 0)):
+        if field in missing:
+            continue
+        value = proof.get(field)
+        if (not isinstance(value, int) or isinstance(value, bool) or
+                value < minimum):
+            queue_structure_bad += 1
+            seq += 1
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, "proof-queue-revision-invalid",
+                "%s#%s" % (proof_name, field), "fail",
+                "%s must be an integer >= %d; found %r" %
+                (field, minimum, value), seq))
+
+    for field, check in (
+            ("coverage_ledger_sha256", "proof-coverage-fingerprint-invalid"),
+            ("progress_ledger_sha256", "proof-progress-fingerprint-invalid"),
+            ("required_queue_sha256", "proof-queue-fingerprint-invalid")):
+        if field in missing:
+            continue
+        value = proof.get(field)
+        if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+            queue_structure_bad += 1
+            seq += 1
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, check,
+                "%s#%s" % (proof_name, field), "fail",
+                "%s must use sha256:<64 lowercase hex>; found %r" %
+                (field, value), seq))
+
+    if "queue_check_receipt" not in missing:
+        value = proof.get("queue_check_receipt")
+        if (not isinstance(value, str) or
+                not value.startswith("audit-check_queue-")):
+            queue_structure_bad += 1
+            seq += 1
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, "proof-queue-receipt-id-invalid",
+                "%s#queue_check_receipt" % proof_name, "fail",
+                "queue_check_receipt must be a check_queue receipt_id; "
+                "found %r" % value, seq))
 
     route_id_bad = 0
     valid_route_ids = set()
@@ -660,7 +1323,7 @@ def main():
         receipts.append(kblib.make_receipt(
             TOOL, TOOL_VERSION, "proof-extra-field",
             "%s#%s" % (proof_name, field), "candidate",
-            "field %s is not in the K12/15 field list (the list is an 'at least' "
+            "field %s is not in the K12/16 field list (the list is an 'at least' "
             "list; whether extra fields are reasonable is a human call)"
             % field, seq))
 
@@ -702,6 +1365,7 @@ def main():
     profile_identity_checked = False
     profile_manifest_checked = False
     selected_profile_id = None
+    root = None
     if args.root:
         root = Path(args.root).resolve()
         if not root.is_dir():
@@ -1006,6 +1670,9 @@ def main():
                             % read_set_path, seq))
 
     progress_cross_fail = 0
+    progress_ledger = None
+    progress_sha256 = None
+    proof_progress_sha256 = None
     if args.root and not args.progress_ledger:
         progress_cross_fail += 1
         seq += 1
@@ -1016,11 +1683,30 @@ def main():
             seq))
 
     if args.progress_ledger:
-        try:
-            progress_ledger = kblib.parse_yaml_subset(
-                open(args.progress_ledger, encoding="utf-8").read()
+        progress_path = Path(args.progress_ledger)
+        progress_path_error = None
+        if args.root and root is not None and root.is_dir():
+            progress_path, progress_path_error = _canonical_state_argument(
+                root, args.progress_ledger, CANONICAL_PROGRESS_PATH
             )
-        except (OSError, kblib.YamlSubsetError) as exc:
+        if progress_path_error:
+            progress_cross_fail += 1
+            seq += 1
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, "progress-ledger-noncanonical",
+                args.progress_ledger, "fail",
+                "--progress-ledger must identify the canonical %s without "
+                "aliases or symlinks: %s" %
+                (CANONICAL_PROGRESS_PATH, progress_path_error), seq))
+            progress_path = None
+        try:
+            if progress_path is not None:
+                progress_bytes = progress_path.read_bytes()
+                progress_sha256 = kblib.sha256_bytes(progress_bytes)
+                progress_ledger = kblib.parse_yaml_subset(
+                    progress_bytes.decode("utf-8")
+                )
+        except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
             progress_cross_fail += 1
             seq += 1
             receipts.append(kblib.make_receipt(
@@ -1029,79 +1715,125 @@ def main():
                 "cannot read/parse Progress Ledger: %s" % exc, seq))
             progress_ledger = None
 
-        if isinstance(progress_ledger, dict):
-            progress_contract = progress_ledger.get("contract")
-            if not isinstance(progress_contract, dict):
-                progress_cross_fail += 1
+        if progress_path is not None:
+            proof_progress_sha256 = progress_sha256
+            binding_failures = []
+            if args.root and root is not None and root.is_dir():
+                proof_progress_sha256, binding_failures = (
+                    _terminal_progress_binding(
+                        root, progress_ledger, progress_sha256
+                    )
+                )
+            progress_failures = binding_failures + \
+                _validate_terminal_progress_state(
+                    proof, progress_ledger, proof_progress_sha256
+                )
+            progress_cross_fail += len(progress_failures)
+            for check, target, details in progress_failures:
                 seq += 1
                 receipts.append(kblib.make_receipt(
-                    TOOL, TOOL_VERSION, "progress-contract-missing",
-                    "%s#contract" % os.path.basename(args.progress_ledger),
-                    "fail", "Progress Ledger must contain a contract mapping "
-                    "with the frozen Standards version and profile selection",
-                    seq))
-            else:
-                for field in ("standards_version",
-                              "selected_profile_manifest"):
-                    ledger_value = progress_contract.get(field)
-                    target = "%s#contract.%s" % (
-                        os.path.basename(args.progress_ledger), field
-                    )
-                    invalid = _uninstantiated_value(ledger_value)
-                    if (field == "selected_profile_manifest" and
-                            not invalid and
-                            _selected_profile_manifest_error(ledger_value)):
-                        invalid = True
-                    if invalid:
-                        progress_cross_fail += 1
-                        seq += 1
-                        receipts.append(kblib.make_receipt(
-                            TOOL, TOOL_VERSION,
-                            "progress-contract-field-invalid", target,
-                            "fail", "%s must be a non-empty canonical string "
-                            "in the frozen Progress Ledger contract" % field,
-                            seq))
-                    elif ledger_value != proof.get(field):
-                        progress_cross_fail += 1
-                        seq += 1
-                        receipts.append(kblib.make_receipt(
-                            TOOL, TOOL_VERSION,
-                            "proof-progress-contract-mismatch", target,
-                            "fail", "Progress Ledger %s=%r does not exactly "
-                            "match Terminal Proof %s=%r" %
-                            (field, ledger_value, field, proof.get(field)),
-                            seq))
-        elif progress_ledger is not None:
-            progress_cross_fail += 1
+                    TOOL, TOOL_VERSION, check, target, "fail", details, seq
+                ))
+
+        if (isinstance(progress_ledger, dict) and
+                isinstance(progress_ledger.get("contract"), dict)):
+            for field in ("standards_version", "selected_profile_manifest"):
+                ledger_value = progress_ledger["contract"].get(field)
+                invalid = _uninstantiated_value(ledger_value)
+                if (field == "selected_profile_manifest" and not invalid and
+                        _selected_profile_manifest_error(ledger_value)):
+                    invalid = True
+                if invalid:
+                    progress_cross_fail += 1
+                    seq += 1
+                    receipts.append(kblib.make_receipt(
+                        TOOL, TOOL_VERSION, "progress-contract-field-invalid",
+                        "Progress Ledger#contract.%s" % field, "fail",
+                        "%s must be an instantiated canonical string" % field,
+                        seq))
+    coverage_cross_fail = 0
+    ledger = None
+    coverage_sha256 = None
+    if args.root and not args.ledger:
+        coverage_cross_fail += 1
+        seq += 1
+        receipts.append(kblib.make_receipt(
+            TOOL, TOOL_VERSION, "coverage-ledger-required", proof_name,
+            "fail", "--ledger is required with --root so "
+            "required_authoring_gaps is checked against current Coverage",
+            seq,
+        ))
+    if args.ledger:
+        ledger_path = Path(args.ledger)
+        ledger_path_error = None
+        if args.root and root is not None and root.is_dir():
+            ledger_path, ledger_path_error = _canonical_state_argument(
+                root, args.ledger, CANONICAL_COVERAGE_PATH
+            )
+        if ledger_path_error:
+            coverage_cross_fail += 1
             seq += 1
             receipts.append(kblib.make_receipt(
-                TOOL, TOOL_VERSION, "progress-ledger-not-mapping",
-                args.progress_ledger, "fail",
-                "Progress Ledger root must be a mapping", seq))
-
-    coverage_cross_fail = 0
-    if args.ledger:
+                TOOL, TOOL_VERSION, "coverage-ledger-noncanonical",
+                args.ledger, "fail",
+                "--ledger must identify the canonical %s without aliases or "
+                "symlinks: %s" %
+                (CANONICAL_COVERAGE_PATH, ledger_path_error), seq))
+            ledger_path = None
         try:
-            ledger = kblib.parse_yaml_subset(open(args.ledger, encoding="utf-8").read())
-        except (OSError, kblib.YamlSubsetError) as exc:
+            if ledger_path is not None:
+                coverage_bytes = ledger_path.read_bytes()
+                coverage_sha256 = kblib.sha256_bytes(coverage_bytes)
+                ledger = kblib.parse_yaml_subset(
+                    coverage_bytes.decode("utf-8")
+                )
+        except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
+            coverage_cross_fail += 1
             seq += 1
             receipts.append(kblib.make_receipt(
                 TOOL, TOOL_VERSION, "ledger-unreadable", args.ledger, "fail",
                 "cannot read/parse Coverage Ledger: %s" % exc, seq))
             ledger = None
-        if isinstance(ledger, dict):
-            open_gaps = ledger.get("open_gaps") or []
-            gaps_claim = proof.get("required_authoring_gaps")
-            if open_gaps and gaps_claim == 0:
+
+        if args.root and ledger_path is not None:
+            coverage_failures = _validate_terminal_coverage_state(
+                proof, progress_ledger, ledger, coverage_sha256
+            )
+            coverage_cross_fail += len(coverage_failures)
+            for check, target, details in coverage_failures:
+                seq += 1
+                receipts.append(kblib.make_receipt(
+                    TOOL, TOOL_VERSION, check, target, "fail", details, seq
+                ))
+        elif isinstance(ledger, dict):
+            open_gaps = ledger.get("open_gaps")
+            if isinstance(open_gaps, list) and open_gaps:
                 coverage_cross_fail += 1
                 seq += 1
                 receipts.append(kblib.make_receipt(
                     TOOL, TOOL_VERSION, "proof-ledger-mismatch",
                     "%s#required_authoring_gaps" % proof_name, "fail",
-                    "Coverage Ledger open_gaps has %d unclosed gap(s), but the "
-                    "proof claims required_authoring_gaps=0 (K02/03: the "
-                    "Coverage Ledger is the authoritative record)"
-                    % len(open_gaps), seq))
+                    "Coverage Ledger open_gaps has %d unclosed gap(s), but "
+                    "the proof claims completion" % len(open_gaps), seq))
+
+    queue_cross_fail = 0
+    queue_linkage_checked = False
+    if args.root and root is not None and root.is_dir():
+        queue_failures, queue_live_check_passed = (
+            _validate_required_queue_linkage(
+                root, proof, progress_ledger,
+                coverage_sha256, proof_progress_sha256,
+            )
+        )
+        queue_cross_fail = len(queue_failures)
+        for check, target, details in queue_failures:
+            seq += 1
+            receipts.append(kblib.make_receipt(
+                TOOL, TOOL_VERSION, check, target, "fail", details, seq
+            ))
+        queue_linkage_checked = (
+            queue_live_check_passed and not queue_failures
+        )
 
     if not any(r["result"] == "fail" for r in receipts):
         route_summary = (
@@ -1115,18 +1847,41 @@ def main():
             % len(valid_profile_route_ids)
             if valid_profile_route_ids else
             ", no supplemental profile route recorded")
+        proof_receipt_path = proof_name
+        if args.root and root is not None and root.is_dir():
+            try:
+                proof_receipt_path = Path(args.proof).resolve().relative_to(
+                    root
+                ).as_posix()
+            except (OSError, RuntimeError, ValueError):
+                proof_receipt_path = str(Path(args.proof).resolve())
         seq += 1
-        receipts.append(kblib.make_receipt(
-            TOOL, TOOL_VERSION, "proof-check-summary", proof_name, "pass",
-            "fields complete (%d/%d), all zero-condition fields are 0%s%s%s%s%s" % (
+        summary_receipt = kblib.make_receipt(
+            TOOL, TOOL_VERSION, "proof-check-summary", proof_receipt_path,
+            "pass",
+            "fields complete (%d/%d), all zero-condition fields are 0%s%s%s%s%s%s" % (
                 len(required_fields), len(required_fields),
                 route_summary, profile_summary,
                 ", consistent with the active K00/03 Standards state"
                 if active_state_checked else "",
                 ", consistent with the frozen Progress Ledger contract"
                 if args.progress_ledger else "",
+                ", bound to the current completed Required Queue and receipt"
+                if queue_linkage_checked else "",
                 ", consistent with Coverage Ledger open_gaps"
-                if args.ledger else ""), seq))
+                if args.ledger else ""), seq)
+        if args.root and queue_linkage_checked:
+            for field in (
+                    "task_id", "scope_version", "contract_version",
+                    "standards_version", "selected_profile_manifest",
+                    "coverage_ledger_sha256", "progress_ledger_sha256",
+                    "required_queue_path", "queue_revision",
+                    "queue_state_revision", "required_queue_sha256",
+                    "remaining_required_work_units", "queue_check_receipt"):
+                summary_receipt[field] = proof.get(field)
+            summary_receipt["terminal_proof_path"] = proof_receipt_path
+            summary_receipt["terminal_proof_sha256"] = proof_sha256
+        receipts.append(summary_receipt)
 
     print("check_proof: checking %s against %d required template field(s)" % (args.proof, len(required_fields)))
     print("  missing_fields=%d route_id_violations=%d "
@@ -1134,23 +1889,28 @@ def main():
           "read_set_violations=%d registry_violations=%d "
           "path_structure_violations=%d "
           "frozen_field_violations=%d profile_manifest_violations=%d "
+          "queue_structure_violations=%d "
           "active_state_violations=%d "
           "zero_condition_violations=%d status_violations=%d "
           "path_failures=%d extra_fields(candidate)=%d "
-          "progress_cross_failures=%d coverage_cross_failures=%d "
+          "progress_cross_failures=%d queue_cross_failures=%d "
+          "coverage_cross_failures=%d "
           "registry_cross_check=%s active_state_check=%s "
-          "profile_manifest_check=%s"
+          "profile_manifest_check=%s queue_completion_check=%s"
           % (len(missing), route_id_bad, profile_route_id_bad, card_path_bad,
              read_set_bad, registry_bad, path_structure_bad,
-             frozen_string_bad, profile_manifest_bad, active_state_bad,
+             frozen_string_bad, profile_manifest_bad, queue_structure_bad,
+             active_state_bad,
              len(zero_bad),
              len(status_bad), path_bad, len(extra), progress_cross_fail,
-             coverage_cross_fail,
+             queue_cross_fail, coverage_cross_fail,
              "passed" if registry_checked else
              ("failed" if args.root else "not_run"),
              "passed" if active_state_checked else
              ("failed" if args.root else "not_run"),
              "passed" if profile_manifest_checked else
+             ("failed" if args.root else "not_run"),
+             "passed" if queue_linkage_checked else
              ("failed" if args.root else "not_run")))
     for r in receipts:
         if r["result"] != "pass":
@@ -1160,12 +1920,13 @@ def main():
         if args.root:
             print("  Conclusion: Terminal Proof consistency check passed with "
                   "active Standards state, filled profile, frozen Progress "
-                  "Ledger, and repository registry validation.")
+                  "Ledger, current Required Queue completion evidence, and "
+                  "repository registry validation.")
         else:
             print("  Conclusion: structural lint passed; without --root this "
                   "is not Terminal Completion Gate evidence.")
 
-    kblib.write_receipts(args.receipts, receipts)
+    kblib.write_receipts(receipt_output, receipts)
     return kblib.exit_code(receipts)
 
 

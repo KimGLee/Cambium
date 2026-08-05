@@ -19,7 +19,7 @@ source_files:
   - kernel/K10 Writing and Formatting/01 Naming Language and Prose.md
   - kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
-source_hash: 'aed00701a66b'
+source_hash: 'e623d0a2e6c8'
 ---
 # R02 Single Note Authoring Card
 

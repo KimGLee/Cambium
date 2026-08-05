@@ -26,6 +26,7 @@ defined interfaces, but it cannot replace, disable, or weaken the kernel.
 | Read Sets | Route-specific source-loading boundary used when a Runtime Card requires read-back |
 | Runtime Cards | Kernel-owned, compiled shortcuts for routine agent execution; never a second source of rules |
 | Selected profile | The adopter's concrete answers to the profile interface |
+| Adopter runtime state (`.cambium/`) | Coverage object state, the canonical Required Queue, task-level Progress, deltas, and receipts |
 | Tools | Deterministic checks, schemas, receipts, and compiled-artifact generators; not final semantic judgment |
 
 Routine work starts from Runtime Cards. When a Card is incomplete, disputed,
@@ -37,7 +38,7 @@ state in
 [`K00/03 Standards Governance`](<kernel/K00 Standards Control/03 Standards Governance.md>)
 still contains placeholders and no profile is selected. It therefore defines
 no active standard for a particular knowledge corpus and distributes no
-profile-specific `Tools/vocab.yaml`.
+profile-specific `Tools/vocab.yaml` or fabricated `.cambium/state/`.
 
 ## Execution Model
 
@@ -45,6 +46,8 @@ Cambium separates durable work units from execution contexts.
 
 - A **batch** is an independently accepted unit of work with its own manifest,
   dependencies, receipts, delta, and lifecycle.
+- The **Required Queue** is the model-neutral, persistent owner of those batch
+  manifests, their deterministic order, dependencies, holds, and lifecycle.
 - An **agent** is an execution context assigned to work. One agent may execute
   several batches sequentially, while isolated agents may execute disjoint
   batches concurrently.
@@ -57,6 +60,16 @@ Cambium separates durable work units from execution contexts.
 The active-batch concurrency limit is not an agent-count limit. Concurrent
 workers produce isolated batch outputs; the integrator merges those outputs
 one at a time and runs the global checks after each merge.
+
+Three machine-readable control objects deliberately have different jobs:
+
+| State object | Owns |
+|---|---|
+| Coverage Ledger | Knowledge objects, dispositions, canonical owners, and object-side batch assignment |
+| Required Queue | Batch/work-unit manifests, order, dependencies, lifecycle, holds, and transition evidence |
+| Progress Ledger | Task Contract, whole-task state, Guidance/Amendments, checkpoints, and the accepted Queue fingerprint |
+
+They are reconciled rather than treated as interchangeable task lists.
 
 ## Repository Layout
 
@@ -74,17 +87,77 @@ The included
 example of answer shape and specificity. It is not Cambium's default
 configuration and does not contain the Atlas knowledge corpus.
 
+## Adopter Runtime State
+
+Long-running, resumable, or multi-batch work uses one fixed namespace in the
+adopting repository. Every task first checks whether that namespace already
+exists, because a seemingly bounded new request may enter a repository whose
+earlier persistent task was interrupted:
+
+```text
+.cambium/
+├── state/       # Coverage, Required Queue, and Progress
+├── deltas/      # worker-to-integrator batch deltas
+├── receipts/    # deterministic and transition evidence
+├── reports/     # derived human-readable views
+└── tmp/         # recovery locks and incomplete-write metadata
+```
+
+`state/`, `deltas/`, and `receipts/` are durable. Reports are projections, not
+tool inputs, and `tmp/` is ignored by Git; a surviving writer lock remains
+recovery evidence until its operation is reconciled. Cambium publishes the schemas and
+conformance fixtures; an adopter creates its own runtime state with
+`Tools/init_state.py` after selecting a profile and defining a task. The tool
+requires an explicit objective and exclusions, does not invent Required work,
+and does not overwrite any existing `.cambium/` namespace.
+If the namespace already exists, a restarted or newly assigned Agent first
+runs `Tools/check_queue.py . --resume-status` to discover the recorded task,
+its `build` or `maintenance` completion semantics, checkpoint binding, latest
+task transition, in-flight batches, pending control inputs/deltas, the
+applicable completion block, maintenance candidate SHA/partition and prior
+completion anchor, holds, writer-lock evidence, and the exact
+machine-readable `next_action`. A complete open-batch handoff is reported as
+`admit-delta`; a merge-ready batch without an apply receipt becomes
+`apply-delta`, and an applied batch without a current close bundle becomes
+`run-batch-close-gate`. Only a current bundle authorizes the four-ID
+`close-applied-batch` action and its exact copyable close command. This prevents
+a fresh Agent context from mistaking an interrupted repository for an unused
+one.
+
 ## Current Implementation Boundaries
 
-The kernel supports sequential execution and isolated concurrent batches, but
-this repository does not yet ship an agent orchestrator or host adapter.
-Worker dispatch, workspace isolation, scheduling, receipt collection, and the
-integrator loop must currently be supplied by the adopting runtime.
+The kernel and tools now provide persistent task and Required Queue state plus
+deterministic initialization, compilation, validation, task/batch transitions,
+interruption recovery, build Terminal closure, bounded maintenance closure,
+and report generation. They do not
+dispatch agents. Worker dispatch, workspace isolation, event delivery, and the
+integrator loop must still be supplied by the adopting runtime or a human
+operator.
+
+The shipped Amendment transaction covers scope/disposition replans and batch
+cancellation. After Queue materialization, a change to other Task Contract
+fields is rejected unless a host supplies an equivalent controlled writer; the
+baseline recovery path is to pause or cancel the current task, preserve its
+runtime, and begin a successor task. A generic non-scope Contract Amendment
+writer remains roadmap work.
 
 Profile setup is also manual and file-based. Users copy `_template`, fill the
 resulting profile, and validate it with `check_profile.py`; this release does
 not include a profile questionnaire or configuration generator. Planned
 convenience and runtime layers are described in [`ROADMAP.md`](ROADMAP.md).
+
+Cambium's receipts and Terminal Proof operate inside the adopting repository's
+local trust boundary. The shipped checks can validate receipt structure,
+declared producer and version labels, exact SHA-256 bindings to current state
+and content, transition-chain agreement, and whether evidence is stale. Those
+hashes are integrity bindings, not signatures: without an external signing or
+controlled-execution system, Cambium does not authenticate which executable
+ran, which operating-system account supplied an actor label, or whether the
+recorded reviewer was a different person or process. An adversary who may
+rewrite the repository, its tools, and its evidence can construct an
+internally consistent history. The baseline therefore detects accidental
+drift, incomplete transitions, and stale or inconsistent evidence; stronger
+provenance requires controls outside this repository.
 
 ## Adopt Cambium
 
@@ -149,6 +222,67 @@ Begin with the
 route, profile bindings, and source modules required by the current task.
 Combine additional routes only when their Card Index triggers apply; they do
 not replace the route for the work itself.
+
+For every task, first inspect the target repository for `.cambium/`. If it
+exists, do not write content or state and do not initialize or overwrite it:
+inspect and reconcile its current task first. If it is absent, only a
+long-running, resumable, or multi-batch task initializes it; bounded work
+continues without creating empty runtime state.
+
+```text
+# Existing runtime state: always inspect before writing.
+python3 Tools/check_queue.py . --resume-status
+
+# No .cambium/ exists and persistent state applies: initialize once.
+python3 Tools/init_state.py . \
+  --task-id YOUR_TASK \
+  --objective "State the concrete outcome this task must achieve" \
+  --exclude "State one explicit out-of-scope boundary" \
+  --completion-semantics build \
+  --scope-version s1 \
+  --standards-version YOUR_VERSION \
+  --profile-manifest profiles/my-profile/profile.md \
+  --apply
+```
+
+Choose `build` for corpus-building work that closes through
+`completion-candidate`, R08, and Terminal Proof. Choose `maintenance` for an
+R10 budget-envelope run that closes through the maintenance completion gate
+without entering `completion-candidate`. The choice is required and frozen in
+the Task Contract; initialization never guesses it. A bounded single-note task
+does not initialize `.cambium/` merely to record this choice.
+
+A reported writer lock may belong to a live writer or an interrupted write.
+Do not delete it until no writer remains and the state files, receipts,
+revisions/fingerprint, pending deltas, and any recorded archive move have been
+reconciled. JSONL receipts are append-only; an uncertain receipt append keeps
+the lock instead of deleting or rewriting evidence. A new task does
+not reuse an old namespace, even when the old task is complete or cancelled;
+an explicit archive/rollover process must handle that history. Cambium does not
+yet automate rollover.
+
+Once the current task is known and valid, inventory Required objects into
+Coverage, declare explicit `batch_specs`, compile the Queue, and run
+`check_queue.py` before activating a batch. Simple single-note work does not
+need an empty Queue merely to satisfy a formality. The initial compile stores
+an immutable origin receipt in Progress; later same-scope replans use a staged
+Coverage proposal and never require editing canonical Coverage in advance.
+
+```text
+# Fill .cambium/state/coverage_ledger.yaml with the accepted inventory.
+python3 Tools/compile_queue.py . --output .cambium/tmp/queue-proposal.yaml
+python3 Tools/compile_queue.py . --apply --actor-role integrator \
+  --expected-queue-revision 1 \
+  --expected-sha256 SHA_PRINTED_BY_INIT
+python3 Tools/check_queue.py .
+python3 Tools/render_queue.py .
+```
+
+Lifecycle writes are dry runs unless `--apply` is supplied, and an apply also
+requires the current revision/fingerprint printed by the state tools. See
+[`Tools/README.md`](Tools/README.md) for transition commands, exit code 2
+holds, receipts, Amendment-bound scope/cancellation transactions, interruption
+recovery, and both completion paths.
 
 ## License
 
