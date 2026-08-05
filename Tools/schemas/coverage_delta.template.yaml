@@ -1,6 +1,6 @@
 # =============================================================================
 # Coverage Delta template (state increment of a concurrent batch; the template is the schema doc)
-# Owner standard: "kernel/K02 Build Execution/05 Batch Execution.md"
+# Owner standard: "kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md"
 #            (Concurrent Batches: concurrent batches never write the
 #             Coverage/Progress Ledger directly; they only produce this file,
 #             and the integrator applies it to the canonical Ledger during
@@ -36,4 +36,4 @@ pages:                             # status updates for pages on this batch's ma
 open_gaps_added: []                # open gaps added by this batch (including needs_rereview and cross-batch missing links, type: link; type vocabulary in the coverage_ledger template)
 open_gaps_closed: []               # open gaps closed by this batch (gap id or page+type)
 next_batch_updates: []             # suggestion-only; apply_delta never writes these values into Coverage
-watermark_advance:                 # optional: watermark advance values from source/maintenance batches (K02/05; the integrator applies them to Tools/state/watermark.yaml at merge)
+watermark_advance:                 # optional: watermark advance values from source/maintenance batches (K13/10; the integrator applies them to Tools/state/watermark.yaml at merge)

@@ -1,6 +1,6 @@
 # =============================================================================
 # Coverage Ledger template (canonical object-level state)
-# Owner standard: "kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation.md"
+# Owner standard: "kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md"
 #
 # The Coverage Ledger owns knowledge-object disposition and assignment. It does
 # not own batch order or batch lifecycle; those belong to Required Queue.

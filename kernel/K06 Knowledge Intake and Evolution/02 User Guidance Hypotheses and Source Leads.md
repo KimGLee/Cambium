@@ -6,7 +6,7 @@
 
 ## User Guidance, Hypotheses And Source Leads
 
-Guidance provided by the user during a long task can simultaneously change the task contract and trigger knowledge investigation. Execution control follows [[kernel/K02 Build Execution/02 Mid-task Guidance and Amendment#Mid-task Guidance And Contract Amendment|Mid-task Guidance And Contract Amendment]]; this section specifies only its evidence role.
+Guidance provided by the user during a long task can simultaneously change the task contract and trigger knowledge investigation. Execution control follows [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis#Mid-task Guidance And Contract Amendment|Mid-task Guidance And Contract Amendment]]; this section specifies only its evidence role.
 
 The following MUST be distinguished:
 

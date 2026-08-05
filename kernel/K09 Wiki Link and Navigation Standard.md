@@ -29,7 +29,7 @@ This page is the stable entry point for the Wiki Link and Navigation standard. T
 ## Related Standards
 
 - [[kernel/K00 Standards Overview|K00 Standards Overview]]
-- [[kernel/K02 Knowledge Base Build Execution Standard|K02 Knowledge Base Build Execution Standard]]
+- [[kernel/K02 Knowledge Work Construction Standard|K02 Knowledge Work Construction Standard]]
 - [[kernel/K05 Terminology Standard|K05 Terminology Standard]]
 - [[kernel/K06 Knowledge Intake and Evolution Standard|K06 Knowledge Intake and Evolution Standard]]
 - [[kernel/K12 Quality Assurance Standard|K12 Quality Assurance Standard]]

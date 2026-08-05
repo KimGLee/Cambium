@@ -13,9 +13,10 @@ First load [[kernel/Read Sets/R01 Core Bootstrap Read Set|R01 Core Bootstrap]], 
 
 - [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Large-scale Pre-execution Gate|Large-scale Pre-execution Gate]]
 - [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract#Task Contract Decisions|Task Contract Decisions]]
-- [[kernel/K02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]]
-- [[kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
-- [[kernel/K02 Build Execution/09 Required Queue|Required Queue]]
+- [[kernel/K13 Task Runtime and Execution Control/02 Task Contract Binding and Time Semantics|Task Contract Binding and Time Semantics]]
+- [[kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger|Inventory and Coverage Ledger]]
+- [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue Contract and Lifecycle]]
+- [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]]
 - [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Incremental Audit Planning|Incremental Audit Planning]]
 
 Also load the route for the actual work. R11 never replaces that route.
@@ -36,5 +37,6 @@ Every item in the canonical [[kernel/K00 Standards Control/13 Runtime Admission 
 ## Related
 
 - [[kernel/Read Sets/Read Sets Index|Read Sets Index]]
-- [[kernel/K02 Knowledge Base Build Execution Standard|Build Execution]]
+- [[kernel/K02 Knowledge Work Construction Standard|Knowledge Work Construction]]
+- [[kernel/K13 Task Runtime and Execution Control Standard|Task Runtime and Execution Control]]
 - [[kernel/K12 Quality Assurance Standard|Quality Assurance]]

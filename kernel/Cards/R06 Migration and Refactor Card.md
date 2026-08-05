@@ -5,10 +5,10 @@ read_set: kernel/Read Sets/R06 Migration and Refactor Read Set.md
 compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R06 Migration and Refactor Read Set.md
-  - kernel/K02 Build Execution/01 Contract Time and Task State.md
-  - kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation.md
-  - kernel/K02 Build Execution/05 Batch Execution.md
-  - kernel/K02 Build Execution/06 Existing Changes Migration and Resume.md
+  - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
+  - kernel/K02 Knowledge Work Construction/05 Existing Changes and Migration Safety.md
+  - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
+  - kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover.md
   - kernel/K01 Scope and Architecture/04 Folder and Shared Ownership.md
   - kernel/K03 Note Types and Ownership/03 Split and Duplication Policy.md
   - kernel/K08 Metadata and Status/05 Review Source and Migration Metadata.md
@@ -19,7 +19,7 @@ source_files:
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '20e2eaed44ae'
+source_hash: '4b91992c26a8'
 ---
 # R06 Migration and Refactor Card
 

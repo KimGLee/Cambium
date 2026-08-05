@@ -51,7 +51,8 @@ Sections added to this domain after a frozen baseline are registered here for co
 
 ## Related Standards
 
-- [[kernel/K02 Knowledge Base Build Execution Standard|K02 Knowledge Base Build Execution Standard]]
+- [[kernel/K02 Knowledge Work Construction Standard|K02 Knowledge Work Construction Standard]]
+- [[kernel/K13 Task Runtime and Execution Control Standard|K13 Task Runtime and Execution Control Standard]]
 - [[kernel/K06 Knowledge Intake and Evolution Standard|K06 Knowledge Intake and Evolution Standard]]
 - [[kernel/K04 Content Depth Standard|K04 Content Depth Standard]]
 - [[kernel/K07 Sources and Accuracy Standard|K07 Sources and Accuracy Standard]]

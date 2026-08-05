@@ -30,7 +30,8 @@ This page is the stable entry point for the Knowledge Intake and Evolution stand
 ## Related Standards
 
 - [[kernel/K07 Sources and Accuracy Standard|K07 Sources and Accuracy Standard]]
-- [[kernel/K02 Knowledge Base Build Execution Standard|K02 Knowledge Base Build Execution Standard]]
+- [[kernel/K02 Knowledge Work Construction Standard|K02 Knowledge Work Construction Standard]]
+- [[kernel/K13 Task Runtime and Execution Control Standard|K13 Task Runtime and Execution Control Standard]]
 - [[kernel/K01 Scope and Architecture Standard|K01 Scope and Architecture Standard]]
 - [[kernel/K03 Note Types and Ownership Standard|K03 Note Types and Ownership Standard]]
 - [[kernel/K08 Metadata and Status Standard|K08 Metadata and Status Standard]]

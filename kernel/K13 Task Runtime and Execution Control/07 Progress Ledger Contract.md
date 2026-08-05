@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[kernel/K02 Knowledge Base Build Execution Standard|K02 Knowledge Base Build Execution Standard]].
-- Previous: [[kernel/K02 Build Execution/07 Completion and Handoff|Completion and Handoff]].
-- Next: [[kernel/K02 Build Execution/09 Required Queue|Required Queue]].
+- Parent: [[kernel/K13 Task Runtime and Execution Control Standard|K13 Task Runtime and Execution Control Standard]].
+- Previous: [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|Amendment Log and Controlled Replanning]].
+- Next: [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue Contract and Lifecycle]].
 
 ## Progress Ledger
 
@@ -24,7 +24,7 @@ Neither block may act as evidence for the other completion semantics.
 
 Current phase, completed objects, Coverage counts, ready/open/merge status, batch review, evidence maturity, audit/reuse/invalidation summaries, checks, gaps, questions, and next dependency are read-through or derived views of Coverage, Queue, receipts, and reports. A checkpoint MAY summarize them, but Progress MUST NOT become a second authority for them.
 
-Batch membership, order, dependencies, lifecycle, holds, and transition receipts exist only in the [[kernel/K02 Build Execution/09 Required Queue|Required Queue]]. Any display cache is explicitly derived, regenerated from the Queue, and checked by `Tools/check_queue.py`; it is never independently edited.
+Batch membership, order, dependencies, lifecycle, holds, and transition receipts exist only in the [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue]]. Any display cache is explicitly derived, regenerated from the Queue, and checked by `Tools/check_queue.py`; it is never independently edited.
 
 Progress is measured by quality state, not by the cumulative count of created files.
 

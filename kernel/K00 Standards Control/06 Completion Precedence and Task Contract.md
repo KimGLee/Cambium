@@ -32,7 +32,7 @@ A long-running build task counts as complete only when all of the following cond
 - The Final Handoff has been written, making explicit the optional, deferred, and external evidence backlog.
 - The Terminal Audit has produced the Terminal Proof.
 
-The canonical definition of the machine-checkable formula for build completion is located in the Completion Policy section of [[kernel/K02 Build Execution/07 Completion and Handoff|Completion and Handoff]].
+The canonical definition of the machine-checkable formula for build completion is located in the Completion Policy section of [[kernel/K13 Task Runtime and Execution Control/11 Completion Policy|Completion Policy]].
 
 Authoring completion does not require every frontier conclusion to reach `validated`; but external evidence gaps MUST NOT mask unfinished body text, sources, expression-layer migration, or QA.
 
@@ -46,7 +46,7 @@ The frozen Task Contract MUST select exactly one completion semantics:
   - The Ledger and `Tools/state/watermark.yaml` have been advanced.
   - Each batch has passed the applicable QA gates.
 
-When maintenance work is persistent, resumable, or multi-batch, K02/09's gate
+When maintenance work is persistent, resumable, or multi-batch, K13/12's gate
 MUST prove those predicates from current budget-manifest, Coverage-advance,
 watermark-advance, and applicable batch/close receipts. Bounded single-note
 maintenance does not initialize empty `.cambium/` state for that gate.
@@ -79,7 +79,7 @@ Each ultra-long task only needs to confirm the items that change the defaults:
 - The boundaries of Required, optional, deferred, and excluded.
 - Whether the current task includes Frontmatter migration, directory migration, or global UI / graph configuration.
 - The review window for time-sensitive sources and the external evidence backlog allowed to remain.
-- The default acknowledgement, safe switching, and amendment policy for mid-task guidance; the `K02` defaults apply unless otherwise specified.
+- The default acknowledgement, safe switching, and amendment policy for mid-task guidance; the `K13` defaults apply unless otherwise specified.
 - The storage location of the Audit Receipt Register, legacy-evidence adoption, and any decision changing the default invalidation/review policy.
 
 Directory, source-to-knowledge, `Language Contract`, `Expression Layer Entry`, and `Profile Scope` defaults already declared by the selected profile manifest and not overridden by the current task are not re-discussed; only items that change the defaults enter this section's decision list.
@@ -89,4 +89,5 @@ Directory, source-to-knowledge, `Language Contract`, `Expression Layer Entry`, a
 - [[kernel/K12 Quality Assurance Standard|Quality Assurance Standard]]
 - [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/K06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]
-- [[kernel/K02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]
+- [[kernel/K02 Knowledge Work Construction Standard|Knowledge Work Construction Standard]]
+- [[kernel/K13 Task Runtime and Execution Control Standard|Task Runtime and Execution Control Standard]]

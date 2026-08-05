@@ -15,7 +15,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - [[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]
 - [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]] (Freshness And Review Due)
 - [[kernel/K06 Knowledge Intake and Evolution/07 Environmental Scanning and Watermark|Environmental Scanning and Watermark]]
-- [[kernel/K02 Build Execution/05 Batch Execution|Batch Execution]]
+- [[kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production|Knowledge Batch Production]]
 - [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]]
 
 Before starting, the budget envelope MUST be declared (N pages, N batches, or N hours — choose one of the three), and the candidate manifest merged from four sources: overdue re-verification list ∪ watermark increment ∪ `needs_rereview` marks ∪ candidates pool (duplicate / vocab / language). A candidate not selected by the budget for 3 consecutive maintenance runs is automatically demoted to log-only, and re-enters the pool when hit again by a new scan; at the start of a maintenance run, output the deferred age distribution, and items lingering more than 3 runs MUST be explicitly dispositioned. The owner of the rules above is [[kernel/K00 Standards Control/08 Maintenance Run Envelope|K00/08]]; this is an execution summary.
@@ -36,7 +36,7 @@ For retirement of high-in-degree pages, convert incoming-link retargeting into t
 - This run produces L-tier pages: read [[kernel/K12 Quality Assurance/12 Substantive Correctness Review#Substantive Correctness Review|Substantive Correctness Review]].
 - Source-driven content involved: combine [[kernel/Read Sets/R04 Source-driven Expansion Read Set|Source-driven Expansion]].
 - Expression Layer content involved: combine [[kernel/Read Sets/R05 Expression Layer Read Set|R05 Expression Layer]] and the artifact's profile binding or supplemental gate.
-- Persistent, resumable, or multi-batch run: combine [[kernel/Read Sets/R07 Long-running Execution Read Set|R07 Long-running Execution]] and load [[kernel/K02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]], [[kernel/K02 Build Execution/08 Progress Ledger|Progress Ledger]], and [[kernel/K02 Build Execution/09 Required Queue|Required Queue]].
+- Persistent, resumable, or multi-batch run: combine [[kernel/Read Sets/R07 Long-running Execution Read Set|R07 Long-running Execution]] and load [[kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings|Completion Gate Bindings]].
 
 ## Gate
 

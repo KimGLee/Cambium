@@ -21,7 +21,7 @@ defined interfaces, but it cannot replace, disable, or weaken the kernel.
 
 | Component | Responsibility |
 |---|---|
-| Kernel modules (`K00`-`K12`) | Normative, cross-domain rule text |
+| Kernel modules (`K00`-`K13`) | Normative, cross-domain rule text |
 | Runtime routes (`R01`-`R12`) | Task-specific loading and execution paths; `Kxx` and `Rxx` are independent namespaces |
 | Read Sets | Route-specific source-loading boundary used when a Runtime Card requires read-back |
 | Runtime Cards | Kernel-owned, compiled shortcuts for routine agent execution; never a second source of rules |

@@ -9,10 +9,12 @@ source_files:
   - kernel/K01 Scope and Architecture/02 Logical Architecture and Knowledge Spine.md
   - kernel/K01 Scope and Architecture/03 Foundation Preservation.md
   - kernel/K01 Scope and Architecture/04 Folder and Shared Ownership.md
-  - kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation.md
-  - kernel/K02 Build Execution/04 Architecture Samples and Dependency Build.md
-  - kernel/K02 Build Execution/05 Batch Execution.md
-  - kernel/K02 Build Execution/09 Required Queue.md
+  - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
+  - kernel/K02 Knowledge Work Construction/02 Coverage Reconciliation.md
+  - kernel/K02 Knowledge Work Construction/03 Architecture Samples and Dependency Planning.md
+  - kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production.md
+  - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
+  - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
   - kernel/K03 Note Types and Ownership/01 Note Type Catalog.md
   - kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes.md
   - kernel/K03 Note Types and Ownership/03 Split and Duplication Policy.md
@@ -21,7 +23,7 @@ source_files:
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
-source_hash: '6747ee28223d'
+source_hash: '97cbd2e4535c'
 ---
 # R03 Module Build Card
 

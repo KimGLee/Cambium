@@ -214,5 +214,5 @@ The canonical Terminal Audit procedure lives in [[kernel/K12 Quality Assurance/1
 - [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]]
 - [[kernel/K12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]]
-- [[kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
-- [[kernel/K02 Build Execution/05 Batch Execution|Batch Execution]]
+- [[kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger|Inventory and Coverage Ledger]]
+- [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]]

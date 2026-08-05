@@ -22,13 +22,13 @@ schema_version: 1
 # accepts; `owner` is the only source for meaning, default, unit, and range.
 overridable:
   - item: "concurrency_cap"
-    owner: "kernel/K02 Build Execution/01 Contract Time and Task State.md"
+    owner: "kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md"
   - item: "batch_size.S"
-    owner: "kernel/K02 Build Execution/05 Batch Execution.md"
+    owner: "kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production.md"
   - item: "batch_size.M"
-    owner: "kernel/K02 Build Execution/05 Batch Execution.md"
+    owner: "kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production.md"
   - item: "batch_size.L"
-    owner: "kernel/K02 Build Execution/05 Batch Execution.md"
+    owner: "kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production.md"
   - item: "priority_quota.P0"
     owner: "kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md"
   - item: "priority_quota.P1"

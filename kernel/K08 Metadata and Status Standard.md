@@ -35,4 +35,5 @@ Machine-readable base values are registered in `kernel/K08 Metadata and Status/v
 - `Expression Layer Entry` (the selected profile's expression layer standard)
 - [[kernel/K12 Quality Assurance Standard|K12 Quality Assurance Standard]]
 - [[kernel/K06 Knowledge Intake and Evolution Standard|K06 Knowledge Intake and Evolution Standard]]
-- [[kernel/K02 Knowledge Base Build Execution Standard|K02 Knowledge Base Build Execution Standard]]
+- [[kernel/K02 Knowledge Work Construction Standard|K02 Knowledge Work Construction Standard]]
+- [[kernel/K13 Task Runtime and Execution Control Standard|K13 Task Runtime and Execution Control Standard]]
