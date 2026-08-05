@@ -17,7 +17,7 @@ Before a module is declared complete, it MUST pass [[kernel/K12 Quality Assuranc
 Before a profile-owned expression readiness axis is promoted to its completion value, the artifact MUST pass the R05 kernel gate and the supplemental gate registered for that axis in the `Routing And Gate Registry`; the kernel does not name concrete status values or artifacts.
 
 A long task may be marked `complete` only through the closure frozen in its Task
-Contract. `completion_semantics: build` requires [[kernel/K12 Quality Assurance/03 Module and Coverage Review#Coverage Reconciliation Review|Coverage Reconciliation Review]], [[kernel/K12 Quality Assurance/04 Guidance and Source Review#Guidance Reconciliation Review|Guidance Reconciliation Review]], `Tools/check_queue.py . --require-complete`, and the [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence#Terminal Audit|Terminal Audit]]. `completion_semantics: maintenance` instead requires the bounded predicate in K00/06 and, when persistent state applies, the canonical `check_queue.py --require-maintenance-complete` pass defined by K02/09; it MUST NOT invoke Terminal Audit. The Queue may retain closed and authorized-cancelled history; either state-backed completion path requires `remaining_required_work_units = 0`, not an empty Queue file.
+Contract. `completion_semantics: build` requires [[kernel/K12 Quality Assurance/03 Module and Coverage Review#Coverage Reconciliation Review|Coverage Reconciliation Review]], [[kernel/K12 Quality Assurance/04 Guidance and Source Review#Guidance Reconciliation Review|Guidance Reconciliation Review]], `Tools/check_queue.py . --require-complete`, and the [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence#Terminal Audit|Terminal Audit]]. `completion_semantics: maintenance` instead requires the bounded predicate in K00/06 and, when persistent state applies, the canonical `check_queue.py --require-maintenance-complete` pass defined by K13/12; it MUST NOT invoke Terminal Audit. The Queue may retain closed and authorized-cancelled history; either state-backed completion path requires `remaining_required_work_units = 0`, not an empty Queue file.
 
 Historical gate results may enter the Terminal Proof only through the [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Reuse Gate|Reuse Gate]]; `reviewed`, a date, or "passed previously" is not by itself reusable evidence.
 
@@ -56,4 +56,5 @@ The final task report MUST also attach the Amendment Log summary, Guidance Recon
 - [[kernel/K07 Sources and Accuracy Standard|Sources and Accuracy Standard]]
 - [[kernel/K06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]
 - [[kernel/K08 Metadata and Status Standard|Metadata and Status Standard]]
-- [[kernel/K02 Knowledge Base Build Execution Standard|Knowledge Base Build Execution Standard]]
+- [[kernel/K02 Knowledge Work Construction Standard|Knowledge Work Construction Standard]]
+- [[kernel/K13 Task Runtime and Execution Control Standard|Task Runtime and Execution Control Standard]]

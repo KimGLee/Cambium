@@ -11,7 +11,7 @@ Rule owners:
    unresolved_invalidations=0, and all applicable gates pass);
 - "kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md"
   (Terminal Reconciliation Rules: unresolved_invalidations must be 0).
-- "kernel/K02 Build Execution/09 Required Queue.md"
+- "kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md"
   (the Queue path, structure/state revisions, byte fingerprint, completion
    receipt, and remaining Required work-unit count).
 

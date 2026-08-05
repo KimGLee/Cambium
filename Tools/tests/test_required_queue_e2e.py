@@ -877,7 +877,7 @@ raise SystemExit(update_task.main(sys.argv[2:]))
             "selected_profile_route_ids": [],
             "selected_read_sets": [],
             "loaded_module_paths": [
-                "kernel/K02 Build Execution/09 Required Queue.md"],
+                "kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md"],
             "guidance_cutoff_id": "G-000",
             "audit_receipt_register": completion_register,
             "full_deterministic_results": completion_register,

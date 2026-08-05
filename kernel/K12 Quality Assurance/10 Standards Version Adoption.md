@@ -26,6 +26,6 @@ Until this adoption is recorded, an affected task cannot activate another batch 
 ## Related
 
 - [[kernel/K00 Standards Control/03 Standards Governance|Standards Governance]]
-- [[kernel/K02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]]
+- [[kernel/K13 Task Runtime and Execution Control/02 Task Contract Binding and Time Semantics|Task Contract Binding and Time Semantics]]
 - [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/K12 Quality Assurance Standard|K12 Quality Assurance Standard]]

@@ -433,7 +433,7 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             "selected_profile_route_ids": [],
             "selected_read_sets": [],
             "loaded_module_paths": [
-                "kernel/K02 Build Execution/09 Required Queue.md",
+                "kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md",
             ],
             "guidance_cutoff_id": "G-000",
             "audit_receipt_register": ".cambium/receipts/terminal.jsonl",

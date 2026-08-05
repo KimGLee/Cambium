@@ -9,7 +9,9 @@ source_files:
   - kernel/K00 Standards Control/03 Standards Governance.md
   - kernel/K00 Standards Control/11 Standards Map and Rule Registry.md
   - kernel/K00 Standards Control/12 Control Registry.md
-  - kernel/K02 Build Execution/02 Mid-task Guidance and Amendment.md
+  - kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis.md
+  - kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching.md
+  - kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning.md
   - kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links.md
   - kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns.md
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
@@ -17,7 +19,7 @@ source_files:
   - kernel/K12 Quality Assurance/08 Judgment Item Dimension Map.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '13614110b4be'
+source_hash: '38f0d81cd679'
 ---
 # R09 Standards Governance Card
 

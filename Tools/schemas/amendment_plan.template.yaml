@@ -1,6 +1,6 @@
 # =============================================================================
 # Cross-Ledger Amendment transaction plan
-# Owner standard: kernel/K02 Build Execution/09 Required Queue.md
+# Owner standard: kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning.md
 # Implemented by: Tools/apply_amendment.py
 # Location: .cambium/deltas/amendments/<amendment-id>.yaml
 #

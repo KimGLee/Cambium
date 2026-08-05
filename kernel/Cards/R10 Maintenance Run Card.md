@@ -10,11 +10,14 @@ source_files:
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
   - kernel/K08 Metadata and Status/05 Review Source and Migration Metadata.md
   - kernel/K06 Knowledge Intake and Evolution/07 Environmental Scanning and Watermark.md
-  - kernel/K02 Build Execution/05 Batch Execution.md
-  - kernel/K02 Build Execution/09 Required Queue.md
+  - kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production.md
+  - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
+  - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
+  - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
+  - kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-source_hash: 'f515e0337c29'
+source_hash: 'e810e50df27a'
 ---
 # R10 Maintenance Run Card
 

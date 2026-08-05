@@ -1,8 +1,8 @@
 ## Navigation
 
-- Parent: [[kernel/K02 Knowledge Base Build Execution Standard|K02 Knowledge Base Build Execution Standard]].
-- Previous: [[kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]].
-- Next: [[kernel/K02 Build Execution/05 Batch Execution|Batch Execution]].
+- Parent: [[kernel/K02 Knowledge Work Construction Standard|K02 Knowledge Work Construction Standard]].
+- Previous: [[kernel/K02 Knowledge Work Construction/02 Coverage Reconciliation|Coverage Reconciliation]].
+- Next: [[kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production|Knowledge Batch Production]].
 
 ## Phase 2: Architecture And Mapping
 
@@ -31,6 +31,6 @@ Each vertical slice runs from the foundational mechanism through runtime use, th
 
 The actual order MAY be adjusted per user priorities, but dependency gaps and the batches that fill them MUST be recorded.
 
-Coverage records the Required objects, their explicit prerequisites, and their approved batch projection. `Tools/compile_queue.py` uses only those explicit inputs and approved before/after overrides to produce a deterministic Required Queue proposal; it MUST NOT infer dependencies from semantic similarity or backlinks. The canonical Queue then owns the complete batch order, frozen manifests, and dependency graph as defined by [[kernel/K02 Build Execution/09 Required Queue|K02/09]].
+Coverage records the Required objects, their explicit prerequisites, and their approved batch projection. `Tools/compile_queue.py` uses only those explicit inputs and approved before/after overrides to produce a deterministic Required Queue proposal; it MUST NOT infer dependencies from semantic similarity or backlinks. The canonical Queue then owns the complete batch order, frozen manifests, and dependency graph as defined by [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|K13/08]].
 
 The Progress Ledger records only the accepted Queue path, revisions, and fingerprint; any `next dependency`, ready list, active list, or merge queue shown there is a derived view that MUST be reproducible from the Queue. A derived first candidate cannot replace the full Queue. After closing a batch, reconcile Coverage and Queue before asking `check_queue.py --require-ready <batch-id>` to admit the next batch.

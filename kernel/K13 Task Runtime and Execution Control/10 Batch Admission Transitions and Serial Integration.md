@@ -1,23 +1,8 @@
 ## Navigation
 
-- Parent: [[kernel/K02 Knowledge Base Build Execution Standard|K02 Knowledge Base Build Execution Standard]].
-- Previous: [[kernel/K02 Build Execution/04 Architecture Samples and Dependency Build|Architecture Samples and Dependency Build]].
-- Next: [[kernel/K02 Build Execution/06 Existing Changes Migration and Resume|Existing Changes Migration and Resume]].
-
-## Batch Policy
-
-Each batch SHOULD be a small module that can be accepted independently, not an arbitrary number of files. Its identity, frozen manifest, dependencies, execution mode, lifecycle, and hold state are owned by [[kernel/K02 Build Execution/09 Required Queue|K02/09]]; this page owns how an admitted batch executes.
-
-A batch completes at least:
-
-1. Canonical notes.
-2. This batch's delta written out: worker-owned page status and evidence may enter Coverage through the delta; `next_batch_updates` and watermark advancement remain explicit integrator work. Queue/compiler-owned disposition, ownership, routing, priority, tier, type, prerequisites, and deferral fields are forbidden in a worker delta. The [[kernel/K02 Build Execution/08 Progress Ledger#Progress Ledger]] Queue reference and `Tools/state/watermark.yaml` are reconciled by their respective integrator steps.
-
-The batch-close acceptance checklist is governed by [[kernel/K12 Quality Assurance/14 Batch Review#Batch Review|K12/14 Batch Review]]; in-batch items are completed before `merge-ready`, and global items are verified at serial merge.
-
-Batch size is tiered by the dominant tier: tier S ≤24 pages, tier M ≤10 pages, tier L ≤6 pages; a mixed batch follows the cap of the highest tier among them. 24 / 10 / 6 are kernel defaults; the selected profile MAY explicitly override them in the manifest, and the resolved caps MUST be loaded and recorded at runtime.
-
-Bulk-creating only file names and headings and then marking the whole batch complete is not allowed.
+- Parent: [[kernel/K13 Task Runtime and Execution Control Standard|K13 Task Runtime and Execution Control Standard]].
+- Previous: [[kernel/K13 Task Runtime and Execution Control/09 Queue Compilation Replanning and Views|Queue Compilation Replanning and Views]].
+- Next: [[kernel/K13 Task Runtime and Execution Control/11 Completion Policy|Completion Policy]].
 
 ## Concurrent Batches
 
@@ -37,8 +22,20 @@ Known exceptions to the serial zone keep an explicit registration mechanism; the
 
 The control plane is always executed single-threaded by the integrator, including guidance disposition, Queue structural revision, Queue state transition, contract changes, Standards adoption, batch activation, and merging. Workers submit deltas; they never change Queue state. Stall alarms are timed per batch.
 
-## Source-driven Expansion Batch
+## Transition Gates
 
-When expanding the knowledge base from primary or vendor sources, papers, postmortems, or community discussions, the batch MUST follow the [[kernel/K06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]: a source-driven batch MUST run all stages (Stage 1–10) of the [[kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] in full.
+Only the integrator changes Queue lifecycle/holds via `Tools/update_queue.py`,
+with expected revisions/SHA under the shared lock. Such writes and canonical
+delta application require task state `active`; the first activation atomically
+uses the task-state owner to change `planned -> active`. Workers write only
+manifest objects, their receipts, and `.cambium/deltas/<batch-id>.yaml`.
 
-A source batch MAY produce zero, one, or multiple canonical notes.
+| Transition | Required evidence |
+|---|---|
+| `queued -> open` | current `--require-ready` receipt; closed dependencies; bound confirmation when required; disjoint active manifest; concurrency/exclusivity satisfied |
+| `open -> merge-ready` | exact-manifest delta; current receipts and scoped checks; K12/14 in-batch review |
+| `merge-ready -> closed` | delta applied; global gates and Coverage/Queue reconciliation passed; current consistency and batch-close receipts bind the recomputed repository snapshot |
+| `merge-ready -> open` | failed merge; append-only `invalidation_history` freezes the archived delta SHA/path and invalidated receipts |
+
+`check_queue.py` solely gates Queue structure, cross-state agreement, readiness,
+evidence, revisions/SHA, concurrency, recovery, and terminal count.

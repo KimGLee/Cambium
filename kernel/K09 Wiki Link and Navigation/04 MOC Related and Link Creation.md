@@ -14,7 +14,7 @@ Each top-level domain requires at least:
 
 An Overview is not a file list; it SHOULD explain the dependencies and responsibilities between modules.
 
-The coverage map is the reader view of the [[kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation#Phase 1: Inventory|Coverage Ledger]]; it does not maintain a separate set of completion states. A page having an incoming link, a sequence-view entry, or a resolvable wiki link can only prove navigability; it cannot prove that authoring, profile readiness, or evidence status is complete.
+The coverage map is the reader view of the [[kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger#Phase 1: Inventory|Coverage Ledger]]; it does not maintain a separate set of completion states. A page having an incoming link, a sequence-view entry, or a resolvable wiki link can only prove navigability; it cannot prove that authoring, profile readiness, or evidence status is complete.
 
 ## Related Section
 

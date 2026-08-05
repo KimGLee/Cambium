@@ -1184,7 +1184,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     """Validate the independent merged-snapshot gate consumed by close.
 
     The gate is deliberately distinct from both the in-batch ``batch_gate``
-    receipts and the K02/09 Queue consistency receipt.  It binds the exact
+    receipts and the K13/08 Queue consistency receipt.  It binds the exact
     post-apply/pre-close runtime bytes and the independently recomputed
     repository-content snapshot, then closes the seven-member K12/09 set with
     independently persisted evidence IDs.

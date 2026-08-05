@@ -6,7 +6,7 @@
 
 ## Guidance Reconciliation Review
 
-Before every batch close and before a long task enters `completion-candidate`, reconciliation MUST be performed against [[kernel/K02 Build Execution/02 Mid-task Guidance and Amendment#Mid-task Guidance And Contract Amendment|Mid-task Guidance And Contract Amendment]]. Batch-close reconciliation is incremental: reconcile only new guidance after `last_reconciled_guidance_id`, plus existing open items; the three-counter semantics are unchanged, only the counting scope narrows to increment + existing open items.
+Before every batch close and before a long task enters `completion-candidate`, reconciliation MUST be performed against [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis#Mid-task Guidance And Contract Amendment|Mid-task Guidance And Contract Amendment]]. Batch-close reconciliation is incremental: reconcile only new guidance after `last_reconciled_guidance_id`, plus existing open items; the three-counter semantics are unchanged, only the counting scope narrows to increment + existing open items.
 
 The minimum pass condition is:
 

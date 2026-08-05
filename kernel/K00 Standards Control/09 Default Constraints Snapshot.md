@@ -21,7 +21,7 @@ The following rules are in effect by default in all long-running tasks:
 - External sources MUST NOT be directly equated with canonical knowledge; they MUST pass through the source-to-knowledge pipeline.
 - Do not create empty-shell pages, long-lived unresolved links, or P0 / P1 core pages of only two or three sentences.
 - Do not roll back, overwrite, or delete existing user modifications whose origin cannot be confirmed.
-- Each batch synchronizes body links, metadata, Sources, Expression Layer mapping, and QA; hub pages such as Overview / MOC are synchronized by the integrator after batch merge ([[kernel/K02 Build Execution/05 Batch Execution|K02/05]]).
+- Each batch synchronizes body links, metadata, Sources, Expression Layer mapping, and QA; hub pages such as Overview / MOC are synchronized by the integrator after batch merge ([[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|K13/10]]).
 - Batch, targeted audits, and the Terminal Audit reuse still-valid dimension-specific evidence via [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]; old state MUST NOT be trusted blindly, and all manual review MUST NOT be redone indiscriminately.
 - `task_state`, `authoring_status`, the profile-owned expression status axis, `evidence_maturity`, and `learning_status` are maintained separately; the specific expression axis is registered by the `Expression Layer Entry`.
 - Mid-task Guidance Events MUST be classified, have their disposition recorded, and be mapped to the Amendment Log, Coverage Ledger, Required Queue, or source intake.

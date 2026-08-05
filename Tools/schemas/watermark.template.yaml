@@ -5,7 +5,7 @@
 #             newer than scanned_until is scanned; the watermark records
 #             covered sources and coverage cutoff dates per domain section;
 #             advanced together with the Ledger at batch close -- see
-#             K02/05 Batch Policy)
+#             K13/10 Concurrent Batches)
 # Instance location: Tools/state/watermark.yaml (advanced when maintenance/
 #            source batches close; never hand-edited)
 #

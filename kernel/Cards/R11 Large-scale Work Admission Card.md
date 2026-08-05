@@ -7,12 +7,13 @@ source_files:
   - kernel/Read Sets/R11 Large-scale Work Admission Read Set.md
   - kernel/K00 Standards Control/13 Runtime Admission and Recovery.md
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
-  - kernel/K02 Build Execution/01 Contract Time and Task State.md
-  - kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation.md
-  - kernel/K02 Build Execution/09 Required Queue.md
+  - kernel/K13 Task Runtime and Execution Control/02 Task Contract Binding and Time Semantics.md
+  - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
+  - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
+  - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
-source_hash: '6f8b861b4b4c'
+source_hash: '1e74f6eaf4d2'
 ---
 # R11 Large-scale Work Admission Card
 

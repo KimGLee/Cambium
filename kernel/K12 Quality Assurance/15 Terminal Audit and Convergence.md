@@ -6,9 +6,9 @@
 
 ## Terminal Audit
 
-Terminal Audit is the last gate for `completion_semantics: build`; its states and reporting are owned by [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting#Completion Gate|Completion Gate]]. It states no judgment items of its own; it consumes the receipts emitted by the modules its steps point at, which are registered in [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]]. Maintenance completion is bounded by K00/06 and K02/09 and MUST NOT enter this audit.
+Terminal Audit is the last gate for `completion_semantics: build`; its states and reporting are owned by [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting#Completion Gate|Completion Gate]]. It states no judgment items of its own; it consumes the receipts emitted by the modules its steps point at, which are registered in [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]]. Maintenance completion is bounded by K00/06 and K13/12 and MUST NOT enter this audit.
 
-Before a build task moves from `active` (or the K02/09 all-cancelled `planned`
+Before a build task moves from `active` (or the K13/12 all-cancelled `planned`
 case) to `completion-candidate`, run the `check_queue.py --require-complete`
 gate with `--receipts <candidate-receipt>` and consume that receipt in the task
 transition. That receipt authorizes only the transition; the

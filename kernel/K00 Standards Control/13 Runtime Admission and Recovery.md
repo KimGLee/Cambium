@@ -67,4 +67,6 @@ proceed directly to large-scale creation, moves, or deletion.
 - [[kernel/K00 Standards Control/02 Task Routing|Task Routing]]
 - [[kernel/Read Sets/R01 Core Bootstrap Read Set|R01 Core Bootstrap]]
 - [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|R11 Large-scale Work Admission]]
-- [[kernel/K02 Build Execution/09 Required Queue|Required Queue]]
+- [[kernel/K13 Task Runtime and Execution Control/01 Runtime State Model and Namespace|Runtime State Model and Namespace]]
+- [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue Contract and Lifecycle]]
+- [[kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover|Interruption Recovery and Rollover]]

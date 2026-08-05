@@ -11,16 +11,16 @@ Used for moving, renaming, splitting, merging, or restructuring files or directo
 
 First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then read:
 
-- [[kernel/K02 Build Execution/01 Contract Time and Task State|Contract Time and Task State]]
-- [[kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation|Inventory and Coverage Reconciliation]]
-- [[kernel/K02 Build Execution/06 Existing Changes Migration and Resume|Existing Changes Migration and Resume]]
+- [[kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger|Inventory and Coverage Ledger]]
+- [[kernel/K02 Knowledge Work Construction/05 Existing Changes and Migration Safety|Existing Changes and Migration Safety]]
+- [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]]
 - [[kernel/K01 Scope and Architecture/04 Folder and Shared Ownership|Folder and Shared Ownership]]
 - [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]
 - [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]]
 - [[kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - [[kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]]
 
-Before migration, a manifest of source paths, target paths, incoming links, heading anchors, content owners, and the rollback boundary MUST be established. Migration batches MUST run in exclusive execution, not concurrently with other batches ([[kernel/K02 Build Execution/05 Batch Execution|K02/05]] Concurrent Batches).
+Before migration, a manifest of source paths, target paths, incoming links, heading anchors, content owners, and the rollback boundary MUST be established. Migration batches MUST run in exclusive execution, not concurrently with other batches ([[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|K13/10]] Concurrent Batches).
 
 ## Triggered
 
@@ -42,5 +42,6 @@ Before migration, a manifest of source paths, target paths, incoming links, head
 ## Related
 
 - [[kernel/Read Sets/Read Sets Index|Read Sets Index]]
-- [[kernel/K02 Knowledge Base Build Execution Standard|Build Execution]]
+- [[kernel/K02 Knowledge Work Construction Standard|Knowledge Work Construction]]
+- [[kernel/K13 Task Runtime and Execution Control Standard|Task Runtime and Execution Control]]
 - [[kernel/K09 Wiki Link and Navigation Standard|Wiki Link and Navigation]]

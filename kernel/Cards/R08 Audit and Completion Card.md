@@ -12,9 +12,11 @@ source_files:
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
   - kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md
   - kernel/K12 Quality Assurance/16 Terminal Proof Contract.md
-  - kernel/K02 Build Execution/07 Completion and Handoff.md
-  - kernel/K02 Build Execution/09 Required Queue.md
-source_hash: 'b36157a06b89'
+  - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
+  - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
+  - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
+  - kernel/K13 Task Runtime and Execution Control/13 Final Handoff.md
+source_hash: '692d1dd41262'
 ---
 # R08 Audit and Completion Card
 

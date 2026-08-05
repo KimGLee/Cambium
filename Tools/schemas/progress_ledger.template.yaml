@@ -1,6 +1,6 @@
 # =============================================================================
 # Progress Ledger template (canonical task-level state)
-# Owner standard: "kernel/K02 Build Execution/08 Progress Ledger.md"
+# Owner standard: "kernel/K13 Task Runtime and Execution Control/07 Progress Ledger Contract.md"
 #
 # The Progress Ledger owns the Task Contract, task state, Amendments,
 # checkpoints, guidance reconciliation, and terminal-audit state. It references

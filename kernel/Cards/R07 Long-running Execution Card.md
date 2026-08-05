@@ -7,21 +7,27 @@ source_files:
   - kernel/Read Sets/R07 Long-running Execution Read Set.md
   - kernel/K00 Standards Control/09 Default Constraints Snapshot.md
   - kernel/K00 Standards Control/10 Batch Execution Checklist.md
-  - kernel/K02 Build Execution/01 Contract Time and Task State.md
-  - kernel/K02 Build Execution/02 Mid-task Guidance and Amendment.md
-  - kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation.md
-  - kernel/K02 Build Execution/05 Batch Execution.md
-  - kernel/K02 Build Execution/08 Progress Ledger.md
-  - kernel/K02 Build Execution/09 Required Queue.md
-  - kernel/K02 Build Execution/06 Existing Changes Migration and Resume.md
-  - kernel/K02 Build Execution/07 Completion and Handoff.md
+  - kernel/K13 Task Runtime and Execution Control/01 Runtime State Model and Namespace.md
+  - kernel/K13 Task Runtime and Execution Control/02 Task Contract Binding and Time Semantics.md
+  - kernel/K13 Task Runtime and Execution Control/03 Task State and Transition Rules.md
+  - kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis.md
+  - kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching.md
+  - kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning.md
+  - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
+  - kernel/K13 Task Runtime and Execution Control/07 Progress Ledger Contract.md
+  - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
+  - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
+  - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
+  - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
+  - kernel/K13 Task Runtime and Execution Control/13 Final Handoff.md
+  - kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover.md
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '726b1558e1ca'
+source_hash: '40c5fd2152d7'
 ---
 # R07 Long-running Execution Card
 

@@ -1,6 +1,6 @@
 # =============================================================================
 # Terminal Proof template (machine-readable build-completion projection of K12/16)
-# Completion-condition owner: K12/06. Required Queue completion owner: K02/09.
+# Completion-condition owner: K12/06. Required Queue completion owner: K13/12.
 # Tools/check_proof.py reads the top-level keys here as the required field list.
 # The three state fingerprints bind exact canonical bytes under .cambium/state;
 # check_proof's pass receipt additionally binds this Proof's exact bytes.
@@ -36,7 +36,7 @@ selected_profile_route_ids: []
 selected_read_sets:
   - "kernel/Read Sets/R07 Long-running Execution Read Set.md"
 loaded_module_paths:
-  - "kernel/K02 Build Execution/09 Required Queue.md"
+  - "kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md"
 guidance_cutoff_id: "G-012"
 guidance_reconciliation_result: "passed"
 coverage_reconciliation_result: "passed"
@@ -57,5 +57,5 @@ incremental_manual_scope:
 sampling_scope_and_result: "bounded sampling completed; all sampled objects passed"
 systemic_expansions: []
 deferred_evidence_backlog: []
-final_handoff: "handoff package reference required by K02/07"
+final_handoff: "handoff package reference required by K13/13"
 time_contract_result: "minimum_run_until satisfied; hard_stop_at not triggered"

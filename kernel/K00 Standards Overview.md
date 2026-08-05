@@ -56,7 +56,7 @@ Runtime Cards are kernel-owned compiled artifacts of the Read Sets (the Standard
 | Run a targeted or specialized audit | [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set\|Targeted and Specialized Audit]], plus the route relevant to the finding |
 | Enter the task Completion Gate or Terminal Audit | [[kernel/Read Sets/R08 Audit and Completion Read Set\|Audit and Completion]] |
 | Modify Standards, Read Sets, version, or control-plane structure | [[kernel/Read Sets/R09 Standards Governance Read Set\|Standards Governance]] |
-| Mid-task guidance, scope, priority, or correction | [[kernel/K02 Build Execution/02 Mid-task Guidance and Amendment\|Mid-task Guidance and Amendment]] |
+| Mid-task guidance, scope, priority, or correction | [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis\|Guidance Classification and Impact Analysis]] + [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching\|Guidance Disposition and Safe Switching]] + [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning\|Amendment Log and Controlled Replanning]] |
 
 Periodic knowledge-base update and freshness tasks go through the kernel-owned [[kernel/Cards/R10 Maintenance Run Card|Maintenance Run Card]], with [[kernel/Read Sets/R10 Maintenance Run Read Set|R10 Read Set]] used for source read-back.
 
@@ -86,7 +86,7 @@ Detailed task combinations are located in [[kernel/K00 Standards Control/02 Task
 |---|---|---|
 | `K00` | [[kernel/K00 Standards Overview\|Standards Overview]] | overall Index, Kernel Card and Read Set routing, runtime admission/recovery, and Standards control |
 | `K01` | [[kernel/K01 Scope and Architecture Standard\|Scope and Architecture]] | scope, logical architecture, knowledge spine, and foundation preservation |
-| `K02` | [[kernel/K02 Knowledge Base Build Execution Standard\|Build Execution]] | task contract, state, guidance, batch, checkpoint, resume, and handoff |
+| `K02` | [[kernel/K02 Knowledge Work Construction Standard\|Knowledge Work Construction]] | inventory, Coverage reconciliation, architecture, knowledge-batch production, and migration safety |
 | `K03` | [[kernel/K03 Note Types and Ownership Standard\|Note Types and Ownership]] | note type, canonical owner, split, and duplication |
 | `K04` | [[kernel/K04 Content Depth Standard\|Content Depth]] | concept, flow, system, production, evidence, and failure depth |
 | `K05` | [[kernel/K05 Terminology Standard\|Terminology]] | term extraction, ownership, aliases, context, and reuse |
@@ -97,6 +97,7 @@ Detailed task combinations are located in [[kernel/K00 Standards Control/02 Task
 | `K10` | [[kernel/K10 Writing and Formatting Standard\|Writing and Formatting]] | naming, prose, math, tables, code, diagrams, assets, and rendering; reader-facing language is provided by the `Language Contract` |
 | `K11` | [[kernel/K11 Expression Layer Standard\|Expression Layer]] | expression artifacts, canonical knowledge separation, readiness, and migration interface |
 | `K12` | [[kernel/K12 Quality Assurance Standard\|Quality Assurance]] | note, module, batch, source, expression, rendering, and terminal gates |
+| `K13` | [[kernel/K13 Task Runtime and Execution Control Standard\|Task Runtime and Execution Control]] | task contract, state, Guidance/Amendment, Progress, Required Queue, batch control, completion, handoff, and recovery |
 
 ## Loading Contract
 

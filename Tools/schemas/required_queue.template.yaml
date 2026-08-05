@@ -1,6 +1,6 @@
 # =============================================================================
 # Required Queue template (canonical batch/work-unit state)
-# Owner standard: "kernel/K02 Build Execution/09 Required Queue.md"
+# Owner standard: "kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md"
 #
 # The Queue owns ordered batch membership, explicit object manifests,
 # dependencies, execution mode, lifecycle, holds, and transition evidence.

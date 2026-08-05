@@ -25,7 +25,7 @@ First read:
 - [[kernel/K00 Standards Control/08 Maintenance Run Envelope|Maintenance Run Envelope]]
 - [[kernel/K00 Standards Control/09 Default Constraints Snapshot|Default Constraints Snapshot]]
 - [[kernel/K00 Standards Control/10 Batch Execution Checklist|Batch Execution Checklist]]
-- [[kernel/K02 Build Execution/02 Mid-task Guidance and Amendment|Mid-task Guidance and Amendment]] (the revision process involves the Amendment Log)
+- [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis|Guidance Classification and Impact Analysis]], [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching|Guidance Disposition and Safe Switching]], and [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|Amendment Log and Controlled Replanning]] (when the revision involves an active-task Amendment)
 - [[kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - Profile input for the applicable branch:
   - initial adoption: the filled candidate manifest that passed `check_profile.py` and its bound `Language Contract`; no prior selected profile is required;
