@@ -19,7 +19,7 @@ source_files:
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'daa5939f1bf4'
+source_hash: '20e2eaed44ae'
 ---
 # R06 Migration and Refactor Card
 
@@ -27,7 +27,7 @@ source_hash: 'daa5939f1bf4'
 
 ## Use When
 
-Move, rename, split, merge, retire, or restructure files or directories. Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]]. Pass R11 before large-scale creation, moves, or deletion. Migration batches execute exclusively; combine R07 for multiple batches, R12 for a targeted or specialized migration audit, and R09 when the Standards change.
+Move, rename, split, merge, retire, or restructure files or directories. Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]]. Pass R11 before large-scale creation, moves, or deletion. Migration batches execute exclusively in `serial-integrator` mode; combine R07 for multiple batches, R12 for a targeted or specialized migration audit, and R09 when the Standards change.
 
 ## Before Start
 
@@ -53,7 +53,7 @@ Use the safe order: create and verify the target → update references and headi
 - [ ] New targets are complete and reachable before old paths are retired or deleted.
 - [ ] Missing, ambiguous, path, alias, and heading links are resolved.
 - [ ] Module/Coverage Review, Batch Review, applicable deterministic checks, and the Batch-close Closed List pass on the merged snapshot.
-- [ ] The Coverage Ledger and rollback record match the final file system.
+- [ ] The Coverage projection, Required Queue manifest, rollback record, and final file system agree.
 
 ## Read Back When
 

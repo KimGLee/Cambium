@@ -7,13 +7,14 @@ source_files:
   - kernel/Read Sets/R01 Core Bootstrap Read Set.md
   - kernel/K00 Standards Overview.md
   - kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md
-  - kernel/K00 Standards Control/02 Task Routing and Pre-execution.md
+  - kernel/K00 Standards Control/02 Task Routing.md
+  - kernel/K00 Standards Control/13 Runtime Admission and Recovery.md
   - kernel/K00 Standards Control/03 Standards Governance.md
   - kernel/K00 Standards Control/04 Control State and Scope.md
   - kernel/K00 Standards Control/05 Core Principles.md
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
   - kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
-source_hash: '73f67a5ed963'
+source_hash: '746e1b496ae0'
 ---
 # R01 Core Bootstrap Card
 
@@ -36,6 +37,11 @@ The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Co
 ## Before Start
 
 - [ ] State the objective, target scope, exclusions, and latest user instructions.
+- [ ] Inspect the repository root for `.cambium/` before any content or state
+  write. If it exists, run `python3 Tools/check_queue.py . --resume-status`,
+  reconcile the recorded task and exact `next_action`, and do not initialize a
+  replacement. If it is absent, only a selected persistent, resumable, or
+  multi-batch route may initialize it.
 - [ ] Confirm the active Standards state is instantiated and its one selected profile manifest resolves to a filled, checked profile. If a placeholder remains, stop before freezing a content task.
 - [ ] Confirm modification authority, especially for the Standards and other protected paths.
 - [ ] Inspect existing ownership, incoming links, and user modifications in the target scope; do not overwrite changes of unknown origin.
@@ -50,7 +56,7 @@ The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Co
 - Keep task state, authoring status, expression status, evidence maturity, and learning status independent.
 - Load only the task modules needed by the current event or gate. A long task does not justify loading entire domains.
 - Re-resolve the loaded set after a Standards, scope, or route change.
-- Do not infer completion from elapsed time, file count, structural checks, or an empty active batch.
+- Do not infer completion from elapsed time, file count, structural checks, or a Queue-derived view with no `open` batch.
 
 ## Gate
 

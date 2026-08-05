@@ -1,2 +1,7 @@
 __pycache__/
 .DS_Store
+.cambium/tmp/
+.cambium/**/*.lock
+.cambium/**/*.tmp
+.cambium/**/.cambium-write-*
+.cambium-init-*

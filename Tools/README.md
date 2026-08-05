@@ -19,8 +19,23 @@ No tool modifies canonical standards prose. The only standards-tree writer is
 `--check` is strictly read-only. Persistent executable checks shipped by
 Cambium belong here even when a selected profile supplies their parameters.
 
+## Evidence trust boundary
+
+The local tool baseline checks receipt shape, declared producer/tool-version
+labels, SHA-256 bindings, state transitions, cross-receipt chains, and evidence
+currency. A matching label identifies the contract a record claims to follow;
+it does not authenticate the executable that emitted it. Likewise, actor and
+reviewer fields are recorded assertions, not authenticated operating-system or
+human identities. SHA-256 binds evidence to bytes inside this trust domain but
+is not a signature. Without externally signed receipts, a protected runner, or
+equivalent attestation, an actor with write access to the repository, tools,
+and evidence can construct an internally consistent history. The tools fail
+closed on malformed, incomplete, stale, or internally inconsistent evidence;
+they do not claim adversarial provenance verification.
+
 The core distribution tools are `check_links`, `check_vocab`, `check_moc`,
-`check_proof`, `apply_delta`, `compose_vocab`, `check_profile`,
+`check_proof`, `init_state`, `check_queue`, `check_batch_close`, `compile_queue`, `update_task`, `update_queue`,
+`apply_amendment`, `render_queue`, `apply_delta`, `compose_vocab`, `check_profile`,
 `check_residual_content`, `stamp_cards`, and `kblib`.
 `check_freshness` and `duplicate_check` are maintenance-run tools.
 
@@ -31,15 +46,174 @@ The core distribution tools are `check_links`, `check_vocab`, `check_moc`,
 | `check_links.py` | Wiki link missing / ambiguous / heading verification (K09/03, K09/05); `--scope` accepts a directory or a single page; the effective scan set is checked after exclusions, and zero files fail for both scoped and whole-root runs; an exact full-path link into an excluded area resolves as `excluded_target` before any active basename fallback | `python3 Tools/check_links.py . --receipts Tools/receipts/links.jsonl` |
 | `check_vocab.py` | Frontmatter controlled-vocabulary check (K08 module; vocabulary from the composed `vocab.yaml`, which exists only once a profile has been selected and composed -- without it the check reports that and exits 1); `--scope` accepts a directory or a single page; the post-exclusion effective scan set must be nonempty; `--quota-p0` / `--quota-p1` cap P0/P1 shares, defaults 15/35 (kernel defaults; a profile or task contract may override); compiled kernel Cards are outside the knowledge-page schema | `python3 Tools/check_vocab.py . --scope kernel --exclude kernel/Cards --quota-p0 15 --quota-p1 35 --receipts Tools/receipts/vocab.jsonl` |
 | `check_moc.py` | Standard Module MOC Module Index vs. actual H2 headings consistency candidates (K12/05; **candidates only**); recursively scans every non-hidden directory unless the caller explicitly supplies `--exclude`, and is fence-aware (fenced code blocks ignored); maintenance runs and governance | `python3 Tools/check_moc.py .` |
-| `check_proof.py` | Terminal Proof consistency check (K12/15): field completeness; active K00/03, Progress Ledger, Standards-version, and profile agreement; selected profile loadability through `check_profile.py`; R01/R12/R08 presence; Rxx, profile-route, Card-path, actual-readback, and incremental-manual-scope path structure; zero conditions; reconciliation/QA/review results must read `passed`; evidence fields must not declare failure. With `--root`, every recorded path, including `incremental_manual_scope`, must be a repository-contained regular file and the Rxx/Card/kernel-Read-Set binding is checked against both canonical indexes; `--progress-ledger` is then required. Without `--root`, no registry agreement is claimed and the run is structural lint only. Optional Coverage Ledger cross-check. Verifies proof consistency, not the underlying content judgments | `python3 Tools/check_proof.py proof.yaml --root . --progress-ledger progress_ledger.yaml --ledger coverage_ledger.yaml` |
-| `apply_delta.py` | Deterministic application of a coverage delta during the serial merge (K02/05 Concurrent Batches); reads official templates with quote-aware inline-comment handling, merges `gate_receipts` in block-list form, warns on non-core scalar keys, re-parses the merged output before writing and aborts if it no longer parses; atomic write with automatic backup; gap/watermark entries are printed as integrator todos | `python3 Tools/apply_delta.py ledger.yaml delta.yaml --apply` |
+| `check_proof.py` | Build Terminal Proof consistency check (K12/16): field completeness; canonical, non-symlinked Coverage/Progress/Queue state; exact candidate-state fingerprints, or after completion the same pre-complete Progress fingerprint bound through the latest task-transition receipt and its current after-image; task/scope/contract/Standards/profile agreement; no pending Guidance/Amendment; current Queue revisions, zero remaining work, live completion gate and Coverage gaps; selected profile loadability; R01/R12/R08 and route/Card/Read-Set agreement; passed reconciliation/QA/review results. It rejects a Progress contract whose `completion_semantics` is `maintenance`; without `--root`, it is structural lint only | `python3 Tools/check_proof.py .cambium/receipts/terminal-proof.yaml --root . --progress-ledger .cambium/state/progress_ledger.yaml --ledger .cambium/state/coverage_ledger.yaml --receipts .cambium/receipts/terminal.jsonl` |
+| `init_state.py` | Create an adopter's empty `.cambium/` namespace and the three canonical state files. Dry-run by default; `--apply` stages and reparses a complete tree before one atomic no-replace rename, requires the caller to choose `--completion-semantics build` or `maintenance`, records the task objective plus repeatable explicit exclusions alongside Standards/profile identity, and never invents Required work. Any pre-existing `.cambium/`—including an empty directory that wins a publication race—is preserved; the diagnostic directs the operator to `check_queue.py --resume-status` rather than overwriting it | `python3 Tools/init_state.py . --task-id TASK --objective "Concrete outcome" --exclude "Out-of-scope boundary" --completion-semantics build --scope-version s1 --standards-version VERSION --profile-manifest profiles/my-profile/profile.md --apply` |
+| `check_queue.py` | Sole deterministic Required Queue gate (K02/09): validates schema, manifests, Coverage projection, dependencies, lifecycle/task receipts, holds, confirmations, deltas, concurrency, Progress revisions/fingerprint, paths, readiness, and terminal count. `--require-complete` is the build-closure Queue gate. `--require-maintenance-complete` additionally consumes current budget-manifest-closed, Coverage-ledger-advanced, and watermark-advanced receipts; reconciles the manifest's complete selected/deferred candidate partition with Coverage and the Queue manifest union; enforces consecutive-deferral disposition; and binds the maintenance pass to all three current state objects. `--resume-status` reports objective/exclusions, completion semantics, three live SHAs, checkpoint/task history, maintenance candidate SHA/partition/prior gate, controls, the applicable completion block, locks, and an exact `next_action`. Valid interrupted delta phases become `admit-delta:<id>` or `apply-delta:<id>`; an applied batch without a current close bundle becomes `run-batch-close-gate:<id>`, while a recovered current bundle becomes `close-applied-batch:<id>:<queue-receipt>:<close-receipt>:<apply-receipt>` plus an exact copyable close command. A writer lock always takes recovery priority; inconsistent evidence becomes `repair-runtime` only when no interrupted writer must first be reconciled | `python3 Tools/check_queue.py . --resume-status` |
+| `check_batch_close.py` | Sole supported producer contract for the K12/09 merged-snapshot close bundle. For one `merge-ready` batch with a current `apply_delta` receipt, it holds the shared runtime lock; recomputes real repository bytes before/after the seven checks and receipt publication; runs `check_links`, Cambium-owned YAML/Markdown structure, a deterministic in-memory Markdown/Wiki-link graph JSON projection plus basename candidates, Coverage file-count, guidance/contract continuity, the selected profile's registered residual verifier, and `check_vocab`; records an explicit reviewer attestation with a reviewer label different from the integrator label; creates the canonical `check_queue` consistency receipt through that checker's shared producer; and emits the exact three IDs consumed by close. Labels and attestations remain assertions under the Evidence trust boundary. Item 3 does not scan ordinary repository JSON or fenced JSON examples; item 1 alone owns missing/ambiguous/heading verdicts. Candidate prose alone is insufficient: every current candidate must be accepted by stable ID or exact `tool:check` type. A failed run emits only a failed attempt, while an uncertain append retains the lock | `python3 Tools/check_batch_close.py . --batch B1 --integrator alice --reviewer bob --review-attestation "Reviewed the exact listed candidates and merged snapshot."` |
+| `compile_queue.py` | Deterministically compile Queue structure from explicit Required Coverage assignments plus top-level `batch_specs`; never infers semantic dependencies or backlinks. Initial `--apply` is integrator-only and writes the unique origin receipt into Progress. A same-scope replan consumes a complete `.cambium/deltas/replans/*.coverage.yaml` proposal—never pre-edited canonical Coverage—and commits Coverage/Queue/Progress under one shared lock after exact three-file CAS, Amendment/diff binding, and conflict checks. Terminal history remains immutable; interrupted/incompletely rolled-back writes retain the lock | `python3 Tools/compile_queue.py . --coverage-proposal .cambium/deltas/replans/A1.coverage.yaml --output .cambium/tmp/queue-replan.yaml` |
+| `update_task.py` | Sole Progress task-state transition writer. Dry-run-first and integrator-only; compare-and-swaps current Progress and Queue SHAs under the shared lock, records a transition receipt and restart checkpoint, and requires a reason for pause/block. A build task consumes a current Queue-complete receipt to enter `completion-candidate`, then a canonical `check_proof` pass receipt to enter `complete`. A maintenance task never enters `completion-candidate`; its `planned` or `active` state enters `complete` only by consuming a current `check_queue --require-maintenance-complete` receipt through `--maintenance-completion-receipt`. Direct `planned -> active` remains rejected; `update_queue.py` invokes that owner only while opening the first batch | `python3 Tools/update_task.py . --transition paused --checkpoint-summary "waiting for source" --expected-progress-sha256 sha256:... --expected-queue-sha256 sha256:... --actor-role integrator --apply` |
+| `update_queue.py` | Dry-run-first, integrator-only lifecycle/hold transition with legal-state enforcement, current contract-conformant gate/confirmation/batch receipts, exact managed delta validation and frozen SHA, optimistic revision/SHA checks, the shared writer lock, rollback, result-state revalidation, and before/after receipt history. Queue writes require task state `active`; the first open atomically invokes the task-state owner for `planned -> active`. Close requires the exact `apply_delta` receipt and derives Coverage `next_batch`. Cancellation goes through `apply_amendment.py` | `python3 Tools/update_queue.py . --id B1 --transition open --gate-receipt RECEIPT --expected-state-revision 0 --expected-sha256 sha256:... --actor-role integrator --apply` |
+| `apply_amendment.py` | Apply one approved scope/disposition change as a guarded Coverage/Queue/Progress transaction. The plan binds exact before revisions and all three SHAs to a complete Coverage proposal; `scope-replan` recompiles current Queue structure and `cancel-batch` retires one queued/open leaf without erasing history. A durable prepare receipt plus lock-owner fingerprints make an interrupted multi-file write diagnosable; commit/abort receipts record the outcome. It does not write non-scope Task Contract changes; direct post-materialization edits fail closed and currently require a preserved successor task | `python3 Tools/apply_amendment.py . --plan .cambium/deltas/amendments/A1.yaml --expected-coverage-sha256 sha256:... --expected-progress-sha256 sha256:... --expected-queue-sha256 sha256:... --actor-role integrator --apply` |
+| `render_queue.py` | Deterministically render the optional human view at `.cambium/reports/required_queue.md`; validates canonical state first and never reads the Markdown back as input | `python3 Tools/render_queue.py .` |
+| `apply_delta.py` | Deterministic application of one worker Coverage delta during serial merge. Every mode rejects Queue/compiler-owned control fields. Canonical `--root` mode binds the exact managed paths and merge-ready manifest, requires integrator role plus current Coverage/Queue SHAs, uses the shared writer lock, revalidates the result, rolls back ordinary failures, and publishes a bound receipt; `next_batch_updates` remains a suggestion for the integrator. Detached two-path mode remains for non-runtime ledgers and is not a canonical-state write | `python3 Tools/apply_delta.py .cambium/state/coverage_ledger.yaml .cambium/deltas/B1.yaml --root . --expected-coverage-sha256 sha256:... --expected-queue-sha256 sha256:... --actor-role integrator --apply` |
 | `compose_vocab.py` | Persistent vocabulary compiler: composes `vocab.yaml` from the kernel base and the profile selected in K00/03 active state. The selected manifest declares `profile_id` and its one `Vocabulary Extensions` binding; `volatility_defaults` registers each domain once; the resolved extensions path supplies base-field extension ownership; profile-only controlled fields are added to the frontmatter list automatically. `--extensions` may repeat the bound active path but cannot select another profile; the output header is provenance only. `--check` requires both parsed values and deterministic provenance/rendering to match | `python3 Tools/compose_vocab.py --check` |
 | `check_profile.py` | Filled-profile structural check: derives the slot list from `profiles/README.md`; verifies identity syntax and directory agreement, slot bindings, sparse execution overrides against their closed registry, and `Configured`/inactive table consistency; rejects leftover `TODO(profile)` markers and reserved IDs. It checks structure, never answer quality, and is not run against `_template` itself | `python3 Tools/check_profile.py profiles/<profile-id> --receipts Tools/receipts/profile.jsonl` |
 | `check_residual_content.py` | Generic K12/09 item 6 residual-content scanner. The selected profile owns every accepted/excluded content root and every literal frontmatter/heading matcher; only VCS metadata directories named `.git`, `.hg`, or `.svn` are always outside traversal. The tool owns safe traversal, fence-aware matching, a hard ≤55-second evidence-production budget, zero-file and missing-accepted-root failure, receipts, and `0/1/2` exit semantics; missing excluded roots are allowed. The caller must still satisfy the kernel's ≤60-second whole-command contract. `--scan-id` binds every receipt to the stable registry ID; receipts from a successfully loaded config record its SHA-256 so configuration changes invalidate old evidence. Findings are candidates only. Tool contract owner: K12/09 item 6; scan-definition owner: selected profile `Registered Scan Registry` | `python3 Tools/check_residual_content.py . --scan-id <stable-scan-id> --config profiles/<profile-id>/scan-configs/<scan>.yaml --time-limit 55 --receipts Tools/receipts/residual.jsonl` |
 | `stamp_cards.py` | Kernel route and Runtime Card verification (K00/03 Write-back Checklist): checks the shared `kernel-runtime-routes` registry identity, exact R01-R12 coverage across both indexes and the on-disk Read Set/Card pairs, filename prefixes, source boundaries, `source_hash`, and that every `compiled_from` equals K00/03 active `standards_version`; defaults to `kernel/Cards`; missing, empty, incomplete, or malformed layers fail closed; `--check` is read-only; `--set-version` must equal the active version and stamps every Card including the Index | `python3 Tools/stamp_cards.py . --check` |
 | `check_freshness.py` | Freshness check: computes review_by from volatility and last_verified (fallback: last_reviewed, then file modification time per K08/05, flagged pending first verification); `--defaults` accepts a flat mapping or `Tools/vocab.yaml` / a profile's `vocabulary-extensions.yaml` (their `volatility_defaults`); an all-skip run reports NOTHING CHECKED as a candidate, not a pass | `python3 Tools/check_freshness.py . --as-of 2026-07-21 --defaults profiles/<your-profile-id>/vocabulary-extensions.yaml --exclude Cards --receipts Tools/receipts/fresh.jsonl` |
 | `duplicate_check.py` | Cross-file duplicate paragraph candidate detection; full vault by default; `--exclude` is repeatable and defaults to the single component `legacy`, the conventional name for a frozen-snapshot area that a vault need not have; compiled Cards and profile skeletons should be excluded from corpus-duplication review; supports `--receipts` and exits 2 when candidates exist | `python3 Tools/duplicate_check.py . --exclude _template --exclude Cards --receipts Tools/receipts/dup.jsonl` |
-| `kblib.py` | Shared library and sole restricted-YAML parser owner. Duplicate mapping keys, multiple documents, unsupported constructs, and invalid indentation fail closed; it also provides Markdown and receipt helpers. Receipt output creates its requested parent directory and IDs include a per-invocation random token; not invoked directly | imported by the scripts above |
+| `kblib.py` | Shared library and sole restricted-YAML parser owner. Duplicate keys and unsupported constructs fail closed; it also provides deterministic YAML rendering, repository-contained managed paths, file and repository-snapshot SHA-256 fingerprints, atomic writes, Markdown helpers, and receipts | imported by the scripts above |
+
+## Required Queue flow
+
+The persistent runtime namespace belongs to the adopting repository, not this
+uninstantiated distribution:
+
+```text
+.cambium/
+  state/coverage_ledger.yaml
+  state/required_queue.yaml
+  state/progress_ledger.yaml
+  deltas/<batch-id>.yaml
+  receipts/*.jsonl
+  reports/required_queue.md
+  tmp/
+```
+
+The normal control sequence is:
+
+1. At the start of every task, test whether `.cambium/` exists. If it does, run
+   `check_queue.py . --resume-status` before any state/content write and resume
+   only by following its `next_action` after reconciling the recorded task,
+   checkpoint binding, task receipt, lifecycle groups, pending controls/deltas,
+   completion semantics and its applicable completion block, holds, and locks.
+   Never initialize over it. A new task requires the
+   old task to be explicitly completed/cancelled and later archived or rolled
+   over; current tools do not automate rollover.
+2. Only when `.cambium/` is absent, and only for a selected persistent,
+   resumable, or multi-batch route, run `init_state.py --apply` after profile
+   adoption and task definition. Declare exactly one
+   `--completion-semantics build|maintenance`; the tool has no default.
+   Bounded work does not create an empty runtime.
+   It creates empty state, so `check_queue.py` returns 2 until Required work is
+   materialized; that is an honest pre-execution hold, not successful admission.
+3. Inventory every in-scope object in Coverage. Required objects explicitly
+   project `batch` / `next_batch`; top-level `batch_specs` declares each
+   proposed batch's family, order hint, mode, confirmation flag, and explicit
+   dependencies. This keeps a closed batch and a different successor from
+   sharing one accidental configuration.
+   For maintenance, also freeze the complete fused candidate list into
+   Coverage `maintenance_candidates` before initial Queue materialization:
+   selected candidates alone become Required batch manifests, while deferred
+   candidates remain recorded outside current Queue work. A later run must
+   retain the prior gate and its consuming task-completion receipt so deferral
+   age and explicit re-entry can be checked.
+4. Run `compile_queue.py` as a deterministic proposal. Only the integrator may
+   apply an initial empty-to-materialized Queue, and must supply the current
+   Queue revision and SHA-256. That first write records one immutable
+   `initial_queue_receipt` in Progress so restart can bind the structure to its
+   recorded origin. For a non-empty Queue, copy Coverage to
+   `.cambium/deltas/replans/<amendment>.coverage.yaml` and edit only
+   `batch_specs` plus Required pages' `batch`/`next_batch`. The canonical
+   Coverage file remains unchanged while the diff is reviewed. A same-scope
+   `--apply-replan` requires that proposal, exact Coverage/Queue/Progress SHAs,
+   current Queue/state revisions, integrator role, and a pending approved
+   Amendment bound to proposal path/SHA, affected pages/batches, and exact diff.
+   It then publishes all three canonical files under the shared lock and marks
+   the Amendment verified. Closed/cancelled history is preserved exactly and
+   in-flight structure cannot change.
+5. Run `check_queue.py`; activate one ready item with `update_queue.py`.
+   The first activation alone records `planned -> active`; do not call
+   `update_task.py` to bypass an unmaterialized or unopened Queue. Pause, block, or
+   resume the whole task with `update_task.py`; Queue and canonical delta writes
+   are rejected until task state is `active`.
+   When confirmation is required, supply the same confirmation receipt to
+   `check_queue.py --require-ready ... --confirmation-receipt ...` and the
+   subsequent `update_queue.py` activation; the ready receipt binds it.
+   Workers change only manifest objects, their receipt area, and
+   `.cambium/deltas/<batch-id>.yaml`. The integrator alone changes canonical
+   state and serially applies deltas. `apply_delta.py --root` applies only
+   worker-owned status/evidence fields; `update_queue.py` performs lifecycle
+   transitions and the close-time Coverage projection. After interruption,
+   follow the reported `admit-delta`, `apply-delta`,
+   `run-batch-close-gate`, or fully receipt-qualified `close-applied-batch`
+   phase instead of redoing a completed phase. A passed
+   canonical apply opens a strict apply-to-close interval: until that receipt
+   is consumed by closing the same batch, every other Queue/Coverage write is
+   rejected. Run `check_batch_close.py` in that interval. It prints
+   `delta_apply_receipt`, `queue_consistency_receipt`, and
+   `close_gate_receipt`, plus a complete `update_queue.py` close command. If
+   that stdout is lost after publication, `check_queue.py --resume-status`
+   reconstructs the same command from the complete receipt catalog and the
+   current state/snapshot. It selects the latest current-compatible bundle by
+   `checked_at`, then receipt ID; stale, structurally invalid, internally
+   conflicting, or snapshot-mismatched bundles remain visible but are never
+   selected. Without such a bundle, resume requires
+   `run-batch-close-gate:<id>` and never treats an apply receipt alone as close
+   authority. An unresolved writer lock instead requires
+   `reconcile-interrupted-write` before either path. If it reports candidates,
+   an independent reviewer must inspect the concrete
+   list and rerun with each stable `--accept-candidate-id` or the exact
+   `--accept-candidate-type tool:check`; an unused or overly generic selector
+   fails. The tool reads K12/09 item 6 from the selected profile's Registered
+   Scan Registry and executes only a repository-contained `Tools/*.py`
+   command without a shell, with the 60-second limit. Do not hand-author the
+   seven member receipts, review receipt, Queue receipt, or aggregator.
+6. A scope/disposition change is not an ordinary Queue transition. Record one
+   pending approved Amendment, a complete proposed Coverage document, and its
+   exact `amendment_plan`; then use `apply_amendment.py`. This is the sole
+   cancellation entry and the scope-changing replan entry. It updates Coverage,
+   Queue, and Progress under one shared lock while honestly retaining
+   per-file atomicity and interruption evidence rather than claiming a
+   multi-file atomic filesystem operation.
+7. Preserve closed/cancelled history, then follow the frozen completion
+   semantics. For `build`, run `check_queue.py --require-complete`, consume its
+   receipt to enter `completion-candidate`, rerun the same Queue gate against
+   the post-transition Progress bytes, produce Terminal Proof with
+   `check_proof.py`, and consume that pass receipt to enter `complete`. For
+   `maintenance`, do not enter `completion-candidate` and do not run
+   `check_proof.py`. Instead run:
+
+   ```text
+   python3 Tools/check_queue.py . --require-maintenance-complete \
+     --budget-manifest-receipt RECEIPT \
+     --ledger-advance-receipt RECEIPT \
+     --watermark-advance-receipt RECEIPT \
+     --receipts .cambium/receipts/maintenance-completion.jsonl
+   ```
+
+   This gate requires a nonempty Queue with zero remaining work, reconciled
+   controls, terminal batch history, persisted applicable batch/close gates,
+   an exact schema-v2 candidate partition equal across the manifest, Coverage,
+   and Queue, a valid prior-run age/re-entry chain, and three current compatible
+   maintenance receipts. If matching completed maintenance history exists, the
+   latest canonically consumed gate is the mandatory predecessor; `null` or an
+   older eligible gate cannot reset candidate age. Consume its pass receipt
+   through the `--maintenance-completion-receipt` argument of an
+   `update_task.py --transition complete` call (plus the ordinary expected-SHA,
+   actor-role, checkpoint, and `--apply` arguments). Both `planned` and
+   `active` may enter their applicable completion path: this prevents a planned Queue whose
+   batches were all validly cancelled by Amendment from deadlocking before any
+   batch opened. A maintenance gate that passed before an interruption remains
+   consumable only while its bound Coverage, Queue, Progress, revisions, and
+   evidence receipts are still current. Zero remaining work is required in
+   either mode, but an empty Queue file is not.
+8. `render_queue.py` may refresh the human report. The report is never an input
+   to a checker, compiler, transition, or Terminal Proof.
+
+Queue tools constrain their writable outputs to the matching managed
+subdirectory: receipts cannot overwrite state, reports cannot overwrite Queue,
+and compiler proposals can only be written under `.cambium/tmp/`. A symlink or
+hard link cannot alias authority, and a symlink or `..` path cannot escape or
+cross those boundaries. Structure and lifecycle writers share one fail-closed
+lock under `.cambium/tmp/`. A lock is evidence of either a live writer or a
+possible interrupted write, not disposable clutter: before removal, establish
+that no writer remains and reconcile all state files, revisions/fingerprint,
+receipts,
+pending deltas, and recorded delta-archive moves. Receipt JSONL is append-only:
+writers never restore an old file image over concurrent appends. A fully
+reconciled handled abort may close its lock; a partial or uncertain append
+retains it.
 
 ## Kernel module and route identity
 
@@ -101,15 +275,44 @@ not skip the canonical rule text, which remains under the rest of `kernel/`.
 
 ## Invocation split
 
-- **Batch close** = the Batch-close Closed List (owner: K12/09; a seven-item
+- **Batch close** = `check_batch_close.py` executes the Batch-close Closed List
+  (owner: K12/09; a seven-item
   closed list, including full-vault `check_links`, `check_vocab`, and the
-  selected profile's registered residual-content verifier).
+  selected profile's registered residual-content verifier). The integrator
+  separately consumes the single K02/09 Queue gate before recording
+  `merge-ready -> closed`; it is not an eighth content check. A successful
+  consistency receipt records `repository_snapshot_sha256`, computed over
+  every current regular file except the root `.git/` and `.cambium/`
+  namespaces. All seven receipts, the independent global review, and the
+  explicit independent-review attestation, global review, and close
+  aggregator bind that value as `merged_snapshot_sha256`;
+  `update_queue.py` recomputes it before and under the write lock, so receipt
+  strings whose required labels or bindings are absent, stale, or inconsistent
+  with current content are rejected. This is a local consistency property, not
+  authentication of the tool, actor, or reviewer that produced the records.
+  Item 2 checks
+  all Markdown structure/frontmatter but applies Cambium's restricted YAML
+  grammar only to Cambium-owned machine YAML (kernel, selected profile, and
+  composed `Tools/vocab.yaml`); unrelated application YAML in the adopter's
+  Git repository is outside that contract. Canonical `.cambium` YAML is
+  independently parsed by `check_queue.py`.
+- **Persistent task / multi-batch control** = `check_queue.py --resume-status`
+  at every restart or new-Agent entry when `.cambium/` exists, then the Queue
+  gate at admission, activation, batch close, and the selected build or
+  maintenance completion path. `init_state.py`,
+  `compile_queue.py`, and `update_queue.py` write only through their explicit
+  dry-run/apply boundary; a bounded single-note task does not create an empty
+  Queue merely to satisfy this route.
 - **Note close** = `check_links.py` / `check_vocab.py` with `--scope` set to
   the page itself (self-check; no receipts produced). Both tools fail on an
   empty scan set, so a mistyped page path cannot pass silently.
 - **Maintenance run** = `check_freshness.py` (once at the start of the run)
   plus `duplicate_check.py` (full vault or `--scope`; candidates go into the
-  candidates pool). Neither is invoked at batch or single-page level.
+  candidates pool). Neither is invoked at batch or single-page level. A
+  bounded single-note run does not acquire `.cambium/` merely for maintenance
+  bookkeeping. A persistent, resumable, or multi-batch R10 run initializes
+  with `--completion-semantics maintenance` and closes through
+  `check_queue.py --require-maintenance-complete`, never R08 or Terminal Proof.
 - **Governance** = `stamp_cards.py . --check`, `check_moc.py`, and
   `check_profile.py` against each filled profile a deployment selects. The
   published `_template` is a form, not a runnable profile.
@@ -132,7 +335,9 @@ Shared conventions:
 - Exit codes: `0` = clean success; `1` = failure or unreliable evidence;
   `2` = reliable but non-clean outcome as defined by that tool. Receipt-based
   candidate checks use 2 for one or more candidates; `stamp_cards.py` uses it
-  for stale artifacts, and `compose_vocab.py` uses it for a check mismatch.
+  for stale artifacts, `compose_vocab.py` uses it for a check mismatch, and
+  `check_queue.py` uses it for a valid but empty/held/dependency-blocked state
+  or a reliable resume hold such as in-flight work or writer-lock evidence.
 - `check_residual_content.py` requires the profile's stable `--scan-id` and a
   profile-owned `--config`. Every emitted receipt includes that `scan_id` and
   the exact config-byte `config_fingerprint`; an unreadable or invalid config
@@ -176,9 +381,29 @@ evidence silently.
 
 ## schemas/ templates (the template is the schema doc)
 
-- `coverage_ledger.template.yaml` -- Coverage Ledger (owner: K02/03)
-- `progress_ledger.template.yaml` -- Progress Ledger (owner: K02/08; consumes
-  the Task Contract and version/state rules defined by K02/01 and K02/02)
+- `coverage_ledger.template.yaml` -- object-level Coverage Ledger (owner:
+  K02/03); includes disposition, canonical owner, object-side batch projection,
+  and top-level `batch_specs` as explicit Queue-compiler proposal inputs
+- `required_queue.template.yaml` -- batch/work-unit contract and lifecycle
+  (owner: K02/09); its explicit manifests reconcile bidirectionally with
+  Coverage
+- `progress_ledger.template.yaml` -- task-level Progress Ledger (owner: K02/08);
+  stores the Task Contract and accepted Queue path/revisions/fingerprint, not a
+  second batch list; the contract declares `completion_semantics`, and the
+  mutually exclusive `terminal_audit` / `maintenance_completion` blocks keep
+  the non-applicable path inert
+- `maintenance_budget_manifest.template.yaml` -- the closed budget-envelope
+  manifest consumed by the maintenance completion gate; schema v2 records one
+  fused record per candidate object, the exact selected/deferred ID partition,
+  prior/current deferral age, re-entry and disposition, while Coverage keeps
+  the matching canonical candidate state. Deferred work outside the envelope
+  does not become current Required work. A `pages` budget counts
+  `selected_objects`, a `batches` budget counts `required_batch_ids`, and an
+  `hours` budget requires `consumed_hours >= 0` and no greater than
+  `budget_limit`; `consumed_hours` is null for the other two axes
+- `amendment_plan.template.yaml` -- cross-Ledger scope/disposition transaction
+  input for `apply_amendment.py`; binds one approved Amendment, a complete
+  Coverage proposal, exact revision edges, and its proposal SHA
 - `receipt.template.jsonl` -- script-level receipt (concept owner: K12/07),
   including the optional `scan_id` and `config_fingerprint` extension fields
   used by the residual scanner
@@ -188,11 +413,14 @@ evidence silently.
 - `watermark.template.yaml` -- external scan watermark (owner: K06/07
   Environmental Scanning and Watermark; consumed by the K06/03 intake
   pipeline; the instance lives at Tools/state/watermark.yaml and is advanced
-  by maintenance batches)
+  by maintenance batches). `last_run_id` binds the enclosing maintenance run;
+  `last_batch_id` separately records the Queue batch that performed the final
+  advance
 - `audit_plan.template.yaml` -- AuditPlan (owner: K12/07 Incremental Audit Planning)
 - `terminal_proof.template.yaml` -- machine-readable Terminal Proof projection;
-  its 32 fields copy K12/15 field by field, and `check_proof.py` reads that
-  projection while K12/15 remains the normative field-list owner
+  its fields copy K12/16 field by field, including current Queue completion
+  evidence; `check_proof.py` reads the projection while K12/16 remains the
+  normative field-list owner; it applies only to `build` completion semantics
 - `execution_defaults.template.yaml` -- the canonical machine-readable
   membership registry of which kernel execution defaults a profile may
   override and which constants it may not. Each entry points to the kernel

@@ -1,7 +1,7 @@
 ## Navigation
 
 - Parent: [[kernel/K00 Standards Overview|K00 Standards Overview]].
-- Next: [[kernel/K00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]].
+- Next: [[kernel/K00 Standards Control/02 Task Routing|Task Routing]].
 
 ## Purpose
 
@@ -81,5 +81,5 @@ Current Read Sets:
 - [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]]: task completion acceptance and Terminal Audit.
 - [[kernel/Read Sets/R09 Standards Governance Read Set|Standards Governance]]: control-plane rule or structure changes.
 - [[kernel/Read Sets/R10 Maintenance Run Read Set|Maintenance Run]]: periodic updates and freshness, digesting overdue re-review, watermark deltas, and needs_rereview within the budget envelope.
-- [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]]: the existing large-scale Pre-execution Gate.
+- [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]]: the canonical Large-scale Pre-execution Gate.
 - [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set|Targeted and Specialized Audit]]: bounded review of changed, invalidated, overdue, sampled, or specialized-invariant scope.

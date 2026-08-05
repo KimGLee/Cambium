@@ -19,9 +19,10 @@ A module counts as complete only when all of the following conditions hold:
 - Markdown, tables, formulas, images, and graph configuration all work correctly.
 - Source-driven new knowledge retains claim-level provenance and passes the canonical promotion gate.
 
-A long-running task counts as complete only when all of the following conditions hold:
+A long-running build task counts as complete only when all of the following conditions hold:
 
 - The Coverage Ledger has been reconciled against the file system, scope, exclusions, and the competency matrix.
+- The current Required Queue passes `check_queue.py --require-complete`, its receipt matches the frozen path, structural/state revisions, and fingerprint, and `remaining_required_work_units = 0`.
 - The Amendment Log covers all guidance within the cutoff, with no unclassified, accepted-but-unmapped, or implemented-but-unverified items.
 - All Required authoring gaps are closed, or the user has explicitly changed the disposition.
 - There are no unverified batches or leftover modifications.
@@ -31,21 +32,27 @@ A long-running task counts as complete only when all of the following conditions
 - The Final Handoff has been written, making explicit the optional, deferred, and external evidence backlog.
 - The Terminal Audit has produced the Terminal Proof.
 
-The canonical definition of the machine-checkable formula for task_complete is located in the Completion Policy section of [[kernel/K02 Build Execution/07 Completion and Handoff|Completion and Handoff]].
+The canonical definition of the machine-checkable formula for build completion is located in the Completion Policy section of [[kernel/K02 Build Execution/07 Completion and Handoff|Completion and Handoff]].
 
 Authoring completion does not require every frontier conclusion to reach `validated`; but external evidence gaps MUST NOT mask unfinished body text, sources, expression-layer migration, or QA.
 
 ## Maintenance Completion
 
-Completion semantics come in two kinds; when the task contract is frozen, one of them MUST be declared, and the two semantics MUST NOT be mixed:
+The frozen Task Contract MUST select exactly one completion semantics:
 
-- Build completion: the existing closed-loop semantics, executed per this page's Definition Of Complete; the Terminal Proof applies.
-- Maintenance completion: bounded semantics; complete when all of the following conditions hold:
-  - The candidate list within this run's budget envelope is closed (the envelope is defined by [[kernel/K00 Standards Control/08 Maintenance Run Envelope|Maintenance Run Envelope]]).
+- Build: this page's Definition Of Complete, `completion-candidate`, and Terminal Proof.
+- Maintenance: bounded, never `completion-candidate`, and complete only when:
+  - The run's [[kernel/K00 Standards Control/08 Maintenance Run Envelope|budget-envelope]] candidate manifest is closed.
   - The Ledger and `Tools/state/watermark.yaml` have been advanced.
   - Each batch has passed the applicable QA gates.
 
-Maintenance completion does not require a corpus-wide Terminal Proof; deferred items truncated by the budget are digested by the next maintenance run and do not constitute a gap.
+When maintenance work is persistent, resumable, or multi-batch, K02/09's gate
+MUST prove those predicates from current budget-manifest, Coverage-advance,
+watermark-advance, and applicable batch/close receipts. Bounded single-note
+maintenance does not initialize empty `.cambium/` state for that gate.
+
+Maintenance has no corpus-wide Terminal Proof. Budget-truncated items hand off
+to the next run and are not a current gap.
 
 ## Standard Precedence
 
@@ -65,7 +72,7 @@ User's latest explicit instruction
 
 Each ultra-long task only needs to confirm the items that change the defaults:
 
-- Objective, contract version, scope version, queue revision, in-scope domains, and exclusions.
+- Objective, contract version, scope version, in-scope domains, exclusions, and exactly one frozen `completion_semantics` value (`build` or `maintenance`); when Required Queue state applies, its path, `queue_revision`, `queue_state_revision`, SHA-256 fingerprint, and current check receipt.
 - Standards version and `selected_profile_manifest`, copied exactly from the active Standards state; the selected Rxx route IDs and Runtime Card paths; the actual loaded set (including any namespaced profile route and every Read Set or leaf path actually read back); and gate items not yet triggered. These are frozen by default for content tasks, and a task-level amendment cannot select another profile.
 - The target authoring status for P0 / P1 and the selected `Expression Status Axis` values.
 - `minimum_run_until`, `checkpoint_at`, `hard_stop_at`.

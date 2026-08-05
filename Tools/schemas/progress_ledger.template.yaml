@@ -1,61 +1,105 @@
 # =============================================================================
-# Progress Ledger template (machine-readable state layer; the template is the schema doc)
+# Progress Ledger template (canonical task-level state)
 # Owner standard: "kernel/K02 Build Execution/08 Progress Ledger.md"
-#            (the Progress Ledger records task and batch progress only;
-#             page-level status belongs to the Coverage Ledger)
-# task_state vocabulary owner: "kernel/K02 Build Execution/01 Contract Time and Task State.md"
 #
-# Only the restricted YAML subset is allowed (parseable by Tools/kblib.py parse_yaml_subset):
-#   - `key: value` scalars (string/number/boolean/null, quoted strings, inline `[]`);
-#   - `- item` lists indented under `key:`;
-#   - list items may be a one-level flat map; two-level indented nested maps.
-#   Not allowed: anchors/aliases, block scalars (| >), flow maps {}, tags, multi-document.
+# The Progress Ledger owns the Task Contract, task state, Amendments,
+# checkpoints, guidance reconciliation, and terminal-audit state. It references
+# Required Queue by revision and fingerprint; it does not duplicate batch
+# membership, order, lifecycle, active batches, or merge queues.
+# Only the restricted YAML subset accepted by Tools/kblib.py is allowed.
 # =============================================================================
 
-task_id: "kb-build-2026-xx"        # task identifier; must match the Coverage Ledger's task_id
-task_state: active                 # planned/active/paused/blocked/completion-candidate/complete/cancelled (K02/01 Task State Machine; complete requires a valid Terminal Proof)
-active_batches: ["B7"]             # currently concurrent active batches (<= concurrency_cap; K02/05 Concurrent Batches)
-merge_queue: []                    # merge-ready batches waiting for the integrator's serial merge (K02/05)
+schema_version: 1
+task_id: "kb-build-2026-xx"
+task_state: active
+task_transition_receipts:
+  - "audit-update_task-..."
+required_queue_path: ".cambium/state/required_queue.yaml"
+queue_revision: 1
+queue_state_revision: 0
+required_queue_sha256: "sha256:replace-after-queue-materialization"
+# Null only while the initialized Queue is empty. The first successful
+# compile_queue --apply writes the unique queue_structure receipt id here;
+# later lifecycle/replan writes never replace it.
+initial_queue_receipt: "audit-compile_queue-..."
 
-contract:                          # key contract fields frozen in Phase 0 (K02/01 Phase 0; full list in the standard's prose)
-  contract_version: "c1"           # contract version (K02/01)
-  scope_version: "s1"              # scope version (K02/01)
-  queue_revision: "q1"             # Required Queue revision (K02/01)
-  batch_revision: "b1"             # active batch revision (K02/01)
-  concurrency_cap: 3               # concurrent batch cap (K02/05 Concurrent Batches; default 3)
-  standards_version: ""            # REQUIRED: exact active adopter Standards version from K00/03; fill before task activation
-  selected_profile_manifest: ""    # REQUIRED: exact active repo-relative manifest path, e.g. profiles/my-profile/profile.md; frozen with standards_version
-  selected_route_ids:              # kernel Runtime Routes actually loaded; R01 is mandatory for every task
+contract:
+  contract_version: "c1"
+  # Explicitly select one completion model. Build tasks freeze a
+  # completion-candidate and close through Terminal Proof. Maintenance tasks
+  # close directly from active after the bounded maintenance completion gate.
+  completion_semantics: build
+  objective: "Build and validate the declared knowledge corpus."
+  exclusions: []
+  scope_version: "s1"
+  concurrency_cap: 3
+  standards_version: ""
+  selected_profile_manifest: ""
+  selected_route_ids:
     - "R01"
     - "R07"
-  selected_card_paths:             # exactly one canonical kernel Runtime Card path for each selected_route_ids entry
+  selected_card_paths:
     - "kernel/Cards/R01 Core Bootstrap Card.md"
     - "kernel/Cards/R07 Long-running Execution Card.md"
-  selected_profile_route_ids: []   # supplemental profile routes actually combined, each namespaced P:<profile_id>:<route_name>; never place one in the Rxx list
-  selected_read_sets:              # Read Set paths actually read back; this is evidence of source loading, not the full route registry
+  selected_profile_route_ids: []
+  selected_read_sets:
     - "kernel/Read Sets/R07 Long-running Execution Read Set.md"
-  loaded_module_paths: []          # leaf Standards or profile paths actually read back outside the selected Read Sets
-  minimum_run_until: ""            # no voluntary stop before this time; reaching it only lifts the restriction, it does not imply completion (K02/01 Time And Stop Semantics)
-  checkpoint_at: ""                # on reaching it, record progress / re-verify the plan / report; continue by default (K02/01)
-  hard_stop_at: ""                 # on reaching it, must stop and write a checkpoint; if gates have not passed, only paused is allowed, never complete (K02/01)
-  completion_gate: "guidance pending=0 AND required_authoring_gaps=0 AND unverified_batches=0 AND unresolved_invalidations=0 AND all applicable gates passed"  # time-independent completion condition (K02/01, K12/06)
+  loaded_module_paths: []
+  minimum_run_until: ""
+  checkpoint_at: ""
+  hard_stop_at: ""
+  completion_gate: "guidance pending=0 AND required_authoring_gaps=0 AND remaining_required_work_units=0 AND unresolved_invalidations=0 AND all applicable gates passed"
 
-batches:                           # each batch is a small module that can be accepted independently (K02/05 Batch Policy)
-  - id: "B1"                       # batch identifier; corresponds to pages[].batch in the Coverage Ledger
-    state: closed                  # open/merge-ready/closed; closing requires passing K12/14 Batch Review, and closing with only file names and headings is not allowed (K02/05); merge-ready = in-batch work done, awaiting the integrator's serial merge (K02/05 Concurrent Batches)
-    pages:                         # Required page paths of this batch
-      - "Topics/Example Topic.md"
-    started_at: "2026-07-01T00:00:00Z"  # batch start time
-    closed_at: "2026-07-03T00:00:00Z"   # batch close time; empty while state=open
-    batch_gate_receipt: "audit-batch-review-20260703T000000Z-55555555555555555555555555555555-0001"  # receipt_id of the passed Batch Review (K12/07: must not just say "already checked before")
+checkpoint:
+  recorded_at: "2026-07-05T10:00:00Z"
+  summary: "task activated after Required Queue materialization"
+  task_state: active
+  task_transition_receipt: "audit-update_task-..."
+  coverage_sha256: "sha256:replace-with-checkpoint-coverage-bytes"
+  required_queue_sha256: "sha256:replace-with-checkpoint-queue-bytes"
+  queue_revision: 1
+  queue_state_revision: 0
 
-amendments:                        # Amendment Log (K02/02 Mid-task Guidance and Amendment; recording required by K02/05)
-  - id: "A1"                       # amendment identifier
-    date: "2026-07-05"             # acceptance date
-    summary: "added required dependency pages after scope review"  # summary of which contract elements changed
-    writeback_done: true           # whether it was written back to the affected contract/scope/queue fields (boolean)
+terminal_audit:
+  state: not-started
+  terminal_proof_path: null
+  terminal_proof_sha256: null
+  terminal_proof_receipt: null
+  queue_check_receipt: null
 
-guidance_queue:                    # mid-task guidance queue (K02/02; all three pending guidance counts must be 0 at Terminal Audit, K12/06)
-  - id: "G-001"                    # guidance_id: task-local, monotonically increasing, never reused (K02/02 Amendment Record; used by last_reconciled_guidance_id / guidance_cutoff_id to draw the boundary)
-    class: apply-to-current-batch  # disposition vocabulary owner: K02/02 (interrupt-now/apply-to-current-batch/queue-next/queue-by-dependency/research-first/deferred/clarification-required/superseded/not-applicable)
-    status: verified               # status vocabulary owner: K02/02 (received/classified/mapped/in-progress/verified/clarification-required/deferred/superseded)
+# Mutually exclusive with terminal_audit. For completion_semantics=build this
+# block remains not-applicable. For completion_semantics=maintenance it begins
+# pending and records the canonical maintenance gate plus the three evidence
+# receipts consumed by that gate.
+maintenance_completion:
+  state: not-applicable
+  completion_gate_receipt: null
+  budget_manifest_receipt: null
+  ledger_advance_receipt: null
+  watermark_advance_receipt: null
+
+amendments:
+  # A generic contract/guidance Amendment may use only the common fields.
+  - id: "A-CONTRACT-001"
+    date: "2026-07-05"
+    summary: "changed the checkpoint boundary"
+    status: verified
+    writeback_done: true
+  # A same-scope Queue replan additionally binds operation=queue-replan,
+  # a repository-contained `.cambium/deltas/replans/*.coverage.yaml` proposal
+  # path/SHA, exact affected_pages/affected_batches, unchanged scope, both
+  # Queue revision edges, and the exact replan_diff_sha256. It starts
+  # approved/writeback_done=false; successful compile_queue --apply-replan
+  # changes it to verified/true and records transaction_id/receipt plus the
+  # resulting Coverage and Queue SHAs. Canonical Coverage is never edited
+  # before this guarded three-state transaction.
+  # A scope-replan or cancel-batch instead mirrors every field in
+  # amendment_plan.template.yaml. apply_amendment.py then records, in addition:
+  # transaction_id, transaction_sequence,
+  # previous_transaction_commit_receipt, plan_path, plan_sha256, and
+  # verification_receipt. Cross-Ledger transaction history is append-only.
+
+guidance_queue:
+  - id: "G-001"
+    class: apply-to-current-batch
+    status: verified

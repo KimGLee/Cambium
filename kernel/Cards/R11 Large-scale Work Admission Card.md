@@ -5,13 +5,14 @@ read_set: kernel/Read Sets/R11 Large-scale Work Admission Read Set.md
 compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R11 Large-scale Work Admission Read Set.md
-  - kernel/K00 Standards Control/02 Task Routing and Pre-execution.md
+  - kernel/K00 Standards Control/13 Runtime Admission and Recovery.md
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
   - kernel/K02 Build Execution/01 Contract Time and Task State.md
   - kernel/K02 Build Execution/03 Inventory and Coverage Reconciliation.md
+  - kernel/K02 Build Execution/09 Required Queue.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
-source_hash: 'd2a8ca16b8ac'
+source_hash: '6f8b861b4b4c'
 ---
 # R11 Large-scale Work Admission Card
 
@@ -23,10 +24,11 @@ Load before large-scale creation, moves, or deletion, together with [[kernel/Car
 
 ## Admission Checklist
 
-- [ ] Record contract, scope, queue, initial batch, Standards version, exact `selected_profile_manifest`, selected routes and Cards, actual source read-backs, target scope, exclusions, and latest user requirements.
+- [ ] Record contract, scope, initial batch, Standards version, exact `selected_profile_manifest`, selected routes and Cards, actual source read-backs, target scope, exclusions, and latest user requirements.
 - [ ] Make `minimum_run_until`, `checkpoint_at`, `hard_stop_at`, and the Completion Gate explicit; leave unspecified fields explicitly empty.
-- [ ] Create or refresh the Coverage Ledger and reconcile it with the file system and exclusions.
-- [ ] Inventory ownership, incoming links, user modifications, and the Required Queue.
+- [ ] Initialize `.cambium/` only when absent. If it exists, first run `check_queue.py --resume-status` and reconcile the recorded task; bind Coverage, Required Queue, and Progress to the same task, scope, Standards version, and selected profile.
+- [ ] Reconcile Coverage with the file system and exclusions; inventory ownership, incoming links, user modifications, explicit batch manifests, and dependencies.
+- [ ] Compile the Queue from explicit Coverage inputs, record its path/revisions/fingerprint, and require `Tools/check_queue.py .` plus `--require-ready <initial-batch-id>` to pass.
 - [ ] Identify foundational dependencies without burying shared foundations in the profile application mainline.
 - [ ] For source-driven work, establish a source inventory and claim-extraction plan.
 - [ ] Define batch acceptance, `rendering_mode`, deterministic checks, and the objective trigger plus unresolved question for any visual escalation.
@@ -35,7 +37,7 @@ Load before large-scale creation, moves, or deletion, together with [[kernel/Car
 
 ## Gate
 
-Execution may begin only when every applicable admission item is resolved. If authority, ownership, scope, source evidence, a required dependency, or a recovery boundary remains unresolved, stay in planning or investigation.
+Execution may begin only when every applicable admission item is resolved and the initial Queue item is ready. Missing, wrong-path, empty-by-error, inconsistent, held, or stale runtime state is not an admission pass. If authority, ownership, scope, source evidence, a required dependency, or a recovery boundary remains unresolved, stay in planning or investigation.
 
 ## Read Back When
 

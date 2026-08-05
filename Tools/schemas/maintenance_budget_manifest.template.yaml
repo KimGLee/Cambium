@@ -1,0 +1,53 @@
+# =============================================================================
+# Maintenance budget manifest (one bounded maintenance task)
+# Owner: kernel/K00 Standards Control/08 Maintenance Run Envelope.md
+# Completion owner: kernel/K00 Standards Control/06 Completion Precedence and
+# Task Contract.md#Maintenance Completion
+#
+# Materialize this outside the Cambium distribution for a maintenance runtime,
+# freeze it before work starts, and close it only after every selected object
+# is terminal. check_queue --require-maintenance-complete validates these bytes
+# and the receipt that binds them; this template is not runtime state itself.
+# =============================================================================
+
+schema_version: 2
+task_id: "kb-maint-2026-xx"
+run_id: "maint-2026-xx-r1"
+scope_version: "s1"
+standards_version: ""
+selected_profile_manifest: "profiles/my-profile/profile.md"
+# Null on the first run. A later run names the prior maintenance-completion
+# receipt whose candidate-state projection supplies previous_deferred_runs.
+previous_maintenance_completion_receipt: null
+budget_unit: pages
+budget_limit: 20
+# Required for every manifest. Keep null for pages/batches; for an hours
+# envelope record the actual non-negative hours consumed before closing.
+consumed_hours: null
+# One fused record per object path after the four K00/08 candidate sources have
+# been unioned. candidate_id is candidate-sha256:<sha256(object_path)>.
+candidates:
+  - candidate_id: "candidate-sha256:505683d475799caf36ef4992e5536b79faee50f6ebc74f0942d01bf05c2ce158"
+    object_path: "Topics/Example.md"
+    source_kinds:
+      - freshness
+    priority: P1
+    previous_deferred_runs: 0
+    consecutive_deferred_runs: 0
+    reentered_after_terminal: false
+    selection: selected
+    disposition: null
+    disposition_reason: null
+selected_candidate_ids:
+  - "candidate-sha256:505683d475799caf36ef4992e5536b79faee50f6ebc74f0942d01bf05c2ce158"
+deferred_candidate_ids: []
+selected_objects:
+  - "Topics/Example.md"
+required_batch_ids:
+  - "B1"
+# Derived display value; the gate requires exact equality with
+# len(deferred_candidate_ids), so a count can never replace the set.
+deferred_count: 0
+open_items: 0
+state: closed
+closed_at: "2026-08-05T00:00:00Z"

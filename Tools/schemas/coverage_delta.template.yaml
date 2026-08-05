@@ -5,8 +5,9 @@
 #             Coverage/Progress Ledger directly; they only produce this file,
 #             and the integrator applies it to the canonical Ledger during
 #             the serial merge)
-# Location: Machine State/Deltas/<batch>.yaml; after merging, the integrator
-#             archives or deletes it
+# Location: .cambium/deltas/<batch>.yaml; after merging, the integrator
+#             applies it and retains it with the merge receipt as the durable
+#             delta referenced by the closed Queue history
 #
 # Only the restricted YAML subset is allowed (parseable by Tools/kblib.py parse_yaml_subset):
 #   - `key: value` scalars; `- item` lists indented under `key:`; list items
@@ -21,7 +22,18 @@ pages:                             # status updates for pages on this batch's ma
     authoring_status: reviewed     # updated status-axis value (vocabulary owner K08/03)
     gate_receipts: ["r-0311", "r-0312"]  # receipt ids this batch produced for the page
 
+# A page delta MUST NOT contain any control field owned by Coverage
+# reconciliation, profile policy, or Queue compilation.  If even one page
+# contains one of these keys, apply_delta rejects the entire delta and writes
+# nothing (the value is forbidden even when it matches the current value):
+#   coverage_disposition, canonical_owner, batch, next_batch, priority, tier,
+#   type, prerequisites, deferred_reason, reentry_condition
+# Workers may report a proposed route change only through
+# `next_batch_updates`; that list is suggestion-only and is never applied by
+# apply_delta.  The integrator resolves it through the controlled
+# Coverage/Queue replan path.
+
 open_gaps_added: []                # open gaps added by this batch (including needs_rereview and cross-batch missing links, type: link; type vocabulary in the coverage_ledger template)
 open_gaps_closed: []               # open gaps closed by this batch (gap id or page+type)
-next_batch_updates: []             # suggested adjustments to later batch manifests (suggestions only; queue revision authority stays with the integrator)
+next_batch_updates: []             # suggestion-only; apply_delta never writes these values into Coverage
 watermark_advance:                 # optional: watermark advance values from source/maintenance batches (K02/05; the integrator applies them to Tools/state/watermark.yaml at merge)

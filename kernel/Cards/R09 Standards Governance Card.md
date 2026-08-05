@@ -17,7 +17,7 @@ source_files:
   - kernel/K12 Quality Assurance/08 Judgment Item Dimension Map.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'a6b612129625'
+source_hash: '13614110b4be'
 ---
 # R09 Standards Governance Card
 

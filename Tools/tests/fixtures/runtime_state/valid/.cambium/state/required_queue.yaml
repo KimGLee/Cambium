@@ -1,0 +1,33 @@
+schema_version: 1
+task_id: fixture-task
+scope_version: s1
+queue_revision: 1
+state_revision: 0
+standards_version: 3.0.0
+selected_profile_manifest: profiles/test-profile/profile.md
+required_queue:
+  - id: B1
+    family: Core
+    order: 1
+    record_count: 1
+    manifest:
+      - Topics/A.md
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on: []
+    confirmation_required: false
+    state: queued
+    hold_state: none
+  - id: B2
+    family: Core
+    order: 2
+    record_count: 1
+    manifest:
+      - Topics/B.md
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on:
+      - B1
+    confirmation_required: false
+    state: queued
+    hold_state: none

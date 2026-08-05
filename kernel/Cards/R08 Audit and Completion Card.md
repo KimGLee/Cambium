@@ -11,8 +11,10 @@ source_files:
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
   - kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md
+  - kernel/K12 Quality Assurance/16 Terminal Proof Contract.md
   - kernel/K02 Build Execution/07 Completion and Handoff.md
-source_hash: '124b34418655'
+  - kernel/K02 Build Execution/09 Required Queue.md
+source_hash: 'b36157a06b89'
 ---
 # R08 Audit and Completion Card
 
@@ -24,13 +26,13 @@ Load only after the whole task enters `completion-candidate`. This Card owns Com
 
 ## Before Start
 
-- [ ] Require `completion-candidate`, freeze content and the candidate snapshot, and record contract, scope, queue, Standards version, `selected_profile_manifest`, Guidance cutoff, Cards, Read Sets, and read-back modules.
+- [ ] Require `completion-candidate`, freeze content and the candidate snapshot, and record contract, scope, Queue path/structural revision/state revision/SHA-256, Standards version, `selected_profile_manifest`, Guidance cutoff, Cards, Read Sets, and read-back modules.
 - [ ] Derive audit scope from changed, invalidated, overdue, legacy-evidence, and bounded-sampling objects; do not indiscriminately redo valid evidence.
 - [ ] Confirm all prerequisite gates have already run. Terminal Audit does not replace an omitted page, batch, module, source, or expression gate.
 
 ## During
 
-Load receipts and invalidations → reconcile Guidance → reconcile Coverage → confirm all batches closed and merge queue empty → run the Batch-close Closed List on the frozen snapshot → use R12 for changed/invalidated/overdue/sampled and specialized-invariant review → verify source promotion and profile extension gates → review deterministic rendering and only triggered visual evidence → expand systemic findings → produce receipt reconciliation, Final Handoff, and Terminal Proof.
+Load receipts and invalidations → reconcile Guidance and Coverage → run `check_queue.py --require-complete` against the frozen Queue and require `remaining_required_work_units = 0` → run the Batch-close Closed List → use R12 for changed/invalidated/overdue/sampled and specialized-invariant review → verify source promotion and profile extension gates → review deterministic rendering and only triggered visual evidence → expand systemic findings → produce receipt reconciliation, Final Handoff, and Terminal Proof.
 
 - Review correctness, depth, provenance, integration, maintainability, and applicable rendering, not only structure.
 - Without a visual exception trigger, UI, screenshot, and recording evidence are not applicable.
@@ -40,11 +42,12 @@ Load receipts and invalidations → reconcile Guidance → reconcile Coverage �
 ## Completion Gate
 
 - [ ] Guidance reconciliation has zero unclassified, accepted-unmapped, and implemented-unverified items.
+- [ ] The current Queue completion receipt matches its path, structural/state revisions, and SHA-256; all Required work units are closed, with authorized cancellation history only.
 - [ ] `required_authoring_gaps = 0`.
 - [ ] `unverified_batches = 0`, including no `merge-ready` unmerged batch.
 - [ ] `unresolved_invalidations = 0`.
 - [ ] All applicable page, module, source, expression, rendering, batch, and terminal gates pass.
-- [ ] Final Handoff and machine-readable Terminal Proof are complete, and `python3 Tools/check_proof.py <proof.yaml> --root <repository-root> --progress-ledger <progress-ledger>` passes. A run without `--root` is structural lint only and cannot support `complete`.
+- [ ] In `completion-candidate`, rerun `check_queue.py --require-complete --receipts <proof-queue-receipt>` so the cited receipt binds the frozen Progress bytes. Final Handoff and machine-readable Terminal Proof are complete, and `python3 Tools/check_proof.py <proof.yaml> --root <repository-root> --progress-ledger <progress-ledger> --ledger <coverage-ledger> --receipts <proof-receipt>` passes; `update_task.py --transition complete` consumes that Proof pass receipt. A run without `--root` is structural lint only and cannot support `complete`.
 - [ ] Time contract is satisfied without using time, file count, or check count as proof of completion.
 
 ## Read Back When

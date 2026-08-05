@@ -72,7 +72,7 @@ A task MAY combine routes. For example, expanding a system topic from primary so
 | `R08` | [[kernel/Read Sets/R08 Audit and Completion Read Set\|Audit and Completion]] | Review, close, or prove completion |
 | `R09` | [[kernel/Read Sets/R09 Standards Governance Read Set\|Standards Governance]] | Modify Standards or the control plane |
 | `R10` | [[kernel/Read Sets/R10 Maintenance Run Read Set\|Maintenance Run]] | Run bounded freshness and maintenance work |
-| `R11` | [[kernel/Read Sets/R11 Large-scale Work Admission Read Set\|Large-scale Work Admission]] | Pass the large-scale Pre-execution Gate before execution |
+| `R11` | [[kernel/Read Sets/R11 Large-scale Work Admission Read Set\|Large-scale Work Admission]] | Pass the Large-scale Pre-execution Gate before execution |
 | `R12` | [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set\|Targeted and Specialized Audit]] | Audit a bounded affected scope or one specialized invariant |
 
 ## Selection Rules
@@ -94,4 +94,4 @@ A task MAY combine routes. For example, expanding a system topic from primary so
 - [[kernel/K00 Standards Overview|Standards Overview]]
 - [[kernel/Cards/Card Index|Card Index]]
 - [[kernel/K00 Standards Control/01 Operating Role and Reading Protocol|Operating Role and Reading Protocol]]
-- [[kernel/K00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]]
+- [[kernel/K00 Standards Control/02 Task Routing|Task Routing]]

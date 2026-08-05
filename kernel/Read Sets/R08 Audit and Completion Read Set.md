@@ -5,7 +5,7 @@ route_id: R08
 
 ## Purpose
 
-Used only after the whole task enters `completion-candidate`, to perform the Completion Gate, Terminal Audit, Terminal Proof, and final report. Page, batch, module, maintenance, and targeted-audit gates remain with their owning routes.
+Used only by a task whose contract declares `completion_semantics: build`, after the whole task enters `completion-candidate`, to perform the Completion Gate, Terminal Audit, Terminal Proof, and final report. Page, batch, module, maintenance, and targeted-audit gates remain with their owning routes. A maintenance task MUST NOT combine R08, and `check_proof.py` rejects maintenance semantics.
 
 ## Start
 
@@ -19,7 +19,9 @@ First read:
 - [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]]
 - [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]]
 - [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence|Terminal Audit and Convergence]]
+- [[kernel/K12 Quality Assurance/16 Terminal Proof Contract|Terminal Proof Contract]]
 - [[kernel/K02 Build Execution/07 Completion and Handoff|Completion and Handoff]]
+- [[kernel/K02 Build Execution/09 Required Queue|Required Queue]]
 - The selected profile's `Language Contract`.
 
 ## Triggered
@@ -28,7 +30,7 @@ First read:
 
 ## Completion Rule
 
-Passing structural checks MUST NOT lead to skipping correctness, depth, provenance, integration, or the applicable deterministic rendering. The audit first derives its scope from AuditReceipts, fingerprints, and invalidation events: the final graph-related checks run per the [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]], and expensive manual review covers changed, invalidated, overdue, and sampled objects. The Terminal Audit may audit only a completion candidate that already satisfies all applicable gates; without a visual exception trigger, the absence of UI, screenshot, or recording evidence MUST NOT be judged a failure.
+Passing structural checks MUST NOT lead to skipping correctness, depth, provenance, integration, or the applicable deterministic rendering. The audit first derives its scope from AuditReceipts, fingerprints, and invalidation events: the final graph-related checks run per the [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]], and expensive manual review covers changed, invalidated, overdue, and sampled objects. The Terminal Audit may audit only a completion candidate that already satisfies all applicable gates, including `check_queue.py --require-complete` against the frozen Queue and `remaining_required_work_units = 0`; without a visual exception trigger, the absence of UI, screenshot, or recording evidence MUST NOT be judged a failure.
 
 ## Related
 

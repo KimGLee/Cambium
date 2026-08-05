@@ -17,7 +17,8 @@
 # =============================================================================
 
 updated_at: "2026-07-21T00:00:00Z"  # time the watermark was last advanced (batch close point)
-last_run_id: "kb-maint-2026-xx-B1"  # identifier of the batch that advanced this watermark; corresponds to the Progress Ledger's task/batch identity (K02/08; advancement at batch merge is governed by K02/05)
+last_run_id: "kb-maint-2026-xx"     # maintenance-run envelope whose scan result this watermark records; must equal the closed maintenance budget manifest run_id
+last_batch_id: "B1"                 # Required Queue batch that performed the final watermark advance for that run; must be one of the manifest's required_batch_ids
 
 domains:                            # one section per domain (domain vocabulary owner: K08/01)
   example-domain:                   # replace with one domain value registered by the selected profile

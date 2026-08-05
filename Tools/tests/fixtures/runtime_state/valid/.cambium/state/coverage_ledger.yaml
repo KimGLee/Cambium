@@ -1,0 +1,52 @@
+schema_version: 1
+task_id: fixture-task
+updated_at: 2026-08-04T00:00:00Z
+scope_version: s1
+standards_version: 3.0.0
+selected_profile_manifest: profiles/test-profile/profile.md
+batch_specs:
+  - id: B1
+    family: Core
+    order_hint: 1
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on: []
+    confirmation_required: false
+  - id: B2
+    family: Core
+    order_hint: 2
+    source_route: R03
+    execution_mode: concurrent-worker
+    depends_on:
+      - B1
+    confirmation_required: false
+maintenance_candidates: []
+pages:
+  - path: Topics/A.md
+    coverage_disposition: required
+    canonical_owner: Topics/A.md
+    type: concept
+    priority: P0
+    tier: M
+    authoring_status: drafted
+    prerequisites: []
+    batch: B1
+    next_batch: B1
+    deferred_reason: null
+    reentry_condition: null
+    gate_receipts: []
+  - path: Topics/B.md
+    coverage_disposition: required
+    canonical_owner: Topics/B.md
+    type: concept
+    priority: P1
+    tier: M
+    authoring_status: drafted
+    prerequisites:
+      - Topics/A.md
+    batch: B2
+    next_batch: B2
+    deferred_reason: null
+    reentry_condition: null
+    gate_receipts: []
+open_gaps: []

@@ -156,7 +156,8 @@ def h2_sections(text):
 
 
 def read_text(path):
-    return open(path, encoding="utf-8", errors="replace").read()
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        return handle.read()
 
 
 def interface_slots(text):

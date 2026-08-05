@@ -1,0 +1,1373 @@
+from pathlib import Path
+import copy
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest import mock
+
+TOOLS = Path(__file__).resolve().parents[1]
+FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
+sys.path.insert(0, str(TOOLS))
+
+import check_queue
+import compile_queue
+import kblib
+
+
+class CompileQueueTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "repo"
+        shutil.copytree(FIXTURE, self.root)
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        coverage["batch_specs"] = [
+            {
+                "id": "B1", "family": "Core", "order_hint": 1,
+                "source_route": "R03", "execution_mode": "concurrent-worker",
+                "depends_on": [], "confirmation_required": False,
+            },
+            {
+                "id": "B2", "family": "Core", "order_hint": 2,
+                "source_route": "R03", "execution_mode": "concurrent-worker",
+                "depends_on": ["B1"], "confirmation_required": False,
+            },
+        ]
+        coverage_path.write_text(kblib.canonical_yaml(coverage), encoding="utf-8")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def load(self, relative):
+        return kblib.load_yaml_file(self.root / relative)
+
+    def write_queue(self, queue):
+        text = kblib.canonical_yaml(queue)
+        (self.root / check_queue.QUEUE_PATH).write_text(text, encoding="utf-8")
+        progress = self.load(check_queue.PROGRESS_PATH)
+        progress["queue_revision"] = queue["queue_revision"]
+        progress["queue_state_revision"] = queue["state_revision"]
+        progress["required_queue_sha256"] = kblib.sha256_bytes(text)
+        (self.root / check_queue.PROGRESS_PATH).write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+
+    def make_task_active_without_open(self):
+        for state, summary, at in (
+                ("paused", "fixture pre-activation interruption",
+                 "2026-08-04T00:01:00Z"),
+                ("active", "fixture pre-activation resume",
+                 "2026-08-04T00:02:00Z")):
+            completed = subprocess.run(
+                [sys.executable, str(TOOLS / "update_task.py"), str(self.root),
+                 "--transition", state, "--checkpoint-summary", summary,
+                 "--expected-progress-sha256",
+                 kblib.sha256_file(self.root / check_queue.PROGRESS_PATH),
+                 "--expected-queue-sha256",
+                 kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+                 "--actor-role", "integrator", "--at", at, "--apply"],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                check=False,
+            )
+            self.assertEqual(0, completed.returncode, completed.stdout)
+
+    def empty_queue(self):
+        queue = self.load(check_queue.QUEUE_PATH)
+        queue["required_queue"] = []
+        self.write_queue(queue)
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = kblib.load_yaml_file(progress_path)
+        progress["initial_queue_receipt"] = None
+        progress_path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
+
+    def batch_spec(self, coverage, batch_id):
+        return next(spec for spec in coverage["batch_specs"]
+                    if spec["id"] == batch_id)
+
+    def write_proposal(self, coverage, amendment_id="A-REPLAN"):
+        relative = ".cambium/deltas/replans/%s.coverage.yaml" % amendment_id
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(kblib.canonical_yaml(coverage), encoding="utf-8")
+        return relative
+
+    def add_amendment(self, proposal_relative, amendment_id="A-REPLAN",
+                      overrides=None):
+        relative = ".cambium/tmp/%s-auth.yaml" % amendment_id
+        proposed = self.command(
+            "--coverage-proposal", proposal_relative, "--output", relative)
+        self.assertEqual(0, proposed.returncode, proposed.stdout)
+        diff_path = self.root / relative
+        diff = kblib.load_yaml_file(diff_path)
+        changed_batches = sorted({
+            entry["id"]
+            for field in ("add_candidates", "update_candidates",
+                          "reorder_candidates", "remove_candidates")
+            for entry in diff.get(field, [])
+            if isinstance(entry, dict) and isinstance(entry.get("id"), str)
+        })
+        queue = self.load(check_queue.QUEUE_PATH)
+        proposal = self.load(proposal_relative)
+        affected_pages = compile_queue.validate_same_scope_proposal(
+            self.load(check_queue.COVERAGE_PATH), proposal)
+        record = {
+            "id": amendment_id, "date": "2026-08-04",
+            "summary": "approved Queue structural replan",
+            "status": "approved", "writeback_done": False,
+            "operation": "queue-replan",
+            "coverage_proposal_path": proposal_relative,
+            "coverage_proposal_sha256": kblib.sha256_file(
+                self.root / proposal_relative),
+            "affected_pages": affected_pages,
+            "affected_batches": changed_batches,
+            "scope_version_before": queue["scope_version"],
+            "scope_version_after": queue["scope_version"],
+            "queue_revision_before": queue["queue_revision"],
+            "queue_revision_after": queue["queue_revision"] + 1,
+            "queue_state_revision_before": queue["state_revision"],
+            "queue_state_revision_after": queue["state_revision"],
+            "replan_diff_sha256": kblib.sha256_file(diff_path),
+        }
+        record.update(overrides or {})
+        path = self.root / check_queue.PROGRESS_PATH
+        progress = kblib.load_yaml_file(path)
+        progress.setdefault("amendments", []).append(record)
+        path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
+
+    def apply_replan(self, proposal_relative, amendment_id="A-REPLAN",
+                     *extra):
+        queue = self.load(check_queue.QUEUE_PATH)
+        return self.command(
+            "--coverage-proposal", proposal_relative,
+            "--apply-replan", "--amendment-id", amendment_id,
+            "--expected-queue-revision", str(queue["queue_revision"]),
+            "--expected-state-revision", str(queue["state_revision"]),
+            "--expected-sha256",
+            kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+            "--expected-coverage-sha256",
+            kblib.sha256_file(self.root / check_queue.COVERAGE_PATH),
+            "--expected-progress-sha256",
+            kblib.sha256_file(self.root / check_queue.PROGRESS_PATH),
+            "--actor-role", "integrator", *extra,
+        )
+
+    def close_b1(self):
+        self.make_task_active_without_open()
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\npages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-1\n",
+            encoding="utf-8",
+        )
+        delta_sha = kblib.sha256_file(delta)
+        open_sha = "sha256:" + "a" * 64
+        merge_sha = "sha256:" + "b" * 64
+        close_sha = "sha256:" + "c" * 64
+        preclose_coverage_sha = "sha256:" + "e" * 64
+        progress_sha = "sha256:" + "f" * 64
+        merged_snapshot_sha = "sha256:" + "7" * 64
+        receipts = [
+            {
+                "receipt_id": "audit-page-1", "result": "pass",
+                "invalidated_by": None,
+            },
+            {
+                "receipt_id": "audit-batch-1", "result": "pass",
+                "invalidated_by": None, "check": "batch_gate",
+                "target": "B1",
+            },
+            {
+                "receipt_id": "audit-transition-open", "result": "pass",
+                "invalidated_by": None, "tool": "update_queue",
+                "tool_version": "1.2.0", "check": "queue_transition",
+                "actor_role": "integrator",
+                "checked_at": "2026-08-04T01:00:00Z",
+                "evidence_receipt": "audit-ready-1",
+                "target": "B1", "task_id": "fixture-task",
+                "queue_revision": 1, "before_state": "queued",
+                "after_state": "open", "before_hold_state": "none",
+                "after_hold_state": "none", "before_state_revision": 0,
+                "after_state_revision": 1,
+                "before_required_queue_sha256": open_sha,
+                "after_required_queue_sha256": merge_sha,
+                "before_coverage_sha256": preclose_coverage_sha,
+                "before_progress_sha256": progress_sha,
+            },
+            {
+                "receipt_id": "audit-transition-merge", "result": "pass",
+                "invalidated_by": None, "tool": "update_queue",
+                "tool_version": "1.2.0", "check": "queue_transition",
+                "actor_role": "integrator",
+                "checked_at": "2026-08-04T02:00:00Z",
+                "evidence_receipt": None,
+                "target": "B1", "task_id": "fixture-task",
+                "queue_revision": 1, "before_state": "open",
+                "after_state": "merge-ready", "before_hold_state": "none",
+                "after_hold_state": "none", "before_state_revision": 1,
+                "after_state_revision": 2,
+                "before_required_queue_sha256": merge_sha,
+                "after_required_queue_sha256": close_sha,
+                "before_coverage_sha256": preclose_coverage_sha,
+                "before_progress_sha256": progress_sha,
+            },
+            {
+                "receipt_id": "audit-transition-close", "result": "pass",
+                "invalidated_by": None, "tool": "update_queue",
+                "tool_version": "1.2.0", "check": "queue_transition",
+                "actor_role": "integrator",
+                "checked_at": "2026-08-04T03:00:00Z",
+                "evidence_receipt": "audit-close-gate-1",
+                "delta_apply_receipt": "audit-delta-apply-b1",
+                "queue_consistency_receipt": "audit-close-1",
+                "close_gate_receipt": "audit-close-gate-1",
+                "target": "B1", "task_id": "fixture-task",
+                "queue_revision": 1, "before_state": "merge-ready",
+                "after_state": "closed", "before_hold_state": "none",
+                "after_hold_state": "none", "before_state_revision": 2,
+                "after_state_revision": 3,
+                "before_required_queue_sha256": close_sha,
+                "after_required_queue_sha256": "sha256:" + "d" * 64,
+                "before_coverage_sha256": preclose_coverage_sha,
+                "before_progress_sha256": progress_sha,
+            },
+            {
+                "receipt_id": "audit-delta-apply-b1", "result": "pass",
+                "invalidated_by": None, "tool": "apply_delta",
+                "tool_version": "1.4.0", "check": "delta_apply",
+                "target": "B1", "task_id": "fixture-task",
+                "batch_id": "B1", "actor_role": "integrator",
+                "coverage_ledger_path": check_queue.COVERAGE_PATH,
+                "delta_path": ".cambium/deltas/B1.yaml",
+                "delta_sha256": delta_sha,
+                "before_coverage_sha256": "sha256:" + "0" * 64,
+                "after_coverage_sha256": preclose_coverage_sha,
+                "required_queue_sha256": close_sha,
+                "queue_revision": 1, "queue_state_revision": 2,
+            },
+            {
+                "receipt_id": "audit-ready-1", "result": "pass",
+                "invalidated_by": None, "tool": "check_queue",
+                "tool_version": check_queue.TOOL_VERSION,
+                "check": "required_queue",
+                "queue_check_mode": "require-ready:B1",
+                "task_id": "fixture-task", "queue_revision": 1,
+                "queue_state_revision": 0,
+                "required_queue_sha256": open_sha,
+                "coverage_ledger_sha256": preclose_coverage_sha,
+                "progress_ledger_sha256": progress_sha,
+            },
+            {
+                "receipt_id": "audit-close-1", "result": "pass",
+                "invalidated_by": None, "tool": "check_queue",
+                "tool_version": check_queue.TOOL_VERSION,
+                "check": "required_queue",
+                "queue_check_mode": "consistency",
+                "task_id": "fixture-task", "queue_revision": 1,
+                "queue_state_revision": 2,
+                "required_queue_sha256": close_sha,
+                "coverage_ledger_sha256": preclose_coverage_sha,
+                "progress_ledger_sha256": progress_sha,
+                "repository_snapshot_sha256": merged_snapshot_sha,
+            },
+        ]
+        closed_list_evidence = {}
+        integrator_id = "fixture-integrator"
+        reviewer_id = "fixture-reviewer"
+        for field in check_queue.CLOSED_LIST_EVIDENCE_FIELDS:
+            receipt_id = "audit-closed-list-%s" % field
+            receipts.append({
+                "receipt_id": receipt_id, "result": "pass",
+                "invalidated_by": None,
+                "tool": "check_batch_close", "tool_version": "1.0.0",
+                "check": "closed_list_%s" % field,
+                "target": ".", "batch_id": "B1",
+                "task_id": "fixture-task",
+                "integrator_id": integrator_id,
+                "reviewer_id": reviewer_id,
+                "merged_snapshot_sha256": merged_snapshot_sha,
+                "candidate_evidence": [],
+            })
+            closed_list_evidence[field] = receipt_id
+        receipts.extend((
+            {
+                "receipt_id": "audit-review-attestation-1",
+                "result": "pass", "invalidated_by": None,
+                "tool": "check_batch_close", "tool_version": "1.0.0",
+                "check": "batch_global_review_attestation",
+                "target": "B1", "batch_id": "B1",
+                "task_id": "fixture-task",
+                "integrator_id": integrator_id,
+                "reviewer_id": reviewer_id,
+                "details": "fixture independent review attestation",
+                "merged_snapshot_sha256": merged_snapshot_sha,
+                "accepted_candidate_ids": [],
+                "accepted_candidate_types": [],
+                "candidate_dispositions": [],
+            },
+            {
+                "receipt_id": "audit-global-review-1", "result": "pass",
+                "invalidated_by": None,
+                "tool": "check_batch_close", "tool_version": "1.0.0",
+                "check": "batch_global_review",
+                "target": "B1", "batch_id": "B1",
+                "task_id": "fixture-task",
+                "integrator_id": integrator_id,
+                "reviewer_id": reviewer_id,
+                "merged_snapshot_sha256": merged_snapshot_sha,
+                "reviewer_attestation_receipt":
+                    "audit-review-attestation-1",
+                "closed_list_evidence": closed_list_evidence,
+            },
+            {
+                "receipt_id": "audit-close-gate-1", "result": "pass",
+                "invalidated_by": None,
+                "tool": "check_batch_close", "tool_version": "1.0.0",
+                "check": "batch_close_gate",
+                "target": "B1", "batch_id": "B1",
+                "task_id": "fixture-task", "queue_revision": 1,
+                "integrator_id": integrator_id,
+                "reviewer_id": reviewer_id,
+                "queue_state_revision": 2,
+                "required_queue_sha256": close_sha,
+                "coverage_ledger_sha256": preclose_coverage_sha,
+                "progress_ledger_sha256": progress_sha,
+                "delta_sha256": delta_sha,
+                "delta_apply_receipt": "audit-delta-apply-b1",
+                "queue_consistency_receipt": "audit-close-1",
+                "merged_snapshot_sha256": merged_snapshot_sha,
+                "reviewer_attestation_receipt":
+                    "audit-review-attestation-1",
+                "global_review_receipt": "audit-global-review-1",
+                "closed_list_evidence": closed_list_evidence,
+            },
+        ))
+        receipt_path = self.root / ".cambium/receipts/history.jsonl"
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_text(
+            "".join(json.dumps(receipt) + "\n" for receipt in receipts),
+            encoding="utf-8",
+        )
+        queue = self.load(check_queue.QUEUE_PATH)
+        item = queue["required_queue"][0]
+        item.update({
+            "state": "closed", "transition_receipts": [
+                "audit-transition-open", "audit-transition-merge",
+                "audit-transition-close",
+            ],
+            "opened_at": "2026-08-04T01:00:00Z",
+            "activation_receipt": "audit-ready-1",
+            "merge_ready_at": "2026-08-04T02:00:00Z",
+            "delta_path": ".cambium/deltas/B1.yaml",
+            "delta_sha256": delta_sha,
+            "batch_receipts": ["audit-batch-1"],
+            "closed_at": "2026-08-04T03:00:00Z",
+            "queue_consistency_receipt": "audit-close-1",
+            "close_gate_receipt": "audit-close-gate-1",
+            "delta_apply_receipt": "audit-delta-apply-b1",
+        })
+        queue["state_revision"] = 3
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage["pages"][0]["next_batch"] = None
+        (self.root / check_queue.COVERAGE_PATH).write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        self.write_queue(queue)
+        live_coverage_sha = kblib.sha256_file(
+            self.root / check_queue.COVERAGE_PATH)
+        receipts_by_id = {receipt["receipt_id"]: receipt
+                          for receipt in receipts}
+        receipts_by_id["audit-transition-close"]["before_coverage_sha256"] = \
+            live_coverage_sha
+        receipts_by_id["audit-transition-close"]["after_coverage_sha256"] = \
+            live_coverage_sha
+        receipts_by_id["audit-delta-apply-b1"]["after_coverage_sha256"] = \
+            live_coverage_sha
+        receipts_by_id["audit-close-1"]["coverage_ledger_sha256"] = \
+            live_coverage_sha
+        receipts_by_id["audit-close-gate-1"]["coverage_ledger_sha256"] = \
+            live_coverage_sha
+        receipts_by_id["audit-transition-close"]["after_required_queue_sha256"] = \
+            kblib.sha256_file(self.root / check_queue.QUEUE_PATH)
+        receipt_path.write_text(
+            "".join(json.dumps(receipt) + "\n" for receipt in receipts),
+            encoding="utf-8",
+        )
+        return copy.deepcopy(item)
+
+    def cancel_b1(self):
+        before_queue_sha = kblib.sha256_file(
+            self.root / check_queue.QUEUE_PATH)
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        page = coverage["pages"][0]
+        page["coverage_disposition"] = "deferred"
+        page["next_batch"] = None
+        page["deferred_reason"] = "removed by approved scope disposition"
+        page["reentry_condition"] = "new explicit scope Amendment"
+        coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = kblib.load_yaml_file(progress_path)
+        progress["amendments"].append({
+            "id": "A-CANCEL", "date": "2026-08-04",
+            "summary": "cancel B1", "writeback_done": True,
+        })
+        progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+        queue = self.load(check_queue.QUEUE_PATH)
+        item = queue["required_queue"][0]
+        item.update({
+            "state": "cancelled", "hold_state": "none",
+            "cancelled_at": "2026-08-04T01:00:00Z",
+            "cancellation_amendment": "A-CANCEL",
+            "transition_receipts": ["audit-amendment-cancel-b1"],
+        })
+        queue["state_revision"] += 1
+        after_queue_text = kblib.canonical_yaml(queue)
+        self.write_queue(queue)
+        kblib.write_receipts(
+            self.root / ".cambium/receipts/amendment-history.jsonl", [{
+                "receipt_id": "audit-amendment-cancel-b1",
+                "tool": "apply_amendment", "tool_version": "1.0.0",
+                "check": "queue_transition", "target": "B1",
+                "result": "pass", "invalidated_by": None,
+                "actor_role": "integrator",
+                "checked_at": "2026-08-04T01:00:00Z",
+                "task_id": "fixture-task", "queue_revision": 1,
+                "before_state": "queued", "after_state": "cancelled",
+                "before_hold_state": "none", "after_hold_state": "none",
+                "before_state_revision": 0, "after_state_revision": 1,
+                "before_required_queue_sha256": before_queue_sha,
+                "after_required_queue_sha256":
+                    kblib.sha256_bytes(after_queue_text),
+            }])
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        return copy.deepcopy(
+            self.load(check_queue.QUEUE_PATH)["required_queue"][0])
+
+    def command(self, *args):
+        return subprocess.run(
+            [sys.executable, str(TOOLS / "compile_queue.py"), str(self.root),
+             *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+
+    def update_command(self, *args):
+        return subprocess.run(
+            [sys.executable, str(TOOLS / "update_queue.py"), str(self.root),
+             *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+
+    def append_receipt(self, receipt_id, target="B1", check="fixture"):
+        path = self.root / ".cambium/receipts/fixture.jsonl"
+        kblib.write_receipts(path, [{
+            "receipt_id": receipt_id, "check": check, "target": target,
+            "result": "pass", "invalidated_by": None,
+        }])
+
+    def queue_gate(self, *mode):
+        relative = ".cambium/receipts/replan-preflight-gates.jsonl"
+        completed = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             *mode, "--receipts", relative], text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        return json.loads((self.root / relative).read_text(
+            encoding="utf-8").splitlines()[-1])["receipt_id"]
+
+    def transition(self, batch_id, target, at, *extra):
+        queue = self.load(check_queue.QUEUE_PATH)
+        completed = self.update_command(
+            "--id", batch_id, "--transition", target,
+            "--expected-state-revision", str(queue["state_revision"]),
+            "--expected-sha256",
+            kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+            "--actor-role", "integrator", "--at", at, "--apply", *extra,
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        return completed
+
+    def merge_then_invalidate_b1(self):
+        gate = self.queue_gate("--require-ready", "B1")
+        self.transition(
+            "B1", "open", "2026-08-04T01:00:00Z",
+            "--gate-receipt", gate,
+        )
+        self.append_receipt("audit-replan-page-1", target="Topics/A.md")
+        self.append_receipt("audit-replan-batch-1", check="batch_gate")
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-replan-page-1\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8",
+        )
+        self.transition(
+            "B1", "merge-ready", "2026-08-04T02:00:00Z",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-replan-batch-1",
+        )
+        self.transition(
+            "B1", "open", "2026-08-04T03:00:00Z",
+            "--reason", "global validation failed",
+        )
+
+    def apply_scope_amendment(self):
+        amendment_id = "A-SCOPE-BEFORE-REPLAN"
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage["scope_version"] = "s2"
+        coverage["updated_at"] = "2026-08-04T04:00:00Z"
+        coverage["batch_specs"].append({
+            "id": "B3", "family": "Added by scope Amendment",
+            "order_hint": 3, "source_route": "R03",
+            "execution_mode": "concurrent-worker", "depends_on": ["B2"],
+            "confirmation_required": False,
+        })
+        coverage["pages"].append({
+            "path": "Topics/C.md", "coverage_disposition": "required",
+            "canonical_owner": "Topics/C.md", "type": "concept",
+            "priority": "P1", "tier": "M", "authoring_status": "drafted",
+            "prerequisites": ["Topics/B.md"], "batch": "B3",
+            "next_batch": "B3", "deferred_reason": None,
+            "reentry_condition": None, "gate_receipts": [],
+        })
+        proposal_relative = (
+            ".cambium/deltas/amendments/%s.coverage.yaml" % amendment_id)
+        proposal_path = self.root / proposal_relative
+        proposal_path.parent.mkdir(parents=True, exist_ok=True)
+        proposal_path.write_text(kblib.canonical_yaml(coverage), encoding="utf-8")
+        queue = self.load(check_queue.QUEUE_PATH)
+        plan = {
+            "schema_version": 1, "amendment_id": amendment_id,
+            "operation": "scope-replan", "affected_pages": ["Topics/C.md"],
+            "affected_batches": ["B3"],
+            "scope_version_before": queue["scope_version"],
+            "scope_version_after": "s2",
+            "queue_revision_before": queue["queue_revision"],
+            "queue_revision_after": queue["queue_revision"] + 1,
+            "state_revision_before": queue["state_revision"],
+            "state_revision_after": queue["state_revision"],
+            "coverage_proposal_path": proposal_relative,
+            "coverage_proposal_sha256": kblib.sha256_file(proposal_path),
+            "cancel_batch_id": None,
+        }
+        plan_relative = ".cambium/deltas/amendments/%s.yaml" % amendment_id
+        plan_path = self.root / plan_relative
+        plan_path.write_text(kblib.canonical_yaml(plan), encoding="utf-8")
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = self.load(check_queue.PROGRESS_PATH)
+        amendment = {
+            "id": amendment_id, "date": "2026-08-04",
+            "summary": "approved scope expansion", "status": "approved",
+            "writeback_done": False,
+        }
+        for field in (
+                "operation", "affected_pages", "affected_batches",
+                "scope_version_before", "scope_version_after",
+                "queue_revision_before", "queue_revision_after",
+                "state_revision_before", "state_revision_after",
+                "coverage_proposal_path", "coverage_proposal_sha256",
+                "cancel_batch_id"):
+            amendment[field] = copy.deepcopy(plan[field])
+        progress["amendments"].append(amendment)
+        progress_path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
+        completed = subprocess.run(
+            [sys.executable, str(TOOLS / "apply_amendment.py"), str(self.root),
+             "--plan", plan_relative,
+             "--expected-coverage-sha256",
+             kblib.sha256_file(self.root / check_queue.COVERAGE_PATH),
+             "--expected-progress-sha256", kblib.sha256_file(progress_path),
+             "--expected-queue-sha256",
+             kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+             "--actor-role", "integrator", "--apply"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
+
+    def test_same_inputs_produce_identical_proposal(self):
+        self.empty_queue()
+        first = self.command()
+        second = self.command()
+        self.assertEqual(0, first.returncode, first.stdout)
+        self.assertEqual(first.stdout, second.stdout)
+        self.assertIn("manifest:", first.stdout)
+        self.assertLess(first.stdout.index("id: B1"), first.stdout.index("id: B2"))
+
+    def test_batch_specs_are_a_closed_compiler_contract(self):
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        missing = copy.deepcopy(coverage)
+        del missing["batch_specs"][0]["source_route"]
+        with self.assertRaisesRegex(
+                ValueError,
+                r"batch_specs\[0\] misses required field\(s\): source_route"):
+            compile_queue._batch_specs(missing)
+
+        extra = copy.deepcopy(coverage)
+        extra["batch_specs"][0]["runtime_hint"] = "not-owned-here"
+        with self.assertRaisesRegex(
+                ValueError,
+                r"batch_specs\[0\] has unsupported field\(s\): runtime_hint"):
+            compile_queue._batch_specs(extra)
+
+    def test_apply_materializes_initial_queue_and_syncs_progress(self):
+        self.empty_queue()
+        before = self.load(check_queue.QUEUE_PATH)
+        fingerprint = kblib.sha256_file(self.root / check_queue.QUEUE_PATH)
+        completed = self.command(
+            "--apply", "--expected-queue-revision",
+            str(before["queue_revision"]), "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual(2, result["queue"]["queue_revision"])
+        self.assertEqual(["Topics/A.md"],
+                         result["items_by_id"]["B1"]["manifest"])
+        self.assertEqual(["B1"], result["items_by_id"]["B2"]["depends_on"])
+        initial_id = result["progress"]["initial_queue_receipt"]
+        self.assertIsInstance(initial_id, str)
+        receipt = result["receipt_catalog"][initial_id][1]
+        self.assertEqual("queue_structure", receipt["check"])
+        self.assertEqual(result["queue_sha256"],
+                         receipt["after_required_queue_sha256"])
+        self.assertEqual(result["coverage_sha256"],
+                         receipt["after_coverage_sha256"])
+
+    def test_materialized_queue_without_initial_receipt_is_rejected(self):
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = self.load(check_queue.PROGRESS_PATH)
+        progress["initial_queue_receipt"] = None
+        progress_path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("initial Queue must identify a receipt", errors)
+
+    def test_worker_cannot_apply_initial_structure(self):
+        self.empty_queue()
+        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        queue = self.load(check_queue.QUEUE_PATH)
+        completed = self.command(
+            "--apply", "--expected-queue-revision",
+            str(queue["queue_revision"]), "--expected-sha256",
+            kblib.sha256_bytes(before),
+        )
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_inconsistent_progress_identity_blocks_compile(self):
+        self.empty_queue()
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = kblib.load_yaml_file(progress_path)
+        progress["task_id"] = "other-task"
+        progress_path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
+        completed = self.command()
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("differs across Queue/Coverage/Progress", completed.stdout)
+
+    def test_page_prerequisite_is_not_inferred_as_batch_dependency(self):
+        self.empty_queue()
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        self.batch_spec(coverage, "B2")["depends_on"] = []
+        (self.root / check_queue.COVERAGE_PATH).write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        completed = self.command()
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertIn("depends_on: []", completed.stdout)
+
+    def test_dependency_cycle_fails(self):
+        self.empty_queue()
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        self.batch_spec(coverage, "B1")["depends_on"] = ["B2"]
+        (self.root / check_queue.COVERAGE_PATH).write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        completed = self.command()
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("cycle", completed.stdout)
+
+    def test_proposal_output_cannot_overwrite_state(self):
+        self.empty_queue()
+        queue_path = self.root / check_queue.QUEUE_PATH
+        before = queue_path.read_bytes()
+        completed = self.command(
+            "--output", ".cambium/state/required_queue.yaml"
+        )
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertEqual(before, queue_path.read_bytes())
+
+    def test_existing_closed_history_is_not_replaced_or_proposed_as_queued(self):
+        self.close_b1()
+        proposal_relative = self.write_proposal(
+            self.load(check_queue.COVERAGE_PATH))
+        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        completed = self.command("--coverage-proposal", proposal_relative)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertIn("artifact_type: required-queue-replan-diff", completed.stdout)
+        self.assertIn("preserved_closed_ids:", completed.stdout)
+        self.assertIn("- B1", completed.stdout)
+        self.assertNotIn("state: queued", completed.stdout)
+        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_replan_removal_is_blocked_and_does_not_drop_existing_item(self):
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage["pages"][1]["batch"] = "B1"
+        coverage["pages"][1]["next_batch"] = "B1"
+        coverage["batch_specs"] = [spec for spec in coverage["batch_specs"]
+                                   if spec["id"] != "B2"]
+        proposal_relative = self.write_proposal(coverage)
+        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        completed = self.command("--coverage-proposal", proposal_relative)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertIn("remove_candidates:", completed.stdout)
+        self.assertIn("id: B2", completed.stdout)
+        self.assertIn("blocked-amendment-required", completed.stdout)
+        self.assertIn("preserved_lifecycle_ids:", completed.stdout)
+        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_integrator_replan_adds_successor_and_preserves_closed_history(self):
+        closed_b1 = self.close_b1()
+        queue = self.load(check_queue.QUEUE_PATH)
+        queue["required_queue"][0] = copy.deepcopy(closed_b1)
+        self.write_queue(queue)
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        coverage["pages"][0]["next_batch"] = "B3"
+        self.batch_spec(coverage, "B2")["order_hint"] = 3
+        coverage["batch_specs"] = [
+            spec for spec in coverage["batch_specs"] if spec["id"] != "B1"
+        ]
+        coverage["batch_specs"].append({
+            "id": "B3", "family": "Follow-up", "order_hint": 2,
+            "source_route": "R07", "execution_mode": "concurrent-worker",
+            "depends_on": ["B1"], "confirmation_required": False,
+        })
+        proposal_relative = self.write_proposal(coverage)
+        self.add_amendment(proposal_relative)
+        queue_before = self.load(check_queue.QUEUE_PATH)
+        fingerprint = kblib.sha256_file(self.root / check_queue.QUEUE_PATH)
+        completed = self.apply_replan(proposal_relative)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual(2, result["queue"]["queue_revision"])
+        self.assertEqual(3, result["queue"]["state_revision"])
+        self.assertEqual(closed_b1, result["items_by_id"]["B1"])
+        self.assertEqual("queued", result["items_by_id"]["B3"]["state"])
+        self.assertEqual("B1", result["items_by_id"]["B3"]["successor_of"])
+        self.assertEqual(["B1"], result["items_by_id"]["B3"]["depends_on"])
+        self.assertEqual(3, result["items_by_id"]["B2"]["order"])
+        receipts = [json.loads(line) for line in (self.root /
+                    ".cambium/receipts/queue-structure.jsonl")
+                    .read_text(encoding="utf-8").splitlines()]
+        receipt = next(entry for entry in receipts
+                       if entry.get("transaction_phase") == "commit")
+        self.assertEqual("A-REPLAN", receipt["amendment_id"])
+        self.assertEqual(fingerprint,
+                         receipt["before_required_queue_sha256"])
+        progress = self.load(check_queue.PROGRESS_PATH)
+        amendment = next(entry for entry in progress["amendments"]
+                         if entry["id"] == "A-REPLAN")
+        self.assertEqual("verified", amendment["status"])
+        self.assertIs(True, amendment["writeback_done"])
+        self.assertEqual(receipt["receipt_id"],
+                         amendment["transaction_receipt_id"])
+        self.assertEqual(receipt["after_required_queue_sha256"],
+                         amendment["after_required_queue_sha256"])
+        self.assertEqual(receipt["after_coverage_sha256"],
+                         amendment["after_coverage_sha256"])
+        self.assertEqual(
+            kblib.canonical_yaml(coverage),
+            (self.root / check_queue.COVERAGE_PATH).read_text(encoding="utf-8"),
+        )
+
+    def test_replan_requires_exact_pending_amendment(self):
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        self.batch_spec(coverage, "B2")["family"] = "Changed"
+        proposal_relative = self.write_proposal(coverage)
+        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        completed = self.apply_replan(proposal_relative, "MISSING")
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("exactly one matching Amendment", completed.stdout)
+        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_replan_rejects_unrelated_approved_amendment(self):
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        self.batch_spec(coverage, "B2")["family"] = "Changed"
+        proposal_relative = self.write_proposal(coverage)
+        self.add_amendment(
+            proposal_relative, overrides={"affected_batches": ["UNRELATED"]})
+        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        completed = self.apply_replan(proposal_relative)
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("does not bind current replan", completed.stdout)
+        self.assertIn("affected_batches", completed.stdout)
+        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_replan_rejects_proposal_tampered_after_approval(self):
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        self.batch_spec(coverage, "B2")["family"] = "Approved"
+        proposal_relative = self.write_proposal(coverage)
+        self.add_amendment(proposal_relative)
+        self.batch_spec(coverage, "B2")["family"] = "Tampered"
+        self.write_proposal(coverage)
+        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        completed = self.apply_replan(proposal_relative)
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("Coverage proposal SHA does not match", completed.stdout)
+        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_replan_rejects_legacy_written_back_amendment_as_authorization(self):
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        self.batch_spec(coverage, "B2")["family"] = "Changed"
+        proposal_relative = self.write_proposal(coverage)
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = self.load(check_queue.PROGRESS_PATH)
+        progress["amendments"].append({
+            "id": "A-REPLAN", "date": "2026-08-04",
+            "summary": "old unbound record", "writeback_done": True,
+        })
+        progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        completed = self.apply_replan(proposal_relative)
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("misses explicit field(s): status", completed.stdout)
+        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_cancelled_history_absent_from_specs_is_preserved_when_adding_batch(self):
+        queue = self.load(check_queue.QUEUE_PATH)
+        cancelled_b1 = copy.deepcopy(queue["required_queue"][0])
+        cancelled_b1.update({
+            "state": "cancelled", "hold_state": "none",
+            "cancelled_at": "2026-08-04T01:00:00Z",
+            "cancellation_amendment": "A-CANCEL",
+            "transition_receipts": ["audit-amendment-cancel-b1"],
+        })
+        queue["required_queue"][0] = copy.deepcopy(cancelled_b1)
+        queue["state_revision"] = 1
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage["pages"][0]["coverage_disposition"] = "deferred"
+        coverage["pages"][0]["next_batch"] = None
+        coverage["pages"][0]["deferred_reason"] = "approved cancellation"
+        coverage["pages"][0]["reentry_condition"] = "new Amendment"
+        coverage["batch_specs"] = [
+            spec for spec in coverage["batch_specs"] if spec["id"] != "B1"
+        ]
+        coverage["batch_specs"].append({
+            "id": "B3", "family": "Independent", "order_hint": 3,
+            "source_route": "R07", "execution_mode": "concurrent-worker",
+            "depends_on": ["B2"], "confirmation_required": False,
+        })
+        coverage["pages"][1]["next_batch"] = "B3"
+        compiled, _ = compile_queue.compile_document(queue, coverage)
+        diff = compile_queue.replan_diff(
+            queue, compiled, "sha256:" + ("a" * 64))
+        result = compile_queue._build_replanned_queue(queue, compiled, diff)
+        items = {item["id"]: item for item in result["required_queue"]}
+        self.assertEqual(cancelled_b1, items["B1"])
+        self.assertEqual("queued", items["B3"]["state"])
+        self.assertEqual(1, items["B1"]["order"])
+        self.assertEqual([1, 2, 3], sorted(
+            item["order"] for item in result["required_queue"]))
+
+    def test_absent_inflight_item_is_an_explicit_conflict(self):
+        queue = {
+            "task_id": "t", "queue_revision": 4, "state_revision": 2,
+            "required_queue": [{
+                "id": "B1", "state": "open", "order": 1,
+                "family": "Core", "record_count": 1,
+                "manifest": ["Topics/A.md"], "source_route": "R03",
+                "execution_mode": "concurrent-worker", "depends_on": [],
+                "confirmation_required": False,
+            }],
+        }
+        proposal = copy.deepcopy(queue)
+        proposal["required_queue"] = []
+        diff = compile_queue.replan_diff(
+            queue, proposal, "sha256:" + "a" * 64)
+        self.assertEqual("B1", diff["remove_candidates"][0]["id"])
+        self.assertIn("in-flight work cannot be removed", diff["conflicts"][0])
+
+    def test_terminal_only_history_needs_no_current_batch_spec(self):
+        queue = self.load(check_queue.QUEUE_PATH)
+        queue["required_queue"] = [copy.deepcopy(queue["required_queue"][0])]
+        queue["required_queue"][0]["state"] = "closed"
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage["batch_specs"] = []
+        for page in coverage["pages"]:
+            page["coverage_disposition"] = "deferred"
+            page["next_batch"] = None
+        proposal, _ = compile_queue.compile_document(queue, coverage)
+        diff = compile_queue.replan_diff(
+            queue, proposal, "sha256:" + "b" * 64)
+        self.assertEqual([], proposal["required_queue"])
+        self.assertIs(False, diff["has_structural_changes"])
+        self.assertEqual(["B1"], diff["preserved_closed_ids"])
+        self.assertEqual([], diff["remove_candidates"])
+
+    def test_new_and_queued_orders_fill_around_fixed_terminal_order(self):
+        queue = {
+            "required_queue": [
+                {"id": "Q", "state": "queued", "order": 1,
+                 "depends_on": []},
+                {"id": "H", "state": "closed", "order": 2,
+                 "depends_on": []},
+            ],
+        }
+        compiled = [
+            {"id": "A", "state": "queued", "order": 1,
+             "depends_on": []},
+            {"id": "Q", "state": "queued", "order": 2,
+             "depends_on": ["A"]},
+        ]
+        result = compile_queue._assign_replan_orders(queue, compiled)
+        self.assertEqual({"A": 1, "Q": 3},
+                         {item["id"]: item["order"] for item in result})
+        self.assertEqual(2, queue["required_queue"][1]["order"])
+
+    def test_replan_cannot_change_nonqueued_structure(self):
+        self.close_b1()
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        self.batch_spec(coverage, "B1")["family"] = "Changed after close"
+        proposal_relative = self.write_proposal(coverage)
+        self.add_amendment(proposal_relative)
+        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        completed = self.apply_replan(proposal_relative)
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("unresolved conflict", completed.stdout)
+        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_replan_cannot_apply_remove_candidate(self):
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        coverage["pages"][1]["batch"] = "B1"
+        coverage["pages"][1]["next_batch"] = "B1"
+        coverage["batch_specs"] = [spec for spec in coverage["batch_specs"]
+                                   if spec["id"] != "B2"]
+        proposal_relative = self.write_proposal(coverage)
+        self.add_amendment(proposal_relative)
+        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        completed = self.apply_replan(proposal_relative)
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("cannot delete Queue history", completed.stdout)
+        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_consumed_replan_diff_must_match_current_inputs(self):
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        self.batch_spec(coverage, "B2")["family"] = "First proposal"
+        proposal_relative = self.write_proposal(coverage)
+        proposed = self.command(
+            "--coverage-proposal", proposal_relative,
+            "--output", ".cambium/tmp/replan.yaml")
+        self.assertEqual(0, proposed.returncode, proposed.stdout)
+        coverage = self.load(proposal_relative)
+        self.batch_spec(coverage, "B2")["family"] = "Changed after proposal"
+        self.write_proposal(coverage)
+        self.add_amendment(proposal_relative)
+        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        completed = self.apply_replan(
+            proposal_relative, "A-REPLAN",
+            "--replan-diff", ".cambium/tmp/replan.yaml")
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("does not match", completed.stdout)
+        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_proposal_dry_run_does_not_pre_edit_canonical_coverage(self):
+        canonical_before = (self.root / check_queue.COVERAGE_PATH).read_bytes()
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        self.batch_spec(coverage, "B2")["family"] = "Proposed only"
+        proposal_relative = self.write_proposal(coverage)
+        completed = self.command("--coverage-proposal", proposal_relative)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertIn("has_structural_changes: true", completed.stdout)
+        self.assertEqual(
+            canonical_before,
+            (self.root / check_queue.COVERAGE_PATH).read_bytes(),
+        )
+
+    def test_direct_canonical_coverage_edit_is_fail_closed(self):
+        clean = self.load(check_queue.COVERAGE_PATH)
+        proposal_relative = self.write_proposal(copy.deepcopy(clean))
+        self.batch_spec(clean, "B2")["family"] = "Illicit direct edit"
+        (self.root / check_queue.COVERAGE_PATH).write_text(
+            kblib.canonical_yaml(clean), encoding="utf-8")
+        queue_before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        completed = self.command("--coverage-proposal", proposal_relative)
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("current runtime state is inconsistent", completed.stdout)
+        self.assertEqual(
+            queue_before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_same_scope_proposal_rejects_page_metadata_change(self):
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage["pages"][1]["priority"] = "P0"
+        proposal_relative = self.write_proposal(coverage)
+        completed = self.command("--coverage-proposal", proposal_relative)
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("only batch/next_batch may change", completed.stdout)
+
+    def test_same_scope_proposal_cannot_change_maintenance_candidates(self):
+        current = self.load(check_queue.COVERAGE_PATH)
+        proposal = copy.deepcopy(current)
+        proposal["maintenance_candidates"] = [{
+            "candidate_id": "candidate-sha256:" + "0" * 64,
+            "object_path": "Topics/A.md",
+        }]
+        with self.assertRaisesRegex(
+                ValueError, "may not change maintenance_candidates"):
+            compile_queue.validate_same_scope_proposal(current, proposal)
+
+    def test_replan_after_invalidation_copies_archived_delta_evidence(self):
+        self.merge_then_invalidate_b1()
+        before = check_queue.validate_runtime(self.root)
+        self.assertEqual([], before["errors"])
+        invalidation = before["items_by_id"]["B1"]["invalidation_history"][0]
+        self.assertTrue((self.root / invalidation["delta_archive_path"]).is_file())
+
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        self.batch_spec(coverage, "B2")["family"] = "Replanned after rollback"
+        amendment_id = "A-AFTER-INVALIDATION"
+        proposal_relative = self.write_proposal(coverage, amendment_id)
+        self.add_amendment(proposal_relative, amendment_id)
+        completed = self.apply_replan(proposal_relative, amendment_id)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual(
+            invalidation,
+            result["items_by_id"]["B1"]["invalidation_history"][0],
+        )
+        self.assertEqual("Replanned after rollback",
+                         result["items_by_id"]["B2"]["family"])
+
+    def test_replan_after_scope_amendment_copies_plan_and_proposal(self):
+        self.apply_scope_amendment()
+        adopted = check_queue.validate_runtime(self.root)
+        self.assertEqual([], adopted["errors"])
+        cross_ledger = next(
+            entry for entry in adopted["progress"]["amendments"]
+            if entry.get("operation") == "scope-replan")
+        self.assertTrue((self.root / cross_ledger["plan_path"]).is_file())
+        self.assertTrue(
+            (self.root / cross_ledger["coverage_proposal_path"]).is_file())
+
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        self.batch_spec(coverage, "B3")["family"] = "Replanned after adoption"
+        amendment_id = "A-AFTER-SCOPE"
+        proposal_relative = self.write_proposal(coverage, amendment_id)
+        self.add_amendment(proposal_relative, amendment_id)
+        completed = self.apply_replan(proposal_relative, amendment_id)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual("Replanned after adoption",
+                         result["items_by_id"]["B3"]["family"])
+
+    def _transaction_fixture(self):
+        paths = {
+            "coverage": str(self.root / check_queue.COVERAGE_PATH),
+            "queue": str(self.root / check_queue.QUEUE_PATH),
+            "progress": str(self.root / check_queue.PROGRESS_PATH),
+        }
+        before = {
+            name: Path(path).read_text(encoding="utf-8")
+            for name, path in paths.items()
+        }
+        after = copy.deepcopy(before)
+        coverage = kblib.parse_yaml_subset(after["coverage"])
+        coverage["updated_at"] = "2026-08-05T00:00:00Z"
+        after["coverage"] = kblib.canonical_yaml(coverage)
+        queue = kblib.parse_yaml_subset(after["queue"])
+        queue["queue_revision"] += 1
+        after["queue"] = kblib.canonical_yaml(queue)
+        progress = kblib.parse_yaml_subset(after["progress"])
+        progress["queue_revision"] += 1
+        after["progress"] = kblib.canonical_yaml(progress)
+        receipt = {
+            "receipt_id": "audit-commit", "result": "pass",
+            "invalidated_by": None,
+        }
+        operation = {
+            "tool": "compile_queue", "action": "apply-replan",
+            "before_coverage_sha256": kblib.sha256_bytes(before["coverage"]),
+            "before_required_queue_sha256": kblib.sha256_bytes(before["queue"]),
+            "before_progress_sha256": kblib.sha256_bytes(before["progress"]),
+            "planned_after_coverage_sha256": kblib.sha256_bytes(after["coverage"]),
+            "planned_after_required_queue_sha256": kblib.sha256_bytes(after["queue"]),
+            "planned_after_progress_sha256": kblib.sha256_bytes(after["progress"]),
+            "receipt_id": "audit-prepare",
+            "prepare_receipt_id": "audit-prepare",
+            "commit_receipt_id": "audit-commit",
+            "abort_receipt_id": "audit-abort",
+            "receipt_path": ".cambium/receipts/queue-structure.jsonl",
+        }
+        return paths, before, after, receipt, operation
+
+    def test_full_rollback_clears_lock_and_restores_all_state(self):
+        paths, before, after, receipt, operation = self._transaction_fixture()
+        original = kblib.atomic_write_text
+        failed = {"progress": False}
+
+        def flaky(path, text, validator=None):
+            if (path == paths["progress"] and text == after["progress"] and
+                    not failed["progress"]):
+                failed["progress"] = True
+                raise OSError("injected progress write failure")
+            return original(path, text, validator=validator)
+
+        with mock.patch.object(kblib, "atomic_write_text", side_effect=flaky):
+            with self.assertRaises(OSError):
+                compile_queue._commit_state(
+                    str(self.root), paths, before, after,
+                    ("coverage", "queue", "progress"),
+                    self.root / ".cambium/receipts/queue-structure.jsonl",
+                    {"receipt_id": "audit-prepare"}, receipt,
+                    {"receipt_id": "audit-abort"}, operation,
+                )
+        for name, path in paths.items():
+            self.assertEqual(before[name], Path(path).read_text(encoding="utf-8"))
+        self.assertFalse((self.root / ".cambium/tmp/state-writer.lock").exists())
+
+    def test_locked_prevalidation_rejection_clears_false_lock(self):
+        paths, before, after, receipt, operation = self._transaction_fixture()
+        with mock.patch.object(
+                compile_queue.check_queue, "validate_runtime",
+                return_value={"errors": ["injected concurrent drift"]}):
+            with self.assertRaisesRegex(ValueError, "runtime changed before write"):
+                compile_queue._commit_state(
+                    str(self.root), paths, before, after,
+                    ("coverage", "queue", "progress"),
+                    self.root / ".cambium/receipts/queue-structure.jsonl",
+                    {"receipt_id": "audit-prepare"}, receipt,
+                    {"receipt_id": "audit-abort"}, operation,
+                )
+        for name, path in paths.items():
+            self.assertEqual(
+                before[name], Path(path).read_text(encoding="utf-8"))
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+        self.assertFalse(
+            (self.root / ".cambium/receipts/queue-structure.jsonl").exists())
+
+    def test_incomplete_rollback_retains_lock_for_restart_reconciliation(self):
+        paths, before, after, receipt, operation = self._transaction_fixture()
+        original = kblib.atomic_write_text
+        failed = {"progress": False}
+
+        def flaky(path, text, validator=None):
+            if (path == paths["progress"] and text == after["progress"] and
+                    not failed["progress"]):
+                failed["progress"] = True
+                raise OSError("injected progress write failure")
+            if (failed["progress"] and path == paths["coverage"] and
+                    text == before["coverage"]):
+                raise OSError("injected Coverage rollback failure")
+            return original(path, text, validator=validator)
+
+        with mock.patch.object(kblib, "atomic_write_text", side_effect=flaky):
+            with self.assertRaisesRegex(ValueError, "recovery was incomplete"):
+                compile_queue._commit_state(
+                    str(self.root), paths, before, after,
+                    ("coverage", "queue", "progress"),
+                    self.root / ".cambium/receipts/queue-structure.jsonl",
+                    {"receipt_id": "audit-prepare"}, receipt,
+                    {"receipt_id": "audit-abort"}, operation,
+                )
+        lock = self.root / ".cambium/tmp/state-writer.lock/owner.json"
+        self.assertTrue(lock.is_file())
+        owner = json.loads(lock.read_text(encoding="utf-8"))
+        self.assertEqual("apply-replan", owner["operation"]["action"])
+        resume = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             "--resume-status"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(1, resume.returncode, resume.stdout)
+        self.assertIn("state.coverage phase=planned-after", resume.stdout)
+        self.assertIn("state.queue phase=before", resume.stdout)
+        self.assertIn("state.progress phase=before", resume.stdout)
+        self.assertIn("operation_receipt", resume.stdout)
+
+    def test_durable_orphan_commit_receipt_retains_recovery_lock(self):
+        paths, before, after, receipt, operation = self._transaction_fixture()
+        receipt_path = (
+            self.root / ".cambium/receipts/queue-structure.jsonl"
+        )
+        real_append = kblib.write_receipts
+
+        def append_commit_then_fail(path, receipts, **kwargs):
+            real_append(path, receipts, **kwargs)
+            if any(record.get("receipt_id") == "audit-commit"
+                   for record in receipts):
+                raise OSError("injected error after durable commit receipt")
+
+        with mock.patch.object(
+                compile_queue.check_queue, "validate_runtime",
+                return_value={"errors": []}), \
+                mock.patch.object(
+                    kblib, "write_receipts",
+                    side_effect=append_commit_then_fail):
+            with self.assertRaisesRegex(ValueError, "recovery was incomplete"):
+                compile_queue._commit_state(
+                    str(self.root), paths, before, after,
+                    ("coverage", "queue", "progress"), receipt_path,
+                    {"receipt_id": "audit-prepare"}, receipt,
+                    {"receipt_id": "audit-abort"}, operation,
+                )
+
+        for name, path in paths.items():
+            self.assertEqual(before[name], Path(path).read_text(encoding="utf-8"))
+        records = [json.loads(line) for line in
+                   receipt_path.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(
+            ["audit-prepare", "audit-commit", "audit-abort"],
+            [record["receipt_id"] for record in records],
+        )
+        self.assertTrue((
+            self.root / ".cambium/tmp/state-writer.lock/owner.json"
+        ).is_file())
+        resume = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             "--resume-status"], text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, check=False,
+        )
+        self.assertIn("audit-commit", resume.stdout)
+        self.assertIn("state.coverage phase=before", resume.stdout)
+        self.assertIn("state.queue phase=before", resume.stdout)
+        self.assertIn("state.progress phase=before", resume.stdout)
+
+    def test_partial_commit_receipt_retains_lock_and_corruption_evidence(self):
+        paths, before, after, receipt, operation = self._transaction_fixture()
+        receipt_path = (
+            self.root / ".cambium/receipts/queue-structure.jsonl"
+        )
+        real_os_write = kblib.os.write
+
+        def truncate_commit(fd, data):
+            payload = bytes(data)
+            if b'"receipt_id": "audit-commit"' in payload:
+                fragment = payload[:max(1, len(payload) // 2)]
+                real_os_write(fd, fragment)
+                return len(fragment)
+            return real_os_write(fd, payload)
+
+        with mock.patch.object(
+                compile_queue.check_queue, "validate_runtime",
+                return_value={"errors": []}), \
+                mock.patch.object(kblib.os, "write",
+                                  side_effect=truncate_commit):
+            with self.assertRaisesRegex(ValueError, "recovery was incomplete"):
+                compile_queue._commit_state(
+                    str(self.root), paths, before, after,
+                    ("coverage", "queue", "progress"), receipt_path,
+                    {"receipt_id": "audit-prepare"}, receipt,
+                    {"receipt_id": "audit-abort"}, operation,
+                )
+
+        for name, path in paths.items():
+            self.assertEqual(before[name], Path(path).read_text(encoding="utf-8"))
+        self.assertIn(b'audit-commit', receipt_path.read_bytes())
+        self.assertTrue((
+            self.root / ".cambium/tmp/state-writer.lock/owner.json"
+        ).is_file())
+        resume = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             "--resume-status"], text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, check=False,
+        )
+        self.assertIn("audit-commit", resume.stdout)
+        self.assertIn("lock=.cambium/tmp/state-writer.lock", resume.stdout)
+
+    def test_prepare_proven_absent_allows_clean_failure_unlock(self):
+        paths, before, after, receipt, operation = self._transaction_fixture()
+        receipt_path = (
+            self.root / ".cambium/receipts/queue-structure.jsonl"
+        )
+
+        # Keep a non-recursive reference because the patched attribute is the
+        # same shared module object used by compile_queue.
+        real_append = kblib.write_receipts
+
+        def guarded(path, receipts, **kwargs):
+            if any(record.get("receipt_id") == "audit-prepare"
+                   for record in receipts):
+                raise OSError("injected pre-append prepare failure")
+            return real_append(path, receipts, **kwargs)
+
+        with mock.patch.object(kblib, "write_receipts", side_effect=guarded):
+            with self.assertRaisesRegex(OSError, "pre-append prepare"):
+                compile_queue._commit_state(
+                    str(self.root), paths, before, after,
+                    ("coverage", "queue", "progress"), receipt_path,
+                    {"receipt_id": "audit-prepare"}, receipt,
+                    {"receipt_id": "audit-abort"}, operation,
+                )
+
+        for name, path in paths.items():
+            self.assertEqual(before[name], Path(path).read_text(encoding="utf-8"))
+        self.assertFalse(receipt_path.exists())
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists()
+        )
+
+    def test_prepare_present_but_abort_absent_retains_lock(self):
+        paths, before, after, receipt, operation = self._transaction_fixture()
+        receipt_path = (
+            self.root / ".cambium/receipts/queue-structure.jsonl"
+        )
+        real_atomic = kblib.atomic_write_text
+        real_append = kblib.write_receipts
+        failed = {"progress": False}
+
+        def fail_state(path, text, validator=None):
+            if (path == paths["progress"] and text == after["progress"] and
+                    not failed["progress"]):
+                failed["progress"] = True
+                raise OSError("injected state failure")
+            return real_atomic(path, text, validator=validator)
+
+        def fail_abort(path, receipts, **kwargs):
+            if any(record.get("receipt_id") == "audit-abort"
+                   for record in receipts):
+                raise OSError("injected abort append failure")
+            return real_append(path, receipts, **kwargs)
+
+        with mock.patch.object(kblib, "atomic_write_text",
+                               side_effect=fail_state), \
+                mock.patch.object(kblib, "write_receipts",
+                                  side_effect=fail_abort):
+            with self.assertRaisesRegex(ValueError, "recovery was incomplete"):
+                compile_queue._commit_state(
+                    str(self.root), paths, before, after,
+                    ("coverage", "queue", "progress"), receipt_path,
+                    {"receipt_id": "audit-prepare"}, receipt,
+                    {"receipt_id": "audit-abort"}, operation,
+                )
+
+        for name, path in paths.items():
+            self.assertEqual(before[name], Path(path).read_text(encoding="utf-8"))
+        self.assertEqual(
+            ["audit-prepare"],
+            [json.loads(line)["receipt_id"] for line in
+             receipt_path.read_text(encoding="utf-8").splitlines()],
+        )
+        self.assertTrue((
+            self.root / ".cambium/tmp/state-writer.lock/owner.json"
+        ).is_file())
+
+
+if __name__ == "__main__":
+    unittest.main()

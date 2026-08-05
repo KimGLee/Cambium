@@ -19,6 +19,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - [[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]
 - [[kernel/K02 Build Execution/04 Architecture Samples and Dependency Build|Architecture Samples and Dependency Build]]
 - [[kernel/K02 Build Execution/05 Batch Execution|Batch Execution]]
+- [[kernel/K02 Build Execution/09 Required Queue|Required Queue]] when the module uses multiple batches or persistent Required work.
 - [[kernel/K03 Note Types and Ownership/01 Note Type Catalog|Note Type Catalog]]
 - [[kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
 - [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]
@@ -44,6 +45,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 
 - [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]]
 - [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]]
+- For a multi-batch module, consume the current `Tools/check_queue.py` receipt at activation and batch close; Queue validation remains owned by [[kernel/K02 Build Execution/09 Required Queue|K02/09]].
 - [[kernel/K12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - When the task is an independent targeted or specialized module audit, combine [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set|Targeted and Specialized Audit]].
 - When the whole task enters `completion-candidate`, combine [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]].

@@ -6,12 +6,12 @@
 
 ## Purpose
 
-This module specifies how verification evidence is reused across single pages, batches, modules, specialized audits, and the Terminal Audit, while guaranteeing that later modifications do not let old results be wrongly inherited. The goal is not to reduce quality dimensions but to eliminate two errors:
+This module specifies how verification evidence is reused across single pages, batches, modules, specialized audits, and the Terminal Audit, with protocol rules that prevent later modifications from silently inheriting old results inside the declared trust boundary. The goal is not to reduce quality dimensions but to eliminate two errors:
 
 1. Every layer repeating expensive manual review from scratch, wasting execution time and context;
 2. Continuing to rely on an old conclusion after content, dependencies, or rules have changed, merely because a page once passed.
 
-The core chain: changed objects and acceptance predicates generate a dimension-specific AuditPlan, which produces immutable AuditReceipts recording dependency / contract fingerprints; receipts are reusable while predicates and fingerprints remain valid, relevant changes trigger invalidation, bounded expansion applies when local failures show systemic impact, and finally Terminal reconciliation runs on the frozen snapshot.
+The core chain: changed objects and acceptance predicates generate a dimension-specific AuditPlan, which produces append-only AuditReceipt records carrying dependency / contract fingerprints; receipts are reusable while predicates and fingerprints remain valid, relevant changes trigger invalidation, bounded expansion applies when local failures show systemic impact, and finally Terminal reconciliation runs on the frozen snapshot. Append-only and immutable mean protocol-level history preservation, not cryptographic tamper resistance.
 
 ## Audit Layers
 
@@ -45,7 +45,7 @@ The `Audit Dimension Registry` MAY append profile-owned dimensions, but MUST NOT
 
 Which dimension a kernel judgment item files its verdict under, and whether it emits a receipt at all, is fixed by [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map#Item Map|K12/08]]; an item that consumes evidence produced elsewhere does not open a second receipt for the same audit object.
 
-One verification produces an immutable `AuditReceipt`, for example:
+One verification produces one append-only `AuditReceipt` protocol record, for example:
 
 ```yaml
 receipt_id: audit-<stable-id>
@@ -68,11 +68,11 @@ supersedes:
 Field semantics:
 
 - `scope`: the pages, module, batch, or vault-wide snapshot the receipt actually covers.
-- `acceptance_predicate`: the specific condition proven; writing only `QA passed` is not allowed.
+- `acceptance_predicate`: the specific condition evaluated against the recorded scope and bytes; writing only `QA passed` is not allowed.
 - `artifact_fingerprint`: covers body content, file path, and the frontmatter fields `type`, `priority`, `tier`, `coverage_disposition`, `lifecycle`, `prerequisites`. **Explicitly excluded**: `authoring_status`, `learning_status`, the readiness statuses registered by the selected `Vocabulary Extensions`, and `last_reviewed`, `last_verified`, `review_by`, `next_batch` — write-backs of status axes and scheduling fields **do not invalidate the receipt**.
 - `dependency_fingerprint`: the canonical owners, sources, schemas, MOC, or configuration this dimension depends on.
 - `contract_fingerprint`: the relevant control state such as scope, acceptance, exclusions, and queue/guidance cutoff.
-- `verifier` / `method`: the identity and version of the script, compiler, manual rubric, or model review.
+- `verifier` / `method`: the declared producer label and version of the script, compiler, manual rubric, or model review; these fields do not authenticate an actor.
 - `evidence_ref`: the location of the command result, review record, compiled artifact, or Batch Review evidence.
 - `review_due`: when time-sensitive facts need re-verification; stable mechanisms MAY leave it empty.
 
@@ -139,6 +139,8 @@ Propagation goes only to the dimensions that genuinely depend on the change:
 
 The dependency graph is not required to treat every backlink as a semantic dependency. Prerequisites in the body, claim evidence, canonical ownership, profile-registered expression mapping, MOC membership, and contract mapping are the primary invalidation edges.
 
+Queue receipts bind bytes/revisions. A structural or fingerprint change invalidates structure, readiness, and completion receipts; `state_revision` changes invalidate lifecycle/hold predicates. A Terminal Proof pass binds exact Coverage, Progress, Queue, and Proof bytes, so any byte change invalidates it. The controlled `completion-candidate -> complete` transition may consume that pass once and records Progress before/after fingerprints; reuse on the new bytes requires a new pass. Other reuse requires the same canonical paths, revisions, fingerprints, mode, and checker.
+
 ### Systemic Expansion
 
 If a targeted check finds a systemic problem that may affect pages of the same kind:
@@ -199,7 +201,7 @@ If a specialized Audit finds a local receipt already invalidated, it SHOULD crea
 
 ## Terminal Reconciliation Rules
 
-The canonical procedure of the Terminal Audit and the canonical definition of the Terminal Proof field list (including `full_deterministic_results`) both live in [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence#Terminal Audit|Terminal Audit]]; this section specifies only the evidence reuse and invalidation reconciliation rules within that procedure.
+The canonical Terminal Audit procedure lives in [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence#Terminal Audit|Terminal Audit]], while the Terminal Proof field list (including `full_deterministic_results`) lives in [[kernel/K12 Quality Assurance/16 Terminal Proof Contract#Terminal Proof Contract|Terminal Proof Contract]]; this section specifies only the evidence reuse and invalidation reconciliation rules within that procedure.
 
 `unresolved_invalidations` MUST be `0`. Reusing a receipt is not lowering the standard; it requires proving that the audited object and the acceptance conditions have not undergone relevant change.
 

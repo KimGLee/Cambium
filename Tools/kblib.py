@@ -24,13 +24,18 @@ Provides:
    0 = all pass; 1 = at least one fail; 2 = no fail but candidates.
 """
 
+from contextlib import contextmanager
+import errno
+import hashlib
 import json
 import os
 import re
+import stat
+import tempfile
 import time
 import uuid
 
-LIB_VERSION = "1.3.0"
+LIB_VERSION = "1.5.0"
 
 # ---------------------------------------------------------------------------
 # Restricted YAML subset parser
@@ -554,14 +559,271 @@ def make_receipt(tool, tool_version, check, target, result, details, seq):
     }
 
 
-def write_receipts(path, receipts):
-    """Append receipts to path as JSONL (one JSON object per line)."""
+def validate_receipt_output_path(path):
+    """Return an absolute receipt path without crossing runtime authority.
+
+    Generic checks may write receipts outside a Cambium runtime.  Once either
+    the lexical or resolved path enters a ``.cambium`` namespace, however,
+    the only legal destination is ``.cambium/receipts/**/*.jsonl``.  Keeping
+    this guard in the shared append primitive prevents any caller from
+    appending JSON to canonical state, delta, report, or lock files.
+    """
+    if not isinstance(path, (str, bytes, os.PathLike)):
+        raise ValueError("receipt target must be a filesystem path")
+    absolute = os.path.abspath(os.fspath(path))
+    resolved = os.path.realpath(absolute)
+    entered_runtime = False
+    for spelling in (absolute, resolved):
+        parts = os.path.normpath(spelling).split(os.sep)
+        for index, component in enumerate(parts):
+            if component != ".cambium":
+                continue
+            entered_runtime = True
+            if index + 1 >= len(parts) or parts[index + 1] != "receipts":
+                raise ValueError(
+                    "receipt target inside .cambium must be under "
+                    ".cambium/receipts/"
+                )
+    if entered_runtime and not absolute.endswith(".jsonl"):
+        raise ValueError("managed Cambium receipts must use a .jsonl file")
+    return absolute
+
+
+def _receipt_lines(receipts):
+    """Return the exact newline-terminated records used by receipt writers."""
+    lines = [
+        (json.dumps(receipt, ensure_ascii=False) + "\n").encode("utf-8")
+        for receipt in receipts
+    ]
+    if len(lines) != len(set(lines)):
+        raise ValueError("one append operation must not repeat a receipt record")
+    return lines
+
+
+def _read_receipt_bytes(path):
+    """Read one receipt file through no-follow descriptors.
+
+    A missing final component is represented by ``(False, b\"\")``.  The same
+    regular-file and single-link rules as the append path apply so an
+    after-error inspection cannot be redirected to authoritative state.
+    """
+    absolute = validate_receipt_output_path(path)
+    parent = os.path.dirname(absolute)
+    basename = os.path.basename(absolute)
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    directory_only = getattr(os, "O_DIRECTORY", None)
+    if nofollow is None or directory_only is None:
+        raise OSError(errno.ENOTSUP,
+                      "safe receipt inspection requires O_NOFOLLOW and "
+                      "O_DIRECTORY", absolute)
+    directory_flags = os.O_RDONLY | directory_only | nofollow
+    directory_flags |= getattr(os, "O_CLOEXEC", 0)
+    parent_fd = os.open(parent, directory_flags)
+    try:
+        try:
+            fd = os.open(
+                basename,
+                os.O_RDONLY | nofollow | getattr(os, "O_CLOEXEC", 0),
+                dir_fd=parent_fd,
+            )
+        except FileNotFoundError:
+            return False, b""
+        try:
+            descriptor = os.fstat(fd)
+            if not stat.S_ISREG(descriptor.st_mode):
+                raise ValueError("receipt target must be a regular file")
+            if descriptor.st_nlink != 1:
+                raise ValueError(
+                    "receipt target must have exactly one hard link; found %d" %
+                    descriptor.st_nlink
+                )
+            chunks = []
+            while True:
+                chunk = os.read(fd, 1024 * 1024)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            return True, b"".join(chunks)
+        finally:
+            os.close(fd)
+    finally:
+        os.close(parent_fd)
+
+
+def receipt_append_observation(path, receipts):
+    """Observe exact own-record counts without treating other appends as ours.
+
+    The returned value is intentionally small and JSON-serializable.  A caller
+    takes one observation before publication and another after an exception;
+    :func:`receipt_append_outcome` then distinguishes a proven absence from a
+    durable exact append.  Invalid or partial JSONL is retained as an
+    ``uncertain`` condition rather than repaired destructively.
+    """
+    lines = _receipt_lines(receipts)
+    exists, content = _read_receipt_bytes(path)
+    counts = [content.splitlines(keepends=True).count(line) for line in lines]
+    structurally_valid = True
+    if content and not content.endswith(b"\n"):
+        structurally_valid = False
+    if structurally_valid:
+        try:
+            for line in content.splitlines():
+                value = json.loads(line.decode("utf-8"))
+                if not isinstance(value, dict):
+                    raise ValueError("receipt record is not an object")
+        except (UnicodeError, ValueError, json.JSONDecodeError):
+            structurally_valid = False
+    return {
+        "path": validate_receipt_output_path(path),
+        "exists": exists,
+        "counts": counts,
+        "structurally_valid": structurally_valid,
+    }
+
+
+def receipt_append_outcome(before, after):
+    """Classify an attempted append as ``present``, ``absent`` or uncertain."""
+    if (not isinstance(before, dict) or not isinstance(after, dict) or
+            before.get("path") != after.get("path") or
+            not isinstance(before.get("counts"), list) or
+            not isinstance(after.get("counts"), list) or
+            len(before["counts"]) != len(after["counts"])):
+        return "uncertain"
+    deltas = [new - old for old, new in
+              zip(before["counts"], after["counts"])]
+    if after.get("structurally_valid") is not True:
+        return "uncertain"
+    if deltas and all(delta == 1 for delta in deltas):
+        return "present"
+    if all(delta == 0 for delta in deltas):
+        return "absent"
+    return "uncertain"
+
+
+def receipt_outcome_from(path, receipts, before):
+    """Return the current exact-record outcome relative to ``before``.
+
+    Inspection errors are deliberately converted to ``uncertain``.  This is
+    the safe question for an exception handler deciding whether a canonical
+    writer lock may be cleared; it must never turn unreadable or partial
+    receipt evidence into a proven absence.
+    """
+    try:
+        after = receipt_append_observation(path, receipts)
+        return receipt_append_outcome(before, after)
+    except Exception:
+        return "uncertain"
+
+
+def write_receipts_observed(path, receipts, exclusive=False, before=None):
+    """Append receipts and report exact durable outcome plus any write error.
+
+    Returns ``(outcome, error, before_observation)`` and does not raise an
+    ordinary append/inspection exception.  A successful return is only one
+    whose outcome is ``present``; a writer error after durable bytes therefore
+    returns ``("present", error, before)`` while a partial/truncated record is
+    ``uncertain``.  Canonical transaction callers use this distinction to
+    decide whether rollback is fully closed or must retain its recovery lock.
+    """
+    try:
+        baseline = before or receipt_append_observation(path, receipts)
+    except Exception as exc:
+        return "uncertain", exc, before
+    write_error = None
+    try:
+        write_receipts(path, receipts, exclusive=exclusive)
+    except Exception as exc:
+        write_error = exc
+    outcome = receipt_outcome_from(path, receipts, baseline)
+    if write_error is not None:
+        return outcome, write_error, baseline
+    if outcome != "present":
+        return (outcome,
+                OSError(errno.EIO,
+                        "receipt append could not be proven durable: %s" %
+                        outcome, os.fspath(path)),
+                baseline)
+    return outcome, None, baseline
+
+
+def write_receipts(path, receipts, exclusive=False):
+    """Safely append receipts to one regular, singly-linked JSONL file.
+
+    Queue tools validate the managed namespace before calling this helper, but
+    the file can still be swapped between validation and append.  Opening with
+    ``O_NOFOLLOW`` closes the final-component symlink race; the descriptor
+    checks reject directories, devices, and hard links to authoritative state.
+    One ``O_APPEND`` syscall per JSONL record keeps concurrent writers from
+    sharing a file offset.  ``exclusive=True`` additionally requires this call
+    to create the final name, which is suitable for a one-receipt canonical
+    artifact.  Callers needing a state transaction must additionally hold
+    :func:`runtime_write_lock` for the full transaction.
+    """
     if not path:
         return
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(path, "a", encoding="utf-8") as fh:
-        for receipt in receipts:
-            fh.write(json.dumps(receipt, ensure_ascii=False) + "\n")
+    lines = _receipt_lines(receipts)
+    if not lines:
+        return
+    absolute = validate_receipt_output_path(path)
+    parent = os.path.dirname(absolute)
+    basename = os.path.basename(absolute)
+    if not basename:
+        raise ValueError("receipt target must name a file")
+    os.makedirs(parent, exist_ok=True)
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    directory_only = getattr(os, "O_DIRECTORY", None)
+    if nofollow is None or directory_only is None:
+        raise OSError(errno.ENOTSUP,
+                      "safe receipt append requires O_NOFOLLOW and O_DIRECTORY",
+                      absolute)
+    directory_flags = os.O_RDONLY | directory_only | nofollow
+    directory_flags |= getattr(os, "O_CLOEXEC", 0)
+    parent_fd = os.open(parent, directory_flags)
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | nofollow
+    if exclusive:
+        flags |= os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    try:
+        # APFS can transiently surface ENOENT when several O_CREAT|O_APPEND
+        # opens race on the same previously absent name through a directory
+        # descriptor.  Retrying that one result is safe: no namespace entry is
+        # removed or replaced, and O_EXCL retains its winner semantics.
+        for attempt in range(5):
+            try:
+                fd = os.open(basename, flags, 0o666, dir_fd=parent_fd)
+                break
+            except FileNotFoundError:
+                if attempt == 4:
+                    raise
+                continue
+    except Exception:
+        os.close(parent_fd)
+        raise
+    try:
+        descriptor = os.fstat(fd)
+        if not stat.S_ISREG(descriptor.st_mode):
+            raise ValueError("receipt target must be a regular file")
+        if descriptor.st_nlink != 1:
+            raise ValueError(
+                "receipt target must have exactly one hard link; found %d" %
+                descriptor.st_nlink
+            )
+        # Each JSONL record is one append syscall.  Retrying a short write
+        # would allow a concurrent writer to land between fragments and make
+        # both records ambiguous, so surface the partial append instead.  The
+        # caller's writer lock and exact-record observation then preserve a
+        # recovery boundary without deleting any concurrent record.
+        for line in lines:
+            written = os.write(fd, line)
+            if written != len(line):
+                raise OSError(errno.EIO, "receipt append was partial",
+                              absolute)
+        os.fsync(fd)
+        # Persist a newly created receipt name as well as its contents.
+        os.fsync(parent_fd)
+    finally:
+        os.close(fd)
+        os.close(parent_fd)
 
 
 def exit_code(receipts):
@@ -572,3 +834,540 @@ def exit_code(receipts):
     if "candidate" in results:
         return 2
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Canonical runtime-state helpers
+# ---------------------------------------------------------------------------
+
+
+def repository_path(root, relative_path, must_exist=False, reject_symlink=False):
+    """Resolve one repository-relative path without permitting root escape.
+
+    ``relative_path`` must be a canonical, non-empty relative spelling: no
+    leading/trailing whitespace, absolute path, ``.``/``..`` segment, or NUL.
+    Resolution follows symlinks only to prove the resulting path remains under
+    ``root``.  Callers handling canonical state files may set
+    ``reject_symlink`` to reject a symlink at the final path as well.
+    """
+    if not isinstance(relative_path, str) or not relative_path:
+        raise ValueError("path must be a non-empty string")
+    if relative_path != relative_path.strip():
+        raise ValueError("path must not have leading or trailing whitespace")
+    if "\x00" in relative_path:
+        raise ValueError("path must not contain NUL")
+    if os.path.isabs(relative_path):
+        raise ValueError("path must be repository-relative")
+    parts = relative_path.replace("\\", "/").split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        raise ValueError("path must not contain empty, '.' or '..' segments")
+
+    root_real = os.path.realpath(os.path.abspath(root))
+    candidate = os.path.join(root_real, *parts)
+    resolved = os.path.realpath(candidate)
+    try:
+        inside = os.path.commonpath((root_real, resolved)) == root_real
+    except ValueError:
+        inside = False
+    if not inside:
+        raise ValueError("path resolves outside the repository root")
+    if reject_symlink and os.path.lexists(candidate) and os.path.islink(candidate):
+        raise ValueError("canonical state path must not be a symlink")
+    if must_exist and not os.path.exists(candidate):
+        raise ValueError("path does not exist: %s" % relative_path)
+    return candidate
+
+
+def managed_repository_path(root, relative_path, managed_prefix,
+                            suffixes=None, must_exist=False):
+    """Resolve a file inside one fixed managed namespace without symlinks.
+
+    This is the write-path boundary for ``.cambium``: a receipt argument may
+    not name state, a report may not name a delta, and a symlinked component
+    may not redirect an apparently safe spelling elsewhere inside the repo.
+    """
+    candidate = repository_path(root, relative_path, must_exist=must_exist,
+                                reject_symlink=True)
+    normalized = relative_path.replace("\\", "/")
+    prefix = managed_prefix.strip("/")
+    if not normalized.startswith(prefix + "/"):
+        raise ValueError("path must be inside %s/" % prefix)
+    if suffixes and not normalized.endswith(tuple(suffixes)):
+        raise ValueError("path must end with %s" % " or ".join(suffixes))
+    root_abs = os.path.realpath(os.path.abspath(root))
+    current = root_abs
+    for part in normalized.split("/"):
+        current = os.path.join(current, part)
+        if os.path.lexists(current) and os.path.islink(current):
+            raise ValueError("managed path must not traverse symlink: %s" %
+                             relative_path)
+    if os.path.lexists(candidate):
+        descriptor = os.lstat(candidate)
+        if stat.S_ISREG(descriptor.st_mode) and descriptor.st_nlink != 1:
+            raise ValueError(
+                "managed file must have exactly one hard link: %s" %
+                relative_path
+            )
+    return candidate
+
+
+class RuntimeStateLockedError(RuntimeError):
+    """Raised when another cooperating process owns the runtime-state lock."""
+
+
+class RuntimeWriteLockLease(os.PathLike):
+    """Path-like lock lease whose owner may attest successful reconciliation.
+
+    A state writer that lets an exception escape must leave its lock behind so
+    the next process can inspect the recorded transaction.  If the writer has
+    *fully* restored every authoritative byte before re-raising, it may call
+    :meth:`mark_reconciled`; only then is cleanup on error safe.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self.reconciled = False
+
+    def __fspath__(self):
+        return self.path
+
+    def __str__(self):
+        return self.path
+
+    def mark_reconciled(self):
+        self.reconciled = True
+
+
+@contextmanager
+def no_authoritative_write_guard(lease):
+    """Clear a writer lock when a guarded preflight rejects before writing.
+
+    Wrap only operations that run before the first possible mutation of
+    canonical state, append-only receipts, managed deltas, or archives.  A
+    normal Python exception in that region proves that no authoritative write
+    was attempted, so retaining the lock would manufacture a false
+    interrupted-write state.  Hard process exits still preserve the lock,
+    because the context manager cannot attest what happened after the process
+    disappeared.
+
+    Once a writer crosses its first possible publication boundary it must
+    leave this guard and use its transaction-specific rollback/evidence logic.
+    """
+    if not isinstance(lease, RuntimeWriteLockLease):
+        raise TypeError("lease must be a RuntimeWriteLockLease")
+    try:
+        yield
+    except BaseException:
+        lease.mark_reconciled()
+        raise
+
+
+@contextmanager
+def runtime_write_lock(root, lock_name="state-writer", timeout=0.0,
+                       poll_interval=0.05, owner_metadata=None):
+    """Hold one cooperating-writer lock under ``.cambium/tmp``.
+
+    Directory creation is the atomic claim.  A process crash or any escaping
+    error intentionally leaves a stale lock that fails closed; an operator may
+    remove it only after proving that no writer remains and reconciling the
+    recorded before/planned-after fingerprints.  A caller that fully restores
+    all authoritative bytes may call ``lease.mark_reconciled()`` before
+    re-raising.  This primitive does not make a multi-file update atomic by
+    itself, but it removes concurrent cooperating writers from the
+    compare/write/rollback window and preserves recovery intent.
+    """
+    if (not isinstance(lock_name, str) or
+            not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", lock_name)):
+        raise ValueError("lock_name must be a simple path-safe identifier")
+    if timeout is not None and timeout < 0:
+        raise ValueError("timeout must be non-negative or None")
+    if poll_interval <= 0:
+        raise ValueError("poll_interval must be positive")
+    if owner_metadata is not None and not isinstance(owner_metadata, dict):
+        raise ValueError("owner_metadata must be a mapping or None")
+    try:
+        serialized_metadata = (json.loads(json.dumps(owner_metadata))
+                               if owner_metadata else None)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("owner_metadata must be JSON-serializable: %s" % exc)
+
+    root_real = os.path.realpath(os.path.abspath(root))
+    tmp_path = managed_repository_path(
+        root_real, ".cambium/tmp", ".cambium", must_exist=True
+    )
+    if not os.path.isdir(tmp_path):
+        raise ValueError(".cambium/tmp must be a directory")
+    relative_lock = ".cambium/tmp/%s.lock" % lock_name
+    lock_path = managed_repository_path(
+        root_real, relative_lock, ".cambium/tmp", must_exist=False
+    )
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while True:
+        try:
+            os.mkdir(lock_path, 0o700)
+            parent_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+            parent_fd = os.open(tmp_path, parent_flags)
+            try:
+                os.fsync(parent_fd)
+            finally:
+                os.close(parent_fd)
+            break
+        except FileExistsError:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise RuntimeStateLockedError(
+                    "runtime state is locked by another writer: %s" %
+                    relative_lock
+                )
+            time.sleep(poll_interval)
+    owner_path = os.path.join(lock_path, "owner.json")
+    owner = {
+        "lock_name": lock_name,
+        "pid": os.getpid(),
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    if serialized_metadata:
+        # Keep caller-supplied transaction intent in one nested object so it
+        # cannot overwrite the lock identity.  The file is deliberately left
+        # behind with the lock directory after a process crash: a later
+        # ``check_queue --resume-status`` can then distinguish an ordinary
+        # hold from an interrupted canonical-state write and compare the
+        # recorded before/planned-after fingerprints with the live files.
+        owner["operation"] = serialized_metadata
+    with open(owner_path, "x", encoding="utf-8") as fh:
+        json.dump(owner, fh, sort_keys=True)
+        fh.write("\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    lock_fd = os.open(lock_path, directory_flags)
+    try:
+        os.fsync(lock_fd)
+    finally:
+        os.close(lock_fd)
+    lease = RuntimeWriteLockLease(lock_path)
+    completed = False
+    try:
+        yield lease
+        completed = True
+    finally:
+        # An escaping exception may represent a partially published
+        # multi-file transaction.  Preserve the owner metadata unless the
+        # caller positively attests that rollback restored all authoritative
+        # bytes.  A later ``check_queue --resume-status`` can then reconcile
+        # the before/planned-after fingerprints instead of silently guessing.
+        if completed or lease.reconciled:
+            try:
+                os.unlink(owner_path)
+            except FileNotFoundError:
+                pass
+            try:
+                os.rmdir(lock_path)
+            except FileNotFoundError:
+                pass
+            else:
+                parent_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+                parent_fd = os.open(tmp_path, parent_flags)
+                try:
+                    os.fsync(parent_fd)
+                finally:
+                    os.close(parent_fd)
+
+
+def load_yaml_file(path):
+    """Read and parse a UTF-8 restricted-subset YAML document."""
+    with open(path, encoding="utf-8") as fh:
+        value = parse_yaml_subset(fh.read())
+    if not isinstance(value, dict):
+        raise YamlSubsetError("top-level YAML value must be a mapping")
+    return value
+
+
+_YAML_RESERVED = frozenset(("true", "false", "yes", "no", "null", "~"))
+
+
+def _yaml_scalar(value):
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    if not isinstance(value, str):
+        raise TypeError("unsupported YAML scalar type: %s" % type(value).__name__)
+    # The restricted parser deliberately has no quoted-string escape grammar.
+    # Reject control characters and quote using the opposite quote when the
+    # value would otherwise be parsed as another scalar or a comment-bearing
+    # token.  This keeps canonical output round-trippable under that parser.
+    if any(ord(ch) < 32 for ch in value):
+        raise ValueError("YAML strings must not contain control characters")
+    safe_bare = (
+        value != "" and value == value.strip() and
+        value.lower() not in _YAML_RESERVED and
+        not re.fullmatch(r"-?\d+(?:\.\d+)?", value) and
+        not value.startswith(("[", "- ")) and
+        ": " not in value and " #" not in value and
+        not value.startswith("#")
+    )
+    if safe_bare:
+        return value
+    if '"' not in value:
+        return '"%s"' % value
+    if "'" not in value:
+        return "'%s'" % value
+    raise ValueError("YAML strings containing both quote characters are unsupported")
+
+
+def _render_yaml_node(value, indent):
+    prefix = " " * indent
+    if isinstance(value, dict):
+        lines = []
+        for key, child in value.items():
+            if not isinstance(key, str) or not re.fullmatch(r"[^:\s][^:]*", key):
+                raise ValueError("unsupported YAML mapping key: %r" % (key,))
+            if isinstance(child, dict):
+                lines.append("%s%s:" % (prefix, key))
+                lines.extend(_render_yaml_node(child, indent + 2))
+            elif isinstance(child, list):
+                if not child:
+                    lines.append("%s%s: []" % (prefix, key))
+                else:
+                    lines.append("%s%s:" % (prefix, key))
+                    lines.extend(_render_yaml_node(child, indent + 2))
+            else:
+                lines.append("%s%s: %s" % (prefix, key, _yaml_scalar(child)))
+        return lines
+    if isinstance(value, list):
+        lines = []
+        for child in value:
+            if isinstance(child, dict):
+                if not child:
+                    raise ValueError("empty maps are outside the restricted YAML subset")
+                first = True
+                for key, grandchild in child.items():
+                    if not isinstance(key, str) or not re.fullmatch(r"[^:\s][^:]*", key):
+                        raise ValueError("unsupported YAML mapping key: %r" % (key,))
+                    marker = "- " if first else "  "
+                    line_prefix = prefix + marker
+                    if isinstance(grandchild, (dict, list)):
+                        if isinstance(grandchild, list) and not grandchild:
+                            lines.append("%s%s: []" % (line_prefix, key))
+                        else:
+                            lines.append("%s%s:" % (line_prefix, key))
+                            lines.extend(_render_yaml_node(grandchild, indent + 4))
+                    else:
+                        lines.append("%s%s: %s" %
+                                     (line_prefix, key, _yaml_scalar(grandchild)))
+                    first = False
+            elif isinstance(child, list):
+                raise ValueError("nested bare lists are outside the restricted YAML subset")
+            else:
+                lines.append("%s- %s" % (prefix, _yaml_scalar(child)))
+        return lines
+    return [prefix + _yaml_scalar(value)]
+
+
+def canonical_yaml(data):
+    """Render deterministic YAML accepted by :func:`parse_yaml_subset`."""
+    if not isinstance(data, dict):
+        raise TypeError("canonical runtime state must be a mapping")
+    text = "\n".join(_render_yaml_node(data, 0)) + "\n"
+    reparsed = parse_yaml_subset(text)
+    if reparsed != data:
+        raise YamlSubsetError("canonical YAML did not round-trip under the restricted parser")
+    return text
+
+
+def sha256_bytes(data):
+    """Return the canonical ``sha256:<hex>`` spelling for bytes or text."""
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+    return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return "sha256:" + digest.hexdigest()
+
+
+def repository_snapshot_sha256(root):
+    """Hash the current repository content outside Git and Cambium state.
+
+    The digest is a deterministic, path-sensitive snapshot of every regular
+    file below ``root`` except the top-level ``.git`` and ``.cambium`` control
+    namespaces.  Runtime state is bound separately by Queue receipts, so
+    excluding it avoids a receipt/state hash cycle.  Symlinks and special
+    files fail closed because their target bytes are not a stable repository
+    snapshot.  Each file is checked before and after reading so an in-place
+    concurrent mutation cannot silently produce a mixed digest.
+    """
+    root_real = os.path.realpath(os.path.abspath(root))
+    if not os.path.isdir(root_real):
+        raise ValueError("repository snapshot root must be a directory")
+
+    digest = hashlib.sha256()
+    digest.update(b"cambium-repository-snapshot-v1\0")
+    paths = []
+    for current, directories, files in os.walk(root_real, topdown=True,
+                                               followlinks=False):
+        relative_dir = os.path.relpath(current, root_real)
+        if relative_dir == ".":
+            directories[:] = sorted(
+                name for name in directories
+                if name not in (".git", ".cambium")
+            )
+        else:
+            directories[:] = sorted(directories)
+        for name in directories:
+            candidate = os.path.join(current, name)
+            if os.path.islink(candidate):
+                raise ValueError(
+                    "repository snapshot cannot traverse symlink: %s" %
+                    os.path.relpath(candidate, root_real)
+                )
+        visible_files = files
+        if relative_dir == ".":
+            visible_files = [
+                name for name in files
+                if name not in (".git", ".cambium")
+            ]
+        for name in sorted(visible_files):
+            absolute = os.path.join(current, name)
+            relative = os.path.relpath(absolute, root_real).replace(os.sep, "/")
+            paths.append((relative, absolute))
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError(errno.ENOTSUP,
+                      "repository snapshot requires O_NOFOLLOW", root_real)
+    for relative, absolute in sorted(paths):
+        listed = os.lstat(absolute)
+        if not stat.S_ISREG(listed.st_mode):
+            raise ValueError(
+                "repository snapshot requires a regular file: %s" % relative
+            )
+        if listed.st_nlink != 1:
+            raise ValueError(
+                "repository snapshot rejects hard-linked content: %s" %
+                relative
+            )
+        flags = (os.O_RDONLY | nofollow | getattr(os, "O_CLOEXEC", 0) |
+                 getattr(os, "O_NONBLOCK", 0))
+        fd = os.open(absolute, flags)
+        try:
+            before = os.fstat(fd)
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError(
+                    "repository snapshot requires a regular file: %s" %
+                    relative
+                )
+            if before.st_nlink != 1:
+                raise ValueError(
+                    "repository snapshot rejects hard-linked content: %s" %
+                    relative
+                )
+            if (listed.st_dev, listed.st_ino) != (before.st_dev, before.st_ino):
+                raise OSError(errno.EAGAIN,
+                              "repository file changed before hashing",
+                              relative)
+            file_digest = hashlib.sha256()
+            while True:
+                chunk = os.read(fd, 1024 * 1024)
+                if not chunk:
+                    break
+                file_digest.update(chunk)
+            after = os.fstat(fd)
+            before_identity = (
+                before.st_dev, before.st_ino, before.st_size,
+                getattr(before, "st_mtime_ns", int(before.st_mtime * 1e9)),
+                getattr(before, "st_ctime_ns", int(before.st_ctime * 1e9)),
+            )
+            after_identity = (
+                after.st_dev, after.st_ino, after.st_size,
+                getattr(after, "st_mtime_ns", int(after.st_mtime * 1e9)),
+                getattr(after, "st_ctime_ns", int(after.st_ctime * 1e9)),
+            )
+            if before_identity != after_identity:
+                raise OSError(errno.EAGAIN,
+                              "repository file changed while hashing",
+                              relative)
+        finally:
+            os.close(fd)
+        encoded = relative.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+        digest.update(before.st_size.to_bytes(8, "big"))
+        digest.update(file_digest.digest())
+    return "sha256:" + digest.hexdigest()
+
+
+def durable_replace(source, destination):
+    """Atomically rename one path and persist both directory-name changes.
+
+    ``os.replace`` provides namespace atomicity but does not by itself prove
+    that a cross-directory rename survives a crash.  After the rename this
+    helper fsyncs the destination parent (new name) and then the distinct
+    source parent (removed name).  An fsync failure is deliberately surfaced:
+    callers must inspect the two paths and retain their recovery lock.
+    """
+    source = os.path.abspath(os.fspath(source))
+    destination = os.path.abspath(os.fspath(destination))
+    source_parent = os.path.dirname(source)
+    destination_parent = os.path.dirname(destination)
+    os.replace(source, destination)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    parents = [destination_parent]
+    if os.path.realpath(source_parent) != os.path.realpath(destination_parent):
+        parents.append(source_parent)
+    for parent in parents:
+        directory_fd = os.open(parent, flags)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+
+
+def atomic_write_text(path, text, validator=None):
+    """Validate and atomically replace one UTF-8 file in its own directory."""
+    if validator:
+        validator(text)
+    parent = os.path.dirname(os.path.abspath(path))
+    os.makedirs(parent, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".cambium-write-", dir=parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temporary, path)
+        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        directory_fd = os.open(parent, directory_flags)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def atomic_write_yaml(path, data):
+    text = canonical_yaml(data)
+    atomic_write_text(path, text, validator=parse_yaml_subset)
+    return text
+
+
+def make_queue_receipt(action, target, result, details, seq=1, **fields):
+    """Build a normal audit receipt with Queue before/after metadata."""
+    receipt = make_receipt(
+        "update_queue", "1.2.0", action, target, result, details, seq
+    )
+    receipt.update(fields)
+    return receipt

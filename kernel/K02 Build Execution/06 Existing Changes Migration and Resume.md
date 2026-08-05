@@ -28,28 +28,74 @@ Deleting first and rewriting afterwards MUST NOT be done.
 
 ## Interruption And Resume
 
-Before a task is interrupted, the task state MUST be updated to `paused` or `blocked` and a checkpoint MUST be written. The checkpoint includes at least:
+Before a planned interruption, use `Tools/update_task.py` to set task state to
+`paused` or `blocked` and write its checkpoint. A sudden interruption may
+prevent that transition, so durable Queue state, receipts, deltas, and
+writer-lock evidence remain independently discoverable. The Progress
+checkpoint itself stores only its schema fields: recorded time and summary,
+task state/transition receipt, exact Coverage and Queue fingerprints, and both
+Queue revisions.
 
-- The current contract, scope, queue, active batches, and standards version.
-- Each active batch's state (`active` / `merge-ready`), the merge queue, deltas written out but not yet applied, accepted results, and unverified modifications.
-- The most recent QA result.
-- The unfinished Required items in the Coverage Ledger.
-- Guidance not yet classified, mapped, or verified.
-- Last reconciled guidance ID and unresolved Amendment Records.
-- Modified files.
-- The next precise action, not a vague "keep improving".
-- The blocking reason, attempted approaches, and other work that can still proceed.
+The effective restart view combines that checkpoint with the Task Contract,
+Queue, Coverage, receipts, deltas, and `--resume-status`. Together they expose:
 
-After an interruption, the task SHOULD resume from the Progress Ledger, Coverage Ledger, and current file state instead of starting over.
+- Task/scope/Standards/profile identity and canonical Queue binding.
+- Open or merge-ready batches, holds, pending deltas, and unfinished Required objects.
+- Pending Guidance/Amendments, last accepted checks, and any modified or unverified work.
+- The precise next action; on a block, its reason, attempts, and other work that may proceed.
 
-On resume, first check:
+These are read-through facts, not extra checkpoint keys or a second editable
+batch list.
+
+At every restart—and before a new Agent task assumes the repository is
+unused—the first runtime action is:
+
+```text
+python3 Tools/check_queue.py . --resume-status
+```
+
+If `.cambium/` is absent, there is no persistent state to resume and an
+authorized task may initialize it. If it exists, `init_state.py` MUST NOT be
+used to replace it. The status view identifies the recorded task and profile,
+task state/checkpoint, Queue revisions and fingerprint, lifecycle groups,
+holds, pending deltas, writer locks, latest task transition, pending Guidance
+or Amendments, Terminal Audit state, and one machine-readable `next_action`.
+For an intact handoff that action distinguishes `admit-delta:<id>`,
+`apply-delta:<id>`, `run-batch-close-gate:<id>`, and the fully bound
+`close-applied-batch:<id>:<queue-receipt>:<close-receipt>:<apply-receipt>`.
+An apply receipt alone never authorizes close. If the close tool published a
+current bundle before its stdout was lost, resume recovers the latest valid
+bundle from the receipt catalog, reports its repository snapshot, and emits an
+exact copyable close command. Stale, structurally invalid, internally
+conflicting, or snapshot-mismatched bundles are reported but not selected.
+This is a local consistency decision, not authentication of the recorded
+producer, actor, or reviewer. An unresolved writer lock takes precedence as
+`reconcile-interrupted-write`; other malformed or conflicting evidence becomes
+`repair-runtime`.
+Its checkpoint binding is `current`, `historical`, or `initial`; `historical`
+means later recorded state must be followed from receipts and deltas rather
+than mistaken for a clean checkpoint. The Agent then checks:
 
 - Whether the user's latest requirements change the objective.
 - Whether the last state was `paused`, `blocked`, or already has a Terminal Proof.
-- Whether the contract, scope, queue, active batches, Standards versions, and time semantics are still valid.
-- Whether each active batch has unverified changes; for `merge-ready` batches, deltas already written out are carried forward by the integrator into serial merge after resume, without redoing in-batch work.
+- Whether the contract, scope, Queue path/revisions/fingerprint, Standards version, selected profile manifest, and time semantics are still valid.
+- Whether `Tools/check_queue.py .` passes across Queue, Coverage, and Progress; stale revisions, a changed fingerprint, unresolved hold, or unapplied delta MUST be reconciled before execution resumes.
+- Whether each `open` batch has unverified changes; for `merge-ready` batches, deltas already written out are carried forward by the integrator into serial merge after resume, without redoing in-batch work.
 - Whether new user modifications have appeared.
 - Whether the last automated check results are still valid.
-- Whether the next action still follows the dependency order.
+- Whether the next action still follows the dependency order; a new activation additionally requires `check_queue.py --require-ready <batch-id>`.
 
-Only after the resume checks complete may the task state be set back to `active`.
+A writer lock is evidence of either a live writer or a possible interrupted
+write. Do not remove it until no writer remains and state files, transition
+receipts, revisions/fingerprint, deltas, and any recorded archive move have
+been reconciled. Receipt registers are append-only; uncertain appends retain
+the lock rather than rolling back unrelated evidence. An Agent may
+not infer a clean restart merely from an old lock timestamp.
+
+The Agent MUST consume the reported `next_action`, not infer a fresh start from
+an empty local context. Only after reconciliation may a `paused` or `blocked`
+task return to `active`, through `update_task.py`; Queue and canonical delta
+writes remain rejected beforehand. A new task cannot reuse the namespace: the
+existing task must first be explicitly
+completed or cancelled and later handled by an archive/rollover procedure.
+Automatic rollover is not part of the current tools.

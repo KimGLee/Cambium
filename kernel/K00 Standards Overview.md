@@ -23,6 +23,7 @@ The complete state rules are maintained by [[kernel/K00 Standards Control/03 Sta
 Open Standards Overview
  -> Open The Kernel Card Index And Load Task Cards
  -> Escalate To Read Sets And Leaf Modules When Required
+ -> Apply Runtime Startup Or Recovery Gate
  -> Record Standards Version, Selected Profile Manifest, And Loaded Set
  -> Inspect Existing Knowledge And Links
  -> Freeze Task Contract
@@ -59,13 +60,31 @@ Runtime Cards are kernel-owned compiled artifacts of the Read Sets (the Standard
 
 Periodic knowledge-base update and freshness tasks go through the kernel-owned [[kernel/Cards/R10 Maintenance Run Card|Maintenance Run Card]], with [[kernel/Read Sets/R10 Maintenance Run Read Set|R10 Read Set]] used for source read-back.
 
-Detailed task combinations and the Pre-execution Gate are located in [[kernel/K00 Standards Control/02 Task Routing and Pre-execution|Task Routing and Pre-execution]].
+Detailed task combinations are located in [[kernel/K00 Standards Control/02 Task Routing|Task Routing]]. Runtime-state startup/recovery and the large-scale admission gate are owned by [[kernel/K00 Standards Control/13 Runtime Admission and Recovery|Runtime Admission and Recovery]].
+
+## K00 Control Module Index
+
+| Module | Responsibility |
+|---|---|
+| [[kernel/K00 Standards Control/01 Operating Role and Reading Protocol\|Operating Role and Reading Protocol]] | execution role, Card-first loading, and source read-back |
+| [[kernel/K00 Standards Control/02 Task Routing\|Task Routing]] | task-to-route combinations only |
+| [[kernel/K00 Standards Control/03 Standards Governance\|Standards Governance]] | active adopter state and governance change process |
+| [[kernel/K00 Standards Control/04 Control State and Scope\|Control State and Scope]] | protected control state and modification authority |
+| [[kernel/K00 Standards Control/05 Core Principles\|Core Principles]] | universal knowledge-corpus principles |
+| [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract\|Completion Precedence and Task Contract]] | precedence, contract, and selected completion semantics |
+| [[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota\|Effort Tiering and Priority Quota]] | S/M/L effort and priority constraints |
+| [[kernel/K00 Standards Control/08 Maintenance Run Envelope\|Maintenance Run Envelope]] | bounded maintenance budget and candidate handling |
+| [[kernel/K00 Standards Control/09 Default Constraints Snapshot\|Default Constraints Snapshot]] | kernel defaults consumed by task contracts |
+| [[kernel/K00 Standards Control/10 Batch Execution Checklist\|Batch Execution Checklist]] | batch execution entry and close checklist |
+| [[kernel/K00 Standards Control/11 Standards Map and Rule Registry\|Standards Map and Rule Registry]] | canonical content-rule ownership |
+| [[kernel/K00 Standards Control/12 Control Registry\|Control Registry]] | canonical control-gate ownership |
+| [[kernel/K00 Standards Control/13 Runtime Admission and Recovery\|Runtime Admission and Recovery]] | runtime startup/recovery and large-scale pre-execution admission |
 
 ## Standard Module Index
 
 | Module ID | Stable MOC | Responsibility |
 |---|---|---|
-| `K00` | [[kernel/K00 Standards Overview\|Standards Overview]] | overall Index, Kernel Card and Read Set routing, and Standards control |
+| `K00` | [[kernel/K00 Standards Overview\|Standards Overview]] | overall Index, Kernel Card and Read Set routing, runtime admission/recovery, and Standards control |
 | `K01` | [[kernel/K01 Scope and Architecture Standard\|Scope and Architecture]] | scope, logical architecture, knowledge spine, and foundation preservation |
 | `K02` | [[kernel/K02 Knowledge Base Build Execution Standard\|Build Execution]] | task contract, state, guidance, batch, checkpoint, resume, and handoff |
 | `K03` | [[kernel/K03 Note Types and Ownership Standard\|Note Types and Ownership]] | note type, canonical owner, split, and duplication |
