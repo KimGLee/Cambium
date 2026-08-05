@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -14,10 +15,59 @@ REPOSITORY_ROOT = TOOLS_DIR.parent
 SYNTHETIC_PROFILE = TOOLS_DIR / "tests" / "fixtures" / "synthetic_profile"
 SCRIPT = TOOLS_DIR / "check_proof.py"
 TEMPLATE = TOOLS_DIR / "schemas" / "terminal_proof.template.yaml"
+SYNTHETIC_STANDARDS_VERSION = "3.2.0"
 sys.path.insert(0, str(TOOLS_DIR))
 
 import check_proof
 import kblib
+
+
+def materialize_synthetic_standards_state(document, profile_manifest):
+    """Set fixture-owned active state in a generic or instantiated K00/03."""
+
+    replacements = (
+        ("Standards version", SYNTHETIC_STANDARDS_VERSION),
+        ("Status", "approved"),
+        ("Effective date", "2026-08-04"),
+        ("Selected profile manifest", profile_manifest),
+    )
+    for field, value in replacements:
+        pattern = r"(?m)^\| %s \| .* \|$" % re.escape(field)
+        document, count = re.subn(
+            pattern,
+            "| %s | `%s` |" % (field, value),
+            document,
+        )
+        if count != 1:
+            raise AssertionError(
+                "expected exactly one %s row in synthetic K00/03, found %d"
+                % (field, count)
+            )
+    return document
+
+
+class ActiveStandardsFixtureTests(unittest.TestCase):
+    def test_materializer_replaces_populated_adopter_state(self):
+        source = """\
+| Field | Value |
+|---|---|
+| Standards version | `9.9.9` |
+| Status | `superseded` |
+| Effective date | `2099-01-01` |
+| Selected profile manifest | `profiles/other/profile.md` |
+"""
+        rendered = materialize_synthetic_standards_state(
+            source, "profiles/test-profile/profile.md"
+        )
+        self.assertIn(
+            "| Standards version | `3.2.0` |", rendered
+        )
+        self.assertIn("| Status | `approved` |", rendered)
+        self.assertIn(
+            "| Selected profile manifest | "
+            "`profiles/test-profile/profile.md` |",
+            rendered,
+        )
 
 
 class QueueProofStructuralTests(unittest.TestCase):
@@ -369,13 +419,9 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             self.root / "kernel/K00 Standards Control/03 Standards Governance.md"
         )
         active = active_path.read_text(encoding="utf-8")
-        for placeholder, value in (
-                ("{{ standards_version }}", "3.0.0"),
-                ("{{ standards_status }}", "approved"),
-                ("{{ standards_effective_date }}", "2026-08-04"),
-                ("{{ selected_profile_manifest }}",
-                 self.profile_manifest)):
-            active = active.replace(placeholder, value)
+        active = materialize_synthetic_standards_state(
+            active, self.profile_manifest
+        )
         active_path.write_text(active, encoding="utf-8")
 
         state_dir = self.root / ".cambium/state"
@@ -388,7 +434,7 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             "scope_version": "s1",
             "queue_revision": 1,
             "state_revision": 0,
-            "standards_version": "3.0.0",
+            "standards_version": SYNTHETIC_STANDARDS_VERSION,
             "selected_profile_manifest": self.profile_manifest,
             "required_queue": [{"id": "B1", "state": "closed"}],
         }
@@ -407,7 +453,7 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
                 "contract_version": "c1",
                 "completion_semantics": "build",
                 "scope_version": "s1",
-                "standards_version": "3.0.0",
+                "standards_version": SYNTHETIC_STANDARDS_VERSION,
                 "selected_profile_manifest": self.profile_manifest,
             },
             "amendments": [],
@@ -421,7 +467,7 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             "schema_version": 1,
             "task_id": "task-1",
             "scope_version": "s1",
-            "standards_version": "3.0.0",
+            "standards_version": SYNTHETIC_STANDARDS_VERSION,
             "selected_profile_manifest": self.profile_manifest,
             "open_gaps": [],
         }
@@ -493,7 +539,7 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             "remaining_required_work_units": 0,
             "queue_check_receipt": self.receipt_id,
             "corpus_plan_check_receipt": corpus_receipt["receipt_id"],
-            "standards_version": "3.0.0",
+            "standards_version": SYNTHETIC_STANDARDS_VERSION,
             "selected_profile_manifest": self.profile_manifest,
             "selected_route_ids": ["R01", "R08", "R12"],
             "selected_card_paths": [
