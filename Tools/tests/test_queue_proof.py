@@ -6,10 +6,12 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 TOOLS_DIR = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = TOOLS_DIR.parent
+SYNTHETIC_PROFILE = TOOLS_DIR / "tests" / "fixtures" / "synthetic_profile"
 SCRIPT = TOOLS_DIR / "check_proof.py"
 TEMPLATE = TOOLS_DIR / "schemas" / "terminal_proof.template.yaml"
 sys.path.insert(0, str(TOOLS_DIR))
@@ -50,7 +52,7 @@ class QueueProofStructuralTests(unittest.TestCase):
             "coverage_ledger_sha256", "progress_ledger_sha256",
             "required_queue_path", "queue_revision", "queue_state_revision",
             "required_queue_sha256", "remaining_required_work_units",
-            "queue_check_receipt",
+            "queue_check_receipt", "corpus_plan_check_receipt",
         )
         for field in queue_fields:
             with self.subTest(field=field):
@@ -144,6 +146,58 @@ class CanonicalStateArgumentTests(unittest.TestCase):
         )
         self.assertIsNone(resolved)
         self.assertIn("symlink", error)
+
+
+class TerminalProofCurrentEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path("/tmp/current-evidence-fixture")
+        self.receipt_id = "audit-check_links-current"
+        self.receipt = {
+            "receipt_id": self.receipt_id,
+            "tool": "check_links",
+            "result": "pass",
+        }
+
+    def runtime(self, *, current=None, historical=None, invalidated=None):
+        return {
+            "current_receipt_catalog": (
+                {self.receipt_id: ("receipts.jsonl", self.receipt)}
+                if current is None else current),
+            "receipt_catalog": (
+                {self.receipt_id: ("receipts.jsonl", self.receipt)}
+                if historical is None else historical),
+            "invalidated_evidence_receipt_ids": invalidated or [],
+        }
+
+    def test_reused_receipts_must_be_in_current_catalog(self):
+        proof = {"reused_receipts": [{"receipt_id": self.receipt_id}]}
+        self.assertEqual([], check_proof._reused_receipt_evidence_failures(
+            self.root, proof, runtime=self.runtime()))
+
+        failures = check_proof._reused_receipt_evidence_failures(
+            self.root, proof,
+            runtime=self.runtime(
+                current={}, historical={
+                    self.receipt_id: ("receipts.jsonl", self.receipt),
+                }))
+        self.assertEqual("proof-reused-receipt-not-current", failures[0][0])
+
+    def test_empty_current_catalog_never_falls_back_to_history(self):
+        proof = {"reused_receipts": [self.receipt_id]}
+        failures = check_proof._reused_receipt_evidence_failures(
+            self.root, proof,
+            runtime=self.runtime(current={}, historical={
+                self.receipt_id: ("receipts.jsonl", self.receipt),
+            }))
+        self.assertIn("historical evidence is not a fallback", failures[0][2])
+
+    def test_invalidated_reused_receipt_fails_even_if_catalog_entry_exists(self):
+        proof = {"reused_receipts": [self.receipt_id]}
+        failures = check_proof._reused_receipt_evidence_failures(
+            self.root, proof,
+            runtime=self.runtime(invalidated=[self.receipt_id]))
+        self.assertEqual("proof-reused-receipt-invalidated-evidence",
+                         failures[0][0])
 
 
 class TerminalRuntimeClosureTests(unittest.TestCase):
@@ -290,21 +344,16 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)
         shutil.copytree(REPOSITORY_ROOT / "kernel", self.root / "kernel")
-        shutil.copytree(REPOSITORY_ROOT / "profiles", self.root / "profiles")
-        shutil.copytree(
-            self.root / "profiles/examples/agent-atlas",
-            self.root / "profiles/agent-atlas",
+        (self.root / "profiles").mkdir()
+        shutil.copy2(
+            REPOSITORY_ROOT / "profiles/README.md",
+            self.root / "profiles/README.md",
         )
-        for path in (self.root / "profiles/agent-atlas").rglob("*"):
-            if path.is_file() and path.suffix in (".md", ".yaml"):
-                path.write_text(
-                    path.read_text(encoding="utf-8").replace(
-                        "profiles/examples/agent-atlas",
-                        "profiles/agent-atlas",
-                    ),
-                    encoding="utf-8",
-                )
-        self.profile_manifest = "profiles/agent-atlas/profile.md"
+        shutil.copytree(
+            SYNTHETIC_PROFILE,
+            self.root / "profiles/test-profile",
+        )
+        self.profile_manifest = "profiles/test-profile/profile.md"
         (self.root / "Tools/schemas").mkdir(parents=True)
         for name in ("check_profile.py", "kblib.py"):
             shutil.copy2(TOOLS_DIR / name, self.root / "Tools" / name)
@@ -389,6 +438,7 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             "receipt_id": self.receipt_id,
             "tool": "check_queue",
             "tool_version": check_proof.check_queue.TOOL_VERSION,
+            "gate_id": "required-queue-completion",
             "check": "required_queue",
             "queue_check_mode": "require-complete",
             "result": "pass",
@@ -402,11 +452,31 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             "remaining_required_work_units": 0,
         }
         register = receipt_dir / "terminal.jsonl"
-        register.write_text(
-            json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8"
-        )
         (receipt_dir / "terminal-full.jsonl").write_text(
             json.dumps({"result": "pass"}) + "\n", encoding="utf-8"
+        )
+
+        corpus_receipt = kblib.make_receipt(
+            "check_corpus_plan",
+            check_proof.check_corpus_plan.TOOL_VERSION,
+            "corpus_plan", self.profile_manifest, "pass",
+            "terminal fixture Corpus Planning bytes passed", 1)
+        corpus_receipt["gate_id"] = "corpus-plan-structure"
+        corpus_receipt.update(
+            check_proof.check_corpus_plan.current_freshness_binding(
+                self.root, self.profile_manifest,
+                task_id="task-1", queue_revision=1,
+                queue_state_revision=0,
+                coverage_ledger_sha256=coverage_sha,
+                required_queue_sha256=queue_sha,
+                progress_ledger_sha256=progress_sha,
+                repository_snapshot_sha256=
+                    kblib.repository_snapshot_sha256(self.root),
+            ))
+        register.write_text(
+            json.dumps(receipt, sort_keys=True) + "\n" +
+            json.dumps(corpus_receipt, sort_keys=True) + "\n",
+            encoding="utf-8",
         )
 
         proof = kblib.parse_yaml_subset(TEMPLATE.read_text(encoding="utf-8"))
@@ -422,6 +492,7 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             "required_queue_sha256": queue_sha,
             "remaining_required_work_units": 0,
             "queue_check_receipt": self.receipt_id,
+            "corpus_plan_check_receipt": corpus_receipt["receipt_id"],
             "standards_version": "3.0.0",
             "selected_profile_manifest": self.profile_manifest,
             "selected_route_ids": ["R01", "R08", "R12"],
@@ -440,6 +511,7 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             "full_deterministic_results":
                 ".cambium/receipts/terminal-full.jsonl",
             "incremental_manual_scope": [],
+            "corpus_plan_semantic_acceptance_receipt": None,
         })
         self.proof_path = receipt_dir / "terminal-proof.yaml"
         self.proof_path.write_text(
@@ -473,6 +545,8 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             self.root / ".cambium/receipts/proof-check.jsonl"
         ).read_text(encoding="utf-8").splitlines()[-1])
         self.assertEqual("check_proof", receipt["tool"])
+        self.assertEqual(check_proof.TOOL_VERSION, receipt["tool_version"])
+        self.assertEqual(check_proof.GATE_ID, receipt["gate_id"])
         self.assertEqual("proof-check-summary", receipt["check"])
         self.assertEqual("pass", receipt["result"])
         self.assertEqual(
@@ -492,6 +566,55 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
                 self.root / check_proof.CANONICAL_PROGRESS_PATH
             ),
             receipt["progress_ledger_sha256"],
+        )
+        proof = kblib.load_yaml_file(self.proof_path)
+        self.assertEqual(proof["corpus_plan_check_receipt"],
+                         receipt["corpus_plan_check_receipt"])
+
+    def test_changed_corpus_plan_slot_invalidates_terminal_proof(self):
+        slot = self.root / "profiles/test-profile/corpus-planning.yaml"
+        slot.write_text(
+            slot.read_text(encoding="utf-8") + "\n",
+            encoding="utf-8")
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-corpus-plan-receipt-stale", result.stdout)
+
+    def test_tampered_corpus_plan_receipt_binding_fails_closed(self):
+        proof = kblib.load_yaml_file(self.proof_path)
+        receipt_id = proof["corpus_plan_check_receipt"]
+        register = self.root / proof["audit_receipt_register"]
+        records = [json.loads(line) for line in register.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for record in records:
+            if record.get("receipt_id") == receipt_id:
+                record["selected_profile_manifest_sha256"] = \
+                    "sha256:" + "0" * 64
+        register.write_text("".join(
+            json.dumps(record, sort_keys=True) + "\n" for record in records),
+            encoding="utf-8")
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-corpus-plan-receipt-stale", result.stdout)
+
+    def test_corpus_receipt_in_history_but_not_current_fails_closed(self):
+        proof = kblib.load_yaml_file(self.proof_path)
+        runtime = check_proof.check_queue.validate_runtime(self.root)
+        historical = check_proof.check_queue.historical_receipt_catalog(runtime)
+        current = dict(check_proof.check_queue.current_receipt_catalog(runtime))
+        current.pop(proof["corpus_plan_check_receipt"], None)
+        filtered = dict(runtime)
+        filtered["receipt_catalog"] = historical
+        filtered["current_receipt_catalog"] = current
+        with mock.patch.object(
+                check_proof.check_queue, "validate_runtime",
+                return_value=filtered):
+            failures, passed = check_proof._validate_corpus_plan_linkage(
+                self.root, proof, proof["progress_ledger_sha256"])
+        self.assertFalse(passed)
+        self.assertIn(
+            "proof-corpus-plan-receipt-not-current",
+            [failure[0] for failure in failures],
         )
 
     def test_same_bytes_in_substitute_ledger_paths_cannot_pass(self):
@@ -577,6 +700,7 @@ class QueueProofLiveLinkageTests(unittest.TestCase):
             "receipt_id": self.receipt_id,
             "tool": "check_queue",
             "tool_version": check_proof.check_queue.TOOL_VERSION,
+            "gate_id": "required-queue-completion",
             "check": "required_queue",
             "queue_check_mode": "require-complete",
             "result": "pass",
@@ -609,11 +733,24 @@ class QueueProofLiveLinkageTests(unittest.TestCase):
     def checks(self, failures):
         return [failure[0] for failure in failures]
 
-    def validate(self):
-        return check_proof._validate_required_queue_linkage(
-            self.root, self.proof, self.progress,
-            self.coverage_sha, self.progress_sha,
-        )
+    def validate(self, current_catalog=None, invalidated_ids=None):
+        if current_catalog is None:
+            current_catalog = {
+                self.receipt.get("receipt_id"):
+                    (".cambium/receipts/terminal.jsonl", self.receipt),
+            }
+        runtime = {
+            "current_receipt_catalog": current_catalog,
+            "receipt_catalog": current_catalog,
+            "invalidated_evidence_receipt_ids": invalidated_ids or [],
+        }
+        with mock.patch.object(
+                check_proof.check_queue, "validate_runtime",
+                return_value=runtime):
+            return check_proof._validate_required_queue_linkage(
+                self.root, self.proof, self.progress,
+                self.coverage_sha, self.progress_sha,
+            )
 
     def test_valid_queue_proof_linkage_passes(self):
         failures, live_passed = self.validate()
@@ -655,6 +792,17 @@ class QueueProofLiveLinkageTests(unittest.TestCase):
         self.write_receipt(self.receipt)
         failures, _ = self.validate()
         self.assertIn("proof-queue-receipt-missing", self.checks(failures))
+
+    def test_historical_catalog_is_not_a_current_evidence_fallback(self):
+        failures, _ = self.validate(current_catalog={})
+        self.assertIn("proof-queue-receipt-not-current",
+                      self.checks(failures))
+
+    def test_standards_invalidated_queue_receipt_fails_closed(self):
+        failures, _ = self.validate(
+            current_catalog={}, invalidated_ids=[self.receipt_id])
+        self.assertIn("proof-queue-receipt-invalidated-evidence",
+                      self.checks(failures))
 
     def test_live_check_queue_failure_fails(self):
         self.write_checker(1)

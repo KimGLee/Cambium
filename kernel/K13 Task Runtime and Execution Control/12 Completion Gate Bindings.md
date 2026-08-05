@@ -22,3 +22,12 @@ may enter its selected completion path; an empty Queue cannot. After
 interruption, resume consumes a maintenance pass only while
 bindings remain current; else next action is
 `run-maintenance-completion-gate`, never `enter-completion-candidate`.
+
+For build completion, the frozen Terminal Proof also names a current
+`check_corpus_plan.py` receipt. `check_proof.py` consumes it from the declared
+Audit Receipt Register and verifies the exact selected Profile/Scope/slot/artifact
+fingerprints, canonical state fingerprints, Queue revisions, applicability,
+and repository snapshot. This receipt is required even when the slot uses
+`applicability.state: not-applicable`; that explicit inactive contract is the evidence. A stale or
+missing child blocks the Proof pass and therefore cannot be consumed by
+`update_task.py --transition complete`.

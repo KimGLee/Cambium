@@ -399,7 +399,7 @@ class InitPublicationTests(unittest.TestCase):
 
         runtime = self.root / ".cambium"
         self.assertEqual(
-            {"state", "deltas", "receipts", "reports", "tmp"},
+            {"state", "work_specs", "deltas", "receipts", "reports", "tmp"},
             {entry.name for entry in runtime.iterdir()},
         )
         state_names = {entry.name for entry in (runtime / "state").iterdir()}

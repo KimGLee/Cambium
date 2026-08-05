@@ -25,6 +25,8 @@ Declare the acceptance predicate, audit object, receipt dimension, affected scop
 - Migration review: combine the Gate modules of [[kernel/Read Sets/R06 Migration and Refactor Read Set|R06 Migration and Refactor]].
 - Rendering question: read [[kernel/K12 Quality Assurance/02 Rendering Verification|Rendering Verification]]; visual evidence additionally requires [[kernel/K12 Quality Assurance/13 Visual Verification Escalation|Visual Verification Escalation]].
 - A whole-task completion candidate: combine [[kernel/Read Sets/R08 Audit and Completion Read Set|R08 Audit and Completion]].
+- When `Corpus Planning` is configured, read [[kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries|Corpus Planning Runtime Audit and Gate Boundaries]], [[kernel/K02 Knowledge Work Construction/05 Global Map Contract|Global Map Contract]], [[kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract|Capability Matrix Contract]], and [[kernel/K02 Knowledge Work Construction/07 Gap Register Contract|Gap Register Contract]], then use explicit Global Map downstream relations, Capability Matrix owner/gap references, and Gap Register links to form the initial affected set. The audit still verifies that set against the changed predicate and expands only by this route's bounded rule; the planning artifacts do not decide the audit result.
+- An audit finding creates or changes a semantic-gap candidate or planning relation: combine [[kernel/Read Sets/R13 Corpus Planning Read Set|R13 Corpus Planning]] after recording the audit finding. R12 owns evidence; R13 owns the planning write-back.
 
 ## Gate
 

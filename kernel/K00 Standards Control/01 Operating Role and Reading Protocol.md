@@ -65,7 +65,7 @@ In the following cases the Standards source text MUST be read back; cards alone 
 - Depth rules for L-tier pages (the complete list is maintained only in the source text).
 - Governance tasks: the R09 Read Set source text MUST be read in full; cards MUST NOT serve as the basis for a revision.
 
-Runtime Cards are compiled artifacts shipped under `kernel/Cards` and must not be hand-edited. The kernel owns the continuous R01-R12 route set, every Runtime Card, and their synchronization contract. A profile may add only a namespaced supplemental route, Read Set, or gate through its `Routing And Gate Registry`, using `P:<profile_id>:<route_name>` rather than the Rxx namespace; it cannot replace, shadow, or disable a kernel route or Runtime Card. When a Card conflicts with the Standards source text, the source text prevails, and regeneration is triggered per the Revision Write-back Checklist of [[kernel/K00 Standards Control/03 Standards Governance|Standards Governance]].
+Runtime Cards are compiled artifacts shipped under `kernel/Cards` and must not be hand-edited. The kernel owns the continuous R01-R13 route set, every Runtime Card, and their synchronization contract. A profile may add only a namespaced supplemental route, Read Set, or gate through its `Routing And Gate Registry`, using `P:<profile_id>:<route_name>` rather than the Rxx namespace; it cannot replace, shadow, or disable a kernel route or Runtime Card. When a Card conflicts with the Standards source text, the source text prevails, and regeneration is triggered per the Revision Write-back Checklist of [[kernel/K00 Standards Control/03 Standards Governance|Standards Governance]].
 
 ## Default Read Sets
 
@@ -83,3 +83,4 @@ Current Read Sets:
 - [[kernel/Read Sets/R10 Maintenance Run Read Set|Maintenance Run]]: periodic updates and freshness, digesting overdue re-review, watermark deltas, and needs_rereview within the budget envelope.
 - [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]]: the canonical Large-scale Pre-execution Gate.
 - [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set|Targeted and Specialized Audit]]: bounded review of changed, invalidated, overdue, sampled, or specialized-invariant scope.
+- [[kernel/Read Sets/R13 Corpus Planning Read Set|Corpus Planning]]: maintain corpus topology, capability coverage, and semantic-gap admission without taking over content work, Queue execution, or audit.

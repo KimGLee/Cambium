@@ -29,11 +29,13 @@ class CompileQueueTests(unittest.TestCase):
                 "id": "B1", "family": "Core", "order_hint": 1,
                 "source_route": "R03", "execution_mode": "concurrent-worker",
                 "depends_on": [], "confirmation_required": False,
+                "work_spec_path": None, "work_spec_sha256": None,
             },
             {
                 "id": "B2", "family": "Core", "order_hint": 2,
                 "source_route": "R03", "execution_mode": "concurrent-worker",
                 "depends_on": ["B1"], "confirmation_required": False,
+                "work_spec_path": None, "work_spec_sha256": None,
             },
         ]
         coverage_path.write_text(kblib.canonical_yaml(coverage), encoding="utf-8")
@@ -53,6 +55,24 @@ class CompileQueueTests(unittest.TestCase):
         progress["required_queue_sha256"] = kblib.sha256_bytes(text)
         (self.root / check_queue.PROGRESS_PATH).write_text(
             kblib.canonical_yaml(progress), encoding="utf-8")
+
+    def refresh_initial_origin(self):
+        path = self.root / ".cambium/receipts/task-transitions.jsonl"
+        records = [json.loads(line) for line in path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for record in records:
+            if record.get("receipt_id") == "audit-fixture-initial-queue":
+                record["after_required_queue_sha256"] = kblib.sha256_file(
+                    self.root / check_queue.QUEUE_PATH)
+                record["after_coverage_sha256"] = kblib.sha256_file(
+                    self.root / check_queue.COVERAGE_PATH)
+                record["after_progress_sha256"] = kblib.sha256_file(
+                    self.root / check_queue.PROGRESS_PATH)
+        path.write_text(
+            "".join(json.dumps(record, separators=(",", ":")) + "\n"
+                    for record in records),
+            encoding="utf-8",
+        )
 
     def make_task_active_without_open(self):
         for state, summary, at in (
@@ -85,6 +105,40 @@ class CompileQueueTests(unittest.TestCase):
     def batch_spec(self, coverage, batch_id):
         return next(spec for spec in coverage["batch_specs"]
                     if spec["id"] == batch_id)
+
+    def write_work_spec(self, batch_id="B1", manifest=None):
+        if manifest is None:
+            manifest = ["Topics/A.md"]
+        relative = ".cambium/work_specs/%s.yaml" % batch_id
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "schema_version": 1,
+            "batch_id": batch_id,
+            "manifest": manifest,
+            "outcomes": [{
+                "outcome_id": "OUT-001",
+                "required_result": "The declared result exists.",
+            }],
+            "instructions": [{
+                "instruction_id": "INS-001", "order": 1,
+                "target_scope": list(manifest),
+                "required_transformation": "Apply the approved change.",
+                "depends_on": [],
+            }],
+            "acceptance_conditions": [{
+                "condition_id": "ACC-001",
+                "target_scope": list(manifest),
+                "observable_predicate": "Every target passes review.",
+                "evidence_requirement": "A current review receipt exists.",
+            }],
+            "constraints": [{
+                "constraint_id": "CON-001", "target_scope": ["batch"],
+                "requirement": "Preserve declared scope.",
+            }],
+        }
+        path.write_text(kblib.canonical_yaml(data), encoding="utf-8")
+        return relative, path
 
     def write_proposal(self, coverage, amendment_id="A-REPLAN"):
         relative = ".cambium/deltas/replans/%s.coverage.yaml" % amendment_id
@@ -169,6 +223,8 @@ class CompileQueueTests(unittest.TestCase):
         preclose_coverage_sha = "sha256:" + "e" * 64
         progress_sha = "sha256:" + "f" * 64
         merged_snapshot_sha = "sha256:" + "7" * 64
+        batch_close_version = check_queue.BATCH_CLOSE_TOOL_VERSION
+        queue_gate_version = check_queue.TOOL_VERSION
         receipts = [
             {
                 "receipt_id": "audit-page-1", "result": "pass",
@@ -176,8 +232,15 @@ class CompileQueueTests(unittest.TestCase):
             },
             {
                 "receipt_id": "audit-batch-1", "result": "pass",
-                "invalidated_by": None, "check": "batch_gate",
-                "target": "B1",
+                "invalidated_by": None,
+                "tool": check_queue.MANUAL_ATTESTATION_TOOL,
+                "tool_version":
+                    check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+                "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
+                "check": check_queue.BATCH_REVIEW_CHECK,
+                "target": "B1", "task_id": "fixture-task",
+                "batch_id": "B1",
+                "delta_page_receipt_ids": ["audit-page-1"],
             },
             {
                 "receipt_id": "audit-transition-open", "result": "pass",
@@ -202,7 +265,7 @@ class CompileQueueTests(unittest.TestCase):
                 "tool_version": "1.2.0", "check": "queue_transition",
                 "actor_role": "integrator",
                 "checked_at": "2026-08-04T02:00:00Z",
-                "evidence_receipt": None,
+                "evidence_receipt": "audit-batch-1",
                 "target": "B1", "task_id": "fixture-task",
                 "queue_revision": 1, "before_state": "open",
                 "after_state": "merge-ready", "before_hold_state": "none",
@@ -250,7 +313,7 @@ class CompileQueueTests(unittest.TestCase):
             {
                 "receipt_id": "audit-ready-1", "result": "pass",
                 "invalidated_by": None, "tool": "check_queue",
-                "tool_version": check_queue.TOOL_VERSION,
+                "tool_version": queue_gate_version,
                 "check": "required_queue",
                 "queue_check_mode": "require-ready:B1",
                 "task_id": "fixture-task", "queue_revision": 1,
@@ -262,7 +325,7 @@ class CompileQueueTests(unittest.TestCase):
             {
                 "receipt_id": "audit-close-1", "result": "pass",
                 "invalidated_by": None, "tool": "check_queue",
-                "tool_version": check_queue.TOOL_VERSION,
+                "tool_version": queue_gate_version,
                 "check": "required_queue",
                 "queue_check_mode": "consistency",
                 "task_id": "fixture-task", "queue_revision": 1,
@@ -281,7 +344,8 @@ class CompileQueueTests(unittest.TestCase):
             receipts.append({
                 "receipt_id": receipt_id, "result": "pass",
                 "invalidated_by": None,
-                "tool": "check_batch_close", "tool_version": "1.0.0",
+                "tool": "check_batch_close",
+                "tool_version": batch_close_version,
                 "check": "closed_list_%s" % field,
                 "target": ".", "batch_id": "B1",
                 "task_id": "fixture-task",
@@ -295,7 +359,8 @@ class CompileQueueTests(unittest.TestCase):
             {
                 "receipt_id": "audit-review-attestation-1",
                 "result": "pass", "invalidated_by": None,
-                "tool": "check_batch_close", "tool_version": "1.0.0",
+                "tool": "check_batch_close",
+                "tool_version": batch_close_version,
                 "check": "batch_global_review_attestation",
                 "target": "B1", "batch_id": "B1",
                 "task_id": "fixture-task",
@@ -310,7 +375,8 @@ class CompileQueueTests(unittest.TestCase):
             {
                 "receipt_id": "audit-global-review-1", "result": "pass",
                 "invalidated_by": None,
-                "tool": "check_batch_close", "tool_version": "1.0.0",
+                "tool": "check_batch_close",
+                "tool_version": batch_close_version,
                 "check": "batch_global_review",
                 "target": "B1", "batch_id": "B1",
                 "task_id": "fixture-task",
@@ -324,7 +390,8 @@ class CompileQueueTests(unittest.TestCase):
             {
                 "receipt_id": "audit-close-gate-1", "result": "pass",
                 "invalidated_by": None,
-                "tool": "check_batch_close", "tool_version": "1.0.0",
+                "tool": "check_batch_close",
+                "tool_version": batch_close_version,
                 "check": "batch_close_gate",
                 "target": "B1", "batch_id": "B1",
                 "task_id": "fixture-task", "queue_revision": 1,
@@ -337,6 +404,11 @@ class CompileQueueTests(unittest.TestCase):
                 "delta_sha256": delta_sha,
                 "delta_apply_receipt": "audit-delta-apply-b1",
                 "queue_consistency_receipt": "audit-close-1",
+                "corpus_plan_required": False,
+                "corpus_plan_triggers": [],
+                "corpus_plan_receipt": None,
+                "work_spec_path": None,
+                "work_spec_sha256": None,
                 "merged_snapshot_sha256": merged_snapshot_sha,
                 "reviewer_attestation_receipt":
                     "audit-review-attestation-1",
@@ -462,11 +534,23 @@ class CompileQueueTests(unittest.TestCase):
         )
 
     def append_receipt(self, receipt_id, target="B1", check="fixture"):
-        path = self.root / ".cambium/receipts/fixture.jsonl"
-        kblib.write_receipts(path, [{
+        receipt = {
             "receipt_id": receipt_id, "check": check, "target": target,
             "result": "pass", "invalidated_by": None,
-        }])
+        }
+        if check == check_queue.BATCH_REVIEW_CHECK:
+            receipt.update({
+                "tool": check_queue.MANUAL_ATTESTATION_TOOL,
+                "tool_version":
+                    check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+                "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
+                "task_id": "fixture-task", "batch_id": target,
+                "delta_page_receipt_ids": [
+                    receipt_id.replace("-batch-", "-page-", 1)
+                ],
+            })
+        path = self.root / ".cambium/receipts/fixture.jsonl"
+        kblib.write_receipts(path, [receipt])
 
     def queue_gate(self, *mode):
         relative = ".cambium/receipts/replan-preflight-gates.jsonl"
@@ -529,6 +613,7 @@ class CompileQueueTests(unittest.TestCase):
             "order_hint": 3, "source_route": "R03",
             "execution_mode": "concurrent-worker", "depends_on": ["B2"],
             "confirmation_required": False,
+            "work_spec_path": None, "work_spec_sha256": None,
         })
         coverage["pages"].append({
             "path": "Topics/C.md", "coverage_disposition": "required",
@@ -617,6 +702,147 @@ class CompileQueueTests(unittest.TestCase):
                 r"batch_specs\[0\] has unsupported field\(s\): runtime_hint"):
             compile_queue._batch_specs(extra)
 
+    def test_open_batch_work_spec_replan_requires_revalidation_hold(self):
+        queue = self.load(check_queue.QUEUE_PATH)
+        current = queue["required_queue"][0]
+        current.update({
+            "state": "open", "opened_at": "2026-08-04T01:00:00Z",
+            "activation_receipt": "audit-old-admission",
+            "transition_receipts": ["audit-open"],
+        })
+        proposal = copy.deepcopy(queue)
+        proposed = proposal["required_queue"][0]
+        proposed["work_spec_path"] = ".cambium/work_specs/B1.yaml"
+        proposed["work_spec_sha256"] = "sha256:" + "a" * 64
+        diff = compile_queue.replan_diff(
+            queue, proposal, "sha256:" + "b" * 64)
+        self.assertTrue(diff["conflicts"])
+        self.assertIn("requires a prior update_queue transition",
+                      diff["conflicts"][0])
+        update = next(entry for entry in diff["update_candidates"]
+                      if entry["id"] == "B1")
+        self.assertEqual(
+            ["work_spec_path", "work_spec_sha256"],
+            update["changed_fields"],
+        )
+        already_held = copy.deepcopy(queue)
+        already_held["required_queue"][0]["hold_state"] = \
+            "revalidation-required"
+        already_held["required_queue"][0]["hold_reason"] = \
+            "pre-existing revalidation boundary"
+        held_proposal = copy.deepcopy(proposal)
+        held_diff = compile_queue.replan_diff(
+            already_held, held_proposal, "sha256:" + "d" * 64)
+        held_result = compile_queue._build_replanned_queue(
+            already_held, held_proposal, held_diff)
+        held_item = held_result["required_queue"][0]
+        self.assertEqual("open", held_item["state"])
+        self.assertEqual("revalidation-required", held_item["hold_state"])
+        self.assertEqual("pre-existing revalidation boundary",
+                         held_item["hold_reason"])
+        self.assertEqual("audit-old-admission",
+                         held_item["activation_receipt"])
+        self.assertEqual(queue["queue_revision"] + 1,
+                         held_result["queue_revision"])
+        self.assertEqual(queue["state_revision"],
+                         held_result["state_revision"])
+
+        current["hold_state"] = "blocked"
+        blocked_diff = compile_queue.replan_diff(
+            queue, proposal, "sha256:" + "c" * 64)
+        self.assertTrue(blocked_diff["conflicts"])
+
+    def test_open_work_spec_amendment_invalidates_old_admission_gate(self):
+        self.make_task_active_without_open()
+        ready_relative = ".cambium/receipts/work-spec-ready.jsonl"
+        ready = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             "--require-ready", "B1", "--receipts", ready_relative],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(0, ready.returncode, ready.stdout)
+        ready_id = json.loads((self.root / ready_relative).read_text(
+            encoding="utf-8"))["receipt_id"]
+        queue = self.load(check_queue.QUEUE_PATH)
+        opened = self.update_command(
+            "--id", "B1", "--transition", "open",
+            "--gate-receipt", ready_id,
+            "--expected-state-revision", str(queue["state_revision"]),
+            "--expected-sha256",
+            kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+            "--actor-role", "integrator", "--at",
+            "2026-08-04T00:03:00Z", "--apply",
+        )
+        self.assertEqual(0, opened.returncode, opened.stdout)
+
+        opened_runtime = check_queue.validate_runtime(self.root)
+        held = self.update_command(
+            "--id", "B1", "--hold-state", "revalidation-required",
+            "--reason", "Work Spec change requires fresh admission evidence",
+            "--expected-state-revision",
+            str(opened_runtime["queue"]["state_revision"]),
+            "--expected-sha256", opened_runtime["queue_sha256"],
+            "--actor-role", "integrator", "--at",
+            "2026-08-04T00:03:30Z", "--apply",
+        )
+        self.assertEqual(0, held.returncode, held.stdout)
+
+        work_spec_relative, work_spec = self.write_work_spec()
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        b1 = self.batch_spec(coverage, "B1")
+        b1["work_spec_path"] = work_spec_relative
+        b1["work_spec_sha256"] = kblib.sha256_file(work_spec)
+        amendment_id = "A-OPEN-WORK-SPEC"
+        proposal_relative = self.write_proposal(coverage, amendment_id)
+        self.add_amendment(proposal_relative, amendment_id)
+        replanned = self.apply_replan(proposal_relative, amendment_id)
+        self.assertEqual(0, replanned.returncode, replanned.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        item = result["items_by_id"]["B1"]
+        self.assertEqual("open", item["state"])
+        self.assertEqual("revalidation-required", item["hold_state"])
+        self.assertIn("fresh admission evidence", item["hold_reason"])
+        self.assertEqual(2, result["queue"]["queue_revision"])
+
+        stale = self.update_command(
+            "--id", "B1", "--hold-state", "none",
+            "--gate-receipt", ready_id,
+            "--expected-state-revision",
+            str(result["queue"]["state_revision"]),
+            "--expected-sha256", result["queue_sha256"],
+            "--actor-role", "integrator", "--at",
+            "2026-08-04T00:04:00Z", "--apply",
+        )
+        self.assertEqual(1, stale.returncode, stale.stdout)
+        self.assertIn("expected 'required-queue-consistency'", stale.stdout)
+
+        consistency_relative = ".cambium/receipts/work-spec-consistency.jsonl"
+        consistency = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             "--receipts", consistency_relative],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(0, consistency.returncode, consistency.stdout)
+        consistency_id = json.loads((self.root / consistency_relative)
+                                    .read_text(encoding="utf-8"))["receipt_id"]
+        current = check_queue.validate_runtime(self.root)
+        cleared = self.update_command(
+            "--id", "B1", "--hold-state", "none",
+            "--gate-receipt", consistency_id,
+            "--expected-state-revision",
+            str(current["queue"]["state_revision"]),
+            "--expected-sha256", current["queue_sha256"],
+            "--actor-role", "integrator", "--at",
+            "2026-08-04T00:05:00Z", "--apply",
+        )
+        self.assertEqual(0, cleared.returncode, cleared.stdout)
+        final = check_queue.validate_runtime(self.root)
+        self.assertEqual([], final["errors"])
+        self.assertEqual("none", final["items_by_id"]["B1"]["hold_state"])
+
     def test_apply_materializes_initial_queue_and_syncs_progress(self):
         self.empty_queue()
         before = self.load(check_queue.QUEUE_PATH)
@@ -641,6 +867,30 @@ class CompileQueueTests(unittest.TestCase):
                          receipt["after_required_queue_sha256"])
         self.assertEqual(result["coverage_sha256"],
                          receipt["after_coverage_sha256"])
+
+    def test_initial_compile_materializes_complex_work_spec_binding(self):
+        self.empty_queue()
+        relative, path = self.write_work_spec()
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        spec = self.batch_spec(coverage, "B1")
+        spec["work_spec_path"] = relative
+        spec["work_spec_sha256"] = kblib.sha256_file(path)
+        coverage_path.write_text(kblib.canonical_yaml(coverage),
+                                 encoding="utf-8")
+        queue = self.load(check_queue.QUEUE_PATH)
+        completed = self.command(
+            "--apply", "--expected-queue-revision",
+            str(queue["queue_revision"]), "--expected-sha256",
+            kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        item = result["items_by_id"]["B1"]
+        self.assertEqual(relative, item["work_spec_path"])
+        self.assertEqual(kblib.sha256_file(path), item["work_spec_sha256"])
 
     def test_materialized_queue_without_initial_receipt_is_rejected(self):
         progress_path = self.root / check_queue.PROGRESS_PATH
@@ -747,6 +997,7 @@ class CompileQueueTests(unittest.TestCase):
             "id": "B3", "family": "Follow-up", "order_hint": 2,
             "source_route": "R07", "execution_mode": "concurrent-worker",
             "depends_on": ["B1"], "confirmation_required": False,
+            "work_spec_path": None, "work_spec_sha256": None,
         })
         proposal_relative = self.write_proposal(coverage)
         self.add_amendment(proposal_relative)
@@ -867,6 +1118,7 @@ class CompileQueueTests(unittest.TestCase):
             "id": "B3", "family": "Independent", "order_hint": 3,
             "source_route": "R07", "execution_mode": "concurrent-worker",
             "depends_on": ["B2"], "confirmation_required": False,
+            "work_spec_path": None, "work_spec_sha256": None,
         })
         coverage["pages"][1]["next_batch"] = "B3"
         compiled, _ = compile_queue.compile_document(queue, coverage)
@@ -889,6 +1141,7 @@ class CompileQueueTests(unittest.TestCase):
                 "manifest": ["Topics/A.md"], "source_route": "R03",
                 "execution_mode": "concurrent-worker", "depends_on": [],
                 "confirmation_required": False,
+                "work_spec_path": None, "work_spec_sha256": None,
             }],
         }
         proposal = copy.deepcopy(queue)

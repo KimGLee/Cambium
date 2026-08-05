@@ -21,7 +21,7 @@ This page is the stable entry for the Quality Assurance standard. The detailed r
 | [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation\|Audit Evidence Reuse and Invalidation]] | `Purpose`, `Audit Layers`, `Dimension-specific Audit Receipt`, `Reuse Gate`, `Invalidation`, `Incremental Audit Planning`, `Incremental By Default`, `Specialized Audit Boundary`, `Terminal Reconciliation Rules`, `Related` |
 | [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] | `Purpose`, `Terms`, `Evidence Role`, `Uniform Sections`, `Item Map`, `Reverse Check`, `Profile Registration`, `Related` |
 | [[kernel/K12 Quality Assurance/09 Batch-close Closed List\|Batch-close Closed List]] | `Purpose`, `Batch-close Closed List`, `Related` |
-| [[kernel/K12 Quality Assurance/10 Standards Version Adoption\|Standards Version Adoption]] | `Purpose`, `Active-task Adoption`, `Related` |
+| [[kernel/K12 Quality Assurance/10 Standards Version Adoption\|Standards Version Adoption]] | `Purpose And Sole Ownership`, `Trigger And Invariants`, `Restricted-YAML Adoption Plan`, `Adoption Branches`, `Acceptance And Resume` |
 | [[kernel/K12 Quality Assurance/11 Content-level Propagation\|Content-level Propagation]] | `Purpose`, `Content-level Propagation`, `Related` |
 | [[kernel/K12 Quality Assurance/12 Substantive Correctness Review\|Substantive Correctness Review]] | `Purpose`, `Substantive Correctness Review`, `Related` |
 | [[kernel/K12 Quality Assurance/13 Visual Verification Escalation\|Visual Verification Escalation]] | `Visual Verification Escalation` |

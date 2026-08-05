@@ -12,6 +12,14 @@ from an empty Queue and records its origin. Same-scope replan uses a complete
 staged Coverage proposal bound to its Amendment, diff, and all live-state SHAs;
 terminal history remains and in-flight structure cannot change.
 
+Coverage `batch_specs` explicitly provides each proposed Work Spec path/hash
+pair. The compiler copies and validates it; it never guesses whether a batch
+is simple or complex. Missing or partial Work Spec fields fail closed; Queue
+compilation and replanning do not upgrade predecessor schema shapes. For an
+open batch, a Work-Spec-only replan is permitted only after
+`update_queue.py` has recorded `revalidation-required`; merge-ready and
+terminal Work Spec bindings cannot be replanned.
+
 `update_queue.py` alone applies lifecycle/hold transitions and the close-time
 Coverage projection. After canonical delta apply, only checks and that batch's
 close may proceed until the apply receipt is consumed. Cancellation is never a

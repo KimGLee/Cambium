@@ -12,11 +12,17 @@ Batches may execute concurrently by default; the cap is controlled by the contra
 2. B does not edit control or hub pages, including kernel Runtime Cards, MOCs, the Overview, shared terminology pages, and pages bound by the `Expression Layer Entry` or other profile-registered hub roles. Hub page synchronization is performed by the integrator as a separate small step after that batch's serial merge completes and before the next batch's merge begins; this content-editing action is not part of the serial zone's deterministic action list.
 3. Every Queue dependency of B is `closed`; B does not depend on pages of in-flight batches.
 
+For a complex batch, readiness additionally requires a current Work Spec
+path/hash whose batch ID and ordered manifest equal B. The worker reads that
+specification after activation together with the Standards for the selected
+route. The specification narrows this batch's instructions; it cannot enlarge
+the frozen manifest or override Kernel, Profile, Queue, or Amendment state.
+
 Migration or refactor batches necessarily edit hub pages and cross-batch pages, do not meet concurrency admission, and MUST use an exclusive or `serial-integrator` execution mode; while such a batch is open, no other batch is activated.
 
 Write partition: a concurrent batch writes only three places — the pages in its own manifest, its own directory under `.cambium/receipts/`, and its own delta file `.cambium/deltas/<batch>.yaml`, whose schema is at `Tools/schemas/coverage_delta.template.yaml`. Every file under `.cambium/state/`, plus the Amendment Log and watermark, is writable only by the integrator.
 
-Batch close has two phases: after in-batch work completes in parallel, the integrator verifies the `merge-ready` preconditions and records `open -> merge-ready`; in-batch work includes writing, the `--scope` self-check, all review receipts present, completion of the K12/14 in-batch items, and the exact-manifest delta written out. The integrator then merges batches serially one by one: apply the delta through canonical `Tools/apply_delta.py --root`, run the [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]] against the merged full snapshot, verify the K12/14 global items, obtain a current Queue consistency receipt, and record `merge-ready -> closed` through `Tools/update_queue.py`. The close transition derives the Coverage `next_batch` projection and synchronizes the Progress Queue reference under the shared write lock. Each serial merge handles exactly one batch; the sequence is guarded and recoverable but is not misrepresented as one filesystem-atomic operation.
+Batch close has two phases: after in-batch work completes in parallel, the integrator verifies the `merge-ready` preconditions, records the current K12/14 `batch-review` gate that binds the exact Delta page receipt-ID set, and records `open -> merge-ready` with that gate as transition evidence; in-batch work includes writing, the `--scope` self-check, all review receipts present, completion of the K12/14 in-batch items, and the exact-manifest delta written out. Historical page evidence remains reusable while valid, but it cannot authorize the transition without this current wrapper. The integrator then merges batches serially one by one: apply the delta through canonical `Tools/apply_delta.py --root`, run the [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]] against the merged full snapshot, verify the K12/14 global items, obtain a current Queue consistency receipt and any conditionally required Corpus Planning child receipt, and record `merge-ready -> closed` through `Tools/update_queue.py`. The close transition derives the Coverage `next_batch` projection and synchronizes the Progress Queue reference under the shared write lock. Each serial merge handles exactly one batch; the sequence is guarded and recoverable but is not misrepresented as one filesystem-atomic operation.
 
 Known exceptions to the serial zone keep an explicit registration mechanism; the current register is empty.
 
@@ -32,10 +38,17 @@ manifest objects, their receipts, and `.cambium/deltas/<batch-id>.yaml`.
 
 | Transition | Required evidence |
 |---|---|
-| `queued -> open` | current `--require-ready` receipt; closed dependencies; bound confirmation when required; disjoint active manifest; concurrency/exclusivity satisfied |
-| `open -> merge-ready` | exact-manifest delta; current receipts and scoped checks; K12/14 in-batch review |
-| `merge-ready -> closed` | delta applied; global gates and Coverage/Queue reconciliation passed; current consistency and batch-close receipts bind the recomputed repository snapshot |
+| `queued -> open` | current `--require-ready` receipt; closed dependencies; bound confirmation when required; valid current Work Spec pair when non-null; disjoint active manifest; concurrency/exclusivity satisfied |
+| `open -> merge-ready` | exact-manifest delta; valid page receipts and scoped checks; one current K12/14 `batch-review` wrapper binding their exact IDs |
+| `merge-ready -> closed` | delta applied; global gates and Coverage/Queue reconciliation passed; current consistency and batch-close receipts bind the recomputed repository snapshot; when R13 is selected or the manifest intersects the validator-parsed Corpus Planning affected set, the close bundle contains a distinct current Corpus Planning child receipt |
 | `merge-ready -> open` | failed merge; append-only `invalidation_history` freezes the archived delta SHA/path and invalidated receipts |
 
+`Tools/update_queue.py` recomputes the Corpus Planning requirement from the
+current Progress route selection, Queue manifest, and validator-parsed explicit
+path projection before close and again under the writer lock. The close
+aggregator cannot turn the gate off by declaring `corpus_plan_required: false`,
+and a child whose Profile, Scope, slot, artifact, state, revision, or repository
+fingerprint is stale cannot authorize the transition.
+
 `check_queue.py` solely gates Queue structure, cross-state agreement, readiness,
-evidence, revisions/SHA, concurrency, recovery, and terminal count.
+Work Spec binding, evidence, revisions/SHA, concurrency, recovery, and terminal count.

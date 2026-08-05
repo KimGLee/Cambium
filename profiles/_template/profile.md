@@ -9,6 +9,7 @@ Interface and usage: [Profile interface](../README.md)
 ## Implemented Slots
 
 - `Profile Scope`: `scope-and-architecture.md`
+- `Corpus Planning`: `corpus-planning.yaml`
 - `Priority Rubric`: `priority-rubric.md`
 - `Vocabulary Extensions`: `vocabulary-extensions.yaml`
 - `Language Contract`: `language-contract.md`

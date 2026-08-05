@@ -20,6 +20,8 @@ queue_state_revision: 42
 required_queue_sha256: "sha256:replace-with-current-queue-fingerprint"
 remaining_required_work_units: 0
 queue_check_receipt: "audit-check_queue-20260721T000000Z-11111111111111111111111111111111-0001"
+corpus_plan_check_receipt: "audit-check_corpus_plan-20260721T000000Z-22222222222222222222222222222222-0001"
+corpus_plan_semantic_acceptance_receipt: "audit-record_corpus_acceptance-20260721T000000Z-33333333333333333333333333333333-0002"
 standards_version: ""
 selected_profile_manifest: ""
 selected_route_ids:

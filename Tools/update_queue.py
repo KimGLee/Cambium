@@ -16,6 +16,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
+import check_corpus_plan
 import kblib
 import update_task
 import apply_delta
@@ -36,7 +37,12 @@ def _nonempty(value):
 
 def _receipt(result, receipt_id, label, expected=None):
     """Resolve one already-validated receipt and enforce operation bindings."""
-    entry = result.get("receipt_catalog", {}).get(receipt_id)
+    # Current transitions may not consume evidence explicitly invalidated by
+    # a Standards adoption.  validate_runtime retains the full catalog for
+    # historical-chain validation and exposes this filtered view for every
+    # new admission/hold-clear/close decision.
+    catalog = check_queue.current_receipt_catalog(result)
+    entry = catalog.get(receipt_id)
     if entry is None:
         raise ValueError("%s receipt %r does not exist" % (label, receipt_id))
     receipt = entry[1]
@@ -49,6 +55,28 @@ def _receipt(result, receipt_id, label, expected=None):
                              (label, receipt_id, field,
                               receipt.get(field), value))
     return receipt
+
+
+def _corpus_plan_close_expectation(result, item):
+    """Derive the non-bypassable current Corpus Planning close condition."""
+    plan = check_corpus_plan.validate_corpus_plan(result["root"])
+    required, triggers = check_corpus_plan.close_requirement(
+        result, item, plan)
+    if required:
+        plan_errors = [
+            "%s %s: %s" % (
+                error.get("check"), error.get("target"), error.get("details"))
+            for error in plan.get("errors") or []
+        ]
+        if "R13" in triggers and plan.get("applicability") != "configured":
+            plan_errors.append(
+                "R13-selected batch requires Corpus Planning "
+                "applicability.state=configured")
+        if plan_errors:
+            raise ValueError(
+                "Corpus Planning close requirement fails: %s" %
+                "; ".join(plan_errors))
+    return required, triggers, plan
 
 
 def _invalidated_receipt_ids(item):
@@ -234,7 +262,24 @@ def _transition_item(item, args, result):
         raise ValueError("provide --transition or --hold-state")
     now = args.at
 
+    def require_standards_revalidation():
+        outstanding = check_queue.outstanding_standards_revalidation(
+            result, item["id"])
+        if not outstanding:
+            return
+        if not _nonempty(args.standards_revalidation_receipt):
+            raise ValueError(
+                "batch has outstanding Standards revalidation; supply "
+                "--standards-revalidation-receipt from "
+                "check_queue --require-revalidation")
+        receipt_errors = check_queue.standards_revalidation_receipt_errors(
+            result, item["id"], args.standards_revalidation_receipt)
+        if receipt_errors:
+            raise ValueError("invalid Standards revalidation receipt: %s" %
+                             "; ".join(receipt_errors))
+
     if args.transition == "open" and before == "queued":
+        require_standards_revalidation()
         blocked = dict(result.get("blocked", [])).get(item["id"], [])
         ignorable = {"confirmation receipt absent"}
         remaining = [reason for reason in blocked
@@ -248,6 +293,7 @@ def _transition_item(item, args, result):
         _receipt(result, args.gate_receipt, "activation gate", expected={
             "tool": check_queue.TOOL,
             "tool_version": check_queue.TOOL_VERSION,
+            "gate_id": "required-queue-admission",
             "check": "required_queue",
             "queue_check_mode": "require-ready:%s" % item["id"],
             "task_id": result["queue"].get("task_id"),
@@ -274,6 +320,10 @@ def _transition_item(item, args, result):
             item["confirmation_receipt"] = args.confirmation_receipt
 
     elif args.transition == "merge-ready":
+        barrier = check_queue.current_attempt_evidence_barrier(
+            result, item["id"])
+        if barrier:
+            raise ValueError(barrier)
         if item.get("hold_state") != "none":
             raise ValueError("held open batch cannot become merge-ready")
         if not _nonempty(args.delta_path):
@@ -328,13 +378,19 @@ def _transition_item(item, args, result):
         if not args.batch_receipt or not all(_nonempty(value)
                                              for value in args.batch_receipt):
             raise ValueError("open -> merge-ready requires --batch-receipt")
-        if len(args.batch_receipt) != len(set(args.batch_receipt)):
-            raise ValueError("open -> merge-ready batch receipts must be unique")
-        for receipt_id in args.batch_receipt:
-            _receipt(result, receipt_id, "batch gate", expected={
-                "check": "batch_gate",
-                "target": item["id"],
-            })
+        if len(args.batch_receipt) != 1:
+            raise ValueError(
+                "open -> merge-ready requires exactly one current "
+                "batch-review gate")
+        batch_receipt_errors = check_queue.batch_review_receipt_errors(
+            check_queue.current_receipt_catalog(result),
+            args.batch_receipt[0], item_id=item["id"],
+            task_id=result["queue"].get("task_id"),
+            delta_page_receipt_ids=delta_gate_receipts,
+        )
+        if batch_receipt_errors:
+            raise ValueError("invalid batch-review gate: %s" %
+                             "; ".join(batch_receipt_errors))
         invalidated = _invalidated_receipt_ids(item)
         attempted = set(args.batch_receipt).union(delta_gate_receipts)
         replayed = sorted(attempted.intersection(invalidated))
@@ -348,6 +404,10 @@ def _transition_item(item, args, result):
         item["batch_receipts"] = list(args.batch_receipt)
 
     elif args.transition == "closed":
+        barrier = check_queue.current_attempt_evidence_barrier(
+            result, item["id"])
+        if barrier:
+            raise ValueError(barrier)
         if not _nonempty(args.gate_receipt):
             raise ValueError(
                 "merge-ready -> closed requires --gate-receipt for Queue "
@@ -355,6 +415,7 @@ def _transition_item(item, args, result):
         _receipt(result, args.gate_receipt, "Queue consistency gate", expected={
             "tool": check_queue.TOOL,
             "tool_version": check_queue.TOOL_VERSION,
+            "gate_id": "required-queue-consistency",
             "check": "required_queue",
             "queue_check_mode": "consistency",
             "task_id": result["queue"].get("task_id"),
@@ -388,10 +449,18 @@ def _transition_item(item, args, result):
         if not _nonempty(args.close_gate_receipt):
             raise ValueError(
                 "merge-ready -> closed requires --close-gate-receipt")
+        corpus_plan_required, corpus_plan_triggers, corpus_plan_result = \
+            _corpus_plan_close_expectation(result, item)
         repository_snapshot_sha256 = kblib.repository_snapshot_sha256(
             result["root"])
+        corpus_plan_expected_binding = None
+        if corpus_plan_required:
+            corpus_plan_expected_binding = check_corpus_plan.receipt_binding(
+                corpus_plan_result,
+                repository_snapshot_sha256=repository_snapshot_sha256)
         close_gate_errors = check_queue.close_gate_receipt_errors(
-            result.get("receipt_catalog", {}), args.close_gate_receipt,
+            check_queue.current_receipt_catalog(result),
+            args.close_gate_receipt,
             item_id=item["id"],
             task_id=result["queue"].get("task_id"),
             queue_revision=result["queue"].get("queue_revision"),
@@ -402,6 +471,13 @@ def _transition_item(item, args, result):
             delta_sha256=item.get("delta_sha256"),
             queue_consistency_receipt=args.gate_receipt,
             delta_apply_receipt=args.delta_apply_receipt,
+            work_spec_path=item.get("work_spec_path"),
+            work_spec_sha256=item.get("work_spec_sha256"),
+            selected_profile_manifest=result["queue"].get(
+                "selected_profile_manifest"),
+            corpus_plan_required=corpus_plan_required,
+            corpus_plan_triggers=corpus_plan_triggers,
+            corpus_plan_expected_binding=corpus_plan_expected_binding,
             current_repository_snapshot_sha256=
                 repository_snapshot_sha256,
         )
@@ -461,23 +537,31 @@ def _transition_item(item, args, result):
             raise ValueError("hold transition is a no-op")
         if (item.get("hold_state") == "revalidation-required" and
                 args.hold_state == "none"):
-            if not _nonempty(args.gate_receipt):
-                raise ValueError("clearing revalidation-required needs --gate-receipt")
-            _receipt(result, args.gate_receipt, "revalidation gate", expected={
-                "tool": check_queue.TOOL,
-                "tool_version": check_queue.TOOL_VERSION,
-                "check": "required_queue",
-                "queue_check_mode": "consistency",
-                "task_id": result["queue"].get("task_id"),
-                "queue_revision": result["queue"].get("queue_revision"),
-                "queue_state_revision": result["queue"].get("state_revision"),
-                "required_queue_sha256": result.get("queue_sha256"),
-                "coverage_ledger_sha256": result.get("coverage_sha256"),
-                "progress_ledger_sha256": result.get("progress_sha256"),
-            })
-            if args.gate_receipt in _invalidated_receipt_ids(item):
-                raise ValueError("revalidation gate reuses invalidated receipt %s" %
-                                 args.gate_receipt)
+            outstanding = check_queue.outstanding_standards_revalidation(
+                result, item["id"])
+            if outstanding:
+                require_standards_revalidation()
+            else:
+                if not _nonempty(args.gate_receipt):
+                    raise ValueError(
+                        "clearing revalidation-required needs --gate-receipt")
+                _receipt(result, args.gate_receipt, "revalidation gate", expected={
+                    "tool": check_queue.TOOL,
+                    "tool_version": check_queue.TOOL_VERSION,
+                    "gate_id": "required-queue-consistency",
+                    "check": "required_queue",
+                    "queue_check_mode": "consistency",
+                    "task_id": result["queue"].get("task_id"),
+                    "queue_revision": result["queue"].get("queue_revision"),
+                    "queue_state_revision": result["queue"].get("state_revision"),
+                    "required_queue_sha256": result.get("queue_sha256"),
+                    "coverage_ledger_sha256": result.get("coverage_sha256"),
+                    "progress_ledger_sha256": result.get("progress_sha256"),
+                })
+                if args.gate_receipt in _invalidated_receipt_ids(item):
+                    raise ValueError(
+                        "revalidation gate reuses invalidated receipt %s" %
+                        args.gate_receipt)
         item["hold_state"] = args.hold_state
         if args.hold_state == "none":
             item.pop("hold_reason", None)
@@ -499,6 +583,7 @@ def main(argv=None):
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
                         default="worker")
     parser.add_argument("--gate-receipt")
+    parser.add_argument("--standards-revalidation-receipt")
     parser.add_argument("--close-gate-receipt")
     parser.add_argument("--confirmation-receipt")
     parser.add_argument("--delta-path")
@@ -523,6 +608,8 @@ def main(argv=None):
     allowed_delta = args.delta_path if args.transition == "merge-ready" else None
     result = check_queue.validate_runtime(
         args.root, allowed_open_delta=allowed_delta,
+        allow_standards_rollback_batch=(
+            args.id if args.transition == "open" else None),
     )
     if result["errors"]:
         for error in result["errors"]:
@@ -532,6 +619,16 @@ def main(argv=None):
     if item is None:
         print("[FAIL] unknown Queue id %s" % args.id)
         return 1
+    if args.standards_revalidation_receipt:
+        consumes_revalidation = (
+            (args.transition == "open" and item.get("state") == "queued") or
+            (args.transition is None and args.hold_state == "none" and
+             item.get("hold_state") == "revalidation-required")
+        )
+        if not consumes_revalidation:
+            print("[FAIL] --standards-revalidation-receipt is valid only for "
+                  "queued -> open or revalidation-required -> none")
+            return 1
     if args.apply:
         barrier = check_queue.delta_apply_write_barrier(
             result, "update_queue", args.transition or "hold", args.id)
@@ -616,12 +713,18 @@ def main(argv=None):
         after_state_revision=queue_new["state_revision"],
         before_required_queue_sha256=before_sha,
         before_coverage_sha256=before_coverage_sha,
-        evidence_receipt=(args.close_gate_receipt if args.transition == "closed"
-                          else (args.gate_receipt or
-                                args.confirmation_receipt)),
+        evidence_receipt=(
+            args.close_gate_receipt if args.transition == "closed" else
+            args.batch_receipt[0] if args.transition == "merge-ready" else
+            (args.standards_revalidation_receipt or args.gate_receipt or
+             args.confirmation_receipt)
+        ),
         actor_role=args.actor_role,
     )
     receipt["checked_at"] = args.at
+    if args.standards_revalidation_receipt:
+        receipt["standards_revalidation_receipt"] = \
+            args.standards_revalidation_receipt
     if before_state == "merge-ready" and after_state == "open":
         invalidation = target["invalidation_history"][-1]
         invalidation["transition_receipt"] = receipt["receipt_id"]
@@ -770,6 +873,8 @@ def main(argv=None):
                     )
                 current = check_queue.validate_runtime(
                     root, allowed_open_delta=allowed_delta,
+                    allow_standards_rollback_batch=(
+                        args.id if args.transition == "open" else None),
                 )
                 if current["errors"]:
                     raise ValueError("runtime changed before write: %s" %
@@ -799,8 +904,17 @@ def main(argv=None):
                         entry for entry in current["queue"]["required_queue"]
                         if entry.get("id") == args.id
                     )
+                    (locked_corpus_required, locked_corpus_triggers,
+                     locked_corpus_result) = \
+                        _corpus_plan_close_expectation(current, locked_item)
+                    locked_corpus_binding = None
+                    if locked_corpus_required:
+                        locked_corpus_binding = \
+                            check_corpus_plan.receipt_binding(
+                                locked_corpus_result,
+                                repository_snapshot_sha256=locked_snapshot)
                     locked_close_errors = check_queue.close_gate_receipt_errors(
-                        current.get("receipt_catalog", {}),
+                        check_queue.current_receipt_catalog(current),
                         args.close_gate_receipt,
                         item_id=args.id,
                         task_id=current["queue"].get("task_id"),
@@ -813,6 +927,14 @@ def main(argv=None):
                         delta_sha256=locked_item.get("delta_sha256"),
                         queue_consistency_receipt=args.gate_receipt,
                         delta_apply_receipt=args.delta_apply_receipt,
+                        work_spec_path=locked_item.get("work_spec_path"),
+                        work_spec_sha256=locked_item.get(
+                            "work_spec_sha256"),
+                        selected_profile_manifest=current["queue"].get(
+                            "selected_profile_manifest"),
+                        corpus_plan_required=locked_corpus_required,
+                        corpus_plan_triggers=locked_corpus_triggers,
+                        corpus_plan_expected_binding=locked_corpus_binding,
                         current_repository_snapshot_sha256=locked_snapshot,
                     )
                     if locked_close_errors:

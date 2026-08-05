@@ -43,17 +43,29 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_links
+import check_corpus_plan
 import check_queue
 import kblib
 
 
 TOOL = "check_batch_close"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.2.0"
+GATE_ID = "batch-close"
 DEFAULT_RECEIPTS = ".cambium/receipts/batch-close.jsonl"
 MAX_CHECK_SECONDS = 60
 IDENTITY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]*\Z")
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+
+def _make_receipt(tool, tool_version, check, target, result, details, seq):
+    """Build one producer-era batch-close receipt with its stable Gate ID."""
+    if tool != TOOL or tool_version != TOOL_VERSION:
+        raise ValueError("check_batch_close receipt producer identity drift")
+    receipt = kblib.make_receipt(
+        tool, tool_version, check, target, result, details, seq)
+    receipt["gate_id"] = GATE_ID
+    return receipt
 
 
 class ReceiptPublicationUncertain(RuntimeError):
@@ -148,6 +160,24 @@ def _assert_authoritative_state_unchanged(root, anchor):
             "authoritative state changed while the Closed List ran: %s" %
             "; ".join(changed))
     return live
+
+
+def _assert_work_spec_unchanged(root, item):
+    """Keep the Queue-bound complex-batch contract stable during close."""
+    relative = item.get("work_spec_path")
+    expected = item.get("work_spec_sha256")
+    if relative is None and expected is None:
+        return
+    absolute = kblib.managed_repository_path(
+        root, relative, check_queue.WORK_SPEC_PREFIX,
+        suffixes=(".yaml",), must_exist=True,
+    )
+    actual = kblib.sha256_file(absolute)
+    if actual != expected:
+        raise ReceiptPublicationUncertain(
+            "Batch Work Spec changed while the Closed List ran: "
+            "%s expected=%s actual=%s" % (relative, expected, actual)
+        )
 
 
 def _repo_files(root, suffixes):
@@ -573,6 +603,62 @@ def _guidance_contract_check(runtime):
     return {"errors": errors, "candidates": [], "details": details}
 
 
+def _corpus_plan_close_check(root, runtime, item, snapshot):
+    """Return the conditional R13/planning-manifest close child receipt.
+
+    Route selection is task-level in Progress.  A batch also becomes
+    applicable when its exact Queue manifest changes the selected Corpus
+    Planning slot, a bound planning artifact, or a path explicitly named by a
+    validated planning relation.  Unrelated batches do not acquire a new gate
+    merely because the repository contains a plan.
+    """
+    result = check_corpus_plan.validate_corpus_plan(root)
+    required, triggers = check_corpus_plan.close_requirement(
+        runtime, item, result)
+    if not required:
+        return {
+            "required": False,
+            "triggers": [],
+            "receipt": None,
+            "binding": None,
+            "errors": [],
+        }
+
+    errors = [
+        "%s %s: %s" % (error["check"], error["target"], error["details"])
+        for error in result.get("errors") or []
+    ]
+    if "R13" in triggers and result.get("applicability") != "configured":
+        errors.append(
+            "R13-selected batch requires Corpus Planning applicability.state=configured")
+    receipt = None
+    binding = None
+    if not errors:
+        try:
+            receipt = check_corpus_plan.make_pass_receipt(
+                result, repository_snapshot_sha256=snapshot, seq=10)
+            errors.extend(check_corpus_plan.pass_receipt_errors(
+                root, receipt, result=result,
+                repository_snapshot_sha256=snapshot,
+                require_runtime=True,
+                require_configured="R13" in triggers,
+            ))
+            if not errors:
+                binding = {
+                    field: receipt.get(field)
+                    for field in check_corpus_plan.PASS_RECEIPT_BINDING_FIELDS
+                }
+        except (OSError, TypeError, ValueError) as exc:
+            errors.append("Corpus Planning receipt cannot be bound: %s" % exc)
+    return {
+        "required": True,
+        "triggers": triggers,
+        "receipt": receipt,
+        "binding": binding,
+        "errors": errors,
+    }
+
+
 def _manifest_path(root, runtime):
     relative = runtime.get("queue", {}).get("selected_profile_manifest")
     return kblib.repository_path(root, relative, must_exist=True,
@@ -723,7 +809,7 @@ def _candidate_dispositions(candidates, accepted_ids, accepted_types):
 
 def _member_receipt(field, run, snapshot, runtime, item, integrator,
                     reviewer, accepted_candidates, sequence):
-    receipt = kblib.make_receipt(
+    receipt = _make_receipt(
         TOOL, TOOL_VERSION, "closed_list_%s" % field, ".", "pass",
         run["details"], sequence,
     )
@@ -741,10 +827,14 @@ def _member_receipt(field, run, snapshot, runtime, item, integrator,
 
 
 def _receipt_catalog_with(runtime, relative_path, receipts):
-    catalog = dict(runtime.get("receipt_catalog") or {})
+    # Build current-use validation from the adoption-filtered catalog, while
+    # still reserving every historical ID so append-only evidence can never
+    # collide with an invalidated record.
+    full_catalog = runtime.get("receipt_catalog") or {}
+    catalog = dict(check_queue.current_receipt_catalog(runtime))
     for receipt in receipts:
         receipt_id = receipt.get("receipt_id")
-        if receipt_id in catalog:
+        if receipt_id in full_catalog or receipt_id in catalog:
             raise ValueError("generated receipt ID collides with existing evidence")
         catalog[receipt_id] = (relative_path, receipt)
     return catalog
@@ -761,7 +851,7 @@ def _append_receipts(path, receipts):
 
 def _failure_receipt(attempt_id, root, batch, details, snapshot=None,
                      runtime=None):
-    receipt = kblib.make_receipt(
+    receipt = _make_receipt(
         TOOL, TOOL_VERSION, "batch_close_gate", batch, "fail", details, 1)
     receipt["receipt_id"] = attempt_id
     receipt["batch_id"] = batch
@@ -843,6 +933,11 @@ def main(argv=None):
     if item is None:
         print("[FAIL] batch %s does not exist" % args.batch)
         return 1
+    standards_barrier = check_queue.current_attempt_evidence_barrier(
+        preflight, args.batch)
+    if standards_barrier:
+        print("[FAIL] %s" % standards_barrier)
+        return 1
     if item.get("state") != "merge-ready":
         print("[FAIL] batch %s is %s, not merge-ready" %
               (args.batch, item.get("state")))
@@ -855,7 +950,7 @@ def main(argv=None):
               args.batch)
         return 1
     delta_apply_receipt = current[0].get("selected_receipt")
-    attempt_id = kblib.make_receipt(
+    attempt_id = _make_receipt(
         TOOL, TOOL_VERSION, "batch_close_gate", args.batch, "candidate",
         "batch-close evidence is being produced", 9999)["receipt_id"]
     pre_snapshot = kblib.repository_snapshot_sha256(root)
@@ -905,6 +1000,11 @@ def main(argv=None):
                 if item is None or item.get("state") != "merge-ready":
                     runtime_errors.append(
                         "batch is no longer merge-ready under lock")
+                standards_barrier = \
+                    check_queue.current_attempt_evidence_barrier(
+                        runtime, args.batch)
+                if standards_barrier:
+                    runtime_errors.append(standards_barrier)
                 locked_pending = runtime.get("pending_delta_applies") or {}
                 locked_current = locked_pending.get("current") or []
                 if (locked_pending.get("status") != "close-required" or
@@ -918,6 +1018,8 @@ def main(argv=None):
                 if snapshot != pre_snapshot:
                     runtime_errors.append(
                         "repository content changed before checks started")
+                corpus_plan_check = _corpus_plan_close_check(
+                    root, runtime, item, snapshot)
             _assert_authoritative_state_unchanged(root, state_anchor)
             if runtime_errors:
                 failure = _failure_receipt(
@@ -978,6 +1080,9 @@ def main(argv=None):
                 return 1
 
             check_errors = []
+            check_errors.extend(
+                "corpus_plan: %s" % error
+                for error in corpus_plan_check["errors"])
             all_candidates = []
             for field in check_queue.CLOSED_LIST_EVIDENCE_FIELDS:
                 run = checks[field]
@@ -999,6 +1104,11 @@ def main(argv=None):
             check_errors.extend(disposition_errors)
             after_checks = kblib.repository_snapshot_sha256(root)
             _assert_authoritative_state_unchanged(root, state_anchor)
+            try:
+                _assert_work_spec_unchanged(root, item)
+            except (OSError, ValueError,
+                    ReceiptPublicationUncertain) as exc:
+                check_errors.append(str(exc))
             if after_checks != snapshot:
                 check_errors.append("repository content changed while the Closed List ran")
             if check_errors:
@@ -1032,7 +1142,7 @@ def main(argv=None):
                 records.append(receipt)
                 evidence[field] = receipt["receipt_id"]
 
-            attestation = kblib.make_receipt(
+            attestation = _make_receipt(
                 TOOL, TOOL_VERSION, "batch_global_review_attestation",
                 args.batch, "pass", args.review_attestation.strip(), 8)
             attestation.update({
@@ -1049,7 +1159,7 @@ def main(argv=None):
             })
             records.append(attestation)
 
-            global_review = kblib.make_receipt(
+            global_review = _make_receipt(
                 TOOL, TOOL_VERSION, "batch_global_review", args.batch,
                 "pass", "declared reviewer attestation recorded for the seven-member merged-snapshot review",
                 9)
@@ -1075,10 +1185,14 @@ def main(argv=None):
                     "repository snapshot")
             records.append(consistency)
 
-            aggregator = kblib.make_receipt(
+            corpus_plan_receipt = corpus_plan_check.get("receipt")
+            if corpus_plan_receipt is not None:
+                records.append(corpus_plan_receipt)
+
+            aggregator = _make_receipt(
                 TOOL, TOOL_VERSION, "batch_close_gate", args.batch, "pass",
                 "seven Closed List checks passed and declared review attestation was recorded",
-                10)
+                11)
             aggregator["receipt_id"] = attempt_id
             aggregator.update({
                 "task_id": runtime["queue"].get("task_id"),
@@ -1097,6 +1211,13 @@ def main(argv=None):
                 "before_progress_sha256": runtime.get("progress_sha256"),
                 "after_progress_sha256": runtime.get("progress_sha256"),
                 "delta_sha256": item.get("delta_sha256"),
+                "work_spec_path": item.get("work_spec_path"),
+                "work_spec_sha256": item.get("work_spec_sha256"),
+                "corpus_plan_required": corpus_plan_check["required"],
+                "corpus_plan_triggers": corpus_plan_check["triggers"],
+                "corpus_plan_receipt": (
+                    corpus_plan_receipt.get("receipt_id")
+                    if corpus_plan_receipt is not None else None),
                 "delta_apply_receipt": delta_apply_receipt,
                 "queue_consistency_receipt": consistency["receipt_id"],
                 "merged_snapshot_sha256": snapshot,
@@ -1107,6 +1228,7 @@ def main(argv=None):
             records.append(aggregator)
 
             _assert_authoritative_state_unchanged(root, state_anchor)
+            _assert_work_spec_unchanged(root, item)
             before_publish = kblib.repository_snapshot_sha256(root)
             if before_publish != snapshot:
                 raise ValueError(
@@ -1127,6 +1249,13 @@ def main(argv=None):
                 delta_sha256=item.get("delta_sha256"),
                 queue_consistency_receipt=consistency["receipt_id"],
                 delta_apply_receipt=delta_apply_receipt,
+                work_spec_path=item.get("work_spec_path"),
+                work_spec_sha256=item.get("work_spec_sha256"),
+                selected_profile_manifest=runtime["queue"].get(
+                    "selected_profile_manifest"),
+                corpus_plan_required=corpus_plan_check["required"],
+                corpus_plan_triggers=corpus_plan_check["triggers"],
+                corpus_plan_expected_binding=corpus_plan_check["binding"],
                 current_repository_snapshot_sha256=snapshot,
             )
             if pre_errors:
@@ -1136,6 +1265,7 @@ def main(argv=None):
 
             _append_receipts(receipt_path, records)
             _assert_authoritative_state_unchanged(root, state_anchor)
+            _assert_work_spec_unchanged(root, item)
             after_publish = kblib.repository_snapshot_sha256(root)
             if after_publish != snapshot:
                 raise ReceiptPublicationUncertain(
@@ -1144,7 +1274,7 @@ def main(argv=None):
             _assert_authoritative_state_unchanged(root, state_anchor)
             persisted_errors = list(persisted.get("errors") or [])
             persisted_errors.extend(check_queue.close_gate_receipt_errors(
-                persisted.get("receipt_catalog") or {}, attempt_id,
+                check_queue.current_receipt_catalog(persisted), attempt_id,
                 item_id=args.batch,
                 task_id=runtime["queue"].get("task_id"),
                 queue_revision=runtime["queue"].get("queue_revision"),
@@ -1155,6 +1285,13 @@ def main(argv=None):
                 delta_sha256=item.get("delta_sha256"),
                 queue_consistency_receipt=consistency["receipt_id"],
                 delta_apply_receipt=delta_apply_receipt,
+                work_spec_path=item.get("work_spec_path"),
+                work_spec_sha256=item.get("work_spec_sha256"),
+                selected_profile_manifest=runtime["queue"].get(
+                    "selected_profile_manifest"),
+                corpus_plan_required=corpus_plan_check["required"],
+                corpus_plan_triggers=corpus_plan_check["triggers"],
+                corpus_plan_expected_binding=corpus_plan_check["binding"],
                 current_repository_snapshot_sha256=after_publish,
             ))
             if persisted_errors:

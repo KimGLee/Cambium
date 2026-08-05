@@ -20,7 +20,8 @@ import kblib
 
 
 TOOL = "check_residual_content"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
+GATE_ID = "registered-residual-content"
 CONFIG_VERSION = 1
 DEFAULT_TIME_LIMIT = 55.0
 MAX_TIME_LIMIT = 55.0
@@ -469,6 +470,7 @@ def main(argv=None):
         receipt = kblib.make_receipt(
             TOOL, TOOL_VERSION, check, target, result, details,
             len(receipts) + 1)
+        receipt["gate_id"] = GATE_ID
         receipt["scan_id"] = safe_scan_id
         receipt["config_fingerprint"] = receipt_context["config_fingerprint"]
         receipts.append(receipt)

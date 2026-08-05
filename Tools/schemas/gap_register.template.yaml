@@ -1,0 +1,12 @@
+schema_version: 1
+
+gaps:
+  - gap_id: TODO(profile)
+    gap_statement: TODO(profile)
+    capability_ids: []
+    candidate_owner_entry_id: null
+    status: TODO(profile)
+    close_condition: TODO(profile)
+    evidence_paths: []
+    promoted_coverage_path: null
+    rationale: TODO(profile)

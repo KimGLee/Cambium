@@ -26,7 +26,7 @@ Method:
   validated, check_profile.py must accept the filled profile, every profile
   path must stay within it, and every supplemental route must use its id;
 - selected_route_ids must be a non-empty list of unique Runtime Route IDs in
-  the closed range R01-R12 and, because this is terminal evidence, must include
+  the closed range R01-R13 and, because this is terminal evidence, must include
   R01 Core Bootstrap, R12 Targeted and Specialized Audit, and R08 Audit and
   Completion;
 - selected_card_paths must be a non-empty list of unique Card paths;
@@ -99,10 +99,22 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import check_corpus_plan
 import check_queue
 
 TOOL = "check_proof"
-TOOL_VERSION = "1.12.0"
+TOOL_VERSION = "1.14.0"
+GATE_ID = "terminal-proof"
+
+
+def _make_receipt(tool, tool_version, check, target, result, details, seq):
+    """Build one producer-era proof receipt with its stable Gate ID."""
+    if tool != TOOL or tool_version != TOOL_VERSION:
+        raise ValueError("check_proof receipt producer identity drift")
+    receipt = kblib.make_receipt(
+        tool, tool_version, check, target, result, details, seq)
+    receipt["gate_id"] = GATE_ID
+    return receipt
 
 # K12/06: fields that must be 0 among the completion conditions (the three open
 # guidance counts are covered by the review of guidance_reconciliation_result
@@ -132,10 +144,10 @@ PATH_FIELDS = ("selected_profile_manifest", "selected_card_paths",
                "incremental_manual_scope")
 
 # Kernel Runtime Route IDs are a closed registry. Index documents do not occupy
-# R00; the twelve executable routes are R01-R12.
-RUNTIME_ROUTE_ID_RE = re.compile(r"R(?:0[1-9]|1[0-2])\Z")
+# R00; the thirteen executable routes are R01-R13.
+RUNTIME_ROUTE_ID_RE = re.compile(r"R(?:0[1-9]|1[0-3])\Z")
 PROFILE_ROUTE_ID_RE = re.compile(r"P:[^:\s]+:[^:\s]+\Z")
-EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 13))
+EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 14))
 TERMINAL_REQUIRED_ROUTE_IDS = frozenset(("R01", "R08", "R12"))
 REGISTRY_ID = "kernel-runtime-routes"
 CARD_INDEX_PATH = "kernel/Cards/Card Index.md"
@@ -147,6 +159,9 @@ SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 CANONICAL_COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
 CANONICAL_QUEUE_PATH = ".cambium/state/required_queue.yaml"
 CANONICAL_PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
+NULLABLE_REQUIRED_FIELDS = frozenset((
+    "corpus_plan_semantic_acceptance_receipt",
+))
 TERMINAL_TASK_STATES = frozenset(("completion-candidate", "complete"))
 FINAL_GUIDANCE_STATUSES = frozenset(
     ("verified", "deferred", "superseded", "not-applicable")
@@ -335,7 +350,7 @@ def _registry_map(data, relative_path, card_index):
         path = entry.get("path")
         read_set = entry.get("read_set") if card_index else None
         if not isinstance(route_id, str) or not RUNTIME_ROUTE_ID_RE.fullmatch(route_id):
-            errors.append("%s has invalid route_id %r; expected R01-R12" %
+            errors.append("%s has invalid route_id %r; expected R01-R13" %
                           (label, route_id))
             continue
         if route_id in result:
@@ -381,7 +396,7 @@ def _registry_map(data, relative_path, card_index):
     expected_routes = set(EXPECTED_ROUTE_IDS)
     if actual_routes != expected_routes:
         errors.append(
-            "%s route coverage must be exactly R01-R12; missing=%s extra=%s"
+            "%s route coverage must be exactly R01-R13; missing=%s extra=%s"
             % (relative_path,
                sorted(expected_routes - actual_routes),
                sorted(actual_routes - expected_routes)))
@@ -418,6 +433,90 @@ def _queue_linkage_failure(check, target, details):
     return check, target, details
 
 
+def _catalog_receipt(catalog, receipt_id):
+    """Return one receipt mapping from a check_queue catalog entry."""
+    entry = catalog.get(receipt_id) if isinstance(catalog, dict) else None
+    if (isinstance(entry, tuple) and len(entry) == 2 and
+            isinstance(entry[1], dict)):
+        return entry[1]
+    if isinstance(entry, dict):
+        return entry
+    return None
+
+
+def _current_receipt_evidence(root, receipt_id, *, field, check_prefix,
+                              runtime=None):
+    """Resolve a new proof decision only through the current receipt view.
+
+    Standards adoption deliberately keeps the full receipt catalog available
+    for verifying immutable history while removing invalidated evidence from the
+    current-use catalog.  Terminal Proof is a new completion decision, so it
+    must never fall back to the historical catalog when the filtered view is
+    missing or empty.
+    """
+    if runtime is None:
+        runtime = check_queue.validate_runtime(str(Path(root).resolve()))
+    current = check_queue.current_receipt_catalog(runtime)
+    invalidated = set(
+        runtime.get("invalidated_evidence_receipt_ids") or [])
+    target = "Terminal Proof#%s" % field
+    if receipt_id in invalidated:
+        return None, [_queue_linkage_failure(
+            "%s-invalidated-evidence" % check_prefix, target,
+            "%s is listed as invalidated evidence by the current Standards "
+            "adoption and cannot support a new Terminal Proof" % field,
+        )]
+    receipt = _catalog_receipt(current, receipt_id)
+    if receipt is None:
+        return None, [_queue_linkage_failure(
+            "%s-not-current" % check_prefix, target,
+            "%s %r is absent from the adoption-filtered current receipt "
+            "catalog; historical evidence is not a fallback" %
+            (field, receipt_id),
+        )]
+    return receipt, []
+
+
+def _reused_receipt_evidence_failures(root, proof, runtime=None):
+    """Require every explicitly reused receipt to remain current evidence."""
+    failures = []
+    reused = proof.get("reused_receipts")
+    if not isinstance(reused, list):
+        return [_queue_linkage_failure(
+            "proof-reused-receipts-invalid", "Terminal Proof#reused_receipts",
+            "reused_receipts must be an explicit list",
+        )]
+    seen = set()
+    for index, value in enumerate(reused):
+        if isinstance(value, str):
+            receipt_id = value
+        elif isinstance(value, dict):
+            receipt_id = value.get("receipt_id")
+        else:
+            receipt_id = None
+        target = "Terminal Proof#reused_receipts[%d]" % index
+        if not isinstance(receipt_id, str) or not receipt_id.strip():
+            failures.append(_queue_linkage_failure(
+                "proof-reused-receipt-id-invalid", target,
+                "each reused_receipts entry must identify a non-empty "
+                "receipt_id",
+            ))
+            continue
+        if receipt_id in seen:
+            failures.append(_queue_linkage_failure(
+                "proof-reused-receipt-duplicate", target,
+                "reused receipt_id %r appears more than once" % receipt_id,
+            ))
+            continue
+        seen.add(receipt_id)
+        _, membership_failures = _current_receipt_evidence(
+            root, receipt_id, field="reused_receipts[%d]" % index,
+            check_prefix="proof-reused-receipt", runtime=runtime,
+        )
+        failures.extend(membership_failures)
+    return failures
+
+
 def _validate_required_queue_linkage(root, proof, progress_ledger,
                                      coverage_sha256,
                                      proof_progress_sha256):
@@ -432,6 +531,7 @@ def _validate_required_queue_linkage(root, proof, progress_ledger,
     """
     failures = []
     root = Path(root).resolve()
+    adoption_runtime = check_queue.validate_runtime(str(root))
     queue_path, queue_path_error = _canonical_state_argument(
         root, CANONICAL_QUEUE_PATH, CANONICAL_QUEUE_PATH
     )
@@ -594,6 +694,11 @@ def _validate_required_queue_linkage(root, proof, progress_ledger,
     # fails closed even when a fresh live run happens to pass.
     receipt_path_raw = proof.get("audit_receipt_register")
     receipt_id = proof.get("queue_check_receipt")
+    current_receipt, membership_failures = _current_receipt_evidence(
+        root, receipt_id, field="queue_check_receipt",
+        check_prefix="proof-queue-receipt", runtime=adoption_runtime,
+    )
+    failures.extend(membership_failures)
     try:
         receipt_path = Path(kblib.managed_repository_path(
             str(root), receipt_path_raw, ".cambium/receipts",
@@ -665,9 +770,17 @@ def _validate_required_queue_linkage(root, proof, progress_ledger,
 
     if len(matching_receipts) == 1 and queue is not None:
         receipt = matching_receipts[0]
+        if current_receipt is not None and receipt != current_receipt:
+            failures.append(_queue_linkage_failure(
+                "proof-queue-receipt-catalog-mismatch",
+                "%s#%s" % (receipt_path_raw, receipt_id),
+                "the named register record differs from the same receipt_id "
+                "in the current receipt catalog",
+            ))
         for field, expected in (
                 ("tool", "check_queue"),
                 ("tool_version", check_queue.TOOL_VERSION),
+                ("gate_id", "required-queue-completion"),
                 ("check", "required_queue"),
                 ("queue_check_mode", "require-complete"),
                 ("result", "pass"),
@@ -688,6 +801,206 @@ def _validate_required_queue_linkage(root, proof, progress_ledger,
                 ))
 
     return failures, live_check_passed
+
+
+def _validate_corpus_plan_linkage(root, proof, proof_progress_sha256):
+    """Consume one current Corpus Planning receipt at Terminal Proof.
+
+    The named receipt must live in the Proof's canonical audit register and
+    bind the exact selected Profile, slot, three configured artifacts (or
+    explicit inactive nulls), canonical runtime bytes, and current repository
+    snapshot.  Re-running only a live check without consuming this persisted
+    receipt is insufficient terminal evidence.
+    """
+    failures = []
+    root = Path(root).resolve()
+    receipt_path_raw = proof.get("audit_receipt_register")
+    receipt_id = proof.get("corpus_plan_check_receipt")
+    adoption_runtime = check_queue.validate_runtime(str(root))
+    current_structural, membership_failures = _current_receipt_evidence(
+        root, receipt_id, field="corpus_plan_check_receipt",
+        check_prefix="proof-corpus-plan-receipt",
+        runtime=adoption_runtime,
+    )
+    failures.extend(membership_failures)
+    try:
+        receipt_path = Path(kblib.managed_repository_path(
+            str(root), receipt_path_raw, ".cambium/receipts",
+            suffixes=(".jsonl",), must_exist=True,
+        ))
+        receipt_path_error = None
+    except (OSError, TypeError, ValueError) as exc:
+        receipt_path = None
+        receipt_path_error = str(exc)
+    if receipt_path_error or receipt_path is None or not receipt_path.is_file():
+        return [(_queue_linkage_failure(
+            "proof-corpus-plan-receipt-register-unreadable",
+            str(receipt_path_raw),
+            "audit_receipt_register is missing or unsafe: %s" %
+            (receipt_path_error or "not a regular file")))], False
+
+    matches = []
+    semantic_id = proof.get("corpus_plan_semantic_acceptance_receipt")
+    semantic_matches = []
+    seen = set()
+    register_reliable = True
+    try:
+        lines = receipt_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as exc:
+        return [(_queue_linkage_failure(
+            "proof-corpus-plan-receipt-register-unreadable",
+            str(receipt_path_raw),
+            "cannot read audit_receipt_register: %s" % exc))], False
+    for line_number, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            receipt = json.loads(line)
+        except json.JSONDecodeError as exc:
+            register_reliable = False
+            failures.append(_queue_linkage_failure(
+                "proof-corpus-plan-receipt-register-invalid",
+                "%s:%d" % (receipt_path_raw, line_number),
+                "malformed JSONL receipt: %s" % exc))
+            continue
+        if not isinstance(receipt, dict):
+            register_reliable = False
+            failures.append(_queue_linkage_failure(
+                "proof-corpus-plan-receipt-register-invalid",
+                "%s:%d" % (receipt_path_raw, line_number),
+                "receipt line must be a JSON object"))
+            continue
+        current_id = receipt.get("receipt_id")
+        if current_id in seen:
+            register_reliable = False
+            failures.append(_queue_linkage_failure(
+                "proof-corpus-plan-receipt-id-duplicate",
+                "%s:%d" % (receipt_path_raw, line_number),
+                "receipt_id %r appears more than once" % current_id))
+        seen.add(current_id)
+        if current_id == receipt_id:
+            matches.append(receipt)
+        if semantic_id is not None and current_id == semantic_id:
+            semantic_matches.append(receipt)
+    if register_reliable and len(matches) != 1:
+        failures.append(_queue_linkage_failure(
+            "proof-corpus-plan-receipt-missing", str(receipt_path_raw),
+            "corpus_plan_check_receipt %r must identify exactly one receipt; "
+            "found %d" % (receipt_id, len(matches))))
+    if len(matches) != 1:
+        return failures, False
+
+    if current_structural is not None and matches[0] != current_structural:
+        failures.append(_queue_linkage_failure(
+            "proof-corpus-plan-receipt-catalog-mismatch",
+            "%s#%s" % (receipt_path_raw, receipt_id),
+            "the named register record differs from the same receipt_id in "
+            "the current receipt catalog"))
+
+    try:
+        snapshot = kblib.repository_snapshot_sha256(str(root))
+    except (OSError, ValueError) as exc:
+        failures.append(_queue_linkage_failure(
+            "proof-corpus-plan-snapshot-unavailable", str(root), str(exc)))
+        return failures, False
+    try:
+        expected_binding = check_corpus_plan.current_freshness_binding(
+            str(root), proof.get("selected_profile_manifest"),
+            task_id=proof.get("task_id"),
+            queue_revision=proof.get("queue_revision"),
+            queue_state_revision=proof.get("queue_state_revision"),
+            coverage_ledger_sha256=proof.get("coverage_ledger_sha256"),
+            required_queue_sha256=proof.get("required_queue_sha256"),
+            progress_ledger_sha256=proof_progress_sha256,
+            repository_snapshot_sha256=snapshot,
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        failures.append(_queue_linkage_failure(
+            "proof-corpus-plan-live-binding-failed",
+            "Tools/check_corpus_plan.py",
+            "cannot resolve current Corpus Planning bytes: %s" % exc))
+        return failures, False
+    receipt_errors = check_corpus_plan.pass_receipt_errors(
+        str(root), matches[0], expected_binding=expected_binding,
+        require_runtime=True)
+    for detail in receipt_errors:
+        failures.append(_queue_linkage_failure(
+            "proof-corpus-plan-receipt-stale",
+            "%s#%s" % (receipt_path_raw, receipt_id), detail))
+
+    applicability = expected_binding.get("corpus_plan_applicability")
+    if applicability == "not-applicable":
+        if semantic_id is not None:
+            failures.append(_queue_linkage_failure(
+                "proof-corpus-plan-semantic-receipt-not-applicable",
+                "Terminal Proof#corpus_plan_semantic_acceptance_receipt",
+                "semantic acceptance receipt must be null when the current "
+                "Corpus Planning applicability.state is not-applicable"))
+    elif applicability == "configured":
+        if not isinstance(semantic_id, str) or not semantic_id.strip():
+            failures.append(_queue_linkage_failure(
+                "proof-corpus-plan-semantic-receipt-required",
+                "Terminal Proof#corpus_plan_semantic_acceptance_receipt",
+                "a configured Corpus Planning slot requires one current "
+                "semantic-acceptance receipt"))
+        else:
+            current_semantic, semantic_membership_failures = \
+                _current_receipt_evidence(
+                    root, semantic_id,
+                    field="corpus_plan_semantic_acceptance_receipt",
+                    check_prefix="proof-corpus-plan-semantic-receipt",
+                    runtime=adoption_runtime,
+                )
+            failures.extend(semantic_membership_failures)
+            if len(semantic_matches) != 1:
+                failures.append(_queue_linkage_failure(
+                    "proof-corpus-plan-semantic-receipt-missing",
+                    str(receipt_path_raw),
+                    "corpus_plan_semantic_acceptance_receipt %r must "
+                    "identify exactly one receipt; found %d" %
+                    (semantic_id, len(semantic_matches))))
+            else:
+                semantic = semantic_matches[0]
+                if current_semantic is not None and semantic != current_semantic:
+                    failures.append(_queue_linkage_failure(
+                        "proof-corpus-plan-semantic-receipt-catalog-mismatch",
+                        "%s#%s" % (receipt_path_raw, semantic_id),
+                        "the named register record differs from the same "
+                        "receipt_id in the current receipt catalog"))
+                for field, expected in (
+                        ("tool", "record_corpus_acceptance"),
+                        ("tool_version",
+                         check_corpus_plan.SEMANTIC_ACCEPTANCE_TOOL_VERSION),
+                        ("gate_id", "corpus-plan-semantic-acceptance"),
+                        ("check", "corpus_plan_semantic_acceptance"),
+                        ("result", "pass"),
+                        ("invalidated_by", None),
+                        ("structural_check_receipt", receipt_id)):
+                    if semantic.get(field) != expected:
+                        failures.append(_queue_linkage_failure(
+                            "proof-corpus-plan-semantic-receipt-stale",
+                            "%s#%s" % (receipt_path_raw, semantic_id),
+                            "semantic receipt %s=%r, expected %r" %
+                            (field, semantic.get(field), expected)))
+                for field in check_corpus_plan.PASS_RECEIPT_BINDING_FIELDS:
+                    expected = expected_binding.get(field)
+                    if semantic.get(field) != expected:
+                        failures.append(_queue_linkage_failure(
+                            "proof-corpus-plan-semantic-receipt-stale",
+                            "%s#%s" % (receipt_path_raw, semantic_id),
+                            "semantic receipt %s=%r, expected %r" %
+                            (field, semantic.get(field), expected)))
+                decisions = semantic.get("capability_decisions")
+                if (not isinstance(decisions, list) or not decisions or
+                        any(not isinstance(row, dict) or
+                            row.get("decision") != "accepted"
+                            for row in decisions)):
+                    failures.append(_queue_linkage_failure(
+                        "proof-corpus-plan-semantic-receipt-rejected",
+                        "%s#%s" % (receipt_path_raw, semantic_id),
+                        "semantic receipt must contain a non-empty all-accepted "
+                        "capability_decisions list"))
+    return failures, not failures
 
 
 def _terminal_progress_binding(root, progress_ledger, current_progress_sha256):
@@ -965,7 +1278,7 @@ def main():
         proof = kblib.parse_yaml_subset(proof_bytes.decode("utf-8"))
     except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
         seq += 1
-        receipts.append(kblib.make_receipt(
+        receipts.append(_make_receipt(
             TOOL, TOOL_VERSION, "proof-unreadable", args.proof, "fail",
             "cannot read/parse proof: %s" % exc, seq))
         kblib.write_receipts(receipt_output, receipts)
@@ -981,10 +1294,11 @@ def main():
         # (e.g. systemic_expansions: []) and does not count as structurally
         # missing. selected_route_ids and selected_card_paths have their own
         # non-empty semantic checks.
-        if field not in proof or value is None or value == "":
+        if (field not in proof or value == "" or
+                (value is None and field not in NULLABLE_REQUIRED_FIELDS)):
             missing.append(field)
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-field-missing",
                 "%s#%s" % (proof_name, field), "fail",
                 "Terminal Proof is missing required field %s (K12/16 field list)" % field, seq))
@@ -995,7 +1309,7 @@ def main():
         if _uninstantiated_value(value):
             frozen_string_bad += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-standards-version-invalid",
                 "%s#standards_version" % proof_name, "fail",
                 "standards_version must be an instantiated non-empty string "
@@ -1010,7 +1324,7 @@ def main():
         if manifest_error:
             profile_manifest_bad += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-profile-manifest-invalid",
                 "%s#selected_profile_manifest" % proof_name, "fail",
                 "selected_profile_manifest %r is invalid: %s" %
@@ -1020,7 +1334,7 @@ def main():
     if "task_id" not in missing and _uninstantiated_value(proof.get("task_id")):
         queue_structure_bad += 1
         seq += 1
-        receipts.append(kblib.make_receipt(
+        receipts.append(_make_receipt(
             TOOL, TOOL_VERSION, "proof-task-id-invalid",
             "%s#task_id" % proof_name, "fail",
             "task_id must be an instantiated non-empty string", seq))
@@ -1030,7 +1344,7 @@ def main():
         if queue_path != CANONICAL_QUEUE_PATH:
             queue_structure_bad += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-queue-path-noncanonical",
                 "%s#required_queue_path" % proof_name, "fail",
                 "required_queue_path must be exactly %s; found %r" %
@@ -1045,7 +1359,7 @@ def main():
                 value < minimum):
             queue_structure_bad += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-queue-revision-invalid",
                 "%s#%s" % (proof_name, field), "fail",
                 "%s must be an integer >= %d; found %r" %
@@ -1061,7 +1375,7 @@ def main():
         if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
             queue_structure_bad += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, check,
                 "%s#%s" % (proof_name, field), "fail",
                 "%s must use sha256:<64 lowercase hex>; found %r" %
@@ -1073,7 +1387,7 @@ def main():
                 not value.startswith("audit-check_queue-")):
             queue_structure_bad += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-queue-receipt-id-invalid",
                 "%s#queue_check_receipt" % proof_name, "fail",
                 "queue_check_receipt must be a check_queue receipt_id; "
@@ -1086,11 +1400,11 @@ def main():
         if not isinstance(route_ids, list) or not route_ids:
             route_id_bad += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-route-ids-empty",
                 "%s#selected_route_ids" % proof_name, "fail",
                 "selected_route_ids must be a non-empty list of kernel "
-                "Runtime Route IDs (R01-R12)", seq))
+                "Runtime Route IDs (R01-R13)", seq))
         else:
             seen_route_ids = set()
             for index, route_id in enumerate(route_ids):
@@ -1098,10 +1412,10 @@ def main():
                 if not isinstance(route_id, str) or not RUNTIME_ROUTE_ID_RE.fullmatch(route_id):
                     route_id_bad += 1
                     seq += 1
-                    receipts.append(kblib.make_receipt(
+                    receipts.append(_make_receipt(
                         TOOL, TOOL_VERSION, "proof-route-id-invalid",
                         target, "fail",
-                        "route ID %r is invalid; expected one of R01-R12"
+                        "route ID %r is invalid; expected one of R01-R13"
                         % route_id, seq))
                 else:
                     valid_route_ids.add(route_id)
@@ -1109,7 +1423,7 @@ def main():
                 if route_key in seen_route_ids:
                     route_id_bad += 1
                     seq += 1
-                    receipts.append(kblib.make_receipt(
+                    receipts.append(_make_receipt(
                         TOOL, TOOL_VERSION, "proof-route-id-duplicate",
                         target, "fail",
                         "route ID %r is duplicated; selected_route_ids must "
@@ -1122,7 +1436,7 @@ def main():
                 route_id_bad += len(missing_terminal_routes)
                 for route_id in sorted(missing_terminal_routes):
                     seq += 1
-                    receipts.append(kblib.make_receipt(
+                    receipts.append(_make_receipt(
                         TOOL, TOOL_VERSION, "proof-terminal-route-missing",
                         "%s#selected_route_ids" % proof_name, "fail",
                         "%s is mandatory in Terminal Proof: R01 establishes "
@@ -1137,7 +1451,7 @@ def main():
         if not isinstance(profile_route_ids, list):
             profile_route_id_bad += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-profile-route-ids-not-list",
                 "%s#selected_profile_route_ids" % proof_name, "fail",
                 "selected_profile_route_ids must be a list; use [] when no "
@@ -1150,7 +1464,7 @@ def main():
                         not PROFILE_ROUTE_ID_RE.fullmatch(route_id)):
                     profile_route_id_bad += 1
                     seq += 1
-                    receipts.append(kblib.make_receipt(
+                    receipts.append(_make_receipt(
                         TOOL, TOOL_VERSION, "proof-profile-route-id-invalid",
                         target, "fail",
                         "profile route ID %r is invalid; expected "
@@ -1159,7 +1473,7 @@ def main():
                 elif route_id in seen_profile_route_ids:
                     profile_route_id_bad += 1
                     seq += 1
-                    receipts.append(kblib.make_receipt(
+                    receipts.append(_make_receipt(
                         TOOL, TOOL_VERSION, "proof-profile-route-id-duplicate",
                         target, "fail",
                         "profile route ID %r is duplicated; supplemental "
@@ -1176,7 +1490,7 @@ def main():
         if not isinstance(selected_card_paths, list) or not selected_card_paths:
             card_path_bad += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-card-paths-empty",
                 "%s#selected_card_paths" % proof_name, "fail",
                 "selected_card_paths must be a non-empty list with one "
@@ -1190,7 +1504,7 @@ def main():
                     card_path_bad += 1
                     path_structure_bad += 1
                     seq += 1
-                    receipts.append(kblib.make_receipt(
+                    receipts.append(_make_receipt(
                         TOOL, TOOL_VERSION, "proof-card-path-invalid",
                         target, "fail",
                         "Card path %r is invalid: %s" %
@@ -1199,7 +1513,7 @@ def main():
                     card_path_bad += 1
                     path_structure_bad += 1
                     seq += 1
-                    receipts.append(kblib.make_receipt(
+                    receipts.append(_make_receipt(
                         TOOL, TOOL_VERSION, "proof-card-path-duplicate",
                         target, "fail",
                         "Card path %r is duplicated; selected_card_paths "
@@ -1215,7 +1529,7 @@ def main():
         if not isinstance(selected_read_sets, list):
             read_set_bad += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-read-sets-not-list",
                 "%s#selected_read_sets" % proof_name, "fail",
                 "selected_read_sets must be a list; use [] when no Read Set "
@@ -1229,7 +1543,7 @@ def main():
                     read_set_bad += 1
                     path_structure_bad += 1
                     seq += 1
-                    receipts.append(kblib.make_receipt(
+                    receipts.append(_make_receipt(
                         TOOL, TOOL_VERSION, "proof-read-set-path-invalid",
                         target, "fail",
                         "Read Set path %r is invalid: %s" %
@@ -1238,7 +1552,7 @@ def main():
                     read_set_bad += 1
                     path_structure_bad += 1
                     seq += 1
-                    receipts.append(kblib.make_receipt(
+                    receipts.append(_make_receipt(
                         TOOL, TOOL_VERSION, "proof-read-set-path-duplicate",
                         target, "fail",
                         "Read Set path %r is duplicated; selected_read_sets "
@@ -1267,7 +1581,7 @@ def main():
             if path_error:
                 path_structure_bad += 1
                 seq += 1
-                receipts.append(kblib.make_receipt(
+                receipts.append(_make_receipt(
                     TOOL, TOOL_VERSION, "proof-path-invalid",
                     target, "fail",
                     "path %r recorded in %s is invalid: %s"
@@ -1275,7 +1589,7 @@ def main():
             elif raw_path in seen_paths:
                 path_structure_bad += 1
                 seq += 1
-                receipts.append(kblib.make_receipt(
+                receipts.append(_make_receipt(
                     TOOL, TOOL_VERSION, "proof-path-duplicate",
                     target, "fail",
                     "path %r is duplicated in %s" % (raw_path, field), seq))
@@ -1287,7 +1601,7 @@ def main():
             len(route_ids) != len(selected_card_paths)):
         card_path_bad += 1
         seq += 1
-        receipts.append(kblib.make_receipt(
+        receipts.append(_make_receipt(
             TOOL, TOOL_VERSION, "proof-card-route-cardinality",
             "%s#selected_card_paths" % proof_name, "fail",
             "selected_card_paths has %d item(s) for %d selected_route_ids; "
@@ -1302,7 +1616,7 @@ def main():
         if not isinstance(value, int) or isinstance(value, bool) or value != 0:
             zero_bad.append(field)
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-zero-field",
                 "%s#%s" % (proof_name, field), "fail",
                 "zero-condition field %s = %r; the completion conditions require it to be 0 (K12/06)" % (field, value), seq))
@@ -1310,7 +1624,7 @@ def main():
     if "selected_profile_id" in proof:
         profile_manifest_bad += 1
         seq += 1
-        receipts.append(kblib.make_receipt(
+        receipts.append(_make_receipt(
             TOOL, TOOL_VERSION, "proof-duplicate-profile-identity",
             "%s#selected_profile_id" % proof_name, "fail",
             "selected_profile_id is forbidden: profile identity is derived "
@@ -1320,7 +1634,7 @@ def main():
              if k not in required_fields and k != "selected_profile_id"]
     for field in extra:
         seq += 1
-        receipts.append(kblib.make_receipt(
+        receipts.append(_make_receipt(
             TOOL, TOOL_VERSION, "proof-extra-field",
             "%s#%s" % (proof_name, field), "candidate",
             "field %s is not in the K12/16 field list (the list is an 'at least' "
@@ -1338,7 +1652,7 @@ def main():
         if value != "passed":
             status_bad.append(field)
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-status-not-passed",
                 "%s#%s" % (proof_name, field), "fail",
                 "%s = %r; completion requires this result to be \"passed\" "
@@ -1350,7 +1664,7 @@ def main():
         if re.search(r"\bfail(ed|ure)?\b", value, re.IGNORECASE):
             status_bad.append(field)
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-evidence-declares-failure",
                 "%s#%s" % (proof_name, field), "fail",
                 "%s contains an explicit failure statement: %r (K12/06: "
@@ -1364,6 +1678,7 @@ def main():
     active_state_checked = False
     profile_identity_checked = False
     profile_manifest_checked = False
+    current_evidence_bad = 0
     selected_profile_id = None
     root = None
     if args.root:
@@ -1371,15 +1686,25 @@ def main():
         if not root.is_dir():
             path_bad += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "proof-root-invalid", str(root), "fail",
                 "--root must resolve to an existing directory", seq))
         else:
+            current_runtime = check_queue.validate_runtime(str(root))
+            current_evidence_failures = _reused_receipt_evidence_failures(
+                root, proof, runtime=current_runtime)
+            current_evidence_bad = len(current_evidence_failures)
+            for check, target, details in current_evidence_failures:
+                seq += 1
+                receipts.append(kblib.make_receipt(
+                    TOOL, TOOL_VERSION, check, target, "fail", details, seq
+                ))
+
             active_state, active_state_errors = _load_active_standards_state(root)
             for index, details in enumerate(active_state_errors):
                 active_state_bad += 1
                 seq += 1
-                receipts.append(kblib.make_receipt(
+                receipts.append(_make_receipt(
                     TOOL, TOOL_VERSION, "proof-active-state-invalid",
                     "%s#active_state[%d]" % (proof_name, index), "fail",
                     details, seq))
@@ -1393,7 +1718,7 @@ def main():
                         active_state_checked = False
                         active_state_bad += 1
                         seq += 1
-                        receipts.append(kblib.make_receipt(
+                        receipts.append(_make_receipt(
                             TOOL, TOOL_VERSION,
                             "proof-active-state-mismatch",
                             "%s#%s" % (proof_name, field), "fail",
@@ -1419,7 +1744,7 @@ def main():
                     if resolve_error:
                         path_bad += 1
                         seq += 1
-                        receipts.append(kblib.make_receipt(
+                        receipts.append(_make_receipt(
                             TOOL, TOOL_VERSION, "proof-path-invalid",
                             target, "fail",
                             "path %r recorded in %s is invalid: %s"
@@ -1427,7 +1752,7 @@ def main():
                     elif not resolved.is_file():
                         path_bad += 1
                         seq += 1
-                        receipts.append(kblib.make_receipt(
+                        receipts.append(_make_receipt(
                             TOOL, TOOL_VERSION, "proof-path-missing",
                             target, "fail",
                             "path %r recorded in %s is not a regular file "
@@ -1459,7 +1784,7 @@ def main():
                             kblib.YamlSubsetError) as exc:
                         profile_manifest_bad += 1
                         seq += 1
-                        receipts.append(kblib.make_receipt(
+                        receipts.append(_make_receipt(
                             TOOL, TOOL_VERSION,
                             "proof-profile-identity-unreadable",
                             "%s#selected_profile_manifest" % proof_name,
@@ -1481,7 +1806,7 @@ def main():
                         for check, details in identity_errors:
                             profile_manifest_bad += 1
                             seq += 1
-                            receipts.append(kblib.make_receipt(
+                            receipts.append(_make_receipt(
                                 TOOL, TOOL_VERSION,
                                 "proof-%s" % check,
                                 "%s#selected_profile_manifest" % proof_name,
@@ -1504,7 +1829,7 @@ def main():
                                 completed = None
                                 profile_manifest_bad += 1
                                 seq += 1
-                                receipts.append(kblib.make_receipt(
+                                receipts.append(_make_receipt(
                                     TOOL, TOOL_VERSION,
                                     "proof-profile-check-unavailable",
                                     "%s#selected_profile_manifest" % proof_name,
@@ -1525,7 +1850,7 @@ def main():
                                               if output_lines else
                                               "no diagnostic output")
                                     seq += 1
-                                    receipts.append(kblib.make_receipt(
+                                    receipts.append(_make_receipt(
                                         TOOL, TOOL_VERSION,
                                         "proof-profile-not-loadable",
                                         "%s#selected_profile_manifest" %
@@ -1541,7 +1866,7 @@ def main():
                             not route_id.startswith(expected_prefix)):
                         profile_route_id_bad += 1
                         seq += 1
-                        receipts.append(kblib.make_receipt(
+                        receipts.append(_make_receipt(
                             TOOL, TOOL_VERSION,
                             "proof-profile-route-id-mismatch",
                             "%s#selected_profile_route_ids[%d]" %
@@ -1562,7 +1887,7 @@ def main():
                                 parts[1] != selected_profile_dir):
                             profile_manifest_bad += 1
                             seq += 1
-                            receipts.append(kblib.make_receipt(
+                            receipts.append(_make_receipt(
                                 TOOL, TOOL_VERSION,
                                 "proof-profile-path-mismatch",
                                 "%s#%s[%d]" % (proof_name, field, index),
@@ -1575,7 +1900,7 @@ def main():
             registry_bad = len(registry_errors)
             for index, details in enumerate(registry_errors):
                 seq += 1
-                receipts.append(kblib.make_receipt(
+                receipts.append(_make_receipt(
                     TOOL, TOOL_VERSION, "proof-route-registry-invalid",
                     "%s#route_registry[%d]" % (proof_name, index), "fail",
                     details, seq))
@@ -1597,7 +1922,7 @@ def main():
                         route for route, entry in card_map.items()
                         if entry["path"] == card_path)
                     seq += 1
-                    receipts.append(kblib.make_receipt(
+                    receipts.append(_make_receipt(
                         TOOL, TOOL_VERSION, "proof-card-path-missing-for-route",
                         "%s#selected_card_paths" % proof_name, "fail",
                         "selected route %s requires canonical Card path %s"
@@ -1614,7 +1939,7 @@ def main():
                     else:
                         details = "Card path %s is not registered" % card_path
                     seq += 1
-                    receipts.append(kblib.make_receipt(
+                    receipts.append(_make_receipt(
                         TOOL, TOOL_VERSION, "proof-card-route-mismatch",
                         "%s#selected_card_paths" % proof_name, "fail",
                         details, seq))
@@ -1629,7 +1954,7 @@ def main():
                         if registered_route is None:
                             read_set_bad += 1
                             seq += 1
-                            receipts.append(kblib.make_receipt(
+                            receipts.append(_make_receipt(
                                 TOOL, TOOL_VERSION,
                                 "proof-kernel-read-set-unregistered",
                                 "%s#selected_read_sets" % proof_name, "fail",
@@ -1638,7 +1963,7 @@ def main():
                         elif registered_route not in valid_route_ids:
                             read_set_bad += 1
                             seq += 1
-                            receipts.append(kblib.make_receipt(
+                            receipts.append(_make_receipt(
                                 TOOL, TOOL_VERSION,
                                 "proof-read-set-route-mismatch",
                                 "%s#selected_read_sets" % proof_name, "fail",
@@ -1649,7 +1974,7 @@ def main():
                         if not valid_profile_route_ids:
                             read_set_bad += 1
                             seq += 1
-                            receipts.append(kblib.make_receipt(
+                            receipts.append(_make_receipt(
                                 TOOL, TOOL_VERSION,
                                 "proof-profile-read-set-without-route",
                                 "%s#selected_read_sets" % proof_name, "fail",
@@ -1661,7 +1986,7 @@ def main():
                     else:
                         read_set_bad += 1
                         seq += 1
-                        receipts.append(kblib.make_receipt(
+                        receipts.append(_make_receipt(
                             TOOL, TOOL_VERSION,
                             "proof-read-set-path-outside-registry",
                             "%s#selected_read_sets" % proof_name, "fail",
@@ -1676,7 +2001,7 @@ def main():
     if args.root and not args.progress_ledger:
         progress_cross_fail += 1
         seq += 1
-        receipts.append(kblib.make_receipt(
+        receipts.append(_make_receipt(
             TOOL, TOOL_VERSION, "progress-ledger-required", proof_name,
             "fail", "--progress-ledger is required with --root; without the "
             "frozen Task Contract snapshot this run cannot support complete",
@@ -1692,7 +2017,7 @@ def main():
         if progress_path_error:
             progress_cross_fail += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "progress-ledger-noncanonical",
                 args.progress_ledger, "fail",
                 "--progress-ledger must identify the canonical %s without "
@@ -1709,7 +2034,7 @@ def main():
         except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
             progress_cross_fail += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "progress-ledger-unreadable",
                 args.progress_ledger, "fail",
                 "cannot read/parse Progress Ledger: %s" % exc, seq))
@@ -1731,7 +2056,7 @@ def main():
             progress_cross_fail += len(progress_failures)
             for check, target, details in progress_failures:
                 seq += 1
-                receipts.append(kblib.make_receipt(
+                receipts.append(_make_receipt(
                     TOOL, TOOL_VERSION, check, target, "fail", details, seq
                 ))
 
@@ -1746,7 +2071,7 @@ def main():
                 if invalid:
                     progress_cross_fail += 1
                     seq += 1
-                    receipts.append(kblib.make_receipt(
+                    receipts.append(_make_receipt(
                         TOOL, TOOL_VERSION, "progress-contract-field-invalid",
                         "Progress Ledger#contract.%s" % field, "fail",
                         "%s must be an instantiated canonical string" % field,
@@ -1757,7 +2082,7 @@ def main():
     if args.root and not args.ledger:
         coverage_cross_fail += 1
         seq += 1
-        receipts.append(kblib.make_receipt(
+        receipts.append(_make_receipt(
             TOOL, TOOL_VERSION, "coverage-ledger-required", proof_name,
             "fail", "--ledger is required with --root so "
             "required_authoring_gaps is checked against current Coverage",
@@ -1773,7 +2098,7 @@ def main():
         if ledger_path_error:
             coverage_cross_fail += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "coverage-ledger-noncanonical",
                 args.ledger, "fail",
                 "--ledger must identify the canonical %s without aliases or "
@@ -1790,7 +2115,7 @@ def main():
         except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
             coverage_cross_fail += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, "ledger-unreadable", args.ledger, "fail",
                 "cannot read/parse Coverage Ledger: %s" % exc, seq))
             ledger = None
@@ -1802,7 +2127,7 @@ def main():
             coverage_cross_fail += len(coverage_failures)
             for check, target, details in coverage_failures:
                 seq += 1
-                receipts.append(kblib.make_receipt(
+                receipts.append(_make_receipt(
                     TOOL, TOOL_VERSION, check, target, "fail", details, seq
                 ))
         elif isinstance(ledger, dict):
@@ -1810,7 +2135,7 @@ def main():
             if isinstance(open_gaps, list) and open_gaps:
                 coverage_cross_fail += 1
                 seq += 1
-                receipts.append(kblib.make_receipt(
+                receipts.append(_make_receipt(
                     TOOL, TOOL_VERSION, "proof-ledger-mismatch",
                     "%s#required_authoring_gaps" % proof_name, "fail",
                     "Coverage Ledger open_gaps has %d unclosed gap(s), but "
@@ -1828,12 +2153,25 @@ def main():
         queue_cross_fail = len(queue_failures)
         for check, target, details in queue_failures:
             seq += 1
-            receipts.append(kblib.make_receipt(
+            receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, check, target, "fail", details, seq
             ))
         queue_linkage_checked = (
             queue_live_check_passed and not queue_failures
         )
+
+    corpus_plan_cross_fail = 0
+    corpus_plan_linkage_checked = False
+    if args.root and root is not None and root.is_dir():
+        corpus_failures, corpus_plan_linkage_checked = (
+            _validate_corpus_plan_linkage(
+                root, proof, proof_progress_sha256))
+        corpus_plan_cross_fail = len(corpus_failures)
+        for check, target, details in corpus_failures:
+            seq += 1
+            receipts.append(_make_receipt(
+                TOOL, TOOL_VERSION, check, target, "fail", details, seq
+            ))
 
     if not any(r["result"] == "fail" for r in receipts):
         route_summary = (
@@ -1856,10 +2194,10 @@ def main():
             except (OSError, RuntimeError, ValueError):
                 proof_receipt_path = str(Path(args.proof).resolve())
         seq += 1
-        summary_receipt = kblib.make_receipt(
+        summary_receipt = _make_receipt(
             TOOL, TOOL_VERSION, "proof-check-summary", proof_receipt_path,
             "pass",
-            "fields complete (%d/%d), all zero-condition fields are 0%s%s%s%s%s%s" % (
+            "fields complete (%d/%d), all zero-condition fields are 0%s%s%s%s%s%s%s" % (
                 len(required_fields), len(required_fields),
                 route_summary, profile_summary,
                 ", consistent with the active K00/03 Standards state"
@@ -1868,6 +2206,8 @@ def main():
                 if args.progress_ledger else "",
                 ", bound to the current completed Required Queue and receipt"
                 if queue_linkage_checked else "",
+                ", bound to the current Corpus Planning receipt"
+                if corpus_plan_linkage_checked else "",
                 ", consistent with Coverage Ledger open_gaps"
                 if args.ledger else ""), seq)
         if args.root and queue_linkage_checked:
@@ -1877,7 +2217,8 @@ def main():
                     "coverage_ledger_sha256", "progress_ledger_sha256",
                     "required_queue_path", "queue_revision",
                     "queue_state_revision", "required_queue_sha256",
-                    "remaining_required_work_units", "queue_check_receipt"):
+                    "remaining_required_work_units", "queue_check_receipt",
+                    "corpus_plan_check_receipt"):
                 summary_receipt[field] = proof.get(field)
             summary_receipt["terminal_proof_path"] = proof_receipt_path
             summary_receipt["terminal_proof_sha256"] = proof_sha256
@@ -1894,16 +2235,19 @@ def main():
           "zero_condition_violations=%d status_violations=%d "
           "path_failures=%d extra_fields(candidate)=%d "
           "progress_cross_failures=%d queue_cross_failures=%d "
-          "coverage_cross_failures=%d "
+          "coverage_cross_failures=%d corpus_plan_cross_failures=%d "
+          "current_evidence_failures=%d "
           "registry_cross_check=%s active_state_check=%s "
-          "profile_manifest_check=%s queue_completion_check=%s"
+          "profile_manifest_check=%s queue_completion_check=%s "
+          "corpus_plan_check=%s"
           % (len(missing), route_id_bad, profile_route_id_bad, card_path_bad,
              read_set_bad, registry_bad, path_structure_bad,
              frozen_string_bad, profile_manifest_bad, queue_structure_bad,
              active_state_bad,
              len(zero_bad),
              len(status_bad), path_bad, len(extra), progress_cross_fail,
-             queue_cross_fail, coverage_cross_fail,
+             queue_cross_fail, coverage_cross_fail, corpus_plan_cross_fail,
+             current_evidence_bad,
              "passed" if registry_checked else
              ("failed" if args.root else "not_run"),
              "passed" if active_state_checked else
@@ -1911,6 +2255,8 @@ def main():
              "passed" if profile_manifest_checked else
              ("failed" if args.root else "not_run"),
              "passed" if queue_linkage_checked else
+             ("failed" if args.root else "not_run"),
+             "passed" if corpus_plan_linkage_checked else
              ("failed" if args.root else "not_run")))
     for r in receipts:
         if r["result"] != "pass":
@@ -1921,7 +2267,8 @@ def main():
             print("  Conclusion: Terminal Proof consistency check passed with "
                   "active Standards state, filled profile, frozen Progress "
                   "Ledger, current Required Queue completion evidence, and "
-                  "repository registry validation.")
+                  "current Corpus Planning evidence, and repository registry "
+                  "validation.")
         else:
             print("  Conclusion: structural lint passed; without --root this "
                   "is not Terminal Completion Gate evidence.")

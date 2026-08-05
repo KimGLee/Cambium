@@ -19,7 +19,7 @@ source_files:
   - kernel/K12 Quality Assurance/08 Judgment Item Dimension Map.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '38f0d81cd679'
+source_hash: '2c23360011dd'
 ---
 # R09 Standards Governance Card
 
@@ -38,11 +38,11 @@ Modify kernel rules, Read Sets, Cards, versions, directories, ownership, tooling
 
 ## During
 
-- Record the affected Standards and reason, update version/state, routing, Change Summary, and changed predicates. Initial adoption validates the candidate and instantiates all four K00/03 state values without requiring an old profile. Later selection changes record old and new manifests. Both recompose vocabulary and stamp Cards; only existing affected tasks enter Active-task Adoption.
+- Record the affected Standards and reason, update version/state, routing, Change Summary, and changed predicates. Initial adoption instantiates K00/03; later changes record old/new manifests. Both recompose vocabulary and stamp Cards. For each affected task, declare the Contract-version edge, ensure Work Specs are compatible, and bind its K12/10 YAML to approved K00/03 bytes plus deterministic Kernel/Profile snapshots; never write its Ledgers or create a second revision/prose copy.
 - For a structural migration, map every original H2 block to exactly one new owner. Never use splitting as reduction, summary, or silent deletion.
 - Keep the Overview, Standard Module MOCs, Read Sets, rule registry, control registry, links, and module paths synchronized.
 - For a new or re-scoped check, register its receipt dimension, audit layer, object, evidence role, and acceptance owner before closure.
-- Re-resolve affected tasks and execute Active-task Adoption; reuse only receipts that remain valid.
+- Freeze the inputs needed for affected tasks to re-resolve their load set. K12/10 decides targeted invalidated evidence and gate reruns; R07/K13/15 executes the runtime transaction. R09 does not copy or reimplement either contract.
 - Regenerate affected kernel Cards from their source owners, then stamp hashes/version. Do not edit only a Card.
 
 ## Gate
@@ -50,7 +50,7 @@ Modify kernel rules, Read Sets, Cards, versions, directories, ownership, tooling
 - [ ] Content conservation, owner uniqueness, routing, headings, tables, fences, links, MOCs, and coverage are verified.
 - [ ] The Revision Write-back Checklist is complete for every affected snapshot location.
 - [ ] `python3 Tools/stamp_cards.py . --check` exits 0; missing or stale Cards block governance close.
-- [ ] Active-task adoption and receipt invalidation are recorded.
+- [ ] Every affected existing task has one validated agent-readable adoption plan or an explicit blocker; no persistent prose adoption report or direct Ledger edit was created.
 - [ ] Applicable rendering evidence and the governance Completion Gate pass.
 
 ## Read Back When

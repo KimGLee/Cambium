@@ -8,7 +8,7 @@
 
 A module counts as complete only when all of the following conditions hold:
 
-- Topic coverage matches the competency matrix, not merely the nouns the user listed first.
+- When Corpus Planning uses `applicability.state: configured`, topic coverage matches the bound [[kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract#Capability Matrix Contract|Capability Matrix]], not merely the nouns the user listed first; when it uses `not-applicable`, the recorded reason remains valid for the bounded task scope.
 - The prerequisite chain between the mainline registered by the selected `Profile Scope` and the shared foundational layer is continuous, and no foundational page has been demoted to an empty shell by architectural adjustment.
 - Core concepts reach the required depth, with links to prerequisites, sub-concepts, applications, and failure modes.
 - Proper nouns have been canonicalized, with no duplicate definitions.
@@ -21,7 +21,7 @@ A module counts as complete only when all of the following conditions hold:
 
 A long-running build task counts as complete only when all of the following conditions hold:
 
-- The Coverage Ledger has been reconciled against the file system, scope, exclusions, and the competency matrix.
+- The Coverage Ledger has been reconciled against the file system, scope, exclusions, and, when Corpus Planning uses `applicability.state: configured`, the bound [[kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract#Capability Matrix Contract|Capability Matrix]].
 - The current Required Queue passes `check_queue.py --require-complete`, its receipt matches the frozen path, structural/state revisions, and fingerprint, and `remaining_required_work_units = 0`.
 - The Amendment Log covers all guidance within the cutoff, with no unclassified, accepted-but-unmapped, or implemented-but-unverified items.
 - All Required authoring gaps are closed, or the user has explicitly changed the disposition.
@@ -80,7 +80,7 @@ Each ultra-long task only needs to confirm the items that change the defaults:
 - Whether the current task includes Frontmatter migration, directory migration, or global UI / graph configuration.
 - The review window for time-sensitive sources and the external evidence backlog allowed to remain.
 - The default acknowledgement, safe switching, and amendment policy for mid-task guidance; the `K13` defaults apply unless otherwise specified.
-- The storage location of the Audit Receipt Register, legacy-evidence adoption, and any decision changing the default invalidation/review policy.
+- The storage location of the Audit Receipt Register, invalidated-evidence adoption, and any decision changing the default invalidation/review policy.
 
 Directory, source-to-knowledge, `Language Contract`, `Expression Layer Entry`, and `Profile Scope` defaults already declared by the selected profile manifest and not overridden by the current task are not re-discussed; only items that change the defaults enter this section's decision list.
 

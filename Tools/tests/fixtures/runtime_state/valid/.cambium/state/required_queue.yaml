@@ -16,6 +16,8 @@ required_queue:
     execution_mode: concurrent-worker
     depends_on: []
     confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
     state: queued
     hold_state: none
   - id: B2
@@ -29,5 +31,7 @@ required_queue:
     depends_on:
       - B1
     confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
     state: queued
     hold_state: none

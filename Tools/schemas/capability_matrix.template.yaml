@@ -1,0 +1,12 @@
+schema_version: 1
+
+capabilities:
+  - capability_id: TODO(profile)
+    capability: TODO(profile)
+    priority: TODO(profile)
+    map_entry_ids: []
+    canonical_markdown_paths: []
+    current_level: TODO(profile)
+    target_level: TODO(profile)
+    evidence_paths: []
+    gap_ids: []

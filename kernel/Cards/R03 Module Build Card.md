@@ -11,8 +11,8 @@ source_files:
   - kernel/K01 Scope and Architecture/04 Folder and Shared Ownership.md
   - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
   - kernel/K02 Knowledge Work Construction/02 Coverage Reconciliation.md
-  - kernel/K02 Knowledge Work Construction/03 Architecture Samples and Dependency Planning.md
-  - kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production.md
+  - kernel/K02 Knowledge Work Construction/08 Architecture Samples and Dependency Planning.md
+  - kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production.md
   - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
   - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
   - kernel/K03 Note Types and Ownership/01 Note Type Catalog.md
@@ -23,7 +23,7 @@ source_files:
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
-source_hash: '97cbd2e4535c'
+source_hash: '0066ad8038e6'
 ---
 # R03 Module Build Card
 
@@ -48,7 +48,7 @@ Build or systematically expand a complete module. Load [[kernel/Cards/R01 Core B
 - Keep note types, metadata, body links, Sources, MOC membership, and cross-module relationships synchronized.
 - Follow canonical split and duplication conservation; file creation alone never satisfies a gap.
 - Concurrent workers write only pages in their frozen manifest, their receipts, and their delta. The integrator alone changes Queue state, shared ledgers, and hub pages during serial merge.
-- Combine R04 for source intake, R05 for expression-layer work, R06 for moves or restructuring, R11 for large-scale admission, R07 for multi-batch execution, and R12 for an independent targeted or specialized module audit. Load any namespaced profile route or gate only as a supplement to the applicable kernel route.
+- Combine R04 for source intake, R05 for expression-layer work, R06 for moves or restructuring, R11 for large-scale admission, R07 for multi-batch execution, R12 for an independent targeted or specialized module audit, and R13 when the module changes the corpus map, capability coverage, or semantic-gap handoff. Load any namespaced profile route or gate only as a supplement to the applicable kernel route.
 
 ## Gate
 

@@ -7,7 +7,7 @@ source_files:
   - kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md
   - kernel/K00 Standards Control/02 Task Routing.md
   - kernel/K00 Standards Control/03 Standards Governance.md
-source_hash: '8a8cc988cd3a'
+source_hash: '0df1fe2b1ace'
 route_registry:
   - route_id: R01
     path: "kernel/Cards/R01 Core Bootstrap Card.md"
@@ -45,6 +45,9 @@ route_registry:
   - route_id: R12
     path: "kernel/Cards/R12 Targeted and Specialized Audit Card.md"
     read_set: "kernel/Read Sets/R12 Targeted and Specialized Audit Read Set.md"
+  - route_id: R13
+    path: "kernel/Cards/R13 Corpus Planning Card.md"
+    read_set: "kernel/Read Sets/R13 Corpus Planning Read Set.md"
 ---
 # Kernel Runtime Card Index
 
@@ -60,7 +63,7 @@ route. The two namespaces are independent: R05 is the Expression Layer route,
 not an alias for K05, and one route may compile rules from several K modules.
 
 The index is a registry, not a route, so it has no `route_id` and there is no
-R00. Every R01-R12 route has exactly one Read Set and one Runtime Card sharing
+R00. Every R01-R13 route has exactly one Read Set and one Runtime Card sharing
 the same `route_id`.
 
 ## Kernel Routes
@@ -79,6 +82,7 @@ the same `route_id`.
 | `R10` | [[kernel/Cards/R10 Maintenance Run Card\|Maintenance Run]] | [[kernel/Read Sets/R10 Maintenance Run Read Set\|Read Set]] | Run bounded freshness and maintenance work |
 | `R11` | [[kernel/Cards/R11 Large-scale Work Admission Card\|Large-scale Work Admission]] | [[kernel/Read Sets/R11 Large-scale Work Admission Read Set\|Read Set]] | Pass the large-scale Pre-execution Gate |
 | `R12` | [[kernel/Cards/R12 Targeted and Specialized Audit Card\|Targeted and Specialized Audit]] | [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set\|Read Set]] | Audit bounded affected scope or one specialized invariant |
+| `R13` | [[kernel/Cards/R13 Corpus Planning Card\|Corpus Planning]] | [[kernel/Read Sets/R13 Corpus Planning Read Set\|Read Set]] | Maintain the corpus map, capability coverage, and semantic-gap handoff |
 
 ## Loading Rules
 
@@ -88,6 +92,7 @@ the same `route_id`.
   artifact bindings and may add supplemental gates, but cannot replace R05.
 - Long-running work combines R07 with the content route.
 - Targeted or specialized audits combine R12 with every route relevant to the findings.
+- Corpus-planning changes use R13; content production, batch execution, migration, and audit still combine their own routes.
 - Task completion candidates combine R08 with every route relevant to the completion predicates; R08 uses R12 for the bounded review inside Terminal Audit.
 - Governance decisions load R09 and read its Read Set source text in full; the
   Card is navigation only.

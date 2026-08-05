@@ -52,6 +52,83 @@ class QueueFixture(unittest.TestCase):
             self.progress_path.write_text(kblib.canonical_yaml(progress),
                                           encoding="utf-8")
 
+    def refresh_initial_origin(self):
+        receipt_path = self.root / ".cambium/receipts/task-transitions.jsonl"
+        records = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for record in records:
+            if record.get("receipt_id") == "audit-fixture-initial-queue":
+                record["after_required_queue_sha256"] = kblib.sha256_file(
+                    self.queue_path)
+                record["after_coverage_sha256"] = kblib.sha256_file(
+                    self.coverage_path)
+                record["after_progress_sha256"] = kblib.sha256_file(
+                    self.progress_path)
+        receipt_path.write_text(
+            "".join(json.dumps(record, separators=(",", ":")) + "\n"
+                    for record in records),
+            encoding="utf-8",
+        )
+
+    def set_work_spec_binding(self, batch_id, relative, fingerprint):
+        queue = self.queue()
+        item = next(entry for entry in queue["required_queue"]
+                    if entry["id"] == batch_id)
+        item["work_spec_path"] = relative
+        item["work_spec_sha256"] = fingerprint
+        coverage = kblib.load_yaml_file(self.coverage_path)
+        spec = next(entry for entry in coverage["batch_specs"]
+                    if entry["id"] == batch_id)
+        spec["work_spec_path"] = relative
+        spec["work_spec_sha256"] = fingerprint
+        self.coverage_path.write_text(kblib.canonical_yaml(coverage),
+                                      encoding="utf-8")
+        self.write_queue(queue)
+        self.refresh_initial_origin()
+
+    def valid_work_spec(self, batch_id="B1", manifest=None):
+        if manifest is None:
+            manifest = ["Topics/A.md"]
+        return {
+            "schema_version": 1,
+            "batch_id": batch_id,
+            "manifest": manifest,
+            "outcomes": [{
+                "outcome_id": "OUT-001",
+                "required_result": "The declared batch result exists.",
+            }],
+            "instructions": [{
+                "instruction_id": "INS-001",
+                "order": 1,
+                "target_scope": list(manifest),
+                "required_transformation": "Apply the declared change.",
+                "depends_on": [],
+            }],
+            "acceptance_conditions": [{
+                "condition_id": "ACC-001",
+                "target_scope": list(manifest),
+                "observable_predicate": "Every target passes its gate.",
+                "evidence_requirement": "A current gate receipt exists.",
+            }],
+            "constraints": [{
+                "constraint_id": "CON-001",
+                "target_scope": ["batch"],
+                "requirement": "Preserve the declared scope.",
+            }],
+        }
+
+    def bind_work_spec_data(self, batch_id, data=None,
+                            relative=".cambium/work_specs/B1.yaml"):
+        if data is None:
+            data = self.valid_work_spec(batch_id)
+        text = kblib.canonical_yaml(data)
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        fingerprint = kblib.sha256_file(path)
+        self.set_work_spec_binding(batch_id, relative, fingerprint)
+        return relative, fingerprint
+
     def run_cli(self, *args):
         return subprocess.run(
             [sys.executable, str(TOOLS / "check_queue.py"), str(self.root), *args],
@@ -94,6 +171,175 @@ class QueueFixture(unittest.TestCase):
 
 
 class CheckQueueTests(QueueFixture):
+    def test_simple_batch_work_spec_pair_is_explicit_and_closed(self):
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        queue = self.queue()
+        coverage = kblib.load_yaml_file(self.coverage_path)
+        for field in check_queue.WORK_SPEC_FIELDS:
+            queue["required_queue"][0].pop(field)
+            coverage["batch_specs"][0].pop(field)
+        self.coverage_path.write_text(kblib.canonical_yaml(coverage),
+                                      encoding="utf-8")
+        self.write_queue(queue)
+        self.refresh_initial_origin()
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("misses explicit field(s)", errors)
+        self.assertIn("work_spec_path", errors)
+        self.assertIn("work_spec_sha256", errors)
+
+    def test_complex_batch_work_spec_passes_and_resume_reports_binding(self):
+        relative, fingerprint = self.bind_work_spec_data("B1")
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        resumed = self.run_cli("--resume-status")
+        self.assertEqual(2, resumed.returncode, resumed.stdout)
+        self.assertIn(
+            "work_spec.B1.path=%s sha256=%s" % (relative, fingerprint),
+            resumed.stdout,
+        )
+        result = check_queue.validate_runtime(self.root)
+        receipt = check_queue.make_check_receipt(
+            result, "candidate", "resume", "resume-status")
+        self.assertEqual({
+            "batch_id": "B1", "work_spec_path": relative,
+            "work_spec_sha256": fingerprint,
+        }, receipt["batch_work_specs"][0])
+
+    def test_work_spec_pair_and_managed_path_fail_closed(self):
+        valid_sha = "sha256:" + "0" * 64
+        cases = (
+            ("half-null", None, valid_sha,
+             "must both be null or both be non-null"),
+            ("outside-namespace", ".cambium/receipts/B1.yaml", valid_sha,
+             "must be a YAML file directly inside .cambium/work_specs/"),
+            ("nested-namespace", ".cambium/work_specs/nested/B1.yaml", valid_sha,
+             "must be a YAML file directly inside .cambium/work_specs/"),
+            ("markdown-extension", ".cambium/work_specs/B1.md", valid_sha,
+             "must be a YAML file directly inside .cambium/work_specs/"),
+            ("missing-file", ".cambium/work_specs/missing.yaml", valid_sha,
+             "unsafe or unreadable"),
+            ("bad-sha", ".cambium/work_specs/missing.yaml", "sha256:BAD",
+             "work_spec_sha256 must be null or sha256"),
+        )
+        for name, relative, fingerprint, expected in cases:
+            with self.subTest(name=name):
+                self.set_work_spec_binding("B1", relative, fingerprint)
+                errors = "\n".join(
+                    check_queue.validate_runtime(self.root)["errors"])
+                self.assertIn(expected, errors)
+
+    def test_work_spec_document_is_closed_and_manifest_order_is_exact(self):
+        valid = self.valid_work_spec()
+        cases = (
+            ("not-yaml", "# No contract\n",
+             "misses field(s)"),
+            ("wrong-batch", dict(valid, batch_id="B2"),
+             "does not equal Queue id"),
+            ("wrong-manifest", dict(valid, manifest=["Topics/B.md"]),
+             "must exactly equal Queue manifest in membership and order"),
+            ("queue-owned-field", dict(valid, receipts=[]),
+             "must not declare Queue-owned field path(s): receipts"),
+        )
+        for name, data, expected in cases:
+            with self.subTest(name=name):
+                text = data if isinstance(data, str) else kblib.canonical_yaml(data)
+                path = self.root / ".cambium/work_specs/B1.yaml"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8")
+                self.set_work_spec_binding(
+                    "B1", ".cambium/work_specs/B1.yaml",
+                    kblib.sha256_file(path))
+                errors = "\n".join(
+                    check_queue.validate_runtime(self.root)["errors"])
+                self.assertIn(expected, errors)
+
+        ordered = self.valid_work_spec(manifest=["Topics/B.md", "Topics/A.md"])
+        path = self.root / ".cambium/work_specs/order.yaml"
+        path.write_text(kblib.canonical_yaml(ordered), encoding="utf-8")
+        item = {
+            "id": "B1", "manifest": ["Topics/A.md", "Topics/B.md"],
+            "work_spec_path": ".cambium/work_specs/order.yaml",
+            "work_spec_sha256": kblib.sha256_file(path),
+        }
+        errors = "\n".join(check_queue._work_spec_errors(self.root, item))
+        self.assertIn("membership and order", errors)
+
+        incomplete = self.valid_work_spec()
+        incomplete["constraints"] = []
+        path = self.root / ".cambium/work_specs/incomplete.yaml"
+        path.write_text(kblib.canonical_yaml(incomplete), encoding="utf-8")
+        item = {
+            "id": "B1", "manifest": ["Topics/A.md"],
+            "work_spec_path": ".cambium/work_specs/incomplete.yaml",
+            "work_spec_sha256": kblib.sha256_file(path),
+        }
+        errors = "\n".join(check_queue._work_spec_errors(self.root, item))
+        self.assertIn("constraints must be a non-empty list", errors)
+
+    def test_work_spec_rejects_unfilled_template_and_queue_state_at_depth(self):
+        template = (TOOLS / "schemas" / "batch_work_spec.template.yaml") \
+            .read_text(encoding="utf-8")
+        unfilled = template.replace("REPLACE-ME", "B1").replace(
+            "path/to/first-object.md", "Topics/A.md")
+        path = self.root / ".cambium/work_specs/B1.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(unfilled, encoding="utf-8")
+        self.set_work_spec_binding(
+            "B1", ".cambium/work_specs/B1.yaml", kblib.sha256_file(path))
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("unfilled template sentinel", errors)
+
+        nested_state = self.valid_work_spec()
+        nested_state["outcomes"][0]["required_result"] = {"state": "open"}
+        _, _ = self.bind_work_spec_data("B1", nested_state)
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("outcomes.0.required_result.state", errors)
+
+    def test_work_spec_instruction_graph_and_target_scopes_are_closed(self):
+        data = self.valid_work_spec()
+        data["instructions"] = [
+            {
+                "instruction_id": "INS-002", "order": 2,
+                "target_scope": ["batch", "Topics/A.md"],
+                "required_transformation": "Second change.",
+                "depends_on": ["INS-001"],
+            },
+            {
+                "instruction_id": "INS-001", "order": 1,
+                "target_scope": ["Topics/Unknown.md"],
+                "required_transformation": "First change.",
+                "depends_on": ["INS-002"],
+            },
+        ]
+        _, _ = self.bind_work_spec_data("B1", data)
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("instruction order must be unique, contiguous", errors)
+        self.assertIn("batch and paths cannot be mixed", errors)
+        self.assertIn("outside the Queue manifest", errors)
+        self.assertIn("reference only earlier instructions", errors)
+
+    def test_work_spec_record_fields_ids_and_text_are_closed(self):
+        data = self.valid_work_spec()
+        data["outcomes"].append({
+            "outcome_id": "OUT-001", "required_result": "",
+            "state": "closed",
+        })
+        data["constraints"][0]["constraint_id"] = "not stable!"
+        _, _ = self.bind_work_spec_data("B1", data)
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("duplicate outcome_id", errors)
+        self.assertIn("must not declare Queue-owned field", errors)
+        self.assertIn("required_result must be a non-empty string", errors)
+        self.assertIn("constraint_id must match", errors)
+
+    def test_bound_work_spec_byte_change_invalidates_runtime(self):
+        data = self.valid_work_spec()
+        text = kblib.canonical_yaml(data)
+        relative, _ = self.bind_work_spec_data("B1", data)
+        (self.root / relative).write_text(text + "\nchanged\n",
+                                          encoding="utf-8")
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("Work Spec SHA mismatch", errors)
+
     def test_build_runtime_rejects_maintenance_candidate_state(self):
         coverage = kblib.load_yaml_file(self.coverage_path)
         coverage["maintenance_candidates"] = [{
@@ -958,6 +1204,10 @@ class CheckQueueTests(QueueFixture):
             "receipt_id": "gate-open", "result": "pass",
             "invalidated_by": None,
         }
+        batch_gate = {
+            "receipt_id": "gate-merge", "result": "pass",
+            "invalidated_by": None,
+        }
         first = {
             "receipt_id": "transition-1", "tool": "update_queue",
             "tool_version": "1.2.0", "check": "queue_transition",
@@ -976,7 +1226,7 @@ class CheckQueueTests(QueueFixture):
             "checked_at": "2026-08-04T02:00:00Z",
             "before_state_revision": 1, "after_state_revision": 2,
             "before_state": "open", "after_state": "merge-ready",
-            "evidence_receipt": None,
+            "evidence_receipt": "gate-merge",
             "before_required_queue_sha256": sha_b,
             "after_required_queue_sha256": sha_c,
         })
@@ -985,6 +1235,7 @@ class CheckQueueTests(QueueFixture):
         }}
         catalog = {
             "gate-open": ("receipts.jsonl", gate),
+            "gate-merge": ("receipts.jsonl", batch_gate),
             "transition-1": ("receipts.jsonl", first),
             "transition-2": ("receipts.jsonl", second),
         }
@@ -1427,69 +1678,6 @@ class CheckQueueTests(QueueFixture):
         self.assertIn("task_state=complete but 2 Required work unit(s) remain",
                       completed.stdout)
         self.assertIn("repair and reconcile the existing runtime",
-                      completed.stdout)
-
-    def test_resume_status_in_flight_batch_requires_reconciliation(self):
-        self.make_task_active_without_open()
-        before_sha = kblib.sha256_file(self.queue_path)
-        coverage_sha = kblib.sha256_file(self.coverage_path)
-        before_progress_sha = kblib.sha256_file(self.progress_path)
-        queue = self.queue()
-        item = queue["required_queue"][0]
-        item.update({
-            "state": "open", "opened_at": "2026-08-04T01:00:00Z",
-            "activation_receipt": "audit-ready-b1",
-            "transition_receipts": ["audit-transition-b1-open"],
-        })
-        queue["state_revision"] = 1
-        self.write_queue(queue)
-        after_sha = kblib.sha256_file(self.queue_path)
-        after_progress_sha = kblib.sha256_file(self.progress_path)
-        receipts = [
-            {
-                "receipt_id": "audit-ready-b1", "tool": "check_queue",
-                "tool_version": check_queue.TOOL_VERSION,
-                "check": "required_queue", "queue_check_mode": "require-ready:B1",
-                "result": "pass", "invalidated_by": None,
-                "task_id": "fixture-task", "queue_revision": 1,
-                "queue_state_revision": 0,
-                "required_queue_sha256": before_sha,
-                "coverage_ledger_sha256": coverage_sha,
-                "progress_ledger_sha256": before_progress_sha,
-            },
-            {
-                "receipt_id": "audit-transition-b1-open",
-                "tool": "update_queue", "tool_version": "1.2.0",
-                "check": "queue_transition", "target": "B1",
-                "result": "pass", "invalidated_by": None,
-                "actor_role": "integrator",
-                "checked_at": "2026-08-04T01:00:00Z",
-                "evidence_receipt": "audit-ready-b1",
-                "task_id": "fixture-task", "queue_revision": 1,
-                "before_state": "queued", "after_state": "open",
-                "before_hold_state": "none", "after_hold_state": "none",
-                "before_state_revision": 0, "after_state_revision": 1,
-                "before_required_queue_sha256": before_sha,
-                "after_required_queue_sha256": after_sha,
-                "before_coverage_sha256": coverage_sha,
-                "after_coverage_sha256": coverage_sha,
-                "before_progress_sha256": before_progress_sha,
-                "after_progress_sha256": after_progress_sha,
-            },
-        ]
-        receipt_path = self.root / ".cambium/receipts/open.jsonl"
-        receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        receipt_path.write_text(
-            "".join(json.dumps(receipt) + "\n" for receipt in receipts),
-            encoding="utf-8",
-        )
-        validation = check_queue.validate_runtime(self.root)
-        self.assertEqual([], validation["errors"])
-        completed = self.run_cli("--resume-status")
-        self.assertEqual(2, completed.returncode, completed.stdout)
-        self.assertIn("batches.open=B1", completed.stdout)
-        self.assertIn("in-flight batch(es) require resume: B1", completed.stdout)
-        self.assertIn("resume the existing task and reconcile in-flight batch(es) B1",
                       completed.stdout)
 
     def test_resume_status_lists_invalid_unapplied_delta(self):

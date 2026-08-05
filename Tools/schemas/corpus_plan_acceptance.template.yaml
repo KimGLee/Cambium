@@ -1,0 +1,13 @@
+# Restricted-YAML input for record_corpus_acceptance.py.
+# Replace every TODO(authority) value. The decisions list must contain every
+# current Capability Matrix ID exactly once and in Matrix order.
+
+schema_version: 1
+acceptance_id: TODO(authority)
+authority_role_id: TODO(authority)
+decision_scope_id: corpus-plan-semantic-acceptance
+
+decisions:
+  - capability_id: TODO(authority)
+    decision: TODO(authority)
+    rationale: TODO(authority)

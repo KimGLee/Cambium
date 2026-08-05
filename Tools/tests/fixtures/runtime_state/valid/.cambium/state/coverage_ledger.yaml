@@ -12,6 +12,8 @@ batch_specs:
     execution_mode: concurrent-worker
     depends_on: []
     confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
   - id: B2
     family: Core
     order_hint: 2
@@ -20,6 +22,8 @@ batch_specs:
     depends_on:
       - B1
     confirmation_required: false
+    work_spec_path: null
+    work_spec_sha256: null
 maintenance_candidates: []
 pages:
   - path: Topics/A.md

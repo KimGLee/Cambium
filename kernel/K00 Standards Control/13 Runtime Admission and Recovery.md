@@ -53,11 +53,12 @@ and MAY begin only after the following conditions are met:
 4. `minimum_run_until`, `checkpoint_at`, `hard_stop_at`, and the Completion Gate have been made explicit; fields not provided are explicitly left empty.
 5. The Runtime Startup Gate has passed. The `.cambium/` namespace was initialized only if absent; otherwise the existing task was inspected and legitimately resumed. Coverage, Queue, and Progress agree on task, scope, Standards version, and selected profile manifest.
 6. The Coverage Ledger has been created or refreshed and reconciled against the file system and exclusions; ownership, incoming links, and user modifications have been inventoried.
-7. The Required Queue has been compiled from explicit Coverage assignments and dependencies, and `python3 Tools/check_queue.py .` passes against the current revisions and fingerprint. A missing or empty Queue caused by a wrong path is not a pass.
-8. Foundational knowledge dependencies have been identified; all prerequisite content MUST NOT be crammed into the application mainline pages declared by the selected `Profile Scope`.
-9. Source-driven tasks have established a source inventory and a claim extraction plan.
-10. The initial batch's completion conditions, `rendering_mode`, deterministic verification commands, and the objective trigger and unresolved question for any visual escalation have been defined; `python3 Tools/check_queue.py . --require-ready <batch-id>` identifies it as activatable before execution begins.
-11. The latest Audit Receipt Register has been loaded ([[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|K12/07]]); at start of work only the Register is loaded, no AuditPlan is built — the AuditPlan is built once before batch close.
+7. The selected profile's `Corpus Planning` slot uses `applicability.state: configured`; its Global Map, Capability Matrix, and Gap Register bindings exist, reflect the admitted scope, and `python3 Tools/check_corpus_plan.py .` passes. R11 consumes this condition; R13 owns creating or reconciling the artifacts.
+8. The Required Queue has been compiled from explicit Coverage assignments and dependencies, and `python3 Tools/check_queue.py .` passes against the current revisions and fingerprint. A missing or empty Queue caused by a wrong path is not a pass.
+9. Foundational knowledge dependencies have been identified; all prerequisite content MUST NOT be crammed into the application mainline pages declared by the selected `Profile Scope`.
+10. Source-driven tasks have established a source inventory and a claim extraction plan.
+11. The initial batch's completion conditions, `rendering_mode`, deterministic verification commands, and the objective trigger and unresolved question for any visual escalation have been defined. A complex initial batch binds a current Work Spec; a simple one explicitly binds null/null. `python3 Tools/check_queue.py . --require-ready <batch-id>` identifies it as activatable before execution begins.
+12. The latest Audit Receipt Register has been loaded ([[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|K12/07]]); at start of work only the Register is loaded, no AuditPlan is built — the AuditPlan is built once before batch close.
 
 When any condition is missing, first complete the plan or investigation; do not
 proceed directly to large-scale creation, moves, or deletion.
@@ -67,6 +68,7 @@ proceed directly to large-scale creation, moves, or deletion.
 - [[kernel/K00 Standards Control/02 Task Routing|Task Routing]]
 - [[kernel/Read Sets/R01 Core Bootstrap Read Set|R01 Core Bootstrap]]
 - [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|R11 Large-scale Work Admission]]
+- [[kernel/Read Sets/R13 Corpus Planning Read Set|R13 Corpus Planning]]
 - [[kernel/K13 Task Runtime and Execution Control/01 Runtime State Model and Namespace|Runtime State Model and Namespace]]
 - [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue Contract and Lifecycle]]
 - [[kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover|Interruption Recovery and Rollover]]

@@ -14,6 +14,7 @@ FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
 sys.path.insert(0, str(TOOLS))
 
 import check_queue
+import check_corpus_plan
 import kblib
 import update_queue
 
@@ -106,6 +107,18 @@ class UpdateQueueTests(unittest.TestCase):
             "result": "pass",
             "invalidated_by": None,
         }
+        if check == check_queue.BATCH_REVIEW_CHECK:
+            receipt.update({
+                "tool": check_queue.MANUAL_ATTESTATION_TOOL,
+                "tool_version":
+                    check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+                "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
+                "task_id": "fixture-task",
+                "batch_id": target,
+                "delta_page_receipt_ids": [
+                    receipt_id.replace("-batch-", "-page-", 1)
+                ],
+            })
         receipt.update(fields)
         kblib.write_receipts(path, [receipt])
 
@@ -169,7 +182,8 @@ class UpdateQueueTests(unittest.TestCase):
                 batch_id, revision, field)
             self.append_receipt(
                 receipt_id, check="closed_list_%s" % field, target=".",
-                tool="check_batch_close", tool_version="1.0.0",
+                tool="check_batch_close",
+                tool_version=check_queue.BATCH_CLOSE_TOOL_VERSION,
                 batch_id=batch_id, task_id=queue["task_id"],
                 integrator_id=integrator_id, reviewer_id=reviewer_id,
                 merged_snapshot_sha256=merged_snapshot_sha256,
@@ -179,7 +193,8 @@ class UpdateQueueTests(unittest.TestCase):
             batch_id, revision)
         self.append_receipt(
             attestation_id, check="batch_global_review_attestation",
-            target=batch_id, tool="check_batch_close", tool_version="1.0.0",
+            target=batch_id, tool="check_batch_close",
+            tool_version=check_queue.BATCH_CLOSE_TOOL_VERSION,
             batch_id=batch_id, task_id=queue["task_id"],
             integrator_id=integrator_id, reviewer_id=reviewer_id,
             merged_snapshot_sha256=merged_snapshot_sha256,
@@ -190,7 +205,8 @@ class UpdateQueueTests(unittest.TestCase):
             batch_id, revision)
         self.append_receipt(
             global_review_id, check="batch_global_review", target=batch_id,
-            tool="check_batch_close", tool_version="1.0.0",
+            tool="check_batch_close",
+            tool_version=check_queue.BATCH_CLOSE_TOOL_VERSION,
             batch_id=batch_id, task_id=queue["task_id"],
             integrator_id=integrator_id, reviewer_id=reviewer_id,
             merged_snapshot_sha256=merged_snapshot_sha256,
@@ -201,7 +217,7 @@ class UpdateQueueTests(unittest.TestCase):
         receipt = {
             "receipt_id": receipt_id,
             "tool": "check_batch_close",
-            "tool_version": "1.0.0",
+            "tool_version": check_queue.BATCH_CLOSE_TOOL_VERSION,
             "check": "batch_close_gate",
             "target": batch_id,
             "batch_id": batch_id,
@@ -222,6 +238,11 @@ class UpdateQueueTests(unittest.TestCase):
             "delta_sha256": item["delta_sha256"],
             "delta_apply_receipt": delta_apply_receipt,
             "queue_consistency_receipt": consistency_receipt,
+            "corpus_plan_required": False,
+            "corpus_plan_triggers": [],
+            "corpus_plan_receipt": None,
+            "work_spec_path": item["work_spec_path"],
+            "work_spec_sha256": item["work_spec_sha256"],
             "merged_snapshot_sha256": merged_snapshot_sha256,
             "reviewer_attestation_receipt": attestation_id,
             "global_review_receipt": global_review_id,
@@ -610,6 +631,118 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertEqual(1, attempted.returncode, attempted.stdout)
         self.assertIn("coverage_ledger_sha256", attempted.stdout)
 
+    def test_required_corpus_plan_child_cannot_be_omitted(self):
+        self.merge_b1()
+        self.apply_b1()
+        consistency = self.queue_gate()
+
+        def require_missing_child(receipt):
+            receipt["corpus_plan_required"] = True
+            receipt["corpus_plan_triggers"] = ["manifest"]
+            receipt["corpus_plan_receipt"] = "audit-missing-corpus-plan"
+
+        close_gate = self.close_gate(
+            "B1", consistency, mutate=require_missing_child)
+        runtime = check_queue.validate_runtime(self.root)
+        item = next(row for row in runtime["queue"]["required_queue"]
+                    if row["id"] == "B1")
+        errors = check_queue.close_gate_receipt_errors(
+            runtime["receipt_catalog"], close_gate,
+            item_id="B1", task_id=runtime["queue"]["task_id"],
+            queue_revision=runtime["queue"]["queue_revision"],
+            queue_state_revision=runtime["queue"]["state_revision"],
+            required_queue_sha256=runtime["queue_sha256"],
+            coverage_ledger_sha256=runtime["coverage_sha256"],
+            progress_ledger_sha256=runtime["progress_sha256"],
+            delta_sha256=item["delta_sha256"],
+            queue_consistency_receipt=consistency,
+            delta_apply_receipt=next(
+                row["selected_receipt"]
+                for row in runtime["applied_delta_receipts"]
+                if row.get("batch") == "B1"),
+            corpus_plan_required=True,
+            corpus_plan_triggers=["manifest"],
+            current_repository_snapshot_sha256=
+                kblib.repository_snapshot_sha256(self.root),
+        )
+        self.assertTrue(any("Corpus Planning child references missing receipt"
+                            in error for error in errors), errors)
+
+    def test_required_corpus_plan_child_must_match_current_binding(self):
+        self.merge_b1()
+        self.apply_b1()
+        consistency = self.queue_gate()
+        runtime = check_queue.validate_runtime(self.root)
+        item = next(row for row in runtime["queue"]["required_queue"]
+                    if row["id"] == "B1")
+        snapshot = kblib.repository_snapshot_sha256(self.root)
+        profile = runtime["queue"]["selected_profile_manifest"]
+        expected = {
+            "task_id": runtime["queue"]["task_id"],
+            "queue_revision": runtime["queue"]["queue_revision"],
+            "queue_state_revision": runtime["queue"]["state_revision"],
+            "selected_profile_manifest": profile,
+            "selected_profile_manifest_sha256": kblib.sha256_file(
+                self.root / profile),
+            "corpus_planning_slot_path":
+                "profiles/test-profile/corpus-planning.yaml",
+            "corpus_planning_slot_sha256": "sha256:" + "1" * 64,
+            "profile_scope_path": None,
+            "profile_scope_sha256": None,
+            "global_map_path": None,
+            "global_map_sha256": None,
+            "capability_matrix_path": None,
+            "capability_matrix_sha256": None,
+            "gap_register_path": None,
+            "gap_register_sha256": None,
+            "corpus_plan_applicability": "not-applicable",
+            "coverage_ledger_sha256": runtime["coverage_sha256"],
+            "required_queue_sha256": runtime["queue_sha256"],
+            "progress_ledger_sha256": runtime["progress_sha256"],
+            "repository_snapshot_sha256": snapshot,
+        }
+        child_id = "audit-corpus-plan-stale-binding"
+        child_fields = dict(expected)
+        child_fields["selected_profile_manifest_sha256"] = \
+            "sha256:" + "0" * 64
+        self.append_receipt(
+            child_id, check="corpus_plan", target=profile,
+            tool=check_corpus_plan.TOOL,
+            tool_version=check_corpus_plan.TOOL_VERSION,
+            **child_fields)
+
+        def require_child(receipt):
+            receipt["corpus_plan_required"] = True
+            receipt["corpus_plan_triggers"] = ["manifest"]
+            receipt["corpus_plan_receipt"] = child_id
+
+        close_gate = self.close_gate(
+            "B1", consistency, mutate=require_child)
+        runtime = check_queue.validate_runtime(self.root)
+        errors = check_queue.close_gate_receipt_errors(
+            runtime["receipt_catalog"], close_gate,
+            item_id="B1", task_id=runtime["queue"]["task_id"],
+            queue_revision=runtime["queue"]["queue_revision"],
+            queue_state_revision=runtime["queue"]["state_revision"],
+            required_queue_sha256=runtime["queue_sha256"],
+            coverage_ledger_sha256=runtime["coverage_sha256"],
+            progress_ledger_sha256=runtime["progress_sha256"],
+            delta_sha256=item["delta_sha256"],
+            queue_consistency_receipt=consistency,
+            delta_apply_receipt=next(
+                row["selected_receipt"]
+                for row in runtime["applied_delta_receipts"]
+                if row.get("batch") == "B1"),
+            selected_profile_manifest=profile,
+            corpus_plan_required=True,
+            corpus_plan_triggers=["manifest"],
+            corpus_plan_expected_binding=expected,
+            current_repository_snapshot_sha256=snapshot,
+        )
+        self.assertTrue(any("selected_profile_manifest_sha256" in error and
+                            "expected current" in error for error in errors),
+                        errors)
+
     def test_close_gate_requires_all_seven_closed_list_members(self):
         self.merge_b1()
         delta_apply_receipt = self.apply_b1()
@@ -898,10 +1031,21 @@ class UpdateQueueTests(unittest.TestCase):
         self.append_receipt("audit-page-only", target="Topics/A.md")
         self.append_receipt("audit-confirmation-only", check="confirmation")
         self.append_receipt("audit-wrong-batch", check="batch_gate", target="B2")
+        self.append_receipt(
+            "audit-batch-wrong-version", check="batch_gate",
+            tool_version="0.0.0",
+            delta_page_receipt_ids=["audit-page-only"])
+        self.append_receipt(
+            "audit-batch-wrong-binding", check="batch_gate",
+            delta_page_receipt_ids=["audit-unrelated-page"])
         receipt_path = self.root / ".cambium/receipts/invalid-batch.jsonl"
         kblib.write_receipts(receipt_path, [{
             "receipt_id": "audit-invalidated-batch", "check": "batch_gate",
-            "target": "B1", "result": "pass",
+            "target": "B1", "batch_id": "B1", "task_id": "fixture-task",
+            "tool": check_queue.MANUAL_ATTESTATION_TOOL,
+            "tool_version": check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+            "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
+            "delta_page_receipt_ids": ["audit-page-only"], "result": "pass",
             "invalidated_by": "audit-revocation",
         }, {
             "receipt_id": "audit-revocation", "check": "revocation",
@@ -919,9 +1063,12 @@ class UpdateQueueTests(unittest.TestCase):
             encoding="utf-8",
         )
         cases = (
-            ("audit-page-only", "expected 'batch_gate'"),
-            ("audit-confirmation-only", "expected 'batch_gate'"),
+            ("audit-page-only", "expected 'manual-attestation'"),
+            ("audit-confirmation-only", "expected 'manual-attestation'"),
             ("audit-wrong-batch", "expected 'B1'"),
+            ("audit-batch-wrong-version", "expected '1.0.0'"),
+            ("audit-batch-wrong-binding",
+             "expected exact Delta page receipt IDs ['audit-page-only']"),
             ("audit-invalidated-batch", "invalidated_by='audit-revocation'"),
         )
         for receipt_id, expected in cases:
@@ -943,8 +1090,8 @@ class UpdateQueueTests(unittest.TestCase):
         self.write_queue(queue)
         current_errors = "\n".join(
             check_queue.validate_runtime(self.root)["errors"])
-        self.assertIn("batch evidence receipt audit-page-1 has check='fixture', "
-                      "expected 'batch_gate'", current_errors)
+        self.assertIn("batch review receipt audit-page-1 has tool=None, "
+                      "expected 'manual-attestation'", current_errors)
 
         # Restore the valid materialized state, then create one append-only
         # invalidation and tamper only its frozen batch-evidence list.
@@ -1183,12 +1330,14 @@ class UpdateQueueTests(unittest.TestCase):
             "record_count": 1, "manifest": ["Topics/A.md"],
             "source_route": "R03", "execution_mode": "concurrent-worker",
             "depends_on": ["B1"], "confirmation_required": False,
+            "work_spec_path": None, "work_spec_sha256": None,
             "state": "queued", "hold_state": "none", "successor_of": "B1",
         })
         coverage["batch_specs"].append({
             "id": "B3", "family": "Core", "order_hint": 3,
             "source_route": "R03", "execution_mode": "concurrent-worker",
             "depends_on": ["B1"], "confirmation_required": False,
+            "work_spec_path": None, "work_spec_sha256": None,
         })
         # The exact Coverage/Queue relation records the queued successor before
         # lifecycle close; close preserves that declared route rather than
@@ -1215,6 +1364,7 @@ class UpdateQueueTests(unittest.TestCase):
                 "source_route": "R03",
                 "execution_mode": "concurrent-worker",
                 "depends_on": ["B1"], "confirmation_required": False,
+                "work_spec_path": None, "work_spec_sha256": None,
                 "state": "queued", "hold_state": "none",
                 "successor_of": "B1",
             })

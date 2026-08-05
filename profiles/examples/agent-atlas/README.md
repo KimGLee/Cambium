@@ -6,15 +6,17 @@ This directory is a non-normative, filled example of the Cambium profile interfa
 
 The normative interface is [profiles/README.md](../../README.md), and cross-domain rules remain in the kernel. A real adopter copies [profiles/_template/](../../_template/profile.md) to `profiles/<profile-id>/`, fills and validates that copy, and selects it through governance.
 
-The example does not contain or synchronize the live Agent Systems Atlas vault. Agent Systems Atlas has since completed a separate formal adoption of Cambium `3.0.0` using a materialized `profiles/agent-atlas/` profile. That instance state, migration evidence, and private corpus are not distributed here, so this example remains a reference rather than an adoption certificate or proof of corpus-wide acceptance.
+The example does not contain or synchronize an adopter corpus, runtime state,
+or gate evidence. It remains a reference profile rather than an adoption
+certificate or proof of corpus-wide acceptance.
 
 ## Directory Structure
 
-The directory contains 13 published files:
+The directory contains 14 published files:
 
 | Role | Count | Meaning |
 |---|---:|---|
-| Filled profile skeleton | 11 | [profile.md](profile.md) plus the ten bound slot files corresponding to `_template/` |
+| Filled profile skeleton | 12 | [profile.md](profile.md) plus the eleven bound slot files corresponding to `_template/` |
 | Example orientation | 1 | This README; it is not loaded as profile policy |
 | Registered-scan parameters | 1 | [scan-configs/interview-residuals.yaml](scan-configs/interview-residuals.yaml), consumed by one scan registration |
 
@@ -28,7 +30,8 @@ K11 owns the universal expression-layer floor. This profile supplies only the At
 
 | Atlas concern | Existing profile owner |
 |---|---|
-| Corpus goal, exclusions, layers, placement, Atlas content-planning register boundary, and `Interview Preparation/` organization | [scope-and-architecture.md](scope-and-architecture.md) |
+| Corpus goal, exclusions, layers, content placement, and `Interview Preparation/` organization | [scope-and-architecture.md](scope-and-architecture.md) |
+| Global Map, Capability Matrix, Gap Register, capability scale, and corpus-planning pass authority | [corpus-planning.yaml](corpus-planning.yaml) |
 | Priority grants | [priority-rubric.md](priority-rubric.md) |
 | Atlas fields, values, and `interview_status` | [vocabulary-extensions.yaml](vocabulary-extensions.yaml) |
 | Chinese-first writing and bilingual Interview answers | [language-contract.md](language-contract.md) |
@@ -44,7 +47,7 @@ Interview work uses kernel route R05 directly. `Supplemental Routes` is `None`, 
 ## How To Read, Validate, And Reuse It
 
 1. Read [profile.md](profile.md) for identity and bindings.
-2. Read the corpus-wide slot files, then [expression-layer.md](expression-layer.md) and the registries for the Atlas-specific Interview contract.
+2. Read [scope-and-architecture.md](scope-and-architecture.md) and [corpus-planning.yaml](corpus-planning.yaml), then the remaining corpus-wide slot files, [expression-layer.md](expression-layer.md), and the registries for the Atlas-specific Interview contract.
 3. Inspect the scan configuration last; it contains machine parameters, not policy.
 
 Validate the filled profile structure from the Cambium repository root:
@@ -52,6 +55,13 @@ Validate the filled profile structure from the Cambium repository root:
 ```text
 python3 Tools/check_profile.py profiles/examples/agent-atlas
 ```
+
+That command validates the self-contained Profile package, not the three bound
+planning artifacts or the private corpus. `check_corpus_plan.py` is run only
+after this profile has been materialized as a selectable direct-child profile
+inside the adopting repository and the three bound restricted-YAML artifacts
+under `Corpus Planning/` exist there. The public example intentionally
+does not fabricate those files or a passing corpus-planning receipt.
 
 Run the registered residual scan against the live vault root, not this example directory:
 

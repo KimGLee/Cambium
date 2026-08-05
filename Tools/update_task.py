@@ -23,6 +23,9 @@ import kblib
 
 TOOL = "update_task"
 TOOL_VERSION = "1.1.0"
+TERMINAL_PROOF_TOOL = "check_proof"
+TERMINAL_PROOF_TOOL_VERSION = "1.14.0"
+TERMINAL_PROOF_GATE_ID = "terminal-proof"
 RECEIPT_PATH = ".cambium/receipts/task-transitions.jsonl"
 FINAL_CONTROL_STATUSES = frozenset((
     "verified", "deferred", "superseded", "not-applicable",
@@ -53,7 +56,31 @@ def _nonempty(value):
 
 
 def _receipt(result, receipt_id, label, expected):
-    entry = result.get("receipt_catalog", {}).get(receipt_id)
+    catalog = check_queue.current_receipt_catalog(result)
+    entry = catalog.get(receipt_id)
+    if entry is None:
+        raise ValueError("%s receipt %r does not exist" % (label, receipt_id))
+    receipt = entry[1]
+    requirements = {"result": "pass", "invalidated_by": None}
+    requirements.update(expected)
+    for field, value in requirements.items():
+        if receipt.get(field) != value:
+            raise ValueError(
+                "%s receipt %s has %s=%r, expected %r" %
+                (label, receipt_id, field, receipt.get(field), value)
+            )
+    return receipt
+
+
+def _historical_receipt(result, receipt_id, label, expected):
+    """Resolve immutable transition history from the unfiltered catalog.
+
+    A Standards adoption removes invalidated evidence only from new authorization.
+    Existing task-transition records must remain readable so monotonic-time
+    and hash-chain checks do not reinterpret history as missing.
+    """
+    catalog = check_queue.historical_receipt_catalog(result)
+    entry = catalog.get(receipt_id)
     if entry is None:
         raise ValueError("%s receipt %r does not exist" % (label, receipt_id))
     receipt = entry[1]
@@ -107,7 +134,7 @@ def _latest_transition_timestamp(result, progress):
         raise ValueError("Progress task_transition_receipts must be unique")
     latest = None
     for receipt_id in history:
-        receipt = _receipt(result, receipt_id, "task transition", {
+        receipt = _historical_receipt(result, receipt_id, "task transition", {
             "tool": TOOL,
             "tool_version": TOOL_VERSION,
             "check": "task_transition",
@@ -132,6 +159,7 @@ def _completion_gate_receipt(result, receipt_id):
     return _receipt(result, receipt_id, "Queue completion gate", {
         "tool": check_queue.TOOL,
         "tool_version": check_queue.TOOL_VERSION,
+        "gate_id": "required-queue-completion",
         "check": "required_queue",
         "queue_check_mode": "require-complete",
         "task_id": queue.get("task_id"),
@@ -148,8 +176,9 @@ def _terminal_proof_receipt(result, receipt_id):
     progress = result["progress"]
     contract = progress.get("contract") or {}
     receipt = _receipt(result, receipt_id, "Terminal Proof", {
-        "tool": "check_proof",
-        "tool_version": "1.12.0",
+        "tool": TERMINAL_PROOF_TOOL,
+        "tool_version": TERMINAL_PROOF_TOOL_VERSION,
+        "gate_id": TERMINAL_PROOF_GATE_ID,
         "check": "proof-check-summary",
         "task_id": progress.get("task_id"),
         "scope_version": contract.get("scope_version"),
@@ -193,6 +222,7 @@ def _maintenance_completion_receipt(result, receipt_id):
     receipt = _receipt(result, receipt_id, "maintenance completion gate", {
         "tool": check_queue.TOOL,
         "tool_version": check_queue.TOOL_VERSION,
+        "gate_id": "maintenance-completion",
         "check": "required_queue",
         "queue_check_mode": "require-maintenance-complete",
         "task_id": progress.get("task_id"),

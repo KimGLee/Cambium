@@ -28,6 +28,10 @@ Method:
 - Execution Default Overrides: the table contains only explicit overrides;
   sparse-default semantics are owned by the profile interface. Duplicate,
   unknown, default-restating, and constitutional rows fail.
+- Corpus Planning: the bound slot is a closed restricted-YAML document whose
+  applicability, three artifact bindings, ordered capability scale, and pass
+  authority are validated directly; Markdown declaration heuristics do not
+  define this slot.
 - Optional/conditional declarations: `Configured` must be backed by complete
   table rows; `None` and `Not applicable — <reason>` must not retain active
   rows. This makes one declaration control one block instead of relying on
@@ -68,7 +72,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_profile"
-TOOL_VERSION = "1.4.0"
+TOOL_VERSION = "1.6.0"
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -87,6 +91,19 @@ TEXT_SUFFIXES = (".md", ".yaml", ".yml", ".txt", ".json", ".jsonl", ".py", ".csv
 DECLARATION_RE = re.compile(
     r"^\s*-\s+(Registration|Applicability):\s*(.*?)\s*$"
 )
+
+CORPUS_PLANNING_SLOT = "Corpus Planning"
+CORPUS_PLANNING_FIELDS = {
+    "schema_version", "applicability", "artifact_bindings",
+    "capability_scale", "pass_authority",
+}
+CORPUS_APPLICABILITY_FIELDS = {"state", "reason"}
+CORPUS_ARTIFACT_FIELDS = {
+    "global_map", "capability_matrix", "gap_register",
+}
+CORPUS_SCALE_FIELDS = {"rank", "value", "predicate", "target_eligible"}
+CORPUS_AUTHORITY_FIELDS = {"role_id", "decision_scope_id"}
+CORPUS_DECISION_SCOPE = "corpus-plan-semantic-acceptance"
 
 
 def blank_fenced(text):
@@ -221,16 +238,18 @@ def profile_declarations(profile_dir):
                 continue
             full = os.path.join(dirpath, name)
             rel = os.path.relpath(full, profile_dir).replace(os.sep, "/")
-            for heading, lines in h2_sections(read_text(full)):
+            sections = h2_sections(read_text(full))
+            for heading, lines in sections:
                 for line in lines:
                     match = DECLARATION_RE.match(line)
                     if match:
+                        tables = markdown_table_data(lines)
                         yield (
                             rel,
                             heading,
                             match.group(1),
                             match.group(2).strip(),
-                            markdown_table_data(lines),
+                            tables,
                         )
 
 
@@ -258,6 +277,125 @@ def scan_sentinel(profile_dir, sentinel):
                 if sentinel in line:
                     hits.append((rel, lineno))
     return hits, read_n, skipped_n
+
+
+def validate_corpus_planning_slot(path, target, add):
+    """Validate the Profile slot's closed restricted-YAML envelope."""
+    try:
+        document = kblib.parse_yaml_subset(read_text(path))
+    except (OSError, kblib.YamlSubsetError) as exc:
+        add("corpus-planning-yaml", target, "fail",
+            "cannot parse restricted YAML: %s" % exc)
+        return
+
+    def closed(value, fields, label):
+        if not isinstance(value, dict):
+            add("corpus-planning-schema", label, "fail", "must be a mapping")
+            return {}
+        missing = sorted(fields - set(value))
+        extra = sorted(set(value) - fields)
+        if missing:
+            add("corpus-planning-schema", label, "fail",
+                "missing field(s): %s" % ", ".join(missing))
+        if extra:
+            add("corpus-planning-schema", label, "fail",
+                "unsupported field(s): %s" % ", ".join(extra))
+        return value
+
+    document = closed(document, CORPUS_PLANNING_FIELDS, target)
+    if type(document.get("schema_version")) is not int or \
+            document.get("schema_version") != 1:
+        add("corpus-planning-schema", target, "fail",
+            "schema_version must be integer 1")
+    applicability = closed(
+        document.get("applicability"), CORPUS_APPLICABILITY_FIELDS,
+        target + ":applicability")
+    artifacts = closed(
+        document.get("artifact_bindings"), CORPUS_ARTIFACT_FIELDS,
+        target + ":artifact_bindings")
+    authority = closed(
+        document.get("pass_authority"), CORPUS_AUTHORITY_FIELDS,
+        target + ":pass_authority")
+    scale = document.get("capability_scale")
+    if not isinstance(scale, list):
+        add("corpus-planning-schema", target + ":capability_scale", "fail",
+            "must be a list")
+        scale = []
+
+    state = applicability.get("state")
+    reason = applicability.get("reason")
+    if state == "configured":
+        if reason is not None:
+            add("corpus-planning-applicability", target, "fail",
+                "configured requires null reason")
+        paths = []
+        for field in ("global_map", "capability_matrix", "gap_register"):
+            value = artifacts.get(field)
+            if not isinstance(value, str) or not value.strip() or \
+                    not value.lower().endswith(".yaml"):
+                add("corpus-planning-artifact", target + ":" + field, "fail",
+                    "configured requires a repository-relative .yaml path")
+            else:
+                paths.append(value.strip())
+        if len(set(paths)) != len(paths):
+            add("corpus-planning-artifact", target, "fail",
+                "artifact bindings must be distinct")
+        if not scale:
+            add("corpus-planning-scale", target, "fail",
+                "configured requires at least one scale item")
+        values = set()
+        eligible = False
+        for index, raw in enumerate(scale):
+            label = "%s:capability_scale[%d]" % (target, index)
+            row = closed(raw, CORPUS_SCALE_FIELDS, label)
+            if type(row.get("rank")) is not int or row.get("rank") != index:
+                add("corpus-planning-scale", label, "fail",
+                    "rank must equal zero-based list position %d" % index)
+            value = row.get("value")
+            predicate = row.get("predicate")
+            if not isinstance(value, str) or not value.strip():
+                add("corpus-planning-scale", label, "fail",
+                    "value must be a non-empty string")
+            elif value in values:
+                add("corpus-planning-scale", label, "fail",
+                    "scale value must be unique")
+            else:
+                values.add(value)
+            if not isinstance(predicate, str) or not predicate.strip():
+                add("corpus-planning-scale", label, "fail",
+                    "predicate must be a non-empty string")
+            if type(row.get("target_eligible")) is not bool:
+                add("corpus-planning-scale", label, "fail",
+                    "target_eligible must be boolean")
+            eligible = eligible or row.get("target_eligible") is True
+        if scale and not eligible:
+            add("corpus-planning-scale", target, "fail",
+                "at least one scale item must be target eligible")
+        if not isinstance(authority.get("role_id"), str) or \
+                not authority.get("role_id", "").strip():
+            add("corpus-planning-authority", target, "fail",
+                "configured requires a non-empty role_id")
+        if authority.get("decision_scope_id") != CORPUS_DECISION_SCOPE:
+            add("corpus-planning-authority", target, "fail",
+                "decision_scope_id must be %s" % CORPUS_DECISION_SCOPE)
+    elif state == "not-applicable":
+        if not isinstance(reason, str) or not reason.strip():
+            add("corpus-planning-applicability", target, "fail",
+                "not-applicable requires a non-empty reason")
+        if any(artifacts.get(field) is not None
+               for field in CORPUS_ARTIFACT_FIELDS):
+            add("corpus-planning-artifact", target, "fail",
+                "not-applicable requires all artifact bindings to be null")
+        if scale:
+            add("corpus-planning-scale", target, "fail",
+                "not-applicable requires an empty scale list")
+        if any(authority.get(field) is not None
+               for field in CORPUS_AUTHORITY_FIELDS):
+            add("corpus-planning-authority", target, "fail",
+                "not-applicable requires null authority fields")
+    else:
+        add("corpus-planning-applicability", target, "fail",
+            "state must be exactly configured or not-applicable")
 
 
 def main():
@@ -442,6 +580,14 @@ def main():
         kind, detail = resolve_binding(binding, root, profile_dir)
         if kind == "path":
             bound_ok += 1
+            if slot == CORPUS_PLANNING_SLOT:
+                target = os.path.relpath(
+                    detail, root).replace(os.sep, "/")
+                if not target.lower().endswith(".yaml"):
+                    add("corpus-planning-binding", target, "fail",
+                        "Corpus Planning must bind a restricted-YAML .yaml file")
+                else:
+                    validate_corpus_planning_slot(detail, target, add)
         elif kind == "inline":
             if any(h == slot or h.startswith(slot + " ")
                    for h in h2_headings(manifest_text)):

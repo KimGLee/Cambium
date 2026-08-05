@@ -99,6 +99,14 @@ amendments:
   # previous_transaction_commit_receipt, plan_path, plan_sha256, and
   # verification_receipt. Cross-Ledger transaction history is append-only.
 
+# Append-only active-task Standards/profile adoption history.  Each record is
+# written only by Tools/adopt_standards.py and binds the immutable plan, all
+# three before fingerprints, the after Coverage/Queue fingerprints, and the
+# explicit gate reruns required under the adopted version.  Its commit receipt
+# binds the complete after image, including Progress, without a self-containing
+# after-Progress hash.  It does not duplicate task or batch lifecycle.
+standards_adoptions: []
+
 guidance_queue:
   - id: "G-001"
     class: apply-to-current-batch

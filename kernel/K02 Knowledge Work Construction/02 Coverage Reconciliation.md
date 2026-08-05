@@ -2,7 +2,7 @@
 
 - Parent: [[kernel/K02 Knowledge Work Construction Standard|K02 Knowledge Work Construction Standard]].
 - Previous: [[kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger|Inventory and Coverage Ledger]].
-- Next: [[kernel/K02 Knowledge Work Construction/03 Architecture Samples and Dependency Planning|Architecture Samples and Dependency Planning]].
+- Next: [[kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle|Corpus Planning Applicability and Lifecycle]].
 
 ## Coverage Reconciliation
 

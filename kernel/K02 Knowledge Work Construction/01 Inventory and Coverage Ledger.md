@@ -26,7 +26,7 @@ Build an inventory of the existing knowledge base:
 - Assigned batch and the current Queue manifest projection.
 - Originating guidance IDs and amendment version.
 - Last audited, last reviewed, and last verified.
-- The latest valid `receipt_id` for each quality dimension, artifact/dependency fingerprint, review due, and invalidation state; mark `legacy-evidence` when an old task cannot reconstruct them.
+- The latest valid `receipt_id` for each quality dimension, artifact/dependency fingerprint, review due, and invalidation state; mark `invalidated-evidence` when an old task cannot reconstruct them.
 
 The inventory MUST read the exclusion list from the `Excluded Scope` role of the selected `Profile Scope`; concrete instance paths MUST NOT be hard-coded in the kernel.
 
@@ -41,7 +41,7 @@ The inventory MUST form a persistent, queryable Coverage Ledger; it cannot exist
 
 The Coverage Ledger is the authoritative record of page/object-level coverage. Its object-side `batch` / `next_batch` projection MUST equal the frozen manifests in the canonical [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue]]; the Queue owns batch lifecycle, while the Progress Ledger owns only whole-task state and accepted Queue references.
 
-The Ledger also carries top-level `batch_specs` as explicit Queue-compiler proposal inputs: one entry per proposed batch, with family, order hint, source route, execution mode, dependencies, and confirmation requirement. These inputs do not own accepted order or lifecycle. They remain separate from page records so a historical `batch` and a different `next_batch` successor can have different configurations without rewriting closed history.
+The Ledger also carries top-level `batch_specs` as explicit Queue-compiler proposal inputs: one entry per proposed batch, with family, order hint, source route, execution mode, dependencies, confirmation requirement, and the explicit null/null or path/hash Work Spec pair defined by K13/08. These inputs do not own accepted order or lifecycle. They remain separate from page records so a historical `batch` and a different `next_batch` successor can have different configurations without rewriting closed history.
 
 ## Machine-readable Ledger
 

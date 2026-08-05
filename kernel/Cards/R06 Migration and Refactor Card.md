@@ -6,7 +6,7 @@ compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R06 Migration and Refactor Read Set.md
   - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
-  - kernel/K02 Knowledge Work Construction/05 Existing Changes and Migration Safety.md
+  - kernel/K02 Knowledge Work Construction/10 Existing Changes and Migration Safety.md
   - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
   - kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover.md
   - kernel/K01 Scope and Architecture/04 Folder and Shared Ownership.md
@@ -19,7 +19,7 @@ source_files:
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '4b91992c26a8'
+source_hash: 'c7e6d713ef44'
 ---
 # R06 Migration and Refactor Card
 
@@ -27,7 +27,7 @@ source_hash: '4b91992c26a8'
 
 ## Use When
 
-Move, rename, split, merge, retire, or restructure files or directories. Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]]. Pass R11 before large-scale creation, moves, or deletion. Migration batches execute exclusively in `serial-integrator` mode; combine R07 for multiple batches, R12 for a targeted or specialized migration audit, and R09 when the Standards change.
+Move, rename, split, merge, retire, or restructure files or directories. Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]]. Pass R11 before large-scale creation, moves, or deletion. Migration batches execute exclusively in `serial-integrator` mode; combine R07 for multiple batches, R12 for a targeted or specialized migration audit, R13 when a bound planning artifact or mapped owner changes, and R09 when the Standards change.
 
 ## Before Start
 

@@ -57,9 +57,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_links"
-TOOL_VERSION = "1.4.1"
+TOOL_VERSION = "1.5.0"
+GATE_ID = "wiki-link-integrity"
 
 LINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
+
+
+def _make_receipt(check, target, result, details, seq):
+    """Build one producer-era link receipt with its stable Gate ID."""
+    receipt = kblib.make_receipt(
+        TOOL, TOOL_VERSION, check, target, result, details, seq)
+    receipt["gate_id"] = GATE_ID
+    return receipt
 
 
 def parse_link(inner):
@@ -158,8 +167,8 @@ def main():
         # equally to a scoped run, an empty whole root, and a root whose files
         # were all removed by explicit exclusions.
         target = (args.scope or ".") + " @ " + os.path.abspath(args.vault_root)
-        receipts = [kblib.make_receipt(
-            TOOL, TOOL_VERSION, "scan-empty", target, "fail",
+        receipts = [_make_receipt(
+            "scan-empty", target, "fail",
             "effective scan set contains no .md files (path missing, empty, "
             "or fully excluded); a zero-file scan cannot serve as a gate "
             "result", 1)]
@@ -203,15 +212,15 @@ def main():
                 if status == "missing":
                     counts["missing"] += 1
                     seq += 1
-                    receipts.append(kblib.make_receipt(
-                        TOOL, TOOL_VERSION, "link-missing", where, "fail",
+                    receipts.append(_make_receipt(
+                        "link-missing", where, "fail",
                         "[[%s]] has no matching target (missing)" % m.group(1), seq))
                     continue
                 if status == "ambiguous":
                     counts["ambiguous"] += 1
                     seq += 1
-                    receipts.append(kblib.make_receipt(
-                        TOOL, TOOL_VERSION, "link-ambiguous", where, "fail",
+                    receipts.append(_make_receipt(
+                        "link-ambiguous", where, "fail",
                         "[[%s]] has multiple basename matches (ambiguous): %s" % (m.group(1), "; ".join(resolved)), seq))
                     continue
                 # Target page retired/merged: candidate (K03/03 requires inbound
@@ -224,8 +233,8 @@ def main():
                         hint = ("successor page superseded_by: %s" % life["superseded_by"]
                                 if life["superseded_by"] else
                                 "target page declares no superseded_by; verify its tombstone before repointing")
-                        receipts.append(kblib.make_receipt(
-                            TOOL, TOOL_VERSION, "link-retired-target", where, "candidate",
+                        receipts.append(_make_receipt(
+                            "link-retired-target", where, "candidate",
                             "[[%s]] points to page %s with lifecycle: %s; consider repointing to the successor page (%s; K03/03 retirement gate)"
                             % (m.group(1), resolved, life["lifecycle"], hint), seq))
                 if heading:
@@ -236,15 +245,15 @@ def main():
                     if heading not in hs and heading.casefold() not in {h.casefold() for h in hs}:
                         counts["bad_heading"] += 1
                         seq += 1
-                        receipts.append(kblib.make_receipt(
-                            TOOL, TOOL_VERSION, "link-bad-heading", where, "fail",
+                        receipts.append(_make_receipt(
+                            "link-bad-heading", where, "fail",
                             "[[%s]]: heading '%s' does not exist in target %s" % (m.group(1), heading, resolved), seq))
 
     problems = counts["missing"] + counts["ambiguous"] + counts["bad_heading"]
     if problems == 0:
         seq += 1
-        receipts.append(kblib.make_receipt(
-            TOOL, TOOL_VERSION, "link-check-summary",
+        receipts.append(_make_receipt(
+            "link-check-summary",
             (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
             "missing=0 ambiguous=0 bad_heading=0 (%d link(s) total)" % counts["links"], seq))
 

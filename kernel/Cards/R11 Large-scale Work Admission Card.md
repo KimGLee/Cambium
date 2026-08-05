@@ -9,11 +9,16 @@ source_files:
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
   - kernel/K13 Task Runtime and Execution Control/02 Task Contract Binding and Time Semantics.md
   - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
+  - kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md
+  - kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries.md
+  - kernel/K02 Knowledge Work Construction/05 Global Map Contract.md
+  - kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract.md
+  - kernel/K02 Knowledge Work Construction/07 Gap Register Contract.md
   - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
   - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
-source_hash: '1e74f6eaf4d2'
+source_hash: '5a0d67f6545d'
 ---
 # R11 Large-scale Work Admission Card
 
@@ -29,7 +34,9 @@ Load before large-scale creation, moves, or deletion, together with [[kernel/Car
 - [ ] Make `minimum_run_until`, `checkpoint_at`, `hard_stop_at`, and the Completion Gate explicit; leave unspecified fields explicitly empty.
 - [ ] Initialize `.cambium/` only when absent. If it exists, first run `check_queue.py --resume-status` and reconcile the recorded task; bind Coverage, Required Queue, and Progress to the same task, scope, Standards version, and selected profile.
 - [ ] Reconcile Coverage with the file system and exclusions; inventory ownership, incoming links, user modifications, explicit batch manifests, and dependencies.
+- [ ] Require Corpus Planning `applicability.state: configured`; reconcile the bound Global Map, Capability Matrix, and Gap Register and pass `Tools/check_corpus_plan.py`. Use R13 to create or repair them; R11 only consumes this admission condition.
 - [ ] Compile the Queue from explicit Coverage inputs, record its path/revisions/fingerprint, and require `Tools/check_queue.py .` plus `--require-ready <initial-batch-id>` to pass.
+- [ ] Declare the initial batch simple with null/null or bind a current complex Work Spec whose batch ID and ordered manifest match the Queue.
 - [ ] Identify foundational dependencies without burying shared foundations in the profile application mainline.
 - [ ] For source-driven work, establish a source inventory and claim-extraction plan.
 - [ ] Define batch acceptance, `rendering_mode`, deterministic checks, and the objective trigger plus unresolved question for any visual escalation.
@@ -38,7 +45,7 @@ Load before large-scale creation, moves, or deletion, together with [[kernel/Car
 
 ## Gate
 
-Execution may begin only when every applicable admission item is resolved and the initial Queue item is ready. Missing, wrong-path, empty-by-error, inconsistent, held, or stale runtime state is not an admission pass. If authority, ownership, scope, source evidence, a required dependency, or a recovery boundary remains unresolved, stay in planning or investigation.
+Execution may begin only when every applicable admission item is resolved, corpus planning passes, and the initial Queue item is ready. Missing, wrong-path, empty-by-error, inconsistent, held, or stale planning/runtime state is not an admission pass. If authority, ownership, scope, source evidence, a required dependency, or a recovery boundary remains unresolved, stay in planning or investigation.
 
 ## Read Back When
 
