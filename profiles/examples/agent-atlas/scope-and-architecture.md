@@ -32,13 +32,13 @@ Interface: [Profile Scope slot](../../README.md#profile-scope-slot)
 
 | Stable Layer ID | Repository-relative directories | Single layer responsibility |
 |---|---|---|
-| `L-FOUNDATION` | `Modeling Fundamentals/`; `Machine Learning Knowledge/`; `Deep Learning Knowledge/`; `LLM Knowledge/` | Own reusable mathematical, data, model, training, inference, retrieval, and grounding mechanisms independent of one Agent implementation. |
-| `L-AGENT` | `Agent Knowledge/` | Own Agent decision loops and Harness contracts for context, state, memory, tools, policy, coordination, verification, and recovery. |
-| `L-PRODUCTION` | `AI Systems Engineering/` | Own deployable cross-component systems, evaluation infrastructure, operations, reliability, safety, capacity, cost, and evidence paths. |
-| `L-CASES` | `Industry Cases/` | Reconstruct bounded real systems from evidence while separating reported facts, inference, and recommendations. |
-| `L-SOURCES` | `Knowledge Sources/` | Preserve one external source's identity, claims, evidence, limitations, and verification state without owning the general mechanism. |
-| `L-SYNTHESIS` | `Research Synthesis/` | Reconcile claims from multiple sources and route stable conclusions to their canonical owners. |
-| `L-INTERVIEW` | `Interview Preparation/` | Derive Interview Cards, Roadmaps, and Cheat Sheets from canonical knowledge for spoken recall and review. |
+| `L-FOUNDATION` | `Modeling Fundamentals`; `Machine Learning Knowledge`; `Deep Learning Knowledge`; `LLM Knowledge` | Own reusable mathematical, data, model, training, inference, retrieval, and grounding mechanisms independent of one Agent implementation. |
+| `L-AGENT` | `Agent Knowledge` | Own Agent decision loops and Harness contracts for context, state, memory, tools, policy, coordination, verification, and recovery. |
+| `L-PRODUCTION` | `AI Systems Engineering` | Own deployable cross-component systems, evaluation infrastructure, operations, reliability, safety, capacity, cost, and evidence paths. |
+| `L-CASES` | `Industry Cases` | Reconstruct bounded real systems from evidence while separating reported facts, inference, and recommendations. |
+| `L-SOURCES` | `Knowledge Sources` | Preserve one external source's identity, claims, evidence, limitations, and verification state without owning the general mechanism. |
+| `L-SYNTHESIS` | `Research Synthesis` | Reconcile claims from multiple sources and route stable conclusions to their canonical owners. |
+| `L-INTERVIEW` | `Interview Preparation` | Derive Interview Cards, Roadmaps, and Cheat Sheets from canonical knowledge for spoken recall and review. |
 
 ## Interview Layer Organization
 

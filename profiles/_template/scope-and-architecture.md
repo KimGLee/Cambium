@@ -22,6 +22,8 @@ Interface: [Profile Scope slot](../README.md#profile-scope-slot)
 
 ## Logical Architecture
 
+Use exact repository-relative directory paths without trailing slashes. Separate multiple directories in one layer with semicolons.
+
 | Stable Layer ID | Repository-relative directories | Single layer responsibility |
 |---|---|---|
 | TODO(profile) | TODO(profile) | TODO(profile) |
