@@ -36,11 +36,16 @@ Open Standards Overview
 3. When reading back, load only the leaf modules needed by the current event and the current gate.
 4. MOCs are for locating; using one does not mean all rules within it have been read.
 5. Large-scale creation, moves, or deletion MUST pass the kernel-owned [[kernel/Cards/R11 Large-scale Work Admission Card|Large-scale Work Admission Card]] before execution begins.
-6. Long-running tasks MUST combine the content Card with the kernel-owned [[kernel/Cards/R07 Long-running Execution Card|Long-running Execution Card]].
-7. Targeted or specialized audits MUST combine the affected task route with the kernel-owned [[kernel/Cards/R12 Targeted and Specialized Audit Card|Targeted and Specialized Audit Card]].
-8. Task completion candidates MUST combine the kernel-owned [[kernel/Cards/R08 Audit and Completion Card|Audit and Completion Card]]; Governance tasks MUST read the [[kernel/Read Sets/R09 Standards Governance Read Set|R09 Read Set]] source text in full.
+6. Creating or reconciling the Global Map, Capability Matrix, or Gap Register, or handing a semantic gap into Coverage, MUST use the kernel-owned [[kernel/Cards/R13 Corpus Planning Card|Corpus Planning Card]]. R13 owns those planning artifacts and handoff, not the downstream content work or Queue lifecycle.
+7. Long-running tasks MUST combine the content Card with the kernel-owned [[kernel/Cards/R07 Long-running Execution Card|Long-running Execution Card]].
+8. Targeted or specialized audits MUST combine the affected task route with the kernel-owned [[kernel/Cards/R12 Targeted and Specialized Audit Card|Targeted and Specialized Audit Card]].
+9. Task completion candidates MUST combine the kernel-owned [[kernel/Cards/R08 Audit and Completion Card|Audit and Completion Card]]; Governance tasks MUST read the [[kernel/Read Sets/R09 Standards Governance Read Set|R09 Read Set]] source text in full.
 
 Runtime Cards are kernel-owned compiled artifacts of the Read Sets (the Standards source text is the source code; the cards are compiled artifacts). Cards take precedence for routine tasks; exception cases read back the source text — see Card-first Reading Mode in [[kernel/K00 Standards Control/01 Operating Role and Reading Protocol|K00/01]]. `Kxx` identifies a Standards module; `Rxx` identifies a runtime route. These namespaces are independent and their matching numbers imply nothing. A profile may register a namespaced supplemental route or gate, but it loads alongside the kernel route and cannot reuse an Rxx identity, replace a kernel rule, or make a kernel route optional.
+
+The kernel route registry is the continuous closed set `R01` through `R13`.
+The module registry is the independent continuous closed set `K00` through
+`K13`; the equal upper bound does not create numeric route/module pairing.
 
 ## Task Router
 
@@ -54,6 +59,7 @@ Runtime Cards are kernel-owned compiled artifacts of the Read Sets (the Standard
 | Admit large-scale creation, moves, or deletion to execution | [[kernel/Read Sets/R11 Large-scale Work Admission Read Set\|Large-scale Work Admission]], plus the route for the actual work |
 | Multi-batch, sustained execution, checkpoint, or resume | [[kernel/Read Sets/R07 Long-running Execution Read Set\|Long-running Execution]] |
 | Run a targeted or specialized audit | [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set\|Targeted and Specialized Audit]], plus the route relevant to the finding |
+| Create or reconcile corpus topology, capability coverage, or semantic-gap history and Coverage handoff | [[kernel/Read Sets/R13 Corpus Planning Read Set\|Corpus Planning]]; combine the route for any resulting content work |
 | Enter the task Completion Gate or Terminal Audit | [[kernel/Read Sets/R08 Audit and Completion Read Set\|Audit and Completion]] |
 | Modify Standards, Read Sets, version, or control-plane structure | [[kernel/Read Sets/R09 Standards Governance Read Set\|Standards Governance]] |
 | Mid-task guidance, scope, priority, or correction | [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis\|Guidance Classification and Impact Analysis]] + [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching\|Guidance Disposition and Safe Switching]] + [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning\|Amendment Log and Controlled Replanning]] |
@@ -86,7 +92,7 @@ Detailed task combinations are located in [[kernel/K00 Standards Control/02 Task
 |---|---|---|
 | `K00` | [[kernel/K00 Standards Overview\|Standards Overview]] | overall Index, Kernel Card and Read Set routing, runtime admission/recovery, and Standards control |
 | `K01` | [[kernel/K01 Scope and Architecture Standard\|Scope and Architecture]] | scope, logical architecture, knowledge spine, and foundation preservation |
-| `K02` | [[kernel/K02 Knowledge Work Construction Standard\|Knowledge Work Construction]] | inventory, Coverage reconciliation, architecture, knowledge-batch production, and migration safety |
+| `K02` | [[kernel/K02 Knowledge Work Construction Standard\|Knowledge Work Construction]] | inventory, Coverage reconciliation, Corpus Planning lifecycle and artifact contracts, architecture, knowledge-batch production, and migration safety |
 | `K03` | [[kernel/K03 Note Types and Ownership Standard\|Note Types and Ownership]] | note type, canonical owner, split, and duplication |
 | `K04` | [[kernel/K04 Content Depth Standard\|Content Depth]] | concept, flow, system, production, evidence, and failure depth |
 | `K05` | [[kernel/K05 Terminology Standard\|Terminology]] | term extraction, ownership, aliases, context, and reuse |
@@ -96,8 +102,8 @@ Detailed task combinations are located in [[kernel/K00 Standards Control/02 Task
 | `K09` | [[kernel/K09 Wiki Link and Navigation Standard\|Wiki Link and Navigation]] | semantic links, MOC, path, alias, heading, and graph verification |
 | `K10` | [[kernel/K10 Writing and Formatting Standard\|Writing and Formatting]] | naming, prose, math, tables, code, diagrams, assets, and rendering; reader-facing language is provided by the `Language Contract` |
 | `K11` | [[kernel/K11 Expression Layer Standard\|Expression Layer]] | expression artifacts, canonical knowledge separation, readiness, and migration interface |
-| `K12` | [[kernel/K12 Quality Assurance Standard\|Quality Assurance]] | note, module, batch, source, expression, rendering, and terminal gates |
-| `K13` | [[kernel/K13 Task Runtime and Execution Control Standard\|Task Runtime and Execution Control]] | task contract, state, Guidance/Amendment, Progress, Required Queue, batch control, completion, handoff, and recovery |
+| `K12` | [[kernel/K12 Quality Assurance Standard\|Quality Assurance]] | note, module, batch, source, expression, active-task Standards adoption, rendering, and terminal gates |
+| `K13` | [[kernel/K13 Task Runtime and Execution Control Standard\|Task Runtime and Execution Control]] | task contract, state, Guidance/Amendment, Progress, Required Queue, hash-bound batch Work Specs, batch control, controlled Standards-adoption state writes, completion, handoff, and recovery |
 
 ## Loading Contract
 

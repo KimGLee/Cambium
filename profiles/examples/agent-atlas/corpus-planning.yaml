@@ -1,0 +1,36 @@
+schema_version: 1
+
+applicability:
+  state: configured
+  reason: null
+
+artifact_bindings:
+  global_map: "Corpus Planning/global_map.yaml"
+  capability_matrix: "Corpus Planning/capability_matrix.yaml"
+  gap_register: "Corpus Planning/gap_register.yaml"
+
+capability_scale:
+  - rank: 0
+    value: "0 Missing"
+    predicate: "No canonical owner exists, or the topic appears only as disconnected mentions."
+    target_eligible: false
+  - rank: 1
+    value: "1 Outline"
+    predicate: "A heading or short definition exists, but mechanism and boundaries are insufficient."
+    target_eligible: false
+  - rank: 2
+    value: "2 Core"
+    predicate: "The core mechanism is clear enough to explain common choices and its canonical owner has passed content review."
+    target_eligible: true
+  - rank: 3
+    value: "3 System"
+    predicate: "The capability connects interfaces, state, failures, metrics, safety, and cost through a complete system path with a reproducible example."
+    target_eligible: true
+  - rank: 4
+    value: "4 Defensible"
+    predicate: "The capability can withstand source-, experiment-, replay-, or case-based challenge through a complete evidence chain and applicable QA."
+    target_eligible: true
+
+pass_authority:
+  role_id: stopper
+  decision_scope_id: corpus-plan-semantic-acceptance

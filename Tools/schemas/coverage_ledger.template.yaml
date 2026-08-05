@@ -14,7 +14,7 @@ scope_version: "s1"
 standards_version: ""
 selected_profile_manifest: ""
 
-# Explicit compiler input. Each entry has exactly the seven fields shown below;
+# Explicit compiler input. Each entry has exactly the nine fields shown below;
 # missing or additional scheduler fields fail closed. These are proposed batch
 # structures, not lifecycle state: Required Queue becomes authoritative only
 # after the integrator applies
@@ -32,6 +32,11 @@ batch_specs:
     execution_mode: concurrent-worker
     depends_on: []
     confirmation_required: false
+    # Null/null explicitly declares a simple batch. A complex batch binds one
+    # repository-contained restricted-YAML contract under .cambium/work_specs/ and
+    # its exact bytes. Never infer complexity from record count or prose.
+    work_spec_path: null
+    work_spec_sha256: null
 
 # Canonical cross-run state for the K00/08 maintenance candidate pool. Build
 # tasks keep this list empty. A maintenance task copies the current run's

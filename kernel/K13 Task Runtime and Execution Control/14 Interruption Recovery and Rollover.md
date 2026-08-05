@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/K13 Task Runtime and Execution Control Standard|K13 Task Runtime and Execution Control Standard]].
 - Previous: [[kernel/K13 Task Runtime and Execution Control/13 Final Handoff|Final Handoff]].
+- Next: [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction|Standards Adoption State Transaction]].
 
 ## Interruption And Resume
 
@@ -18,6 +19,7 @@ Queue, Coverage, receipts, deltas, and `--resume-status`. Together they expose:
 
 - Task/scope/Standards/profile identity and canonical Queue binding.
 - Open or merge-ready batches, holds, pending deltas, and unfinished Required objects.
+- Each batch's explicit simple declaration or complex Work Spec path and fingerprint.
 - Pending Guidance/Amendments, last accepted checks, and any modified or unverified work.
 - The precise next action; on a block, its reason, attempts, and other work that may proceed.
 
@@ -34,7 +36,7 @@ python3 Tools/check_queue.py . --resume-status
 If `.cambium/` is absent, there is no persistent state to resume and an
 authorized task may initialize it. If it exists, `init_state.py` MUST NOT be
 used to replace it. The status view identifies the recorded task and profile,
-task state/checkpoint, Queue revisions and fingerprint, lifecycle groups,
+task state/checkpoint, Queue revisions and fingerprint, lifecycle groups, Work Spec bindings,
 holds, pending deltas, writer locks, latest task transition, pending Guidance
 or Amendments, Terminal Audit state, and one machine-readable `next_action`.
 For an intact handoff that action distinguishes `admit-delta:<id>`,
@@ -58,6 +60,8 @@ than mistaken for a clean checkpoint. The Agent then checks:
 - Whether the contract, scope, Queue path/revisions/fingerprint, Standards version, selected profile manifest, and time semantics are still valid.
 - Whether `Tools/check_queue.py .` passes across Queue, Coverage, and Progress; stale revisions, a changed fingerprint, unresolved hold, or unapplied delta MUST be reconciled before execution resumes.
 - Whether each `open` batch has unverified changes; for `merge-ready` batches, deltas already written out are carried forward by the integrator into serial merge after resume, without redoing in-batch work.
+- Whether every non-null Work Spec still matches its Queue fingerprint, batch ID, and exact manifest; a changed open-batch spec remains under `revalidation-required` until the approved replan and new admission evidence are reconciled.
+- Whether a Standards-adoption plan, shared writer lock, or prepare receipt is pending. If so, defer to [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction|K13/15]]; do not infer success from one updated Ledger or reconstruct the plan from prose.
 - Whether new user modifications have appeared.
 - Whether the last automated check results are still valid.
 - Whether the next action still follows the dependency order; a new activation additionally requires `check_queue.py --require-ready <batch-id>`.

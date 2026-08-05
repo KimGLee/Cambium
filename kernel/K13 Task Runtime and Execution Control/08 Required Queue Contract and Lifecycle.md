@@ -20,15 +20,64 @@ schema, task, scope, Standards/profile, both revisions, and `required_queue`.
 Every item explicitly supplies `id`, `family`, unique contiguous `order`,
 positive `record_count`, nonempty unique `manifest`, nullable `source_route`,
 `execution_mode`, `depends_on`, `confirmation_required`, `state`, and
-`hold_state`. Dependencies are explicit, acyclic, earlier than dependents, and
-never inferred. `concurrent-worker` may coexist; `serial-integrator` is
-exclusive.
+`hold_state`. It also explicitly supplies `work_spec_path` and
+`work_spec_sha256` under the Batch Work Specification Binding below.
+Dependencies are explicit, acyclic, earlier than dependents, and never
+inferred. `concurrent-worker` may coexist; `serial-integrator` is exclusive.
 
 An in-flight manifest is frozen. Coverage projects its sets through `batch` /
 `next_batch`; top-level `batch_specs` is compiler input, not lifecycle state,
 with exactly `id`, `family`, `order_hint`, `source_route`, `execution_mode`,
-`depends_on`, and `confirmation_required`. Outside controlled
+`depends_on`, `confirmation_required`, `work_spec_path`, and
+`work_spec_sha256`. Outside controlled
 replan/cancellation staging, Queue and Coverage sets must be equal.
+
+## Batch Work Specification Binding
+
+A batch whose unique instructions are fully communicated by its Queue
+identity, route, manifest, and owning Standards is explicitly simple:
+`work_spec_path: null` and `work_spec_sha256: null`. A complex batch binds both
+fields to one regular YAML file directly under `.cambium/work_specs/` and
+its `sha256:<64 lowercase hex>` byte fingerprint. The pair is always present;
+complexity is never inferred from family, manifest size, prose, or route.
+
+The bound file follows `Tools/schemas/batch_work_spec.template.yaml`. The whole
+file is the restricted-YAML contract, not Markdown with a machine header. Its
+top-level field set is exactly `schema_version`, `batch_id`, `manifest`,
+`outcomes`, `instructions`, `acceptance_conditions`, and `constraints`.
+`schema_version` is `1`; batch identity and ordered manifest exactly equal the
+Queue item; each of the four record lists is nonempty.
+
+Each outcome contains exactly `outcome_id` and `required_result`. Each
+instruction contains exactly `instruction_id`, continuous `order` beginning at
+one, nonempty `target_scope`, `required_transformation`, and explicit
+`depends_on`; dependencies name only earlier instructions. Each acceptance
+condition contains exactly `condition_id`, `target_scope`,
+`observable_predicate`, and `evidence_requirement`. Each constraint contains
+exactly `constraint_id`, `target_scope`, and `requirement`. IDs are stable and
+unique within their record kind. A target scope is either exactly `[batch]` or
+a nonempty list of exact Queue-manifest paths; the two forms never mix.
+
+The Work Spec contains only instructions unique to this batch. It MUST NOT own
+or restate Queue state, Queue order/dependencies, holds, revisions,
+fingerprints, transition receipts, or completion state at any nesting depth.
+`TODO(batch)` and `REPLACE-ME` are invalid sentinels, so copying the template
+without filling its batch-specific values cannot produce a valid binding.
+
+The Queue pair is structural state. A queued batch changes it only through an
+approved Amendment and Queue replan. An open batch first enters
+`revalidation-required` through the lifecycle owner, then applies a
+Work-Spec-only Amendment/replan; the structural writer does not change the
+hold itself. The new Queue revision and SHA invalidate old admission and close
+evidence. Merge-ready and terminal bindings are immutable; later instructions
+use a successor batch.
+
+`check_queue.py` validates the managed path, byte fingerprint, whole-document
+closed schema, batch identity, exact manifest, record IDs, instruction graph,
+target scopes, and sentinels. Batch-close validation binds the same pair and
+proves the bytes did not change during the close gate. A Work Spec is
+instruction, not proof: its presence does not satisfy in-batch work, review,
+merged checks, or semantic acceptance.
 
 ## Revisions And Fingerprints
 

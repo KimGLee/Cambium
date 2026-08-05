@@ -1194,6 +1194,79 @@ def sha256_file(path):
     return "sha256:" + digest.hexdigest()
 
 
+def repository_tree_sha256(root, relative_directory):
+    """Hash one repository-contained regular-file tree deterministically.
+
+    The digest binds repository-relative paths and bytes.  Symlinks, hard
+    links, special files, path escape, and a non-directory root fail closed.
+    It is used for Standards/Profile adoption snapshots where hashing the
+    adopter's entire knowledge corpus would broaden the governance boundary.
+    """
+    directory = repository_path(
+        root, relative_directory, must_exist=True, reject_symlink=True)
+    if not os.path.isdir(directory) or os.path.islink(directory):
+        raise ValueError("snapshot target must be a real directory: %s" %
+                         relative_directory)
+    root_real = os.path.realpath(os.path.abspath(root))
+    digest = hashlib.sha256()
+    digest.update(b"cambium-repository-tree-snapshot-v1\0")
+    entries = []
+    for current, directories, files in os.walk(directory, topdown=True,
+                                               followlinks=False):
+        directories[:] = sorted(directories)
+        for name in directories:
+            candidate = os.path.join(current, name)
+            if os.path.islink(candidate):
+                raise ValueError("snapshot cannot traverse symlink: %s" %
+                                 os.path.relpath(candidate, root_real))
+        for name in sorted(files):
+            absolute = os.path.join(current, name)
+            relative = os.path.relpath(absolute, root_real).replace(os.sep, "/")
+            entries.append((relative, absolute))
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError(errno.ENOTSUP, "tree snapshot requires O_NOFOLLOW",
+                      directory)
+    for relative, absolute in sorted(entries):
+        listed = os.lstat(absolute)
+        if not stat.S_ISREG(listed.st_mode) or listed.st_nlink != 1:
+            raise ValueError("snapshot requires singly-linked regular file: %s" %
+                             relative)
+        fd = os.open(absolute, os.O_RDONLY | nofollow |
+                     getattr(os, "O_CLOEXEC", 0))
+        try:
+            before = os.fstat(fd)
+            file_digest = hashlib.sha256()
+            while True:
+                chunk = os.read(fd, 1024 * 1024)
+                if not chunk:
+                    break
+                file_digest.update(chunk)
+            after = os.fstat(fd)
+            identity_before = (
+                before.st_dev, before.st_ino, before.st_size,
+                getattr(before, "st_mtime_ns", int(before.st_mtime * 1e9)),
+                getattr(before, "st_ctime_ns", int(before.st_ctime * 1e9)),
+            )
+            identity_after = (
+                after.st_dev, after.st_ino, after.st_size,
+                getattr(after, "st_mtime_ns", int(after.st_mtime * 1e9)),
+                getattr(after, "st_ctime_ns", int(after.st_ctime * 1e9)),
+            )
+            if identity_before != identity_after:
+                raise OSError(errno.EAGAIN,
+                              "repository file changed while hashing",
+                              relative)
+        finally:
+            os.close(fd)
+        encoded = relative.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+        digest.update(before.st_size.to_bytes(8, "big"))
+        digest.update(file_digest.digest())
+    return "sha256:" + digest.hexdigest()
+
+
 def repository_snapshot_sha256(root):
     """Hash the current repository content outside Git and Cambium state.
 

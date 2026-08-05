@@ -15,27 +15,32 @@ effective standard = domain-neutral kernel + exactly one selected profile
 ```
 
 The kernel owns the cross-domain rules. A profile supplies one corpus's
-concrete scope, language, architecture, priorities, sources, roles, expression
-artifacts, audit bindings, scans, and supplemental gates. A profile may extend
-defined interfaces, but it cannot replace, disable, or weaken the kernel.
+concrete scope, language, architecture, corpus-planning bindings and scale,
+priorities, sources, roles, expression artifacts, audit bindings, scans, and
+supplemental gates. A profile may extend defined interfaces, but it cannot
+replace, disable, or weaken the kernel.
 
 | Component | Responsibility |
 |---|---|
 | Kernel modules (`K00`-`K13`) | Normative, cross-domain rule text |
-| Runtime routes (`R01`-`R12`) | Task-specific loading and execution paths; `Kxx` and `Rxx` are independent namespaces |
+| Runtime routes (`R01`-`R13`) | Task-specific loading and execution paths; `Kxx` and `Rxx` are independent namespaces |
 | Read Sets | Route-specific source-loading boundary used when a Runtime Card requires read-back |
 | Runtime Cards | Kernel-owned, compiled shortcuts for routine agent execution; never a second source of rules |
 | Selected profile | The adopter's concrete answers to the profile interface |
-| Adopter runtime state (`.cambium/`) | Coverage object state, the canonical Required Queue, task-level Progress, deltas, and receipts |
-| Tools | Deterministic checks, schemas, receipts, and compiled-artifact generators; not final semantic judgment |
+| Adopter runtime namespace (`.cambium/`) | Coverage object state, the canonical Required Queue, task-level Progress, hash-bound complex-batch Work Specs, controlled plans including active-task Standards adoption, deltas, receipts, and derived reports |
+| Tools | Deterministic checks, controlled state writers, schemas, receipts, and derived/compiled-artifact generators; not final semantic judgment |
 
 Within the kernel module namespace, [K02 Knowledge Work Construction](<kernel/K02 Knowledge Work Construction Standard.md>)
-owns knowledge-object inventory, Coverage semantics, architecture and dependency
-planning, knowledge-batch production, and migration safety. [K13 Task Runtime
+owns knowledge-object inventory, Coverage semantics, Corpus Planning,
+architecture and dependency planning, knowledge-batch production, and
+migration safety. [K13 Task Runtime
 and Execution Control](<kernel/K13 Task Runtime and Execution Control Standard.md>)
 owns the persistent runtime namespace, Task Contract and task state,
 Guidance/Amendments, Progress Ledger, Required Queue, batch transitions,
-completion bindings, handoff, and interruption recovery. This boundary keeps
+hash-bound batch Work Specs, controlled active-task Standards-adoption state
+writes, completion bindings, handoff, and interruption recovery. K12 remains
+the sole owner of which changed Standards predicates affect a live task and
+which gates must rerun. This boundary keeps
 knowledge-object disposition separate from batch/work-unit lifecycle while
 requiring the two state layers to reconcile.
 
@@ -107,17 +112,19 @@ earlier persistent task was interrupted:
 ```text
 .cambium/
 ├── state/       # Coverage, Required Queue, and Progress
-├── deltas/      # worker-to-integrator batch deltas
+├── work_specs/  # immutable restricted-YAML contracts for complex batches
+├── deltas/      # worker deltas and restricted-YAML controlled-operation plans
 ├── receipts/    # deterministic and transition evidence
 ├── reports/     # derived human-readable views
 └── tmp/         # recovery locks and incomplete-write metadata
 ```
 
-`state/`, `deltas/`, and `receipts/` are durable. Reports are projections, not
-tool inputs, and `tmp/` is ignored by Git; a surviving writer lock remains
-recovery evidence until its operation is reconciled. Cambium publishes the schemas and
-conformance fixtures; an adopter creates its own runtime state with
-`Tools/init_state.py` after selecting a profile and defining a task. The tool
+`state/`, `work_specs/`, `deltas/`, and `receipts/` are durable. Reports are
+projections, not tool inputs, and `tmp/` is ignored by Git; a surviving writer
+lock remains recovery evidence until its operation is reconciled. Cambium
+publishes the schemas and conformance fixtures; an adopter creates its own
+runtime state with `Tools/init_state.py` after selecting a profile and defining
+a task. The tool
 requires an explicit objective and exclusions, does not invent Required work,
 and does not overwrite any existing `.cambium/` namespace.
 If the namespace already exists, a restarted or newly assigned Agent first
@@ -136,17 +143,22 @@ one.
 
 ## Current Implementation Boundaries
 
-The kernel and tools now provide persistent task and Required Queue state plus
-deterministic initialization, compilation, validation, task/batch transitions,
-interruption recovery, build Terminal closure, bounded maintenance closure,
-and report generation. They do not
-dispatch agents. Worker dispatch, workspace isolation, event delivery, and the
-integrator loop must still be supplied by the adopting runtime or a human
-operator.
+The kernel and tools now provide persistent task and Required Queue state,
+optional hash-bound complex-batch Work Specs, explicit Global Map / Capability
+Matrix / Gap Register validation, and deterministic initialization,
+compilation, validation, task/batch transitions, active-task Standards/Profile
+adoption, interruption recovery, build Terminal closure, bounded maintenance
+closure, and derived report generation.
+They do not dispatch agents. Worker dispatch, workspace isolation, event
+delivery, and the integrator loop must still be supplied by the adopting
+runtime or a human operator.
 
 The shipped Amendment transaction covers scope/disposition replans and batch
-cancellation. After Queue materialization, a change to other Task Contract
-fields is rejected unless a host supplies an equivalent controlled writer; the
+cancellation. A separate Standards-adoption transaction synchronizes only the
+three Standards/Profile identities, the Progress load set, and the structural
+Queue revision while preserving the task and every batch lifecycle/hold. After
+Queue materialization, a change to any other Task Contract field is rejected
+unless a host supplies an equivalent controlled writer; the
 baseline recovery path is to pause or cancel the current task, preserve its
 runtime, and begin a successor task. A generic non-scope Contract Amendment
 writer remains roadmap work.
@@ -213,6 +225,58 @@ profile by itself. The manifest becomes the selected profile for content work
 only when the complete R09 initial-adoption change closes. Validate the filled
 copy, not `_template`; the composed vocabulary does not exist before adoption.
 
+## Adopt A New Standards Version Into An Active Task
+
+R09 governs the Standards revision and records its exact changed predicates.
+When an existing `.cambium/` task still freezes the prior Standards/Profile
+identity, R09 produces one restricted-YAML plan using
+[`Tools/schemas/standards_adoption_plan.template.yaml`](Tools/schemas/standards_adoption_plan.template.yaml):
+
+```text
+.cambium/deltas/standards-adoptions/<adoption-id>.yaml
+```
+
+That plan is the task's canonical machine revision record. It binds the
+complete approved K00/03 bytes, deterministic after snapshots of `kernel/` and
+the selected Profile directory, and the exact changed-predicate,
+invalidated-evidence dimension/boundary, and rerun scope. There is no second
+revision YAML or prose adoption copy.
+
+R07 executes or resumes that plan. Dry-run first; only the integrator writes:
+
+```text
+python3 Tools/adopt_standards.py . \
+  --plan .cambium/deltas/standards-adoptions/SA-001.yaml
+
+python3 Tools/adopt_standards.py . \
+  --plan .cambium/deltas/standards-adoptions/SA-001.yaml \
+  --apply --actor-role integrator
+```
+
+The writer accepts only an `active` or `paused` task. If a build task is already
+`completion-candidate`, first use the legal Task transition to return it to
+`paused` or `active`; if the new Standards cannot validate a bound Work Spec,
+upgrade that specification through its owning process before adoption. The
+same preparation formally rolls back any affected `merge-ready` batch and
+places every affected `open` batch under `revalidation-required`; the writer
+verifies but does not create lifecycle/hold changes. The
+transaction then preserves that Task state and every batch state/hold, keeps
+Queue membership/order fixed, increments the structural `queue_revision`,
+updates the synchronized Contract/Standards/Profile/load set, and appends
+recoverable evidence. Historical receipt bytes remain unchanged.
+
+Every adoption consumes immediate Queue consistency on staged after bytes.
+Changed predicates select any additional deferred evidence boundaries: a
+batch-close or Terminal gate reruns only when that boundary is reached and does
+not block unrelated earlier work. Historical closed transitions continue to
+verify under the identity that produced them; declared invalidated evidence cannot
+be reused as current evidence under the new predicate. Current-use receipt
+catalogs exclude every invalidated-evidence receipt ID accumulated by committed
+adoptions.
+
+The plan and append-only receipts are the Agent interface. Cambium does not
+create or consume a persistent Markdown adoption report.
+
 ## Start A Governed Task
 
 After initial adoption:
@@ -277,6 +341,25 @@ Coverage, declare explicit `batch_specs`, compile the Queue, and run
 need an empty Queue merely to satisfy a formality. The initial compile stores
 an immutable origin receipt in Progress; later same-scope replans use a staged
 Coverage proposal and never require editing canonical Coverage in advance.
+
+Large-scale construction, migration, or persistent multi-batch corpus work
+also configures the selected Profile's `Corpus Planning` slot. Maintain its
+restricted-YAML Global Map, Capability Matrix, and Gap Register through R13,
+then run `check_corpus_plan.py`. Agents consume its deterministic JSON
+projection and the separate semantic-acceptance status instead of storing a
+copied report. A Profile-bound authority records accepted/rejected Capability
+decisions from restricted YAML with `record_corpus_acceptance.py`; evidence is
+append-only JSONL. These artifacts supply explicit topology, capability,
+priority, evidence, and gap-handoff inputs. They do not schedule Queue work or
+replace Coverage.
+
+A simple batch records `work_spec_path: null` and `work_spec_sha256: null`.
+Only a complex batch creates a restricted-YAML contract directly under
+`.cambium/work_specs/` from `Tools/schemas/batch_work_spec.template.yaml`, then
+binds that exact path and SHA-256 in Coverage `batch_specs` before Queue
+compilation. The Work Spec carries batch-specific outcome, instructions,
+acceptance conditions, and constraints; Queue order, lifecycle, holds, and
+receipts remain in the Required Queue.
 
 ```text
 # Fill .cambium/state/coverage_ledger.yaml with the accepted inventory.

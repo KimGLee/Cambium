@@ -141,6 +141,14 @@ The dependency graph is not required to treat every backlink as a semantic depen
 
 Queue receipts bind bytes/revisions. A structural or fingerprint change invalidates structure, readiness, and completion receipts; `state_revision` changes invalidate lifecycle/hold predicates. A Terminal Proof pass binds exact Coverage, Progress, Queue, and Proof bytes, so any byte change invalidates it. The controlled `completion-candidate -> complete` transition may consume that pass once and records Progress before/after fingerprints; reuse on the new bytes requires a new pass. Other reuse requires the same canonical paths, revisions, fingerprints, mode, and checker.
 
+Corpus Planning receipts are direct byte-bound evidence. A change to the
+selected Profile manifest, Profile Scope, Corpus Planning slot, Global Map, Capability
+Matrix, Gap Register, any canonical state fingerprint or Queue revision, or
+the repository snapshot invalidates the pass. Its applicability to batch close
+is recomputed from R13 selection and the exact validator-parsed affected-path
+set; an old receipt cannot be reused merely because the three artifact paths
+still have the same names.
+
 ### Systemic Expansion
 
 If a targeted check finds a systemic problem that may affect pages of the same kind:

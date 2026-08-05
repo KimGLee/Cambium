@@ -21,7 +21,9 @@ import kblib
 
 TOOL = "init_state"
 TOOL_VERSION = "1.2.0"
-RUNTIME_DIRS = ("state", "deltas", "receipts", "reports", "tmp")
+RUNTIME_DIRS = (
+    "state", "work_specs", "deltas", "receipts", "reports", "tmp",
+)
 
 
 def _rename_noreplace(source, destination):
@@ -316,6 +318,7 @@ def build_documents(args):
             "watermark_advance_receipt": None,
         },
         "amendments": [],
+        "standards_adoptions": [],
         "guidance_queue": [],
     }
     return {

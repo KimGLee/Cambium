@@ -8,8 +8,8 @@
 
 Before a module is complete, check:
 
-- Whether the Overview reflects the real module structure.
-- Whether the coverage matrix still has unexplained P0 / P1 concepts.
+- When `Corpus Planning` has `applicability.state: configured`, whether the bound [[kernel/K02 Knowledge Work Construction/05 Global Map Contract#Global Map Contract|Global Map]] reflects the real module structure.
+- When `Corpus Planning` has `applicability.state: configured`, whether the bound [[kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract#Capability Matrix Contract|Capability Matrix]] still has unexplained P0 / P1 concepts.
 - Whether the prerequisite chain is continuous.
 - Whether the mainline dependencies and foundation preservation requirements declared by the selected profile's `Profile Scope` remain intact.
 - Whether duplicate canonical notes exist.
@@ -24,7 +24,7 @@ Module Review first consumes the valid AuditReceipts of batches already closed u
 
 ## Coverage Reconciliation Review
 
-Before a module or long task completes, the Coverage Ledger MUST be reconciled against the actual file system, the scope contract, and the competency matrix:
+Before a module or long task completes, the Coverage Ledger MUST be reconciled against the actual file system, the scope contract, and, when `Corpus Planning` has `applicability.state: configured`, the bound [[kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract#Capability Matrix Contract|Capability Matrix]]:
 
 - Every in-scope file has exactly one inventory record.
 - Every Required knowledge object not yet created still has an explicit record.
@@ -38,5 +38,15 @@ Before a module or long task completes, the Coverage Ledger MUST be reconciled a
 - For each Queue item, its explicit manifest equals the set projected to that batch by Coverage and its `record_count` equals the manifest size; no Coverage object names an unknown batch, no Queue manifest names an unknown object, and no `closed` item remains a Coverage `next_batch`.
 
 Within the local receipt trust boundary, the current `Tools/check_queue.py` receipt records that these cross-ledger conditions matched the checked bytes and state. Module Review consumes that receipt and reviews the semantic coverage around it; it does not implement a second Queue validator.
+
+When `Corpus Planning` has `applicability.state: configured`, Module Review consumes both a current
+Gate ID `corpus-plan-structure` receipt and a current Gate ID
+`corpus-plan-semantic-acceptance` receipt. The first proves structural and
+cross-owner reconciliation only. The second records the selected Profile's
+declared authority decision for every current Capability ID and binds the exact
+decision plan, Profile/slot/Scope, planning artifacts, runtime state, Queue
+revisions, and repository snapshot. A stale or rejected semantic receipt cannot
+authorize module acceptance. Ordinary affected batch close remains structural
+only and does not require every Matrix capability to have reached its target.
 
 Line counts and section counts can only trigger review candidates. An Atomic Term Note MAY deliberately stay concise; Core, Process, System, and Risk/Control pages MUST have their question coverage checked by note type.

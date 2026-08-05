@@ -14,6 +14,8 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching.md
   - kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning.md
   - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
+  - kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md
+  - kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries.md
   - kernel/K13 Task Runtime and Execution Control/07 Progress Ledger Contract.md
   - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
   - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
@@ -21,13 +23,14 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
   - kernel/K13 Task Runtime and Execution Control/13 Final Handoff.md
   - kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover.md
+  - kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction.md
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '40c5fd2152d7'
+source_hash: '4c6f88bc61b7'
 ---
 # R07 Long-running Execution Card
 
@@ -42,7 +45,9 @@ Run a multi-batch task, sustain checkpoints, resume after interruption, maintain
 - [ ] If `.cambium/` exists, run `python3 Tools/check_queue.py . --resume-status` before any state write; resume the recorded task instead of initializing a replacement.
 - [ ] Freeze the long-run Task Contract: Standards version, exact `selected_profile_manifest`, time semantics, route IDs, Card paths, actual read-backs, completion semantics, and the Queue path/revisions/fingerprint.
 - [ ] Reconcile `.cambium/` Coverage, Queue, and Progress with the file system and user modifications. Ready, open, and merge-ready lists are derived from the Queue, never edited in Progress as a second authority.
+- [ ] For persistent multi-batch corpus work, require Corpus Planning `applicability.state: configured` and pass `check_corpus_plan.py`; use its on-demand `--json` projection for recovery and R13 for any planning edit.
 - [ ] Define batch manifests, tier-derived caps, concurrency admission, write partitions, merge order, and acceptance conditions.
+- [ ] Declare every batch simple with null/null or bind its complex Work Spec path/hash; read a complex spec after activation and never treat it as Queue state or proof.
 - [ ] Load the Audit Receipt Register and classify evidence as reusable, invalidated, overdue, or missing.
 - [ ] State the next checkpoint and exact recovery action; a vague “continue improving” is not resumable state.
 
@@ -54,8 +59,10 @@ Each batch follows the fixed loop: version/Guidance self-check → `check_queue.
 - After one canonical delta apply passes, perform checks and close that batch before any other Queue/Coverage write; the apply receipt opens a strict serial critical section.
 - Treat meaningful user changes to objective, scope, acceptance, priority, or content judgment as Guidance: classify, disposition, record, switch safely, and verify closure.
 - Reuse a receipt only when its predicate remains compatible, fingerprints match, and no relevant invalidation exists.
-- A Standards delta triggers the registered adoption procedure before the batch continues.
+- A Standards/Profile mismatch blocks normal work. First roll a stale `completion-candidate` back through K13/03, formally roll back affected `merge-ready` batches, and put affected `open` batches under `revalidation-required`. Then use only `adopt_standards.py`; it changes none of those states/holds. Commit consumes Queue consistency; deferred gates run only at named boundaries. Filter accumulated invalidated-evidence receipt IDs from current use, but retain producer-era evidence for historical verification. Never create a prose copy.
 - Pause or block with a complete checkpoint. Resume from the machine-readable state only after the Queue path, revisions, fingerprint, holds, unapplied deltas, and cross-state `check_queue.py` result are reconciled.
+- Resume also reconciles each Work Spec path/hash. A changed open-batch spec requires an explicit revalidation hold and Amendment/replan; merge-ready and terminal bindings are immutable.
+- When `Corpus Planning` is configured, request the current `check_corpus_plan.py --json` projection to recover semantic orientation. Combine R13 before changing a map, capability judgment, gap, or promotion handoff; never persist that projection as another state owner.
 
 ## Gate
 
@@ -64,7 +71,8 @@ Each batch follows the fixed loop: version/Guidance self-check → `check_queue.
 - [ ] Guidance counters, Required gaps, unverified batches, and unresolved invalidations stay explicit.
 - [ ] Ledger, receipt, source, link, rendering, and watermark state are updated at the layer that owns them.
 - [ ] A completion candidate loads [[kernel/Cards/R08 Audit and Completion Card|Audit and Completion]]; elapsed time or exhausted context never substitutes for it.
+- [ ] Each durable checkpoint refreshes the configured corpus-planning check; resume revalidates current inputs and requests a fresh JSON projection when orientation is needed.
 
 ## Read Back When
 
-Read R07 Read Set and the canonical owner for full Guidance dispositions, concurrent-write boundaries, receipt fingerprints, invalidation propagation, Standards adoption, checkpoint recovery, or Terminal Proof fields.
+Read R07 Read Set and the canonical owner for full Guidance dispositions, concurrent-write boundaries, receipt fingerprints, invalidation propagation, adoption execution/recovery, checkpoint recovery, or Terminal Proof fields.

@@ -24,22 +24,21 @@ Interface: [Profile Scope slot](../../README.md#profile-scope-slot)
 |---|---|
 | `Archive/` | Historical material is not an active owner. Re-admit an item only through an explicit intake or migration task into a registered active layer. |
 | `.obsidian/` | Knowledge-host and UI configuration; keep under the registered host/UI role and outside canonical content decisions. |
-| `Knowledge Base Standards/` | Legacy deployed standards snapshot, not an Atlas knowledge layer. Governance loads Cambium kernel plus the selected profile; removal or historical preservation is a separate migration. |
+| Embedded standards snapshots, including `Knowledge Base Standards/` | Not an Atlas knowledge layer. Active governance loads the Cambium kernel plus the selected profile; keep any snapshot outside the active corpus. |
 | `Python Algorithm Agent Training/` | Standalone training curriculum. It enters Agent Systems Atlas only through a later profile-scope revision with explicit owners and placement. |
 | `.DS_Store` and other host-generated filesystem metadata | Delete or ignore; never treat as corpus content or evidence. |
 
 ## Logical Architecture
 
-| Stable Layer ID | Relative directory | Single layer responsibility |
+| Stable Layer ID | Repository-relative directories | Single layer responsibility |
 |---|---|---|
-| `L-FOUNDATION` | `Modeling Fundamentals/`, `Machine Learning Knowledge/`, `Deep Learning Knowledge/`, `LLM Knowledge/` | Own reusable mathematical, data, model, training, inference, retrieval, and grounding mechanisms independent of one Agent implementation. |
+| `L-FOUNDATION` | `Modeling Fundamentals/`; `Machine Learning Knowledge/`; `Deep Learning Knowledge/`; `LLM Knowledge/` | Own reusable mathematical, data, model, training, inference, retrieval, and grounding mechanisms independent of one Agent implementation. |
 | `L-AGENT` | `Agent Knowledge/` | Own Agent decision loops and Harness contracts for context, state, memory, tools, policy, coordination, verification, and recovery. |
 | `L-PRODUCTION` | `AI Systems Engineering/` | Own deployable cross-component systems, evaluation infrastructure, operations, reliability, safety, capacity, cost, and evidence paths. |
 | `L-CASES` | `Industry Cases/` | Reconstruct bounded real systems from evidence while separating reported facts, inference, and recommendations. |
 | `L-SOURCES` | `Knowledge Sources/` | Preserve one external source's identity, claims, evidence, limitations, and verification state without owning the general mechanism. |
 | `L-SYNTHESIS` | `Research Synthesis/` | Reconcile claims from multiple sources and route stable conclusions to their canonical owners. |
 | `L-INTERVIEW` | `Interview Preparation/` | Derive Interview Cards, Roadmaps, and Cheat Sheets from canonical knowledge for spoken recall and review. |
-| `L-MANAGEMENT` | `Knowledge Base Management/` | Hold task contracts, queues, inventories, ledgers, receipts, coverage projections, and other mutable operating state. |
 
 ## Interview Layer Organization
 
@@ -79,26 +78,22 @@ Interview Preparation/
 
 ## New Page Placement Rule
 
+This table places corpus content. The three durable planning files use the
+exact paths bound by [Corpus Planning](corpus-planning.yaml)
+and are maintained through R13; they are not a logical knowledge layer or a
+fallback destination. Cambium runtime state is written only under `.cambium/`
+and does not enter the content-placement sequence.
+
 | Order | Testable page predicate | Registered target Layer ID |
 |---:|---|---|
-| 1 | The page is mutable governance state, or has `type: management`. | `L-MANAGEMENT` |
-| 2 | The page records one external source and has `type: source-note`. | `L-SOURCES` |
-| 3 | The page reconciles two or more sources and has `type: research-synthesis`. | `L-SYNTHESIS` |
-| 4 | The registered Expression Layer Predicate is true. | `L-INTERVIEW` |
-| 5 | The page reconstructs a bounded deployed system and has `type: case-study`. | `L-CASES` |
-| 6 | The page owns production infrastructure, cross-component integration, evaluation operations, reliability, safety, cost, or capacity. | `L-PRODUCTION` |
-| 7 | The page owns Agent decision behavior or a Harness contract for context, state, memory, tools, policy, coordination, verification, or recovery. | `L-AGENT` |
-| 8 | The page owns a reusable modeling, ML, DL, LLM, retrieval, or grounding mechanism. | `L-FOUNDATION` |
-| Last | Otherwise, record a placement candidate in the [Atlas content-planning register](#atlas-content-planning-register-boundary); do not create an unowned content page. | `L-MANAGEMENT` |
-
-## Atlas Content-planning Register Boundary
-
-The Atlas corpus contains a human-readable management page at `Knowledge Base
-Management/Required Queue.md`. In this profile, **Atlas content-planning
-register** refers only to that page. It records unplaced page candidates and
-corpus dependency notes. It is not Cambium's canonical Required Queue at
-`.cambium/state/required_queue.yaml` and does not own batch manifests, order,
-lifecycle, holds, revisions, fingerprints, or receipts.
+| 1 | The page records one external source and has `type: source-note`. | `L-SOURCES` |
+| 2 | The page reconciles two or more sources and has `type: research-synthesis`. | `L-SYNTHESIS` |
+| 3 | The registered Expression Layer Predicate is true. | `L-INTERVIEW` |
+| 4 | The page reconstructs a bounded deployed system and has `type: case-study`. | `L-CASES` |
+| 5 | The page owns production infrastructure, cross-component integration, evaluation operations, reliability, safety, cost, or capacity. | `L-PRODUCTION` |
+| 6 | The page owns Agent decision behavior or a Harness contract for context, state, memory, tools, policy, coordination, verification, or recovery. | `L-AGENT` |
+| 7 | The page owns a reusable modeling, ML, DL, LLM, retrieval, or grounding mechanism. | `L-FOUNDATION` |
+| Last | Otherwise, record an unadmitted semantic candidate in the bound [Gap Register](corpus-planning.yaml); do not create an unowned content page until R13 resolves a canonical owner in a registered layer. | `None — placement blocked pending R13 admission` |
 
 ## Terminology Structure
 
@@ -146,7 +141,7 @@ lifecycle, holds, revisions, fingerprints, or receipts.
 
 | Order | Stage | Depends on | Output |
 |---:|---|---|---|
-| 1 | Architecture and inventory | None | Registered layer map, current inventory, and a bounded [Atlas content-planning register](#atlas-content-planning-register-boundary). |
+| 1 | Architecture and inventory | None | Registered layer map, current inventory, and the bound [Global Map, Capability Matrix, and Gap Register](corpus-planning.yaml). |
 | 2 | Representative foundations | 1 | Accepted samples for modeling, ML/DL, and LLM/Retrieval depth. |
 | 3 | Agent and Harness vertical slice | 2 | One end-to-end decision, execution, verification, and recovery chain. |
 | 4 | Exposed prerequisite repair | 3 | Missing canonical foundations closed before downstream expansion. |

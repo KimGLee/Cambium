@@ -122,11 +122,22 @@ class CheckBatchCloseTests(unittest.TestCase):
             encoding="utf-8"))["receipt_id"]
         self.transition("open", "--gate-receipt", ready_id)
 
+        page = kblib.make_receipt(
+            "fixture_page", "0.9.0", "page_review", "Topics/A.md", "pass",
+            "fixture historical page evidence", 1)
         batch = kblib.make_receipt(
-            "fixture_batch", "1.0.0", "batch_gate", "B1", "pass",
-            "fixture in-batch gate", 1)
+            check_queue.MANUAL_ATTESTATION_TOOL,
+            check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+            check_queue.BATCH_REVIEW_CHECK, "B1", "pass",
+            "fixture current in-batch review authorization", 1)
+        batch.update({
+            "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
+            "task_id": "fixture-task",
+            "batch_id": "B1",
+            "delta_page_receipt_ids": [page["receipt_id"]],
+        })
         kblib.write_receipts(
-            self.root / ".cambium/receipts/batch.jsonl", [batch])
+            self.root / ".cambium/receipts/batch.jsonl", [page, batch])
         delta_relative = ".cambium/deltas/B1.yaml"
         delta = {
             "batch": "B1",
@@ -134,7 +145,7 @@ class CheckBatchCloseTests(unittest.TestCase):
             "pages": [{
                 "path": "Topics/A.md",
                 "authoring_status": "reviewed",
-                "gate_receipts": [batch["receipt_id"]],
+                "gate_receipts": [page["receipt_id"]],
             }],
             "open_gaps_added": [],
             "open_gaps_closed": [],
@@ -178,6 +189,179 @@ class CheckBatchCloseTests(unittest.TestCase):
             *extra,
         )
 
+    def install_inactive_corpus_plan(self):
+        manifest = self.root / "profiles/test-profile/profile.md"
+        text = manifest.read_text(encoding="utf-8")
+        marker = (
+            "- `Registered Scan Registry`: "
+            "`registries/registered-scans.md`\n")
+        self.assertIn(marker, text)
+        manifest.write_text(text.replace(
+            marker, marker +
+            "- `Corpus Planning`: `corpus-planning.yaml`\n", 1),
+            encoding="utf-8")
+        (manifest.parent / "corpus-planning.yaml").write_text(
+            "schema_version: 1\n"
+            "applicability:\n"
+            "  state: not-applicable\n"
+            "  reason: bounded fixture batch has no corpus-wide planning decision\n"
+            "artifact_bindings:\n"
+            "  global_map: null\n"
+            "  capability_matrix: null\n"
+            "  gap_register: null\n"
+            "capability_scale: []\n"
+            "pass_authority:\n"
+            "  role_id: null\n"
+            "  decision_scope_id: null\n",
+            encoding="utf-8")
+
+    def install_configured_corpus_plan(self):
+        manifest = self.root / "profiles/test-profile/profile.md"
+        text = manifest.read_text(encoding="utf-8")
+        marker = (
+            "- `Registered Scan Registry`: "
+            "`registries/registered-scans.md`\n")
+        self.assertIn(marker, text)
+        manifest.write_text(text.replace(
+            marker, marker +
+            "- `Profile Scope`: `scope-and-architecture.md`\n"
+            "- `Role Registry`: `roles.md`\n"
+            "- `Corpus Planning`: `corpus-planning.yaml`\n", 1),
+            encoding="utf-8")
+        (manifest.parent / "scope-and-architecture.md").write_text(
+            "# Scope And Architecture\n\n## Logical Architecture\n\n"
+            "| Stable Layer ID | Repository-relative directories | "
+            "Single layer responsibility |\n|---|---|---|\n"
+            "| `L1` | `Topics` | Canonical fixture topics. |\n",
+            encoding="utf-8")
+        (manifest.parent / "roles.md").write_text(
+            "# Role Registry\n\n## Process Roles\n\n"
+            "| Kernel role | Bound actor or system ID/name |\n|---|---|\n"
+            "| `stopper` | Fixture authority |\n",
+            encoding="utf-8")
+        (manifest.parent / "corpus-planning.yaml").write_text(
+            "schema_version: 1\n"
+            "applicability:\n  state: configured\n  reason: null\n"
+            "artifact_bindings:\n"
+            "  global_map: planning/global-map.yaml\n"
+            "  capability_matrix: planning/capability-matrix.yaml\n"
+            "  gap_register: planning/gap-register.yaml\n"
+            "capability_scale:\n"
+            "  - rank: 0\n    value: Missing\n"
+            "    predicate: No canonical owner exists.\n"
+            "    target_eligible: false\n"
+            "  - rank: 1\n    value: Core\n"
+            "    predicate: Core explanation has accepted evidence.\n"
+            "    target_eligible: true\n"
+            "pass_authority:\n  role_id: stopper\n"
+            "  decision_scope_id: corpus-plan-semantic-acceptance\n",
+            encoding="utf-8")
+        planning = self.root / "planning"
+        planning.mkdir()
+        (planning / "global-map.yaml").write_text(
+            "schema_version: 1\nentries:\n"
+            "  - entry_id: E-A\n    layer_id: L1\n"
+            "    canonical_markdown_path: Topics/A.md\n"
+            "    single_responsibility: Own topic A.\n"
+            "  - entry_id: E-B\n    layer_id: L1\n"
+            "    canonical_markdown_path: Topics/B.md\n"
+            "    single_responsibility: Own topic B.\n"
+            "typed_dependencies:\n"
+            "  - edge_id: D-1\n    upstream_entry_id: E-A\n"
+            "    downstream_entry_id: E-B\n"
+            "    relation_type: prerequisite-for\n",
+            encoding="utf-8")
+        (planning / "capability-matrix.yaml").write_text(
+            "schema_version: 1\ncapabilities:\n"
+            "  - capability_id: C-1\n"
+            "    capability: Explain the fixture topic path.\n"
+            "    priority: P0\n    map_entry_ids: [E-A, E-B]\n"
+            "    canonical_markdown_paths: [Topics/A.md, Topics/B.md]\n"
+            "    current_level: Core\n    target_level: Core\n"
+            "    evidence_paths: [Topics/A.md]\n    gap_ids: []\n",
+            encoding="utf-8")
+        (planning / "gap-register.yaml").write_text(
+            "schema_version: 1\ngaps: []\n", encoding="utf-8")
+
+    def test_manifest_hit_requires_current_corpus_plan_child(self):
+        self.install_inactive_corpus_plan()
+        runtime = check_queue.validate_runtime(self.root)
+        self.assertEqual([], runtime["errors"])
+        item = dict(next(row for row in runtime["queue"]["required_queue"]
+                         if row["id"] == "B1"))
+        item["manifest"] = ["profiles/test-profile/corpus-planning.yaml"]
+        snapshot = kblib.repository_snapshot_sha256(self.root)
+        outcome = check_batch_close._corpus_plan_close_check(
+            self.root, runtime, item, snapshot)
+        self.assertTrue(outcome["required"])
+        self.assertEqual(["manifest"], outcome["triggers"])
+        self.assertEqual([], outcome["errors"])
+        self.assertEqual("pass", outcome["receipt"]["result"])
+        self.assertEqual("not-applicable",
+                         outcome["receipt"]["corpus_plan_applicability"])
+
+    def test_r13_cannot_close_with_not_applicable_corpus_plan(self):
+        self.install_inactive_corpus_plan()
+        runtime = check_queue.validate_runtime(self.root)
+        self.assertEqual([], runtime["errors"])
+        runtime["progress"]["contract"]["selected_route_ids"] = ["R13"]
+        item = next(row for row in runtime["queue"]["required_queue"]
+                    if row["id"] == "B1")
+        outcome = check_batch_close._corpus_plan_close_check(
+            self.root, runtime, item,
+            kblib.repository_snapshot_sha256(self.root))
+        self.assertTrue(outcome["required"])
+        self.assertEqual(["R13"], outcome["triggers"])
+        self.assertTrue(any("applicability.state=configured" in error
+                            for error in outcome["errors"]), outcome)
+        self.assertIsNone(outcome["receipt"])
+
+    def test_configured_corpus_plan_child_is_consumed_by_batch_close(self):
+        self.install_configured_corpus_plan()
+        completed = self.batch_close(
+            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        close_gate = self.output_value(completed.stdout, "close_gate_receipt")
+        consistency = self.output_value(
+            completed.stdout, "queue_consistency_receipt")
+        rows = [
+            json.loads(line)
+            for line in (self.root / ".cambium/receipts/batch-close.jsonl")
+            .read_text(encoding="utf-8").splitlines()
+        ]
+        close = next(row for row in rows
+                     if row.get("receipt_id") == close_gate)
+        self.assertTrue(close["corpus_plan_required"])
+        self.assertEqual(["manifest"], close["corpus_plan_triggers"])
+        child = next(row for row in rows
+                     if row.get("receipt_id") == close["corpus_plan_receipt"])
+        self.assertEqual("check_corpus_plan", child["tool"])
+        self.assertEqual("1.5.0", child["tool_version"])
+        self.assertEqual("configured", child["corpus_plan_applicability"])
+        runtime = check_queue.validate_runtime(self.root)
+        item = runtime["items_by_id"]["B1"]
+        errors = check_queue.close_gate_receipt_errors(
+            runtime["current_receipt_catalog"], close_gate,
+            item_id="B1", task_id=runtime["queue"]["task_id"],
+            queue_revision=runtime["queue"]["queue_revision"],
+            queue_state_revision=runtime["queue"]["state_revision"],
+            required_queue_sha256=runtime["queue_sha256"],
+            coverage_ledger_sha256=runtime["coverage_sha256"],
+            progress_ledger_sha256=runtime["progress_sha256"],
+            delta_sha256=item["delta_sha256"],
+            queue_consistency_receipt=consistency,
+            delta_apply_receipt=self.delta_apply_receipt,
+            work_spec_path=item["work_spec_path"],
+            work_spec_sha256=item["work_spec_sha256"],
+            selected_profile_manifest=runtime["queue"][
+                "selected_profile_manifest"],
+            corpus_plan_required=True,
+            corpus_plan_triggers=["manifest"],
+            current_repository_snapshot_sha256=
+                kblib.repository_snapshot_sha256(self.root),
+        )
+        self.assertEqual([], errors)
+
     @staticmethod
     def output_value(output, name):
         prefix = name + "="
@@ -197,6 +381,15 @@ class CheckBatchCloseTests(unittest.TestCase):
         close_records = [json.loads(line) for line in
                          (self.root / ".cambium/receipts/batch-close.jsonl")
                          .read_text(encoding="utf-8").splitlines()]
+        own_records = [record for record in close_records
+                       if record.get("tool") == check_batch_close.TOOL]
+        self.assertTrue(own_records)
+        self.assertEqual(
+            {check_batch_close.TOOL_VERSION},
+            {record.get("tool_version") for record in own_records})
+        self.assertEqual(
+            {check_batch_close.GATE_ID},
+            {record.get("gate_id") for record in own_records})
         consistency_record = next(
             record for record in close_records
             if record.get("receipt_id") == consistency)
@@ -208,12 +401,107 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertEqual(
             kblib.repository_snapshot_sha256(self.root),
             consistency_record["repository_snapshot_sha256"])
+        close_record = next(
+            record for record in close_records
+            if record.get("receipt_id") == close_gate)
+        self.assertIn("work_spec_path", close_record)
+        self.assertIn("work_spec_sha256", close_record)
+        self.assertIsNone(close_record["work_spec_path"])
+        self.assertIsNone(close_record["work_spec_sha256"])
         self.transition(
             "closed", "--gate-receipt", consistency,
             "--close-gate-receipt", close_gate,
             "--delta-apply-receipt", delta_apply)
         self.assertEqual("closed", self.queue()["required_queue"][0]["state"])
         self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+
+    def test_complex_work_spec_stability_guard_detects_byte_change(self):
+        relative = ".cambium/work_specs/B1.yaml"
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        text = (
+            "---\nschema_version: 1\nbatch_id: B1\nmanifest:\n"
+            "  - Topics/A.md\n---\n\n# Work\n"
+        )
+        path.write_text(text, encoding="utf-8")
+        item = {
+            "work_spec_path": relative,
+            "work_spec_sha256": kblib.sha256_file(path),
+        }
+        check_batch_close._assert_work_spec_unchanged(self.root, item)
+        path.write_text(text + "changed\n", encoding="utf-8")
+        with self.assertRaisesRegex(
+                check_batch_close.ReceiptPublicationUncertain,
+                "Batch Work Spec changed"):
+            check_batch_close._assert_work_spec_unchanged(self.root, item)
+
+    def test_simple_batch_close_receipt_must_bind_explicit_null_work_spec(self):
+        completed = self.batch_close(
+            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        close_gate = self.output_value(completed.stdout, "close_gate_receipt")
+        consistency = self.output_value(
+            completed.stdout, "queue_consistency_receipt")
+        runtime = check_queue.validate_runtime(self.root)
+        item = runtime["items_by_id"]["B1"]
+
+        for mode in ("missing", "forged"):
+            with self.subTest(mode=mode):
+                catalog = {
+                    receipt_id: (path, dict(receipt))
+                    for receipt_id, (path, receipt) in
+                    runtime["receipt_catalog"].items()
+                }
+                receipt = catalog[close_gate][1]
+                if mode == "missing":
+                    receipt.pop("work_spec_path", None)
+                    receipt.pop("work_spec_sha256", None)
+                else:
+                    receipt["work_spec_path"] = \
+                        ".cambium/work_specs/forged.yaml"
+                    receipt["work_spec_sha256"] = "sha256:" + "a" * 64
+                errors = check_queue.close_gate_receipt_errors(
+                    catalog, close_gate,
+                    item_id="B1", task_id=runtime["queue"]["task_id"],
+                    queue_revision=runtime["queue"]["queue_revision"],
+                    queue_state_revision=runtime["queue"]["state_revision"],
+                    required_queue_sha256=runtime["queue_sha256"],
+                    coverage_ledger_sha256=runtime["coverage_sha256"],
+                    progress_ledger_sha256=runtime["progress_sha256"],
+                    delta_sha256=item["delta_sha256"],
+                    queue_consistency_receipt=consistency,
+                    delta_apply_receipt=self.delta_apply_receipt,
+                    work_spec_path=None, work_spec_sha256=None,
+                )
+                self.assertTrue(any("work_spec_" in error
+                                    for error in errors), errors)
+
+    def test_close_evidence_from_prior_work_spec_binding_is_not_reusable(self):
+        completed = self.batch_close(
+            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        close_gate = self.output_value(completed.stdout, "close_gate_receipt")
+        consistency = self.output_value(
+            completed.stdout, "queue_consistency_receipt")
+        runtime = check_queue.validate_runtime(self.root)
+        item = runtime["items_by_id"]["B1"]
+        errors = check_queue.close_gate_receipt_errors(
+            runtime["receipt_catalog"], close_gate,
+            item_id="B1", task_id=runtime["queue"]["task_id"],
+            queue_revision=runtime["queue"]["queue_revision"],
+            queue_state_revision=runtime["queue"]["state_revision"],
+            required_queue_sha256=runtime["queue_sha256"],
+            coverage_ledger_sha256=runtime["coverage_sha256"],
+            progress_ledger_sha256=runtime["progress_sha256"],
+            delta_sha256=item["delta_sha256"],
+            queue_consistency_receipt=consistency,
+            delta_apply_receipt=self.delta_apply_receipt,
+            work_spec_path=".cambium/work_specs/B1.yaml",
+            work_spec_sha256="sha256:" + "a" * 64,
+        )
+        self.assertTrue(any("work_spec_path" in error or
+                            "work_spec_sha256" in error
+                            for error in errors), errors)
 
     def test_resume_recovers_published_bundle_when_producer_stdout_is_lost(self):
         published = self.batch_close(

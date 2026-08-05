@@ -32,15 +32,25 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
         return kblib.load_yaml_file(self.root / relative)
 
     def append_receipt(self, receipt_id, target, check="fixture"):
+        receipt = {
+            "receipt_id": receipt_id,
+            "check": check,
+            "target": target,
+            "result": "pass",
+            "invalidated_by": None,
+        }
+        if check == check_queue.BATCH_REVIEW_CHECK:
+            receipt.update({
+                "tool": check_queue.MANUAL_ATTESTATION_TOOL,
+                "tool_version":
+                    check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+                "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
+                "task_id": "fixture-task", "batch_id": target,
+                "delta_page_receipt_ids": ["audit-page-a"],
+            })
         kblib.write_receipts(
             self.root / ".cambium/receipts/fixture.jsonl",
-            [{
-                "receipt_id": receipt_id,
-                "check": check,
-                "target": target,
-                "result": "pass",
-                "invalidated_by": None,
-            }],
+            [receipt],
         )
 
     def run_tool(self, name, *arguments):

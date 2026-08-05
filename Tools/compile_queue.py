@@ -29,7 +29,9 @@ PRIORITY = {"P0": 0, "P1": 1, "P2": 2}
 STRUCTURAL_FIELDS = (
     "family", "order", "record_count", "manifest", "source_route",
     "execution_mode", "depends_on", "confirmation_required", "successor_of",
+    "work_spec_path", "work_spec_sha256",
 )
+WORK_SPEC_FIELDS = check_queue.WORK_SPEC_FIELDS
 REPLAN_PAGE_FIELDS = frozenset(("batch", "next_batch"))
 COVERAGE_TOP_LEVEL_FIELDS = frozenset((
     "schema_version", "task_id", "updated_at", "scope_version",
@@ -169,6 +171,8 @@ def _batch_specs(coverage):
         confirmation = spec.get("confirmation_required")
         dependencies = spec.get("depends_on")
         order_hint = spec.get("order_hint")
+        work_spec_path = spec.get("work_spec_path")
+        work_spec_sha256 = spec.get("work_spec_sha256")
         if not isinstance(family, str) or not family:
             raise ValueError("%s family must be a non-empty string" % batch_id)
         if mode not in ("concurrent-worker", "serial-integrator"):
@@ -190,9 +194,14 @@ def _batch_specs(coverage):
                                        order_hint < 1):
             raise ValueError("%s order_hint must be a positive integer or null" %
                              batch_id)
+        work_spec_errors = check_queue._work_spec_binding_errors(
+            work_spec_path, work_spec_sha256, label)
+        if work_spec_errors:
+            raise ValueError("; ".join(work_spec_errors))
         specs[batch_id] = (
             family, source_route, mode, confirmation,
-            tuple(dependencies), order_hint,
+            tuple(dependencies), order_hint, work_spec_path,
+            work_spec_sha256,
         )
     return specs
 
@@ -436,7 +445,8 @@ def compile_document(queue, coverage):
     order = _topological_order(groups, external_ids=existing_ids)
     compiled = []
     for position, batch_id in enumerate(order, 1):
-        family, source_route, mode, confirmation, dependencies, _ = \
+        (family, source_route, mode, confirmation, dependencies, _,
+         work_spec_path, work_spec_sha256) = \
             groups[batch_id]["config"]
         manifest = sorted(groups[batch_id]["manifest"])
         item = {
@@ -449,6 +459,8 @@ def compile_document(queue, coverage):
             "execution_mode": mode,
             "depends_on": list(dependencies),
             "confirmation_required": confirmation,
+            "work_spec_path": work_spec_path,
+            "work_spec_sha256": work_spec_sha256,
             "state": "queued",
             "hold_state": "confirmation-required" if confirmation else "none",
         }
@@ -483,6 +495,15 @@ def compile_document(queue, coverage):
     return result, changed
 
 
+def _changed_structural_fields(current, proposed):
+    """Return value or explicit-presence changes in the closed structure."""
+    return [
+        field for field in STRUCTURAL_FIELDS
+        if ((field in current) != (field in proposed) or
+            current.get(field) != proposed.get(field))
+    ]
+
+
 def replan_diff(queue, proposal, base_sha):
     """Build a deterministic diff artifact without replacing lifecycle state."""
     current_items = {
@@ -508,8 +529,7 @@ def replan_diff(queue, proposal, base_sha):
             candidate.update(structural)
             adds.append(candidate)
             continue
-        changed_fields = [field for field in STRUCTURAL_FIELDS
-                          if current.get(field) != proposed.get(field)]
+        changed_fields = _changed_structural_fields(current, proposed)
         if changed_fields:
             updates.append({
                 "id": item_id,
@@ -517,7 +537,20 @@ def replan_diff(queue, proposal, base_sha):
                 "changed_fields": changed_fields,
                 "proposed_structure": structural,
             })
-            if current.get("state") != "queued":
+            work_spec_only = set(changed_fields).issubset(WORK_SPEC_FIELDS)
+            open_spec_replan = (
+                current.get("state") == "open" and work_spec_only and
+                current.get("hold_state") == "revalidation-required"
+            )
+            if (current.get("state") == "open" and work_spec_only and
+                    current.get("hold_state") != "revalidation-required"):
+                conflicts.append(
+                    "%s open Work Spec change requires a prior "
+                    "update_queue transition to hold_state="
+                    "revalidation-required" % item_id
+                )
+            elif (current.get("state") != "queued" and
+                  not open_spec_replan):
                 conflicts.append(
                     "%s structure differs while state=%s; Amendment and successor-aware adjudication required"
                     % (item_id, current.get("state"))
@@ -654,9 +687,15 @@ def _build_replanned_queue(queue, proposal, diff):
         if proposed is None:
             result_items.append(copy.deepcopy(item))
             continue
-        changed = [field for field in STRUCTURAL_FIELDS
-                   if item.get(field) != proposed.get(field)]
-        if changed and item.get("state") != "queued":
+        changed = _changed_structural_fields(item, proposed)
+        work_spec_only = bool(changed) and set(changed).issubset(
+            WORK_SPEC_FIELDS)
+        open_spec_replan = (
+            item.get("state") == "open" and work_spec_only and
+            item.get("hold_state") == "revalidation-required"
+        )
+        if (changed and item.get("state") != "queued" and
+                not open_spec_replan):
             raise ValueError("cannot change structure of %s item %s" %
                              (item.get("state"), item_id))
         merged = copy.deepcopy(item)
@@ -666,6 +705,9 @@ def _build_replanned_queue(queue, proposal, diff):
                     merged[field] = copy.deepcopy(proposed[field])
                 else:
                     merged.pop(field, None)
+        elif open_spec_replan:
+            for field in WORK_SPEC_FIELDS:
+                merged[field] = copy.deepcopy(proposed.get(field))
         result_items.append(merged)
 
     for proposed in proposal.get("required_queue", []):
@@ -722,6 +764,11 @@ def _copy_result_evidence(root, temporary_root, queue, progress):
     for item in queue.get("required_queue", []):
         if not isinstance(item, dict):
             continue
+        register(
+            item.get("work_spec_path"), item.get("work_spec_sha256"),
+            check_queue.WORK_SPEC_PREFIX, (".yaml",),
+            "Queue %s Batch Work Spec" % item.get("id", "<unknown>"),
+        )
         register(
             item.get("delta_path"), item.get("delta_sha256"),
             ".cambium/deltas", (".yaml", ".yml"),
@@ -886,7 +933,8 @@ def _commit_state(root, paths, before_text, after_text, write_names,
                     raise ValueError(
                         "%s changed after transaction planning" % name)
             locked = check_queue.validate_runtime(
-                root, allow_unmaterialized_queue=True)
+                root, allow_unmaterialized_queue=True,
+            )
             if locked["errors"]:
                 raise ValueError("runtime changed before write: %s" %
                                  "; ".join(locked["errors"]))
@@ -1030,10 +1078,11 @@ def main(argv=None):
         current_sha = kblib.sha256_bytes(old_queue_text)
         current_coverage_sha = kblib.sha256_bytes(coverage_text)
         current_progress_sha = kblib.sha256_bytes(old_progress_text)
+        existing = queue.get("required_queue") or []
         current_validation = check_queue.validate_runtime(
             root, allow_unmaterialized_queue=not bool(
                 queue.get("required_queue")
-            )
+            ),
         )
         if current_validation["errors"]:
             raise ValueError("current runtime state is inconsistent: %s" %
@@ -1045,7 +1094,6 @@ def main(argv=None):
             )
             if barrier:
                 raise ValueError(barrier)
-        existing = queue.get("required_queue") or []
         proposal_coverage_path = None
         proposal_coverage_text = coverage_text
         proposal_coverage = coverage

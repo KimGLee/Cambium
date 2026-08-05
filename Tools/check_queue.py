@@ -34,16 +34,51 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.4.0"
 
 QUEUE_PATH = ".cambium/state/required_queue.yaml"
 COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
 PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
+WORK_SPEC_PREFIX = ".cambium/work_specs"
+WORK_SPEC_FIELDS = frozenset(("work_spec_path", "work_spec_sha256"))
+WORK_SPEC_TOP_LEVEL_FIELDS = frozenset((
+    "schema_version", "batch_id", "manifest", "outcomes", "instructions",
+    "acceptance_conditions", "constraints",
+))
+WORK_SPEC_OUTCOME_FIELDS = frozenset(("outcome_id", "required_result"))
+WORK_SPEC_INSTRUCTION_FIELDS = frozenset((
+    "instruction_id", "order", "target_scope", "required_transformation",
+    "depends_on",
+))
+WORK_SPEC_ACCEPTANCE_FIELDS = frozenset((
+    "condition_id", "target_scope", "observable_predicate",
+    "evidence_requirement",
+))
+WORK_SPEC_CONSTRAINT_FIELDS = frozenset((
+    "constraint_id", "target_scope", "requirement",
+))
+WORK_SPEC_QUEUE_OWNED_FIELDS = frozenset((
+    "id", "family", "order", "record_count", "source_route",
+    "execution_mode", "depends_on", "confirmation_required", "state",
+    "lifecycle", "hold", "hold_state", "work_spec_path",
+    "work_spec_sha256", "opened_at", "activation_receipt",
+    "confirmation_receipt", "merge_ready_at", "delta_path",
+    "delta_sha256", "closed_at", "queue_consistency_receipt",
+    "close_gate_receipt", "delta_apply_receipt", "cancelled_at",
+    "cancellation_amendment", "hold_reason", "successor_of",
+    "invalidation_history",
+    "queue_revision", "state_revision", "revision", "receipts",
+    "transition_receipts", "batch_receipts", "revalidation_receipts",
+))
+WORK_SPEC_RECORD_ID_RE = re.compile(
+    r"[A-Za-z][A-Za-z0-9]*(?:[-_][A-Za-z0-9]+)*\Z"
+)
+WORK_SPEC_SENTINELS = ("TODO(batch)", "REPLACE-ME")
 
 REQUIRED_ITEM_FIELDS = (
     "id", "family", "order", "record_count", "manifest", "source_route",
     "execution_mode", "depends_on", "confirmation_required", "state",
-    "hold_state",
+    "hold_state", "work_spec_path", "work_spec_sha256",
 )
 QUEUE_ITEM_FIELDS = frozenset(REQUIRED_ITEM_FIELDS + (
     "transition_receipts", "opened_at", "activation_receipt",
@@ -110,10 +145,32 @@ LOCK_STATE_FINGERPRINTS = {
 }
 GENERIC_WRITER_TOOLS = frozenset((
     "apply_delta", "update_queue", "compile_queue", "update_task",
-    "check_batch_close",
+    "check_batch_close", "adopt_standards",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.0.0"
+BATCH_CLOSE_TOOL_VERSION = "1.2.0"
+SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((BATCH_CLOSE_TOOL_VERSION,))
+SUPPORTED_QUEUE_GATE_TOOL_VERSIONS = frozenset((TOOL_VERSION,))
+CORPUS_PLAN_TOOL = "check_corpus_plan"
+CORPUS_PLAN_TOOL_VERSION = "1.5.0"
+MANUAL_ATTESTATION_TOOL = "manual-attestation"
+MANUAL_ATTESTATION_TOOL_VERSION = "1.0.0"
+BATCH_REVIEW_GATE_ID = "batch-review"
+BATCH_REVIEW_CHECK = "batch_gate"
+TERMINAL_PROOF_TOOL = "check_proof"
+TERMINAL_PROOF_TOOL_VERSION = "1.14.0"
+SUPPORTED_TERMINAL_PROOF_TOOL_VERSIONS = frozenset((
+    TERMINAL_PROOF_TOOL_VERSION,
+))
+CORPUS_PLAN_TRIGGERS = frozenset(("R13", "manifest"))
+CORPUS_PLAN_PATH_SHA_FIELDS = (
+    ("selected_profile_manifest", "selected_profile_manifest_sha256"),
+    ("corpus_planning_slot_path", "corpus_planning_slot_sha256"),
+    ("profile_scope_path", "profile_scope_sha256"),
+    ("global_map_path", "global_map_sha256"),
+    ("capability_matrix_path", "capability_matrix_sha256"),
+    ("gap_register_path", "gap_register_sha256"),
+)
 QUEUE_TOP_LEVEL_FIELDS = frozenset((
     "schema_version", "task_id", "scope_version", "queue_revision",
     "state_revision", "standards_version", "selected_profile_manifest",
@@ -126,7 +183,8 @@ COVERAGE_TOP_LEVEL_FIELDS = frozenset((
 ))
 COVERAGE_BATCH_SPEC_FIELDS = frozenset((
     "id", "family", "order_hint", "source_route", "execution_mode",
-    "depends_on", "confirmation_required",
+    "depends_on", "confirmation_required", "work_spec_path",
+    "work_spec_sha256",
 ))
 PROGRESS_TOP_LEVEL_FIELDS = frozenset((
     "schema_version", "task_id", "task_state", "required_queue_path",
@@ -134,6 +192,7 @@ PROGRESS_TOP_LEVEL_FIELDS = frozenset((
     "initial_queue_receipt",
     "contract", "checkpoint", "terminal_audit", "maintenance_completion",
     "amendments",
+    "standards_adoptions",
     "guidance_queue", "task_transition_receipts",
 ))
 CONTRACT_FIELDS = frozenset((
@@ -169,6 +228,183 @@ GUIDANCE_FIELDS = frozenset(("id", "class", "status"))
 AMENDMENT_COMMON_FIELDS = frozenset((
     "id", "date", "summary", "status", "writeback_done",
 ))
+STANDARDS_ADOPTION_TOOL = "adopt_standards"
+STANDARDS_ADOPTION_TOOL_VERSION = "1.1.0"
+STANDARDS_ADOPTION_PLAN_PREFIX = ".cambium/deltas/standards-adoptions"
+STANDARDS_GATE_REGISTRY_PATH = \
+    "kernel/K00 Standards Control/12 Control Registry.md"
+STANDARDS_ADOPTION_PLAN_FIELDS = frozenset((
+    "schema_version", "adoption_id", "task_id", "task_state_before",
+    "contract_version_before", "contract_version_after",
+    "standards_version_before", "standards_version_after",
+    "selected_profile_manifest_before", "selected_profile_manifest_after",
+    "governance_revision_ref", "governance_revision_sha256",
+    "standards_snapshot_sha256_after", "profile_snapshot_sha256_after",
+    "selected_route_ids_after", "selected_card_paths_after",
+    "selected_profile_route_ids_after", "selected_read_sets_after",
+    "loaded_module_paths_after", "queue_revision_before",
+    "queue_revision_after", "queue_state_revision_before",
+    "coverage_sha256_before", "required_queue_sha256_before",
+    "progress_sha256_before", "changed_predicates", "invalidated_evidence",
+    "invalidation_boundaries", "immediate_gate_reruns",
+    "boundary_gate_reruns",
+))
+STANDARDS_CHANGED_PREDICATE_FIELDS = frozenset((
+    "predicate_id", "owner_path", "change_kind", "affected_gate_ids",
+))
+STANDARDS_INVALIDATED_EVIDENCE_FIELDS = frozenset((
+    "receipt_id", "predicate_ids", "dimension_ids", "boundary_ids",
+    "reason_code", "revalidation_scope_ids",
+))
+STANDARDS_INVALIDATION_BOUNDARY_FIELDS = frozenset((
+    "boundary_id", "predicate_ids", "target_kind", "target_ids",
+    "required_gate_ids",
+))
+STANDARDS_ADOPTION_RECORD_FIELDS = frozenset((
+    "id", "adopted_at", "plan_path", "plan_sha256",
+    "verification_receipt", "transaction_id", "task_state_before",
+    "contract_version_before", "contract_version_after",
+    "standards_version_before", "standards_version_after",
+    "selected_profile_manifest_before", "selected_profile_manifest_after",
+    "governance_revision_ref", "governance_revision_sha256",
+    "standards_snapshot_sha256_after", "profile_snapshot_sha256_after",
+    "selected_route_ids_after", "selected_card_paths_after",
+    "selected_profile_route_ids_after", "selected_read_sets_after",
+    "loaded_module_paths_after", "queue_revision_before",
+    "queue_revision_after", "queue_state_revision_before",
+    "coverage_sha256_before", "required_queue_sha256_before",
+    "progress_sha256_before", "after_coverage_sha256",
+    "after_required_queue_sha256", "changed_predicate_ids",
+    "invalidated_evidence_receipt_ids", "invalidation_boundary_ids",
+    "immediate_gate_reruns", "immediate_gate_receipts",
+    "boundary_gate_reruns",
+))
+
+
+def current_receipt_catalog(result):
+    """Return the adoption-filtered catalog for a new evidence decision.
+
+    A present empty mapping is authoritative: falling back to the historical
+    catalog in that case would re-enable every receipt explicitly declared
+    invalidated.  There is deliberately no fallback to the historical catalog:
+    a missing current view is an unavailable authorization source, not an
+    invitation to reinterpret history as fresh evidence.
+    """
+    current = result.get("current_receipt_catalog")
+    return current if isinstance(current, dict) else {}
+
+
+def historical_receipt_catalog(result):
+    """Return the immutable full catalog for history verification only."""
+    historical = result.get("receipt_catalog")
+    return historical if isinstance(historical, dict) else {}
+
+
+def standards_gate_registry(root):
+    """Parse the canonical Gate ID -> receipt predicate registry.
+
+    K00/12 owns the table.  Plans cannot invent an opaque gate name: every
+    affected/required gate must resolve to one stable producer identity that
+    the revalidation aggregator can check without interpreting prose.
+    """
+    errors = []
+    registry = {}
+    try:
+        path = kblib.repository_path(
+            root, STANDARDS_GATE_REGISTRY_PATH, must_exist=True,
+            reject_symlink=True)
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    except (OSError, UnicodeError, ValueError) as exc:
+        return {}, ["Gate ID registry is unsafe or unreadable: %s" % exc]
+    inside = False
+    seen_section = 0
+    for line in text.splitlines():
+        heading = re.match(r"^(#{2,3})\s+(.*?)\s*#*\s*$", line)
+        if heading:
+            is_registry = heading.group(2).strip() == "Stable Gate ID Registry"
+            if is_registry:
+                seen_section += 1
+            inside = is_registry and seen_section == 1
+            continue
+        if not inside or not line.lstrip().startswith("|"):
+            continue
+        cells = [cell.strip().strip("`") for cell in line.strip().strip("|").split("|")]
+        if cells == ["Gate ID", "Tool", "Tool version", "Check", "Mode"]:
+            continue
+        if cells and all(re.fullmatch(r":?-+:?", cell) for cell in cells):
+            continue
+        if len(cells) != 5:
+            errors.append("Stable Gate ID Registry row must have five cells")
+            continue
+        gate_id, tool, tool_version, check, mode = cells
+        if not all(_nonempty_string(value) for value in cells):
+            errors.append("Stable Gate ID Registry row has an empty cell")
+            continue
+        if "*" in (tool, tool_version, check):
+            errors.append(
+                "Stable Gate ID Registry Tool, Tool version, and Check must "
+                "be exact for %s; only Mode may use *" % gate_id)
+            continue
+        if gate_id in registry:
+            errors.append("Stable Gate ID Registry repeats %s" % gate_id)
+            continue
+        registry[gate_id] = {
+            "tool": tool,
+            "tool_version": tool_version,
+            "check": check,
+            "mode": mode,
+        }
+    if seen_section != 1:
+        errors.append("K00/12 must contain exactly one Stable Gate ID Registry")
+    if not registry:
+        errors.append("Stable Gate ID Registry has no gate rows")
+    return registry, errors
+
+
+def receipt_matches_gate_id(receipt, gate_id, registry):
+    """Return whether one receipt satisfies the registered producer tuple."""
+    predicate = registry.get(gate_id)
+    if not isinstance(receipt, dict) or not isinstance(predicate, dict):
+        return False
+    # A new revalidation aggregate never infers identity from descriptive
+    # fields.  Every raw input must bind the registry key explicitly.  Older
+    # receipts without ``gate_id`` remain available to historical validators,
+    # but this function is a current-action predicate and must reject them.
+    if receipt.get("gate_id") != gate_id:
+        return False
+    if predicate["tool"] != "*" and receipt.get("tool") != predicate["tool"]:
+        return False
+    if (predicate["tool_version"] != "*" and
+            receipt.get("tool_version") != predicate["tool_version"]):
+        return False
+    if predicate["check"] != "*" and receipt.get("check") != predicate["check"]:
+        return False
+    expected_mode = predicate["mode"]
+    if expected_mode == "*":
+        return True
+    actual_mode = receipt.get("queue_check_mode")
+    if expected_mode.endswith("*"):
+        return isinstance(actual_mode, str) and actual_mode.startswith(
+            expected_mode[:-1])
+    return actual_mode == expected_mode
+
+
+def queue_gate_id_for_mode(mode):
+    """Return the stable Gate ID for a gate-producing Queue mode."""
+    if mode == "consistency":
+        return "required-queue-consistency"
+    if isinstance(mode, str) and mode.startswith("require-ready:"):
+        return "required-queue-admission"
+    if isinstance(mode, str) and mode.startswith("require-revalidation:"):
+        return "standards-revalidation"
+    if mode == "require-complete":
+        return "required-queue-completion"
+    if mode == "require-maintenance-complete":
+        return "maintenance-completion"
+    if mode == "resume-status":
+        return "runtime-startup-recovery"
+    return None
 DELTA_FIELDS = frozenset((
     "batch", "generated_at", "pages", "open_gaps_added",
     "open_gaps_closed", "next_batch_updates", "watermark_advance",
@@ -315,6 +551,84 @@ def _explicit_string_list_errors(value, label):
     return errors
 
 
+def _standards_adoption_shape_errors(progress):
+    """Validate the closed append-only Progress adoption-record shape."""
+    if "standards_adoptions" not in progress:
+        return ["Progress standards_adoptions must be an explicit list"]
+    records = progress.get("standards_adoptions")
+    if not isinstance(records, list):
+        return ["Progress standards_adoptions must be an explicit list"]
+    errors = []
+    seen_ids = set()
+    seen_receipts = set()
+    for index, record in enumerate(records):
+        label = "Progress standards_adoptions[%d]" % index
+        errors.extend(_closed_mapping_errors(
+            record, label, STANDARDS_ADOPTION_RECORD_FIELDS))
+        if not isinstance(record, dict):
+            continue
+        for field in (
+                "id", "adopted_at", "plan_path", "plan_sha256",
+                "verification_receipt", "transaction_id",
+                "task_state_before", "standards_version_before",
+                "contract_version_before", "contract_version_after",
+                "standards_version_after", "selected_profile_manifest_before",
+                "selected_profile_manifest_after", "coverage_sha256_before",
+                "required_queue_sha256_before", "progress_sha256_before",
+                "after_coverage_sha256", "after_required_queue_sha256"):
+            if not _nonempty_string(record.get(field)):
+                errors.append("%s %s must be a non-empty string" %
+                              (label, field))
+        if not _valid_timestamp(record.get("adopted_at")):
+            errors.append("%s adopted_at must be timezone-aware RFC 3339" %
+                          label)
+        for field in (
+                "plan_sha256", "coverage_sha256_before",
+                "required_queue_sha256_before", "progress_sha256_before",
+                "after_coverage_sha256", "after_required_queue_sha256"):
+            if not SHA256_RE.fullmatch(str(record.get(field, ""))):
+                errors.append("%s %s is not sha256:<64 lowercase hex>" %
+                              (label, field))
+        for field in ("queue_revision_before", "queue_revision_after",
+                      "queue_state_revision_before"):
+            value = record.get(field)
+            if (not isinstance(value, int) or isinstance(value, bool) or
+                    value < (1 if field.startswith("queue_revision") else 0)):
+                errors.append("%s %s has an invalid revision" % (label, field))
+        if (isinstance(record.get("queue_revision_before"), int) and
+                isinstance(record.get("queue_revision_after"), int) and
+                record["queue_revision_after"] !=
+                record["queue_revision_before"] + 1):
+            errors.append("%s queue_revision must increment exactly once" %
+                          label)
+        for field in (
+                "selected_route_ids_after", "selected_card_paths_after",
+                "selected_profile_route_ids_after", "selected_read_sets_after",
+                "loaded_module_paths_after", "changed_predicate_ids",
+                "invalidated_evidence_receipt_ids", "invalidation_boundary_ids",
+                "immediate_gate_reruns", "immediate_gate_receipts",
+                "boundary_gate_reruns"):
+            errors.extend(_explicit_string_list_errors(
+                record.get(field), "%s %s" % (label, field)))
+            value = record.get(field)
+            if isinstance(value, list) and value != sorted(value):
+                errors.append("%s %s must be sorted" % (label, field))
+        adoption_id = record.get("id")
+        if _nonempty_string(adoption_id):
+            if adoption_id in seen_ids:
+                errors.append("Progress standards_adoptions repeats id %s" %
+                              adoption_id)
+            seen_ids.add(adoption_id)
+        receipt_id = record.get("verification_receipt")
+        if _nonempty_string(receipt_id):
+            if receipt_id in seen_receipts:
+                errors.append(
+                    "Progress standards_adoptions repeats verification receipt %s" %
+                    receipt_id)
+            seen_receipts.add(receipt_id)
+    return errors
+
+
 def _contract_sha256(progress):
     """Return the canonical fingerprint of the immutable Task Contract.
 
@@ -333,7 +647,13 @@ def _contract_sha256(progress):
 
 
 def _contract_anchor_chain(progress, catalog):
-    """Return revision-ordered Task Contract anchors and validation errors."""
+    """Return the hash-linked Task Contract anchor chain.
+
+    Scope Amendments and Standards adoptions are independent append-only logs.
+    Their receipt before/after contract fingerprints, rather than list order,
+    form one unambiguous chain.  This lets a later Amendment continue from an
+    adopted Standards contract without either writer owning the other's log.
+    """
     errors = []
     receipt_id = progress.get("initial_queue_receipt")
     entry = catalog.get(receipt_id) if _nonempty_string(receipt_id) else None
@@ -361,6 +681,7 @@ def _contract_anchor_chain(progress, catalog):
         "scope_version": scope,
         "receipt_id": receipt_id,
     }]
+    events = []
     for amendment in progress.get("amendments", []) if isinstance(
             progress.get("amendments"), list) else []:
         if (not isinstance(amendment, dict) or
@@ -375,68 +696,131 @@ def _contract_anchor_chain(progress, catalog):
         if commit_entry is None:
             continue
         receipt = commit_entry[1]
-        before_sha = receipt.get("before_contract_sha256")
-        after_sha = receipt.get("after_contract_sha256")
-        before_version = receipt.get("before_contract_version")
-        after_version = receipt.get("after_contract_version")
-        before_scope = receipt.get("before_contract_scope_version")
-        after_scope = receipt.get("after_contract_scope_version")
         label = "Amendment %s contract anchor" % amendment.get("id")
-        valid_link = True
-        for field, value in (("before_contract_sha256", before_sha),
-                             ("after_contract_sha256", after_sha)):
+        valid = True
+        for field in ("before_contract_sha256", "after_contract_sha256"):
+            value = receipt.get(field)
             if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
                 errors.append("%s has invalid %s" % (label, field))
-                valid_link = False
-        if before_sha != anchor:
-            errors.append("%s does not continue the prior contract SHA" % label)
-            valid_link = False
-        if before_version != version:
-            errors.append("%s does not continue the prior contract_version" %
-                          label)
-            valid_link = False
-        if before_scope != scope:
-            errors.append("%s does not continue the prior scope_version" % label)
-            valid_link = False
-        if after_scope != amendment.get("scope_version_after"):
+                valid = False
+        if receipt.get("after_contract_scope_version") != amendment.get(
+                "scope_version_after"):
             errors.append("%s after scope does not match its Amendment" % label)
-            valid_link = False
-        if before_scope != amendment.get("scope_version_before"):
+            valid = False
+        if receipt.get("before_contract_scope_version") != amendment.get(
+                "scope_version_before"):
             errors.append("%s before scope does not match its Amendment" % label)
-            valid_link = False
-        if not _nonempty_string(after_version):
+            valid = False
+        if not _nonempty_string(receipt.get("after_contract_version")):
             errors.append("%s has invalid after_contract_version" % label)
-            valid_link = False
-        next_revision = receipt.get("queue_revision_after")
-        if (not isinstance(next_revision, int) or isinstance(next_revision, bool) or
-                next_revision <= revision):
-            errors.append("%s has non-increasing queue revision" % label)
-            valid_link = False
-        if next_revision != amendment.get("queue_revision_after"):
+            valid = False
+        if receipt.get("queue_revision_after") != amendment.get(
+                "queue_revision_after"):
             errors.append(
                 "%s queue revision does not match its Amendment" % label
             )
-            valid_link = False
-        if (isinstance(progress.get("queue_revision"), int) and
-                not isinstance(progress.get("queue_revision"), bool) and
-                isinstance(next_revision, int) and
-                not isinstance(next_revision, bool) and
-                next_revision > progress.get("queue_revision")):
-            errors.append("%s points beyond the live Queue revision" % label)
-            valid_link = False
-        if not valid_link:
+            valid = False
+        if valid:
+            events.append({
+                "label": label,
+                "receipt_id": commit_id,
+                "before_sha": receipt.get("before_contract_sha256"),
+                "after_sha": receipt.get("after_contract_sha256"),
+                "before_version": receipt.get("before_contract_version"),
+                "after_version": receipt.get("after_contract_version"),
+                "before_scope": receipt.get("before_contract_scope_version"),
+                "after_scope": receipt.get("after_contract_scope_version"),
+                "revision_before": receipt.get("queue_revision_before"),
+                "revision_after": receipt.get("queue_revision_after"),
+            })
+    for adoption in progress.get("standards_adoptions", []) if isinstance(
+            progress.get("standards_adoptions"), list) else []:
+        if not isinstance(adoption, dict):
             continue
-        anchor = after_sha
-        version = after_version
-        scope = after_scope
+        commit_id = adoption.get("verification_receipt")
+        commit_entry = catalog.get(commit_id) if _nonempty_string(
+            commit_id) else None
+        if commit_entry is None:
+            continue
+        receipt = commit_entry[1]
+        label = "Standards adoption %s contract anchor" % adoption.get("id")
+        valid = True
+        for field in ("before_contract_sha256", "after_contract_sha256"):
+            value = receipt.get(field)
+            if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+                errors.append("%s has invalid %s" % (label, field))
+                valid = False
+        if receipt.get("queue_revision_before") != adoption.get(
+                "queue_revision_before") or receipt.get(
+                    "queue_revision_after") != adoption.get(
+                        "queue_revision_after"):
+            errors.append("%s queue revision does not match its record" % label)
+            valid = False
+        if receipt.get("before_contract_scope_version") != receipt.get(
+                "after_contract_scope_version"):
+            errors.append("%s may not change scope_version" % label)
+            valid = False
+        if (receipt.get("before_contract_version") != adoption.get(
+                "contract_version_before") or
+                receipt.get("after_contract_version") != adoption.get(
+                    "contract_version_after")):
+            errors.append("%s contract versions do not match its record" % label)
+            valid = False
+        if valid:
+            events.append({
+                "label": label,
+                "receipt_id": commit_id,
+                "before_sha": receipt.get("before_contract_sha256"),
+                "after_sha": receipt.get("after_contract_sha256"),
+                "before_version": receipt.get("before_contract_version"),
+                "after_version": receipt.get("after_contract_version"),
+                "before_scope": receipt.get("before_contract_scope_version"),
+                "after_scope": receipt.get("after_contract_scope_version"),
+                "revision_before": receipt.get("queue_revision_before"),
+                "revision_after": receipt.get("queue_revision_after"),
+            })
+
+    remaining = list(events)
+    while remaining:
+        candidates = [event for event in remaining
+                      if event["before_sha"] == anchor and
+                      event["before_version"] == version and
+                      event["before_scope"] == scope and
+                      event["revision_before"] == revision]
+        if not candidates:
+            errors.extend("%s does not continue the prior contract anchor" %
+                          event["label"] for event in remaining)
+            break
+        if len(candidates) != 1:
+            errors.append("contract anchor chain forks at %s via %s" % (
+                anchor, ", ".join(sorted(event["label"]
+                                         for event in candidates))))
+            break
+        event = candidates[0]
+        remaining.remove(event)
+        next_revision = event["revision_after"]
+        if (not isinstance(next_revision, int) or
+                isinstance(next_revision, bool) or
+                next_revision != revision + 1):
+            errors.append("%s must increment queue_revision exactly once" %
+                          event["label"])
+            break
+        anchor = event["after_sha"]
+        version = event["after_version"]
+        scope = event["after_scope"]
         revision = next_revision
         chain.append({
             "queue_revision": revision,
             "contract_sha256": anchor,
             "contract_version": version,
             "scope_version": scope,
-            "receipt_id": commit_id,
+            "receipt_id": event["receipt_id"],
         })
+
+    if (isinstance(progress.get("queue_revision"), int) and
+            not isinstance(progress.get("queue_revision"), bool) and
+            revision > progress.get("queue_revision")):
+        errors.append("contract anchor chain points beyond live Queue revision")
     live_contract = progress.get("contract") if isinstance(
         progress.get("contract"), dict) else {}
     if chain:
@@ -604,6 +988,7 @@ def _progress_shape_errors(progress):
                 if entry_id in seen:
                     errors.append("Progress amendments repeats id %s" % entry_id)
                 seen.add(entry_id)
+    errors.extend(_standards_adoption_shape_errors(progress))
     return errors
 
 
@@ -682,6 +1067,970 @@ def _receipt_catalog(root, errors):
                     continue
                 catalog[receipt_id] = (relative, receipt)
     return catalog
+
+
+def _current_item_transition_evidence(item, catalog):
+    """Return hold-clear evidence in the current attempt, not all history."""
+    transition_ids = item.get("transition_receipts")
+    if not isinstance(transition_ids, list):
+        return set()
+    history = item.get("invalidation_history")
+    last_rollback = (history[-1].get("transition_receipt")
+                     if isinstance(history, list) and history and
+                     isinstance(history[-1], dict) else None)
+    start = 0
+    if last_rollback in transition_ids:
+        start = transition_ids.index(last_rollback) + 1
+    evidence = set()
+    for transition_id in transition_ids[start:]:
+        entry = catalog.get(transition_id)
+        transition = entry[1] if entry is not None else None
+        if not isinstance(transition, dict):
+            continue
+        if (transition.get("before_state") == transition.get("after_state") and
+                transition.get("before_hold_state") ==
+                "revalidation-required" and
+                transition.get("after_hold_state") == "none" and
+                _nonempty_string(transition.get("evidence_receipt"))):
+            evidence.add(transition["evidence_receipt"])
+        revalidation = transition.get("standards_revalidation_receipt")
+        if _nonempty_string(revalidation):
+            evidence.add(revalidation)
+    return evidence
+
+
+def invalidated_receipt_consumers(root, queue, catalog):
+    """Map current non-terminal receipt references back to Queue batches."""
+    consumers = {}
+
+    def add(batch_id, receipt_id, source):
+        if not _nonempty_string(receipt_id):
+            return
+        consumers.setdefault(receipt_id, []).append({
+            "batch_id": batch_id, "source": source,
+        })
+
+    for item in queue.get("required_queue", []) if isinstance(
+            queue.get("required_queue"), list) else []:
+        if not isinstance(item, dict) or item.get("state") in TERMINAL_STATES:
+            continue
+        batch_id = item.get("id")
+        for field in ("activation_receipt", "confirmation_receipt"):
+            add(batch_id, item.get(field), "Queue.%s" % field)
+        for receipt_id in _current_item_transition_evidence(item, catalog):
+            add(batch_id, receipt_id, "Queue.current-transition-evidence")
+        if item.get("state") == "merge-ready":
+            for receipt_id in item.get("batch_receipts") or []:
+                add(batch_id, receipt_id, "Queue.batch_receipts")
+            for field in ("delta_apply_receipt", "queue_consistency_receipt",
+                          "close_gate_receipt"):
+                add(batch_id, item.get(field), "Queue.%s" % field)
+        if item.get("state") in ("open", "merge-ready"):
+            relative = item.get("delta_path")
+            if not _nonempty_string(relative):
+                relative = ".cambium/deltas/%s.yaml" % batch_id
+            try:
+                path = kblib.managed_repository_path(
+                    root, relative, ".cambium/deltas", suffixes=(".yaml",),
+                    must_exist=True)
+                delta = kblib.load_yaml_file(path)
+                for receipt_id in delta_gate_receipt_ids(delta):
+                    add(batch_id, receipt_id, "Delta.gate_receipts")
+            except (OSError, ValueError, kblib.YamlSubsetError):
+                # The normal Delta validator reports the underlying defect.
+                pass
+    return consumers
+
+
+def standards_revalidation_requirements(root, progress):
+    """Return immutable per-batch boundary bindings from all adoption plans."""
+    by_batch = {}
+    records = progress.get("standards_adoptions")
+    if not isinstance(records, list):
+        return by_batch
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        try:
+            path = kblib.managed_repository_path(
+                root, record.get("plan_path"), STANDARDS_ADOPTION_PLAN_PREFIX,
+                suffixes=(".yaml",), must_exist=True)
+            plan = kblib.load_yaml_file(path)
+        except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError):
+            continue
+        boundaries = {
+            row.get("boundary_id"): row
+            for row in plan.get("invalidation_boundaries", [])
+            if isinstance(row, dict) and
+            _nonempty_string(row.get("boundary_id"))
+        }
+        invalidated_by_boundary = {}
+        for invalidated in plan.get("invalidated_evidence", []):
+            if not isinstance(invalidated, dict):
+                continue
+            for boundary_id in invalidated.get("boundary_ids") or []:
+                invalidated_by_boundary.setdefault(boundary_id, []).append(
+                    invalidated)
+        target_batches = {}
+        for boundary_id, boundary in boundaries.items():
+            if boundary.get("target_kind") == "batch":
+                target_batches.setdefault(boundary_id, set()).update(
+                    boundary.get("target_ids") or [])
+            for invalidated in invalidated_by_boundary.get(boundary_id, []):
+                target_batches.setdefault(boundary_id, set()).update(
+                    invalidated.get("revalidation_scope_ids") or [])
+        for boundary_id, batch_ids in target_batches.items():
+            boundary = boundaries[boundary_id]
+            for batch_id in batch_ids:
+                if not _nonempty_string(batch_id):
+                    continue
+                relevant_invalidated = sorted({
+                    invalidated.get("receipt_id")
+                    for invalidated in invalidated_by_boundary.get(
+                        boundary_id, [])
+                    if _nonempty_string(invalidated.get("receipt_id")) and
+                    (batch_id in (
+                        invalidated.get("revalidation_scope_ids") or []) or
+                     boundary.get("target_kind") == "batch")
+                })
+                for gate_id in boundary.get("required_gate_ids") or []:
+                    binding = {
+                        "adoption_id": plan.get("adoption_id"),
+                        "plan_sha256": record.get("plan_sha256"),
+                        "adopted_at": record.get("adopted_at"),
+                        "boundary_id": boundary_id,
+                        "predicate_ids": sorted(
+                            boundary.get("predicate_ids") or []),
+                        "required_gate_id": gate_id,
+                        "superseded_invalidated_receipt_ids":
+                            relevant_invalidated,
+                    }
+                    by_batch.setdefault(batch_id, []).append(binding)
+    for batch_id in by_batch:
+        by_batch[batch_id] = sorted(
+            by_batch[batch_id], key=lambda row: (
+                row.get("adoption_id", ""), row.get("boundary_id", ""),
+                row.get("required_gate_id", "")))
+    return by_batch
+
+
+def _consumed_standards_revalidation_keys(item, catalog):
+    consumed = set()
+    transition_ids = item.get("transition_receipts")
+    if not isinstance(transition_ids, list):
+        return consumed
+    for transition_id in transition_ids:
+        entry = catalog.get(transition_id)
+        transition = entry[1] if entry is not None else None
+        if not isinstance(transition, dict):
+            continue
+        receipt_id = transition.get("standards_revalidation_receipt")
+        if not _nonempty_string(receipt_id) and (
+                transition.get("before_state") == transition.get("after_state") and
+                transition.get("before_hold_state") ==
+                "revalidation-required" and
+                transition.get("after_hold_state") == "none"):
+            receipt_id = transition.get("evidence_receipt")
+        receipt_entry = catalog.get(receipt_id) if _nonempty_string(
+            receipt_id) else None
+        receipt = receipt_entry[1] if receipt_entry is not None else None
+        if not isinstance(receipt, dict) or receipt.get("result") != "pass" or \
+                receipt.get("invalidated_by") is not None or \
+                receipt.get("tool") != TOOL or \
+                receipt.get("tool_version") != TOOL_VERSION or \
+                receipt.get("check") != "required_queue" or \
+                receipt.get("queue_check_mode") != \
+                "require-revalidation:%s" % item.get("id") or \
+                receipt.get("batch_id") != item.get("id"):
+            continue
+        for binding in receipt.get("revalidation_bindings") or []:
+            if not isinstance(binding, dict):
+                continue
+            key = (binding.get("adoption_id"), binding.get("boundary_id"),
+                   binding.get("required_gate_id"))
+            if all(_nonempty_string(value) for value in key):
+                consumed.add(key)
+    return consumed
+
+
+def outstanding_standards_revalidation(result, batch_id):
+    """Return plan bindings not yet consumed by a Queue transition."""
+    raw = standards_revalidation_requirements(
+        result.get("root"), result.get("progress") or {}).get(batch_id, [])
+    item = (result.get("items_by_id") or {}).get(batch_id) or {}
+    consumed = _consumed_standards_revalidation_keys(
+        item, current_receipt_catalog(result))
+    return [binding for binding in raw if (
+        binding.get("adoption_id"), binding.get("boundary_id"),
+        binding.get("required_gate_id")) not in consumed]
+
+
+def current_attempt_evidence_barrier(result, batch_id):
+    """Return why new merge/apply/close work is unsafe after adoption."""
+    item = (result.get("items_by_id") or {}).get(batch_id)
+    if not isinstance(item, dict) or item.get("state") in TERMINAL_STATES:
+        return None
+    outstanding = outstanding_standards_revalidation(result, batch_id)
+    invalidated = set(
+        result.get("invalidated_evidence_receipt_ids") or [])
+    consumers = invalidated_receipt_consumers(
+        result.get("root"), result.get("queue") or {},
+        historical_receipt_catalog(result))
+    # Activation/confirmation and pre-adoption hold-clear evidence remain
+    # immutable history after the dedicated Standards-revalidation aggregate
+    # has been consumed.  They are still consumers for adoption-scope
+    # inference, but they must not permanently poison a later attempt.  Only
+    # execution evidence that would be newly merged/applied/closed is a live
+    # barrier here.
+    historical_sources = {
+        "Queue.activation_receipt", "Queue.confirmation_receipt",
+        "Queue.current-transition-evidence",
+    }
+    referenced_invalidated = sorted(
+        receipt_id for receipt_id in invalidated
+        if any(row.get("batch_id") == batch_id and
+               row.get("source") not in historical_sources
+               for row in consumers.get(receipt_id, [])))
+    if item.get("state") == "open" and item.get("hold_state") == \
+            "revalidation-required":
+        return None
+    if outstanding:
+        return ("batch %s has outstanding Standards revalidation bindings: %s" %
+                (batch_id, ", ".join("%s/%s/%s" % (
+                    row.get("adoption_id"), row.get("boundary_id"),
+                    row.get("required_gate_id")) for row in outstanding)))
+    if item.get("state") == "merge-ready" and referenced_invalidated:
+        return ("merge-ready batch %s current attempt references invalidated "
+                "receipt(s): %s" %
+                (batch_id, ", ".join(referenced_invalidated)))
+    return None
+
+
+def _parse_boundary_gate_arguments(values):
+    mapping = {}
+    errors = []
+    for value in values or []:
+        if not isinstance(value, str) or "=" not in value:
+            errors.append("--boundary-gate-receipt must be GATE_ID=RECEIPT_ID")
+            continue
+        gate_id, receipt_id = value.split("=", 1)
+        gate_id = gate_id.strip()
+        receipt_id = receipt_id.strip()
+        if not _nonempty_string(gate_id) or not _nonempty_string(receipt_id):
+            errors.append("--boundary-gate-receipt has an empty gate/receipt ID")
+        elif gate_id in mapping:
+            errors.append("--boundary-gate-receipt repeats Gate ID %s" % gate_id)
+        else:
+            mapping[gate_id] = receipt_id
+    return mapping, errors
+
+
+def standards_revalidation_context(result, batch_id, gate_receipts):
+    """Validate boundary receipts and return the aggregate receipt payload."""
+    errors = []
+    outstanding = outstanding_standards_revalidation(result, batch_id)
+    if not outstanding:
+        return None, ["batch %s has no outstanding Standards revalidation" %
+                      batch_id]
+    required_gate_ids = sorted({
+        row.get("required_gate_id") for row in outstanding
+        if _nonempty_string(row.get("required_gate_id"))
+    })
+    if sorted(gate_receipts) != required_gate_ids:
+        errors.append("boundary gate receipt IDs must be exactly %r" %
+                      required_gate_ids)
+    registry, registry_errors = standards_gate_registry(result.get("root"))
+    errors.extend(registry_errors)
+    catalog = current_receipt_catalog(result)
+    queue = result.get("queue") or {}
+    resolved = {}
+    for gate_id in required_gate_ids:
+        receipt_id = gate_receipts.get(gate_id)
+        entry = catalog.get(receipt_id) if _nonempty_string(receipt_id) else None
+        if entry is None:
+            errors.append("Gate ID %s references missing current receipt %r" %
+                          (gate_id, receipt_id))
+            continue
+        receipt = entry[1]
+        if not receipt_matches_gate_id(receipt, gate_id, registry):
+            errors.append("receipt %s does not match registered Gate ID %s" %
+                          (receipt_id, gate_id))
+        for field, expected in (
+                ("result", "pass"), ("invalidated_by", None),
+                ("task_id", queue.get("task_id")),
+                ("standards_version", queue.get("standards_version")),
+                ("selected_profile_manifest",
+                 queue.get("selected_profile_manifest"))):
+            if receipt.get(field) != expected:
+                errors.append("Gate ID %s receipt %s has %s=%r, expected %r" %
+                              (gate_id, receipt_id, field,
+                               receipt.get(field), expected))
+        receipt_time = _timestamp_value(receipt.get("checked_at"))
+        relevant_times = [_timestamp_value(row.get("adopted_at"))
+                          for row in outstanding
+                          if row.get("required_gate_id") == gate_id]
+        if receipt_time is None or any(
+                value is None or receipt_time < value for value in relevant_times):
+            errors.append("Gate ID %s receipt %s predates its adoption" %
+                          (gate_id, receipt_id))
+        resolved[gate_id] = receipt_id
+    bindings = []
+    for row in outstanding:
+        binding = {
+            "adoption_id": row.get("adoption_id"),
+            "plan_sha256": row.get("plan_sha256"),
+            "boundary_id": row.get("boundary_id"),
+            "predicate_ids": row.get("predicate_ids"),
+            "required_gate_id": row.get("required_gate_id"),
+            "gate_receipt_id": resolved.get(row.get("required_gate_id")),
+            "superseded_invalidated_receipt_ids":
+                row.get("superseded_invalidated_receipt_ids"),
+        }
+        bindings.append(binding)
+    context = {
+        "gate_id": "standards-revalidation",
+        "batch_id": batch_id,
+        "standards_adoption_ids": sorted({
+            row.get("adoption_id") for row in outstanding
+            if _nonempty_string(row.get("adoption_id"))}),
+        "standards_adoption_plan_sha256s": sorted({
+            row.get("plan_sha256") for row in outstanding
+            if _nonempty_string(row.get("plan_sha256"))}),
+        "invalidation_boundary_ids": sorted({
+            row.get("boundary_id") for row in outstanding
+            if _nonempty_string(row.get("boundary_id"))}),
+        "required_gate_ids": required_gate_ids,
+        "boundary_gate_receipts": [
+            {"required_gate_id": gate_id,
+             "receipt_id": resolved.get(gate_id)}
+            for gate_id in required_gate_ids
+        ],
+        "revalidated_invalidated_receipt_ids": sorted({
+            receipt_id for row in outstanding
+            for receipt_id in row.get(
+                "superseded_invalidated_receipt_ids") or []
+        }),
+        "revalidation_bindings": bindings,
+        "repository_snapshot_sha256": kblib.repository_snapshot_sha256(
+            result.get("root")),
+    }
+    return context, errors
+
+
+def standards_revalidation_receipt_errors(result, batch_id, receipt_id):
+    """Validate one current aggregate before activation or hold clear."""
+    errors = []
+    catalog = current_receipt_catalog(result)
+    receipt = _require_receipt(
+        catalog, receipt_id, "%s Standards revalidation" % batch_id, errors,
+        expected={
+            "tool": TOOL, "tool_version": TOOL_VERSION,
+            "gate_id": "standards-revalidation",
+            "check": "required_queue", "target": QUEUE_PATH,
+            "queue_check_mode": "require-revalidation:%s" % batch_id,
+            "task_id": (result.get("queue") or {}).get("task_id"),
+            "batch_id": batch_id,
+            "queue_revision": (result.get("queue") or {}).get(
+                "queue_revision"),
+            "queue_state_revision": (result.get("queue") or {}).get(
+                "state_revision"),
+            "required_queue_sha256": result.get("queue_sha256"),
+            "coverage_ledger_sha256": result.get("coverage_sha256"),
+            "progress_ledger_sha256": result.get("progress_sha256"),
+            "standards_version": (result.get("queue") or {}).get(
+                "standards_version"),
+            "selected_profile_manifest": (result.get("queue") or {}).get(
+                "selected_profile_manifest"),
+        })
+    if receipt is None:
+        return errors
+    supplied = {}
+    rows = receipt.get("boundary_gate_receipts")
+    if not isinstance(rows, list):
+        errors.append("Standards revalidation receipt lacks boundary_gate_receipts")
+    else:
+        for row in rows:
+            if not isinstance(row, dict):
+                errors.append("boundary_gate_receipts contains a non-mapping")
+                continue
+            gate_id = row.get("required_gate_id")
+            if gate_id in supplied:
+                errors.append("boundary_gate_receipts repeats %s" % gate_id)
+            supplied[gate_id] = row.get("receipt_id")
+    expected, context_errors = standards_revalidation_context(
+        result, batch_id, supplied)
+    errors.extend(context_errors)
+    if expected is not None:
+        for field, value in expected.items():
+            if receipt.get(field) != value:
+                errors.append("Standards revalidation receipt %s=%r, expected %r" %
+                              (field, receipt.get(field), value))
+    return errors
+
+
+def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
+                                    progress=None, validate_current=True):
+    """Return closed-schema and referential errors for one adoption plan."""
+    errors = _closed_mapping_errors(
+        plan, "Standards adoption plan", STANDARDS_ADOPTION_PLAN_FIELDS)
+    if not isinstance(plan, dict):
+        return errors
+    if plan.get("schema_version") != 1:
+        errors.append("Standards adoption plan schema_version must be 1")
+    for field in (
+            "adoption_id", "task_id", "task_state_before",
+            "contract_version_before", "contract_version_after",
+            "standards_version_before", "standards_version_after",
+            "selected_profile_manifest_before",
+            "selected_profile_manifest_after", "governance_revision_ref"):
+        if not _nonempty_string(plan.get(field)):
+            errors.append("Standards adoption plan %s must be non-empty" % field)
+    if plan.get("task_state_before") not in ("active", "paused"):
+        errors.append("Standards adoption plan supports only active or paused "
+                      "tasks; completion-candidate must first transition back")
+    if (plan.get("standards_version_before") ==
+            plan.get("standards_version_after")):
+        errors.append("Standards adoption must change standards_version")
+    for field in ("queue_revision_before", "queue_revision_after",
+                  "queue_state_revision_before"):
+        value = plan.get(field)
+        minimum = 1 if field.startswith("queue_revision") else 0
+        if (not isinstance(value, int) or isinstance(value, bool) or
+                value < minimum):
+            errors.append("Standards adoption plan %s must be an integer >= %d" %
+                          (field, minimum))
+    if (isinstance(plan.get("queue_revision_before"), int) and
+            isinstance(plan.get("queue_revision_after"), int) and
+            plan["queue_revision_after"] !=
+            plan["queue_revision_before"] + 1):
+        errors.append("Standards adoption queue_revision_after must increment "
+                      "queue_revision_before exactly once")
+    for field in (
+            "governance_revision_sha256", "standards_snapshot_sha256_after",
+            "profile_snapshot_sha256_after", "coverage_sha256_before",
+            "required_queue_sha256_before", "progress_sha256_before"):
+        if not SHA256_RE.fullmatch(str(plan.get(field, ""))):
+            errors.append("Standards adoption plan %s is not a SHA-256" % field)
+
+    list_fields = (
+        "selected_route_ids_after", "selected_card_paths_after",
+        "selected_profile_route_ids_after", "selected_read_sets_after",
+        "loaded_module_paths_after", "immediate_gate_reruns",
+        "boundary_gate_reruns",
+    )
+    for field in list_fields:
+        errors.extend(_explicit_string_list_errors(
+            plan.get(field), "Standards adoption plan %s" % field))
+        if isinstance(plan.get(field), list) and plan[field] != sorted(plan[field]):
+            errors.append("Standards adoption plan %s must be sorted" % field)
+
+    if validate_current and root is not None:
+        governance = plan.get("governance_revision_ref")
+        expected_governance = \
+            "kernel/K00 Standards Control/03 Standards Governance.md"
+        if governance != expected_governance:
+            errors.append("governance_revision_ref must be exactly %s" %
+                          expected_governance)
+        else:
+            try:
+                governance_path = kblib.repository_path(
+                    root, governance, must_exist=True, reject_symlink=True)
+                with open(governance_path, encoding="utf-8") as fh:
+                    governance_text = fh.read()
+                governance_sha = kblib.sha256_file(governance_path)
+                active_state, state_errors = kblib.active_standards_state(
+                    governance_text)
+                errors.extend("governance revision: %s" % error
+                              for error in state_errors)
+                if governance_sha != plan.get("governance_revision_sha256"):
+                    errors.append("governance_revision_sha256 does not bind "
+                                  "the active K00/03 bytes")
+                if active_state.get("standards_status") != "approved":
+                    errors.append("K00/03 Standards status must be approved")
+                if active_state.get("standards_version") != plan.get(
+                        "standards_version_after"):
+                    errors.append("K00/03 Standards version does not match the "
+                                  "plan after version")
+                if active_state.get("selected_profile_manifest") != plan.get(
+                        "selected_profile_manifest_after"):
+                    errors.append("K00/03 selected profile does not match the "
+                                  "plan after profile")
+            except (OSError, UnicodeError, ValueError) as exc:
+                errors.append("governance revision is unsafe or unreadable: %s" %
+                              exc)
+        after_profile = plan.get("selected_profile_manifest_after")
+        if _nonempty_string(after_profile):
+            errors.extend(selected_profile_manifest_errors(root, after_profile))
+            try:
+                profile_dir = os.path.dirname(after_profile)
+                actual = kblib.repository_tree_sha256(root, profile_dir)
+                if actual != plan.get("profile_snapshot_sha256_after"):
+                    errors.append("profile_snapshot_sha256_after is stale")
+            except (OSError, ValueError) as exc:
+                errors.append("cannot snapshot selected Profile: %s" % exc)
+        try:
+            actual = kblib.repository_tree_sha256(root, "kernel")
+            if actual != plan.get("standards_snapshot_sha256_after"):
+                errors.append("standards_snapshot_sha256_after is stale")
+        except (OSError, ValueError) as exc:
+            errors.append("cannot snapshot kernel Standards: %s" % exc)
+        for field in ("selected_card_paths_after", "selected_read_sets_after",
+                      "loaded_module_paths_after"):
+            for relative in plan.get(field) if isinstance(
+                    plan.get(field), list) else []:
+                path_error = _path_error(root, relative, must_exist=True)
+                if path_error:
+                    errors.append("Standards adoption %s path %r is unsafe or "
+                                  "missing: %s" % (field, relative, path_error))
+
+    predicates = plan.get("changed_predicates")
+    predicate_ids = []
+    boundary_gate_ids = set()
+    if not isinstance(predicates, list):
+        errors.append("Standards adoption changed_predicates must be an explicit list")
+        predicates = []
+    for index, predicate in enumerate(predicates):
+        label = "changed_predicates[%d]" % index
+        errors.extend(_closed_mapping_errors(
+            predicate, label, STANDARDS_CHANGED_PREDICATE_FIELDS))
+        if not isinstance(predicate, dict):
+            continue
+        predicate_id = predicate.get("predicate_id")
+        if not _nonempty_string(predicate_id):
+            errors.append("%s predicate_id must be non-empty" % label)
+        else:
+            predicate_ids.append(predicate_id)
+        if predicate.get("change_kind") not in ("added", "removed", "modified"):
+            errors.append("%s change_kind must be added, removed, or modified" %
+                          label)
+        owner = predicate.get("owner_path")
+        if not _nonempty_string(owner):
+            errors.append("%s owner_path must be non-empty" % label)
+        elif validate_current and root is not None:
+            path_error = _path_error(root, owner, must_exist=True)
+            if path_error:
+                errors.append("%s owner_path is unsafe or missing: %s" %
+                              (label, path_error))
+        affected = predicate.get("affected_gate_ids")
+        errors.extend(_explicit_string_list_errors(
+            affected, "%s affected_gate_ids" % label))
+        if isinstance(affected, list):
+            if not affected:
+                errors.append("%s affected_gate_ids must be non-empty" % label)
+            if affected != sorted(affected):
+                errors.append("%s affected_gate_ids must be sorted" % label)
+            boundary_gate_ids.update(value for value in affected
+                                     if _nonempty_string(value))
+    if len(predicate_ids) != len(set(predicate_ids)):
+        errors.append("Standards adoption repeats predicate_id")
+    if predicate_ids != sorted(predicate_ids):
+        errors.append("Standards adoption changed_predicates must be sorted by "
+                      "predicate_id")
+    predicate_set = set(predicate_ids)
+
+    boundaries = plan.get("invalidation_boundaries")
+    boundary_ids = []
+    boundary_batch_targets = {}
+    covered_predicates = set()
+    affected_batches = set()
+    if not isinstance(boundaries, list):
+        errors.append("Standards adoption invalidation_boundaries must be an explicit list")
+        boundaries = []
+    target_kinds = frozenset((
+        "batch", "receipt", "task", "terminal-audit",
+        "maintenance-completion", "profile-load",
+    ))
+    for index, boundary in enumerate(boundaries):
+        label = "invalidation_boundaries[%d]" % index
+        errors.extend(_closed_mapping_errors(
+            boundary, label, STANDARDS_INVALIDATION_BOUNDARY_FIELDS))
+        if not isinstance(boundary, dict):
+            continue
+        boundary_id = boundary.get("boundary_id")
+        if not _nonempty_string(boundary_id):
+            errors.append("%s boundary_id must be non-empty" % label)
+        else:
+            boundary_ids.append(boundary_id)
+        if boundary.get("target_kind") not in target_kinds:
+            errors.append("%s target_kind is invalid" % label)
+        for field in ("predicate_ids", "target_ids", "required_gate_ids"):
+            values = boundary.get(field)
+            errors.extend(_explicit_string_list_errors(
+                values, "%s %s" % (label, field)))
+            if isinstance(values, list):
+                if not values:
+                    errors.append("%s %s must be non-empty" % (label, field))
+                if values != sorted(values):
+                    errors.append("%s %s must be sorted" % (label, field))
+        referenced = set(boundary.get("predicate_ids") or [])
+        if not referenced.issubset(predicate_set):
+            errors.append("%s references an unknown changed predicate" % label)
+        covered_predicates.update(referenced)
+        boundary_gate_ids.update(
+            value for value in (boundary.get("required_gate_ids") or [])
+            if _nonempty_string(value))
+        targets = boundary.get("target_ids") or []
+        if boundary.get("target_kind") == "batch":
+            affected_batches.update(targets)
+            if _nonempty_string(boundary_id):
+                boundary_batch_targets[boundary_id] = set(targets)
+            if queue is not None:
+                known = {item.get("id") for item in queue.get("required_queue", [])
+                         if isinstance(item, dict)}
+                unknown = sorted(set(targets) - known)
+                if unknown:
+                    errors.append("%s names unknown batch target(s): %s" %
+                                  (label, ", ".join(unknown)))
+        if boundary.get("target_kind") == "receipt" and catalog is not None:
+            unknown = sorted(set(targets) - set(catalog))
+            if unknown:
+                errors.append("%s names unknown receipt target(s): %s" %
+                              (label, ", ".join(unknown)))
+        if boundary.get("target_kind") == "task" and targets != [plan.get("task_id")]:
+            errors.append("%s task target_ids must contain only task_id" % label)
+    if len(boundary_ids) != len(set(boundary_ids)):
+        errors.append("Standards adoption repeats invalidation boundary_id")
+    if boundary_ids != sorted(boundary_ids):
+        errors.append("Standards adoption invalidation_boundaries must be sorted "
+                      "by boundary_id")
+    boundary_set = set(boundary_ids)
+
+    invalidated = plan.get("invalidated_evidence")
+    invalidated_ids = []
+    reason_codes = frozenset((
+        "predicate-changed", "receipt-schema-changed",
+        "profile-binding-changed", "gate-semantics-changed",
+    ))
+    if not isinstance(invalidated, list):
+        errors.append(
+            "Standards adoption invalidated_evidence must be an explicit list")
+        invalidated = []
+    queue_ids = ({item.get("id") for item in queue.get("required_queue", [])
+                  if isinstance(item, dict)} if queue is not None else set())
+    for index, evidence in enumerate(invalidated):
+        label = "invalidated_evidence[%d]" % index
+        errors.extend(_closed_mapping_errors(
+            evidence, label, STANDARDS_INVALIDATED_EVIDENCE_FIELDS))
+        if not isinstance(evidence, dict):
+            continue
+        receipt_id = evidence.get("receipt_id")
+        if not _nonempty_string(receipt_id):
+            errors.append("%s receipt_id must be non-empty" % label)
+        else:
+            invalidated_ids.append(receipt_id)
+            if catalog is not None and receipt_id not in catalog:
+                errors.append("%s names unknown receipt %s" %
+                              (label, receipt_id))
+        for field in ("predicate_ids", "dimension_ids", "boundary_ids",
+                      "revalidation_scope_ids"):
+            values = evidence.get(field)
+            errors.extend(_explicit_string_list_errors(
+                values, "%s %s" % (label, field)))
+            if isinstance(values, list) and values != sorted(values):
+                errors.append("%s %s must be sorted" % (label, field))
+        if not evidence.get("predicate_ids") or not set(
+                evidence.get("predicate_ids", [])).issubset(predicate_set):
+            errors.append("%s predicate_ids must name changed predicates" % label)
+        if not evidence.get("dimension_ids"):
+            errors.append("%s dimension_ids must be non-empty" % label)
+        if not evidence.get("boundary_ids") or not set(
+                evidence.get("boundary_ids", [])).issubset(boundary_set):
+            errors.append("%s boundary_ids must name invalidation boundaries" %
+                          label)
+        if evidence.get("reason_code") not in reason_codes:
+            errors.append("%s reason_code is invalid" % label)
+        affected_batches.update(
+            value for value in (evidence.get("revalidation_scope_ids") or [])
+            if value in queue_ids)
+    if len(invalidated_ids) != len(set(invalidated_ids)):
+        errors.append("Standards adoption repeats invalidated receipt_id")
+    if invalidated_ids != sorted(invalidated_ids):
+        errors.append(
+            "Standards adoption invalidated_evidence must be sorted by receipt_id")
+
+    if predicate_set:
+        if not boundary_ids:
+            errors.append("changed predicates require invalidation boundaries")
+        if covered_predicates != predicate_set:
+            errors.append("every changed predicate must occur in an invalidation boundary")
+    elif invalidated or boundaries:
+        errors.append("no-op adoption requires empty invalidated_evidence and "
+                      "invalidation_boundaries")
+    if plan.get("immediate_gate_reruns") != ["required-queue-consistency"]:
+        errors.append("immediate_gate_reruns must be exactly "
+                      "[required-queue-consistency]")
+    expected_boundary_gates = sorted(boundary_gate_ids)
+    if plan.get("boundary_gate_reruns") != expected_boundary_gates:
+        errors.append("boundary_gate_reruns must equal the exact affected-gate "
+                      "union %r" % expected_boundary_gates)
+
+    if validate_current and root is not None:
+        registry, registry_errors = standards_gate_registry(root)
+        errors.extend(registry_errors)
+        unknown_gates = sorted(boundary_gate_ids - set(registry))
+        if unknown_gates:
+            errors.append("Standards adoption names unregistered Gate ID(s): %s" %
+                          ", ".join(unknown_gates))
+
+    if validate_current and root is not None and queue is not None and \
+            catalog is not None:
+        consumers = invalidated_receipt_consumers(root, queue, catalog)
+        for evidence in invalidated:
+            if not isinstance(evidence, dict):
+                continue
+            receipt_id = evidence.get("receipt_id")
+            actual_batches = {
+                row.get("batch_id") for row in consumers.get(receipt_id, [])
+                if _nonempty_string(row.get("batch_id"))
+            }
+            declared_batches = set(evidence.get("revalidation_scope_ids") or [])
+            for boundary_id in evidence.get("boundary_ids") or []:
+                declared_batches.update(
+                    boundary_batch_targets.get(boundary_id, set()))
+            omitted = sorted(actual_batches - declared_batches)
+            if omitted:
+                errors.append(
+                    "invalidated receipt %s is consumed by Queue/Delta batch(es) "
+                    "omitted from its own boundaries/revalidation scope: %s" %
+                    (receipt_id, ", ".join(omitted)))
+
+    if validate_current and queue is not None:
+        items = {item.get("id"): item for item in queue.get("required_queue", [])
+                 if isinstance(item, dict)}
+        for batch_id in sorted(affected_batches):
+            item = items.get(batch_id)
+            if item is None:
+                continue
+            if item.get("state") == "merge-ready":
+                errors.append("affected batch %s is merge-ready; roll it back "
+                              "before Standards adoption" % batch_id)
+            if (item.get("state") == "open" and
+                    item.get("hold_state") != "revalidation-required"):
+                errors.append("affected open batch %s must already have "
+                              "hold_state=revalidation-required" % batch_id)
+
+    if validate_current and progress is not None and isinstance(
+            progress.get("contract"), dict):
+        contract = progress["contract"]
+        if contract.get("contract_version") != plan.get(
+                "contract_version_before"):
+            errors.append("contract_version_before does not match Progress")
+        load_changed = any(contract.get(field[:-6]) != plan.get(field)
+                           for field in (
+                               "selected_route_ids_after",
+                               "selected_card_paths_after",
+                               "selected_profile_route_ids_after",
+                               "selected_read_sets_after",
+                               "loaded_module_paths_after"))
+        material_change = bool(predicate_set) or load_changed or (
+            plan.get("selected_profile_manifest_before") !=
+            plan.get("selected_profile_manifest_after"))
+        if (material_change and plan.get("contract_version_after") ==
+                plan.get("contract_version_before")):
+            errors.append("predicate/Profile/load-set change requires a new "
+                          "contract_version")
+    return errors
+
+
+def _standards_adoption_errors(root, progress, catalog, queue):
+    """Validate plan/record/commit bindings for all persisted adoptions."""
+    records = progress.get("standards_adoptions")
+    if not isinstance(records, list):
+        return []
+    errors = []
+    previous = None
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            continue
+        label = "Progress standards_adoptions[%d]" % index
+        try:
+            plan_file = kblib.managed_repository_path(
+                root, record.get("plan_path"), STANDARDS_ADOPTION_PLAN_PREFIX,
+                suffixes=(".yaml",), must_exist=True)
+            plan_sha = kblib.sha256_file(plan_file)
+            plan = kblib.load_yaml_file(plan_file)
+        except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
+            errors.append("%s plan is unsafe or unreadable: %s" % (label, exc))
+            continue
+        if plan_sha != record.get("plan_sha256"):
+            errors.append("%s plan_sha256 does not match current plan bytes" % label)
+        errors.extend("%s %s" % (label, error)
+                      for error in standards_adoption_plan_errors(
+                          root, plan, catalog=catalog, queue=queue,
+                          progress=progress, validate_current=False))
+        changed_ids = sorted(
+            row.get("predicate_id") for row in plan.get("changed_predicates", [])
+            if isinstance(row, dict) and _nonempty_string(row.get("predicate_id")))
+        invalidated_ids = sorted(
+            row.get("receipt_id")
+            for row in plan.get("invalidated_evidence", [])
+            if isinstance(row, dict) and _nonempty_string(row.get("receipt_id")))
+        boundary_ids = sorted(
+            row.get("boundary_id") for row in plan.get("invalidation_boundaries", [])
+            if isinstance(row, dict) and _nonempty_string(row.get("boundary_id")))
+        record_plan_fields = {
+            "id": "adoption_id",
+            "task_state_before": "task_state_before",
+            "contract_version_before": "contract_version_before",
+            "contract_version_after": "contract_version_after",
+            "standards_version_before": "standards_version_before",
+            "standards_version_after": "standards_version_after",
+            "selected_profile_manifest_before":
+                "selected_profile_manifest_before",
+            "selected_profile_manifest_after":
+                "selected_profile_manifest_after",
+            "governance_revision_ref": "governance_revision_ref",
+            "governance_revision_sha256": "governance_revision_sha256",
+            "standards_snapshot_sha256_after":
+                "standards_snapshot_sha256_after",
+            "profile_snapshot_sha256_after":
+                "profile_snapshot_sha256_after",
+            "selected_route_ids_after": "selected_route_ids_after",
+            "selected_card_paths_after": "selected_card_paths_after",
+            "selected_profile_route_ids_after":
+                "selected_profile_route_ids_after",
+            "selected_read_sets_after": "selected_read_sets_after",
+            "loaded_module_paths_after": "loaded_module_paths_after",
+            "queue_revision_before": "queue_revision_before",
+            "queue_revision_after": "queue_revision_after",
+            "queue_state_revision_before": "queue_state_revision_before",
+            "coverage_sha256_before": "coverage_sha256_before",
+            "required_queue_sha256_before": "required_queue_sha256_before",
+            "progress_sha256_before": "progress_sha256_before",
+            "immediate_gate_reruns": "immediate_gate_reruns",
+            "boundary_gate_reruns": "boundary_gate_reruns",
+        }
+        for record_field, plan_field in record_plan_fields.items():
+            if record.get(record_field) != plan.get(plan_field):
+                errors.append("%s %s does not match its plan" %
+                              (label, record_field))
+        for field, expected in (
+                ("changed_predicate_ids", changed_ids),
+                ("invalidated_evidence_receipt_ids", invalidated_ids),
+                ("invalidation_boundary_ids", boundary_ids)):
+            if record.get(field) != expected:
+                errors.append("%s %s does not match its plan" % (label, field))
+        receipt_id = record.get("verification_receipt")
+        receipt = _require_receipt(
+            catalog, receipt_id, "%s commit" % label, errors,
+            expected={
+                "tool": STANDARDS_ADOPTION_TOOL,
+                "tool_version": STANDARDS_ADOPTION_TOOL_VERSION,
+                "gate_id": "standards-adoption",
+                "check": "standards_adoption",
+                "target": record.get("id"),
+                "result": "pass",
+                "invalidated_by": None,
+                "transaction_phase": "commit",
+                "task_id": queue.get("task_id"),
+                "actor_role": "integrator",
+                "plan_path": record.get("plan_path"),
+                "plan_sha256": record.get("plan_sha256"),
+                "transaction_id": record.get("transaction_id"),
+            },
+        )
+        if receipt is not None:
+            receipt_bindings = {
+                "checked_at": "adopted_at",
+                "before_coverage_sha256": "coverage_sha256_before",
+                "before_queue_sha256": "required_queue_sha256_before",
+                "before_progress_sha256": "progress_sha256_before",
+                "after_coverage_sha256": "after_coverage_sha256",
+                "after_queue_sha256": "after_required_queue_sha256",
+                "queue_revision_before": "queue_revision_before",
+                "queue_revision_after": "queue_revision_after",
+                "state_revision_before": "queue_state_revision_before",
+                "state_revision_after": "queue_state_revision_before",
+                "standards_version_before": "standards_version_before",
+                "standards_version_after": "standards_version_after",
+                "selected_profile_manifest_before":
+                    "selected_profile_manifest_before",
+                "selected_profile_manifest_after":
+                    "selected_profile_manifest_after",
+                "contract_version_before": "contract_version_before",
+                "contract_version_after": "contract_version_after",
+                "governance_revision_ref": "governance_revision_ref",
+                "governance_revision_sha256": "governance_revision_sha256",
+                "standards_snapshot_sha256_after":
+                    "standards_snapshot_sha256_after",
+                "profile_snapshot_sha256_after":
+                    "profile_snapshot_sha256_after",
+                "changed_predicate_ids": "changed_predicate_ids",
+                "invalidated_evidence_receipt_ids":
+                    "invalidated_evidence_receipt_ids",
+                "invalidation_boundary_ids": "invalidation_boundary_ids",
+                "immediate_gate_reruns": "immediate_gate_reruns",
+                "immediate_gate_receipts": "immediate_gate_receipts",
+                "boundary_gate_reruns": "boundary_gate_reruns",
+            }
+            for receipt_field, record_field in receipt_bindings.items():
+                if receipt.get(receipt_field) != record.get(record_field):
+                    errors.append("%s receipt %s does not match record %s" %
+                                  (label, receipt_field, record_field))
+            after_progress = receipt.get("after_progress_sha256")
+            if not SHA256_RE.fullmatch(str(after_progress or "")):
+                errors.append("%s receipt has invalid after_progress_sha256" %
+                              label)
+            immediate_ids = record.get("immediate_gate_receipts")
+            if not isinstance(immediate_ids, list) or len(immediate_ids) != 1:
+                errors.append("%s must bind exactly one immediate gate receipt" %
+                              label)
+            else:
+                _require_receipt(
+                    catalog, immediate_ids[0], "%s immediate Queue gate" % label,
+                    errors, expected={
+                        "tool": TOOL,
+                        "tool_version": TOOL_VERSION,
+                        "gate_id": "required-queue-consistency",
+                        "check": "required_queue",
+                        "target": QUEUE_PATH,
+                        "result": "pass",
+                        "invalidated_by": None,
+                        "queue_check_mode": "consistency",
+                        "task_id": queue.get("task_id"),
+                        "queue_revision": record.get("queue_revision_after"),
+                        "queue_state_revision":
+                            record.get("queue_state_revision_before"),
+                        "required_queue_sha256":
+                            record.get("after_required_queue_sha256"),
+                        "coverage_ledger_sha256":
+                            record.get("after_coverage_sha256"),
+                        "progress_ledger_sha256": after_progress,
+                        "standards_version":
+                            record.get("standards_version_after"),
+                        "selected_profile_manifest":
+                            record.get("selected_profile_manifest_after"),
+                    })
+        if previous is not None:
+            if (record.get("standards_version_before") !=
+                    previous.get("standards_version_after")):
+                errors.append("%s does not continue prior Standards version" % label)
+            if (record.get("selected_profile_manifest_before") !=
+                    previous.get("selected_profile_manifest_after")):
+                errors.append("%s does not continue prior profile selection" % label)
+            if (isinstance(record.get("queue_revision_before"), int) and
+                    isinstance(previous.get("queue_revision_after"), int) and
+                    record["queue_revision_before"] <
+                    previous["queue_revision_after"]):
+                errors.append("%s moves Queue revision backward" % label)
+        previous = record
+    if records and isinstance(records[-1], dict):
+        latest = records[-1]
+        contract = progress.get("contract") if isinstance(
+            progress.get("contract"), dict) else {}
+        for field, contract_field in (
+                ("contract_version_after", "contract_version"),
+                ("standards_version_after", "standards_version"),
+                ("selected_profile_manifest_after", "selected_profile_manifest"),
+                ("selected_route_ids_after", "selected_route_ids"),
+                ("selected_card_paths_after", "selected_card_paths"),
+                ("selected_profile_route_ids_after", "selected_profile_route_ids"),
+                ("selected_read_sets_after", "selected_read_sets"),
+                ("loaded_module_paths_after", "loaded_module_paths")):
+            if latest.get(field) != contract.get(contract_field):
+                errors.append("latest Standards adoption %s does not bind live "
+                              "Progress contract.%s" % (field, contract_field))
+    return errors
 
 
 def _writer_locks(root, errors):
@@ -1173,6 +2522,54 @@ def _require_receipt(catalog, receipt_id, label, errors, expected=None):
     return receipt
 
 
+def batch_review_receipt_errors(catalog, receipt_id, *, item_id, task_id,
+                                delta_page_receipt_ids):
+    """Validate the current batch-level authorization around page evidence.
+
+    Page receipts may have been produced by older evidence protocols and are
+    validated separately as history.  The lifecycle edge is authorized only
+    by one current manual-attestation receipt that binds their exact IDs.
+    """
+    errors = []
+    receipt = _require_receipt(
+        catalog, receipt_id, "%s batch review" % item_id, errors,
+        expected={
+            "tool": MANUAL_ATTESTATION_TOOL,
+            "tool_version": MANUAL_ATTESTATION_TOOL_VERSION,
+            "gate_id": BATCH_REVIEW_GATE_ID,
+            "check": BATCH_REVIEW_CHECK,
+            "target": item_id,
+            "task_id": task_id,
+            "batch_id": item_id,
+        },
+    )
+    if receipt is None:
+        return errors
+    bound = receipt.get("delta_page_receipt_ids")
+    expected = sorted(set(delta_page_receipt_ids or []))
+    if (not isinstance(bound, list) or
+            not all(_nonempty_string(value) for value in bound)):
+        errors.append(
+            "%s batch review receipt %s delta_page_receipt_ids must be an "
+            "explicit string list" % (item_id, receipt_id))
+    elif bound != sorted(set(bound)):
+        errors.append(
+            "%s batch review receipt %s delta_page_receipt_ids must be "
+            "sorted and unique" % (item_id, receipt_id))
+    elif bound != expected:
+        errors.append(
+            "%s batch review receipt %s delta_page_receipt_ids=%r, "
+            "expected exact Delta page receipt IDs %r" %
+            (item_id, receipt_id, bound, expected))
+    if isinstance(bound, list):
+        for page_receipt_id in expected:
+            _require_receipt(
+                catalog, page_receipt_id,
+                "%s batch review page evidence" % item_id, errors,
+            )
+    return errors
+
+
 def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                               queue_revision, queue_state_revision,
                               required_queue_sha256,
@@ -1180,6 +2577,12 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                               progress_ledger_sha256, delta_sha256,
                               queue_consistency_receipt,
                               delta_apply_receipt,
+                              work_spec_path=None,
+                              work_spec_sha256=None,
+                              selected_profile_manifest=None,
+                              corpus_plan_required=None,
+                              corpus_plan_triggers=None,
+                              corpus_plan_expected_binding=None,
                               current_repository_snapshot_sha256=None):
     """Validate the independent merged-snapshot gate consumed by close.
 
@@ -1191,27 +2594,61 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     """
     errors = []
     label = "%s batch-close gate" % item_id
+    expected = {
+        "tool": BATCH_CLOSE_TOOL,
+        "tool_version": BATCH_CLOSE_TOOL_VERSION,
+        "check": "batch_close_gate",
+        "target": item_id,
+        "batch_id": item_id,
+        "task_id": task_id,
+        "queue_revision": queue_revision,
+        "queue_state_revision": queue_state_revision,
+        "required_queue_sha256": required_queue_sha256,
+        "coverage_ledger_sha256": coverage_ledger_sha256,
+        "progress_ledger_sha256": progress_ledger_sha256,
+        "delta_sha256": delta_sha256,
+        "queue_consistency_receipt": queue_consistency_receipt,
+        "delta_apply_receipt": delta_apply_receipt,
+    }
     receipt = _require_receipt(
         catalog, receipt_id, label, errors,
-        expected={
-            "tool": BATCH_CLOSE_TOOL,
-            "tool_version": BATCH_CLOSE_TOOL_VERSION,
-            "check": "batch_close_gate",
-            "target": item_id,
-            "batch_id": item_id,
-            "task_id": task_id,
-            "queue_revision": queue_revision,
-            "queue_state_revision": queue_state_revision,
-            "required_queue_sha256": required_queue_sha256,
-            "coverage_ledger_sha256": coverage_ledger_sha256,
-            "progress_ledger_sha256": progress_ledger_sha256,
-            "delta_sha256": delta_sha256,
-            "queue_consistency_receipt": queue_consistency_receipt,
-            "delta_apply_receipt": delta_apply_receipt,
-        },
+        expected=expected,
     )
     if receipt is None:
         return errors
+    receipt_version = receipt.get("tool_version")
+    if receipt_version not in SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS:
+        errors.append(
+            "%s receipt %s has unsupported tool_version=%r" %
+            (label, receipt_id, receipt_version)
+        )
+    for field, value in (
+            ("work_spec_path", work_spec_path),
+            ("work_spec_sha256", work_spec_sha256)):
+        if field not in receipt:
+            errors.append(
+                "%s receipt %s misses explicit %s" %
+                (label, receipt_id, field)
+            )
+        elif receipt.get(field) != value:
+            errors.append(
+                "%s receipt %s has %s=%r, expected %r" %
+                (label, receipt_id, field, receipt.get(field), value)
+            )
+    if (corpus_plan_required is not None and
+            receipt.get("corpus_plan_required") != corpus_plan_required):
+        errors.append(
+            "%s receipt %s has corpus_plan_required=%r, expected %r" %
+            (label, receipt_id, receipt.get("corpus_plan_required"),
+             corpus_plan_required)
+        )
+    if (corpus_plan_triggers is not None and
+            receipt.get("corpus_plan_triggers") != corpus_plan_triggers):
+        errors.append(
+            "%s receipt %s has corpus_plan_triggers=%r, expected %r" %
+            (label, receipt_id, receipt.get("corpus_plan_triggers"),
+             corpus_plan_triggers)
+        )
     entry = catalog.get(receipt_id)
     if entry is not None and entry[0] == "<pending-write>":
         errors.append("%s receipt %s is not persisted in the repository" %
@@ -1231,6 +2668,125 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
              current_repository_snapshot_sha256)
         )
 
+    actual_corpus_required = receipt.get("corpus_plan_required")
+    actual_corpus_triggers = receipt.get("corpus_plan_triggers")
+    corpus_receipt_id = receipt.get("corpus_plan_receipt")
+    if not isinstance(actual_corpus_required, bool):
+        errors.append(
+            "%s receipt %s corpus_plan_required must be an explicit boolean" %
+            (label, receipt_id))
+    if (not isinstance(actual_corpus_triggers, list) or
+            any(not _nonempty_string(value)
+                for value in actual_corpus_triggers)):
+        errors.append(
+            "%s receipt %s corpus_plan_triggers must be an explicit string "
+            "list" % (label, receipt_id))
+        actual_corpus_triggers = []
+    else:
+        if actual_corpus_triggers != sorted(set(actual_corpus_triggers)):
+            errors.append(
+                "%s receipt %s corpus_plan_triggers must be unique and sorted" %
+                (label, receipt_id))
+        unsupported = sorted(
+            set(actual_corpus_triggers) - CORPUS_PLAN_TRIGGERS)
+        if unsupported:
+            errors.append(
+                "%s receipt %s has unsupported corpus-plan trigger(s): %s" %
+                (label, receipt_id, ", ".join(unsupported)))
+    if actual_corpus_required is False:
+        if actual_corpus_triggers:
+            errors.append(
+                "%s receipt %s non-applicable corpus plan must use no "
+                "triggers" % (label, receipt_id))
+        if corpus_receipt_id is not None:
+            errors.append(
+                "%s receipt %s non-applicable corpus plan must use "
+                "corpus_plan_receipt=null" % (label, receipt_id))
+    elif actual_corpus_required is True:
+        if not actual_corpus_triggers:
+            errors.append(
+                "%s receipt %s required corpus plan has no trigger" %
+                (label, receipt_id))
+        corpus_expected = {
+            "tool": CORPUS_PLAN_TOOL,
+            "tool_version": CORPUS_PLAN_TOOL_VERSION,
+            "check": "corpus_plan",
+            "result": "pass",
+            "task_id": task_id,
+            "queue_revision": queue_revision,
+            "queue_state_revision": queue_state_revision,
+            "required_queue_sha256": required_queue_sha256,
+            "coverage_ledger_sha256": coverage_ledger_sha256,
+            "progress_ledger_sha256": progress_ledger_sha256,
+            "repository_snapshot_sha256": merged_snapshot_sha256,
+        }
+        if selected_profile_manifest is not None:
+            corpus_expected.update({
+                "target": selected_profile_manifest,
+                "selected_profile_manifest": selected_profile_manifest,
+            })
+        corpus_receipt = _require_receipt(
+            catalog, corpus_receipt_id,
+            "%s Corpus Planning child" % item_id, errors,
+            expected=corpus_expected,
+        )
+        if isinstance(corpus_receipt, dict):
+            if corpus_plan_expected_binding is not None:
+                if not isinstance(corpus_plan_expected_binding, dict):
+                    errors.append(
+                        "%s Corpus Planning expected binding must be a "
+                        "mapping" % item_id)
+                else:
+                    for field, value in sorted(
+                            corpus_plan_expected_binding.items()):
+                        if (field not in corpus_receipt or
+                                corpus_receipt.get(field) != value):
+                            errors.append(
+                                "%s Corpus Planning child %s has %s=%r, "
+                                "expected current %r" % (
+                                    item_id, corpus_receipt_id, field,
+                                    corpus_receipt.get(field), value))
+            applicability = corpus_receipt.get("corpus_plan_applicability")
+            if applicability not in ("configured", "not-applicable"):
+                errors.append(
+                    "%s Corpus Planning child %s has invalid applicability %r" %
+                    (item_id, corpus_receipt_id, applicability))
+            if ("R13" in actual_corpus_triggers and
+                    applicability != "configured"):
+                errors.append(
+                    "%s R13 close requires a configured Corpus Planning child" %
+                    item_id)
+            for path_field, sha_field in CORPUS_PLAN_PATH_SHA_FIELDS:
+                path_value = corpus_receipt.get(path_field)
+                sha_value = corpus_receipt.get(sha_field)
+                always_required = path_field in (
+                    "selected_profile_manifest", "corpus_planning_slot_path")
+                configured_required = applicability == "configured"
+                if always_required or configured_required:
+                    if not _nonempty_string(path_value):
+                        errors.append(
+                            "%s Corpus Planning child %s lacks %s" %
+                            (item_id, corpus_receipt_id, path_field))
+                    if (not isinstance(sha_value, str) or
+                            not SHA256_RE.fullmatch(sha_value)):
+                        errors.append(
+                            "%s Corpus Planning child %s has invalid %s" %
+                            (item_id, corpus_receipt_id, sha_field))
+                else:
+                    if (path_field not in corpus_receipt or
+                            sha_field not in corpus_receipt):
+                        errors.append(
+                            "%s inactive Corpus Planning child %s must "
+                            "explicitly bind null %s/%s" % (
+                                item_id, corpus_receipt_id, path_field,
+                                sha_field))
+                    elif path_value is not None or sha_value is not None:
+                        errors.append(
+                            "%s inactive Corpus Planning child %s must use "
+                            "null %s/%s" % (
+                                item_id, corpus_receipt_id, path_field,
+                                sha_field))
+
     _require_receipt(
         catalog, queue_consistency_receipt,
         "%s Queue consistency snapshot" % item_id, errors,
@@ -1248,7 +2804,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
         catalog, global_review_id, "%s global review" % item_id, errors,
         expected={
             "tool": BATCH_CLOSE_TOOL,
-            "tool_version": BATCH_CLOSE_TOOL_VERSION,
+            "tool_version": receipt_version,
             "check": "batch_global_review",
             "target": item_id,
             "batch_id": item_id,
@@ -1284,7 +2840,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
         item_id, errors,
         expected={
             "tool": BATCH_CLOSE_TOOL,
-            "tool_version": BATCH_CLOSE_TOOL_VERSION,
+            "tool_version": receipt_version,
             "check": "batch_global_review_attestation",
             "target": item_id,
             "batch_id": item_id,
@@ -1390,7 +2946,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
             "%s Closed List member %s" % (item_id, field), errors,
             expected={
                 "tool": BATCH_CLOSE_TOOL,
-                "tool_version": BATCH_CLOSE_TOOL_VERSION,
+                "tool_version": receipt_version,
                 "check": "closed_list_%s" % field,
                 "target": ".",
                 "batch_id": item_id,
@@ -1420,6 +2976,12 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
         errors.append("%s global review receipt %s does not bind the same "
                       "Closed List evidence mapping" %
                       (item_id, global_review_id))
+    if corpus_receipt_id is not None and corpus_receipt_id in (
+            evidence_ids + [receipt_id, global_review_id, attestation_id,
+                            queue_consistency_receipt, delta_apply_receipt]):
+        errors.append(
+            "%s receipt %s Corpus Planning child must be distinct from the "
+            "aggregator and all other close evidence" % (label, receipt_id))
     return errors
 
 
@@ -2623,11 +4185,10 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         if terminal_audit.get("state") != "ready":
             errors.append("completion-candidate terminal_audit state must be ready")
         completion_id = terminal_audit.get("queue_check_receipt")
-        _require_receipt(
+        completion_receipt = _require_receipt(
             catalog, completion_id, "completion-candidate Queue gate", errors,
             expected={
                 "tool": TOOL,
-                "tool_version": TOOL_VERSION,
                 "check": "required_queue",
                 "queue_check_mode": "require-complete",
                 "task_id": task_id,
@@ -2641,6 +4202,16 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                 "remaining_required_work_units": 0,
             },
         )
+        if isinstance(completion_receipt, dict):
+            completion_version = completion_receipt.get("tool_version")
+            if completion_version not in SUPPORTED_QUEUE_GATE_TOOL_VERSIONS:
+                errors.append("completion-candidate Queue gate has unsupported "
+                              "tool_version=%r" % completion_version)
+            elif (completion_version == TOOL_VERSION and
+                  completion_receipt.get("gate_id") !=
+                  "required-queue-completion"):
+                errors.append("current completion-candidate Queue gate must "
+                              "bind gate_id=required-queue-completion")
     if task_state == "complete" and completion_semantics == "build":
         if terminal_audit.get("state") != "passed":
             errors.append("complete terminal_audit state must be passed")
@@ -2648,8 +4219,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         proof = _require_receipt(
             catalog, proof_id, "complete Terminal Proof", errors,
             expected={
-                "tool": "check_proof",
-                "tool_version": "1.12.0",
+                "tool": TERMINAL_PROOF_TOOL,
                 "check": "proof-check-summary",
                 "task_id": task_id,
                 "coverage_ledger_sha256": coverage_sha,
@@ -2660,6 +4230,15 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                 "remaining_required_work_units": 0,
             },
         )
+        if isinstance(proof, dict):
+            proof_version = proof.get("tool_version")
+            if proof_version not in SUPPORTED_TERMINAL_PROOF_TOOL_VERSIONS:
+                errors.append("complete Terminal Proof has unsupported "
+                              "tool_version=%r" % proof_version)
+            elif (proof_version == TERMINAL_PROOF_TOOL_VERSION and
+                  proof.get("gate_id") != "terminal-proof"):
+                errors.append("current Terminal Proof receipt must bind "
+                              "gate_id=terminal-proof")
         if transitions and proof is not None:
             latest = transitions[-1]
             if latest.get("evidence_receipt") != proof_id:
@@ -2704,7 +4283,6 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
             catalog, gate_id, "maintenance completion gate", errors,
             expected={
                 "tool": TOOL,
-                "tool_version": TOOL_VERSION,
                 "check": "required_queue",
                 "queue_check_mode": "require-maintenance-complete",
                 "task_id": task_id,
@@ -2723,6 +4301,15 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                 "remaining_required_work_units": 0,
             },
         )
+        if isinstance(gate, dict):
+            gate_version = gate.get("tool_version")
+            if gate_version not in SUPPORTED_QUEUE_GATE_TOOL_VERSIONS:
+                errors.append("maintenance completion gate has unsupported "
+                              "tool_version=%r" % gate_version)
+            elif (gate_version == TOOL_VERSION and
+                  gate.get("gate_id") != "maintenance-completion"):
+                errors.append("current maintenance completion gate must bind "
+                              "gate_id=maintenance-completion")
         if transitions and gate is not None:
             latest = transitions[-1]
             if (latest.get("before_task_state") not in ("planned", "active") or
@@ -3094,6 +4681,7 @@ def _coverage_provenance_errors(progress, queue, catalog, coverage_sha,
         ("update_task", "task_transition"),
         ("apply_amendment", "amendment_transaction"),
         ("apply_delta", "delta_apply"),
+        (STANDARDS_ADOPTION_TOOL, "standards_adoption"),
     }
     writers = []
     # Writer receipts live in one collision-checked managed namespace.  Some
@@ -3110,13 +4698,13 @@ def _coverage_provenance_errors(progress, queue, catalog, coverage_sha,
                 receipt.get("actor_role") != "integrator"):
             continue
         tool = receipt.get("tool")
-        if (tool == "apply_amendment" and
+        if (tool in ("apply_amendment", STANDARDS_ADOPTION_TOOL) and
                 receipt.get("transaction_phase") != "commit"):
             continue
         # Historical after-images remain valid evidence for history, but they
         # cannot authorize restoration of an older Coverage file.  A current
         # Coverage writer must be anchored to the exact live Queue point.
-        if tool == "apply_amendment":
+        if tool in ("apply_amendment", STANDARDS_ADOPTION_TOOL):
             receipt_queue_sha = receipt.get("after_queue_sha256")
         elif tool == "apply_delta":
             receipt_queue_sha = receipt.get("required_queue_sha256")
@@ -3471,6 +5059,372 @@ def _path_error(root, raw_path, must_exist=False):
     return None
 
 
+def _work_spec_binding_errors(path, fingerprint, label):
+    """Validate one explicit simple/complex batch declaration.
+
+    Null/null is the only spelling for a simple batch.  A complex batch must
+    bind both a managed restricted-YAML path and exact lowercase SHA-256.  The pair
+    intentionally carries no inferred complexity flag: omission is invalid.
+    """
+    errors = []
+    if path is None and fingerprint is None:
+        return errors
+    if path is None or fingerprint is None:
+        errors.append(
+            "%s work_spec_path and work_spec_sha256 must both be null or "
+            "both be non-null" % label
+        )
+        return errors
+    if not _nonempty_string(path):
+        errors.append("%s work_spec_path must be null or a non-empty string" %
+                      label)
+    elif (not path.startswith(WORK_SPEC_PREFIX + "/") or
+          not path.endswith(".yaml") or
+          Path(path).parent.as_posix() != WORK_SPEC_PREFIX):
+        errors.append(
+            "%s work_spec_path must be a YAML file directly inside %s/" %
+            (label, WORK_SPEC_PREFIX)
+        )
+    if not isinstance(fingerprint, str) or not SHA256_RE.fullmatch(fingerprint):
+        errors.append(
+            "%s work_spec_sha256 must be null or sha256:<64 lowercase hex>" %
+            label
+        )
+    return errors
+
+
+def _closed_work_spec_mapping_errors(value, expected_fields, label):
+    """Validate one mapping node in the closed Work Spec grammar."""
+    if not isinstance(value, dict):
+        return ["%s must be a mapping" % label]
+    actual = set(value)
+    missing = sorted(expected_fields - actual)
+    extra = sorted(actual - expected_fields)
+    errors = []
+    if missing:
+        errors.append("%s misses field(s): %s" % (label, ", ".join(missing)))
+    if extra:
+        queue_owned = sorted(set(extra).intersection(
+            WORK_SPEC_QUEUE_OWNED_FIELDS))
+        if queue_owned:
+            errors.append(
+                "%s must not declare Queue-owned field(s): %s" %
+                (label, ", ".join(queue_owned))
+            )
+        errors.append("%s has unsupported field(s): %s" %
+                      (label, ", ".join(extra)))
+    return errors
+
+
+def _work_spec_id_errors(value, label):
+    if (not isinstance(value, str) or
+            not WORK_SPEC_RECORD_ID_RE.fullmatch(value)):
+        return ["%s must match %s" %
+                (label, WORK_SPEC_RECORD_ID_RE.pattern.replace("\\Z", ""))]
+    return []
+
+
+def _work_spec_target_scope_errors(value, manifest, label):
+    errors = []
+    if (not isinstance(value, list) or not value or
+            not all(_nonempty_string(entry) for entry in value)):
+        return [
+            "%s must be a non-empty explicit string list containing "
+            "'batch' or Queue manifest paths" % label
+        ]
+    if len(set(value)) != len(value):
+        errors.append("%s must not contain duplicate targets" % label)
+    has_batch = "batch" in value
+    if has_batch and value != ["batch"]:
+        errors.append(
+            "%s must be exactly ['batch'] or contain only Queue manifest "
+            "paths; batch and paths cannot be mixed" % label
+        )
+    elif not has_batch:
+        unknown = [entry for entry in value if entry not in manifest]
+        if unknown:
+            errors.append(
+                "%s contains target(s) outside the Queue manifest: %s" %
+                (label, ", ".join(unknown))
+            )
+    return errors
+
+
+def _nested_queue_owned_work_spec_fields(value, path=()):
+    """Return Queue-owned keys hidden below otherwise scalar/list fields.
+
+    ``instructions[].order`` and ``instructions[].depends_on`` are the only
+    intentional spelling overlaps with Queue item keys.  Exact mapping checks
+    govern those positions; every other occurrence is a forbidden second
+    source of runtime state.
+    """
+    found = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            allowed_overlap = (
+                len(path) == 2 and path[0] == "instructions" and
+                isinstance(path[1], int) and key in ("order", "depends_on")
+            )
+            if key in WORK_SPEC_QUEUE_OWNED_FIELDS and not allowed_overlap:
+                found.append(".".join(str(part) for part in path + (key,)))
+            found.extend(_nested_queue_owned_work_spec_fields(
+                child, path + (key,)))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            found.extend(_nested_queue_owned_work_spec_fields(
+                child, path + (index,)))
+    return found
+
+
+def _work_spec_sentinel_paths(value, path=()):
+    """Return scalar locations containing an unfilled Work Spec sentinel."""
+    found = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            found.extend(_work_spec_sentinel_paths(child, path + (key,)))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            found.extend(_work_spec_sentinel_paths(child, path + (index,)))
+    elif isinstance(value, str) and any(
+            sentinel in value for sentinel in WORK_SPEC_SENTINELS):
+        found.append(".".join(str(part) for part in path))
+    return found
+
+
+def _work_spec_errors(root, item):
+    """Validate a complex batch's immutable Agent-readable work contract."""
+    item_id = item.get("id", "<unknown>")
+    label = "Queue item %s" % item_id
+    path = item.get("work_spec_path")
+    fingerprint = item.get("work_spec_sha256")
+    errors = _work_spec_binding_errors(path, fingerprint, label)
+    if errors or path is None:
+        return errors
+    try:
+        absolute = kblib.managed_repository_path(
+            root, path, WORK_SPEC_PREFIX, suffixes=(".yaml",), must_exist=True,
+        )
+        if not os.path.isfile(absolute):
+            raise ValueError("path is not a regular file")
+        with open(absolute, encoding="utf-8") as handle:
+            text = handle.read()
+    except (OSError, UnicodeError, ValueError) as exc:
+        errors.append("%s Work Spec is unsafe or unreadable: %s" %
+                      (label, exc))
+        return errors
+    actual = kblib.sha256_file(absolute)
+    if actual != fingerprint:
+        errors.append(
+            "%s Work Spec SHA mismatch: Queue=%s actual=%s" %
+            (label, fingerprint, actual)
+        )
+    try:
+        metadata = kblib.parse_yaml_subset(text)
+    except kblib.YamlSubsetError as exc:
+        errors.append("%s Work Spec is invalid restricted YAML: %s" %
+                      (label, exc))
+        return errors
+    if not isinstance(metadata, dict):
+        errors.append("%s Work Spec must be a top-level mapping" % label)
+        return errors
+    queue_owned = sorted(set(
+        _nested_queue_owned_work_spec_fields(metadata)))
+    if queue_owned:
+        errors.append(
+            "%s Work Spec must not declare Queue-owned field path(s): %s" %
+            (label, ", ".join(queue_owned))
+        )
+    errors.extend(_closed_work_spec_mapping_errors(
+        metadata, WORK_SPEC_TOP_LEVEL_FIELDS, "%s Work Spec" % label))
+    schema_version = metadata.get("schema_version")
+    if (not isinstance(schema_version, int) or
+            isinstance(schema_version, bool) or schema_version != 1):
+        errors.append("%s Work Spec schema_version must be 1" % label)
+    if metadata.get("batch_id") != item_id:
+        errors.append(
+            "%s Work Spec batch_id=%r does not equal Queue id %r" %
+            (label, metadata.get("batch_id"), item_id)
+        )
+    manifest = metadata.get("manifest")
+    queue_manifest = item.get("manifest")
+    scope_manifest = queue_manifest if isinstance(queue_manifest, list) else []
+    if (not isinstance(manifest, list) or
+            not all(_nonempty_string(value) for value in manifest)):
+        errors.append("%s Work Spec manifest must be an explicit string list" %
+                      label)
+    elif manifest != queue_manifest:
+        errors.append(
+            "%s Work Spec manifest must exactly equal Queue manifest in "
+            "membership and order" % label
+        )
+    outcomes = metadata.get("outcomes")
+    instructions = metadata.get("instructions")
+    conditions = metadata.get("acceptance_conditions")
+    constraints = metadata.get("constraints")
+    list_contracts = (
+        ("outcomes", outcomes, WORK_SPEC_OUTCOME_FIELDS),
+        ("instructions", instructions, WORK_SPEC_INSTRUCTION_FIELDS),
+        ("acceptance_conditions", conditions, WORK_SPEC_ACCEPTANCE_FIELDS),
+        ("constraints", constraints, WORK_SPEC_CONSTRAINT_FIELDS),
+    )
+    for list_name, records, fields in list_contracts:
+        if not isinstance(records, list) or not records:
+            errors.append(
+                "%s Work Spec %s must be a non-empty list" %
+                (label, list_name)
+            )
+            continue
+        for index, record in enumerate(records, 1):
+            errors.extend(_closed_work_spec_mapping_errors(
+                record, fields, "%s Work Spec %s[%d]" %
+                (label, list_name, index)))
+
+    id_contracts = (
+        ("outcomes", outcomes, "outcome_id"),
+        ("instructions", instructions, "instruction_id"),
+        ("acceptance_conditions", conditions, "condition_id"),
+        ("constraints", constraints, "constraint_id"),
+    )
+    for list_name, records, id_field in id_contracts:
+        if not isinstance(records, list):
+            continue
+        seen = set()
+        for index, record in enumerate(records, 1):
+            if not isinstance(record, dict):
+                continue
+            identifier = record.get(id_field)
+            errors.extend(_work_spec_id_errors(
+                identifier, "%s Work Spec %s[%d].%s" %
+                (label, list_name, index, id_field)))
+            if isinstance(identifier, str):
+                if identifier in seen:
+                    errors.append(
+                        "%s Work Spec %s has duplicate %s %r" %
+                        (label, list_name, id_field, identifier)
+                    )
+                seen.add(identifier)
+
+    if isinstance(outcomes, list):
+        for index, record in enumerate(outcomes, 1):
+            if isinstance(record, dict) and not _nonempty_string(
+                    record.get("required_result")):
+                errors.append(
+                    "%s Work Spec outcomes[%d].required_result must be a "
+                    "non-empty string" % (label, index)
+                )
+
+    instruction_by_id = {}
+    if isinstance(instructions, list):
+        orders = []
+        for index, record in enumerate(instructions, 1):
+            if not isinstance(record, dict):
+                continue
+            identifier = record.get("instruction_id")
+            order = record.get("order")
+            if not isinstance(order, int) or isinstance(order, bool):
+                errors.append(
+                    "%s Work Spec instructions[%d].order must be an integer" %
+                    (label, index)
+                )
+            else:
+                orders.append(order)
+            if isinstance(identifier, str):
+                instruction_by_id[identifier] = order
+            errors.extend(_work_spec_target_scope_errors(
+                record.get("target_scope"), scope_manifest,
+                "%s Work Spec instructions[%d].target_scope" %
+                (label, index)))
+            if not _nonempty_string(record.get("required_transformation")):
+                errors.append(
+                    "%s Work Spec instructions[%d].required_transformation "
+                    "must be a non-empty string" % (label, index)
+                )
+            dependencies = record.get("depends_on")
+            if (not isinstance(dependencies, list) or
+                    not all(isinstance(dep, str) and
+                            WORK_SPEC_RECORD_ID_RE.fullmatch(dep)
+                            for dep in dependencies)):
+                errors.append(
+                    "%s Work Spec instructions[%d].depends_on must be an "
+                    "explicit list of stable instruction IDs" %
+                    (label, index)
+                )
+            elif len(set(dependencies)) != len(dependencies):
+                errors.append(
+                    "%s Work Spec instructions[%d].depends_on must not "
+                    "contain duplicates" % (label, index)
+                )
+        expected_orders = list(range(1, len(instructions) + 1))
+        if orders != expected_orders:
+            errors.append(
+                "%s Work Spec instruction order must be unique, contiguous, "
+                "and match list order 1..%d" % (label, len(instructions))
+            )
+        for index, record in enumerate(instructions, 1):
+            if not isinstance(record, dict):
+                continue
+            order = record.get("order")
+            dependencies = record.get("depends_on")
+            if not isinstance(dependencies, list):
+                continue
+            for dependency in dependencies:
+                if (not isinstance(dependency, str) or
+                        not WORK_SPEC_RECORD_ID_RE.fullmatch(dependency)):
+                    continue
+                dependency_order = instruction_by_id.get(dependency)
+                if dependency_order is None:
+                    errors.append(
+                        "%s Work Spec instructions[%d].depends_on references "
+                        "unknown instruction %r" % (label, index, dependency)
+                    )
+                elif (isinstance(order, int) and not isinstance(order, bool) and
+                      (not isinstance(dependency_order, int) or
+                       isinstance(dependency_order, bool) or
+                       dependency_order >= order)):
+                    errors.append(
+                        "%s Work Spec instructions[%d].depends_on must "
+                        "reference only earlier instructions; %r has order %r" %
+                        (label, index, dependency, dependency_order)
+                    )
+
+    if isinstance(conditions, list):
+        for index, record in enumerate(conditions, 1):
+            if not isinstance(record, dict):
+                continue
+            errors.extend(_work_spec_target_scope_errors(
+                record.get("target_scope"), scope_manifest,
+                "%s Work Spec acceptance_conditions[%d].target_scope" %
+                (label, index)))
+            for field in ("observable_predicate", "evidence_requirement"):
+                if not _nonempty_string(record.get(field)):
+                    errors.append(
+                        "%s Work Spec acceptance_conditions[%d].%s must be "
+                        "a non-empty string" % (label, index, field)
+                    )
+
+    if isinstance(constraints, list):
+        for index, record in enumerate(constraints, 1):
+            if not isinstance(record, dict):
+                continue
+            errors.extend(_work_spec_target_scope_errors(
+                record.get("target_scope"), scope_manifest,
+                "%s Work Spec constraints[%d].target_scope" %
+                (label, index)))
+            if not _nonempty_string(record.get("requirement")):
+                errors.append(
+                    "%s Work Spec constraints[%d].requirement must be a "
+                    "non-empty string" % (label, index)
+                )
+
+    sentinel_paths = _work_spec_sentinel_paths(metadata)
+    if sentinel_paths:
+        errors.append(
+            "%s Work Spec contains unfilled template sentinel(s) at: %s" %
+            (label, ", ".join(sentinel_paths))
+        )
+    return errors
+
+
 def selected_profile_manifest_errors(root, profile):
     """Reject template/example/unfilled manifests as runtime identities.
 
@@ -3664,6 +5618,8 @@ def _coverage_batch_spec_errors(coverage, items_by_id):
         "execution_mode": "execution_mode",
         "depends_on": "depends_on",
         "confirmation_required": "confirmation_required",
+        "work_spec_path": "work_spec_path",
+        "work_spec_sha256": "work_spec_sha256",
     }
     for index, spec in enumerate(specs):
         label = "Coverage batch_specs[%d]" % index
@@ -3678,6 +5634,10 @@ def _coverage_batch_spec_errors(coverage, items_by_id):
         if extra:
             errors.append("%s has unsupported field(s): %s" %
                           (label, ", ".join(extra)))
+        errors.extend(_work_spec_binding_errors(
+            spec.get("work_spec_path"), spec.get("work_spec_sha256"),
+            label,
+        ))
         batch_id = spec.get("id")
         if not _nonempty_string(batch_id) or not BATCH_ID_RE.fullmatch(batch_id):
             errors.append("%s id must be a valid batch id" % label)
@@ -3790,9 +5750,11 @@ def _closed_gate_errors(item, transition, catalog, queue):
     item_id = item.get("id", "<unknown>")
     consistency_id = item.get("queue_consistency_receipt")
     close_gate_id = item.get("close_gate_receipt")
+    close_gate_entry = catalog.get(close_gate_id)
+    close_gate_identity = (close_gate_entry[1]
+                           if close_gate_entry is not None else {})
     consistency_expected = {
         "tool": TOOL,
-        "tool_version": TOOL_VERSION,
         "check": "required_queue",
         "queue_check_mode": "consistency",
         "task_id": queue.get("task_id"),
@@ -3808,10 +5770,19 @@ def _closed_gate_errors(item, transition, catalog, queue):
             "progress_ledger_sha256":
                 transition.get("before_progress_sha256"),
         })
-    _require_receipt(
+    consistency_receipt = _require_receipt(
         catalog, consistency_id, "%s Queue consistency gate" % item_id,
         errors, expected=consistency_expected,
     )
+    if (isinstance(consistency_receipt, dict) and
+            consistency_receipt.get("tool_version") not in
+            SUPPORTED_QUEUE_GATE_TOOL_VERSIONS):
+        errors.append(
+            "%s Queue consistency gate receipt %s has unsupported "
+            "tool_version=%r" %
+            (item_id, consistency_id,
+             consistency_receipt.get("tool_version"))
+        )
     if transition is None:
         # Transition-history validation reports the missing edge.  Avoid
         # inventing live-state bindings for an unanchored historical gate.
@@ -3838,6 +5809,13 @@ def _closed_gate_errors(item, transition, catalog, queue):
         delta_sha256=item.get("delta_sha256"),
         queue_consistency_receipt=consistency_id,
         delta_apply_receipt=transition.get("delta_apply_receipt"),
+        work_spec_path=item.get("work_spec_path"),
+        work_spec_sha256=item.get("work_spec_sha256"),
+        # Historical closure is checked against the identity frozen by its
+        # producer.  A later Standards adoption must not reinterpret a valid
+        # closed edge using the live Profile.
+        selected_profile_manifest=close_gate_identity.get(
+            "selected_profile_manifest"),
     ))
     return errors
 
@@ -3913,7 +5891,8 @@ def _global_transition_errors(items_by_id, catalog, queue, queue_sha):
         evidence_id = receipt.get("evidence_receipt")
         evidence_required = (
             (before_state, after_state) in
-            (("queued", "open"), ("merge-ready", "closed")) or
+            (("queued", "open"), ("open", "merge-ready"),
+             ("merge-ready", "closed")) or
             (before_state == after_state and
              before_hold == "revalidation-required" and after_hold == "none")
         )
@@ -4006,7 +5985,8 @@ def _global_transition_errors(items_by_id, catalog, queue, queue_sha):
     return errors
 
 
-def _item_evidence_errors(item, progress, records, catalog, queue):
+def _item_evidence_errors(item, progress, records, catalog, current_catalog,
+                          queue):
     errors = []
     item_id = item.get("id", "<unknown>")
     state = item.get("state")
@@ -4145,7 +6125,6 @@ def _item_evidence_errors(item, progress, records, catalog, queue):
                           (item_id, state))
         activation_expected = {
             "tool": TOOL,
-            "tool_version": TOOL_VERSION,
             "check": "required_queue",
             "queue_check_mode": "require-ready:%s" % item_id,
             "task_id": queue.get("task_id"),
@@ -4168,11 +6147,19 @@ def _item_evidence_errors(item, progress, records, catalog, queue):
         if item.get("confirmation_required"):
             activation_expected["confirmation_receipt"] = \
                 item.get("confirmation_receipt")
-        _require_receipt(
+        activation_receipt = _require_receipt(
             catalog, item.get("activation_receipt"),
             "%s activation" % item_id, errors,
             expected=activation_expected,
         )
+        if (isinstance(activation_receipt, dict) and
+                activation_receipt.get("tool_version") not in
+                SUPPORTED_QUEUE_GATE_TOOL_VERSIONS):
+            errors.append(
+                "%s activation receipt %s has unsupported tool_version=%r" %
+                (item_id, item.get("activation_receipt"),
+                 activation_receipt.get("tool_version"))
+            )
         if item.get("confirmation_required"):
             _require_receipt(
                 catalog, item.get("confirmation_receipt"),
@@ -4261,16 +6248,28 @@ def _item_evidence_errors(item, progress, records, catalog, queue):
             errors.append("%s state %s requires non-empty batch_receipts" %
                           (item_id, state))
         else:
-            if len(receipts) != len(set(receipts)):
-                errors.append("%s batch_receipts must be unique" % item_id)
-            for receipt_id in receipts:
-                _require_receipt(
-                    catalog, receipt_id, "%s batch evidence" % item_id,
-                    errors, expected={
-                        "check": "batch_gate",
-                        "target": item_id,
-                    },
-                )
+            if len(receipts) != 1:
+                errors.append("%s batch_receipts must contain exactly one "
+                              "current batch-review gate" % item_id)
+            else:
+                batch_catalog = (current_catalog
+                                 if state == "merge-ready" else catalog)
+                errors.extend(batch_review_receipt_errors(
+                    batch_catalog, receipts[0], item_id=item_id,
+                    task_id=queue.get("task_id"),
+                    delta_page_receipt_ids=current_delta_gate_receipts,
+                ))
+                merge_transition = next((
+                    candidate for candidate in reversed(transition_history)
+                    if candidate.get("before_state") == "open" and
+                    candidate.get("after_state") == "merge-ready"
+                ), None)
+                if (merge_transition is not None and
+                        merge_transition.get("evidence_receipt") != receipts[0]):
+                    errors.append(
+                        "%s open -> merge-ready transition evidence_receipt "
+                        "must equal its batch-review gate %s" %
+                        (item_id, receipts[0]))
 
     if state == "closed":
         if not _valid_timestamp(item.get("closed_at")):
@@ -4749,6 +6748,10 @@ def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
 
 def delta_apply_write_barrier(result, tool, action, target=None):
     """Return a fail-closed writer error while an apply awaits Queue close."""
+    standards_barrier = (result.get("standards_revalidation_barriers") or {}).get(
+        target)
+    if standards_barrier and action in ("apply", "merge-ready", "closed"):
+        return standards_barrier
     pending = result.get("pending_delta_applies") or {}
     if pending.get("status") != "close-required":
         return None
@@ -4770,7 +6773,8 @@ def validate_runtime(root, allowed_open_delta=None,
                      allowed_cancellation_id=None, state_overrides=None,
                      extra_receipts=None, allow_unmaterialized_queue=False,
                      allow_structural_drift=False,
-                     allow_pending_replan_receipts=False):
+                     allow_pending_replan_receipts=False,
+                     allow_standards_rollback_batch=None):
     """Return a validation result dict without writing any state."""
     root = os.path.realpath(os.path.abspath(root))
     errors = []
@@ -4921,6 +6925,24 @@ def validate_runtime(root, allowed_open_delta=None,
                           receipt_id)
             continue
         catalog[receipt_id] = ("<pending-write>", receipt)
+    errors.extend(_standards_adoption_errors(
+        root, progress, catalog, queue))
+    invalidated_evidence_receipt_ids = {
+        receipt_id
+        for adoption in (progress.get("standards_adoptions") or [])
+        if isinstance(adoption, dict)
+        for receipt_id in (
+            adoption.get("invalidated_evidence_receipt_ids") or [])
+        if _nonempty_string(receipt_id)
+    }
+    # Historical transition/close validation keeps the full catalog.  Only
+    # current-use admission, handoff, reuse, and completion queries consume
+    # this adoption-aware view, so history is never rewritten or made invalid
+    # merely because it was produced under an older Standards identity.
+    current_catalog = {
+        receipt_id: entry for receipt_id, entry in catalog.items()
+        if receipt_id not in invalidated_evidence_receipt_ids
+    }
     errors.extend(_initial_queue_receipt_errors(
         progress, catalog, queue, queue_sha, coverage_sha,
     ))
@@ -5038,6 +7060,8 @@ def validate_runtime(root, allowed_open_delta=None,
             errors.append("%s record_count=%s but manifest has %d object(s)" %
                           (item_id, count, len(manifest)))
 
+        errors.extend(_work_spec_errors(root, item))
+
         dependencies = item.get("depends_on")
         if not isinstance(dependencies, list):
             errors.append("%s depends_on must be an explicit list" % item_id)
@@ -5053,7 +7077,7 @@ def validate_runtime(root, allowed_open_delta=None,
                 seen_dep.add(dep)
 
         errors.extend(_item_evidence_errors(
-            item, progress, context, catalog, queue
+            item, progress, context, catalog, current_catalog, queue
         ))
 
     if items_by_id or not allow_unmaterialized_queue:
@@ -5227,7 +7251,8 @@ def validate_runtime(root, allowed_open_delta=None,
                     state = item.get("state")
                     if state == "open":
                         handoff_errors = _delta_handoff_errors(
-                            relative, delta, item, records, coverage, catalog,
+                            relative, delta, item, records, coverage,
+                            current_catalog,
                         )
                         delta_record["handoff_status"] = (
                             "candidate" if not handoff_errors else "invalid"
@@ -5347,6 +7372,31 @@ def validate_runtime(root, allowed_open_delta=None,
         coverage,
     )
     errors.extend(task_errors)
+    standards_barrier_context = {
+        "root": root, "queue": queue, "coverage": coverage,
+        "progress": progress, "items_by_id": items_by_id,
+        "receipt_catalog": catalog,
+        "current_receipt_catalog": current_catalog,
+        "invalidated_evidence_receipt_ids":
+            sorted(invalidated_evidence_receipt_ids),
+    }
+    standards_revalidation_barriers = {}
+    standards_revalidation_outstanding = {}
+    for batch_id, item in items_by_id.items():
+        outstanding = outstanding_standards_revalidation(
+            standards_barrier_context, batch_id)
+        if outstanding:
+            standards_revalidation_outstanding[batch_id] = outstanding
+        barrier = current_attempt_evidence_barrier(
+            standards_barrier_context, batch_id)
+        if barrier:
+            standards_revalidation_barriers[batch_id] = barrier
+            rollback_exception = (
+                item.get("state") == "merge-ready" and
+                batch_id == allow_standards_rollback_batch)
+            if (item.get("state") in ("open", "merge-ready") and
+                    not rollback_exception):
+                errors.append(barrier)
     applied_delta_receipts = []
     stale_delta_apply_receipts = []
     for item in sorted(
@@ -5355,7 +7405,7 @@ def validate_runtime(root, allowed_open_delta=None,
             key=lambda value: (value.get("order", sys.maxsize),
                                value.get("id", ""))):
         compatible, stale = _delta_apply_receipt_candidates(
-            item, catalog, queue, queue_sha, coverage_sha,
+            item, current_catalog, queue, queue_sha, coverage_sha,
         )
         stale_delta_apply_receipts.extend(stale)
         applied_delta_receipts.append({
@@ -5396,7 +7446,15 @@ def validate_runtime(root, allowed_open_delta=None,
         "queue_path": queue_path, "coverage_sha256": coverage_sha,
         "queue_sha256": queue_sha, "progress_sha256": progress_sha,
         "remaining": remaining, "items_by_id": items_by_id,
-        "receipt_catalog": catalog, "writer_locks": writer_locks,
+        "receipt_catalog": catalog,
+        "current_receipt_catalog": current_catalog,
+        "invalidated_evidence_receipt_ids":
+            sorted(invalidated_evidence_receipt_ids),
+        "standards_revalidation_barriers":
+            standards_revalidation_barriers,
+        "standards_revalidation_outstanding":
+            standards_revalidation_outstanding,
+        "writer_locks": writer_locks,
         "managed_deltas": managed_deltas,
         "applied_delta_receipts": applied_delta_receipts,
         "pending_delta_applies": pending_delta_applies,
@@ -5409,7 +7467,8 @@ def validate_runtime(root, allowed_open_delta=None,
 
 def make_check_receipt(result, outcome, details, mode,
                        confirmation_receipt=None, runtime_errors=None,
-                       maintenance_context=None):
+                       maintenance_context=None,
+                       standards_revalidation_context=None):
     """Build the canonical receipt for one already-evaluated Queue result.
 
     This is the canonical construction path for ``check_queue`` receipt bytes.
@@ -5424,6 +7483,9 @@ def make_check_receipt(result, outcome, details, mode,
     )
     if result.get("queue_sha256"):
         receipt["queue_check_mode"] = mode
+        gate_id = queue_gate_id_for_mode(mode)
+        if gate_id is not None:
+            receipt["gate_id"] = gate_id
         if confirmation_receipt:
             receipt["confirmation_receipt"] = confirmation_receipt
         receipt["required_queue_sha256"] = result["queue_sha256"]
@@ -5433,11 +7495,17 @@ def make_check_receipt(result, outcome, details, mode,
         receipt["queue_state_revision"] = result["queue"].get("state_revision")
         receipt["remaining_required_work_units"] = result.get("remaining")
         receipt["task_id"] = result["queue"].get("task_id")
+        receipt["standards_version"] = result["queue"].get(
+            "standards_version")
+        receipt["selected_profile_manifest"] = result["queue"].get(
+            "selected_profile_manifest")
         if mode == "consistency" and outcome == "pass":
             receipt["repository_snapshot_sha256"] = \
                 kblib.repository_snapshot_sha256(result["root"])
         if maintenance_context:
             receipt.update(maintenance_context)
+        if standards_revalidation_context:
+            receipt.update(standards_revalidation_context)
         if mode == "resume-status":
             progress = result.get("progress") or {}
             contract = progress.get("contract") if isinstance(
@@ -5463,6 +7531,22 @@ def make_check_receipt(result, outcome, details, mode,
                 "pending_guidance", [])
             receipt["pending_amendments"] = task_runtime.get(
                 "pending_amendments", [])
+            receipt["standards_revalidation_outstanding"] = result.get(
+                "standards_revalidation_outstanding", {})
+            receipt["standards_revalidation_barriers"] = result.get(
+                "standards_revalidation_barriers", {})
+            receipt["batch_work_specs"] = [
+                {
+                    "batch_id": item_id,
+                    "work_spec_path": item.get("work_spec_path"),
+                    "work_spec_sha256": item.get("work_spec_sha256"),
+                }
+                for item_id, item in sorted(
+                    (result.get("items_by_id") or {}).items(),
+                    key=lambda pair: (
+                        pair[1].get("order", sys.maxsize), pair[0]),
+                )
+            ]
             candidate_context = result.get("maintenance_candidate_context")
             if isinstance(candidate_context, dict):
                 receipt["maintenance_candidate_state"] = {
@@ -5481,7 +7565,8 @@ def make_check_receipt(result, outcome, details, mode,
 
 def _write_receipt(root, relative_path, result, outcome, details, mode,
                    confirmation_receipt=None, runtime_errors=None,
-                   maintenance_context=None):
+                   maintenance_context=None,
+                   standards_revalidation_context=None):
     if not relative_path:
         return
     path = kblib.managed_repository_path(
@@ -5493,6 +7578,7 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
         confirmation_receipt=confirmation_receipt,
         runtime_errors=runtime_errors,
         maintenance_context=maintenance_context,
+        standards_revalidation_context=standards_revalidation_context,
     )
     kblib.write_receipts(path, [receipt])
 
@@ -5540,8 +7626,9 @@ def _maintenance_gate_inventory(result):
     }
     compatible = []
     stale = []
-    for receipt_id, (_, receipt) in sorted(
-            (result.get("receipt_catalog") or {}).items()):
+    current_catalog = current_receipt_catalog(result)
+    current_result = dict(result, receipt_catalog=current_catalog)
+    for receipt_id, (_, receipt) in sorted(current_catalog.items()):
         if (receipt.get("tool") != TOOL or
                 receipt.get("check") != "required_queue" or
                 receipt.get("queue_check_mode") !=
@@ -5553,7 +7640,7 @@ def _maintenance_gate_inventory(result):
         context = None
         if not mismatches:
             gate_errors, context = _maintenance_completion_gate_errors(
-                result.get("root"), result,
+                result.get("root"), current_result,
                 receipt.get("budget_manifest_receipt"),
                 receipt.get("ledger_advance_receipt"),
                 receipt.get("watermark_advance_receipt"),
@@ -5669,7 +7756,7 @@ def _batch_close_recovery_inventory(result):
     inventory["repository_snapshot_sha256"] = snapshot
 
     compatible_apply_ids = set(applied.get("compatible_receipts") or [])
-    catalog = result.get("receipt_catalog") or {}
+    catalog = current_receipt_catalog(result)
     for receipt_id, (relative, receipt) in sorted(catalog.items()):
         if not isinstance(receipt, dict):
             continue
@@ -5702,6 +7789,10 @@ def _batch_close_recovery_inventory(result):
             delta_sha256=item.get("delta_sha256"),
             queue_consistency_receipt=queue_consistency,
             delta_apply_receipt=delta_apply,
+            work_spec_path=item.get("work_spec_path"),
+            work_spec_sha256=item.get("work_spec_sha256"),
+            selected_profile_manifest=(result.get("queue") or {}).get(
+                "selected_profile_manifest"),
             current_repository_snapshot_sha256=snapshot,
         ))
         entry = {
@@ -5790,6 +7881,16 @@ def _resume_recommendation(result, errors):
     if task_state == "completion-candidate":
         return ("preserve the frozen candidate and run the Terminal Audit; "
                 "do not activate new work or initialize a new task")
+    outstanding = result.get("standards_revalidation_outstanding") or {}
+    if outstanding:
+        batch_id = sorted(
+            outstanding,
+            key=lambda value: (
+                (items.get(value) or {}).get("order", sys.maxsize), value),
+        )[0]
+        return ("run the current boundary gates for batch %s, aggregate them "
+                "with check_queue.py --require-revalidation, then consume "
+                "that receipt before merge/apply/close" % batch_id)
     if in_flight:
         return ("resume the existing task and reconcile in-flight batch(es) %s "
                 "before starting new work" % ",".join(sorted(in_flight)))
@@ -5866,6 +7967,16 @@ def _resume_next_action(result, errors):
         return "resume-paused-task"
     if task_state == "blocked":
         return "resolve-blocked-task"
+    revalidation = result.get("standards_revalidation_outstanding") or {}
+    if revalidation:
+        ordered = sorted(
+            revalidation,
+            key=lambda batch_id: (
+                (items.get(batch_id) or {}).get("order", sys.maxsize),
+                batch_id,
+            ),
+        )
+        return "run-standards-revalidation:%s" % ordered[0]
     if task_state == "completion-candidate":
         return "run-terminal-audit"
     merge_ready = sorted(
@@ -5987,6 +8098,20 @@ def _print_resume_status(result, errors):
           (",".join(candidate_context.get("selected_ids") or []) or "none"))
     print("  maintenance_candidates.deferred=%s" %
           (",".join(candidate_context.get("deferred_ids") or []) or "none"))
+    outstanding = result.get("standards_revalidation_outstanding") or {}
+    print("  standards_revalidation.outstanding_batches=%s" %
+          (",".join(sorted(outstanding)) or "none"))
+    for batch_id in sorted(outstanding):
+        print("  standards_revalidation.%s.bindings=%s" % (
+            batch_id,
+            json.dumps(outstanding[batch_id], ensure_ascii=False,
+                       sort_keys=True, separators=(",", ":")),
+        ))
+    barriers = result.get("standards_revalidation_barriers") or {}
+    for batch_id in sorted(barriers):
+        print("  standards_revalidation.%s.barrier=%s" % (
+            batch_id, json.dumps(barriers[batch_id], ensure_ascii=False),
+        ))
     selected_gate_id = maintenance_inventory.get("selected")
     selected_gate_entry = (result.get("receipt_catalog") or {}).get(
         selected_gate_id) if selected_gate_id else None
@@ -6004,6 +8129,14 @@ def _print_resume_status(result, errors):
                 items[item_id].get("order", sys.maxsize), item_id),
         )
         print("  batches.%s=%s" % (state, ",".join(batch_ids) or "none"))
+    for item_id, item in sorted(
+            items.items(), key=lambda pair: (pair[1].get("order", sys.maxsize),
+                                             pair[0])):
+        print("  work_spec.%s.path=%s sha256=%s" % (
+            item_id,
+            item.get("work_spec_path") or "none",
+            item.get("work_spec_sha256") or "none",
+        ))
     holds = []
     for item_id, item in sorted(
             items.items(), key=lambda pair: (pair[1].get("order", sys.maxsize),
@@ -6132,12 +8265,17 @@ def main(argv=None):
     parser.add_argument("root", help="adopting repository root")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--require-ready", metavar="BATCH_ID")
+    group.add_argument("--require-revalidation", metavar="BATCH_ID")
     group.add_argument("--require-complete", action="store_true")
     group.add_argument("--require-maintenance-complete", action="store_true")
     group.add_argument("--resume-status", action="store_true",
                        help="show interruption-safe task and batch resume state")
     parser.add_argument("--confirmation-receipt",
                         help="confirmation evidence supplied to --require-ready")
+    parser.add_argument(
+        "--boundary-gate-receipt", action="append", default=[],
+        metavar="GATE_ID=RECEIPT_ID",
+        help="current gate evidence supplied to --require-revalidation")
     parser.add_argument("--budget-manifest-receipt")
     parser.add_argument("--ledger-advance-receipt")
     parser.add_argument("--watermark-advance-receipt")
@@ -6149,9 +8287,13 @@ def main(argv=None):
     candidates = []
     writer_locks = result.get("writer_locks") or []
     maintenance_context = None
+    revalidation_context = None
 
     if args.confirmation_receipt and not args.require_ready:
         errors.append("--confirmation-receipt is only valid with --require-ready")
+    if args.boundary_gate_receipt and not args.require_revalidation:
+        errors.append("--boundary-gate-receipt is only valid with "
+                      "--require-revalidation")
     maintenance_evidence = (
         args.budget_manifest_receipt, args.ledger_advance_receipt,
         args.watermark_advance_receipt,
@@ -6186,7 +8328,33 @@ def main(argv=None):
                 "batch-close recovery snapshot unavailable: %s" % error
                 for error in close_recovery.get("errors", []))
 
-    if not errors and args.require_ready:
+    if not errors and args.require_revalidation:
+        item = result.get("items_by_id", {}).get(args.require_revalidation)
+        if result.get("progress", {}).get("task_state") != "active":
+            errors.append("Standards revalidation requires task_state=active; "
+                          "resume the recorded task before producing the "
+                          "state-bound aggregate")
+        elif item is None:
+            errors.append("requested batch %s does not exist" %
+                          args.require_revalidation)
+        elif item.get("state") not in ("queued", "open"):
+            errors.append("Standards revalidation batch %s is %s, expected "
+                          "queued or open" %
+                          (args.require_revalidation, item.get("state")))
+        elif (item.get("state") == "open" and
+              item.get("hold_state") != "revalidation-required"):
+            errors.append("open Standards revalidation batch must have "
+                          "hold_state=revalidation-required")
+        else:
+            supplied, supplied_errors = _parse_boundary_gate_arguments(
+                args.boundary_gate_receipt)
+            errors.extend(supplied_errors)
+            if not errors:
+                revalidation_context, context_errors = \
+                    standards_revalidation_context(
+                        result, args.require_revalidation, supplied)
+                errors.extend(context_errors)
+    elif not errors and args.require_ready:
         item = result.get("items_by_id", {}).get(args.require_ready)
         if item is None:
             errors.append("requested batch %s does not exist" % args.require_ready)
@@ -6205,7 +8373,8 @@ def main(argv=None):
                     args.confirmation_receipt):
                 confirmation_errors = []
                 _require_receipt(
-                    result.get("receipt_catalog", {}),
+                    result.get("current_receipt_catalog",
+                               result.get("receipt_catalog", {})),
                     args.confirmation_receipt,
                     "%s confirmation" % args.require_ready,
                     confirmation_errors,
@@ -6239,7 +8408,10 @@ def main(argv=None):
     elif not errors and args.require_maintenance_complete:
         maintenance_errors, maintenance_context = \
             _maintenance_completion_gate_errors(
-                os.path.realpath(os.path.abspath(args.root)), result,
+                os.path.realpath(os.path.abspath(args.root)),
+                dict(result, receipt_catalog=result.get(
+                    "current_receipt_catalog",
+                    result.get("receipt_catalog", {}))),
                 args.budget_manifest_receipt,
                 args.ledger_advance_receipt,
                 args.watermark_advance_receipt,
@@ -6299,17 +8471,20 @@ def main(argv=None):
         len(errors), len(candidates), result.get("remaining"),
         ",".join(result.get("ready", [])) or "none",
     )
-    mode = ("require-ready:%s" % args.require_ready if args.require_ready else
+    mode = ("require-revalidation:%s" % args.require_revalidation
+            if args.require_revalidation else
+            ("require-ready:%s" % args.require_ready if args.require_ready else
             ("require-complete" if args.require_complete else
              ("require-maintenance-complete"
               if args.require_maintenance_complete else
-              ("resume-status" if args.resume_status else "consistency"))))
+              ("resume-status" if args.resume_status else "consistency")))))
     try:
         _write_receipt(
             args.root, args.receipts, result, outcome, details, mode,
             confirmation_receipt=args.confirmation_receipt,
             runtime_errors=errors,
             maintenance_context=maintenance_context,
+            standards_revalidation_context=revalidation_context,
         )
     except (OSError, ValueError) as exc:
         print("[FAIL] cannot write receipts: %s" % exc)

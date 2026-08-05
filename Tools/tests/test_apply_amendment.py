@@ -134,6 +134,7 @@ class ApplyAmendmentTests(unittest.TestCase):
             "id": "B3", "family": "Core", "order_hint": 3,
             "source_route": "R03", "execution_mode": "concurrent-worker",
             "depends_on": ["B2"], "confirmation_required": False,
+            "work_spec_path": None, "work_spec_sha256": None,
         })
         coverage["pages"].append({
             "path": "Topics/C.md", "coverage_disposition": "required",
@@ -505,6 +506,7 @@ class ApplyAmendmentTests(unittest.TestCase):
             "id": "B3", "family": "Core", "order_hint": 3,
             "source_route": "R03", "execution_mode": "concurrent-worker",
             "depends_on": ["B1"], "confirmation_required": False,
+            "work_spec_path": None, "work_spec_sha256": None,
         })
         coverage["pages"].append({
             "path": "Topics/C.md", "coverage_disposition": "required",

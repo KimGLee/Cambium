@@ -5,7 +5,7 @@ task_transition_receipts: []
 required_queue_path: .cambium/state/required_queue.yaml
 queue_revision: 1
 queue_state_revision: 0
-required_queue_sha256: sha256:cbca278be3d2b1a9e47bedb319c0a1887f07dff0d845ff8181019eccc0b87fed
+required_queue_sha256: sha256:120a50599e26d9e7b58e0e251fc54a28fd11167abae4e0d732a57009445a2cf5
 initial_queue_receipt: audit-fixture-initial-queue
 contract:
   contract_version: c1
@@ -48,4 +48,5 @@ maintenance_completion:
   ledger_advance_receipt: null
   watermark_advance_receipt: null
 amendments: []
+standards_adoptions: []
 guidance_queue: []

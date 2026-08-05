@@ -6,13 +6,13 @@
 
 ## Purpose
 
-This module owns the ordered sequence one batch runs, from the version self-check that opens it to the condition that lets it close. It is read at each batch activation, including on resume. It fixes the order of the steps; batch size is decided by [[kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production|K02/04]], while concurrency admission and who may write the global ledgers are decided by [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|K13/10]].
+This module owns the ordered sequence one batch runs, from the version self-check that opens it to the condition that lets it close. It is read at each batch activation, including on resume. It fixes the order of the steps; batch size is decided by [[kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production|K02/09]], while concurrency admission and who may write the global ledgers are decided by [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|K13/10]].
 
 ## Batch Execution Checklist
 
-1. Version self-check: compare the current version in [[kernel/K00 Standards Control/03 Standards Governance|K00/03]] with the contract-frozen version; with a delta, adopt incrementally per [[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]] Active-task Adoption; with no delta, record a one-line receipt. Standards changes are discovered by the batch-activation self-check; user notification serves only as a reminder.
+1. Version self-check: compare the current identity in [[kernel/K00 Standards Control/03 Standards Governance|K00/03]] with the contract-frozen Standards/Profile identity. On mismatch, do not activate: enter R07 for the [[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]] plan and sole [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction|K13/15]] writer. Resume after commit's immediate consistency pass and any gate assigned specifically to this activation boundary; later batch-close/Terminal reruns remain deferred to those boundaries. User notification is only a reminder.
 2. Reconcile incremental guidance: reconcile only the Guidance Events after `last_reconciled_guidance_id` against the Amendment Log.
-3. Select the next `queued` batch from the canonical Required Queue only after `python3 Tools/check_queue.py . --require-ready <batch-id>` passes; the integrator then records `queued -> open` through `Tools/update_queue.py` with the expected state revision and fingerprint.
+3. Select the next `queued` batch from the canonical Required Queue only after `python3 Tools/check_queue.py . --require-ready <batch-id>` passes; the integrator then records `queued -> open` through `Tools/update_queue.py` with the expected state revision and fingerprint. If its Work Spec pair is non-null, load that exact fingerprinted file after activation; null/null is the complete instruction that this batch is simple.
 4. Resolve note type, canonical owner, and target status.
 5. Resolve prerequisite and foundation gaps.
 6. Collect and classify sources when needed.
@@ -27,7 +27,8 @@ Note: Coverage reconciliation is not executed at batch start; reconciliation is 
 ## Related
 
 - [[kernel/Read Sets/R07 Long-running Execution Read Set|Long-running Execution Read Set]]
-- [[kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production|Knowledge Batch Production]]
+- [[kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production|Knowledge Batch Production]]
 - [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue Contract and Lifecycle]]
 - [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]]
+- [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction|Standards Adoption State Transaction]]
 - [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]]

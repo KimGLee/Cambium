@@ -34,10 +34,29 @@ The seven member receipts, reviewer attestation, global review, and aggregator M
 
 Before the integrator records `merge-ready -> closed`, it separately consumes a current `Tools/check_queue.py` receipt recording a passed Queue/Coverage/Progress consistency check after the delta. This is not an eighth Closed List item: Required Queue validation has one canonical gate at [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|K13/08]], while the seven items above own merged content-snapshot invariants.
 
+For a complex batch, `Tools/check_batch_close.py` also binds the current Work
+Spec path/hash into its close bundle and verifies the bytes before and after
+the Closed List. This is part of the K13/08 Queue consistency contract, not an
+eighth content check. A changed or stale Work Spec invalidates the close bundle
+even when all seven content checks passed.
+
+The same close bundle carries an explicit Corpus Planning applicability
+decision. It requires a distinct current `check_corpus_plan.py` child receipt
+when the task selected R13 or the batch manifest intersects the selected Profile Scope or slot,
+one of the three bound artifacts, a Global Map Entry path, a Matrix
+canonical/evidence path, or a Gap promoted/evidence path. These are normalized
+paths parsed by the validator; no semantic inference expands the set. The
+aggregator records `corpus_plan_required`, the sorted trigger set, and the
+child receipt ID or null. R13 requires a configured plan. The child binds the
+same task, Queue revisions, state fingerprints, and merged repository snapshot
+as the close bundle, plus exact Profile/slot/artifact fingerprints. A missing,
+stale, aliased, or self-reused child blocks close. This conditional evidence is
+not an eighth Closed List content check.
+
 ## Related
 
 - [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/K12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
-- [[kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production|Knowledge Batch Production]]
+- [[kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production|Knowledge Batch Production]]
 - [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]]
 - [[kernel/K12 Quality Assurance Standard|K12 Quality Assurance Standard]]

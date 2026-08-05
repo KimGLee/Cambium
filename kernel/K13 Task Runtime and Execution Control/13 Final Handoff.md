@@ -17,7 +17,7 @@ The final handoff states:
 - Source Notes, Research Synthesis, and canonical promotions.
 - The coverage and readiness of `Expression Layer Entry` outputs, citing the R05 results and any supplemental profile gate results.
 - QA results.
-- Audit Receipt reconciliation: reuse, superseded, invalidated, legacy-evidence, sampling, and systemic expansion.
+- Audit Receipt reconciliation: reuse, superseded, invalidated, invalidated-evidence, sampling, and systemic expansion.
 - Coverage Ledger summary, Required Queue closed/cancelled history and remaining count, Required authoring gaps, and either the build Terminal Proof or the maintenance completion receipt.
 - Guidance reconciliation results and records still in `deferred` / `clarification-required`.
 - P1 / P2 content not yet covered.

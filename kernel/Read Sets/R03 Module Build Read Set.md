@@ -18,8 +18,8 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - [[kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger|Inventory and Coverage Ledger]]
 - [[kernel/K02 Knowledge Work Construction/02 Coverage Reconciliation|Coverage Reconciliation]]
 - [[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]
-- [[kernel/K02 Knowledge Work Construction/03 Architecture Samples and Dependency Planning|Architecture Samples and Dependency Planning]]
-- [[kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production|Knowledge Batch Production]]
+- [[kernel/K02 Knowledge Work Construction/08 Architecture Samples and Dependency Planning|Architecture Samples and Dependency Planning]]
+- [[kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production|Knowledge Batch Production]]
 - [[kernel/K03 Note Types and Ownership/01 Note Type Catalog|Note Type Catalog]]
 - [[kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
 - [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]
@@ -39,6 +39,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - Large-scale module work: pass [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]] before execution.
 - Long tasks and multiple batches: combine [[kernel/Read Sets/R07 Long-running Execution Read Set|Long-running Execution]].
 - Renaming or moving existing pages: combine [[kernel/Read Sets/R06 Migration and Refactor Read Set|Migration and Refactor]].
+- Creating or reconciling a Global Map, Capability Matrix, or Gap Register, or promoting a module gap into Coverage: combine [[kernel/Read Sets/R13 Corpus Planning Read Set|Corpus Planning]]. R03 authors the module; R13 owns the planning artifacts and handoff.
 - Mechanism sections of an existing page (Definition, Mechanism, formulas, core conclusions) are substantively modified: read [[kernel/K12 Quality Assurance/11 Content-level Propagation|Content-level Propagation]] and mark the direct downstream notes.
 
 ## Gate

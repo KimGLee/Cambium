@@ -22,7 +22,7 @@ Interface: [Profile Scope slot](../README.md#profile-scope-slot)
 
 ## Logical Architecture
 
-| Stable Layer ID | Relative directory | Single layer responsibility |
+| Stable Layer ID | Repository-relative directories | Single layer responsibility |
 |---|---|---|
 | TODO(profile) | TODO(profile) | TODO(profile) |
 

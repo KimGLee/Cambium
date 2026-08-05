@@ -1,0 +1,13 @@
+schema_version: 1
+
+entries:
+  - entry_id: TODO(profile)
+    layer_id: TODO(profile)
+    canonical_markdown_path: TODO(profile)
+    single_responsibility: TODO(profile)
+
+typed_dependencies:
+  - edge_id: TODO(profile)
+    upstream_entry_id: TODO(profile)
+    downstream_entry_id: TODO(profile)
+    relation_type: TODO(profile)

@@ -1,7 +1,7 @@
 ## Navigation
 
 - Parent: [[kernel/K02 Knowledge Work Construction Standard|K02 Knowledge Work Construction Standard]].
-- Previous: [[kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production|Knowledge Batch Production]].
+- Previous: [[kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production|Knowledge Batch Production]].
 
 ## Existing Changes
 

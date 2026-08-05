@@ -1,8 +1,8 @@
 ## Navigation
 
 - Parent: [[kernel/K02 Knowledge Work Construction Standard|K02 Knowledge Work Construction Standard]].
-- Previous: [[kernel/K02 Knowledge Work Construction/03 Architecture Samples and Dependency Planning|Architecture Samples and Dependency Planning]].
-- Next: [[kernel/K02 Knowledge Work Construction/05 Existing Changes and Migration Safety|Existing Changes and Migration Safety]].
+- Previous: [[kernel/K02 Knowledge Work Construction/08 Architecture Samples and Dependency Planning|Architecture Samples and Dependency Planning]].
+- Next: [[kernel/K02 Knowledge Work Construction/10 Existing Changes and Migration Safety|Existing Changes and Migration Safety]].
 
 ## Batch Policy
 

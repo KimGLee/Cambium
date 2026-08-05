@@ -19,6 +19,8 @@ queue_state_revision
 required_queue_sha256
 remaining_required_work_units
 queue_check_receipt
+corpus_plan_check_receipt
+corpus_plan_semantic_acceptance_receipt
 standards_version
 selected_profile_manifest
 selected_route_ids
@@ -53,11 +55,32 @@ time_contract_result
 
 `full_deterministic_results` references the complete result set of the deterministic checks run in full against the final frozen snapshot. The `unverified_batches` count includes batches that are `merge-ready` but unmerged; a value of 0 therefore requires the Queue-derived merge view to be empty. `queue_check_receipt` binds this claim to the frozen Queue bytes rather than a separately maintained merge list.
 
+`corpus_plan_check_receipt` identifies exactly one current
+`check_corpus_plan.py` pass in `audit_receipt_register`. It is required for
+every build Terminal Proof, including an explicit `applicability.state: not-applicable` Profile
+slot. The checker re-resolves the selected Profile and slot, re-hashes the
+Profile/Scope/slot/bound artifacts, and requires the receipt's task, Queue revisions,
+three state fingerprints, applicability, and repository snapshot to match the
+frozen candidate. A missing, duplicate, malformed, differently versioned, or
+stale receipt blocks completion.
+
+`corpus_plan_semantic_acceptance_receipt` is `null` only when the current
+Corpus Planning slot has `applicability.state: not-applicable`. When it has
+`applicability.state: configured`, the field identifies exactly one current
+passed `record_corpus_acceptance.py` receipt in
+`audit_receipt_register`. The receipt MUST carry Gate ID
+`corpus-plan-semantic-acceptance`, consume the named current structural receipt,
+cover every current Capability ID in Matrix order with `accepted`, and bind the
+exact decision plan, Profile authority Role and decision scope, Profile/Scope/
+slot/artifact bytes, canonical state fingerprints, Queue revisions, and frozen
+repository snapshot. A rejected, stale, absent, duplicate, or structurally
+unmatched receipt blocks completion.
+
 `rendering_evidence` MUST state the highest level actually used and the verification result. When there is no visual exception trigger, recording `visual_trigger: not_applicable` suffices; the absence of UI, screenshots, or recordings MUST NOT block completion on that account.
 
 ## Terminal Completion Gate
 
-After the task has entered `completion-candidate`, first run `python3 Tools/check_queue.py <repository-root> --require-complete --receipts <proof-queue-receipt>`, then run `python3 Tools/check_proof.py <proof> --root <repository-root> --progress-ledger .cambium/state/progress_ledger.yaml --ledger .cambium/state/coverage_ledger.yaml --receipts <proof-receipt>`; both MUST receive exit 0. This Queue receipt is distinct from the pre-transition receipt consumed to enter `completion-candidate`: it binds the frozen post-transition Progress bytes. Finally, `update_task.py --transition complete` consumes the Proof pass receipt.
+After the task has entered `completion-candidate`, first run `python3 Tools/check_queue.py <repository-root> --require-complete --receipts <proof-register>` and `python3 Tools/check_corpus_plan.py <repository-root> --receipts <proof-register>`. For a configured plan, record or refresh semantic acceptance against the same frozen candidate with `python3 Tools/record_corpus_acceptance.py <repository-root> --plan <.cambium/deltas/corpus-plan-acceptances/id.yaml> --actor-role <Profile-bound-role-id> --receipts <proof-register> --apply`. Record the exact Queue, structural, and semantic receipt IDs in the Proof, then run `python3 Tools/check_proof.py <proof> --root <repository-root> --progress-ledger .cambium/state/progress_ledger.yaml --ledger .cambium/state/coverage_ledger.yaml --receipts <proof-receipt>`; every applicable command MUST receive exit 0. The Queue receipt is distinct from the pre-transition receipt consumed to enter `completion-candidate`: it binds the frozen post-transition Progress bytes. Finally, `update_task.py --transition complete` consumes the Proof pass receipt.
 
 The two Ledger arguments and the Queue reference are fixed canonical, non-symlinked state objects under the named repository root; caller-selected substitutes are forbidden. `check_proof.py` requires Progress state `completion-candidate` or `complete` with no pending Guidance or Amendment; verifies common task, scope, Standards, profile, and contract identity; binds canonical Coverage and Queue bytes, Queue revisions, remaining count, completion receipt, and zero Coverage gaps. In `completion-candidate`, the Proof and pass receipt bind the current candidate Progress bytes. After `complete`, revalidation instead binds those same pre-complete bytes through the latest task-transition receipt, whose after-fingerprint binds the current complete Progress bytes; the completed state is therefore verifiable without rewriting the Proof. The selected profile must also pass `check_profile.py`.
 

@@ -12,7 +12,7 @@ Used for moving, renaming, splitting, merging, or restructuring files or directo
 First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then read:
 
 - [[kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger|Inventory and Coverage Ledger]]
-- [[kernel/K02 Knowledge Work Construction/05 Existing Changes and Migration Safety|Existing Changes and Migration Safety]]
+- [[kernel/K02 Knowledge Work Construction/10 Existing Changes and Migration Safety|Existing Changes and Migration Safety]]
 - [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]]
 - [[kernel/K01 Scope and Architecture/04 Folder and Shared Ownership|Folder and Shared Ownership]]
 - [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]
@@ -28,6 +28,7 @@ Before migration, a manifest of source paths, target paths, incoming links, head
 - Multi-batch migration: combine [[kernel/Read Sets/R07 Long-running Execution Read Set|Long-running Execution]].
 - Content owners change at the same time: read [[kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]].
 - The Standards themselves change: combine [[kernel/Read Sets/R09 Standards Governance Read Set|Standards Governance]].
+- A bound planning artifact or mapped canonical-owner path changes: combine [[kernel/Read Sets/R13 Corpus Planning Read Set|Corpus Planning]] so the Global Map, Capability Matrix, and Gap Register are reconciled after the migration.
 - A targeted or specialized migration audit: combine [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set|Targeted and Specialized Audit]].
 - A whole-task completion candidate: combine [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]].
 

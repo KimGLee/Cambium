@@ -10,14 +10,15 @@ source_files:
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
   - kernel/K08 Metadata and Status/05 Review Source and Migration Metadata.md
   - kernel/K06 Knowledge Intake and Evolution/07 Environmental Scanning and Watermark.md
-  - kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production.md
+  - kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production.md
+  - kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries.md
   - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
   - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
   - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
   - kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-source_hash: 'e810e50df27a'
+source_hash: 'a18d1955e221'
 ---
 # R10 Maintenance Run Card
 
@@ -44,12 +45,14 @@ Perform periodic freshness, re-verification, watermark, `needs_rereview`, or can
 - [ ] Output deferred age distribution. Explicitly disposition items lingering more than 3 runs.
 - [ ] For retirement of high-in-degree pages, count incoming-link retargeting against the page budget at `retargeted links ÷ 6`.
 - [ ] Resolve batch boundaries, selected content Cards, profile scans, source routes, and tier-specific review before editing.
+- [ ] For persistent multi-batch maintenance, consume R07's current Corpus Planning check and on-demand JSON projection; load R13 only if the run changes a map, capability, or gap handoff.
 
 ## During
 
 - Adjudicate candidates caused by the current batch inside that batch; existing-object candidates enter the pool and do not become automatic gate failures.
 - Reverify whether each selected object's priority, evidence, owner, content, links, and freshness still hold.
 - Run source updates through `R04`; retire or merge only after canonical ownership and incoming links are reconciled.
+- Use R13 only when maintenance changes a corpus-wide map entry, capability judgment, or semantic-gap handoff; page freshness alone does not rewrite corpus planning.
 - For persistent work, move each selected batch through the Required Queue;
   workers write only their manifest, receipts, and delta, while the integrator
   owns Queue, Coverage, Progress, Ledger, and watermark writes.

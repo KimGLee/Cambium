@@ -1,0 +1,20 @@
+schema_version: 1
+
+applicability:
+  state: TODO(profile)
+  reason: TODO(profile)
+
+artifact_bindings:
+  global_map: TODO(profile)
+  capability_matrix: TODO(profile)
+  gap_register: TODO(profile)
+
+capability_scale:
+  - rank: TODO(profile)
+    value: TODO(profile)
+    predicate: TODO(profile)
+    target_eligible: TODO(profile)
+
+pass_authority:
+  role_id: TODO(profile)
+  decision_scope_id: corpus-plan-semantic-acceptance

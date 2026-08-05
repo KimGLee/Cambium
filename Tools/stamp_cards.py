@@ -6,7 +6,7 @@ Governance. Cards live under kernel/Cards and are compiled from kernel source
 files; they are never profile-selected and never canonical rule owners. The
 Read Set Index and Card Index share registry_id `kernel-runtime-routes`; their
 route registries, the Read Set files, and the Runtime Cards must agree exactly
-on the continuous route set R01-R12. A Read Set and its Card share route_id;
+on the continuous route set R01-R13. A Read Set and its Card share route_id;
 indexes have no route identity of their own. Every Card's `compiled_from` must
 equal the active `standards_version` recorded in K00/03; uniform but obsolete
 version stamps are stale, not synchronized.
@@ -42,7 +42,7 @@ CARD_INDEX_NAME = "Card Index.md"
 READ_SET_INDEX_NAME = "Read Sets Index.md"
 REGISTRY_ID = "kernel-runtime-routes"
 ROUTE_ID_RE = re.compile(r"^R([0-9]{2})$")
-EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 13))
+EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 14))
 ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
 
 
@@ -581,7 +581,7 @@ def main():
     for label, route_ids in route_sets.items():
         if route_ids != expected_routes:
             failures.append(
-                "%s routes must be continuous R01-R12; missing=%s extra=%s"
+                "%s routes must be continuous R01-R13; missing=%s extra=%s"
                 % (
                     label,
                     sorted(expected_routes - route_ids),

@@ -48,7 +48,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_vocab"
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.4.0"
+GATE_ID = "frontmatter-vocabulary"
+
+
+def _make_receipt(check, target, result, details, seq):
+    """Build one producer-era vocabulary receipt with its stable Gate ID."""
+    receipt = kblib.make_receipt(
+        TOOL, TOOL_VERSION, check, target, result, details, seq)
+    receipt["gate_id"] = GATE_ID
+    return receipt
 
 
 def load_vocab(path):
@@ -121,8 +130,8 @@ def main():
         # The post-exclusion effective set owns the gate result. A scoped run,
         # an empty whole root, and a fully excluded root all fail closed.
         target = (args.scope or ".") + " @ " + os.path.abspath(args.vault_root)
-        receipts = [kblib.make_receipt(
-            TOOL, TOOL_VERSION, "scan-empty", target, "fail",
+        receipts = [_make_receipt(
+            "scan-empty", target, "fail",
             "effective scan set contains no .md files (path missing, empty, "
             "or fully excluded); a zero-file scan cannot serve as a gate "
             "result", 1)]
@@ -137,8 +146,8 @@ def main():
         if fm_text is None:
             counts["no_frontmatter"] += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
-                TOOL, TOOL_VERSION, "frontmatter-missing", rel_disp, "candidate",
+            receipts.append(_make_receipt(
+                "frontmatter-missing", rel_disp, "candidate",
                 "file has no frontmatter; per K08/05 it defaults to "
                 "authoring_status=unassessed, whether frontmatter must be "
                 "added is a human call", seq))
@@ -148,16 +157,16 @@ def main():
         except kblib.YamlSubsetError as exc:
             counts["unparseable"] += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
-                TOOL, TOOL_VERSION, "frontmatter-unparseable", rel_disp, "candidate",
+            receipts.append(_make_receipt(
+                "frontmatter-unparseable", rel_disp, "candidate",
                 "frontmatter is beyond the restricted YAML subset grammar and "
                 "cannot be judged deterministically: %s" % exc, seq))
             continue
         if not isinstance(fm, dict):
             counts["unparseable"] += 1
             seq += 1
-            receipts.append(kblib.make_receipt(
-                TOOL, TOOL_VERSION, "frontmatter-unparseable", rel_disp, "candidate",
+            receipts.append(_make_receipt(
+                "frontmatter-unparseable", rel_disp, "candidate",
                 "top level of frontmatter is not a mapping", seq))
             continue
         for _axis in ("priority", "tier"):
@@ -176,8 +185,8 @@ def main():
             if field not in effective or value is None or value == "" or value == []:
                 counts["missing_field"] += 1
                 seq += 1
-                receipts.append(kblib.make_receipt(
-                    TOOL, TOOL_VERSION, "vocab-field-missing",
+                receipts.append(_make_receipt(
+                    "vocab-field-missing",
                     "%s#%s" % (rel_disp, field), "candidate",
                     "controlled field %s is missing or empty; whether absence "
                     "is allowed is a human call (owner: %s)"
@@ -188,8 +197,8 @@ def main():
                 if sval not in spec["values"]:
                     counts["unknown_value"] += 1
                     seq += 1
-                    receipts.append(kblib.make_receipt(
-                        TOOL, TOOL_VERSION, "vocab-unknown-value",
+                    receipts.append(_make_receipt(
+                        "vocab-unknown-value",
                         "%s#%s" % (rel_disp, field), "fail",
                         "value %r of field %s is not in the controlled "
                         "vocabulary (owner: %s; allowed values: %s)"
@@ -199,8 +208,8 @@ def main():
 
     if not any(r["result"] == "fail" for r in receipts):
         seq += 1
-        receipts.append(kblib.make_receipt(
-            TOOL, TOOL_VERSION, "vocab-check-summary",
+        receipts.append(_make_receipt(
+            "vocab-check-summary",
             (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
             "no illegal controlled-vocabulary values found (unknown_value=0; "
             "candidates counted separately)", seq))
@@ -225,8 +234,8 @@ def main():
         _n = dist["priority"].get(_pcls, 0)
         if _ptot and _n * 100.0 / _ptot > _quota:
             seq += 1
-            receipts.append(kblib.make_receipt(
-                TOOL, TOOL_VERSION, "priority-quota", "vault", "candidate",
+            receipts.append(_make_receipt(
+                "priority-quota", "vault", "candidate",
                 "%s share %.0f%% (%d/%d) exceeds the K00/07 Priority Quota "
                 "target <=%.0f%%; over-quota pages must be downgraded or an "
                 "exemption recorded in the Coverage Ledger"

@@ -36,7 +36,9 @@ First read:
 
 - The user MUST explicitly authorize the governance change.
 - Before a later revision, freeze the active Standards version and selected profile manifest. For initial adoption, freeze the four uninstantiated K00/03 state values and the upstream tag, commit, or archive checksum instead; an old profile does not exist and is not a prerequisite. In both branches, freeze affected modules, incoming links, and active task impact.
-- Initial profile selection and every later selection change occur only here. Initial adoption validates the candidate, instantiates all four K00/03 state values, and creates the first Change Summary entry. A later change validates the candidate, records old and new selections, and bumps `standards_version`. Both branches recompose vocabulary and stamp Cards; only existing affected tasks enter Active-task Adoption.
+- Initial profile selection and every later selection change occur only here. Initial adoption validates the candidate, instantiates all four K00/03 state values, and creates the first Change Summary entry. A later change validates the candidate, records old and new selections, and bumps `standards_version`. Both branches recompose vocabulary and stamp Cards. For each existing affected runtime task, R09 freezes the authorized revision identity and changed predicates and produces the K12/10 restricted-YAML adoption input; it does not edit that task's Coverage, Queue, or Progress. Predicate, Profile-path, or resolved-load-set change also requires a new Task `contract_version`; a pure no-predicate-change identity update may keep it.
+- If the revised Standards cannot parse or validate a currently bound Work Spec, complete that compatibility migration through the Work Spec's owning process before producing an admissible adoption plan. R09 cannot hide it inside the adoption transaction.
+- Bind each plan to the complete approved K00/03 bytes and deterministic after snapshots of the `kernel/` tree and selected Profile directory. Its changed predicates are that task's canonical machine list; do not create a second revision YAML or prose adoption copy.
 - A structural migration MUST establish a complete mapping from old content blocks to new owners.
 - A split MUST NOT be used as reduction, summarization, or silent deletion of rules.
 - Read Sets and the overall Index MUST stay synchronized with module paths.
@@ -46,7 +48,7 @@ First read:
 ## Gate
 
 - Use [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]] to verify directories, MOC, and coverage.
-- Use [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]] to record affected active tasks' receipt compatibility and invalidation scope, and [[kernel/K12 Quality Assurance/10 Standards Version Adoption|Standards Version Adoption]] to execute the adoption plan.
+- Use [[kernel/K12 Quality Assurance/10 Standards Version Adoption|Standards Version Adoption]] as the sole owner of affected-task compatibility, targeted invalidation, and required gate reruns. After governance closure, hand each validated agent-readable plan to R07; K13/15's writer performs the runtime transaction. R09 neither duplicates those rules nor mutates active-task state.
 - When the revision adds, retires, or re-scopes a check, use [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]] to fix the item's receipt dimension, audit layer, audit object, and evidence role before the revision closes.
 - Use [[kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]] to verify vault-wide incoming links.
 - When rendering policy, diagrams, tables, formulas, assets, or host behavior are involved, use [[kernel/K12 Quality Assurance/02 Rendering Verification|Rendering Verification]] to select and record the actual level.

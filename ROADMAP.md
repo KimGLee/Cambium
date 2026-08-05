@@ -14,12 +14,14 @@ bypass R09 adoption.
 
 | Area | Current state |
 |---|---|
-| Profile setup | Copy the 11-file `_template`, fill it manually, and run `check_profile.py` |
+| Profile setup | Copy the 12-file `_template`, fill it manually, and run `check_profile.py` |
 | Execution | The kernel defines sequential work, concurrent disjoint batches, independent review contexts, and serial integration |
-| Persistent work state | `.cambium/` separates object-level Coverage, the canonical Required Queue, and task-level Progress; standard-library tools initialize, compile, validate, transition, apply Amendment-bound cross-Ledger changes, recover interrupted-write evidence, and render Queue state |
+| Persistent work state | `.cambium/` separates object-level Coverage, the canonical Required Queue, task-level Progress, and hash-bound restricted-YAML complex-batch Work Specs; standard-library tools initialize, compile, validate, transition, apply Amendment-bound cross-Ledger changes, recover interrupted-write evidence, and render Queue state |
+| Active-task Standards adoption | One restricted-YAML plan binds approved governance bytes, deterministic Kernel/Profile snapshots, old/new Contract/Standards/Profile/load set, changed predicates, dimension/boundary-specific invalidated evidence, immediate Queue consistency, and deferred gates; after required pre-rollbacks/holds, `adopt_standards.py` synchronizes all three runtime identities without changing lifecycle/holds, while append-only receipts preserve producer-era history, filter invalidated-evidence receipt IDs from current use, recover interruption, and avoid a prose duplicate |
 | Runtime | No bundled orchestrator, scheduler, workspace manager, or host adapter |
-| Dependency propagation | The kernel defines semantic dependency invalidation and downstream `needs_rereview`, but no bundled compiler or change detector calculates the affected set |
-| Tools | Deterministic checks, schemas, receipts, vocabulary/Card compilation, Required Queue control, guarded Amendment transactions, and single-delta application |
+| Corpus planning and impact inputs | A configured Profile explicitly binds restricted-YAML Global Map, Capability Matrix, and Gap Register artifacts; `check_corpus_plan.py` validates structure/reconciliation and emits deterministic JSON, while `record_corpus_acceptance.py` records the distinct Profile-authorized semantic decision as append-only JSONL; no duplicate Markdown report is persisted |
+| Automatic dependency propagation | The kernel defines semantic dependency invalidation and downstream `needs_rereview`, but no bundled compiler or change detector yet calculates an affected set from the explicit planning inputs |
+| Tools | Deterministic checks, schemas, receipts, vocabulary/Card compilation, Corpus Planning validation/semantic acceptance/on-demand Agent projection, Required Queue and Work Spec control, guarded Amendment and active-task Standards-adoption transactions, and single-delta application |
 
 ## Profile Onboarding Assistant
 
@@ -29,11 +31,11 @@ creating a second profile interface.
 The assistant should:
 
 1. Create a validated `profiles/<profile-id>/` skeleton.
-2. Collect answers in stages: identity and corpus goal; scope and architecture;
-   language, priority, and sources; roles and expression artifacts; optional
-   scans, routes, and gates.
+2. Collect answers in stages: identity and corpus goal; scope, architecture,
+   and Corpus Planning applicability/bindings; language, priority, and
+   sources; roles and expression artifacts; optional scans, routes, and gates.
 3. Support both an existing corpus and a corpus that will be built from zero.
-4. Project confirmed answers into the existing 11 canonical profile files.
+4. Project confirmed answers into the existing 12 canonical profile files.
 5. Show the resulting diff and unresolved decisions before writing.
 6. Run `check_profile.py` and report structural failures in user-facing terms.
 
@@ -106,6 +108,10 @@ edge.
 Compile explicit relationship sources into a normalized typed dependency
 graph. Eligible inputs include:
 
+- the configured Global Map's explicit typed dependencies;
+- the Capability Matrix's explicit capability priorities, canonical paths,
+  evidence, and Gap IDs;
+- the Gap Register's explicit capability links and promoted Coverage paths;
 - frontmatter `prerequisites`;
 - canonical-to-derived-artifact bindings;
 - source and supported-claim bindings;

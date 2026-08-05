@@ -1,0 +1,40 @@
+# =============================================================================
+# Complex Batch Work Spec template (Agent-readable immutable instruction input)
+# Owner standard: kernel/K13 Task Runtime and Execution Control/08 Required
+# Queue Contract and Lifecycle.md
+#
+# This entire file is restricted YAML parsed by Tools/kblib.py. The field set
+# is closed: delete no field and add no field. Replace every TODO(batch) and
+# REPLACE-ME value before binding the path/SHA in Coverage and Queue. A simple
+# batch does not copy this template; it records null/null in both owners.
+# =============================================================================
+
+schema_version: 1
+batch_id: REPLACE-ME
+manifest:
+  - path/to/first-object.md
+
+outcomes:
+  - outcome_id: OUT-001
+    required_result: TODO(batch)
+
+instructions:
+  - instruction_id: INS-001
+    order: 1
+    target_scope:
+      - path/to/first-object.md
+    required_transformation: TODO(batch)
+    depends_on: []
+
+acceptance_conditions:
+  - condition_id: ACC-001
+    target_scope:
+      - path/to/first-object.md
+    observable_predicate: TODO(batch)
+    evidence_requirement: TODO(batch)
+
+constraints:
+  - constraint_id: CON-001
+    target_scope:
+      - batch
+    requirement: TODO(batch)

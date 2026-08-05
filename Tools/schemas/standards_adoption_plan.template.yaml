@@ -1,0 +1,88 @@
+# =============================================================================
+# Active-task Standards adoption transaction plan
+# Owner standard: kernel/K12 Quality Assurance/10 Standards Version Adoption.md
+# Implemented by: Tools/adopt_standards.py
+# Location: .cambium/deltas/standards-adoptions/<adoption-id>.yaml
+#
+# The plan is restricted YAML and binds one exact before-state.  It may change
+# only the active Standards/profile identity and Progress load set.  It never
+# changes task/batch lifecycle, Queue membership/order, scope, objective, or
+# Coverage dispositions.
+# =============================================================================
+
+schema_version: 1
+adoption_id: "SA-001"
+task_id: "kb-build-2026-xx"
+task_state_before: paused
+contract_version_before: "c1"
+contract_version_after: "c2"
+standards_version_before: TODO(adoption-before)
+standards_version_after: TODO(adoption-after)
+selected_profile_manifest_before: "profiles/my-profile/profile.md"
+selected_profile_manifest_after: "profiles/my-profile/profile.md"
+governance_revision_ref: "kernel/K00 Standards Control/03 Standards Governance.md"
+governance_revision_sha256: "sha256:replace-with-current-governance-file-fingerprint"
+standards_snapshot_sha256_after: "sha256:replace-with-kernel-tree-fingerprint"
+profile_snapshot_sha256_after: "sha256:replace-with-selected-profile-tree-fingerprint"
+
+selected_route_ids_after:
+  - "R01"
+  - "R07"
+selected_card_paths_after:
+  - "kernel/Cards/R01 Core Bootstrap Card.md"
+  - "kernel/Cards/R07 Long-running Execution Card.md"
+selected_profile_route_ids_after: []
+selected_read_sets_after:
+  - "kernel/Read Sets/R07 Long-running Execution Read Set.md"
+loaded_module_paths_after: []
+
+queue_revision_before: 1
+queue_revision_after: 2
+queue_state_revision_before: 0
+coverage_sha256_before: "sha256:replace-with-current-coverage-fingerprint"
+required_queue_sha256_before: "sha256:replace-with-current-queue-fingerprint"
+progress_sha256_before: "sha256:replace-with-current-progress-fingerprint"
+
+# Empty for a wording/version-stamp-only adoption.  Every referenced path and
+# gate id is explicit; no semantic impact is inferred from prose or diffs.
+changed_predicates:
+  - predicate_id: "PRED-BATCH-CLOSE-001"
+    owner_path: "kernel/K12 Quality Assurance/09 Batch-close Closed List.md"
+    change_kind: modified
+    affected_gate_ids:
+      - "batch-close"
+
+# Old receipts remain immutable.  Listing one here records that it cannot
+# satisfy the new predicate and identifies the bounded revalidation scope.
+invalidated_evidence:
+  - receipt_id: "audit-old-gate-..."
+    predicate_ids:
+      - "PRED-BATCH-CLOSE-001"
+    dimension_ids:
+      - "coverage_and_integration"
+    boundary_ids:
+      - "INV-B1-CLOSE"
+    reason_code: predicate-changed
+    revalidation_scope_ids:
+      - "B1"
+
+invalidation_boundaries:
+  - boundary_id: "INV-B1-CLOSE"
+    predicate_ids:
+      - "PRED-BATCH-CLOSE-001"
+    target_kind: batch
+    target_ids:
+      - "B1"
+    required_gate_ids:
+      - "batch-close"
+
+# This gate is rerun inside the adoption transaction against the new bytes;
+# adoption cannot commit without it.
+immediate_gate_reruns:
+  - "required-queue-consistency"
+
+# Exact sorted union of every predicate's affected_gate_ids and every
+# invalidation boundary's required_gate_ids.  These gates run only when their
+# recorded boundary is reached; historical receipts are not rewritten.
+boundary_gate_reruns:
+  - "batch-close"

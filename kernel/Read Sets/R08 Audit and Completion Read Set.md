@@ -20,6 +20,7 @@ First read:
 - [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]]
 - [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence|Terminal Audit and Convergence]]
 - [[kernel/K12 Quality Assurance/16 Terminal Proof Contract|Terminal Proof Contract]]
+- [[kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries|Corpus Planning Runtime Audit and Gate Boundaries]]
 - [[kernel/K13 Task Runtime and Execution Control/11 Completion Policy|Completion Policy]]
 - [[kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings|Completion Gate Bindings]]
 - [[kernel/K13 Task Runtime and Execution Control/13 Final Handoff|Final Handoff]]

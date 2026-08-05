@@ -10,6 +10,7 @@ import unittest
 TOOLS = Path(__file__).resolve().parents[1]
 REPOSITORY = TOOLS.parent
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
+SYNTHETIC_PROFILE = TOOLS / "tests" / "fixtures" / "synthetic_profile"
 sys.path.insert(0, str(TOOLS))
 
 import check_queue
@@ -66,11 +67,18 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
     def queue(self):
         return kblib.load_yaml_file(self.root / check_queue.QUEUE_PATH)
 
-    def write_batch_receipt(self, batch_id):
+    def write_batch_receipt(self, batch_id, page_receipt_id):
         receipt = kblib.make_receipt(
-            "fixture_batch_gate", "1.0.0", "batch_gate", batch_id,
+            check_queue.MANUAL_ATTESTATION_TOOL,
+            check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+            check_queue.BATCH_REVIEW_CHECK, batch_id,
             "pass", "fixture batch evidence", 1 if batch_id == "B1" else 2,
         )
+        receipt.update({
+            "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
+            "task_id": "fixture-task", "batch_id": batch_id,
+            "delta_page_receipt_ids": [page_receipt_id],
+        })
         path = self.root / ".cambium/receipts/batch-evidence.jsonl"
         kblib.write_receipts(path, [receipt])
         return receipt["receipt_id"]
@@ -107,7 +115,7 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
             records.append({
                 "receipt_id": receipt_id,
                 "tool": "check_batch_close",
-                "tool_version": "1.0.0",
+                "tool_version": check_queue.BATCH_CLOSE_TOOL_VERSION,
                 "check": "closed_list_%s" % field,
                 "target": ".",
                 "batch_id": batch_id,
@@ -125,7 +133,7 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         records.append({
             "receipt_id": attestation_id,
             "tool": "check_batch_close",
-            "tool_version": "1.0.0",
+            "tool_version": check_queue.BATCH_CLOSE_TOOL_VERSION,
             "check": "batch_global_review_attestation",
             "target": batch_id,
             "batch_id": batch_id,
@@ -146,7 +154,7 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         records.append({
             "receipt_id": global_review_id,
             "tool": "check_batch_close",
-            "tool_version": "1.0.0",
+            "tool_version": check_queue.BATCH_CLOSE_TOOL_VERSION,
             "check": "batch_global_review",
             "target": batch_id,
             "batch_id": batch_id,
@@ -163,7 +171,7 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         records.append({
             "receipt_id": close_id,
             "tool": "check_batch_close",
-            "tool_version": "1.0.0",
+            "tool_version": check_queue.BATCH_CLOSE_TOOL_VERSION,
             "check": "batch_close_gate",
             "target": batch_id,
             "batch_id": batch_id,
@@ -184,6 +192,11 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
             "delta_sha256": item["delta_sha256"],
             "delta_apply_receipt": delta_apply_receipt,
             "queue_consistency_receipt": consistency_receipt,
+            "corpus_plan_required": False,
+            "corpus_plan_triggers": [],
+            "corpus_plan_receipt": None,
+            "work_spec_path": item["work_spec_path"],
+            "work_spec_sha256": item["work_spec_sha256"],
             "merged_snapshot_sha256": merged_snapshot_sha256,
             "reviewer_attestation_receipt": attestation_id,
             "global_review_receipt": global_review_id,
@@ -438,14 +451,8 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
             REPOSITORY / "profiles/README.md",
             self.root / "profiles/README.md",
         )
-        source_profile = REPOSITORY / "profiles/examples/agent-atlas"
-        target_profile = self.root / "profiles/agent-atlas"
-        shutil.copytree(source_profile, target_profile)
-        for path in target_profile.rglob("*"):
-            if path.is_file() and path.suffix in (".md", ".yaml"):
-                path.write_text(path.read_text(encoding="utf-8").replace(
-                    "profiles/examples/agent-atlas", "profiles/agent-atlas"),
-                    encoding="utf-8")
+        target_profile = self.root / "profiles/test-profile"
+        shutil.copytree(SYNTHETIC_PROFILE, target_profile, dirs_exist_ok=True)
         tools_root = self.root / "Tools"
         (tools_root / "schemas").mkdir(parents=True)
         for name in ("check_profile.py", "check_queue.py", "kblib.py",
@@ -455,7 +462,7 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
             TOOLS / "schemas/execution_defaults.template.yaml",
             tools_root / "schemas/execution_defaults.template.yaml")
 
-        manifest = "profiles/agent-atlas/profile.md"
+        manifest = "profiles/test-profile/profile.md"
         active_path = (
             self.root /
             "kernel/K00 Standards Control/03 Standards Governance.md"
@@ -505,8 +512,18 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
     def merge_and_apply(self, batch_id, object_path):
         ready = self.ready_receipt(batch_id)
         self.transition(batch_id, "open", "--gate-receipt", ready)
-        batch_receipt = self.write_batch_receipt(batch_id)
-        delta = self.write_delta(batch_id, object_path, batch_receipt)
+        page_receipt = kblib.make_receipt(
+            "fixture_page_evidence", "0.9.0", "page_review", object_path,
+            "pass", "reusable historical page evidence",
+            1 if batch_id == "B1" else 2,
+        )
+        kblib.write_receipts(
+            self.root / ".cambium/receipts/page-evidence.jsonl",
+            [page_receipt])
+        batch_receipt = self.write_batch_receipt(
+            batch_id, page_receipt["receipt_id"])
+        delta = self.write_delta(
+            batch_id, object_path, page_receipt["receipt_id"])
         self.transition(
             batch_id, "merge-ready", "--delta-path", delta,
             "--batch-receipt", batch_receipt,
@@ -847,6 +864,14 @@ raise SystemExit(update_task.main(sys.argv[2:]))
                 encoding="utf-8").splitlines()[-1]
         )["receipt_id"]
         self.assertNotEqual(completion_receipt, proof_queue_receipt)
+        corpus_plan_check = self.run_tool(
+            "check_corpus_plan.py", "--receipts", completion_register)
+        self.assertEqual(0, corpus_plan_check.returncode,
+                         corpus_plan_check.stdout)
+        corpus_plan_receipt = json.loads(
+            (self.root / completion_register).read_text(
+                encoding="utf-8").splitlines()[-1]
+        )["receipt_id"]
 
         proof = kblib.parse_yaml_subset((
             TOOLS / "schemas/terminal_proof.template.yaml"
@@ -866,8 +891,10 @@ raise SystemExit(update_task.main(sys.argv[2:]))
                 self.root / check_queue.QUEUE_PATH),
             "remaining_required_work_units": 0,
             "queue_check_receipt": proof_queue_receipt,
+            "corpus_plan_check_receipt": corpus_plan_receipt,
+            "corpus_plan_semantic_acceptance_receipt": None,
             "standards_version": "3.0.0",
-            "selected_profile_manifest": "profiles/agent-atlas/profile.md",
+            "selected_profile_manifest": "profiles/test-profile/profile.md",
             "selected_route_ids": ["R01", "R08", "R12"],
             "selected_card_paths": [
                 "kernel/Cards/R01 Core Bootstrap Card.md",

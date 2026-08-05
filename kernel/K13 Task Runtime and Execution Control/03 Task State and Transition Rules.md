@@ -19,8 +19,16 @@ The frozen completion semantics adds exactly one mutually exclusive closure path
 
 ```text
 build:       planned / active -> completion-candidate -> complete
+             completion-candidate -> active / paused  # invalidated evidence
 maintenance: planned / active -> complete
 ```
+
+If a Standards/Profile mismatch invalidates build-completion evidence before
+`complete`, `completion-candidate` may transition through
+`Tools/update_task.py` to `paused` (preserve the checkpoint) or `active`
+(continue eligible work) and resets `terminal_audit` to `invalidated`. This
+explicit rollback precedes K12/10 adoption;
+the adoption writer itself never changes task state.
 
 The direct `planned` closure edge exists only for a materialized nonempty Queue
 whose batches were all validly cancelled by Amendment before any opened. It

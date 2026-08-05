@@ -1,21 +1,8 @@
 ## Navigation
 
 - Parent: [[kernel/K02 Knowledge Work Construction Standard|K02 Knowledge Work Construction Standard]].
-- Previous: [[kernel/K02 Knowledge Work Construction/02 Coverage Reconciliation|Coverage Reconciliation]].
-- Next: [[kernel/K02 Knowledge Work Construction/04 Knowledge Batch Production|Knowledge Batch Production]].
-
-## Phase 2: Architecture And Mapping
-
-- Build the Knowledge Base Overview.
-- Build the Competency Matrix.
-- Build the Knowledge Gap Tracker.
-- Build the prerequisite graph.
-- Build the mapping between the selected profile's `Profile Scope` / `Knowledge Spine` and foundation dependencies.
-- Mark concepts that are duplicated or have unclear ownership.
-- Mark conclusions that need source intake, cross-source synthesis, or re-verification.
-- Draw up the directory migration table, and build the expression-artifact mapping via the selected profile's `Expression Layer Entry` and `Routing And Gate Registry` roles.
-
-Before the mapping is complete, do not bulk-delete original content.
+- Previous: [[kernel/K02 Knowledge Work Construction/07 Gap Register Contract|Gap Register Contract]].
+- Next: [[kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production|Knowledge Batch Production]].
 
 ## Phase 3: Representative Samples
 

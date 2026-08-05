@@ -19,13 +19,14 @@ This page is the stable entry point of the Task Runtime and Execution Control st
 | [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching\|Guidance Disposition and Safe Switching]] | `Mid-task Guidance And Contract Amendment` |
 | [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning\|Amendment Log and Controlled Replanning]] | `Mid-task Guidance And Contract Amendment` |
 | [[kernel/K13 Task Runtime and Execution Control/07 Progress Ledger Contract\|Progress Ledger Contract]] | `Progress Ledger`, `Machine-readable Ledger` |
-| [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle\|Required Queue Contract and Lifecycle]] | `Purpose And Ownership`, `Queue Document Contract`, `Revisions And Fingerprints`, `Batch Lifecycle` |
+| [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle\|Required Queue Contract and Lifecycle]] | `Purpose And Ownership`, `Queue Document Contract`, `Batch Work Specification Binding`, `Revisions And Fingerprints`, `Batch Lifecycle` |
 | [[kernel/K13 Task Runtime and Execution Control/09 Queue Compilation Replanning and Views\|Queue Compilation Replanning and Views]] | `Compiler, Updates, And Views` |
 | [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration\|Batch Admission Transitions and Serial Integration]] | `Concurrent Batches`, `Transition Gates` |
 | [[kernel/K13 Task Runtime and Execution Control/11 Completion Policy\|Completion Policy]] | `Completion Policy`, `Maintenance Completion Policy` |
 | [[kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings\|Completion Gate Bindings]] | `Completion Gates` |
 | [[kernel/K13 Task Runtime and Execution Control/13 Final Handoff\|Final Handoff]] | `Final Handoff`, `Related` |
 | [[kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover\|Interruption Recovery and Rollover]] | `Interruption And Resume` |
+| [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction\|Standards Adoption State Transaction]] | `Purpose And Boundary`, `Permitted Transaction`, `Guarded Write Protocol`, `Resume Boundary`, `Related` |
 
 ## Applicable Read Sets
 

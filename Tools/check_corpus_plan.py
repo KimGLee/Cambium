@@ -1,0 +1,2111 @@
+#!/usr/bin/env python3
+"""Validate one selected Profile's explicit corpus-planning artifacts.
+
+The checker is deliberately syntactic and referential.  It validates stable
+IDs, declared paths, explicit relationships, and canonical runtime handoffs;
+it never infers a capability, dependency, gap, or acceptance result from
+prose, links, or semantic similarity.
+"""
+
+import argparse
+import json
+import os
+import re
+import stat
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import check_queue
+import kblib
+
+
+TOOL = "check_corpus_plan"
+TOOL_VERSION = "1.5.0"
+
+SLOT_NAME = "Corpus Planning"
+SCOPE_SLOT_NAME = "Profile Scope"
+ROLE_SLOT_NAME = "Role Registry"
+STATE_PATHS = (
+    check_queue.COVERAGE_PATH,
+    check_queue.QUEUE_PATH,
+    check_queue.PROGRESS_PATH,
+)
+
+SLOT_FIELDS = {
+    "schema_version", "applicability", "artifact_bindings",
+    "capability_scale", "pass_authority",
+}
+APPLICABILITY_FIELDS = {"state", "reason"}
+ARTIFACT_BINDING_FIELDS = {
+    "global_map", "capability_matrix", "gap_register",
+}
+ARTIFACT_ROLES = (
+    "Global Map",
+    "Capability Matrix",
+    "Gap Register",
+)
+ARTIFACT_FIELD_ROLES = {
+    "global_map": "Global Map",
+    "capability_matrix": "Capability Matrix",
+    "gap_register": "Gap Register",
+}
+SCALE_ROW_FIELDS = {"rank", "value", "predicate", "target_eligible"}
+PASS_AUTHORITY_FIELDS = {"role_id", "decision_scope_id"}
+SEMANTIC_ACCEPTANCE_SCOPE = "corpus-plan-semantic-acceptance"
+SEMANTIC_ACCEPTANCE_TOOL = "record_corpus_acceptance"
+SEMANTIC_ACCEPTANCE_TOOL_VERSION = "1.0.0"
+SEMANTIC_ACCEPTANCE_CHECK = "corpus_plan_semantic_acceptance"
+SEMANTIC_ACCEPTANCE_PLAN_PREFIX = (
+    ".cambium/deltas/corpus-plan-acceptances"
+)
+SEMANTIC_ACCEPTANCE_DECISIONS = {"accepted", "rejected"}
+SEMANTIC_ACCEPTANCE_PLAN_FIELDS = {
+    "schema_version", "acceptance_id", "authority_role_id",
+    "decision_scope_id", "decisions",
+}
+SEMANTIC_ACCEPTANCE_DECISION_FIELDS = {
+    "capability_id", "decision", "rationale",
+}
+
+SCOPE_LAYER_HEADERS = (
+    "Stable Layer ID",
+    "Repository-relative directories",
+    "Single layer responsibility",
+)
+CAPABILITY_PRIORITIES = {"P0", "P1", "P2"}
+GAP_STATUSES = {
+    "candidate", "confirmed", "promoted", "resolved", "deferred",
+    "rejected",
+}
+NONTERMINAL_QUEUE_STATES = {"queued", "open", "merge-ready"}
+RELATION_TYPES = {
+    "prerequisite-for",
+    "capability-input-to",
+    "realized-by",
+    "evidence-input-to",
+    "system-input-to",
+    "control-input-to",
+    "canonical-source-for",
+    "downstream-impact",
+}
+
+GLOBAL_MAP_FIELDS = {"schema_version", "entries", "typed_dependencies"}
+GLOBAL_MAP_ENTRY_FIELDS = {
+    "entry_id", "layer_id", "canonical_markdown_path",
+    "single_responsibility",
+}
+GLOBAL_MAP_EDGE_FIELDS = {
+    "edge_id", "upstream_entry_id", "downstream_entry_id", "relation_type",
+}
+MATRIX_FIELDS = {"schema_version", "capabilities"}
+CAPABILITY_FIELDS = {
+    "capability_id", "capability", "priority", "map_entry_ids",
+    "canonical_markdown_paths", "current_level", "target_level",
+    "evidence_paths", "gap_ids",
+}
+GAP_REGISTER_FIELDS = {"schema_version", "gaps"}
+GAP_FIELDS = {
+    "gap_id", "gap_statement", "capability_ids",
+    "candidate_owner_entry_id", "status", "close_condition",
+    "evidence_paths", "promoted_coverage_path", "rationale",
+}
+
+# A successful receipt is a reusable assertion only while every byte named by
+# this closed binding remains current.  The planning artifacts live outside
+# ``.cambium`` and are therefore also covered by the repository snapshot; the
+# individual path/SHA pairs make the exact profile interface independently
+# inspectable.  Runtime state is excluded from the repository snapshot and is
+# consequently bound by its three canonical fingerprints.
+PASS_RECEIPT_BINDING_FIELDS = (
+    "task_id",
+    "queue_revision",
+    "queue_state_revision",
+    "selected_profile_manifest",
+    "selected_profile_manifest_sha256",
+    "corpus_planning_slot_path",
+    "corpus_planning_slot_sha256",
+    "profile_scope_path",
+    "profile_scope_sha256",
+    "global_map_path",
+    "global_map_sha256",
+    "capability_matrix_path",
+    "capability_matrix_sha256",
+    "gap_register_path",
+    "gap_register_sha256",
+    "corpus_plan_applicability",
+    "coverage_ledger_sha256",
+    "required_queue_sha256",
+    "progress_ledger_sha256",
+    "repository_snapshot_sha256",
+)
+PATH_SHA_FIELDS = (
+    ("selected_profile_manifest", "selected_profile_manifest_sha256"),
+    ("corpus_planning_slot_path", "corpus_planning_slot_sha256"),
+    ("profile_scope_path", "profile_scope_sha256"),
+    ("global_map_path", "global_map_sha256"),
+    ("capability_matrix_path", "capability_matrix_sha256"),
+    ("gap_register_path", "gap_register_sha256"),
+)
+SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+HEADING_RE = re.compile(r"^\s*(#{1,6})\s+(.*?)\s*#*\s*$")
+SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
+
+
+def _add_error(result, check, target, details):
+    result["errors"].append({
+        "check": check,
+        "target": target,
+        "details": details,
+    })
+
+
+def _display_error(error):
+    return "%s (%s): %s" % (
+        error["check"], error["target"], error["details"])
+
+
+def _value(cell):
+    """Return a table/bullet scalar with one Markdown code pair removed."""
+    value = cell.strip()
+    if len(value) >= 2 and value[0] == value[-1] == "`":
+        value = value[1:-1].strip()
+    return value
+
+
+def _unfenced_lines(text):
+    """Yield (line number, line) while replacing fenced bodies with blanks."""
+    fence = None
+    for line_number, line in enumerate(text.splitlines(), 1):
+        stripped = line.lstrip()
+        match = re.match(r"^(```+|~~~+)", stripped)
+        if fence is None and match:
+            fence = match.group(1)[0] * 3
+            yield line_number, ""
+            continue
+        if fence is not None:
+            if match and stripped.startswith(fence):
+                fence = None
+            yield line_number, ""
+            continue
+        yield line_number, line
+
+
+def _h2_sections(text, expected, label, result, *, allow_extras=False):
+    sections = {}
+    duplicates = []
+    extras = []
+    current = None
+    for line_number, line in _unfenced_lines(text):
+        heading = HEADING_RE.match(line)
+        if heading and len(heading.group(1)) <= 2:
+            if len(heading.group(1)) == 2:
+                title = heading.group(2).strip()
+                current = title
+                if title in sections:
+                    duplicates.append(title)
+                else:
+                    sections[title] = []
+                if title not in expected:
+                    extras.append(title)
+            else:
+                current = None
+            continue
+        if current in sections:
+            sections[current].append((line_number, line))
+
+    for title in expected:
+        if title not in sections:
+            _add_error(result, "markdown_contract", label,
+                       "missing exact H2 heading: ## %s" % title)
+    for title in sorted(set(duplicates)):
+        _add_error(result, "markdown_contract", label,
+                   "repeats H2 heading: ## %s" % title)
+    if not allow_extras:
+        for title in extras:
+            _add_error(result, "markdown_contract", label,
+                       "unsupported H2 heading: ## %s" % title)
+    return sections
+
+
+def _split_table_row(line):
+    stripped = line.strip()
+    if not (stripped.startswith("|") and stripped.endswith("|")):
+        return None
+    # v1 fields are identifiers, paths, or bounded prose without literal pipe
+    # characters.  Rejecting embedded pipes avoids an ambiguous parser surface.
+    return [cell.strip() for cell in stripped[1:-1].split("|")]
+
+
+def _table_groups(lines):
+    groups = []
+    current = []
+    for line_number, line in lines:
+        cells = _split_table_row(line)
+        if cells is None:
+            if current:
+                groups.append(current)
+                current = []
+            continue
+        current.append((line_number, cells))
+    if current:
+        groups.append(current)
+    return groups
+
+
+def _parse_table(lines, expected_headers, label, result):
+    valid = []
+    for group in _table_groups(lines):
+        if len(group) < 2:
+            continue
+        header = tuple(_value(cell) for cell in group[0][1])
+        separator = group[1][1]
+        if (len(separator) == len(header) and
+                all(SEPARATOR_RE.fullmatch(cell.strip())
+                    for cell in separator)):
+            valid.append((header, group))
+    if len(valid) != 1:
+        _add_error(result, "markdown_table", label,
+                   "must contain exactly one Markdown table; found %d" %
+                   len(valid))
+        return []
+    header, group = valid[0]
+    if header != tuple(expected_headers):
+        _add_error(result, "markdown_table", label,
+                   "headers must be exactly: %s" % " | ".join(
+                       expected_headers))
+        return []
+    rows = []
+    for line_number, cells in group[2:]:
+        if len(cells) != len(header):
+            _add_error(result, "markdown_table", label,
+                       "line %d has %d cells; expected %d" %
+                       (line_number, len(cells), len(header)))
+            continue
+        rows.append({name: _value(value)
+                     for name, value in zip(header, cells)})
+    return rows
+
+
+def _read_text(path, label, result):
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return handle.read()
+    except (OSError, UnicodeError) as exc:
+        _add_error(result, "read", label, str(exc))
+        return None
+
+
+def _relative(root, path):
+    return os.path.relpath(path, root).replace(os.sep, "/")
+
+
+def _resolve_path(root, raw, label, result, *, must_exist=True,
+                  markdown=False, yaml_file=False, directory=False):
+    if not isinstance(raw, str):
+        _add_error(result, "path", label, "must be a string path")
+        return None
+    value = _value(raw)
+    if not value or value == "None":
+        _add_error(result, "path", label,
+                   "must be an explicit repository-relative path")
+        return None
+    if "\\" in value:
+        _add_error(result, "path", label,
+                   "must use forward slashes")
+        return None
+    if markdown and not value.lower().endswith(".md"):
+        _add_error(result, "path", label, "must end with .md")
+        return None
+    if yaml_file and not value.lower().endswith(".yaml"):
+        _add_error(result, "path", label, "must end with .yaml")
+        return None
+    try:
+        path = kblib.repository_path(
+            root, value, must_exist=must_exist, reject_symlink=True)
+    except ValueError as exc:
+        _add_error(result, "path", label, str(exc))
+        return None
+    if must_exist:
+        if directory and not os.path.isdir(path):
+            _add_error(result, "path", label, "must identify a directory")
+            return None
+        if not directory and not os.path.isfile(path):
+            _add_error(result, "path", label, "must identify a regular file")
+            return None
+    return {"value": value, "path": path}
+
+
+def _closed_mapping(value, expected, label, result):
+    """Require one exact mapping field set and return a safe mapping."""
+    if not isinstance(value, dict):
+        _add_error(result, "yaml_contract", label, "must be a mapping")
+        return {}
+    actual = set(value)
+    missing = sorted(expected - actual)
+    extra = sorted(actual - expected)
+    if missing:
+        _add_error(result, "yaml_contract", label,
+                   "missing field(s): %s" % ", ".join(missing))
+    if extra:
+        _add_error(result, "yaml_contract", label,
+                   "unsupported field(s): %s" % ", ".join(extra))
+    return value
+
+
+def _schema_document(binding, expected_fields, label, result):
+    try:
+        document = kblib.load_yaml_file(binding["path"])
+    except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
+        _add_error(result, "yaml_parse", label, str(exc))
+        return {}
+    document = _closed_mapping(document, expected_fields, label, result)
+    version = document.get("schema_version")
+    if type(version) is not int or version != 1:
+        _add_error(result, "yaml_contract", label,
+                   "schema_version must be integer 1")
+    return document
+
+
+def _string(value, label, result, *, allow_empty=False):
+    if not isinstance(value, str):
+        _add_error(result, "yaml_type", label, "must be a string")
+        return ""
+    if not allow_empty and not value.strip():
+        _add_error(result, "yaml_value", label, "must be non-empty")
+    if "TODO(profile)" in value:
+        _add_error(result, "template_sentinel", label,
+                   "must replace TODO(profile) before validation")
+    return value.strip()
+
+
+def _string_list(value, label, result, *, allow_empty=True):
+    if not isinstance(value, list):
+        _add_error(result, "yaml_type", label, "must be a list")
+        return []
+    values = []
+    for index, item in enumerate(value):
+        parsed = _string(item, "%s[%d]" % (label, index), result)
+        if parsed:
+            values.append(parsed)
+    if not allow_empty and not values:
+        _add_error(result, "yaml_value", label,
+                   "must contain at least one value")
+    duplicates = sorted({item for item in values if values.count(item) > 1})
+    if duplicates:
+        _add_error(result, "yaml_value", label,
+                   "repeats value(s): %s" % ", ".join(duplicates))
+    return values
+
+
+def _reject_runtime_path(resolved, label, result):
+    """Keep semantic planning inputs outside the runtime namespace."""
+    if not resolved:
+        return
+    value = resolved["value"].rstrip("/")
+    if value == ".cambium" or value.startswith(".cambium/"):
+        _add_error(
+            result, "planning_namespace", label,
+            "semantic planning paths may not be inside .cambium/",
+        )
+
+
+def _parse_list(value, label, result, *, allow_none=True):
+    raw_value = value.strip()
+    if _value(raw_value) == "None":
+        if allow_none:
+            return []
+        _add_error(result, "explicit_list", label,
+                   "must contain at least one explicit value")
+        return []
+    # A Markdown cell may code-format each list member independently
+    # (`` `A`; `B` ``).  The table scalar normalizer removes the outermost
+    # pair, so trim a remaining member-level tick on either side here.
+    values = [item.strip().strip("`").strip()
+              for item in raw_value.split(";")]
+    if any(not item for item in values):
+        _add_error(result, "explicit_list", label,
+                   "contains an empty semicolon-delimited value")
+        return []
+    duplicates = sorted({item for item in values if values.count(item) > 1})
+    if duplicates:
+        _add_error(result, "explicit_list", label,
+                   "repeats value(s): %s" % ", ".join(duplicates))
+    return values
+
+
+def _valid_id(value, label, result):
+    if not ID_RE.fullmatch(value or ""):
+        _add_error(result, "stable_id", label,
+                   "must match %s" % ID_RE.pattern)
+        return False
+    return True
+
+
+def _resolve_manifest(root, profile, result):
+    selected_from_progress = None
+    if profile is None:
+        progress_path = os.path.join(root, check_queue.PROGRESS_PATH)
+        try:
+            progress = kblib.load_yaml_file(progress_path)
+        except (OSError, UnicodeError, ValueError,
+                kblib.YamlSubsetError) as exc:
+            _add_error(
+                result, "profile_selection", check_queue.PROGRESS_PATH,
+                "--profile was omitted and selected Profile could not be read: %s" %
+                exc,
+            )
+            return None, None
+        contract = progress.get("contract")
+        if not isinstance(contract, dict):
+            _add_error(result, "profile_selection", check_queue.PROGRESS_PATH,
+                       "contract must be a mapping")
+            return None, None
+        profile = contract.get("selected_profile_manifest")
+        selected_from_progress = profile
+    if not isinstance(profile, str) or not profile.strip():
+        _add_error(result, "profile_selection", str(profile),
+                   "selected Profile must be a repository-relative path")
+        return None, selected_from_progress
+    profile = profile.strip()
+    try:
+        candidate = kblib.repository_path(root, profile, must_exist=True,
+                                          reject_symlink=True)
+        if os.path.isdir(candidate):
+            profile = profile.rstrip("/") + "/profile.md"
+            candidate = kblib.repository_path(
+                root, profile, must_exist=True, reject_symlink=True)
+    except ValueError as exc:
+        _add_error(result, "profile_selection", profile, str(exc))
+        return None, selected_from_progress
+    if not os.path.isfile(candidate) or not profile.lower().endswith(".md"):
+        _add_error(result, "profile_selection", profile,
+                   "must identify a Markdown Profile manifest")
+        return None, selected_from_progress
+    return candidate, selected_from_progress
+
+
+def _resolve_slot(manifest_text, root, manifest_path, slot_name, result):
+    bindings, duplicates = kblib.profile_slot_bindings(
+        manifest_text, include_duplicates=True)
+    if slot_name in duplicates:
+        _add_error(result, "profile_binding", _relative(root, manifest_path),
+                   "repeats %s binding" % slot_name)
+        return None
+    binding = bindings.get(slot_name)
+    if binding is None:
+        _add_error(result, "profile_binding", _relative(root, manifest_path),
+                   "has no %s binding" % slot_name)
+        return None
+    profile_dir = os.path.dirname(manifest_path)
+    kind, detail = kblib.resolve_profile_binding(binding, root, profile_dir)
+    if kind != "path":
+        _add_error(result, "profile_binding", _relative(root, manifest_path),
+                   "%s binding is %s: %s" %
+                   (slot_name, kind, detail or binding))
+        return None
+    return detail
+
+
+def _role_ids(manifest_text, root, manifest_path, result):
+    role_path = _resolve_slot(
+        manifest_text, root, manifest_path, ROLE_SLOT_NAME, result)
+    if role_path is None:
+        return set()
+    role_target = _relative(root, role_path)
+    text = _read_text(role_path, role_target, result)
+    if text is None:
+        return set()
+    roles = set()
+    for group in _table_groups(list(_unfenced_lines(text))):
+        if len(group) < 2:
+            continue
+        header = tuple(_value(cell) for cell in group[0][1])
+        separator = group[1][1]
+        if (not header or len(separator) != len(header) or
+                not all(SEPARATOR_RE.fullmatch(cell.strip())
+                        for cell in separator)):
+            continue
+        if header[0] not in ("Kernel role", "Role ID"):
+            continue
+        for _, cells in group[2:]:
+            if len(cells) != len(header):
+                continue
+            raw = cells[0].strip()
+            code = re.search(r"`([^`]+)`", raw)
+            role = code.group(1).strip() if code else _value(raw)
+            if role:
+                roles.add(role)
+    if not roles:
+        _add_error(result, "pass_authority", role_target,
+                   "Role Registry exposes no role IDs")
+    return roles
+
+
+def _validate_slot(text, target, manifest_text, root, manifest_path, result):
+    try:
+        document = kblib.parse_yaml_subset(text)
+    except kblib.YamlSubsetError as exc:
+        _add_error(result, "slot_yaml_parse", target, str(exc))
+        return None
+    document = _closed_mapping(document, SLOT_FIELDS, target, result)
+    version = document.get("schema_version")
+    if type(version) is not int or version != 1:
+        _add_error(result, "slot_yaml_contract", target,
+                   "schema_version must be integer 1")
+
+    applicability = _closed_mapping(
+        document.get("applicability"), APPLICABILITY_FIELDS,
+        target + ":applicability", result)
+    mode = applicability.get("state")
+    reason = applicability.get("reason")
+    if mode not in ("configured", "not-applicable"):
+        _add_error(result, "applicability", target + ":applicability.state",
+                   "must be exactly configured or not-applicable")
+        mode = None
+    if mode == "configured":
+        if reason is not None:
+            _add_error(result, "applicability", target + ":applicability.reason",
+                       "configured requires null reason")
+    elif mode == "not-applicable":
+        if not isinstance(reason, str) or not reason.strip():
+            _add_error(result, "applicability", target + ":applicability.reason",
+                       "not-applicable requires a non-empty string reason")
+        else:
+            reason = reason.strip()
+
+    artifact_values = _closed_mapping(
+        document.get("artifact_bindings"), ARTIFACT_BINDING_FIELDS,
+        target + ":artifact_bindings", result)
+    scale_rows = document.get("capability_scale")
+    if not isinstance(scale_rows, list):
+        _add_error(result, "yaml_type", target + ":capability_scale",
+                   "must be a list")
+        scale_rows = []
+    authority = _closed_mapping(
+        document.get("pass_authority"), PASS_AUTHORITY_FIELDS,
+        target + ":pass_authority", result)
+
+    if mode == "not-applicable":
+        for field in ARTIFACT_FIELD_ROLES:
+            if artifact_values.get(field) is not None:
+                _add_error(result, "inactive_shape",
+                           target + ":artifact_bindings." + field,
+                           "not-applicable requires null")
+        if scale_rows:
+            _add_error(result, "inactive_shape", target + ":capability_scale",
+                       "not-applicable requires an empty list")
+        for field in PASS_AUTHORITY_FIELDS:
+            if authority.get(field) is not None:
+                _add_error(result, "inactive_shape",
+                           target + ":pass_authority." + field,
+                           "not-applicable requires null")
+        return {"mode": mode, "reason": reason, "bindings": {},
+                "scale": [], "authorities": []}
+
+    if mode != "configured":
+        return None
+
+    bindings = {}
+    for field, role in ARTIFACT_FIELD_ROLES.items():
+        resolved = _resolve_path(
+            root, artifact_values.get(field),
+            "%s:artifact_bindings.%s" % (target, field), result,
+            yaml_file=True)
+        if resolved:
+            _reject_runtime_path(
+                resolved, "%s:artifact_bindings.%s" % (target, field), result)
+            bindings[role] = resolved
+    if len({value["value"] for value in bindings.values()}) != len(bindings):
+        _add_error(result, "artifact_bindings", target,
+                   "the three artifact roles must bind distinct files")
+
+    scale = []
+    scale_values = set()
+    if not scale_rows:
+        _add_error(result, "capability_scale", target,
+                   "configured requires at least one scale item")
+    for index, raw_row in enumerate(scale_rows):
+        row_target = "%s:capability_scale[%d]" % (target, index)
+        row = _closed_mapping(raw_row, SCALE_ROW_FIELDS, row_target, result)
+        rank = row.get("rank")
+        if type(rank) is not int or rank < 0:
+            _add_error(result, "capability_scale", row_target + ":rank",
+                       "must be a non-negative integer")
+            rank = None
+        elif rank != index:
+            _add_error(result, "capability_scale", row_target + ":rank",
+                       "must equal its zero-based list position %d" % index)
+        value = _string(row.get("value"), row_target + ":value", result)
+        predicate = _string(
+            row.get("predicate"), row_target + ":predicate", result)
+        eligible = row.get("target_eligible")
+        if type(eligible) is not bool:
+            _add_error(result, "capability_scale",
+                       row_target + ":target_eligible", "must be boolean")
+            eligible = False
+        if value in scale_values:
+            _add_error(result, "capability_scale", row_target + ":value",
+                       "duplicate scale value: %s" % value)
+        elif value:
+            scale_values.add(value)
+        scale.append({"rank": rank, "value": value,
+                      "predicate": predicate, "target_eligible": eligible})
+    if scale_rows and not any(row["target_eligible"] for row in scale):
+        _add_error(result, "capability_scale", target,
+                   "configured scale requires at least one target-eligible item")
+
+    role = _string(
+        authority.get("role_id"), target + ":pass_authority.role_id", result)
+    decision = _string(
+        authority.get("decision_scope_id"),
+        target + ":pass_authority.decision_scope_id", result)
+    registry_roles = _role_ids(manifest_text, root, manifest_path, result)
+    if role and role not in registry_roles:
+        _add_error(result, "pass_authority",
+                   target + ":pass_authority.role_id",
+                   "role %r is not registered in Role Registry" % role)
+    if decision != SEMANTIC_ACCEPTANCE_SCOPE:
+        _add_error(result, "pass_authority",
+                   target + ":pass_authority.decision_scope_id",
+                   "must be exactly %s" % SEMANTIC_ACCEPTANCE_SCOPE)
+    authorities = [{"role_id": role, "decision_scope_id": decision}]
+    return {"mode": mode, "reason": reason, "bindings": bindings,
+            "scale": scale, "authorities": authorities}
+
+
+def _validate_profile_scope(manifest_text, root, manifest_path, result):
+    scope_path = _resolve_slot(
+        manifest_text, root, manifest_path, SCOPE_SLOT_NAME, result)
+    if scope_path is None:
+        return {"path": None, "layers": []}
+    target = _relative(root, scope_path)
+    text = _read_text(scope_path, target, result)
+    if text is None:
+        return {"path": target, "layers": []}
+    sections = _h2_sections(
+        text, ("Logical Architecture",), target, result,
+        allow_extras=True)
+    if "Logical Architecture" not in sections:
+        return {"path": target, "layers": []}
+    rows = _parse_table(
+        sections["Logical Architecture"], SCOPE_LAYER_HEADERS,
+        "%s#Logical Architecture" % target, result)
+    if not rows:
+        _add_error(result, "profile_scope", target,
+                   "Logical Architecture must declare at least one layer")
+    layers = []
+    by_id = {}
+    for index, row in enumerate(rows):
+        layer_id = row["Stable Layer ID"]
+        row_target = "%s:layer-row-%d" % (target, index + 1)
+        _valid_id(layer_id, row_target, result)
+        if layer_id in by_id:
+            _add_error(result, "profile_scope", row_target,
+                       "duplicate Stable Layer ID: %s" % layer_id)
+        directory_values = _parse_list(
+            row["Repository-relative directories"],
+            row_target + ":directories", result, allow_none=False)
+        directories = []
+        for raw in directory_values:
+            directory = _resolve_path(
+                root, raw, row_target + ":directories", result,
+                directory=True)
+            _reject_runtime_path(directory, row_target + ":directories",
+                                 result)
+            if directory:
+                directories.append(directory)
+        responsibility = row["Single layer responsibility"]
+        if not responsibility or "TODO(profile)" in responsibility:
+            _add_error(result, "profile_scope", row_target,
+                       "single layer responsibility must be explicit")
+        record = {
+            "id": layer_id, "directories": directories,
+            "responsibility": responsibility,
+        }
+        layers.append(record)
+        by_id.setdefault(layer_id, record)
+    return {"path": target, "layers": layers, "text": text}
+
+
+def _validate_global_map(root, binding, profile_scope, result):
+    target = binding["value"]
+    document = _schema_document(
+        binding, GLOBAL_MAP_FIELDS, target, result)
+    entry_rows = document.get("entries")
+    edge_rows = document.get("typed_dependencies")
+    if not isinstance(entry_rows, list):
+        _add_error(result, "yaml_type", target + ":entries",
+                   "must be a list")
+        entry_rows = []
+    if not entry_rows:
+        _add_error(result, "global_map", target,
+                   "entries must contain at least one item")
+    if not isinstance(edge_rows, list):
+        _add_error(result, "yaml_type", target + ":typed_dependencies",
+                   "must be a list")
+        edge_rows = []
+
+    layer_by_id = {
+        row["id"]: row for row in profile_scope.get("layers", [])
+    }
+
+    entries = []
+    entry_by_id = {}
+    entry_paths = set()
+    for index, raw_row in enumerate(entry_rows):
+        row_target = "%s:entries[%d]" % (target, index)
+        row = _closed_mapping(
+            raw_row, GLOBAL_MAP_ENTRY_FIELDS, row_target, result)
+        entry_id = _string(row.get("entry_id"), row_target + ":entry_id", result)
+        layer_id = _string(row.get("layer_id"), row_target + ":layer_id", result)
+        _valid_id(entry_id, row_target, result)
+        if entry_id in entry_by_id:
+            _add_error(result, "global_map", row_target,
+                       "duplicate Entry ID: %s" % entry_id)
+        if layer_id not in layer_by_id:
+            _add_error(result, "global_map", row_target,
+                       "unknown Layer ID: %s" % layer_id)
+        path = _resolve_path(root, row.get("canonical_markdown_path"), row_target,
+                             result, markdown=True)
+        _reject_runtime_path(path, row_target, result)
+        responsibility = _string(
+            row.get("single_responsibility"),
+            row_target + ":single_responsibility", result)
+        if path and path["value"] in entry_paths:
+            _add_error(result, "global_map", row_target,
+                       "duplicate canonical path: %s" % path["value"])
+        if path:
+            entry_paths.add(path["value"])
+        layer = layer_by_id.get(layer_id)
+        if path and layer and layer.get("directories"):
+            inside = False
+            matched_directories = []
+            for directory in layer["directories"]:
+                try:
+                    if os.path.commonpath((
+                            directory["path"], path["path"])) == directory["path"]:
+                        inside = True
+                        matched_directories.append(directory)
+                except ValueError:
+                    continue
+            if not inside:
+                _add_error(
+                    result, "global_map", row_target,
+                    "canonical path is outside its declared layer directory",
+                )
+        else:
+            matched_directories = []
+        record = {"id": entry_id, "layer_id": layer_id, "path": path,
+                  "responsibility": responsibility,
+                  "scope_directories": matched_directories}
+        entries.append(record)
+        entry_by_id.setdefault(entry_id, record)
+
+    for layer_id in sorted(layer_by_id):
+        if not any(row["layer_id"] == layer_id for row in entries):
+            _add_error(
+                result, "profile_map_reconciliation", layer_id,
+                "every Profile Scope layer requires at least one Global Map entry",
+            )
+
+    edges = []
+    edge_ids = set()
+    for index, raw_row in enumerate(edge_rows):
+        row_target = "%s:typed_dependencies[%d]" % (target, index)
+        row = _closed_mapping(
+            raw_row, GLOBAL_MAP_EDGE_FIELDS, row_target, result)
+        edge_id = _string(row.get("edge_id"), row_target + ":edge_id", result)
+        upstream = _string(
+            row.get("upstream_entry_id"), row_target + ":upstream_entry_id", result)
+        downstream = _string(
+            row.get("downstream_entry_id"), row_target + ":downstream_entry_id", result)
+        relation = _string(
+            row.get("relation_type"), row_target + ":relation_type", result)
+        _valid_id(edge_id, row_target, result)
+        if edge_id in edge_ids:
+            _add_error(result, "global_map", row_target,
+                       "duplicate Edge ID: %s" % edge_id)
+        edge_ids.add(edge_id)
+        if upstream not in entry_by_id:
+            _add_error(result, "global_map", row_target,
+                       "unknown upstream Entry ID: %s" % upstream)
+        if downstream not in entry_by_id:
+            _add_error(result, "global_map", row_target,
+                       "unknown downstream Entry ID: %s" % downstream)
+        if upstream == downstream:
+            _add_error(result, "global_map", row_target,
+                       "upstream and downstream Entry IDs must differ")
+        if relation not in RELATION_TYPES:
+            _add_error(
+                result, "global_map", row_target,
+                "unknown relation_type %r; expected one of %s" %
+                (relation, ", ".join(sorted(RELATION_TYPES))),
+            )
+        edges.append({"id": edge_id, "upstream": upstream,
+                      "downstream": downstream, "relation": relation})
+    return {"entries": entries, "edges": edges, "path": target}
+
+
+def _validate_matrix(root, binding, scale, global_map, result):
+    target = binding["value"]
+    document = _schema_document(binding, MATRIX_FIELDS, target, result)
+    rows = document.get("capabilities")
+    if not isinstance(rows, list):
+        _add_error(result, "yaml_type", target + ":capabilities",
+                   "must be a list")
+        rows = []
+    if not rows:
+        _add_error(result, "capability_matrix", target,
+                   "must declare at least one capability")
+    scale_index = {row["value"]: row["rank"] for row in scale
+                   if isinstance(row.get("rank"), int)}
+    target_eligible = {row["value"] for row in scale
+                       if row.get("target_eligible") is True}
+    map_entries = {
+        entry["id"]: entry for entry in global_map.get("entries", [])
+    }
+    capabilities = []
+    by_id = {}
+    for index, raw_row in enumerate(rows):
+        row_target = "%s:capabilities[%d]" % (target, index)
+        row = _closed_mapping(raw_row, CAPABILITY_FIELDS, row_target, result)
+        capability_id = _string(
+            row.get("capability_id"), row_target + ":capability_id", result)
+        _valid_id(capability_id, row_target, result)
+        if capability_id in by_id:
+            _add_error(result, "capability_matrix", row_target,
+                       "duplicate Capability ID: %s" % capability_id)
+        name = _string(row.get("capability"), row_target + ":capability", result)
+        priority = _string(row.get("priority"), row_target + ":priority", result)
+        if priority not in CAPABILITY_PRIORITIES:
+            _add_error(
+                result, "capability_matrix", row_target,
+                "priority must be exactly P0, P1, or P2; found %r" % priority,
+            )
+        map_entry_ids = _string_list(
+            row.get("map_entry_ids"), row_target + ":map_entry_ids", result,
+            allow_empty=False)
+        linked_entries = []
+        for entry_id in map_entry_ids:
+            entry = map_entries.get(entry_id)
+            if entry is None:
+                _add_error(result, "capability_matrix", row_target,
+                           "unknown Global Map Entry ID: %s" % entry_id)
+            else:
+                linked_entries.append(entry)
+        canonical_values = _string_list(
+            row.get("canonical_markdown_paths"),
+            row_target + ":canonical_markdown_paths", result,
+            allow_empty=False)
+        canonical = []
+        for raw in canonical_values:
+            path = _resolve_path(root, raw, row_target + ":canonical", result,
+                                 markdown=True)
+            if path:
+                canonical.append(path)
+                covered = False
+                for entry in linked_entries:
+                    for directory in entry.get("scope_directories", []):
+                        try:
+                            if os.path.commonpath((
+                                    directory["path"], path["path"])) == directory["path"]:
+                                covered = True
+                                break
+                        except ValueError:
+                            continue
+                    if covered:
+                        break
+                if not covered:
+                    _add_error(
+                        result, "capability_matrix", row_target,
+                        "canonical path is not covered by any linked Global "
+                        "Map Entry within the same Profile Scope directory: %s" %
+                        path["value"],
+                    )
+        current = _string(
+            row.get("current_level"), row_target + ":current_level", result)
+        target_level = _string(
+            row.get("target_level"), row_target + ":target_level", result)
+        if current not in scale_index:
+            _add_error(result, "capability_matrix", row_target,
+                       "unknown current level: %s" % current)
+        if target_level not in scale_index:
+            _add_error(result, "capability_matrix", row_target,
+                       "unknown target level: %s" % target_level)
+        elif target_level not in target_eligible:
+            _add_error(result, "capability_matrix", row_target,
+                       "target level is not Target eligible: %s" % target_level)
+        evidence_values = _string_list(
+            row.get("evidence_paths"), row_target + ":evidence_paths", result)
+        evidence = []
+        for raw in evidence_values:
+            path = _resolve_path(root, raw, row_target + ":evidence", result)
+            if path:
+                _reject_runtime_path(path, row_target + ":evidence", result)
+                evidence.append(path)
+        gap_ids = _string_list(
+            row.get("gap_ids"), row_target + ":gap_ids", result)
+        if (current in scale_index and scale_index[current] > 0 and
+                not evidence):
+            _add_error(result, "capability_matrix", row_target,
+                       "a non-lowest current level requires evidence")
+        if (current in scale_index and target_level in scale_index and
+                scale_index[current] < scale_index[target_level] and
+                not gap_ids):
+            _add_error(result, "capability_matrix", row_target,
+                       "a capability below target requires at least one Gap ID")
+        record = {
+            "id": capability_id, "capability": name, "priority": priority,
+            "map_entry_ids": map_entry_ids,
+            "canonical_paths": canonical, "current_level": current,
+            "target_level": target_level, "evidence_paths": evidence,
+            "gap_ids": gap_ids,
+        }
+        capabilities.append(record)
+        by_id.setdefault(capability_id, record)
+    return {"capabilities": capabilities, "path": target}
+
+
+def _validate_gap_register(root, binding, global_map, matrix, runtime, result):
+    target = binding["value"]
+    document = _schema_document(binding, GAP_REGISTER_FIELDS, target, result)
+    rows = document.get("gaps")
+    if not isinstance(rows, list):
+        _add_error(result, "yaml_type", target + ":gaps", "must be a list")
+        rows = []
+    capability_by_id = {
+        row["id"]: row for row in matrix.get("capabilities", [])
+    }
+    map_entry_ids = {
+        row["id"] for row in global_map.get("entries", [])
+    }
+    gaps = []
+    by_id = {}
+    promotions = []
+    for index, raw_row in enumerate(rows):
+        row_target = "%s:gaps[%d]" % (target, index)
+        row = _closed_mapping(raw_row, GAP_FIELDS, row_target, result)
+        gap_id = _string(row.get("gap_id"), row_target + ":gap_id", result)
+        _valid_id(gap_id, row_target, result)
+        if gap_id in by_id:
+            _add_error(result, "gap_register", row_target,
+                       "duplicate Gap ID: %s" % gap_id)
+        statement = _string(
+            row.get("gap_statement"), row_target + ":gap_statement", result)
+        capability_ids = _string_list(
+            row.get("capability_ids"), row_target + ":capability_ids", result,
+            allow_empty=False)
+        for capability_id in capability_ids:
+            if capability_id not in capability_by_id:
+                _add_error(result, "gap_register", row_target,
+                           "unknown Capability ID: %s" % capability_id)
+        status = _string(row.get("status"), row_target + ":status", result)
+        if status not in GAP_STATUSES:
+            _add_error(result, "gap_register", row_target,
+                       "invalid status %r; expected one of %s" %
+                       (status, ", ".join(sorted(GAP_STATUSES))))
+        candidate_owner = row.get("candidate_owner_entry_id")
+        if candidate_owner is not None:
+            candidate_owner = _string(
+                candidate_owner, row_target + ":candidate_owner_entry_id", result)
+            if candidate_owner not in map_entry_ids:
+                _add_error(result, "gap_register", row_target,
+                           "unknown candidate owner Entry ID: %s" %
+                           candidate_owner)
+        close_condition = _string(
+            row.get("close_condition"), row_target + ":close_condition", result)
+        target_raw = row.get("promoted_coverage_path")
+        target_path = None
+        if target_raw is None:
+            if status in ("promoted", "resolved"):
+                _add_error(result, "gap_register", row_target,
+                           "%s gap requires a Promoted Coverage path" % status)
+        else:
+            target_raw = _string(
+                target_raw, row_target + ":promoted_coverage_path", result)
+            if status not in ("promoted", "resolved"):
+                _add_error(
+                    result, "gap_register", row_target,
+                    "unpromoted %s gap must use Promoted Coverage path None" %
+                    status,
+                )
+            target_path = _resolve_path(
+                root, target_raw, row_target + ":target", result,
+                must_exist=(status == "resolved"), markdown=True)
+            _reject_runtime_path(target_path, row_target + ":target", result)
+        evidence_values = _string_list(
+            row.get("evidence_paths"), row_target + ":evidence_paths", result)
+        evidence = []
+        for raw in evidence_values:
+            path = _resolve_path(root, raw, row_target + ":evidence", result)
+            if path:
+                _reject_runtime_path(path, row_target + ":evidence", result)
+                evidence.append(path)
+        if status == "resolved" and not evidence:
+            _add_error(result, "gap_register", row_target,
+                       "resolved gap requires at least one retained evidence path")
+        rationale = _string(
+            row.get("rationale"), row_target + ":rationale", result)
+        record = {
+            "id": gap_id, "statement": statement,
+            "capability_ids": capability_ids,
+            "candidate_owner": candidate_owner,
+            "target_path": target_path, "status": status,
+            "close_condition": close_condition,
+            "evidence_paths": evidence, "rationale": rationale,
+        }
+        gaps.append(record)
+        by_id.setdefault(gap_id, record)
+
+        if status in ("promoted", "resolved") and target_path:
+            promotion = _reconcile_promotion(
+                target_path["value"], runtime, row_target, result)
+            promotion["gap_id"] = gap_id
+            promotions.append(promotion)
+
+    for capability in matrix.get("capabilities", []):
+        for gap_id in capability["gap_ids"]:
+            gap = by_id.get(gap_id)
+            if gap is None:
+                _add_error(
+                    result, "capability_gap_link", capability["id"],
+                    "references unknown Gap ID: %s" % gap_id,
+                )
+            elif capability["id"] not in gap["capability_ids"]:
+                _add_error(
+                    result, "capability_gap_link", capability["id"],
+                    "Gap %s does not link back to this capability" % gap_id,
+                )
+    for gap in gaps:
+        for capability_id in gap["capability_ids"]:
+            capability = capability_by_id.get(capability_id)
+            if capability and gap["id"] not in capability["gap_ids"]:
+                _add_error(
+                    result, "capability_gap_link", gap["id"],
+                    "Capability %s does not link back to this gap" %
+                    capability_id,
+                )
+    return {"gaps": gaps, "promotions": promotions, "path": target}
+
+
+def _reconcile_promotion(path, runtime, target, result):
+    outcome = {"path": path, "coverage": None, "queue_item": None}
+    if runtime is None:
+        _add_error(result, "promoted_gap", target,
+                   "promoted gap requires initialized canonical runtime state")
+        return outcome
+    if runtime.get("errors"):
+        _add_error(result, "promoted_gap", target,
+                   "runtime is invalid, so promotion cannot be reconciled")
+        return outcome
+    coverage_rows = [
+        row for row in runtime["coverage"].get("pages", [])
+        if isinstance(row, dict) and row.get("path") == path
+    ]
+    if len(coverage_rows) != 1:
+        _add_error(result, "promoted_gap", target,
+                   "target must have exactly one Coverage row; found %d" %
+                   len(coverage_rows))
+        return outcome
+    coverage = coverage_rows[0]
+    outcome["coverage"] = coverage
+    queue_rows = [
+        item for item in runtime["queue"].get("required_queue", [])
+        if (isinstance(item, dict) and
+            item.get("state") in NONTERMINAL_QUEUE_STATES and
+            path in (item.get("manifest") or []))
+    ]
+    disposition = coverage.get("coverage_disposition")
+    next_batch = coverage.get("next_batch")
+    if disposition == "required" and next_batch:
+        matching = [item for item in queue_rows
+                    if item.get("id") == next_batch]
+        if len(queue_rows) != 1 or len(matching) != 1:
+            _add_error(
+                result, "promoted_gap", target,
+                "unfinished Required target must appear in exactly its "
+                "Coverage next_batch nonterminal Queue manifest; "
+                "next_batch=%r, matching=%d, all_nonterminal=%d" %
+                (next_batch, len(matching), len(queue_rows)),
+            )
+            return outcome
+        outcome["queue_item"] = matching[0]
+    elif disposition == "required":
+        # A completed Required object may retain historical `batch`, but it
+        # has no nonterminal next projection and needs no live Queue row.
+        if queue_rows:
+            _add_error(
+                result, "promoted_gap", target,
+                "Required target without next_batch may not remain in a "
+                "nonterminal Queue manifest",
+            )
+    elif disposition in ("optional", "deferred", "excluded"):
+        if next_batch is not None:
+            _add_error(
+                result, "promoted_gap", target,
+                "%s Coverage target must not declare next_batch" % disposition,
+            )
+        if queue_rows:
+            _add_error(
+                result, "promoted_gap", target,
+                "%s Coverage target must not appear in a nonterminal Queue "
+                "manifest" % disposition,
+            )
+    else:
+        _add_error(result, "promoted_gap", target,
+                   "Coverage has unsupported disposition %r" % disposition)
+    return outcome
+
+
+def _runtime(root, result):
+    present = [os.path.exists(os.path.join(root, path))
+               for path in STATE_PATHS]
+    if not any(present):
+        return None
+    if not all(present):
+        missing = [path for path, exists in zip(STATE_PATHS, present)
+                   if not exists]
+        _add_error(result, "runtime", ".cambium/state",
+                   "partial runtime; missing: %s" % ", ".join(missing))
+        return {"errors": ["partial runtime"], "coverage": {}, "queue": {},
+                "progress": {}}
+    runtime = check_queue.validate_runtime(root)
+    for error in runtime.get("errors", []):
+        _add_error(result, "runtime", ".cambium/state", error)
+    return runtime
+
+
+def planning_artifact_paths(result):
+    """Return every explicit path that makes a batch planning-affected.
+
+    The selected Profile manifest is included because it owns the slot
+    bindings: changing only that file can redirect Profile Scope or Corpus
+    Planning without changing the previously bound files.  In addition to the
+    manifest, slot, and three artifacts, the affected set contains only paths
+    that the validator parsed from explicit planning relations: Global Map
+    entries, Matrix canonical/evidence paths, and Gap promoted/evidence paths.
+    No prose, backlink, similarity, or inferred dependency expands this set.
+    """
+    paths = []
+
+    def add(candidate):
+        value = (candidate.get("value")
+                 if isinstance(candidate, dict) else candidate)
+        if isinstance(value, str) and value:
+            paths.append(value)
+
+    add(result.get("profile_manifest"))
+    slot_path = result.get("slot_path")
+    add(slot_path)
+    profile_scope = result.get("profile_scope")
+    if isinstance(profile_scope, dict):
+        add(profile_scope.get("path"))
+    slot = result.get("slot")
+    if isinstance(slot, dict):
+        bindings = slot.get("bindings")
+        if isinstance(bindings, dict):
+            for role in ARTIFACT_ROLES:
+                binding = bindings.get(role)
+                add(binding)
+
+    global_map = result.get("global_map")
+    if isinstance(global_map, dict):
+        for entry in global_map.get("entries") or []:
+            if isinstance(entry, dict):
+                add(entry.get("path"))
+
+    matrix = result.get("matrix")
+    if isinstance(matrix, dict):
+        for capability in matrix.get("capabilities") or []:
+            if not isinstance(capability, dict):
+                continue
+            for field in ("canonical_paths", "evidence_paths"):
+                for candidate in capability.get(field) or []:
+                    add(candidate)
+
+    gap_register = result.get("gap_register")
+    if isinstance(gap_register, dict):
+        for gap in gap_register.get("gaps") or []:
+            if not isinstance(gap, dict):
+                continue
+            add(gap.get("target_path"))
+            for candidate in gap.get("evidence_paths") or []:
+                add(candidate)
+    return tuple(dict.fromkeys(paths))
+
+
+def close_requirement(runtime, item, result):
+    """Return the deterministic Corpus Planning close-gate requirement.
+
+    R13 selection is task-level.  Manifest applicability is exact path-set
+    intersection against :func:`planning_artifact_paths`; it never infers a
+    relationship from content or naming.
+    """
+    contract = {}
+    if isinstance(runtime, dict):
+        contract = (runtime.get("progress") or {}).get("contract") or {}
+    selected_routes = contract.get("selected_route_ids")
+    selected_routes = (selected_routes
+                       if isinstance(selected_routes, list) else [])
+    manifest = item.get("manifest") if isinstance(item, dict) else []
+    manifest = manifest if isinstance(manifest, list) else []
+    triggers = []
+    if "R13" in selected_routes:
+        triggers.append("R13")
+    if set(planning_artifact_paths(result)).intersection(manifest):
+        triggers.append("manifest")
+    triggers = sorted(set(triggers))
+    return bool(triggers), triggers
+
+
+def _singly_linked_file_sha256(root, relative, label):
+    """Fingerprint one repository file without accepting aliases."""
+    absolute = kblib.repository_path(
+        root, relative, must_exist=True, reject_symlink=True)
+    descriptor = os.lstat(absolute)
+    if not stat.S_ISREG(descriptor.st_mode):
+        raise ValueError("%s must be a regular file" % label)
+    if descriptor.st_nlink != 1:
+        raise ValueError("%s must have exactly one hard link" % label)
+    return kblib.sha256_file(absolute)
+
+
+def receipt_binding(result, *, repository_snapshot_sha256=None,
+                    progress_ledger_sha256=None):
+    """Return the exact freshness binding for one successful validation.
+
+    ``progress_ledger_sha256`` is an explicit terminal-only override.  A
+    Terminal Proof is frozen in ``completion-candidate`` and remains
+    recheckable after the sole transition to ``complete``; the proof checker
+    supplies that receipt-bound before-image while requiring the transition's
+    after-image to equal current Progress bytes.
+    """
+    if result.get("errors"):
+        raise ValueError("cannot bind a failed Corpus Planning validation")
+    root = result.get("root")
+    if not isinstance(root, str) or not os.path.isdir(root):
+        raise ValueError("Corpus Planning result has no repository root")
+    if repository_snapshot_sha256 is None:
+        repository_snapshot_sha256 = kblib.repository_snapshot_sha256(root)
+    if (not isinstance(repository_snapshot_sha256, str) or
+            not SHA256_RE.fullmatch(repository_snapshot_sha256)):
+        raise ValueError("repository snapshot must be sha256:<64 lowercase hex>")
+
+    runtime = result.get("runtime")
+    queue = runtime.get("queue") if isinstance(runtime, dict) else {}
+    if not isinstance(queue, dict):
+        queue = {}
+    selected_profile = result.get("profile_manifest")
+    if queue and queue.get("selected_profile_manifest") != selected_profile:
+        raise ValueError(
+            "runtime selected Profile does not match validated Profile")
+
+    binding = {
+        "task_id": queue.get("task_id") if queue else None,
+        "queue_revision": queue.get("queue_revision") if queue else None,
+        "queue_state_revision": queue.get("state_revision") if queue else None,
+        "selected_profile_manifest": selected_profile,
+        "selected_profile_manifest_sha256": _singly_linked_file_sha256(
+            root, selected_profile, "selected Profile manifest"),
+        "corpus_planning_slot_path": result.get("slot_path"),
+        "corpus_planning_slot_sha256": _singly_linked_file_sha256(
+            root, result.get("slot_path"), "Corpus Planning slot"),
+        "profile_scope_path": None,
+        "profile_scope_sha256": None,
+        "global_map_path": None,
+        "global_map_sha256": None,
+        "capability_matrix_path": None,
+        "capability_matrix_sha256": None,
+        "gap_register_path": None,
+        "gap_register_sha256": None,
+        "corpus_plan_applicability": result.get("applicability"),
+        "coverage_ledger_sha256": (
+            runtime.get("coverage_sha256") if isinstance(runtime, dict)
+            else None),
+        "required_queue_sha256": (
+            runtime.get("queue_sha256") if isinstance(runtime, dict)
+            else None),
+        "progress_ledger_sha256": (
+            runtime.get("progress_sha256") if isinstance(runtime, dict)
+            else None),
+        "repository_snapshot_sha256": repository_snapshot_sha256,
+    }
+    if progress_ledger_sha256 is not None:
+        if (not isinstance(progress_ledger_sha256, str) or
+                not SHA256_RE.fullmatch(progress_ledger_sha256)):
+            raise ValueError(
+                "terminal Progress binding must be sha256:<64 lowercase hex>")
+        binding["progress_ledger_sha256"] = progress_ledger_sha256
+
+    if result.get("applicability") == "configured":
+        profile_scope = result.get("profile_scope") or {}
+        profile_scope_path = profile_scope.get("path")
+        if not isinstance(profile_scope_path, str) or not profile_scope_path:
+            raise ValueError("configured plan has no Profile Scope binding")
+        binding["profile_scope_path"] = profile_scope_path
+        binding["profile_scope_sha256"] = _singly_linked_file_sha256(
+            root, profile_scope_path, "Profile Scope")
+        slot = result.get("slot") or {}
+        bindings = slot.get("bindings") or {}
+        fields = {
+            "Global Map": ("global_map_path", "global_map_sha256"),
+            "Capability Matrix": (
+                "capability_matrix_path", "capability_matrix_sha256"),
+            "Gap Register": ("gap_register_path", "gap_register_sha256"),
+        }
+        for role in ARTIFACT_ROLES:
+            artifact = bindings.get(role)
+            if not isinstance(artifact, dict):
+                raise ValueError("configured plan has no %s binding" % role)
+            path_field, sha_field = fields[role]
+            binding[path_field] = artifact.get("value")
+            binding[sha_field] = _singly_linked_file_sha256(
+                root, artifact.get("value"), role)
+    elif result.get("applicability") != "not-applicable":
+        raise ValueError("Corpus Planning applicability is not resolved")
+    return binding
+
+
+def make_pass_receipt(result, *, repository_snapshot_sha256=None,
+                      progress_ledger_sha256=None, seq=1):
+    """Build one reusable pass receipt bound to exact current bytes."""
+    binding = receipt_binding(
+        result,
+        repository_snapshot_sha256=repository_snapshot_sha256,
+        progress_ledger_sha256=progress_ledger_sha256,
+    )
+    details = (
+        "applicability=%s; layers=%d; entries=%d; capabilities=%d; "
+        "gaps=%d" % (
+            result["applicability"],
+            len(result.get("profile_scope", {}).get("layers", [])),
+            len(result["global_map"].get("entries", [])),
+            len(result["matrix"].get("capabilities", [])),
+            len(result["gap_register"].get("gaps", [])),
+        )
+    )
+    receipt = kblib.make_receipt(
+        TOOL, TOOL_VERSION, "corpus_plan",
+        result.get("profile_manifest") or "<unresolved>", "pass",
+        details, seq)
+    receipt["gate_id"] = "corpus-plan-structure"
+    receipt.update(binding)
+    return receipt
+
+
+def current_freshness_binding(root, selected_profile_manifest, *, task_id,
+                              queue_revision, queue_state_revision,
+                              coverage_ledger_sha256,
+                              required_queue_sha256,
+                              progress_ledger_sha256,
+                              repository_snapshot_sha256):
+    """Recompute the current bytes named by a prior pass receipt.
+
+    Freshness consumption does not repeat the substantive map/matrix/gap
+    decision.  It re-resolves the selected Profile and slot contract, hashes
+    those exact current files, and binds current runtime/snapshot bytes.  The
+    persisted receipt proves that this unchanged byte set previously passed
+    the full validator.
+    """
+    root = os.path.realpath(os.path.abspath(root))
+    result = {
+        "root": root,
+        "profile_manifest": None,
+        "slot_path": None,
+        "applicability": None,
+        "slot": None,
+        "profile_scope": {"path": None, "layers": []},
+        "runtime": None,
+        "errors": [],
+    }
+    manifest_path, _ = _resolve_manifest(
+        root, selected_profile_manifest, result)
+    if manifest_path is None:
+        raise ValueError("; ".join(
+            _display_error(error) for error in result["errors"]))
+    result["profile_manifest"] = _relative(root, manifest_path)
+    manifest_text = _read_text(
+        manifest_path, result["profile_manifest"], result)
+    if manifest_text is None:
+        raise ValueError("; ".join(
+            _display_error(error) for error in result["errors"]))
+    slot_path = _resolve_slot(
+        manifest_text, root, manifest_path, SLOT_NAME, result)
+    if slot_path is None:
+        raise ValueError("; ".join(
+            _display_error(error) for error in result["errors"]))
+    result["slot_path"] = _relative(root, slot_path)
+    slot_text = _read_text(slot_path, result["slot_path"], result)
+    if slot_text is None:
+        raise ValueError("; ".join(
+            _display_error(error) for error in result["errors"]))
+    slot = _validate_slot(
+        slot_text, result["slot_path"], manifest_text, root, manifest_path,
+        result)
+    result["slot"] = slot
+    if slot:
+        result["applicability"] = slot["mode"]
+        if slot["mode"] == "configured":
+            result["profile_scope"] = _validate_profile_scope(
+                manifest_text, root, manifest_path, result)
+    if result["errors"] or not slot:
+        raise ValueError("; ".join(
+            _display_error(error) for error in result["errors"]) or
+            "Corpus Planning slot is unresolved")
+    for field, value in (
+            ("coverage_ledger_sha256", coverage_ledger_sha256),
+            ("required_queue_sha256", required_queue_sha256),
+            ("progress_ledger_sha256", progress_ledger_sha256),
+            ("repository_snapshot_sha256", repository_snapshot_sha256)):
+        if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+            raise ValueError("%s must be sha256:<64 lowercase hex>" % field)
+    result["runtime"] = {
+        "queue": {
+            "task_id": task_id,
+            "queue_revision": queue_revision,
+            "state_revision": queue_state_revision,
+            "selected_profile_manifest": result["profile_manifest"],
+        },
+        "coverage_sha256": coverage_ledger_sha256,
+        "queue_sha256": required_queue_sha256,
+        "progress_sha256": progress_ledger_sha256,
+    }
+    return receipt_binding(
+        result,
+        repository_snapshot_sha256=repository_snapshot_sha256,
+        progress_ledger_sha256=progress_ledger_sha256,
+    )
+
+
+def pass_receipt_errors(root, receipt, *, result=None,
+                        expected_binding=None,
+                        repository_snapshot_sha256=None,
+                        progress_ledger_sha256=None,
+                        require_runtime=True,
+                        require_configured=False):
+    """Return freshness errors for one persisted Corpus Planning pass.
+
+    Consumers rerun the structural/reconciliation validator only when they
+    produce the receipt.  Reuse is checked by exact tool version plus the
+    closed byte binding, so changed planning or runtime bytes cannot reuse an
+    otherwise plausible old receipt.
+    """
+    errors = []
+    if not isinstance(receipt, dict):
+        return ["Corpus Planning receipt must be a mapping"]
+    if result is None and expected_binding is None:
+        result = validate_corpus_plan(root)
+    if result is not None and result.get("errors"):
+        errors.append(
+            "current Corpus Planning validation fails: %s" % "; ".join(
+                _display_error(error) for error in result["errors"]))
+        return errors
+    applicability = (expected_binding.get("corpus_plan_applicability")
+                     if isinstance(expected_binding, dict)
+                     else result.get("applicability"))
+    if require_configured and applicability != "configured":
+        errors.append("R13 requires Corpus Planning applicability.state=configured")
+    if expected_binding is None:
+        try:
+            expected_binding = receipt_binding(
+                result,
+                repository_snapshot_sha256=repository_snapshot_sha256,
+                progress_ledger_sha256=progress_ledger_sha256,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            return ["cannot compute current Corpus Planning binding: %s" % exc]
+
+    common = {
+        "tool": TOOL,
+        "tool_version": TOOL_VERSION,
+        "check": "corpus_plan",
+        "gate_id": "corpus-plan-structure",
+        "target": expected_binding["selected_profile_manifest"],
+        "result": "pass",
+        "invalidated_by": None,
+    }
+    for field, expected in common.items():
+        if receipt.get(field) != expected:
+            errors.append("Corpus Planning receipt %s=%r, expected %r" %
+                          (field, receipt.get(field), expected))
+    for field in PASS_RECEIPT_BINDING_FIELDS:
+        expected = expected_binding[field]
+        if field not in receipt or receipt.get(field) != expected:
+            errors.append("Corpus Planning receipt %s=%r, expected %r" %
+                          (field, receipt.get(field), expected))
+    if require_runtime:
+        for field in (
+                "task_id", "queue_revision", "queue_state_revision",
+                "coverage_ledger_sha256", "required_queue_sha256",
+                "progress_ledger_sha256"):
+            if expected_binding.get(field) is None:
+                errors.append(
+                    "Corpus Planning runtime binding %s may not be null" % field)
+    return errors
+
+
+def _plain_closed_mapping_errors(value, expected_fields, label):
+    """Return closed-mapping errors without mutating a validation result."""
+    if not isinstance(value, dict):
+        return ["%s must be a mapping" % label]
+    actual = set(value)
+    errors = []
+    missing = sorted(expected_fields - actual)
+    extra = sorted(actual - expected_fields)
+    if missing:
+        errors.append("%s misses field(s): %s" %
+                      (label, ", ".join(missing)))
+    if extra:
+        errors.append("%s has unsupported field(s): %s" %
+                      (label, ", ".join(extra)))
+    return errors
+
+
+def acceptance_plan_errors(root, plan, result):
+    """Validate one Agent-readable semantic-acceptance decision plan.
+
+    This validates the decision envelope and the deterministic rank boundary.
+    It does not make the semantic decision: every accepted/rejected value and
+    rationale remains the declaration of the Profile-bound authority role.
+    """
+    errors = _plain_closed_mapping_errors(
+        plan, SEMANTIC_ACCEPTANCE_PLAN_FIELDS,
+        "Corpus Planning semantic-acceptance plan")
+    if not isinstance(plan, dict):
+        return errors
+    if result.get("errors"):
+        errors.append("current Corpus Planning structure/reconciliation fails")
+        return errors
+    if result.get("applicability") != "configured":
+        errors.append(
+            "semantic acceptance requires applicability.state=configured")
+        return errors
+    runtime = result.get("runtime")
+    if not isinstance(runtime, dict) or runtime.get("errors"):
+        errors.append("semantic acceptance requires valid canonical runtime state")
+    if plan.get("schema_version") != 1:
+        errors.append("semantic-acceptance plan schema_version must be 1")
+
+    acceptance_id = plan.get("acceptance_id")
+    if (not isinstance(acceptance_id, str) or
+            not ID_RE.fullmatch(acceptance_id)):
+        errors.append("acceptance_id must be a stable identifier matching %s" %
+                      ID_RE.pattern)
+
+    authorities = (result.get("slot") or {}).get("authorities") or []
+    expected_authority = (
+        authorities[0].get("role_id") if len(authorities) == 1 else None)
+    if plan.get("authority_role_id") != expected_authority:
+        errors.append(
+            "authority_role_id=%r, expected the Profile-bound role %r" %
+            (plan.get("authority_role_id"), expected_authority))
+    if plan.get("decision_scope_id") != SEMANTIC_ACCEPTANCE_SCOPE:
+        errors.append("decision_scope_id must be exactly %s" %
+                      SEMANTIC_ACCEPTANCE_SCOPE)
+
+    decisions = plan.get("decisions")
+    if not isinstance(decisions, list) or not decisions:
+        errors.append("decisions must be a non-empty list")
+        decisions = []
+    capabilities = (result.get("matrix") or {}).get("capabilities") or []
+    expected_ids = [row.get("id") for row in capabilities]
+    actual_ids = []
+    scale = {
+        row.get("value"): row.get("rank")
+        for row in (result.get("slot") or {}).get("scale") or []
+    }
+    capability_by_id = {row.get("id"): row for row in capabilities}
+    seen = set()
+    for index, decision in enumerate(decisions):
+        label = "semantic-acceptance plan decisions[%d]" % index
+        errors.extend(_plain_closed_mapping_errors(
+            decision, SEMANTIC_ACCEPTANCE_DECISION_FIELDS, label))
+        if not isinstance(decision, dict):
+            continue
+        capability_id = decision.get("capability_id")
+        actual_ids.append(capability_id)
+        if not isinstance(capability_id, str) or not ID_RE.fullmatch(capability_id):
+            errors.append("%s capability_id must be a stable identifier" % label)
+        elif capability_id in seen:
+            errors.append("%s repeats capability_id %s" %
+                          (label, capability_id))
+        seen.add(capability_id)
+        value = decision.get("decision")
+        if value not in SEMANTIC_ACCEPTANCE_DECISIONS:
+            errors.append("%s decision must be accepted or rejected" % label)
+        rationale = decision.get("rationale")
+        if not isinstance(rationale, str) or not rationale.strip():
+            errors.append("%s rationale must be a non-empty string" % label)
+        elif "TODO" in rationale or "REPLACE-ME" in rationale:
+            errors.append("%s rationale contains an unfilled sentinel" % label)
+        capability = capability_by_id.get(capability_id)
+        if capability is None:
+            errors.append("%s names unknown capability_id %r" %
+                          (label, capability_id))
+        elif value == "accepted":
+            current_rank = scale.get(capability.get("current_level"))
+            target_rank = scale.get(capability.get("target_level"))
+            if (not isinstance(current_rank, int) or
+                    not isinstance(target_rank, int) or
+                    current_rank < target_rank):
+                errors.append(
+                    "%s cannot accept capability below its target rank" % label)
+    if actual_ids != expected_ids:
+        errors.append(
+            "decisions must name every current Capability Matrix row exactly "
+            "once and in Matrix order; expected %r, found %r" %
+            (expected_ids, actual_ids))
+    return errors
+
+
+def _catalog_receipt(catalog, receipt_id):
+    entry = catalog.get(receipt_id) if isinstance(catalog, dict) else None
+    if (isinstance(entry, tuple) and len(entry) == 2 and
+            isinstance(entry[1], dict)):
+        return entry[1]
+    if isinstance(entry, dict):
+        return entry
+    return None
+
+
+def semantic_acceptance_receipt_errors(
+        root, receipt, *, result=None, repository_snapshot_sha256=None,
+        receipt_catalog=None, structural_receipt=None):
+    """Return current-binding errors for one authority decision receipt."""
+    errors = []
+    if not isinstance(receipt, dict):
+        return ["Corpus Planning semantic-acceptance receipt must be a mapping"]
+    if result is None:
+        result = validate_corpus_plan(root)
+    if result.get("errors"):
+        return ["current Corpus Planning structure/reconciliation fails"]
+    try:
+        expected_binding = receipt_binding(
+            result, repository_snapshot_sha256=repository_snapshot_sha256)
+    except (OSError, TypeError, ValueError) as exc:
+        return ["cannot compute current Corpus Planning binding: %s" % exc]
+    if expected_binding.get("task_id") is None:
+        errors.append("semantic acceptance requires current canonical runtime")
+
+    common = {
+        "tool": SEMANTIC_ACCEPTANCE_TOOL,
+        "tool_version": SEMANTIC_ACCEPTANCE_TOOL_VERSION,
+        "check": SEMANTIC_ACCEPTANCE_CHECK,
+        "gate_id": "corpus-plan-semantic-acceptance",
+        "target": expected_binding["selected_profile_manifest"],
+        "invalidated_by": None,
+    }
+    for field, expected in common.items():
+        if receipt.get(field) != expected:
+            errors.append("semantic-acceptance receipt %s=%r, expected %r" %
+                          (field, receipt.get(field), expected))
+    for field in PASS_RECEIPT_BINDING_FIELDS:
+        if receipt.get(field) != expected_binding.get(field):
+            errors.append("semantic-acceptance receipt %s=%r, expected %r" %
+                          (field, receipt.get(field),
+                           expected_binding.get(field)))
+
+    plan_path = receipt.get("acceptance_plan_path")
+    plan = None
+    if (not isinstance(plan_path, str) or
+            os.path.dirname(plan_path) != SEMANTIC_ACCEPTANCE_PLAN_PREFIX or
+            not plan_path.endswith(".yaml")):
+        errors.append(
+            "acceptance_plan_path must be one YAML file directly under %s/" %
+            SEMANTIC_ACCEPTANCE_PLAN_PREFIX)
+    else:
+        try:
+            absolute = kblib.managed_repository_path(
+                root, plan_path, SEMANTIC_ACCEPTANCE_PLAN_PREFIX,
+                suffixes=(".yaml",), must_exist=True)
+            actual_sha = kblib.sha256_file(absolute)
+            if receipt.get("acceptance_plan_sha256") != actual_sha:
+                errors.append(
+                    "acceptance_plan_sha256=%r, expected %r" %
+                    (receipt.get("acceptance_plan_sha256"), actual_sha))
+            plan = kblib.load_yaml_file(absolute)
+        except (OSError, UnicodeError, ValueError,
+                kblib.YamlSubsetError) as exc:
+            errors.append("cannot load semantic-acceptance plan: %s" % exc)
+    if plan is not None:
+        errors.extend(acceptance_plan_errors(root, plan, result))
+        comparisons = {
+            "acceptance_id": plan.get("acceptance_id"),
+            "authority_role_id": plan.get("authority_role_id"),
+            "actor_role_id": plan.get("authority_role_id"),
+            "decision_scope_id": plan.get("decision_scope_id"),
+            "capability_decisions": plan.get("decisions"),
+        }
+        for field, expected in comparisons.items():
+            if receipt.get(field) != expected:
+                errors.append(
+                    "semantic-acceptance receipt %s does not equal its plan" %
+                    field)
+
+    decisions = receipt.get("capability_decisions")
+    if isinstance(decisions, list):
+        expected_result = (
+            "pass" if decisions and all(
+                isinstance(row, dict) and row.get("decision") == "accepted"
+                for row in decisions)
+            else "fail")
+        if receipt.get("result") != expected_result:
+            errors.append("semantic-acceptance receipt result=%r, expected %r" %
+                          (receipt.get("result"), expected_result))
+    else:
+        errors.append("semantic-acceptance receipt capability_decisions "
+                      "must be a list")
+
+    structural_id = receipt.get("structural_check_receipt")
+    if structural_receipt is None:
+        structural_receipt = _catalog_receipt(
+            receipt_catalog or {}, structural_id)
+    if not isinstance(structural_id, str) or not structural_id:
+        errors.append("structural_check_receipt must be a receipt ID")
+    elif structural_receipt is None:
+        errors.append("structural_check_receipt %r is not persisted" %
+                      structural_id)
+    elif structural_receipt.get("receipt_id") != structural_id:
+        errors.append("structural_check_receipt ID does not match its record")
+    else:
+        errors.extend(pass_receipt_errors(
+            root, structural_receipt, result=result,
+            repository_snapshot_sha256=repository_snapshot_sha256,
+            require_runtime=True, require_configured=True))
+    return errors
+
+
+def semantic_acceptance_status(result, *, repository_snapshot_sha256=None):
+    """Return the current machine-readable authority-decision status."""
+    base = {
+        "status": "not-recorded",
+        "receipt_id": None,
+        "authority_role_id": None,
+        "decision_scope_id": SEMANTIC_ACCEPTANCE_SCOPE,
+        "capability_decisions": [],
+    }
+    if result.get("applicability") == "not-applicable":
+        base["status"] = "not-applicable"
+        return base
+    if result.get("errors") or result.get("applicability") != "configured":
+        base["status"] = "unavailable"
+        return base
+    authorities = (result.get("slot") or {}).get("authorities") or []
+    if len(authorities) == 1:
+        base["authority_role_id"] = authorities[0].get("role_id")
+    runtime = result.get("runtime")
+    if not isinstance(runtime, dict) or runtime.get("errors"):
+        return base
+    catalog = runtime.get("current_receipt_catalog")
+    if not isinstance(catalog, dict):
+        catalog = runtime.get("receipt_catalog") or {}
+    candidates = []
+    for receipt_id, entry in catalog.items():
+        receipt = _catalog_receipt(catalog, receipt_id)
+        if (not isinstance(receipt, dict) or
+                receipt.get("tool") != SEMANTIC_ACCEPTANCE_TOOL or
+                receipt.get("check") != SEMANTIC_ACCEPTANCE_CHECK):
+            continue
+        candidate_errors = semantic_acceptance_receipt_errors(
+            result["root"], receipt, result=result,
+            repository_snapshot_sha256=repository_snapshot_sha256,
+            receipt_catalog=catalog)
+        candidates.append((receipt, candidate_errors))
+    current = [item for item in candidates if not item[1]]
+    key = lambda item: (
+        item[0].get("checked_at") if isinstance(
+            item[0].get("checked_at"), str) else "",
+        item[0].get("receipt_id") if isinstance(
+            item[0].get("receipt_id"), str) else "",
+    )
+    if current:
+        receipt, _ = max(current, key=key)
+        base.update({
+            "status": ("current" if receipt.get("result") == "pass"
+                       else "rejected"),
+            "receipt_id": receipt.get("receipt_id"),
+            "authority_role_id": receipt.get("authority_role_id"),
+            "decision_scope_id": receipt.get("decision_scope_id"),
+            "capability_decisions": receipt.get("capability_decisions") or [],
+        })
+    elif candidates:
+        receipt, candidate_errors = max(candidates, key=key)
+        base.update({
+            "status": "stale",
+            "receipt_id": receipt.get("receipt_id"),
+            "stale_reason": candidate_errors[0] if candidate_errors else None,
+        })
+    return base
+
+
+def validate_corpus_plan(root, profile=None):
+    """Return a structured validation result without writing repository state."""
+    root = os.path.realpath(os.path.abspath(root))
+    result = {
+        "root": root,
+        "profile_manifest": None,
+        "slot_path": None,
+        "applicability": None,
+        "applicability_reason": None,
+        "slot": None,
+        "profile_scope": {"path": None, "layers": []},
+        "global_map": {"entries": [], "edges": []},
+        "matrix": {"capabilities": []},
+        "gap_register": {"gaps": [], "promotions": []},
+        "runtime": None,
+        "errors": [],
+    }
+    if not os.path.isdir(root):
+        _add_error(result, "root", root, "repository root is not a directory")
+        return result
+
+    manifest_path, _ = _resolve_manifest(root, profile, result)
+    if manifest_path is None:
+        return result
+    result["profile_manifest"] = _relative(root, manifest_path)
+    manifest_text = _read_text(
+        manifest_path, result["profile_manifest"], result)
+    if manifest_text is None:
+        return result
+    slot_path = _resolve_slot(
+        manifest_text, root, manifest_path, SLOT_NAME, result)
+    if slot_path is None:
+        return result
+    result["slot_path"] = _relative(root, slot_path)
+    slot_text = _read_text(slot_path, result["slot_path"], result)
+    if slot_text is None:
+        return result
+
+    slot = _validate_slot(
+        slot_text, result["slot_path"], manifest_text, root, manifest_path,
+        result)
+    result["slot"] = slot
+    if slot:
+        result["applicability"] = slot["mode"]
+        result["applicability_reason"] = slot["reason"]
+
+    runtime = _runtime(root, result)
+    result["runtime"] = runtime
+    if runtime and not runtime.get("errors"):
+        selected = ((runtime.get("progress") or {}).get("contract") or {}).get(
+            "selected_profile_manifest")
+        if selected != result["profile_manifest"]:
+            _add_error(
+                result, "profile_selection", result["profile_manifest"],
+                "runtime selects %r" % selected,
+            )
+
+    if not slot or slot["mode"] != "configured":
+        return result
+    if set(slot["bindings"]) != set(ARTIFACT_ROLES):
+        return result
+
+    profile_scope = _validate_profile_scope(
+        manifest_text, root, manifest_path, result)
+    result["profile_scope"] = profile_scope
+
+    global_map = _validate_global_map(
+        root, slot["bindings"]["Global Map"], profile_scope, result)
+    result["global_map"] = global_map
+    matrix = _validate_matrix(
+        root, slot["bindings"]["Capability Matrix"], slot["scale"],
+        global_map, result)
+    result["matrix"] = matrix
+    gap_register = _validate_gap_register(
+        root, slot["bindings"]["Gap Register"], global_map, matrix,
+        runtime, result)
+    result["gap_register"] = gap_register
+    return result
+
+
+def normalized_projection(result, *, repository_snapshot_sha256=None):
+    """Return the compact deterministic Agent-facing validation projection."""
+    profile_scope = result.get("profile_scope") or {}
+    scope_layers = []
+    for layer in profile_scope.get("layers") or []:
+        scope_layers.append({
+            "layer_id": layer.get("id"),
+            "repository_relative_directories": [
+                item.get("value") for item in layer.get("directories") or []
+                if isinstance(item, dict)
+            ],
+            "single_layer_responsibility": layer.get("responsibility"),
+        })
+    global_map = result.get("global_map") or {}
+    entries = []
+    for entry in global_map.get("entries") or []:
+        path = entry.get("path") or {}
+        entries.append({
+            "entry_id": entry.get("id"),
+            "layer_id": entry.get("layer_id"),
+            "canonical_markdown_path": path.get("value"),
+            "single_responsibility": entry.get("responsibility"),
+        })
+    edges = [{
+        "edge_id": edge.get("id"),
+        "upstream_entry_id": edge.get("upstream"),
+        "downstream_entry_id": edge.get("downstream"),
+        "relation_type": edge.get("relation"),
+    } for edge in global_map.get("edges") or []]
+    matrix = result.get("matrix") or {}
+    capabilities = []
+    for row in matrix.get("capabilities") or []:
+        capabilities.append({
+            "capability_id": row.get("id"),
+            "capability": row.get("capability"),
+            "priority": row.get("priority"),
+            "map_entry_ids": row.get("map_entry_ids") or [],
+            "canonical_markdown_paths": [
+                path.get("value") for path in row.get("canonical_paths") or []
+                if isinstance(path, dict)
+            ],
+            "current_level": row.get("current_level"),
+            "target_level": row.get("target_level"),
+            "evidence_paths": [
+                path.get("value") for path in row.get("evidence_paths") or []
+                if isinstance(path, dict)
+            ],
+            "gap_ids": row.get("gap_ids") or [],
+        })
+    gap_register = result.get("gap_register") or {}
+    gaps = []
+    for row in gap_register.get("gaps") or []:
+        target_path = row.get("target_path") or {}
+        gaps.append({
+            "gap_id": row.get("id"),
+            "gap_statement": row.get("statement"),
+            "capability_ids": row.get("capability_ids") or [],
+            "candidate_owner_entry_id": row.get("candidate_owner"),
+            "status": row.get("status"),
+            "close_condition": row.get("close_condition"),
+            "evidence_paths": [
+                path.get("value") for path in row.get("evidence_paths") or []
+                if isinstance(path, dict)
+            ],
+            "promoted_coverage_path": target_path.get("value"),
+            "rationale": row.get("rationale"),
+        })
+    runtime = result.get("runtime")
+    runtime_summary = None
+    if isinstance(runtime, dict):
+        queue = runtime.get("queue") or {}
+        progress = runtime.get("progress") or {}
+        runtime_summary = {
+            "task_id": queue.get("task_id"),
+            "task_state": progress.get("task_state"),
+            "queue_revision": queue.get("queue_revision"),
+            "queue_state_revision": queue.get("state_revision"),
+            "coverage_ledger_sha256": runtime.get("coverage_sha256"),
+            "required_queue_sha256": runtime.get("queue_sha256"),
+            "progress_ledger_sha256": runtime.get("progress_sha256"),
+            "errors": runtime.get("errors") or [],
+        }
+    return {
+        "structural_reconciliation_valid": not bool(result.get("errors")),
+        "profile_manifest": result.get("profile_manifest"),
+        "slot_path": result.get("slot_path"),
+        "applicability": result.get("applicability"),
+        "applicability_reason": result.get("applicability_reason"),
+        "profile_scope": {
+            "path": profile_scope.get("path"),
+            "layers": scope_layers,
+        },
+        "global_map": {"entries": entries,
+                       "typed_dependencies": edges},
+        "capability_matrix": {"capabilities": capabilities},
+        "gap_register": {"gaps": gaps},
+        "semantic_acceptance": semantic_acceptance_status(
+            result,
+            repository_snapshot_sha256=repository_snapshot_sha256,
+        ),
+        "runtime": runtime_summary,
+        "errors": result.get("errors") or [],
+    }
+
+
+def _receipts_for(result, *, repository_snapshot_sha256=None):
+    if not result["errors"]:
+        try:
+            return [make_pass_receipt(
+                result,
+                repository_snapshot_sha256=repository_snapshot_sha256,
+                seq=1,
+            )]
+        except (OSError, TypeError, ValueError) as exc:
+            _add_error(result, "receipt_binding", result.get(
+                "profile_manifest") or "<unresolved>", str(exc))
+    receipts = []
+    for seq, error in enumerate(result["errors"], 1):
+        receipts.append(kblib.make_receipt(
+            TOOL, TOOL_VERSION, error["check"], error["target"], "fail",
+            error["details"], seq))
+    return receipts
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Validate explicit Corpus Planning artifacts")
+    parser.add_argument("root")
+    parser.add_argument(
+        "--profile",
+        help="repository-relative Profile manifest or Profile directory; "
+             "default: selected Profile in Progress Ledger",
+    )
+    parser.add_argument("--receipts", help="append JSONL receipts here")
+    parser.add_argument(
+        "--json", action="store_true",
+        help="write only the deterministic normalized result JSON to stdout",
+    )
+    args = parser.parse_args(argv)
+
+    result = validate_corpus_plan(args.root, args.profile)
+    try:
+        snapshot = kblib.repository_snapshot_sha256(result["root"])
+    except (OSError, ValueError) as exc:
+        snapshot = None
+        _add_error(result, "repository_snapshot", result["root"], str(exc))
+    receipts = _receipts_for(
+        result, repository_snapshot_sha256=snapshot)
+    if args.receipts:
+        try:
+            receipt_path = kblib.repository_path(
+                result["root"], args.receipts, must_exist=False,
+                reject_symlink=True)
+            kblib.write_receipts(receipt_path, receipts)
+        except (OSError, ValueError) as exc:
+            _add_error(result, "receipt_write", args.receipts, str(exc))
+    if args.json:
+        print(json.dumps(normalized_projection(
+            result, repository_snapshot_sha256=snapshot), sort_keys=True,
+                         separators=(",", ":")))
+        return 1 if result["errors"] else 0
+    if result["errors"]:
+        for error in result["errors"]:
+            print("[FAIL] %s" % _display_error(error))
+        print("[FAIL] Corpus Planning validation failed with %d issue(s)" %
+              len(result["errors"]))
+        return 1
+    if result["applicability"] == "not-applicable":
+        print("[PASS] Corpus Planning structure: not applicable: %s" %
+              result["applicability_reason"])
+    else:
+        semantic = semantic_acceptance_status(
+            result, repository_snapshot_sha256=snapshot)
+        print(
+            "[PASS] Corpus Planning structure/reconciliation: %d layer(s), "
+            "%d entry(ies), %d capability(ies), %d gap(s); "
+            "semantic_acceptance=%s" % (
+                len(result["profile_scope"]["layers"]),
+                len(result["global_map"]["entries"]),
+                len(result["matrix"]["capabilities"]),
+                len(result["gap_register"]["gaps"]),
+                semantic["status"],
+            )
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

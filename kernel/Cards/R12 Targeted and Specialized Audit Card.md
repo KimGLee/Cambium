@@ -11,7 +11,11 @@ source_files:
   - kernel/K12 Quality Assurance/02 Rendering Verification.md
   - kernel/K12 Quality Assurance/04 Guidance and Source Review.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
-source_hash: '1914f6be37bc'
+  - kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries.md
+  - kernel/K02 Knowledge Work Construction/05 Global Map Contract.md
+  - kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract.md
+  - kernel/K02 Knowledge Work Construction/07 Gap Register Contract.md
+source_hash: 'e2a84590d1e0'
 ---
 # R12 Targeted and Specialized Audit Card
 
@@ -25,6 +29,7 @@ Run an independent targeted review of changed, invalidated, overdue, or sampled 
 
 - [ ] Declare the acceptance predicate, audit object, receipt dimension, verifier, and canonical acceptance owner.
 - [ ] Partition scope into changed, directly invalidated, dependency-invalidated, overdue, bounded sampling, and reusable evidence; or declare exactly one specialized cross-batch invariant.
+- [ ] When Corpus Planning is configured, use only its explicit map downstream, capability-owner/gap, and gap-link relations as inputs to the initial affected set; verify that set against the changed predicate.
 - [ ] Confirm which receipts remain reusable by predicate and fingerprint, and which are invalidated or missing.
 - [ ] Load the affected task route and every applicable profile audit, scan, or supplemental gate.
 
@@ -34,6 +39,7 @@ Run an independent targeted review of changed, invalidated, overdue, or sampled 
 - A suspected systemic problem expands first to a bounded sample. Only recurrence invalidates the whole affected family and creates a repair batch.
 - After a fix, re-run only invalidated dimensions and their necessary global invariants.
 - Source, expression, migration, and rendering findings follow their owning routes; visual evidence requires an objective exception trigger and unresolved question.
+- A new semantic-gap candidate or planning-relation change is written back through R13 after the finding is recorded; the audit receipt and planning record do not replace one another.
 - Do not silently rewrite an audited object while continuing to rely on its old receipt.
 
 ## Gate
