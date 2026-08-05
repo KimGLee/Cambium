@@ -5,14 +5,16 @@ read_set: kernel/Read Sets/R10 Maintenance Run Read Set.md
 compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R10 Maintenance Run Read Set.md
+  - kernel/K00 Standards Control/13 Runtime Admission and Recovery.md
   - kernel/K00 Standards Control/08 Maintenance Run Envelope.md
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
   - kernel/K08 Metadata and Status/05 Review Source and Migration Metadata.md
   - kernel/K06 Knowledge Intake and Evolution/07 Environmental Scanning and Watermark.md
   - kernel/K02 Build Execution/05 Batch Execution.md
+  - kernel/K02 Build Execution/09 Required Queue.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-source_hash: 'a94f4e75dd28'
+source_hash: 'f515e0337c29'
 ---
 # R10 Maintenance Run Card
 
@@ -24,9 +26,18 @@ Perform periodic freshness, re-verification, watermark, `needs_rereview`, or can
 
 ## Before Start
 
+- [ ] Inspect the repository root for `.cambium/` before any write. If it
+  exists, run `python3 Tools/check_queue.py . --resume-status` and follow its
+  exact `next_action`; never initialize a replacement or restart candidate age.
+- [ ] If `.cambium/` is absent, initialize it only for a persistent, resumable,
+  or multi-batch run, with `completion_semantics: maintenance`. A bounded
+  single-note run does not create an empty runtime namespace.
 - [ ] Choose exactly one budget envelope: N pages, N batches, or N hours.
 - [ ] Build the candidate manifest from overdue re-verification ∪ watermark delta ∪ `needs_rereview` marks ∪ the registered candidates pool.
-- [ ] Sort by priority, truncate to the envelope, and record the remainder as deferred rather than as a hidden gap.
+- [ ] When persistent state applies, bind the manifest to the latest
+  canonically consumed maintenance gate for the same Standards/Profile. `null`,
+  an older gate, or a reused maintenance `run_id` cannot reset deferral age.
+- [ ] Sort by priority, truncate to the envelope, and record the exact selected/deferred partition rather than replacing it with a count.
 - [ ] Output deferred age distribution. Explicitly disposition items lingering more than 3 runs.
 - [ ] For retirement of high-in-degree pages, count incoming-link retargeting against the page budget at `retargeted links ÷ 6`.
 - [ ] Resolve batch boundaries, selected content Cards, profile scans, source routes, and tier-specific review before editing.
@@ -36,7 +47,13 @@ Perform periodic freshness, re-verification, watermark, `needs_rereview`, or can
 - Adjudicate candidates caused by the current batch inside that batch; existing-object candidates enter the pool and do not become automatic gate failures.
 - Reverify whether each selected object's priority, evidence, owner, content, links, and freshness still hold.
 - Run source updates through `R04`; retire or merge only after canonical ownership and incoming links are reconciled.
-- Update the Ledger and watermark at the owning checkpoint. Stop only at a batch boundary.
+- For persistent work, move each selected batch through the Required Queue;
+  workers write only their manifest, receipts, and delta, while the integrator
+  owns Queue, Coverage, Progress, Ledger, and watermark writes.
+- Update the Ledger and watermark at the owning checkpoint. The watermark's
+  `last_run_id` identifies the enclosing maintenance run; `last_batch_id`
+  identifies the Queue batch that performed the final advance. Stop only at a
+  batch boundary.
 - An item outside the envelope for 3 consecutive runs moves to log-only and re-enters only when a new scan hits it.
 
 ## Gate
@@ -45,6 +62,14 @@ Perform periodic freshness, re-verification, watermark, `needs_rereview`, or can
 - [ ] Selected candidates have a final disposition; deferred items carry forward with age and re-entry state.
 - [ ] Ledger, receipt, review date, and watermark state are advanced consistently.
 - [ ] The declared manifest inside the budget envelope is closed.
+- [ ] For persistent state, run `check_queue.py --require-maintenance-complete`
+  with explicit budget-manifest, Ledger-advance, and watermark-advance receipt
+  IDs. Require a nonempty Queue, zero remaining work, terminal selected batches,
+  and the exact candidate partition.
+- [ ] Consume that pass with `update_task.py --transition complete`. Never enter
+  `completion-candidate` and never run `check_proof.py` for Maintenance
+  completion. After interruption, reuse a prior pass only when `--resume-status`
+  reports it current-compatible.
 - [ ] Report bounded Maintenance completion. Do not require or claim a whole-corpus Terminal Proof for deferred work outside the envelope.
 
 ## Read Back When
