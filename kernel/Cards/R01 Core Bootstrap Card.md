@@ -14,7 +14,7 @@ source_files:
   - kernel/K00 Standards Control/05 Core Principles.md
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
   - kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
-source_hash: 'f6dd159cdead'
+source_hash: '137f0ea01ed9'
 ---
 # R01 Core Bootstrap Card
 
@@ -56,6 +56,8 @@ The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Co
 - Keep task state, authoring status, expression status, evidence maturity, and learning status independent.
 - Load only the task modules needed by the current event or gate. A long task does not justify loading entire domains.
 - Re-resolve the loaded set after a Standards, scope, or route change.
+- Never hand-edit canonical runtime state; use the writer that owns the
+  affected control edge.
 - Do not infer completion from elapsed time, file count, structural checks, or a Queue-derived view with no `open` batch.
 
 ## Gate

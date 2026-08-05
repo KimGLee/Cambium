@@ -41,7 +41,7 @@ the planning artifacts, and no persisted planning report is an input.
 
 ## Triggered
 
-- Mid-task guidance, scope change, correction, or priority change received: read [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis|Guidance Classification and Impact Analysis]], [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching|Guidance Disposition and Safe Switching]], and [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|Amendment Log and Controlled Replanning]].
+- Mid-task guidance, scope change, correction, or priority change received: read [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis|Guidance Classification and Impact Analysis]], [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching|Guidance Disposition and Safe Switching]], and [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|Amendment Log and Controlled Replanning]]; an operational replan/cancellation must pass its registered-authorization boundary before execution.
 - User guidance also contains a technical hypothesis or source lead: read [[kernel/K06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads|User Guidance Hypotheses and Source Leads]].
 - Closing a guidance amendment: read [[kernel/K12 Quality Assurance/04 Guidance and Source Review|Guidance and Source Review]].
 - New source-driven batch: read [[kernel/K06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]].

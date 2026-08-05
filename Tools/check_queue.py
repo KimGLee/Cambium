@@ -34,7 +34,12 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.4.0"
+TOOL_VERSION = "1.5.0"
+REGISTER_AMENDMENT_TOOL = "register_amendment"
+REGISTER_AMENDMENT_TOOL_VERSION = "1.0.0"
+OPERATIONAL_AMENDMENT_OPERATIONS = frozenset((
+    "queue-replan", "scope-replan", "cancel-batch",
+))
 
 QUEUE_PATH = ".cambium/state/required_queue.yaml"
 COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
@@ -145,7 +150,7 @@ LOCK_STATE_FINGERPRINTS = {
 }
 GENERIC_WRITER_TOOLS = frozenset((
     "apply_delta", "update_queue", "compile_queue", "update_task",
-    "check_batch_close", "adopt_standards",
+    "check_batch_close", "adopt_standards", "register_amendment",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
 BATCH_CLOSE_TOOL_VERSION = "1.2.0"
@@ -2119,7 +2124,7 @@ def _bind_lock_receipts(writer_locks, catalog):
                     "abort": "fail",
                 }[phase]
                 for field, expected in (
-                        ("tool_version", "1.0.0"),
+                        ("tool_version", "1.1.0"),
                         ("check", "amendment_transaction"),
                         ("invalidated_by", None),
                         ("result", expected_result)):
@@ -2136,7 +2141,8 @@ def _bind_lock_receipts(writer_locks, catalog):
                         ("actor_role", "actor_role"),
                         ("transaction_sequence", "transaction_sequence"),
                         ("previous_transaction_commit_receipt",
-                         "previous_transaction_commit_receipt")):
+                         "previous_transaction_commit_receipt"),
+                        ("registration_receipt", "registration_receipt")):
                     if operation.get(operation_field) != receipt.get(receipt_field):
                         semantic_errors.append(operation_field)
                 for state_name in ("coverage", "progress", "queue"):
@@ -2472,6 +2478,19 @@ def _bind_generic_lock_receipts(root, writer_locks, catalog):
             if not actual_values or any(value != expected_value
                                         for value in actual_values):
                 semantic_errors.append(operation_field)
+        if operation.get("tool") == REGISTER_AMENDMENT_TOOL:
+            for field, expected_value in (
+                    ("tool_version", REGISTER_AMENDMENT_TOOL_VERSION),
+                    ("check", "amendment_registration"),
+                    ("result", "pass"),
+                    ("invalidated_by", None),
+                    ("actor_role", "integrator"),
+                    ("amendment_id", operation.get("amendment_id")),
+                    ("operation", operation.get("amendment_operation"))):
+                if receipt.get(field) != expected_value:
+                    semantic_errors.append(field)
+            if operation.get("registration_receipt") != receipt_id:
+                semantic_errors.append("registration_receipt")
         if operation.get("tool") == "apply_delta":
             if receipt.get("check") != "delta_apply":
                 semantic_errors.append("check")
@@ -4420,7 +4439,146 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
     }
 
 
-def _cross_ledger_amendment_errors(root, progress, catalog, queue):
+def _operational_amendment_registration_errors(
+        progress, amendment, label, current_catalog, historical_catalog,
+        queue, coverage_sha, queue_sha, progress_sha):
+    """Validate the registration which authorized one operational Amendment.
+
+    A pending Amendment is a current authorization and therefore resolves only
+    through the Standards-adoption-filtered catalog.  Once the transaction is
+    verified, the same registration is immutable historical evidence; later
+    Standards adoption may invalidate it for new work without erasing the fact
+    that it authorized the completed transaction.
+    """
+    errors = []
+    operation = amendment.get("operation")
+    if operation not in OPERATIONAL_AMENDMENT_OPERATIONS:
+        return errors
+    status = amendment.get("status")
+    writeback = amendment.get("writeback_done")
+    pending = status == "approved" and writeback is False
+    verified = status == "verified" and writeback is True
+    catalog = current_catalog if pending else historical_catalog
+    receipt_id = amendment.get("registration_receipt")
+    approval_reference = amendment.get("approval_reference")
+    if not _nonempty_string(approval_reference):
+        errors.append("%s approval_reference must be a non-empty string" % label)
+
+    state_prefix = ("queue_state_revision" if operation == "queue-replan"
+                    else "state_revision")
+    expected = {
+        "tool": REGISTER_AMENDMENT_TOOL,
+        "tool_version": REGISTER_AMENDMENT_TOOL_VERSION,
+        "check": "amendment_registration",
+        "target": amendment.get("id"),
+        "task_id": queue.get("task_id"),
+        "actor_role": "integrator",
+        "amendment_id": amendment.get("id"),
+        "operation": operation,
+        "approval_reference": approval_reference,
+        "summary": amendment.get("summary"),
+        "affected_pages": amendment.get("affected_pages"),
+        "affected_batches": amendment.get("affected_batches"),
+        "scope_version_before": amendment.get("scope_version_before"),
+        "scope_version_after": amendment.get("scope_version_after"),
+        "queue_revision_before": amendment.get("queue_revision_before"),
+        "queue_revision_after": amendment.get("queue_revision_after"),
+        "state_revision_before": amendment.get(state_prefix + "_before"),
+        "state_revision_after": amendment.get(state_prefix + "_after"),
+        "coverage_proposal_path": amendment.get("coverage_proposal_path"),
+        "coverage_proposal_sha256": amendment.get(
+            "coverage_proposal_sha256"),
+    }
+    if operation == "queue-replan":
+        expected["replan_diff_sha256"] = amendment.get("replan_diff_sha256")
+    else:
+        expected.update({
+            "plan_path": amendment.get("plan_path"),
+            "plan_sha256": amendment.get("plan_sha256"),
+            "cancel_batch_id": amendment.get("cancel_batch_id"),
+        })
+    receipt = _require_receipt(
+        catalog, receipt_id, "%s registration" % label, errors,
+        expected=expected,
+    )
+    if receipt is None:
+        return errors
+    if not _valid_timestamp(receipt.get("checked_at")):
+        errors.append("%s registration receipt has invalid checked_at" % label)
+    elif amendment.get("date") != receipt.get("checked_at")[:10]:
+        errors.append("%s date must equal the registration receipt date" % label)
+    for field in (
+            "contract_sha256", "before_coverage_sha256",
+            "after_coverage_sha256", "before_required_queue_sha256",
+            "after_required_queue_sha256", "before_progress_sha256",
+            "after_progress_sha256"):
+        if not SHA256_RE.fullmatch(str(receipt.get(field, ""))):
+            errors.append("%s registration receipt has invalid %s" %
+                          (label, field))
+    if pending:
+        pending_bindings = {
+            "contract_sha256": _contract_sha256(progress),
+            "before_coverage_sha256": coverage_sha,
+            "after_coverage_sha256": coverage_sha,
+            "before_required_queue_sha256": queue_sha,
+            "after_required_queue_sha256": queue_sha,
+            "after_progress_sha256": progress_sha,
+        }
+        for field, value in pending_bindings.items():
+            if receipt.get(field) != value:
+                errors.append(
+                    "%s current registration receipt has %s=%r, expected %r" %
+                    (label, field, receipt.get(field), value)
+                )
+    elif not verified:
+        # The operation-specific validators report the illegal lifecycle pair;
+        # registration is meaningful only at either end of that pair.
+        return errors
+    return errors
+
+
+def _registration_execution_bridge_errors(
+        amendment, label, historical_catalog, commit_receipt,
+        commit_queue_before_field):
+    """Bind one completed operation to the exact state its registration froze."""
+    errors = []
+    if not isinstance(commit_receipt, dict):
+        return errors
+    registration_id = amendment.get("registration_receipt")
+    registration_entry = historical_catalog.get(registration_id) if \
+        _nonempty_string(registration_id) else None
+    registration = registration_entry[1] if registration_entry is not None \
+        else None
+    if not isinstance(registration, dict):
+        return errors
+    for registration_field, commit_field in (
+            ("after_coverage_sha256", "before_coverage_sha256"),
+            ("after_required_queue_sha256", commit_queue_before_field),
+            ("after_progress_sha256", "before_progress_sha256")):
+        registered_sha = registration.get(registration_field)
+        execution_sha = commit_receipt.get(commit_field)
+        if (SHA256_RE.fullmatch(str(registered_sha or "")) and
+                SHA256_RE.fullmatch(str(execution_sha or "")) and
+                registered_sha != execution_sha):
+            errors.append(
+                "%s registration %s=%r does not bridge to execution %s=%r" %
+                (label, registration_field, registered_sha,
+                 commit_field, execution_sha)
+            )
+    registration_time = _timestamp_value(registration.get("checked_at"))
+    commit_time = _timestamp_value(commit_receipt.get("checked_at"))
+    if commit_time is None:
+        errors.append("%s execution receipt has invalid checked_at" % label)
+    elif registration_time is not None and commit_time < registration_time:
+        errors.append(
+            "%s execution receipt predates its registration receipt" % label
+        )
+    return errors
+
+
+def _cross_ledger_amendment_errors(
+        root, progress, current_catalog, historical_catalog, queue,
+        coverage_sha, queue_sha, progress_sha):
     """Validate append-only commit evidence for cross-Ledger Amendments."""
     errors = []
     amendments = progress.get("amendments")
@@ -4494,40 +4652,9 @@ def _cross_ledger_amendment_errors(root, progress, catalog, queue):
               amendment.get("affected_batches") != [cancel_id]):
             errors.append("%s cancel-batch must bind exactly cancel_batch_id" %
                           label)
-        if status == "approved" and writeback is False:
-            if scope_before != queue.get("scope_version"):
-                errors.append("%s pending Amendment scope_version_before does "
-                              "not match the live Queue" % label)
-            if (queue_before != queue.get("queue_revision") or
-                    queue_after != queue.get("queue_revision", 0) + 1):
-                errors.append("%s pending Amendment must bind the next live "
-                              "Queue revision" % label)
-            if state_before != queue.get("state_revision"):
-                errors.append("%s pending Amendment state_revision_before does "
-                              "not match the live Queue" % label)
-            for field in ("transaction_id", "verification_receipt",
-                          "transaction_sequence", "plan_sha256"):
-                if amendment.get(field) is not None:
-                    errors.append("%s pending Amendment must not claim %s" %
-                                  (label, field))
-            pending_count += 1
-            pending_seen = True
-            continue
-        if status != "verified" or writeback is not True:
-            errors.append("%s cross-Ledger state must be approved/pending or "
-                          "verified/written-back" % label)
-            continue
-        if pending_seen:
-            errors.append("%s verified transaction appears after a pending "
-                          "cross-Ledger Amendment" % label)
-        transaction_id = amendment.get("transaction_id")
-        commit_id = amendment.get("verification_receipt")
-        sequence = amendment.get("transaction_sequence")
-        prior = amendment.get("previous_transaction_commit_receipt")
         plan_path = amendment.get("plan_path")
         plan_sha = amendment.get("plan_sha256")
         proposal_path = amendment.get("coverage_proposal_path")
-        proposal_sha = amendment.get("coverage_proposal_sha256")
         plan = None
         for artifact_label, artifact_path, artifact_sha in (
                 ("plan", plan_path, plan_sha),
@@ -4579,6 +4706,41 @@ def _cross_ledger_amendment_errors(root, progress, catalog, queue):
                 if plan.get(field) != value:
                     errors.append("%s plan %s=%r, expected %r" %
                                   (label, field, plan.get(field), value))
+        errors.extend(_operational_amendment_registration_errors(
+            progress, amendment, label, current_catalog, historical_catalog,
+            queue, coverage_sha, queue_sha, progress_sha,
+        ))
+        if status == "approved" and writeback is False:
+            if scope_before != queue.get("scope_version"):
+                errors.append("%s pending Amendment scope_version_before does "
+                              "not match the live Queue" % label)
+            if (queue_before != queue.get("queue_revision") or
+                    queue_after != queue.get("queue_revision", 0) + 1):
+                errors.append("%s pending Amendment must bind the next live "
+                              "Queue revision" % label)
+            if state_before != queue.get("state_revision"):
+                errors.append("%s pending Amendment state_revision_before does "
+                              "not match the live Queue" % label)
+            for field in ("transaction_id", "verification_receipt",
+                          "transaction_sequence",
+                          "previous_transaction_commit_receipt"):
+                if amendment.get(field) is not None:
+                    errors.append("%s pending Amendment must not claim %s" %
+                                  (label, field))
+            pending_count += 1
+            pending_seen = True
+            continue
+        if status != "verified" or writeback is not True:
+            errors.append("%s cross-Ledger state must be approved/pending or "
+                          "verified/written-back" % label)
+            continue
+        if pending_seen:
+            errors.append("%s verified transaction appears after a pending "
+                          "cross-Ledger Amendment" % label)
+        transaction_id = amendment.get("transaction_id")
+        commit_id = amendment.get("verification_receipt")
+        sequence = amendment.get("transaction_sequence")
+        prior = amendment.get("previous_transaction_commit_receipt")
         if sequence != expected_sequence:
             errors.append("%s transaction_sequence=%r, expected %d" %
                           (label, sequence, expected_sequence))
@@ -4594,11 +4756,11 @@ def _cross_ledger_amendment_errors(root, progress, catalog, queue):
         seen_transactions.add(transaction_id)
         seen_commits.add(commit_id)
         receipt = _require_receipt(
-            catalog, commit_id,
+            historical_catalog, commit_id,
             "%s verification" % label, errors,
             expected={
                 "tool": "apply_amendment",
-                "tool_version": "1.0.0",
+                "tool_version": "1.1.0",
                 "check": "amendment_transaction",
                 "target": amendment.get("id"),
                 "transaction_phase": "commit",
@@ -4609,6 +4771,8 @@ def _cross_ledger_amendment_errors(root, progress, catalog, queue):
                 "actor_role": "integrator",
                 "transaction_sequence": sequence,
                 "previous_transaction_commit_receipt": prior,
+                "registration_receipt":
+                    amendment.get("registration_receipt"),
                 "plan_path": plan_path,
                 "plan_sha256": plan_sha,
                 "coverage_proposal_path": proposal_path,
@@ -4631,6 +4795,10 @@ def _cross_ledger_amendment_errors(root, progress, catalog, queue):
                     if not SHA256_RE.fullmatch(str(receipt.get(field, ""))):
                         errors.append("%s verification receipt has invalid %s" %
                                       (label, field))
+            errors.extend(_registration_execution_bridge_errors(
+                amendment, label, historical_catalog, receipt,
+                "before_queue_sha256",
+            ))
         previous_commit = commit_id
         expected_sequence += 1
     if pending_count > 1:
@@ -4661,8 +4829,10 @@ def _coverage_provenance_errors(progress, queue, catalog, coverage_sha,
     Before the first Queue materialization, initial Coverage is an adopter
     input.  Afterwards its ordinary write paths are transactional, so the live
     bytes must occur as the after-image of a semantically qualified receipt.
-    Progress remains an authorized Guidance/Amendment input surface; Queue has
-    its own revision, fingerprint, and transition chain.
+    Generic Guidance remains an authorized control input.  Executable
+    operational Amendments are different: register_amendment must bind their
+    approved bytes and current state before downstream writers may consume
+    them.  Queue retains its own revision, fingerprint, and transition chain.
     """
     items = queue.get("required_queue")
     pre_materialization = (
@@ -4742,8 +4912,9 @@ def _coverage_provenance_errors(progress, queue, catalog, coverage_sha,
     return errors
 
 
-def _queue_replan_amendment_errors(root, progress, catalog, queue, queue_sha,
-                                   coverage_sha,
+def _queue_replan_amendment_errors(
+        root, progress, current_catalog, historical_catalog, queue, queue_sha,
+        coverage_sha, progress_sha,
                                    allow_pending_receipts=False):
     """Validate durable evidence for same-scope Queue replans.
 
@@ -4860,6 +5031,10 @@ def _queue_replan_amendment_errors(root, progress, catalog, queue, queue_sha,
 
         status = amendment.get("status")
         writeback = amendment.get("writeback_done")
+        errors.extend(_operational_amendment_registration_errors(
+            progress, amendment, label, current_catalog, historical_catalog,
+            queue, coverage_sha, queue_sha, progress_sha,
+        ))
         if status == "approved" and writeback is False:
             if scope_before != current_scope:
                 errors.append("%s pending replan scope does not match the live "
@@ -4909,16 +5084,18 @@ def _queue_replan_amendment_errors(root, progress, catalog, queue, queue_sha,
             else:
                 receipt_owners[receipt_id] = amendment_id or label
         receipt = _require_receipt(
-            catalog, receipt_id, "%s queue-replan" % label, errors,
+            historical_catalog, receipt_id, "%s queue-replan" % label, errors,
             expected={
                 "tool": "compile_queue",
-                "tool_version": "1.2.0",
+                "tool_version": "1.3.0",
                 "check": "queue_replan",
                 "target": QUEUE_PATH,
                 "task_id": queue.get("task_id"),
                 "amendment_id": amendment_id,
                 "transaction_id": transaction_id,
                 "transaction_phase": "commit",
+                "registration_receipt":
+                    amendment.get("registration_receipt"),
                 "actor_role": "integrator",
                 "coverage_proposal_path": proposal_path,
                 "coverage_proposal_sha256": proposal_sha,
@@ -4930,7 +5107,7 @@ def _queue_replan_amendment_errors(root, progress, catalog, queue, queue_sha,
                 "queue_state_revision": state_after,
             },
         )
-        catalog_entry = catalog.get(receipt_id) if _nonempty_string(
+        catalog_entry = historical_catalog.get(receipt_id) if _nonempty_string(
             receipt_id) else None
         if (catalog_entry is not None and catalog_entry[0] == "<pending-write>" and
                 not allow_pending_receipts):
@@ -4938,6 +5115,11 @@ def _queue_replan_amendment_errors(root, progress, catalog, queue, queue_sha,
                           "the repository" % (label, receipt_id))
         if receipt is None:
             continue
+
+        errors.extend(_registration_execution_bridge_errors(
+            amendment, label, historical_catalog, receipt,
+            "before_required_queue_sha256",
+        ))
 
         before_sha = receipt.get("before_required_queue_sha256")
         after_sha = receipt.get("after_required_queue_sha256")
@@ -5006,7 +5188,7 @@ def _initial_queue_receipt_errors(progress, catalog, queue, queue_sha,
         catalog, receipt_id, "Progress initial Queue", errors,
         expected={
             "tool": "compile_queue",
-            "tool_version": "1.2.0",
+            "tool_version": "1.3.0",
             "check": "queue_structure",
             "target": QUEUE_PATH,
             "task_id": queue.get("task_id"),
@@ -6024,7 +6206,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                 # the cross-Ledger transaction is therefore a truthful
                 # producer for this edge.  Other lifecycle edges remain
                 # update_queue-owned.
-                allowed_producers.add(("apply_amendment", "1.0.0"))
+                allowed_producers.add(("apply_amendment", "1.1.0"))
             if producer not in allowed_producers:
                 errors.append("%s transition receipt %s has unsupported "
                               "producer %r/%r" %
@@ -6322,7 +6504,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                 "%s cancellation Amendment commit" % item_id, errors,
                 expected={
                     "tool": "apply_amendment",
-                    "tool_version": "1.0.0",
+                    "tool_version": "1.1.0",
                     "check": "amendment_transaction",
                     "target": amendment_id,
                     "transaction_phase": "commit",
@@ -6337,7 +6519,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             else:
                 for field, value in {
                     "tool": "apply_amendment",
-                    "tool_version": "1.0.0",
+                    "tool_version": "1.1.0",
                     "check": "queue_transition",
                     "after_state": "cancelled",
                     "amendment_id": amendment_id,
@@ -6946,11 +7128,21 @@ def validate_runtime(root, allowed_open_delta=None,
     errors.extend(_initial_queue_receipt_errors(
         progress, catalog, queue, queue_sha, coverage_sha,
     ))
-    errors.extend(_cross_ledger_amendment_errors(root, progress, catalog, queue))
+    errors.extend(_cross_ledger_amendment_errors(
+        root, progress, current_catalog, catalog, queue,
+        coverage_sha, queue_sha, progress_sha,
+    ))
     errors.extend(_queue_replan_amendment_errors(
-        root, progress, catalog, queue, queue_sha, coverage_sha,
+        root, progress, current_catalog, catalog, queue, queue_sha,
+        coverage_sha, progress_sha,
         allow_pending_receipts=allow_pending_replan_receipts,
     ))
+    pending_operational = _pending_cross_ledger_amendments(progress)
+    if len(pending_operational) > 1:
+        errors.append(
+            "Progress has %d pending operational Amendments; exactly one "
+            "may be registered at a time" % len(pending_operational)
+        )
 
     items = queue.get("required_queue")
     if not isinstance(items, list):

@@ -154,7 +154,8 @@
 # retains that receipt id in `initial_queue_receipt` across later changes.
 # Same-scope `queue_replan` commit receipts additionally bind the repository-
 # contained Coverage proposal path/SHA, exact affected pages/batches and diff
-# SHA, transaction id/phase, and all three canonical state before/after SHAs.
+# SHA, transaction id/phase, the consumed registration_receipt, and all three
+# canonical state before/after SHAs.
 # A prepare receipt precedes the three-file replacement; an abort receipt
 # records a handled failure. A crash or incomplete rollback retains the lock.
 # `apply_amendment.py` transaction receipts additionally carry:
@@ -162,10 +163,21 @@
 #   transaction_id / sequence       : append-only cross-Ledger transaction identity
 #   previous_transaction_commit_receipt : prior committed transaction, or null
 #   amendment_id / operation / plan_sha256
+#   registration_receipt            : exact approved authorization consumed
 #   before_*_sha256 / after_*_sha256 for Coverage, Queue, and Progress
 # The prepare receipt and surviving writer-lock owner are recovery evidence if
 # a process stops between per-file replacements; within the local trust
 # boundary, a matching commit records successful transaction closure.
+# `register_amendment.py` is the sole producer of executable operational
+# Amendment rows. Its `amendment_registration` pass receipt binds the explicit
+# approval reference, operation-specific plan/proposal/diff fields, current
+# contract, and unchanged Coverage/Queue plus before/after Progress SHA-256.
+# While the row is approved/pending, only the current filtered receipt catalog
+# can authorize execution. After verified write-back the same receipt is
+# resolved from immutable history and cannot authorize new work. The receipt is
+# appended before its pending Progress row; an unreferenced receipt is inert.
+# The consuming commit must bridge all three registration after-SHAs to its
+# before-SHAs and may not predate registration.
 # Canonical `apply_delta.py` receipts bind batch, exact delta SHA, Queue SHA,
 # and Coverage before/after SHA. A worker delta receipt never authorizes
 # Queue/compiler-owned control-field changes.

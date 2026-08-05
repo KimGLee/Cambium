@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -15,6 +16,7 @@ sys.path.insert(0, str(TOOLS))
 import apply_amendment
 import check_queue
 import kblib
+import register_amendment
 
 
 class ApplyAmendmentTests(unittest.TestCase):
@@ -71,20 +73,42 @@ class ApplyAmendmentTests(unittest.TestCase):
         )
 
     def add_progress_amendment(self, plan, amendment_id=None, **overrides):
-        progress = self.load(check_queue.PROGRESS_PATH)
-        amendment = {
-            "id": amendment_id or plan["amendment_id"],
-            "date": "2026-08-04",
-            "summary": "approved cross-Ledger Amendment",
-            "status": "approved",
-            "writeback_done": False,
-        }
-        for amendment_field, plan_field in \
-                apply_amendment.AMENDMENT_BINDINGS.items():
-            amendment[amendment_field] = copy.deepcopy(plan[plan_field])
-        amendment.update(overrides)
-        progress["amendments"].append(amendment)
-        self.write_yaml(check_queue.PROGRESS_PATH, progress)
+        plan_rel = ".cambium/deltas/amendments/%s.yaml" % plan["amendment_id"]
+        shas = self.shas()
+        completed = subprocess.run(
+            [sys.executable, str(TOOLS / "register_amendment.py"),
+             str(self.root), "--operation", plan["operation"],
+             "--plan", plan_rel,
+             "--date", time.strftime("%Y-%m-%d", time.gmtime()),
+             "--summary", "approved cross-Ledger Amendment",
+             "--approval-reference", "user:fixture-approval",
+             "--expected-coverage-sha256", shas["coverage"],
+             "--expected-progress-sha256", shas["progress"],
+             "--expected-queue-sha256", shas["queue"],
+             "--actor-role", "integrator", "--apply"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        if amendment_id is not None or overrides:
+            progress = self.load(check_queue.PROGRESS_PATH)
+            amendment = progress["amendments"][-1]
+            if amendment_id is not None:
+                amendment["id"] = amendment_id
+            amendment.update(overrides)
+            self.write_yaml(check_queue.PROGRESS_PATH, progress)
+
+    def tamper_registration_receipt(self, field, value):
+        path = self.root / apply_amendment.RECEIPT_PATH
+        records = [json.loads(line) for line in path.read_text(
+            encoding="utf-8").splitlines()]
+        registration = next(record for record in records
+                            if record.get("tool") == "register_amendment")
+        registration[field] = value
+        path.write_text(
+            "".join(json.dumps(record) + "\n" for record in records),
+            encoding="utf-8",
+        )
 
     def make_plan(self, operation, proposal, affected_pages,
                   affected_batches, cancel_batch_id=None):
@@ -234,6 +258,7 @@ class ApplyAmendmentTests(unittest.TestCase):
             prepared["task_id"], plan_path=plan_rel,
             receipt_path=apply_amendment.RECEIPT_PATH,
         )
+        operation["registration_receipt"] = prepared["registration_receipt"]
         lock = self.root / ".cambium/tmp/state-writer.lock"
         lock.mkdir()
         (lock / "owner.json").write_text(json.dumps({
@@ -284,7 +309,8 @@ class ApplyAmendmentTests(unittest.TestCase):
                 encoding="utf-8").splitlines()]
         self.assertEqual(["prepare", "commit"],
                          [receipt["transaction_phase"]
-                          for receipt in receipts])
+                          for receipt in receipts
+                          if receipt.get("transaction_phase")])
         commit = receipts[-1]
         for field in ("plan_path", "plan_sha256",
                       "coverage_proposal_path",
@@ -315,6 +341,34 @@ class ApplyAmendmentTests(unittest.TestCase):
             "queue revision does not match its Amendment" in error or
             "points beyond the live Queue revision" in error
             for error in errors), errors)
+
+    def test_verified_scope_registration_bridges_execution_preimage(self):
+        plan_rel, plan = self.make_plan(
+            "scope-replan", self.scope_proposal(),
+            ["Topics/C.md"], ["B3"])
+        self.add_progress_amendment(plan)
+        completed = self.command(
+            plan_rel, self.shas(), "--actor-role", "integrator", "--apply")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.tamper_registration_receipt(
+            "after_progress_sha256", "sha256:" + ("0" * 64))
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("does not bridge to execution before_progress_sha256",
+                      errors)
+
+    def test_verified_cancellation_registration_bridges_execution_preimage(self):
+        plan_rel, plan = self.make_plan(
+            "cancel-batch", self.cancel_proposal(),
+            ["Topics/B.md"], ["B2"], cancel_batch_id="B2")
+        self.add_progress_amendment(plan)
+        completed = self.command(
+            plan_rel, self.shas(), "--actor-role", "integrator", "--apply")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.tamper_registration_receipt(
+            "after_required_queue_sha256", "sha256:" + ("0" * 64))
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("does not bridge to execution before_queue_sha256",
+                      errors)
 
     def test_plan_and_proposal_must_stay_in_amendment_namespace(self):
         plan_rel, plan = self.make_plan(
@@ -545,14 +599,14 @@ class ApplyAmendmentTests(unittest.TestCase):
                             for error in tampered["errors"]),
                         tampered["errors"])
 
-    def test_unrelated_progress_amendment_is_rejected(self):
+    def test_tampered_registered_amendment_id_is_rejected(self):
         plan_rel, plan = self.make_plan(
             "scope-replan", self.scope_proposal(),
             ["Topics/C.md"], ["B3"])
         self.add_progress_amendment(plan, amendment_id="A-OTHER")
         completed = self.command(plan_rel, self.shas())
         self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("exactly one matching Amendment", completed.stdout)
+        self.assertIn("registration receipt", completed.stdout)
 
     def test_stale_sha_is_rejected_without_writing(self):
         plan_rel, plan = self.make_plan(
@@ -578,7 +632,11 @@ class ApplyAmendmentTests(unittest.TestCase):
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("only actor-role integrator", completed.stdout)
         self.assertEqual(before, self.shas())
-        self.assertFalse((self.root / apply_amendment.RECEIPT_PATH).exists())
+        receipts = [json.loads(line) for line in
+                    (self.root / apply_amendment.RECEIPT_PATH).read_text(
+                        encoding="utf-8").splitlines()]
+        self.assertFalse(any(receipt.get("transaction_phase")
+                             for receipt in receipts))
 
     def test_verified_amendment_cannot_outlive_commit_receipt(self):
         plan_rel, plan = self.make_plan(
@@ -666,7 +724,8 @@ class ApplyAmendmentTests(unittest.TestCase):
         self.assertEqual(before, self.shas())
         phases = [json.loads(line)["transaction_phase"]
                   for line in receipt_path.read_text(
-                      encoding="utf-8").splitlines()]
+                      encoding="utf-8").splitlines()
+                  if json.loads(line).get("transaction_phase")]
         self.assertEqual(["prepare", "abort"], phases)
         self.assertFalse(
             (self.root / ".cambium/tmp/state-writer.lock").exists())
@@ -698,7 +757,8 @@ class ApplyAmendmentTests(unittest.TestCase):
         self.assertEqual(before, self.shas())
         records = [json.loads(line) for line in
                    receipt_path.read_text(encoding="utf-8").splitlines()]
-        phases = [record.get("transaction_phase") for record in records]
+        phases = [record.get("transaction_phase") for record in records
+                  if record.get("transaction_phase")]
         self.assertIn("prepare", phases)
         self.assertIn("commit", phases)
         self.assertIn("abort", phases)
@@ -747,7 +807,8 @@ class ApplyAmendmentTests(unittest.TestCase):
 
         self.assertEqual(before, self.shas())
         phases = [json.loads(line).get("transaction_phase") for line in
-                  receipt_path.read_text(encoding="utf-8").splitlines()]
+                  receipt_path.read_text(encoding="utf-8").splitlines()
+                  if json.loads(line).get("transaction_phase")]
         self.assertEqual(["prepare", "commit"], phases)
         status = subprocess.run(
             [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
@@ -824,7 +885,10 @@ class ApplyAmendmentTests(unittest.TestCase):
                     str(self.root), prepared, str(receipt_path))
 
         self.assertEqual(before, self.shas())
-        self.assertFalse(receipt_path.exists())
+        records = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines()]
+        self.assertEqual(["register_amendment"],
+                         [record.get("tool") for record in records])
         self.assertFalse(
             (self.root / ".cambium/tmp/state-writer.lock").exists()
         )
@@ -864,7 +928,8 @@ class ApplyAmendmentTests(unittest.TestCase):
 
         self.assertEqual(before, self.shas())
         phases = [json.loads(line)["transaction_phase"] for line in
-                  receipt_path.read_text(encoding="utf-8").splitlines()]
+                  receipt_path.read_text(encoding="utf-8").splitlines()
+                  if json.loads(line).get("transaction_phase")]
         self.assertEqual(["prepare"], phases)
         self.assertTrue((
             self.root / ".cambium/tmp/state-writer.lock/owner.json"

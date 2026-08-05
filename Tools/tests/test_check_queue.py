@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 TOOLS = Path(__file__).resolve().parents[1]
@@ -691,10 +692,13 @@ class CheckQueueTests(QueueFixture):
         proposal_sha = kblib.sha256_file(proposal_path)
         coverage_sha = kblib.sha256_file(self.coverage_path)
         transaction_id = "txn-%s" % amendment_id
+        registration_id = "audit-register-%s" % amendment_id.lower()
         record = {
             "id": amendment_id,
             "date": "2026-08-04",
             "summary": "same-scope Queue replan",
+            "approval_reference": "user:fixture-approval",
+            "registration_receipt": registration_id,
             "status": status,
             "writeback_done": writeback_done,
             "operation": "queue-replan",
@@ -718,15 +722,58 @@ class CheckQueueTests(QueueFixture):
                 "after_coverage_sha256": coverage_sha,
             })
         progress = kblib.load_yaml_file(self.progress_path)
+        registration = {
+            "receipt_id": registration_id,
+            "tool": "register_amendment", "tool_version": "1.0.0",
+            "check": "amendment_registration", "target": amendment_id,
+            "result": "pass", "invalidated_by": None,
+            "checked_at": "2026-08-04T00:00:00Z",
+            "task_id": "fixture-task", "actor_role": "integrator",
+            "amendment_id": amendment_id, "operation": "queue-replan",
+            "approval_reference": "user:fixture-approval",
+            "summary": "same-scope Queue replan",
+            "affected_pages": [], "affected_batches": ["B1"],
+            "scope_version_before": "s1", "scope_version_after": "s1",
+            "queue_revision_before": before_revision,
+            "queue_revision_after": after_revision,
+            "state_revision_before": 0, "state_revision_after": 0,
+            "coverage_proposal_path": proposal_relative,
+            "coverage_proposal_sha256": proposal_sha,
+            "replan_diff_sha256": diff_sha,
+            "contract_sha256": check_queue._contract_sha256(progress),
+            "before_coverage_sha256": coverage_sha,
+            "after_coverage_sha256": coverage_sha,
+            "before_required_queue_sha256":
+                kblib.sha256_file(self.queue_path),
+            "after_required_queue_sha256":
+                kblib.sha256_file(self.queue_path),
+            "before_progress_sha256": "sha256:" + ("1" * 64),
+            "after_progress_sha256": "sha256:" + ("2" * 64),
+        }
         progress.setdefault("amendments", []).append(record)
         self.progress_path.write_text(kblib.canonical_yaml(progress),
                                       encoding="utf-8")
+        if status == "verified" and writeback_done is True:
+            registration.update({
+                "after_coverage_sha256": "sha256:" + ("c" * 64),
+                "after_required_queue_sha256": "sha256:" + ("a" * 64),
+                "after_progress_sha256": "sha256:" + ("e" * 64),
+            })
+        else:
+            registration["after_progress_sha256"] = \
+                kblib.sha256_file(self.progress_path)
+        kblib.write_receipts(
+            self.root / ".cambium/receipts/amendment-registrations.jsonl",
+            [registration],
+        )
         receipt = {
             "receipt_id": receipt_id,
-            "tool": "compile_queue", "tool_version": "1.2.0",
+            "tool": "compile_queue", "tool_version": "1.3.0",
             "check": "queue_replan", "target": check_queue.QUEUE_PATH,
             "result": "pass", "invalidated_by": None,
+            "checked_at": "2026-08-04T00:01:00Z",
             "task_id": "fixture-task", "amendment_id": amendment_id,
+            "registration_receipt": registration_id,
             "transaction_id": transaction_id, "transaction_phase": "commit",
             "actor_role": "integrator", "replan_diff_sha256": diff_sha,
             "coverage_proposal_path": proposal_relative,
@@ -857,6 +904,76 @@ class CheckQueueTests(QueueFixture):
         completed = self.run_cli("--require-ready", "B1")
         self.assertEqual(2, completed.returncode, completed.stdout)
 
+    def test_registration_receipt_is_current_for_pending_and_history_for_verified(self):
+        queue = self.queue()
+        record, _ = self.add_replan_amendment(
+            "A-AUTH", queue["queue_revision"],
+            queue["queue_revision"] + 1, "sha256:" + ("b" * 64),
+            "unused-commit", persist_receipt=False,
+            status="approved", writeback_done=False,
+        )
+        runtime = check_queue.validate_runtime(self.root)
+        self.assertEqual([], runtime["errors"])
+        registration_id = record["registration_receipt"]
+        registration = runtime["receipt_catalog"][registration_id]
+        label = "Progress amendments[0]"
+        pending_errors = check_queue._operational_amendment_registration_errors(
+            runtime["progress"], record, label, {},
+            {registration_id: registration}, runtime["queue"],
+            runtime["coverage_sha256"], runtime["queue_sha256"],
+            runtime["progress_sha256"],
+        )
+        self.assertTrue(any("missing receipt" in error
+                            for error in pending_errors), pending_errors)
+
+        record["status"] = "verified"
+        record["writeback_done"] = True
+        historical_errors = \
+            check_queue._operational_amendment_registration_errors(
+                runtime["progress"], record, label, {},
+                {registration_id: registration}, runtime["queue"],
+                runtime["coverage_sha256"], runtime["queue_sha256"],
+                runtime["progress_sha256"],
+            )
+        self.assertEqual([], historical_errors)
+
+    def test_pending_registration_must_bind_live_progress_bytes(self):
+        queue = self.queue()
+        self.add_replan_amendment(
+            "A-PROGRESS", queue["queue_revision"],
+            queue["queue_revision"] + 1, "sha256:" + ("b" * 64),
+            "unused-commit", persist_receipt=False,
+            status="approved", writeback_done=False,
+        )
+        receipt_path = self.root / \
+            ".cambium/receipts/amendment-registrations.jsonl"
+        registration = json.loads(receipt_path.read_text(
+            encoding="utf-8").strip())
+        registration["after_progress_sha256"] = "sha256:" + ("0" * 64)
+        receipt_path.write_text(json.dumps(registration) + "\n",
+                                encoding="utf-8")
+        errors = check_queue.validate_runtime(self.root)["errors"]
+        self.assertTrue(any(
+            "current registration receipt has after_progress_sha256" in error
+            for error in errors
+        ), errors)
+
+    def test_manual_pending_operational_row_without_registration_fails(self):
+        queue = self.queue()
+        record, _ = self.add_replan_amendment(
+            "A-NO-REG", queue["queue_revision"],
+            queue["queue_revision"] + 1, "sha256:" + ("b" * 64),
+            "unused-commit", persist_receipt=False,
+            status="approved", writeback_done=False,
+        )
+        progress = kblib.load_yaml_file(self.progress_path)
+        progress["amendments"][-1].pop("registration_receipt")
+        self.progress_path.write_text(kblib.canonical_yaml(progress),
+                                      encoding="utf-8")
+        errors = check_queue.validate_runtime(self.root)["errors"]
+        self.assertTrue(any("registration must identify a receipt" in error
+                            for error in errors), errors)
+
     def test_pending_queue_replan_shape_is_fail_closed(self):
         queue = self.queue()
         record, _ = self.add_replan_amendment(
@@ -876,23 +993,47 @@ class CheckQueueTests(QueueFixture):
         self.assertIn("must not change the Queue state revision", errors)
 
     def test_pending_cross_ledger_amendment_blocks_ready_and_is_validated(self):
-        progress = kblib.load_yaml_file(self.progress_path)
-        progress["amendments"].append({
-            "id": "A-SCOPE", "date": "2026-08-04",
-            "summary": "approved scope change",
-            "status": "approved", "writeback_done": False,
+        proposal_relative = \
+            ".cambium/deltas/amendments/A-SCOPE.coverage.yaml"
+        proposal = kblib.load_yaml_file(self.coverage_path)
+        proposal["scope_version"] = "s2"
+        proposal["updated_at"] = "2026-08-04T01:00:00Z"
+        proposal_path = self.root / proposal_relative
+        proposal_path.parent.mkdir(parents=True, exist_ok=True)
+        proposal_path.write_text(kblib.canonical_yaml(proposal),
+                                 encoding="utf-8")
+        plan_relative = ".cambium/deltas/amendments/A-SCOPE.yaml"
+        plan = {
+            "schema_version": 1, "amendment_id": "A-SCOPE",
             "operation": "scope-replan",
             "affected_pages": [], "affected_batches": [],
             "scope_version_before": "s1", "scope_version_after": "s2",
             "queue_revision_before": 1, "queue_revision_after": 2,
             "state_revision_before": 0, "state_revision_after": 0,
-            "coverage_proposal_path":
-                ".cambium/deltas/amendments/A-SCOPE.coverage.yaml",
-            "coverage_proposal_sha256": "sha256:" + ("c" * 64),
+            "coverage_proposal_path": proposal_relative,
+            "coverage_proposal_sha256": kblib.sha256_file(proposal_path),
             "cancel_batch_id": None,
-        })
-        self.progress_path.write_text(kblib.canonical_yaml(progress),
-                                      encoding="utf-8")
+        }
+        (self.root / plan_relative).write_text(
+            kblib.canonical_yaml(plan), encoding="utf-8")
+        registered = subprocess.run(
+            [sys.executable, str(TOOLS / "register_amendment.py"),
+             str(self.root), "--operation", "scope-replan",
+             "--plan", plan_relative,
+             "--date", time.strftime("%Y-%m-%d", time.gmtime()),
+             "--summary", "approved scope change",
+             "--approval-reference", "user:fixture-approval",
+             "--expected-coverage-sha256",
+             kblib.sha256_file(self.coverage_path),
+             "--expected-progress-sha256",
+             kblib.sha256_file(self.progress_path),
+             "--expected-queue-sha256",
+             kblib.sha256_file(self.queue_path),
+             "--actor-role", "integrator", "--apply"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(0, registered.returncode, registered.stdout)
         result = check_queue.validate_runtime(self.root)
         self.assertEqual([], result["errors"])
         self.assertEqual(["A-SCOPE"],
@@ -901,6 +1042,7 @@ class CheckQueueTests(QueueFixture):
         completed = self.run_cli("--require-ready", "B1")
         self.assertEqual(2, completed.returncode, completed.stdout)
 
+        progress = kblib.load_yaml_file(self.progress_path)
         progress["amendments"][0].pop("coverage_proposal_sha256")
         self.progress_path.write_text(kblib.canonical_yaml(progress),
                                       encoding="utf-8")
@@ -946,6 +1088,31 @@ class CheckQueueTests(QueueFixture):
         errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
         self.assertIn("amendment_id='WRONG', expected 'A-R1'", errors)
         self.assertIn("actor_role='worker', expected 'integrator'", errors)
+
+    def test_verified_queue_replan_registration_bridges_execution_state_and_time(self):
+        queue = self.queue()
+        queue["queue_revision"] = 2
+        self.write_queue(queue)
+        live_sha = kblib.sha256_file(self.queue_path)
+        self.add_replan_amendment(
+            "A-R1", 1, 2, live_sha, "audit-replan-r1",
+        )
+        registration_path = self.root / \
+            ".cambium/receipts/amendment-registrations.jsonl"
+        registration = json.loads(registration_path.read_text(
+            encoding="utf-8").strip())
+        registration["after_progress_sha256"] = "sha256:" + ("0" * 64)
+        registration_path.write_text(json.dumps(registration) + "\n",
+                                     encoding="utf-8")
+        replan_path = self.root / ".cambium/receipts/replans.jsonl"
+        commit = json.loads(replan_path.read_text(encoding="utf-8").strip())
+        commit["checked_at"] = "2026-08-03T23:59:59Z"
+        replan_path.write_text(json.dumps(commit) + "\n", encoding="utf-8")
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("does not bridge to execution before_progress_sha256",
+                      errors)
+        self.assertIn("execution receipt predates its registration receipt",
+                      errors)
 
     def test_verified_queue_replan_detects_tampered_after_sha(self):
         queue = self.queue()
@@ -1731,7 +1898,7 @@ class CheckQueueTests(QueueFixture):
             kblib.write_receipts(
                 self.root / ".cambium/receipts/amendment-history.jsonl", [{
                     "receipt_id": receipt_id,
-                    "tool": "apply_amendment", "tool_version": "1.0.0",
+                    "tool": "apply_amendment", "tool_version": "1.1.0",
                     "check": "queue_transition", "target": batch_id,
                     "result": "pass", "invalidated_by": None,
                     "actor_role": "integrator",

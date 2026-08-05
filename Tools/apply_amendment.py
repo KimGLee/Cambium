@@ -21,7 +21,7 @@ import compile_queue
 import kblib
 
 TOOL = "apply_amendment"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 PLAN_PREFIX = ".cambium/deltas/amendments"
 RECEIPT_PATH = ".cambium/receipts/amendments.jsonl"
 OPERATIONS = ("scope-replan", "cancel-batch")
@@ -131,7 +131,7 @@ def _validate_plan(plan):
         raise ValueError("coverage_proposal_sha256 must be sha256:<64 lowercase hex>")
 
 
-def _find_amendment(progress, plan):
+def _find_amendment(progress, plan, plan_path=None, plan_sha=None):
     amendments = progress.get("amendments")
     if not isinstance(amendments, list):
         raise ValueError("Progress amendments must be an explicit list")
@@ -146,6 +146,14 @@ def _find_amendment(progress, plan):
         raise ValueError("Progress Amendment status must be approved")
     if amendment.get("writeback_done") is not False:
         raise ValueError("Progress Amendment writeback_done must be false")
+    if not _nonempty(amendment.get("approval_reference")):
+        raise ValueError("Progress Amendment approval_reference must be non-empty")
+    if not _nonempty(amendment.get("registration_receipt")):
+        raise ValueError("Progress Amendment registration_receipt must be non-empty")
+    if plan_path is not None and amendment.get("plan_path") != plan_path:
+        raise ValueError("Progress Amendment plan_path does not match plan")
+    if plan_sha is not None and amendment.get("plan_sha256") != plan_sha:
+        raise ValueError("Progress Amendment plan_sha256 does not match plan")
     for amendment_field, plan_field in AMENDMENT_BINDINGS.items():
         if amendment.get(amendment_field) != plan.get(plan_field):
             raise ValueError("Progress Amendment %s does not match plan" %
@@ -312,7 +320,8 @@ def _sync_progress(progress, plan, queue, queue_text, transaction_id,
 def _new_transaction_receipt(phase, result, plan, transaction_id, plan_path,
                              plan_sha, proposal_path, proposal_sha,
                              transaction_sequence,
-                             previous_transaction_commit_receipt, task_id):
+                             previous_transaction_commit_receipt, task_id,
+                             registration_receipt):
     receipt = kblib.make_receipt(
         TOOL, TOOL_VERSION, "amendment_transaction", plan["amendment_id"],
         result, "%s %s" % (phase, plan["operation"]),
@@ -332,6 +341,7 @@ def _new_transaction_receipt(phase, result, plan, transaction_id, plan_path,
         "transaction_sequence": transaction_sequence,
         "previous_transaction_commit_receipt":
             previous_transaction_commit_receipt,
+        "registration_receipt": registration_receipt,
     })
     return receipt
 
@@ -405,6 +415,8 @@ def _prepare_result(root, plan_path, expected):
     plan_file, plan_raw, plan = _load_managed(
         root, plan_path, PLAN_PREFIX, must_exist=True)
     _validate_plan(plan)
+    plan_relative = os.path.relpath(plan_file, root).replace(os.sep, "/")
+    plan_sha = kblib.sha256_bytes(plan_raw)
     proposal_path = plan["coverage_proposal_path"]
     if os.path.normpath(proposal_path) == os.path.normpath(plan_path):
         raise ValueError("plan and Coverage proposal must be different files")
@@ -449,26 +461,26 @@ def _prepare_result(root, plan_path, expected):
             queue.get("queue_revision") != plan["queue_revision_before"] or
             queue.get("state_revision") != plan["state_revision_before"]):
         raise ValueError("plan before scope/revisions do not match current Queue")
-    _find_amendment(progress, plan)
+    amendment = _find_amendment(
+        progress, plan, plan_path=plan_relative, plan_sha=plan_sha)
     current_pages, proposed_pages, changed_specs = \
         _validate_coverage_proposal(coverage, proposal, plan)
 
-    plan_relative = os.path.relpath(plan_file, root).replace(os.sep, "/")
     proposal_relative = os.path.relpath(proposal_file, root).replace(os.sep, "/")
     transaction_id = "txn-%s-%s" % (plan["amendment_id"], uuid.uuid4().hex)
-    plan_sha = kblib.sha256_bytes(plan_raw)
+    registration_receipt = amendment["registration_receipt"]
     transaction_sequence, previous_transaction_commit_receipt = \
         _transaction_chain_head(progress)
     prepare = _new_transaction_receipt(
         "prepare", "candidate", plan, transaction_id,
         plan_relative, plan_sha, proposal_relative, proposal_sha,
         transaction_sequence, previous_transaction_commit_receipt,
-        queue.get("task_id"))
+        queue.get("task_id"), registration_receipt)
     commit = _new_transaction_receipt(
         "commit", "pass", plan, transaction_id,
         plan_relative, plan_sha, proposal_relative, proposal_sha,
         transaction_sequence, previous_transaction_commit_receipt,
-        queue.get("task_id"))
+        queue.get("task_id"), registration_receipt)
     transition = None
 
     if plan["operation"] == "scope-replan":
@@ -602,6 +614,7 @@ def _prepare_result(root, plan_path, expected):
         "transaction_sequence": transaction_sequence,
         "previous_transaction_commit_receipt":
             previous_transaction_commit_receipt,
+        "registration_receipt": registration_receipt,
         "task_id": queue.get("task_id"),
     }
 
@@ -634,7 +647,7 @@ def _commit_transaction(root, prepared, receipt_path):
         prepared["proposal_path"], prepared["proposal_sha"],
         prepared["transaction_sequence"],
         prepared["previous_transaction_commit_receipt"],
-        prepared["task_id"],
+        prepared["task_id"], prepared["registration_receipt"],
     )
     _transaction_fields(abort, prepared["before_sha"], prepared["after_sha"])
     abort.update(prepared["contract_fields"])
@@ -648,6 +661,7 @@ def _commit_transaction(root, prepared, receipt_path):
         plan_path=prepared["plan_path"],
         receipt_path=os.path.relpath(receipt_path, root),
     )
+    operation["registration_receipt"] = prepared["registration_receipt"]
     operation.update({
         "commit_receipt_id": prepared["commit"]["receipt_id"],
         "abort_receipt_id": abort["receipt_id"],

@@ -15,7 +15,7 @@ The [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-doma
 | `large-scale-execution-admission` | Large-scale execution admission | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Large-scale Pre-execution Gate|Large-scale Pre-execution Gate]] | R11 packages the gate with the actual work route but does not authorize content work |
 | `wiki-link-integrity` | Wiki link integrity | The K12/09 Closed List consumes the `check_links` summary | Note close uses only its scoped self-check; migration retargets affected links; Terminal Audit reruns the same gate on the frozen snapshot |
 | `frontmatter-vocabulary` | Frontmatter vocabulary | The K12/09 Closed List consumes the `check_vocab` summary | Note close uses a scoped self-check; Terminal Audit reruns the same gate on the frozen snapshot |
-| `required-queue-consistency` | Queue structure, Work Spec binding, and Queue/Coverage/Progress drift | K13/08 `check_queue.py` consistency mode | Resume, batch close, Standards adoption, and Terminal Audit consume a current consistency receipt |
+| `required-queue-consistency` | Queue structure, Work Spec binding, operational Amendment registration, and Queue/Coverage/Progress drift | K13/08 `check_queue.py` consistency mode | Resume, operational Amendment writers, batch close, Standards adoption, and Terminal Audit consume the same current consistency contract |
 | `required-queue-admission` | Readiness, dependencies, confirmation, and concurrent-write conflicts | K13/10 `check_queue.py --require-ready <batch-id>` | Activation consumes the batch-bound receipt; no other layer recreates readiness |
 | `required-queue-completion` | Build Queue exhaustion and completion readiness | K13/12 `check_queue.py --require-complete` | Entry to build `completion-candidate` consumes the frozen Queue-complete receipt |
 | `maintenance-completion` | Maintenance Queue exhaustion, candidate partition, and maintenance evidence closure | K13/12 `check_queue.py --require-maintenance-complete` | Maintenance task completion consumes the frozen maintenance-complete receipt |
@@ -50,14 +50,14 @@ from the descriptive table above.
 | Gate ID | Tool | Tool version | Check | Mode |
 |---|---|---|---|---|
 | `runtime-card-synchronization` | `manual-attestation` | `1.0.0` | `runtime-card-synchronization` | `*` |
-| `runtime-startup-recovery` | `check_queue` | `1.4.0` | `required_queue` | `resume-status` |
+| `runtime-startup-recovery` | `check_queue` | `1.5.0` | `required_queue` | `resume-status` |
 | `large-scale-execution-admission` | `manual-attestation` | `1.0.0` | `large-scale-execution-admission` | `*` |
 | `wiki-link-integrity` | `check_links` | `1.5.0` | `link-check-summary` | `*` |
 | `frontmatter-vocabulary` | `check_vocab` | `1.4.0` | `vocab-check-summary` | `*` |
-| `required-queue-consistency` | `check_queue` | `1.4.0` | `required_queue` | `consistency` |
-| `required-queue-admission` | `check_queue` | `1.4.0` | `required_queue` | `require-ready:*` |
-| `required-queue-completion` | `check_queue` | `1.4.0` | `required_queue` | `require-complete` |
-| `maintenance-completion` | `check_queue` | `1.4.0` | `required_queue` | `require-maintenance-complete` |
+| `required-queue-consistency` | `check_queue` | `1.5.0` | `required_queue` | `consistency` |
+| `required-queue-admission` | `check_queue` | `1.5.0` | `required_queue` | `require-ready:*` |
+| `required-queue-completion` | `check_queue` | `1.5.0` | `required_queue` | `require-complete` |
+| `maintenance-completion` | `check_queue` | `1.5.0` | `required_queue` | `require-maintenance-complete` |
 | `batch-review` | `manual-attestation` | `1.0.0` | `batch_gate` | `*` |
 | `batch-close` | `check_batch_close` | `1.2.0` | `batch_close_gate` | `*` |
 | `corpus-plan-structure` | `check_corpus_plan` | `1.5.0` | `corpus_plan` | `*` |
@@ -65,7 +65,7 @@ from the descriptive table above.
 | `content-correctness` | `manual-attestation` | `1.0.0` | `content-correctness` | `*` |
 | `coverage-reconciliation` | `manual-attestation` | `1.0.0` | `coverage-reconciliation` | `*` |
 | `standards-adoption` | `adopt_standards` | `1.1.0` | `standards_adoption` | `*` |
-| `standards-revalidation` | `check_queue` | `1.4.0` | `required_queue` | `require-revalidation:*` |
+| `standards-revalidation` | `check_queue` | `1.5.0` | `required_queue` | `require-revalidation:*` |
 | `guidance-disposition` | `manual-attestation` | `1.0.0` | `guidance-disposition` | `*` |
 | `receipt-validity` | `manual-attestation` | `1.0.0` | `receipt-validity` | `*` |
 | `rendering` | `manual-attestation` | `1.0.0` | `rendering` | `*` |

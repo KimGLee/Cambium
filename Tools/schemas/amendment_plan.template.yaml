@@ -4,9 +4,12 @@
 # Implemented by: Tools/apply_amendment.py
 # Location: .cambium/deltas/amendments/<amendment-id>.yaml
 #
-# The plan binds one approved Progress Amendment to one complete proposed
-# Coverage document and the exact Queue revision edges that must accompany it.
-# It is an input to a transaction, not canonical runtime state.
+# The plan binds one approved decision to one complete proposed Coverage
+# document and the exact Queue revision edges that must accompany it.
+# `register_amendment.py` first fixes the plan path/SHA and current three-state
+# fingerprints in Progress plus a registration receipt. `apply_amendment.py`
+# then consumes that exact registered authorization. The plan is a transaction
+# input, not canonical runtime state.
 # =============================================================================
 
 schema_version: 1

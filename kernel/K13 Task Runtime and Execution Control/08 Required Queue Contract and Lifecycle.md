@@ -64,8 +64,8 @@ fingerprints, transition receipts, or completion state at any nesting depth.
 `TODO(batch)` and `REPLACE-ME` are invalid sentinels, so copying the template
 without filling its batch-specific values cannot produce a valid binding.
 
-The Queue pair is structural state. A queued batch changes it only through an
-approved Amendment and Queue replan. An open batch first enters
+The Queue pair is structural state. A queued batch changes it only through a
+registered approved Amendment and Queue replan. An open batch first enters
 `revalidation-required` through the lifecycle owner, then applies a
 Work-Spec-only Amendment/replan; the structural writer does not change the
 hold itself. The new Queue revision and SHA invalidate old admission and close

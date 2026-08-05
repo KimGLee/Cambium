@@ -9,8 +9,10 @@
 `compile_queue.py` deterministically proposes structure from Coverage
 `batch_specs`, without inferred edges or silent deletion. Initial apply starts
 from an empty Queue and records its origin. Same-scope replan uses a complete
-staged Coverage proposal bound to its Amendment, diff, and all live-state SHAs;
-terminal history remains and in-flight structure cannot change.
+staged Coverage proposal first registered by `register_amendment.py`, then
+binds that authorization receipt, its Amendment, deterministic diff, and all
+live-state SHAs; terminal history remains and in-flight structure cannot
+change.
 
 Coverage `batch_specs` explicitly provides each proposed Work Spec path/hash
 pair. The compiler copies and validates it; it never guesses whether a batch
@@ -30,7 +32,7 @@ persisted close bundle is owned by [[kernel/K13 Task Runtime and Execution Contr
 this page only owns the close transition's required evidence.
 
 `apply_amendment.py` is the sole scope-replan/cancellation transaction and
-binds the approved Amendment, complete Coverage proposal, revisions, and three
-state SHAs. These writers share the recovery lock and durable prepare/outcome
-evidence; uncertain recovery retains the lock. `render_queue.py` writes only a
-human view.
+binds the registered Amendment and authorization receipt, complete Coverage
+proposal, revisions, and three state SHAs. These writers share the recovery
+lock and durable prepare/outcome evidence; uncertain recovery retains the
+lock. `render_queue.py` writes only a human view.

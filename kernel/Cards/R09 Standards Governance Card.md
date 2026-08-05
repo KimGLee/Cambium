@@ -19,7 +19,7 @@ source_files:
   - kernel/K12 Quality Assurance/08 Judgment Item Dimension Map.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '2c23360011dd'
+source_hash: '8d5e84ba67c1'
 ---
 # R09 Standards Governance Card
 
@@ -43,6 +43,7 @@ Modify kernel rules, Read Sets, Cards, versions, directories, ownership, tooling
 - Keep the Overview, Standard Module MOCs, Read Sets, rule registry, control registry, links, and module paths synchronized.
 - For a new or re-scoped check, register its receipt dimension, audit layer, object, evidence role, and acceptance owner before closure.
 - Freeze the inputs needed for affected tasks to re-resolve their load set. K12/10 decides targeted invalidated evidence and gate reruns; R07/K13/15 executes the runtime transaction. R09 does not copy or reimplement either contract.
+- Preserve the boundary between current authorization and historical verification: a Standards change may invalidate a Receipt for new execution without erasing the completed event it historically proves, and history must never be used as a fallback authorization source.
 - Regenerate affected kernel Cards from their source owners, then stamp hashes/version. Do not edit only a Card.
 
 ## Gate

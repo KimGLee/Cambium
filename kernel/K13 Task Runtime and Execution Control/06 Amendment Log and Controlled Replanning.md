@@ -63,10 +63,51 @@ received / classified / mapped -> superseded
 
 One guidance MAY bump multiple versions. When only a research lead is added and it has not yet been accepted into scope, do not bump the scope version early.
 
+### Operational Amendment Registration
+
+An approved decision is not executable merely because an Agent can append an
+`approved` row to Progress. The three operational forms supported by the
+current runtime -- `queue-replan`, `scope-replan`, and `cancel-batch` -- MUST
+first be registered by `Tools/register_amendment.py`. That writer consumes the
+exact staged plan or Coverage proposal, derives rather than guesses the
+affected structure, compare-and-swaps all three canonical state fingerprints,
+and appends only the pending Progress row plus its
+`registration_receipt`. Registration changes no task state, Queue revision,
+Queue lifecycle, Coverage bytes, or scope version.
+
+The caller supplies one explicit `approval_reference`; it identifies the
+approval inside the local trust domain but is not a cryptographic signature.
+Only the integrator may apply registration, and only one operational Amendment
+may be pending at a time. Directly inserting or editing an executable pending
+row is forbidden.
+
+Registration is a controlled writer transaction, not a second Gate ID. The
+existing `required-queue-consistency` control owns deterministic validation of
+the pending authorization and its cross-state bindings; each downstream writer
+then consumes the exact registration receipt instead of recreating that check.
+
+The writer publishes the append-only receipt before replacing Progress, so an
+interruption cannot leave canonical Progress pointing at absent evidence. An
+unreferenced registration receipt has no authority. If publication is
+interrupted, the shared writer lock retains the before/planned-after
+fingerprints and receipt identity for reconciliation. A verified execution
+commit MUST name that receipt, start from the registration's exact three-state
+after-image, and have a timestamp no earlier than registration.
+
+Receipt lifetime has two distinct meanings. While the row is
+`approved / writeback_done=false`, its registration receipt is current
+authorization and MUST resolve through the Standards-adoption-filtered current
+receipt catalog against the live Contract, Coverage, Queue, revisions, and
+staged artifact bytes. After the registered operation is committed and the row
+becomes `verified / writeback_done=true`, that registration receipt proves the
+past authorization only; validators resolve it from immutable history, while
+the transaction commit receipt names the registration it consumed. Historical
+registration evidence never authorizes a new replan or cancellation.
+
 The baseline transaction writer covers scope/disposition replans and
 cancellation. It MUST NOT be bypassed by directly editing a materialized Task
 Contract. If a host has no guarded writer for a non-scope Contract change, the
 operator MUST pause or cancel the current task, preserve its runtime history,
 and carry the approved change into a successor task.
 
-Queue edits follow K13/08. A same-scope replan stages a full Coverage proposal under `.cambium/deltas/replans/`; `compile_queue.py --apply-replan` binds it, its diff, the approved Amendment, and all three state fingerprints before writing state. Scope/disposition changes, including cancellation, use `apply_amendment.py`. Both paths write back Progress and preserve terminal history; editing Queue alone never amends scope.
+Queue edits follow K13/08. A same-scope replan stages a full Coverage proposal under `.cambium/deltas/replans/`; after registration, `compile_queue.py --apply-replan` binds it, its diff, the registered Amendment, the consumed registration receipt, and all three state fingerprints before writing state. Scope/disposition changes, including cancellation, register the exact `amendment_plan` before using `apply_amendment.py`. Both paths write back Progress and preserve terminal history; editing Queue alone never amends scope.

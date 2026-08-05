@@ -50,8 +50,8 @@ class AdoptStandardsTests(unittest.TestCase):
             "## Stable Gate ID Registry\n\n"
             "| Gate ID | Tool | Tool version | Check | Mode |\n"
             "|---|---|---|---|---|\n"
-            "| required-queue-consistency | check_queue | 1.4.0 | required_queue | consistency |\n"
-            "| required-queue-admission | check_queue | 1.4.0 | required_queue | require-ready:* |\n"
+            "| required-queue-consistency | check_queue | 1.5.0 | required_queue | consistency |\n"
+            "| required-queue-admission | check_queue | 1.5.0 | required_queue | require-ready:* |\n"
             "| batch-close | check_batch_close | 1.2.0 | batch_close_gate | * |\n",
             encoding="utf-8")
 
