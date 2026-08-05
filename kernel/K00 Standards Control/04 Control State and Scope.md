@@ -18,7 +18,7 @@
 
 This table is a control-plane quick view; the complete vocabularies are authoritative at each owner: for `task_state` see [[kernel/K13 Task Runtime and Execution Control/03 Task State and Transition Rules|K13/03]], for batch lifecycle and holds see [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|K13/08]], for the remaining kernel axes see [[kernel/K08 Metadata and Status/03 Status Axes|K08/03]], and expression status values are provided by the `Expression Status Axis` role.
 
-`coverage_disposition` additionally states whether a page or not-yet-created knowledge object is required, optional, deferred, or excluded in the current scope. Coverage owns that object disposition; Queue cancellation cannot change it. An authorized cancellation therefore supplies one approved Amendment plus a complete Coverage proposal to `Tools/apply_amendment.py`; that guarded transaction changes Coverage, Queue, and the Progress write-back together. Direct Queue cancellation and a hand-edited inconsistent staging window are forbidden.
+`coverage_disposition` additionally states whether a page or not-yet-created knowledge object is required, optional, deferred, or excluded in the current scope. Coverage owns that object disposition; Queue cancellation cannot change it. An authorized cancellation therefore supplies one complete Coverage proposal and an approved Amendment registered by `Tools/register_amendment.py` to `Tools/apply_amendment.py`; that guarded transaction consumes the registration and changes Coverage, Queue, and the Progress write-back together. Direct Queue cancellation and a hand-edited inconsistent staging window are forbidden.
 
 ## Scope
 

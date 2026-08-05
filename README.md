@@ -153,15 +153,24 @@ They do not dispatch agents. Worker dispatch, workspace isolation, event
 delivery, and the integrator loop must still be supplied by the adopting
 runtime or a human operator.
 
-The shipped Amendment transaction covers scope/disposition replans and batch
-cancellation. A separate Standards-adoption transaction synchronizes only the
-three Standards/Profile identities, the Progress load set, and the structural
-Queue revision while preserving the task and every batch lifecycle/hold. After
+The shipped Amendment interface first registers an approved operational
+decision against the exact current state, then consumes that authorization in
+a scope/disposition replan or batch-cancellation transaction. Pending
+registration receipts authorize current execution; after verified write-back
+they prove history only. A separate Standards-adoption transaction synchronizes
+only the three Standards/Profile identities, the Progress load set, and the
+structural Queue revision while preserving the task and every batch
+lifecycle/hold. After
 Queue materialization, a change to any other Task Contract field is rejected
 unless a host supplies an equivalent controlled writer; the
 baseline recovery path is to pause or cancel the current task, preserve its
 runtime, and begin a successor task. A generic non-scope Contract Amendment
 writer remains roadmap work.
+
+These writers accept only the current public schema and receipt protocols. An
+existing adopter runtime with older or unregistered operational Amendment
+state must be converted outside the public execution path before it is loaded;
+Standards adoption does not guess or silently upgrade that state.
 
 Profile setup is also manual and file-based. Users copy `_template`, fill the
 resulting profile, and validate it with `check_profile.py`; this release does
@@ -340,7 +349,8 @@ Coverage, declare explicit `batch_specs`, compile the Queue, and run
 `check_queue.py` before activating a batch. Simple single-note work does not
 need an empty Queue merely to satisfy a formality. The initial compile stores
 an immutable origin receipt in Progress; later same-scope replans use a staged
-Coverage proposal and never require editing canonical Coverage in advance.
+Coverage proposal, register its approved exact diff, and never require editing
+canonical Coverage in advance.
 
 Large-scale construction, migration, or persistent multi-batch corpus work
 also configures the selected Profile's `Corpus Planning` slot. Maintain its
@@ -374,8 +384,8 @@ python3 Tools/render_queue.py .
 Lifecycle writes are dry runs unless `--apply` is supplied, and an apply also
 requires the current revision/fingerprint printed by the state tools. See
 [`Tools/README.md`](Tools/README.md) for transition commands, exit code 2
-holds, receipts, Amendment-bound scope/cancellation transactions, interruption
-recovery, and both completion paths.
+holds, receipts, Amendment registration and execution, interruption recovery,
+and both completion paths.
 
 ## License
 

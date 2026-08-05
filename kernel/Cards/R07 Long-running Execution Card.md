@@ -30,7 +30,7 @@ source_files:
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '4c6f88bc61b7'
+source_hash: 'b34507dc2eb7'
 ---
 # R07 Long-running Execution Card
 
@@ -58,6 +58,7 @@ Each batch follows the fixed loop: version/Guidance self-check → `check_queue.
 - Concurrent batches have disjoint manifests and merged prerequisites; only the integrator writes shared control state and hub pages.
 - After one canonical delta apply passes, perform checks and close that batch before any other Queue/Coverage write; the apply receipt opens a strict serial critical section.
 - Treat meaningful user changes to objective, scope, acceptance, priority, or content judgment as Guidance: classify, disposition, record, switch safely, and verify closure.
+- For a same-scope Queue replan, scope replan, or cancellation, prepare its exact proposal or plan and use `register_amendment.py` as the sole approved-row writer before `compile_queue.py` or `apply_amendment.py` consumes it. The pending registration receipt must remain current and bind live state; after verified write-back it proves history only and cannot authorize another action.
 - Reuse a receipt only when its predicate remains compatible, fingerprints match, and no relevant invalidation exists.
 - A Standards/Profile mismatch blocks normal work. First roll a stale `completion-candidate` back through K13/03, formally roll back affected `merge-ready` batches, and put affected `open` batches under `revalidation-required`. Then use only `adopt_standards.py`; it changes none of those states/holds. Commit consumes Queue consistency; deferred gates run only at named boundaries. Filter accumulated invalidated-evidence receipt IDs from current use, but retain producer-era evidence for historical verification. Never create a prose copy.
 - Pause or block with a complete checkpoint. Resume from the machine-readable state only after the Queue path, revisions, fingerprint, holds, unapplied deltas, and cross-state `check_queue.py` result are reconciled.

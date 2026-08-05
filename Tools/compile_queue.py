@@ -24,7 +24,7 @@ QUEUE_PATH = ".cambium/state/required_queue.yaml"
 COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
 PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
 REPLAN_PROPOSAL_PREFIX = ".cambium/deltas/replans"
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.3.0"
 PRIORITY = {"P0": 0, "P1": 1, "P2": 2}
 STRUCTURAL_FIELDS = (
     "family", "order", "record_count", "manifest", "source_route",
@@ -638,6 +638,14 @@ def _pending_replan_amendment(progress, amendment_id, queue, diff,
         raise ValueError("Progress must contain exactly one matching Amendment %s" %
                          amendment_id)
     amendment = matches[0]
+    if not isinstance(amendment.get("approval_reference"), str) or not \
+            amendment["approval_reference"].strip():
+        raise ValueError(
+            "Progress Amendment approval_reference must be non-empty")
+    if not isinstance(amendment.get("registration_receipt"), str) or not \
+            amendment["registration_receipt"].strip():
+        raise ValueError(
+            "Progress Amendment registration_receipt must be non-empty")
     expected = {
         "status": "approved",
         "writeback_done": False,
@@ -1187,7 +1195,7 @@ def main(argv=None):
             print("[FAIL] --apply-replan requires an Amendment id")
             return 1
         try:
-            _pending_replan_amendment(
+            amendment = _pending_replan_amendment(
                 progress, args.amendment_id, queue, diff, diff_text,
                 proposal_coverage_path, proposal_coverage_sha,
                 affected_pages)
@@ -1208,6 +1216,8 @@ def main(argv=None):
                 "amendment_id": args.amendment_id,
                 "transaction_id": transaction_id,
                 "transaction_phase": "commit",
+                "registration_receipt":
+                    amendment.get("registration_receipt"),
                 "coverage_proposal_path": proposal_coverage_path,
                 "coverage_proposal_sha256": proposal_coverage_sha,
                 "affected_pages": affected_pages,
@@ -1283,6 +1293,8 @@ def main(argv=None):
                 "action": "apply-replan",
                 "task_id": replanned.get("task_id"),
                 "amendment_id": args.amendment_id,
+                "registration_receipt":
+                    amendment.get("registration_receipt"),
                 "transaction_id": transaction_id,
                 "coverage_proposal_path": proposal_coverage_path,
                 "coverage_proposal_sha256": proposal_coverage_sha,

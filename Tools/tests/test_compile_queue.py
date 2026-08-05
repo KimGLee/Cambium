@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -15,6 +16,7 @@ sys.path.insert(0, str(TOOLS))
 import check_queue
 import compile_queue
 import kblib
+import register_amendment
 
 
 class CompileQueueTests(unittest.TestCase):
@@ -148,47 +150,49 @@ class CompileQueueTests(unittest.TestCase):
         return relative
 
     def add_amendment(self, proposal_relative, amendment_id="A-REPLAN",
-                      overrides=None):
-        relative = ".cambium/tmp/%s-auth.yaml" % amendment_id
-        proposed = self.command(
-            "--coverage-proposal", proposal_relative, "--output", relative)
-        self.assertEqual(0, proposed.returncode, proposed.stdout)
-        diff_path = self.root / relative
-        diff = kblib.load_yaml_file(diff_path)
-        changed_batches = sorted({
-            entry["id"]
-            for field in ("add_candidates", "update_candidates",
-                          "reorder_candidates", "remove_candidates")
-            for entry in diff.get(field, [])
-            if isinstance(entry, dict) and isinstance(entry.get("id"), str)
-        })
-        queue = self.load(check_queue.QUEUE_PATH)
-        proposal = self.load(proposal_relative)
-        affected_pages = compile_queue.validate_same_scope_proposal(
-            self.load(check_queue.COVERAGE_PATH), proposal)
-        record = {
-            "id": amendment_id, "date": "2026-08-04",
-            "summary": "approved Queue structural replan",
-            "status": "approved", "writeback_done": False,
-            "operation": "queue-replan",
-            "coverage_proposal_path": proposal_relative,
-            "coverage_proposal_sha256": kblib.sha256_file(
-                self.root / proposal_relative),
-            "affected_pages": affected_pages,
-            "affected_batches": changed_batches,
-            "scope_version_before": queue["scope_version"],
-            "scope_version_after": queue["scope_version"],
-            "queue_revision_before": queue["queue_revision"],
-            "queue_revision_after": queue["queue_revision"] + 1,
-            "queue_state_revision_before": queue["state_revision"],
-            "queue_state_revision_after": queue["state_revision"],
-            "replan_diff_sha256": kblib.sha256_file(diff_path),
+                      overrides=None, expect_success=True):
+        shas = {
+            "coverage": kblib.sha256_file(
+                self.root / check_queue.COVERAGE_PATH),
+            "progress": kblib.sha256_file(
+                self.root / check_queue.PROGRESS_PATH),
+            "queue": kblib.sha256_file(
+                self.root / check_queue.QUEUE_PATH),
         }
-        record.update(overrides or {})
-        path = self.root / check_queue.PROGRESS_PATH
-        progress = kblib.load_yaml_file(path)
-        progress.setdefault("amendments", []).append(record)
-        path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
+        registered = subprocess.run(
+            [sys.executable, str(TOOLS / "register_amendment.py"),
+             str(self.root), "--operation", "queue-replan",
+             "--amendment-id", amendment_id,
+             "--coverage-proposal", proposal_relative,
+             "--date", time.strftime("%Y-%m-%d", time.gmtime()),
+             "--summary", "approved Queue structural replan",
+             "--approval-reference", "user:fixture-approval",
+             "--expected-coverage-sha256", shas["coverage"],
+             "--expected-progress-sha256", shas["progress"],
+             "--expected-queue-sha256", shas["queue"],
+             "--actor-role", "integrator", "--apply"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        if expect_success:
+            self.assertEqual(0, registered.returncode, registered.stdout)
+        else:
+            return registered
+        if overrides:
+            path = self.root / check_queue.PROGRESS_PATH
+            progress = kblib.load_yaml_file(path)
+            progress["amendments"][-1].update(overrides)
+            path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
+            receipt_path = self.root / register_amendment.RECEIPT_PATH
+            receipts = [json.loads(line) for line in receipt_path.read_text(
+                encoding="utf-8").splitlines()]
+            receipts[-1].update(overrides)
+            receipts[-1]["after_progress_sha256"] = kblib.sha256_file(path)
+            receipt_path.write_text(
+                "".join(json.dumps(receipt) + "\n" for receipt in receipts),
+                encoding="utf-8",
+            )
+        return registered
 
     def apply_replan(self, proposal_relative, amendment_id="A-REPLAN",
                      *extra):
@@ -468,57 +472,6 @@ class CompileQueueTests(unittest.TestCase):
         )
         return copy.deepcopy(item)
 
-    def cancel_b1(self):
-        before_queue_sha = kblib.sha256_file(
-            self.root / check_queue.QUEUE_PATH)
-        coverage_path = self.root / check_queue.COVERAGE_PATH
-        coverage = kblib.load_yaml_file(coverage_path)
-        page = coverage["pages"][0]
-        page["coverage_disposition"] = "deferred"
-        page["next_batch"] = None
-        page["deferred_reason"] = "removed by approved scope disposition"
-        page["reentry_condition"] = "new explicit scope Amendment"
-        coverage_path.write_text(
-            kblib.canonical_yaml(coverage), encoding="utf-8")
-        progress_path = self.root / check_queue.PROGRESS_PATH
-        progress = kblib.load_yaml_file(progress_path)
-        progress["amendments"].append({
-            "id": "A-CANCEL", "date": "2026-08-04",
-            "summary": "cancel B1", "writeback_done": True,
-        })
-        progress_path.write_text(
-            kblib.canonical_yaml(progress), encoding="utf-8")
-        queue = self.load(check_queue.QUEUE_PATH)
-        item = queue["required_queue"][0]
-        item.update({
-            "state": "cancelled", "hold_state": "none",
-            "cancelled_at": "2026-08-04T01:00:00Z",
-            "cancellation_amendment": "A-CANCEL",
-            "transition_receipts": ["audit-amendment-cancel-b1"],
-        })
-        queue["state_revision"] += 1
-        after_queue_text = kblib.canonical_yaml(queue)
-        self.write_queue(queue)
-        kblib.write_receipts(
-            self.root / ".cambium/receipts/amendment-history.jsonl", [{
-                "receipt_id": "audit-amendment-cancel-b1",
-                "tool": "apply_amendment", "tool_version": "1.0.0",
-                "check": "queue_transition", "target": "B1",
-                "result": "pass", "invalidated_by": None,
-                "actor_role": "integrator",
-                "checked_at": "2026-08-04T01:00:00Z",
-                "task_id": "fixture-task", "queue_revision": 1,
-                "before_state": "queued", "after_state": "cancelled",
-                "before_hold_state": "none", "after_hold_state": "none",
-                "before_state_revision": 0, "after_state_revision": 1,
-                "before_required_queue_sha256": before_queue_sha,
-                "after_required_queue_sha256":
-                    kblib.sha256_bytes(after_queue_text),
-            }])
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
-        return copy.deepcopy(
-            self.load(check_queue.QUEUE_PATH)["required_queue"][0])
-
     def command(self, *args):
         return subprocess.run(
             [sys.executable, str(TOOLS / "compile_queue.py"), str(self.root),
@@ -647,22 +600,23 @@ class CompileQueueTests(unittest.TestCase):
         plan_path = self.root / plan_relative
         plan_path.write_text(kblib.canonical_yaml(plan), encoding="utf-8")
         progress_path = self.root / check_queue.PROGRESS_PATH
-        progress = self.load(check_queue.PROGRESS_PATH)
-        amendment = {
-            "id": amendment_id, "date": "2026-08-04",
-            "summary": "approved scope expansion", "status": "approved",
-            "writeback_done": False,
-        }
-        for field in (
-                "operation", "affected_pages", "affected_batches",
-                "scope_version_before", "scope_version_after",
-                "queue_revision_before", "queue_revision_after",
-                "state_revision_before", "state_revision_after",
-                "coverage_proposal_path", "coverage_proposal_sha256",
-                "cancel_batch_id"):
-            amendment[field] = copy.deepcopy(plan[field])
-        progress["amendments"].append(amendment)
-        progress_path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
+        registered = subprocess.run(
+            [sys.executable, str(TOOLS / "register_amendment.py"),
+             str(self.root), "--operation", "scope-replan",
+             "--plan", plan_relative,
+             "--date", time.strftime("%Y-%m-%d", time.gmtime()),
+             "--summary", "approved scope expansion",
+             "--approval-reference", "user:fixture-approval",
+             "--expected-coverage-sha256",
+             kblib.sha256_file(self.root / check_queue.COVERAGE_PATH),
+             "--expected-progress-sha256", kblib.sha256_file(progress_path),
+             "--expected-queue-sha256",
+             kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+             "--actor-role", "integrator", "--apply"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(0, registered.returncode, registered.stdout)
         completed = subprocess.run(
             [sys.executable, str(TOOLS / "apply_amendment.py"), str(self.root),
              "--plan", plan_relative,
@@ -1188,20 +1142,20 @@ class CompileQueueTests(unittest.TestCase):
                          {item["id"]: item["order"] for item in result})
         self.assertEqual(2, queue["required_queue"][1]["order"])
 
-    def test_replan_cannot_change_nonqueued_structure(self):
+    def test_registration_rejects_nonqueued_structure_change(self):
         self.close_b1()
         coverage_path = self.root / check_queue.COVERAGE_PATH
         coverage = kblib.load_yaml_file(coverage_path)
         self.batch_spec(coverage, "B1")["family"] = "Changed after close"
         proposal_relative = self.write_proposal(coverage)
-        self.add_amendment(proposal_relative)
         before = (self.root / check_queue.QUEUE_PATH).read_bytes()
-        completed = self.apply_replan(proposal_relative)
+        completed = self.add_amendment(
+            proposal_relative, expect_success=False)
         self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("unresolved conflict", completed.stdout)
+        self.assertIn("state=closed", completed.stdout)
         self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
 
-    def test_replan_cannot_apply_remove_candidate(self):
+    def test_registration_rejects_remove_candidate(self):
         coverage_path = self.root / check_queue.COVERAGE_PATH
         coverage = kblib.load_yaml_file(coverage_path)
         coverage["pages"][1]["batch"] = "B1"
@@ -1209,11 +1163,11 @@ class CompileQueueTests(unittest.TestCase):
         coverage["batch_specs"] = [spec for spec in coverage["batch_specs"]
                                    if spec["id"] != "B2"]
         proposal_relative = self.write_proposal(coverage)
-        self.add_amendment(proposal_relative)
         before = (self.root / check_queue.QUEUE_PATH).read_bytes()
-        completed = self.apply_replan(proposal_relative)
+        completed = self.add_amendment(
+            proposal_relative, expect_success=False)
         self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("cannot delete Queue history", completed.stdout)
+        self.assertIn("absent from the proposal", completed.stdout)
         self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
 
     def test_consumed_replan_diff_must_match_current_inputs(self):

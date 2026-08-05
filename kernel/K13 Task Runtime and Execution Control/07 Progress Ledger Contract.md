@@ -33,3 +33,12 @@ The Progress Ledger cannot use profile-registered hub checkboxes or the user's `
 ## Machine-readable Ledger
 
 The canonical form of the Progress Ledger is YAML; the schema is at `Tools/schemas/progress_ledger.template.yaml`, and the runtime path is `.cambium/state/progress_ledger.yaml`. Only the restricted subset syntax declared in the template header comment is allowed. A markdown prose view is optional, derived from the YAML, and not a basis for reconciliation. When resuming a task, load the YAML Ledger directly together with the Required Queue and Coverage Ledger instead of re-reading a prose checkpoint.
+
+Task-state changes enter Progress only through `Tools/update_task.py` or a
+writer transaction that explicitly owns the coupled edge. Executable
+`queue-replan`, `scope-replan`, and `cancel-batch` Amendment rows enter only
+through `Tools/register_amendment.py`; their later write-back is owned by
+`compile_queue.py --apply-replan` or `apply_amendment.py`. Generic Guidance
+records do not substitute for this operational authorization path. A manually
+inserted operational row has no authority even when its prose says
+`approved`.

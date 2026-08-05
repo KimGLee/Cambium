@@ -89,15 +89,21 @@ amendments:
   # a repository-contained `.cambium/deltas/replans/*.coverage.yaml` proposal
   # path/SHA, exact affected_pages/affected_batches, unchanged scope, both
   # Queue revision edges, and the exact replan_diff_sha256. It starts
-  # approved/writeback_done=false; successful compile_queue --apply-replan
+  # approved/writeback_done=false; `register_amendment.py` is the only writer
+  # of that executable row and records approval_reference plus the current
+  # registration_receipt. Successful compile_queue --apply-replan
   # changes it to verified/true and records transaction_id/receipt plus the
   # resulting Coverage and Queue SHAs. Canonical Coverage is never edited
   # before this guarded three-state transaction.
   # A scope-replan or cancel-batch instead mirrors every field in
-  # amendment_plan.template.yaml. apply_amendment.py then records, in addition:
+  # amendment_plan.template.yaml, including plan_path/plan_sha256 fixed at
+  # registration. apply_amendment.py then records, in addition:
   # transaction_id, transaction_sequence,
   # previous_transaction_commit_receipt, plan_path, plan_sha256, and
-  # verification_receipt. Cross-Ledger transaction history is append-only.
+  # verification_receipt. The downstream commit receipt consumes the exact
+  # registration_receipt. Pending registration is current authorization;
+  # after verified write-back the same receipt is history only. Cross-Ledger
+  # transaction history is append-only.
 
 # Append-only active-task Standards/profile adoption history.  Each record is
 # written only by Tools/adopt_standards.py and binds the immutable plan, all
