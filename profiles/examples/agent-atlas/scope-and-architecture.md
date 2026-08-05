@@ -89,7 +89,16 @@ Interview Preparation/
 | 6 | The page owns production infrastructure, cross-component integration, evaluation operations, reliability, safety, cost, or capacity. | `L-PRODUCTION` |
 | 7 | The page owns Agent decision behavior or a Harness contract for context, state, memory, tools, policy, coordination, verification, or recovery. | `L-AGENT` |
 | 8 | The page owns a reusable modeling, ML, DL, LLM, retrieval, or grounding mechanism. | `L-FOUNDATION` |
-| Last | Otherwise, record a placement candidate in `Knowledge Base Management/Required Queue.md`; do not create an unowned content page. | `L-MANAGEMENT` |
+| Last | Otherwise, record a placement candidate in the [Atlas content-planning register](#atlas-content-planning-register-boundary); do not create an unowned content page. | `L-MANAGEMENT` |
+
+## Atlas Content-planning Register Boundary
+
+The Atlas corpus contains a human-readable management page at `Knowledge Base
+Management/Required Queue.md`. In this profile, **Atlas content-planning
+register** refers only to that page. It records unplaced page candidates and
+corpus dependency notes. It is not Cambium's canonical Required Queue at
+`.cambium/state/required_queue.yaml` and does not own batch manifests, order,
+lifecycle, holds, revisions, fingerprints, or receipts.
 
 ## Terminology Structure
 
@@ -137,7 +146,7 @@ Interview Preparation/
 
 | Order | Stage | Depends on | Output |
 |---:|---|---|---|
-| 1 | Architecture and inventory | None | Registered layer map, current inventory, and bounded Required Queue. |
+| 1 | Architecture and inventory | None | Registered layer map, current inventory, and a bounded [Atlas content-planning register](#atlas-content-planning-register-boundary). |
 | 2 | Representative foundations | 1 | Accepted samples for modeling, ML/DL, and LLM/Retrieval depth. |
 | 3 | Agent and Harness vertical slice | 2 | One end-to-end decision, execution, verification, and recovery chain. |
 | 4 | Exposed prerequisite repair | 3 | Missing canonical foundations closed before downstream expansion. |

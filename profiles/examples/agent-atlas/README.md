@@ -28,7 +28,7 @@ K11 owns the universal expression-layer floor. This profile supplies only the At
 
 | Atlas concern | Existing profile owner |
 |---|---|
-| Corpus goal, exclusions, layers, placement, and `Interview Preparation/` organization | [scope-and-architecture.md](scope-and-architecture.md) |
+| Corpus goal, exclusions, layers, placement, Atlas content-planning register boundary, and `Interview Preparation/` organization | [scope-and-architecture.md](scope-and-architecture.md) |
 | Priority grants | [priority-rubric.md](priority-rubric.md) |
 | Atlas fields, values, and `interview_status` | [vocabulary-extensions.yaml](vocabulary-extensions.yaml) |
 | Chinese-first writing and bilingual Interview answers | [language-contract.md](language-contract.md) |

@@ -29,6 +29,16 @@ defined interfaces, but it cannot replace, disable, or weaken the kernel.
 | Adopter runtime state (`.cambium/`) | Coverage object state, the canonical Required Queue, task-level Progress, deltas, and receipts |
 | Tools | Deterministic checks, schemas, receipts, and compiled-artifact generators; not final semantic judgment |
 
+Within the kernel module namespace, [K02 Knowledge Work Construction](<kernel/K02 Knowledge Work Construction Standard.md>)
+owns knowledge-object inventory, Coverage semantics, architecture and dependency
+planning, knowledge-batch production, and migration safety. [K13 Task Runtime
+and Execution Control](<kernel/K13 Task Runtime and Execution Control Standard.md>)
+owns the persistent runtime namespace, Task Contract and task state,
+Guidance/Amendments, Progress Ledger, Required Queue, batch transitions,
+completion bindings, handoff, and interruption recovery. This boundary keeps
+knowledge-object disposition separate from batch/work-unit lifecycle while
+requiring the two state layers to reconcile.
+
 Routine work starts from Runtime Cards. When a Card is incomplete, disputed,
 or insufficient for an exception, the agent reads back its Read Set and the
 referenced kernel modules. Normative source text always wins.
