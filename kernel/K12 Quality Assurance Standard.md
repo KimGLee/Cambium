@@ -28,6 +28,7 @@ This page is the stable entry for the Quality Assurance standard. The detailed r
 | [[kernel/K12 Quality Assurance/14 Batch Review\|Batch Review]] | `Batch Review` |
 | [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence\|Terminal Audit and Convergence]] | `Terminal Audit`, `Terminal Findings And Convergence` |
 | [[kernel/K12 Quality Assurance/16 Terminal Proof Contract\|Terminal Proof Contract]] | `Terminal Proof Contract`, `Terminal Completion Gate`, `Evidence Trust Boundary` |
+| [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract\|Gate Receipt Payload Contract]] | `Purpose`, `Gate Receipt Payload`, `Recording Authority`, `Consumption And Rejection`, `Related` |
 | `Audit Dimension Registry` + `Registered Scan Registry` + `Routing And Gate Registry` | profile-owned QA dimensions, scans, and extension gates |
 
 ## Extension Registry

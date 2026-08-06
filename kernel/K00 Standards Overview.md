@@ -127,7 +127,7 @@ Module splitting does not change rule precedence. Conflicts are still resolved p
 - External sources MUST pass through claim extraction, evidence review, and promotion decision.
 - Mid-task Guidance MUST enter the Amendment Log and does not rely on ephemeral context.
 - Audit results MUST be bound to an acceptance predicate, artifact/dependency/contract fingerprints, and a verifier; valid receipts MAY be reused, and relevant changes MUST trigger dimension-specific invalidation.
-- Standards splits and migrations MUST be reconciled block by block; rules MUST NOT be trimmed, summarized, or deleted under cover of structural adjustment.
+- Standards splits and migrations MUST be reconciled block by block; rules MUST NOT be trimmed, summarized, or deleted under cover of structural adjustment. A derived view meeting the three conditions of the [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-domain Rule Registry|Cross-domain Rule Registry]] is not such a trim or summary, because it drops no rule from its owner.
 - Rendering acceptance defaults to source parsing and deterministic static verification; interactive UI, screenshots, visual models, and screen recording MUST meet the graded escalation conditions.
 - Completion MUST pass the applicable gates; time, file counts, and structural checks cannot alone prove completion.
 

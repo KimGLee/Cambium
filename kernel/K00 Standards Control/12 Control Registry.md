@@ -45,7 +45,9 @@ This closed table is the machine registry for Standards revalidation. `Tool`,
 version, and check are always exact; only Mode may use `*` when no narrower
 mode exists. `manual-attestation` is an explicit producer class with current
 protocol version `1.0.0`, not a request for an Agent to guess a tool or version
-from the descriptive table above.
+from the descriptive table above. What a receipt of either kind MUST carry to be
+consumed for its Gate ID, and who may record a `manual-attestation` one, are
+owned by [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract#Gate Receipt Payload|Gate Receipt Payload Contract]].
 
 | Gate ID | Tool | Tool version | Check | Mode |
 |---|---|---|---|---|

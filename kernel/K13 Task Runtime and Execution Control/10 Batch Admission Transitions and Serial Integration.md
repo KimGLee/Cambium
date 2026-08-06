@@ -12,6 +12,8 @@ Batches may execute concurrently by default; the cap is controlled by the contra
 2. B does not edit control or hub pages, including kernel Runtime Cards, MOCs, the Overview, shared terminology pages, and pages bound by the `Expression Layer Entry` or other profile-registered hub roles. Hub page synchronization is performed by the integrator as a separate small step after that batch's serial merge completes and before the next batch's merge begins; this content-editing action is not part of the serial zone's deterministic action list.
 3. Every Queue dependency of B is `closed`; B does not depend on pages of in-flight batches.
 
+The machine-decidable members of condition 2's page set come from metadata that already exists: a page whose frontmatter carries `type: overview`, `runtime-card`, or `card-index`; a page carrying `type: term` with `scope: shared`; and any page the selected profile's `Expression Layer Entry` registers as a canonical dependency map. "Other profile-registered hub roles" remains in force, but no profile slot registers one today, so that clause currently contributes no page and is a future extension point. Editing and creating differ: an existing hub page in the frozen manifest blocks concurrent activation and takes the exclusive or `serial-integrator` route below, while a hub page this batch creates does not block it and is reported as a candidate for that batch's hub synchronization step.
+
 For a complex batch, readiness additionally requires a current Work Spec
 path/hash whose batch ID and ordered manifest equal B. The worker reads that
 specification after activation together with the Standards for the selected

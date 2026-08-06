@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/K12 Quality Assurance Standard|K12 Quality Assurance Standard]].
 - Previous: [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence|Terminal Audit and Convergence]].
+- Next: [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract|Gate Receipt Payload Contract]].
 
 ## Terminal Proof Contract
 

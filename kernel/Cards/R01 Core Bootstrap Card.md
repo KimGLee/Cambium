@@ -14,7 +14,7 @@ source_files:
   - kernel/K00 Standards Control/05 Core Principles.md
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
   - kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
-source_hash: '137f0ea01ed9'
+source_hash: 'f1a9ba04ab60'
 ---
 # R01 Core Bootstrap Card
 

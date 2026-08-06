@@ -170,6 +170,196 @@ class QueueFixture(unittest.TestCase):
         )
         return lock
 
+    # --- K13/10 admission condition 2 (control / hub pages) helpers ---
+
+    def write_page(self, relative, text):
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def set_coverage_page_field(self, page_path, field, value):
+        coverage = kblib.load_yaml_file(self.coverage_path)
+        page = next(entry for entry in coverage["pages"]
+                    if entry["path"] == page_path)
+        page[field] = value
+        self.coverage_path.write_text(kblib.canonical_yaml(coverage),
+                                      encoding="utf-8")
+        self.refresh_initial_origin()
+
+    def set_execution_mode(self, batch_id, mode):
+        coverage = kblib.load_yaml_file(self.coverage_path)
+        next(entry for entry in coverage["batch_specs"]
+             if entry["id"] == batch_id)["execution_mode"] = mode
+        self.coverage_path.write_text(kblib.canonical_yaml(coverage),
+                                      encoding="utf-8")
+        queue = self.queue()
+        next(entry for entry in queue["required_queue"]
+             if entry["id"] == batch_id)["execution_mode"] = mode
+        self.write_queue(queue)
+        self.refresh_initial_origin()
+
+    def register_expression_layer(self, rows, binding="`expression-layer.md`"):
+        """Register dependency-map rows in the fixture profile's slot."""
+        manifest = self.root / "profiles/test-profile/profile.md"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8") +
+            "\n## Implemented Slots\n\n- `Expression Layer Entry`: %s\n" %
+            binding,
+            encoding="utf-8",
+        )
+        if rows is None:
+            return
+        table = ["# Expression Layer", "", "## Registered Artifacts", "",
+                 "- Registration: Configured", "", "| Property | Value |",
+                 "|---|---|"]
+        for label, value in rows:
+            table.append("| %s | %s |" % (label, value))
+        (self.root / "profiles/test-profile/expression-layer.md").write_text(
+            "\n".join(table) + "\n", encoding="utf-8")
+
+    def blocked_reasons(self, batch_id):
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        return result, dict(result["blocked"]).get(batch_id, [])
+
+
+class HubPageAdmissionTests(QueueFixture):
+    """K13/10 concurrency admission condition 2."""
+
+    def test_existing_hub_page_in_manifest_blocks_activation(self):
+        self.write_page("Topics/A.md", "---\ntype: overview\n---\n\n# A\n")
+        result, reasons = self.blocked_reasons("B1")
+        self.assertNotIn("B1", result["ready"])
+        joined = "; ".join(reasons)
+        self.assertIn("existing control or hub page(s): Topics/A.md", joined)
+        self.assertIn("type=overview", joined)
+        self.assertIn("exclusive", joined)
+        self.assertIn("serial-integrator", joined)
+        completed = self.run_cli("--require-ready", "B1")
+        self.assertEqual(2, completed.returncode, completed.stdout)
+        self.assertIn("existing control or hub page(s)", completed.stdout)
+        self.assertIn("exclusive or serial-integrator", completed.stdout)
+
+    def test_runtime_card_and_card_index_types_are_hub_pages(self):
+        for page_type in ("runtime-card", "card-index"):
+            with self.subTest(page_type=page_type):
+                self.write_page("Topics/A.md",
+                                "---\ntype: %s\n---\n\n# A\n" % page_type)
+                _, reasons = self.blocked_reasons("B1")
+                self.assertIn("type=%s" % page_type, "; ".join(reasons))
+
+    def test_shared_term_page_is_a_hub_page(self):
+        self.write_page("Topics/A.md",
+                        "---\ntype: term\nscope: shared\n---\n\n# A\n")
+        _, reasons = self.blocked_reasons("B1")
+        self.assertIn("type=term scope=shared", "; ".join(reasons))
+
+    def test_term_page_outside_shared_scope_is_not_a_hub_page(self):
+        for scope in ("domain-specific", "case-specific", "source-specific"):
+            with self.subTest(scope=scope):
+                self.write_page(
+                    "Topics/A.md",
+                    "---\ntype: term\nscope: %s\n---\n\n# A\n" % scope)
+                result, reasons = self.blocked_reasons("B1")
+                self.assertEqual([], reasons)
+                self.assertIn("B1", result["ready"])
+                self.assertEqual(
+                    [], result["hub_page_admission"]["B1"]["blocking"])
+
+    def test_ordinary_page_without_frontmatter_is_not_a_hub_page(self):
+        result, reasons = self.blocked_reasons("B1")
+        self.assertEqual([], reasons)
+        self.assertIn("B1", result["ready"])
+
+    def test_hub_page_created_by_this_batch_is_a_candidate_not_a_blocker(self):
+        (self.root / "Topics/A.md").unlink()
+        self.set_coverage_page_field("Topics/A.md", "type", "overview")
+        result, reasons = self.blocked_reasons("B1")
+        self.assertEqual([], reasons)
+        self.assertIn("B1", result["ready"])
+        self.assertEqual(["Topics/A.md (Coverage type=overview)"],
+                         result["hub_page_admission"]["B1"]["candidates"])
+        completed = self.run_cli("--require-ready", "B1")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertIn("hub_page_candidates=Topics/A.md (Coverage type=overview)",
+                      completed.stdout)
+
+    def test_serial_integrator_batch_may_edit_hub_pages(self):
+        self.write_page("Topics/A.md", "---\ntype: overview\n---\n\n# A\n")
+        self.set_execution_mode("B1", "serial-integrator")
+        result, reasons = self.blocked_reasons("B1")
+        self.assertEqual([], reasons)
+        self.assertIn("B1", result["ready"])
+        self.assertNotIn("B1", result["hub_page_admission"])
+        completed = self.run_cli("--require-ready", "B1")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+
+    def test_expression_layer_registered_dependency_map_is_a_hub_page(self):
+        self.register_expression_layer([
+            ("Stable artifact ID", "`probe`"),
+            ("Existing canonical dependency-map path", "`Topics/A.md`"),
+        ])
+        _, reasons = self.blocked_reasons("B1")
+        self.assertIn("Topics/A.md (Expression Layer Entry)",
+                      "; ".join(reasons))
+
+    def test_registered_dependency_map_not_yet_created_is_a_candidate(self):
+        (self.root / "Topics/A.md").unlink()
+        self.register_expression_layer([
+            ("Existing canonical dependency-map ID/path", "`Topics/A.md`"),
+        ])
+        result, reasons = self.blocked_reasons("B1")
+        self.assertEqual([], reasons)
+        self.assertEqual(["Topics/A.md (Expression Layer Entry)"],
+                         result["hub_page_admission"]["B1"]["candidates"])
+
+    def test_unfilled_or_opaque_dependency_map_cells_are_skipped(self):
+        self.register_expression_layer([
+            ("Existing canonical dependency-map ID/path", "TODO(profile)"),
+            ("Existing canonical dependency-map path", "`None`"),
+            ("Existing canonical dependency-map ID", "`atlas-map-01`"),
+        ])
+        paths, errors = check_queue.profile_hub_paths(
+            str(self.root), "profiles/test-profile/profile.md")
+        self.assertEqual(set(), paths)
+        self.assertEqual([], errors)
+
+    def test_profile_without_expression_layer_slot_still_classifies(self):
+        paths, errors = check_queue.profile_hub_paths(
+            str(self.root), "profiles/test-profile/profile.md")
+        self.assertEqual(set(), paths)
+        self.assertEqual([], errors)
+        self.write_page("Topics/A.md", "---\ntype: overview\n---\n\n# A\n")
+        _, reasons = self.blocked_reasons("B1")
+        self.assertIn("type=overview", "; ".join(reasons))
+
+    def test_declared_expression_layer_slot_that_cannot_be_read_fails_closed(self):
+        self.register_expression_layer(None)
+        result, reasons = self.blocked_reasons("B1")
+        self.assertNotIn("B1", result["ready"])
+        joined = "; ".join(reasons)
+        self.assertIn("hub set cannot be derived", joined)
+        self.assertIn("serial-integrator", joined)
+
+    def test_unclassifiable_manifest_page_is_not_silently_admitted(self):
+        for body in ("---\ntype: overview\n\n# A\n",
+                     "---\ntype: overview\n  stray: 1\n---\n\n# A\n",
+                     "---\n- overview\n---\n\n# A\n"):
+            with self.subTest(body=body):
+                self.write_page("Topics/A.md", body)
+                result, reasons = self.blocked_reasons("B1")
+                self.assertNotIn("B1", result["ready"])
+                self.assertIn("cannot be classified against K13/10 hub roles",
+                              "; ".join(reasons))
+
+    def test_shipped_example_profile_registration_is_parsed(self):
+        paths, errors = check_queue.profile_hub_paths(
+            str(REPO), "profiles/examples/agent-atlas/profile.md")
+        self.assertEqual([], errors)
+        self.assertEqual({"Interview Preparation/Interview Overview.md"},
+                         paths)
+
 
 class CheckQueueTests(QueueFixture):
     def test_simple_batch_work_spec_pair_is_explicit_and_closed(self):

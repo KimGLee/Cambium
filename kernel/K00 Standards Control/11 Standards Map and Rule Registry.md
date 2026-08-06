@@ -25,7 +25,16 @@
 
 ## Cross-domain Rule Registry
 
-The following high-risk objects have a single canonical owner corpus-wide. Modifying these objects means modifying only the owner file; every other location MAY reference them only via Wiki Link or a registered slot, and MUST NOT copy the content (whether or not slightly rephrased).
+The following high-risk objects have a single canonical owner corpus-wide. Modifying these objects means modifying only the owner file. Every other location relates to a registered object in exactly one of two ways:
+
+- **Reference** — a Wiki Link or a registered slot, carrying no rule content of its own. Always permitted.
+- **Derived view** — a restatement, compression, quick view, snapshot, execution summary, or compiled Card item. Permitted only when all three conditions hold: (a) it declares that it is derived and is not the authority; (b) the same block — the list, table, or section carrying the restatement — names that object's owner by Wiki Link, registered slot, or module ID; and (c) it is lossless.
+
+Lossless means: every rule the view states carries the conditions, qualifiers, and exceptions that decide its verdict, and any set, list, or formula it presents as complete is complete. A view MAY omit a rule of the owner. It MUST NOT restate one with a condition dropped, added, or reversed, and it MUST NOT present a partial enumeration as the whole.
+
+Any other restatement, whether or not slightly rephrased, is a copy and MUST NOT be made. A derived view failing (a) or (b) is such a copy; one failing (c) is additionally a rule change made outside governance. When a derived view and its owner disagree, the owner prevails and the view is corrected, never the reverse.
+
+This registry governs rule text. The three conditions do not authorize a view of mutable control-plane state — Coverage, Queue, Progress, receipts, holds, or fingerprints. Each such view is governed by that state's own owner; for the Progress Ledger see [[kernel/K13 Task Runtime and Execution Control/07 Progress Ledger Contract|Progress Ledger Contract]].
 
 | Object | Canonical owner |
 |---|---|
@@ -69,3 +78,4 @@ The following high-risk objects have a single canonical owner corpus-wide. Modif
 | Retirement and merge procedure | [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy\|Split and Duplication Policy]] |
 | Maintenance-run budget envelope | [[kernel/K00 Standards Control/08 Maintenance Run Envelope\|Maintenance Run Envelope]] |
 | Judgment item to receipt dimension map | [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] |
+| Gate receipt payload and `manual-attestation` recording authority | [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract\|Gate Receipt Payload Contract]] |

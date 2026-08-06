@@ -122,6 +122,22 @@ EXECUTION_MODES = frozenset(("concurrent-worker", "serial-integrator"))
 COVERAGE_DISPOSITIONS = frozenset((
     "required", "optional", "deferred", "excluded",
 ))
+
+# K13/10 concurrency admission condition 2 ("B does not edit control or hub
+# pages").  The kernel enumerates the members; these constants only spell the
+# machine judgment for that enumeration.  `type` and `scope` are the K08
+# closed vocabularies in `kernel/K08 Metadata and Status/vocabulary-base.yaml`;
+# the profile side reuses the `Expression Layer Entry` rows the selected
+# profile already registers, so no profile slot or interface is added here.
+# The kernel's "other profile-registered hub roles" clause has no registration
+# path today and therefore contributes no member; see K13/10.
+HUB_PAGE_TYPES = frozenset(("overview", "runtime-card", "card-index"))
+HUB_TERM_TYPE = "term"
+HUB_TERM_SCOPE = "shared"
+EXPRESSION_LAYER_SLOT = "Expression Layer Entry"
+HUB_DEPENDENCY_MAP_LABEL = "existing canonical dependency-map"
+HUB_EXIT_HINT = ("K13/10 admits a hub-editing batch only through an exclusive "
+                 "or serial-integrator execution mode")
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 BATCH_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\Z")
 
@@ -5769,6 +5785,171 @@ def selected_profile_manifest_errors(root, profile):
     return errors
 
 
+def _normalized_repository_path(value):
+    """Normalize one declared repository-relative path for set comparison."""
+    if not isinstance(value, str):
+        return None
+    value = check_profile.unbacktick(value).strip()
+    while value.startswith("./"):
+        value = value[2:]
+    value = value.strip("/")
+    return value or None
+
+
+def profile_hub_paths(root, profile_manifest):
+    """Return the hub pages the selected profile already registers.
+
+    K13/10 binds pages registered by the ``Expression Layer Entry`` into the
+    hub set.  That slot already records one canonical dependency-map cell per
+    registered artifact, so this reads the existing registration rather than
+    adding a profile slot.  Returns ``(paths, errors)``; a cell holding an
+    opaque ID, ``None``, or an unfilled sentinel carries no machine judgment
+    and is skipped.  Profile quality stays owned by ``check_profile.py``: an
+    error here is raised only when a declared slot cannot be read at all, so
+    the admission gate cannot silently conclude "no hub page".
+    """
+    paths = set()
+    if not _nonempty_string(profile_manifest):
+        return paths, []
+    parts = Path(profile_manifest).parts
+    if len(parts) < 3 or parts[0] != "profiles" or parts[-1] != "profile.md":
+        # The exact runtime shape is owned by
+        # selected_profile_manifest_errors; this only refuses to read a
+        # package that is not a profile manifest at all.
+        return paths, []
+    try:
+        manifest_path = kblib.repository_path(
+            root, profile_manifest, must_exist=True, reject_symlink=True)
+        manifest_text = check_profile.read_text(manifest_path)
+    except (OSError, UnicodeError, ValueError) as exc:
+        return paths, ["selected profile manifest is unreadable, so the "
+                       "K13/10 hub set cannot be derived: %s" % exc]
+    binding = kblib.profile_slot_bindings(manifest_text).get(
+        EXPRESSION_LAYER_SLOT)
+    if not _nonempty_string(binding):
+        # No slot binding at all: the profile registers no expression hub.
+        return paths, []
+    profile_dir = os.path.dirname(manifest_path)
+    kind, detail = kblib.resolve_profile_binding(binding, root, profile_dir)
+    if kind != "path":
+        return paths, [
+            "selected profile %s binding is %s, so the K13/10 hub set cannot "
+            "be derived" % (EXPRESSION_LAYER_SLOT, kind)
+        ]
+    try:
+        text = check_profile.read_text(detail)
+    except (OSError, UnicodeError, ValueError) as exc:
+        return paths, ["selected profile %s is unreadable, so the K13/10 hub "
+                       "set cannot be derived: %s" % (EXPRESSION_LAYER_SLOT,
+                                                      exc)]
+    for cells in check_profile.table_rows(text.splitlines()):
+        if len(cells) != 2:
+            continue
+        label = check_profile.unbacktick(cells[0]).strip().lower()
+        if not label.startswith(HUB_DEPENDENCY_MAP_LABEL):
+            continue
+        for declared in cells[1].split(";"):
+            candidate = _normalized_repository_path(declared)
+            if candidate is None or candidate.lower() == "none":
+                continue
+            if "TODO(" in candidate or "/" not in candidate:
+                # An unfilled sentinel or an opaque artifact ID is not a
+                # decidable repository path; check_profile owns that verdict.
+                continue
+            if _path_error(root, candidate, must_exist=False) is None:
+                paths.add(candidate)
+    return paths, []
+
+
+def _page_frontmatter(root, relative_path):
+    """Return ``(exists, fields, error)`` for one repository page.
+
+    ``fields`` is ``None`` when the page exists but its metadata cannot be
+    read, which the caller reports instead of treating as "not a hub".
+    """
+    try:
+        absolute = kblib.repository_path(root, relative_path)
+    except (OSError, ValueError) as exc:
+        return False, None, "path is unsafe: %s" % exc
+    if os.path.islink(absolute) or not os.path.isfile(absolute):
+        return False, {}, None
+    try:
+        with open(absolute, encoding="utf-8") as handle:
+            text = handle.read()
+    except (OSError, UnicodeError, ValueError) as exc:
+        return True, None, "page is unreadable: %s" % exc
+    raw = kblib.extract_frontmatter(text)
+    if raw is None:
+        if text.startswith("---\n") or text.startswith("---\r\n"):
+            return True, None, "frontmatter has no closing fence"
+        return True, {}, None
+    try:
+        fields = kblib.parse_yaml_subset(raw)
+    except (ValueError, kblib.YamlSubsetError) as exc:
+        return True, None, "frontmatter is unparsable: %s" % exc
+    if not isinstance(fields, dict):
+        return True, None, "frontmatter is not a mapping"
+    return True, fields, None
+
+
+def _hub_basis(fields):
+    """Name the K13/10 hub role a page's own metadata proves, or ``None``."""
+    page_type = fields.get("type")
+    if page_type in HUB_PAGE_TYPES:
+        return "type=%s" % page_type
+    if page_type == HUB_TERM_TYPE and fields.get("scope") == HUB_TERM_SCOPE:
+        return "type=%s scope=%s" % (HUB_TERM_TYPE, HUB_TERM_SCOPE)
+    return None
+
+
+def hub_page_admission(root, manifest, records, registered_hub_paths, cache):
+    """Classify one batch manifest against K13/10 admission condition 2.
+
+    The kernel forbids a concurrently admitted batch from *editing* a control
+    or hub page.  A hub page that already exists is an edit and blocks
+    activation; a hub page this batch creates is not, and is reported as a
+    candidate for the integrator's post-merge hub synchronization step.  This
+    only reports what the bytes say; choosing the execution mode is the
+    integrator's decision.
+    """
+    blocking = []
+    candidates = []
+    unresolved = []
+    for path in sorted(set(manifest or [])):
+        if not _nonempty_string(path):
+            continue
+        if path not in cache:
+            cache[path] = _page_frontmatter(root, path)
+        exists, fields, error = cache[path]
+        registered = path in registered_hub_paths
+        if error is not None:
+            if exists and registered:
+                blocking.append("%s (%s)" % (path, EXPRESSION_LAYER_SLOT))
+            else:
+                unresolved.append("%s (%s)" % (path, error))
+            continue
+        if exists:
+            basis = _hub_basis(fields)
+            if registered:
+                basis = EXPRESSION_LAYER_SLOT if basis is None else basis
+            if basis is not None:
+                blocking.append("%s (%s)" % (path, basis))
+            continue
+        declared = records.get(path) or {}
+        basis = None
+        if declared.get("type") in HUB_PAGE_TYPES:
+            basis = "Coverage type=%s" % declared.get("type")
+        elif registered:
+            basis = EXPRESSION_LAYER_SLOT
+        if basis is not None:
+            candidates.append("%s (%s)" % (path, basis))
+    return {
+        "blocking": blocking,
+        "candidates": candidates,
+        "unresolved": unresolved,
+    }
+
+
 def _identity(data, key, nested=False):
     if nested:
         contract = data.get("contract")
@@ -7099,7 +7280,7 @@ def validate_runtime(root, allowed_open_delta=None,
             "coverage_sha256": None, "queue_sha256": None,
             "progress_sha256": None, "remaining": None,
             "receipt_catalog": catalog, "writer_locks": writer_locks,
-            "managed_deltas": [],
+            "managed_deltas": [], "hub_page_admission": {},
         }
 
     coverage_sha = kblib.sha256_bytes(coverage_raw)
@@ -7630,10 +7811,31 @@ def validate_runtime(root, allowed_open_delta=None,
     active_manifest = set()
     for item in active:
         active_manifest.update(item.get("manifest") or [])
+    # K13/10 admission condition 2.  Derived once per run and only for the
+    # queued items whose activation the condition governs.
+    registered_hub_paths, hub_derivation_errors = profile_hub_paths(
+        root, queue.get("selected_profile_manifest"))
+    hub_page_cache = {}
+    hub_admission = {}
     for item_id, item in items_by_id.items():
         if item.get("state") != "queued":
             continue
         reasons = []
+        if item.get("execution_mode") != "serial-integrator":
+            hub = hub_page_admission(
+                root, item.get("manifest"), records, registered_hub_paths,
+                hub_page_cache)
+            hub_admission[item_id] = hub
+            for reason in hub_derivation_errors:
+                reasons.append("%s; %s" % (reason, HUB_EXIT_HINT))
+            if hub["blocking"]:
+                reasons.append(
+                    "batch edits existing control or hub page(s): %s; %s" %
+                    (", ".join(hub["blocking"]), HUB_EXIT_HINT))
+            if hub["unresolved"]:
+                reasons.append(
+                    "manifest page(s) cannot be classified against K13/10 hub "
+                    "roles: %s" % ", ".join(hub["unresolved"]))
         if task_state not in ("planned", "active"):
             reasons.append("task_state=%s forbids activation" % task_state)
         pending_amendments = _pending_cross_ledger_amendments(progress)
@@ -7750,6 +7952,7 @@ def validate_runtime(root, allowed_open_delta=None,
     }
     return {
         "root": root, "errors": errors, "ready": ready, "blocked": blocked,
+        "hub_page_admission": hub_admission,
         "queue": queue, "coverage": coverage, "progress": progress,
         "queue_path": queue_path, "coverage_sha256": coverage_sha,
         "queue_sha256": queue_sha, "progress_sha256": progress_sha,
@@ -7776,7 +7979,8 @@ def validate_runtime(root, allowed_open_delta=None,
 def make_check_receipt(result, outcome, details, mode,
                        confirmation_receipt=None, runtime_errors=None,
                        maintenance_context=None,
-                       standards_revalidation_context=None):
+                       standards_revalidation_context=None,
+                       hub_page_candidates=None):
     """Build the canonical receipt for one already-evaluated Queue result.
 
     This is the canonical construction path for ``check_queue`` receipt bytes.
@@ -7807,6 +8011,11 @@ def make_check_receipt(result, outcome, details, mode,
             "standards_version")
         receipt["selected_profile_manifest"] = result["queue"].get(
             "selected_profile_manifest")
+        if mode.startswith("require-ready:"):
+            # K13/10 hands the hub pages this batch creates to the
+            # integrator's post-merge synchronization step; the durable
+            # record travels with the activation receipt.
+            receipt["hub_page_candidates"] = list(hub_page_candidates or [])
         if mode == "consistency" and outcome == "pass":
             receipt["repository_snapshot_sha256"] = \
                 kblib.repository_snapshot_sha256(result["root"])
@@ -7878,7 +8087,8 @@ def make_check_receipt(result, outcome, details, mode,
 def _write_receipt(root, relative_path, result, outcome, details, mode,
                    confirmation_receipt=None, runtime_errors=None,
                    maintenance_context=None,
-                   standards_revalidation_context=None):
+                   standards_revalidation_context=None,
+                   hub_page_candidates=None):
     if not relative_path:
         return
     path = kblib.managed_repository_path(
@@ -7891,6 +8101,7 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
         runtime_errors=runtime_errors,
         maintenance_context=maintenance_context,
         standards_revalidation_context=standards_revalidation_context,
+        hub_page_candidates=hub_page_candidates,
     )
     kblib.write_receipts(path, [receipt])
 
@@ -8599,6 +8810,7 @@ def main(argv=None):
     result = validate_runtime(args.root)
     errors = list(result["errors"])
     candidates = []
+    hub_page_candidates = []
     writer_locks = result.get("writer_locks") or []
     maintenance_context = None
     revalidation_context = None
@@ -8670,6 +8882,10 @@ def main(argv=None):
                 errors.extend(context_errors)
     elif not errors and args.require_ready:
         item = result.get("items_by_id", {}).get(args.require_ready)
+        # K13/10: a hub page this batch creates does not block activation; it
+        # is handed to the integrator's post-merge hub synchronization step.
+        hub_page_candidates = list((result.get("hub_page_admission") or {}).get(
+            args.require_ready, {}).get("candidates") or [])
         if item is None:
             errors.append("requested batch %s does not exist" % args.require_ready)
         elif item.get("state") != "queued":
@@ -8778,6 +8994,9 @@ def main(argv=None):
             ",".join(result["ready"]) or "none",
         ))
         print("required_queue_sha256=%s" % result.get("queue_sha256"))
+        if args.require_ready:
+            print("hub_page_candidates=%s" %
+                  ("; ".join(hub_page_candidates) or "none"))
 
     code = 1 if errors else (2 if candidates else 0)
     outcome = "fail" if errors else ("candidate" if candidates else "pass")
@@ -8795,6 +9014,7 @@ def main(argv=None):
     try:
         _write_receipt(
             args.root, args.receipts, result, outcome, details, mode,
+            hub_page_candidates=hub_page_candidates,
             confirmation_receipt=args.confirmation_receipt,
             runtime_errors=errors,
             maintenance_context=maintenance_context,
