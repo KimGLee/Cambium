@@ -31,12 +31,28 @@ LOAD_FIELDS = (
 )
 
 
-def _make_receipt(check, target, result, details, seq):
-    """Build one producer-era adoption receipt with its stable Gate ID."""
+def _make_receipt(check, target, result, details, seq, identity=None):
+    """Build one producer-era adoption receipt with its stable Gate ID.
+
+    Adoption receipts are built before the state write and consumed after it,
+    so the identity they bind is the planned post-adoption Queue identity
+    (:func:`_plan_identity`), never the bytes currently on disk.
+    """
     receipt = kblib.make_receipt(
-        TOOL, TOOL_VERSION, check, target, result, details, seq)
+        TOOL, TOOL_VERSION, check, target, result, details, seq,
+        identity=identity)
     receipt["gate_id"] = GATE_ID
     return receipt
+
+
+def _plan_identity(plan):
+    """Return the Required Queue identity this adoption leaves behind."""
+    return {
+        "task_id": plan["task_id"],
+        "standards_version": plan["standards_version_after"],
+        "selected_profile_manifest":
+            plan["selected_profile_manifest_after"],
+    }
 
 
 def _load_plan(root, relative):
@@ -133,6 +149,7 @@ def _new_receipt(phase, result, plan, transaction_id, plan_path, plan_sha,
             phase, plan["standards_version_before"],
             plan["standards_version_after"]),
         {"prepare": 1, "commit": 2, "abort": 3}[phase],
+        identity=_plan_identity(plan),
     )
     before_contract = before["progress"]["contract"]
     after_contract = after["progress"]["contract"]
@@ -315,7 +332,8 @@ def _prepare_result(root, plan_relative):
     # self-referential after-Progress hash while retaining an exact reference.
     commit_stub = _make_receipt(
         "standards_adoption", plan["adoption_id"],
-        "pass", "Standards adoption commit", 2)
+        "pass", "Standards adoption commit", 2,
+        identity=_plan_identity(plan))
     record = {
         "id": plan["adoption_id"],
         "adopted_at": commit_stub["checked_at"],
@@ -476,7 +494,8 @@ def _commit_transaction(prepared, receipt_path):
     abort.update(_make_receipt(
         "standards_adoption",
         prepared["plan"]["adoption_id"], "fail",
-        "Standards adoption aborted and before state restored", 3))
+        "Standards adoption aborted and before state restored", 3,
+        identity=_plan_identity(prepared["plan"])))
     abort["transaction_phase"] = "abort"
     abort["transaction_id"] = prepared["transaction_id"]
     operation = _lock_operation(prepared, receipt_path, abort["receipt_id"])

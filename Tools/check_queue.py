@@ -98,6 +98,15 @@ INVALIDATION_FIELDS = frozenset((
     "delta_archive_path", "delta_sha256", "batch_receipts",
     "delta_gate_receipts", "revalidation_receipts",
 ))
+# A rollback taken after the delta was applied additionally names the
+# application it undoes and the byte-exact Coverage restore that undid it.
+# The three appear together or not at all: a pre-apply rollback never touched
+# Coverage and carries none of them, and a partial set would assert a restore
+# nobody can verify.
+INVALIDATION_APPLIED_ROLLBACK_FIELDS = frozenset((
+    "delta_apply_receipt", "coverage_restored_from",
+    "coverage_restored_sha256",
+))
 STATES = frozenset(("queued", "open", "merge-ready", "closed", "cancelled"))
 HOLDS = frozenset((
     "none", "confirmation-required", "blocked", "revalidation-required",
@@ -229,7 +238,22 @@ MAINTENANCE_COMPLETION_STATES = frozenset((
     "pending", "passed", "invalidated", "not-applicable",
 ))
 COMPLETION_SEMANTICS = frozenset(("build", "maintenance"))
-GUIDANCE_FIELDS = frozenset(("id", "class", "status"))
+# Guidance records carry the kernel's own field names.  ``guidance_id`` and
+# ``disposition`` are named by K13/06 Amendment Record; the accepted
+# dispositions are the closed list K13/05 requires for every important
+# guidance, and the accepted statuses are K13/06's recommended status values
+# plus ``not-applicable``, the disposition-closing status both this checker
+# and check_proof already treat as final.
+GUIDANCE_FIELDS = frozenset(("guidance_id", "disposition", "status"))
+GUIDANCE_DISPOSITIONS = frozenset((
+    "interrupt-now", "apply-to-current-batch", "queue-next",
+    "queue-by-dependency", "research-first", "deferred",
+    "clarification-required", "superseded", "not-applicable",
+))
+GUIDANCE_STATUSES = frozenset((
+    "received", "classified", "mapped", "in-progress", "verified",
+    "clarification-required", "deferred", "superseded", "not-applicable",
+))
 AMENDMENT_COMMON_FIELDS = frozenset((
     "id", "date", "summary", "status", "writeback_done",
 ))
@@ -962,10 +986,21 @@ def _progress_shape_errors(progress):
                 if not _nonempty_string(entry.get(field)):
                     errors.append("%s %s must be a non-empty string" %
                                   (label, field))
-            entry_id = entry.get("id")
+            disposition = entry.get("disposition")
+            if (_nonempty_string(disposition) and
+                    disposition not in GUIDANCE_DISPOSITIONS):
+                errors.append("%s disposition has invalid value %r" %
+                              (label, disposition))
+            status = entry.get("status")
+            if _nonempty_string(status) and status not in GUIDANCE_STATUSES:
+                errors.append("%s status has invalid value %r" %
+                              (label, status))
+            entry_id = entry.get("guidance_id")
             if _nonempty_string(entry_id):
                 if entry_id in seen:
-                    errors.append("Progress guidance_queue repeats id %s" % entry_id)
+                    errors.append(
+                        "Progress guidance_queue repeats guidance_id %s" %
+                        entry_id)
                 seen.add(entry_id)
 
     amendments = progress.get("amendments")
@@ -1752,6 +1787,34 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
     if invalidated_ids != sorted(invalidated_ids):
         errors.append(
             "Standards adoption invalidated_evidence must be sorted by receipt_id")
+
+    # K12/10: a boundary is only ever claimed at a Queue batch's next
+    # transition, either because it targets that batch or because invalidated
+    # evidence puts the batch in its revalidation scope.  A boundary that
+    # reaches neither is silently discharged, so the plan is refused instead
+    # of recording protection nothing will apply.
+    if queue is not None and boundaries:
+        enforced = set(boundary_batch_targets)
+        for evidence in invalidated:
+            if not isinstance(evidence, dict):
+                continue
+            if not any(value in queue_ids
+                       for value in evidence.get("revalidation_scope_ids") or []):
+                continue
+            enforced.update(
+                value for value in evidence.get("boundary_ids") or []
+                if _nonempty_string(value))
+        for index, boundary in enumerate(boundaries):
+            if not isinstance(boundary, dict):
+                continue
+            boundary_id = boundary.get("boundary_id")
+            if not _nonempty_string(boundary_id) or boundary_id in enforced:
+                continue
+            errors.append(
+                "invalidation_boundaries[%d] boundary %s has target_kind %r "
+                "and no invalidated evidence scoping it to a Queue batch, so "
+                "no gate rerun would ever be required for it" %
+                (index, boundary_id, boundary.get("target_kind")))
 
     if predicate_set:
         if not boundary_ids:
@@ -3879,7 +3942,7 @@ def _pending_control_ids(progress):
             if (not isinstance(entry, dict) or
                     entry.get("status") not in FINAL_CONTROL_STATUSES):
                 pending_guidance.append(str(
-                    entry.get("id") if isinstance(entry, dict) else
+                    entry.get("guidance_id") if isinstance(entry, dict) else
                     "#%d" % index))
     pending_amendments = []
     amendments = progress.get("amendments")
@@ -3894,6 +3957,34 @@ def _pending_control_ids(progress):
                      entry.get("writeback_done") is not True)):
                 pending_amendments.append(str(entry.get("id") or "#%d" % index))
     return pending_guidance, pending_amendments
+
+
+def _last_reconciled_guidance_id(progress):
+    """Derive the incremental guidance boundary named by K00/10 and K12/04.
+
+    K13/07 keeps Pending/reconciled Guidance in Progress but forbids Progress
+    holding a second authority for anything the owned records already
+    determine.  ``last_reconciled_guidance_id`` is exactly such a value: it is
+    the last entry of the longest recorded prefix that has left ``received``,
+    so it is a projection of ``guidance_queue`` rather than an independently
+    editable cursor.  ``guidance_id`` is task-local and monotonically
+    increasing (K13/06), and no status transition returns to ``received``, so
+    the projection never moves backwards.  Batch-close reconciliation still
+    carries the existing open items separately (K12/04); this boundary only
+    bounds what is *new*.
+    """
+    guidance = progress.get("guidance_queue")
+    if not isinstance(guidance, list):
+        return None
+    boundary = None
+    for entry in guidance:
+        if not isinstance(entry, dict) or entry.get("status") == "received":
+            break
+        entry_id = entry.get("guidance_id")
+        if not _nonempty_string(entry_id):
+            break
+        boundary = entry_id
+    return boundary
 
 
 def _task_transition_receipt_record_errors(
@@ -4436,6 +4527,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         "checkpoint_binding": checkpoint_binding,
         "pending_guidance": pending_guidance,
         "pending_amendments": pending_amendments,
+        "last_reconciled_guidance_id": _last_reconciled_guidance_id(progress),
     }
 
 
@@ -6596,13 +6688,25 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             errors.append("%s must be a mapping" % label)
             continue
         missing = sorted(INVALIDATION_FIELDS - set(record))
-        extra = sorted(set(record) - INVALIDATION_FIELDS)
+        extra = sorted(set(record) - INVALIDATION_FIELDS -
+                       INVALIDATION_APPLIED_ROLLBACK_FIELDS)
+        applied_present = INVALIDATION_APPLIED_ROLLBACK_FIELDS & set(record)
         if missing:
             errors.append("%s misses explicit field(s): %s" %
                           (label, ", ".join(missing)))
         if extra:
             errors.append("%s has unsupported field(s): %s" %
                           (label, ", ".join(extra)))
+        if applied_present and applied_present != \
+                INVALIDATION_APPLIED_ROLLBACK_FIELDS:
+            errors.append(
+                "%s records an applied-delta rollback but misses explicit "
+                "field(s): %s" %
+                (label, ", ".join(sorted(
+                    INVALIDATION_APPLIED_ROLLBACK_FIELDS - applied_present))))
+        for field in sorted(applied_present):
+            if not _nonempty_string(record.get(field)):
+                errors.append("%s %s must be non-empty" % (label, field))
         transition = (rollback_transitions[index]
                       if index < len(rollback_transitions) else None)
         receipt_id = record.get("transition_receipt")
@@ -6929,7 +7033,18 @@ def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
 
 
 def delta_apply_write_barrier(result, tool, action, target=None):
-    """Return a fail-closed writer error while an apply awaits Queue close."""
+    """Return a fail-closed writer error while an apply awaits Queue close.
+
+    An applied delta opens a strict serial critical section: Coverage already
+    carries the batch content while the Queue still says ``merge-ready``.  Two
+    writes close that window, and no others.  ``merge-ready -> closed`` is the
+    passing outcome.  ``merge-ready -> open`` is the failing one, required by
+    K00/10, K12/14 and K13/10 whenever the Batch-close Closed List rejects the
+    merge -- which can only happen after the apply, because the Closed List
+    runs against the merged snapshot.  The rollback carries its own evidence
+    (the invalidated delta archive and a byte-exact Coverage restore), so it
+    leaves the ledgers reconciled rather than diverged.
+    """
     standards_barrier = (result.get("standards_revalidation_barriers") or {}).get(
         target)
     if standards_barrier and action in ("apply", "merge-ready", "closed"):
@@ -6942,12 +7057,13 @@ def delta_apply_write_barrier(result, tool, action, target=None):
         return ("pending delta_apply state is ambiguous; repair the runtime "
                 "before any Queue/Coverage write")
     applied = current[0]
-    if (tool == "update_queue" and action == "closed" and
+    if (tool == "update_queue" and action in ("closed", "open") and
             target == applied.get("batch")):
         return None
     return ("batch %s already has current-compatible unconsumed delta_apply "
-            "receipt %s; the only allowed Queue/Coverage write is "
-            "update_queue merge-ready->closed for that batch" %
+            "receipt %s; the only allowed Queue/Coverage writes are "
+            "update_queue merge-ready->closed and the integrator-authorised "
+            "merge-ready->open rollback for that batch" %
             (applied.get("batch"), applied.get("selected_receipt")))
 
 
@@ -7723,6 +7839,10 @@ def make_check_receipt(result, outcome, details, mode,
                 "pending_guidance", [])
             receipt["pending_amendments"] = task_runtime.get(
                 "pending_amendments", [])
+            # Derived boundary, never stored state: see
+            # ``_last_reconciled_guidance_id``.
+            receipt["last_reconciled_guidance_id"] = task_runtime.get(
+                "last_reconciled_guidance_id")
             receipt["standards_revalidation_outstanding"] = result.get(
                 "standards_revalidation_outstanding", {})
             receipt["standards_revalidation_barriers"] = result.get(
@@ -8257,6 +8377,8 @@ def _print_resume_status(result, errors):
           (latest_task_receipt.get("receipt_id") or "none"))
     print("  task_transition.count=%d" %
           len(task_runtime.get("history") or []))
+    print("  last_reconciled_guidance_id=%s" %
+          (task_runtime.get("last_reconciled_guidance_id") or "none"))
     print("  pending_guidance=%s" %
           (",".join(task_runtime.get("pending_guidance") or []) or "none"))
     print("  pending_amendments=%s" %

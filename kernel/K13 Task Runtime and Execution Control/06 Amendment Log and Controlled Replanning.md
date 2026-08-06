@@ -51,6 +51,7 @@ received
 classified -> clarification-required
 classified / mapped -> deferred
 received / classified / mapped -> superseded
+classified -> not-applicable
 ```
 
 ### Versioning Rules

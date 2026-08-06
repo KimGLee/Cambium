@@ -1122,7 +1122,7 @@ def _validate_terminal_progress_state(proof, progress_ledger,
                     "progress-guidance-pending",
                     "Progress Ledger#guidance_queue[%d]" % index,
                     "guidance %r has non-final status %r" %
-                    (entry.get("id"), status),
+                    (entry.get("guidance_id"), status),
                 ))
 
     amendments = progress_ledger.get("amendments")

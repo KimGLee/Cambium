@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -7,6 +8,7 @@ from pathlib import Path
 
 
 TOOLS_DIR = Path(__file__).resolve().parents[1]
+RUNTIME_FIXTURE = TOOLS_DIR / "tests" / "fixtures" / "runtime_state" / "valid"
 sys.path.insert(0, str(TOOLS_DIR))
 
 import check_links
@@ -17,6 +19,7 @@ import check_queue
 import check_residual_content
 import check_vocab
 import adopt_standards
+import kblib
 import record_corpus_acceptance
 
 
@@ -252,6 +255,167 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
             self.assert_producer_identity(
                 rows, check_proof.TOOL, check_proof.TOOL_VERSION,
                 check_proof.GATE_ID)
+
+
+class RuntimeReceiptIdentityTests(unittest.TestCase):
+    """Every deterministic Gate producer must bind the Queue identity.
+
+    ``check_queue.standards_revalidation_context`` rejects a boundary Gate
+    receipt whose ``task_id`` / ``standards_version`` /
+    ``selected_profile_manifest`` do not equal the live Required Queue, so a
+    producer that never writes them can never clear a boundary it is named for.
+    """
+
+    IDENTITY = kblib.RECEIPT_IDENTITY_FIELDS
+
+    def runtime_root(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name) / "repo"
+        shutil.copytree(RUNTIME_FIXTURE, root)
+        return root
+
+    def queue_identity(self, root):
+        queue = kblib.load_yaml_file(root / check_queue.QUEUE_PATH)
+        return {field: queue[field] for field in self.IDENTITY}
+
+    def run_tool(self, script, *arguments):
+        return subprocess.run(
+            [sys.executable, str(TOOLS_DIR / script), *map(str, arguments)],
+            text=True, capture_output=True, check=False,
+        )
+
+    def receipt_rows(self, path):
+        return [json.loads(line) for line in Path(path).read_text(
+            encoding="utf-8").splitlines()]
+
+    def test_identity_is_read_from_the_canonical_required_queue(self):
+        root = self.runtime_root()
+        self.assertEqual(
+            {"task_id": "fixture-task", "standards_version": "3.0.0",
+             "selected_profile_manifest": "profiles/test-profile/profile.md"},
+            kblib.runtime_receipt_identity(root))
+
+    def test_absent_runtime_omits_the_fields_instead_of_writing_null(self):
+        """Absence, not ``null``: an unread field is never asserted.
+
+        Consumers that demand an explicit binding spell it
+        ``field not in receipt or receipt.get(field) != expected``.  An
+        explicit ``null`` would satisfy the presence half of that test, so
+        writing one could admit a receipt those consumers reject today.
+        """
+        with tempfile.TemporaryDirectory() as temporary:
+            self.assertEqual({}, kblib.runtime_receipt_identity(temporary))
+            receipt = kblib.make_receipt(
+                "check_links", "1.5.0", "link-check-summary", ".", "pass",
+                "no runtime", 1, root=temporary)
+        self.assertEqual({}, kblib.runtime_receipt_identity(None))
+        for field in self.IDENTITY:
+            self.assertNotIn(field, receipt)
+
+    def test_unreadable_or_partial_queue_binds_only_what_it_can_read(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state = root / ".cambium" / "state"
+            state.mkdir(parents=True)
+            queue = state / "required_queue.yaml"
+            self.assertEqual({}, kblib.runtime_receipt_identity(root))
+
+            queue.write_text("- not a mapping\n", encoding="utf-8")
+            self.assertEqual({}, kblib.runtime_receipt_identity(root))
+
+            queue.write_text("\ttask_id: tabbed\n", encoding="utf-8")
+            self.assertEqual({}, kblib.runtime_receipt_identity(root))
+
+            queue.write_text(
+                "task_id: partial-task\n"
+                "selected_profile_manifest: profiles/p/profile.md\n",
+                encoding="utf-8")
+            identity = kblib.runtime_receipt_identity(root)
+            self.assertEqual(
+                {"task_id": "partial-task",
+                 "selected_profile_manifest": "profiles/p/profile.md"},
+                identity)
+            self.assertNotIn("standards_version", identity)
+
+            elsewhere = root / "elsewhere.yaml"
+            elsewhere.write_text("task_id: smuggled\n", encoding="utf-8")
+            queue.unlink()
+            queue.symlink_to(elsewhere)
+            self.assertEqual({}, kblib.runtime_receipt_identity(root))
+
+    def test_check_links_receipts_bind_the_queue_identity(self):
+        root = self.runtime_root()
+        receipts = root / ".cambium" / "receipts" / "links.jsonl"
+        receipts.parent.mkdir(parents=True, exist_ok=True)
+        completed = self.run_tool("check_links.py", root,
+                                  "--receipts", receipts)
+        self.assertEqual(0, completed.returncode,
+                         completed.stdout + completed.stderr)
+        rows = self.receipt_rows(receipts)
+        expected = self.queue_identity(root)
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertEqual(
+                expected, {field: row.get(field) for field in self.IDENTITY})
+
+    def test_check_vocab_receipts_bind_the_queue_identity(self):
+        root = self.runtime_root()
+        vocab = root / "vocab.yaml"
+        vocab.write_text(
+            "fields:\n"
+            "  priority:\n"
+            "    values:\n"
+            "      - P0\n"
+            "    owner: fixture\n",
+            encoding="utf-8",
+        )
+        receipts = root / ".cambium" / "receipts" / "vocab.jsonl"
+        receipts.parent.mkdir(parents=True, exist_ok=True)
+        completed = self.run_tool(
+            "check_vocab.py", root, "--vocab", vocab,
+            "--quota-p0", "100", "--quota-p1", "100", "--receipts", receipts)
+        self.assertIn(completed.returncode, (0, 2),
+                      completed.stdout + completed.stderr)
+        rows = self.receipt_rows(receipts)
+        expected = self.queue_identity(root)
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertEqual(
+                expected, {field: row.get(field) for field in self.IDENTITY})
+
+    def test_check_links_still_produces_receipts_without_a_runtime(self):
+        """A generic check outside any Cambium runtime must keep working."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "Page.md").write_text("# Page\n", encoding="utf-8")
+            receipts = root / "links.jsonl"
+            completed = self.run_tool("check_links.py", root,
+                                      "--receipts", receipts)
+            self.assertEqual(0, completed.returncode,
+                             completed.stdout + completed.stderr)
+            rows = self.receipt_rows(receipts)
+        self.assertTrue(rows)
+        for row in rows:
+            for field in self.IDENTITY:
+                self.assertNotIn(field, row)
+
+    def test_deterministic_gate_producers_are_the_registered_set(self):
+        """Guard the scope of this binding against a new deterministic gate."""
+        registry, errors = check_queue.standards_gate_registry(
+            TOOLS_DIR.parent)
+        self.assertEqual([], errors)
+        producers = {}
+        for gate_id, predicate in registry.items():
+            producers.setdefault(predicate["tool"], set()).add(gate_id)
+        self.assertEqual(
+            {check_links.TOOL, check_vocab.TOOL, check_residual_content.TOOL,
+             check_batch_close.TOOL, check_corpus_plan.TOOL,
+             record_corpus_acceptance.TOOL, adopt_standards.TOOL},
+            set(producers) - {check_queue.MANUAL_ATTESTATION_TOOL,
+                              check_queue.TOOL, check_proof.TOOL})
+        self.assertEqual(
+            13, len(producers[check_queue.MANUAL_ATTESTATION_TOOL]))
 
 
 if __name__ == "__main__":

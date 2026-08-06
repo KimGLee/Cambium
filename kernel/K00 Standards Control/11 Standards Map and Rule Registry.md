@@ -49,6 +49,7 @@ The following high-risk objects have a single canonical owner corpus-wide. Modif
 | Queue transition authority, concurrency, write partition, and serial integration | [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration\|Batch Admission Transitions and Serial Integration]] |
 | Active-task Standards adoption semantics, changed-predicate scope, evidence invalidation, and required gate reruns | [[kernel/K12 Quality Assurance/10 Standards Version Adoption\|Standards Version Adoption]] |
 | Active-task Standards adoption state-write and interrupted-transaction boundary | [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction\|Standards Adoption State Transaction]] |
+| Resume `next_action` token vocabulary | [[kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary\|Resume Next Action Vocabulary]] |
 | Guidance classification and impact | [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis\|Guidance Classification and Impact Analysis]] |
 | Guidance disposition and safe switching | [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching\|Guidance Disposition and Safe Switching]] |
 | Amendment record and controlled replanning | [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning\|Amendment Log and Controlled Replanning]] |

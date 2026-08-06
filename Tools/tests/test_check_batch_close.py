@@ -598,6 +598,65 @@ class CheckBatchCloseTests(unittest.TestCase):
                 second_consistency, second_close, self.delta_apply_receipt),
             resumed.stdout)
 
+    def set_override_rows(self, rows):
+        manifest = self.root / "profiles/test-profile/profile.md"
+        text = manifest.read_text(encoding="utf-8")
+        head, _, _ = text.partition("\n## Execution Default Overrides\n")
+        manifest.write_text(
+            head + "\n## Execution Default Overrides\n\n"
+            "| Override item ID from the registry | Non-default profile value |\n"
+            "|---|---|\n" + rows, encoding="utf-8")
+        return {"queue": {
+            "selected_profile_manifest": "profiles/test-profile/profile.md",
+        }}
+
+    def test_priority_quotas_read_the_shared_override_table(self):
+        runtime = self.set_override_rows("")
+        self.assertEqual((15.0, 35.0),
+                         check_batch_close._priority_quotas(self.root, runtime))
+        runtime = self.set_override_rows(
+            "| `concurrency_cap` | `4` |\n"
+            "| `priority_quota.P0` | `20%` |\n"
+            "| `priority_quota.P1` | `40` |\n")
+        self.assertEqual((20.0, 40.0),
+                         check_batch_close._priority_quotas(self.root, runtime))
+        manifest_text = (
+            self.root / "profiles/test-profile/profile.md"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(
+            {"concurrency_cap": "4", "priority_quota.P0": "20%",
+             "priority_quota.P1": "40"},
+            kblib.profile_execution_default_overrides(manifest_text))
+
+    def test_priority_quota_override_still_fails_closed_on_a_bad_value(self):
+        runtime = self.set_override_rows("| `priority_quota.P0` | `many` |\n")
+        with self.assertRaises(ValueError) as caught:
+            check_batch_close._priority_quotas(self.root, runtime)
+        self.assertIn("not a numeric percent", str(caught.exception))
+        runtime = self.set_override_rows("| `priority_quota.P1` | `140` |\n")
+        with self.assertRaises(ValueError) as caught:
+            check_batch_close._priority_quotas(self.root, runtime)
+        self.assertIn("outside 0..100", str(caught.exception))
+
+    def test_override_reader_ignores_fenced_examples_and_other_sections(self):
+        manifest_text = (
+            "# Profile\n\n"
+            "## Execution Default Overrides\n\n"
+            "```text\n"
+            "| `concurrency_cap` | `99` |\n"
+            "```\n\n"
+            "| Override item ID from the registry | Non-default profile value |\n"
+            "|---|---|\n"
+            "| `concurrency_cap` | `7` |\n"
+            "| `maintenance.incoming_retarget_divisor` | `a \\| b` |\n\n"
+            "## Implemented Slots\n\n"
+            "| `priority_quota.P0` | `99` |\n"
+        )
+        self.assertEqual(
+            {"concurrency_cap": "7",
+             "maintenance.incoming_retarget_divisor": "a | b"},
+            kblib.profile_execution_default_overrides(manifest_text))
+
     def test_candidates_require_exact_id_or_type_disposition(self):
         completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)

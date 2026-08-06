@@ -1386,10 +1386,12 @@ def make_pass_receipt(result, *, repository_snapshot_sha256=None,
             len(result["gap_register"].get("gaps", [])),
         )
     )
+    # The runtime identity is bound first so a Gate consumer can compare it;
+    # the explicit artifact binding still owns every field it declares.
     receipt = kblib.make_receipt(
         TOOL, TOOL_VERSION, "corpus_plan",
         result.get("profile_manifest") or "<unresolved>", "pass",
-        details, seq)
+        details, seq, root=result.get("root"))
     receipt["gate_id"] = "corpus-plan-structure"
     receipt.update(binding)
     return receipt
@@ -2040,7 +2042,7 @@ def _receipts_for(result, *, repository_snapshot_sha256=None):
     for seq, error in enumerate(result["errors"], 1):
         receipts.append(kblib.make_receipt(
             TOOL, TOOL_VERSION, error["check"], error["target"], "fail",
-            error["details"], seq))
+            error["details"], seq, root=result.get("root")))
     return receipts
 
 

@@ -1345,6 +1345,152 @@ class CheckQueueTests(QueueFixture):
                     check_queue.validate_runtime(self.root)["errors"])
                 self.assertIn(expected, errors)
 
+    def write_guidance_queue(self, entries):
+        progress = kblib.load_yaml_file(self.progress_path)
+        progress["guidance_queue"] = entries
+        self.progress_path.write_text(kblib.canonical_yaml(progress),
+                                      encoding="utf-8")
+        self.refresh_initial_origin()
+        return progress
+
+    def guidance_errors(self):
+        return "\n".join(
+            error for error in check_queue.validate_runtime(self.root)["errors"]
+            if "guidance_queue" in error
+        )
+
+    def test_guidance_records_use_kernel_field_names_and_closed_values(self):
+        self.write_guidance_queue([
+            {"guidance_id": "G-%03d" % index, "disposition": disposition,
+             "status": "verified"}
+            for index, disposition in enumerate(
+                sorted(check_queue.GUIDANCE_DISPOSITIONS), start=1)
+        ])
+        self.assertEqual("", self.guidance_errors())
+
+    def test_guidance_record_rejects_retired_field_names(self):
+        self.write_guidance_queue([
+            {"id": "G-001", "class": "apply-to-current-batch",
+             "status": "verified"},
+        ])
+        errors = self.guidance_errors()
+        self.assertIn("Progress guidance_queue[0] misses explicit field(s): "
+                      "disposition, guidance_id", errors)
+        self.assertIn("Progress guidance_queue[0] has unsupported field(s): "
+                      "class, id", errors)
+
+    def test_guidance_disposition_and_status_domains_are_closed(self):
+        cases = (
+            ("unknown disposition",
+             {"guidance_id": "G-001", "disposition": "NOT-A-DISPOSITION-AT-ALL",
+              "status": "verified"},
+             "Progress guidance_queue[0] disposition has invalid value "
+             "'NOT-A-DISPOSITION-AT-ALL'"),
+            ("status borrowed from the disposition list",
+             {"guidance_id": "G-001", "disposition": "queue-next",
+              "status": "queue-next"},
+             "Progress guidance_queue[0] status has invalid value "
+             "'queue-next'"),
+            ("misspelled final status",
+             {"guidance_id": "G-001", "disposition": "queue-next",
+              "status": "verifed"},
+             "Progress guidance_queue[0] status has invalid value 'verifed'"),
+        )
+        for label, entry, expected in cases:
+            with self.subTest(label=label):
+                self.write_guidance_queue([entry])
+                self.assertIn(expected, self.guidance_errors())
+
+    def test_guidance_id_uniqueness_and_intermediate_status_stay_pending(self):
+        progress = self.write_guidance_queue([
+            {"guidance_id": "G-001", "disposition": "queue-next",
+             "status": "mapped"},
+            {"guidance_id": "G-001", "disposition": "queue-next",
+             "status": "verified"},
+        ])
+        self.assertIn("Progress guidance_queue repeats guidance_id G-001",
+                      self.guidance_errors())
+        # `mapped` is an intermediate K13/06 status: structurally valid, and it
+        # keeps the guidance pending for resume and batch close.
+        pending_guidance, _ = check_queue._pending_control_ids(progress)
+        self.assertEqual(["G-001"], pending_guidance)
+
+    def test_last_reconciled_guidance_id_is_derived_not_stored(self):
+        progress = self.write_guidance_queue([
+            {"guidance_id": "G-001", "disposition": "queue-next",
+             "status": "verified"},
+            {"guidance_id": "G-002", "disposition": "queue-next",
+             "status": "mapped"},
+            {"guidance_id": "G-003", "disposition": "queue-next",
+             "status": "received"},
+            {"guidance_id": "G-004", "disposition": "queue-next",
+             "status": "verified"},
+        ])
+        # The boundary is the longest recorded prefix that has left
+        # `received`; the entries after it stay in pending_guidance.
+        self.assertEqual("G-002",
+                         check_queue._last_reconciled_guidance_id(progress))
+        self.assertEqual(["G-002", "G-003"],
+                         check_queue._pending_control_ids(progress)[0])
+        # No checkpoint slot is created for it.
+        self.assertNotIn("last_reconciled_guidance_id",
+                         check_queue.CHECKPOINT_FIELDS)
+        checkpoint = dict(progress["checkpoint"] or {})
+        checkpoint["last_reconciled_guidance_id"] = "G-004"
+        progress["checkpoint"] = checkpoint
+        self.progress_path.write_text(kblib.canonical_yaml(progress),
+                                      encoding="utf-8")
+        self.assertIn(
+            "Progress checkpoint has unsupported field(s): "
+            "last_reconciled_guidance_id",
+            "\n".join(check_queue.validate_runtime(self.root)["errors"]))
+
+    def test_derived_guidance_boundary_is_monotone_over_mixed_dispositions(self):
+        cases = (
+            ("empty queue", [], None),
+            ("only unreconciled",
+             [{"guidance_id": "G-001", "disposition": "queue-next",
+               "status": "received"}], None),
+            ("superseded and deferred still count as reconciled",
+             [{"guidance_id": "G-001", "disposition": "superseded",
+               "status": "superseded"},
+              {"guidance_id": "G-002", "disposition": "deferred",
+               "status": "deferred"},
+              {"guidance_id": "G-003", "disposition": "queue-next",
+               "status": "mapped"}], "G-003"),
+            ("a new received entry does not lower the boundary",
+             [{"guidance_id": "G-001", "disposition": "superseded",
+               "status": "superseded"},
+              {"guidance_id": "G-002", "disposition": "deferred",
+               "status": "deferred"},
+              {"guidance_id": "G-003", "disposition": "queue-next",
+               "status": "mapped"},
+              {"guidance_id": "G-004", "disposition": "queue-next",
+               "status": "received"}], "G-003"),
+        )
+        for label, entries, expected in cases:
+            with self.subTest(label=label):
+                self.assertEqual(
+                    expected,
+                    check_queue._last_reconciled_guidance_id(
+                        {"guidance_queue": entries}))
+
+    def test_resume_status_reports_the_derived_guidance_boundary(self):
+        receipt_path = ".cambium/receipts/resume.jsonl"
+        self.write_guidance_queue([
+            {"guidance_id": "G-001", "disposition": "apply-to-current-batch",
+             "status": "verified"},
+            {"guidance_id": "G-002", "disposition": "queue-next",
+             "status": "mapped"},
+        ])
+        completed = self.run_cli("--resume-status", "--receipts", receipt_path)
+        self.assertEqual(2, completed.returncode, completed.stdout)
+        self.assertIn("last_reconciled_guidance_id=G-002", completed.stdout)
+        self.assertIn("pending_guidance=G-002", completed.stdout)
+        receipt = json.loads(
+            (self.root / receipt_path).read_text(encoding="utf-8"))
+        self.assertEqual("G-002", receipt["last_reconciled_guidance_id"])
+
     def test_unknown_coverage_disposition_cannot_disappear_from_queue(self):
         coverage = kblib.load_yaml_file(self.coverage_path)
         coverage["pages"][1]["coverage_disposition"] = "reuqired"
@@ -1674,6 +1820,7 @@ class CheckQueueTests(QueueFixture):
                 "queue_revision=1", "state_revision=0",
                 "checkpoint.recorded_at=None",
                 "checkpoint.binding=initial",
+                "last_reconciled_guidance_id=none",
                 "task_transition.latest=none",
                 "next_action=activate-ready-batch:B1",
                 "batches.queued=B1,B2",
@@ -1956,6 +2103,72 @@ class CheckQueueTests(QueueFixture):
             "batch: UNKNOWN\npages: []\n", encoding="utf-8")
         errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
         self.assertIn("unknown batch UNKNOWN", errors)
+
+    def init_profile_repo(self, override_rows=""):
+        fresh = Path(self.tmp.name) / ("cap-%d" % len(
+            list(Path(self.tmp.name).glob("cap-*"))))
+        (fresh / "profiles" / "sample").mkdir(parents=True)
+        (fresh / "profiles" / "sample" / "profile.md").write_text(
+            "# Profile\n\n## Profile Identity\n\n"
+            "- `profile_id`: `sample`\n\n"
+            "## Execution Default Overrides\n\n"
+            "| Override item ID from the registry | Non-default profile value |\n"
+            "|---|---|\n" + override_rows, encoding="utf-8")
+        return fresh
+
+    def run_init(self, root, *extra):
+        return subprocess.run(
+            [sys.executable, str(TOOLS / "init_state.py"), str(root),
+             "--task-id", "cap-task", "--objective", "Exercise the cap",
+             "--exclude", "Do not infer Required work",
+             "--scope-version", "s1", "--completion-semantics", "build",
+             "--standards-version", "3.0.0", "--profile-manifest",
+             "profiles/sample/profile.md", "--at", "2026-08-04T00:00:00Z",
+             "--apply", *extra],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+
+    def test_profile_manifest_concurrency_cap_override_reaches_progress(self):
+        fresh = self.init_profile_repo("| `concurrency_cap` | `5` |\n")
+        completed = self.run_init(fresh)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertIn("concurrency_cap=5 (resolved from profile-manifest)",
+                      completed.stdout)
+        progress = kblib.load_yaml_file(fresh / check_queue.PROGRESS_PATH)
+        self.assertEqual(5, progress["contract"]["concurrency_cap"])
+
+    def test_unregistered_override_keeps_the_kernel_default_cap(self):
+        fresh = self.init_profile_repo()
+        completed = self.run_init(fresh)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertIn("concurrency_cap=3 (resolved from kernel-default)",
+                      completed.stdout)
+        progress = kblib.load_yaml_file(fresh / check_queue.PROGRESS_PATH)
+        self.assertEqual(3, progress["contract"]["concurrency_cap"])
+
+    def test_two_explicit_concurrency_cap_overrides_must_agree(self):
+        fresh = self.init_profile_repo("| `concurrency_cap` | `5` |\n")
+        conflicting = self.run_init(fresh, "--concurrency-cap", "2")
+        self.assertEqual(1, conflicting.returncode, conflicting.stdout)
+        self.assertIn("contradicts the selected profile manifest's registered "
+                      "concurrency_cap 5", conflicting.stdout)
+        self.assertFalse((fresh / ".cambium").exists())
+        agreeing = self.run_init(fresh, "--concurrency-cap", "5")
+        self.assertEqual(0, agreeing.returncode, agreeing.stdout)
+        self.assertIn("concurrency_cap=5 (resolved from "
+                      "task-contract+profile-manifest)", agreeing.stdout)
+
+    def test_unusable_profile_concurrency_cap_fails_closed(self):
+        for value in ("many", "0", "-1", "2.5"):
+            with self.subTest(value=value):
+                fresh = self.init_profile_repo(
+                    "| `concurrency_cap` | `%s` |\n" % value)
+                completed = self.run_init(fresh)
+                self.assertEqual(1, completed.returncode, completed.stdout)
+                self.assertIn("K13/10 requires a positive integer",
+                              completed.stdout)
+                self.assertFalse((fresh / ".cambium").exists())
 
     def test_init_creates_empty_state_without_fake_work_and_refuses_overwrite(self):
         fresh = Path(self.tmp.name) / "fresh"

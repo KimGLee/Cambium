@@ -50,13 +50,16 @@ def _make_receipts(result, plan, plan_path, plan_sha, snapshot):
         1 for row in decisions if row.get("decision") == "accepted")
     rejected = len(decisions) - accepted
     semantic_result = "pass" if rejected == 0 else "fail"
+    # The validated repository root also binds the Required Queue identity a
+    # Gate consumer compares against; the artifact binding below still owns
+    # every field it declares.
     semantic = kblib.make_receipt(
         TOOL, TOOL_VERSION,
         check_corpus_plan.SEMANTIC_ACCEPTANCE_CHECK,
         result["profile_manifest"], semantic_result,
         "authority_role=%s; accepted=%d; rejected=%d" %
         (plan["authority_role_id"], accepted, rejected),
-        2,
+        2, root=result.get("root"),
     )
     semantic.update(check_corpus_plan.receipt_binding(
         result, repository_snapshot_sha256=snapshot))

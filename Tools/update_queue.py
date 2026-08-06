@@ -57,6 +57,56 @@ def _receipt(result, receipt_id, label, expected=None):
     return receipt
 
 
+def _pre_apply_coverage_restore(result, apply_receipt):
+    """Resolve the byte-exact Coverage restore for an applied-delta rollback.
+
+    ``apply_delta`` archives the pre-apply Coverage bytes before it writes the
+    merged ledger and names the archive in its receipt.  Rolling back an
+    applied batch therefore restores bytes rather than reconstructing them.
+    Every failure here is fail-closed: without the archive the tool cannot
+    prove what "before" was, and guessing would put Coverage and the Queue out
+    of agreement in a way no later gate re-derives.
+    """
+    manual = ("The runtime cannot restore the pre-apply Coverage bytes "
+              "automatically; an integrator must recover Coverage manually "
+              "before this batch can reopen.")
+    relative = apply_receipt.get("before_coverage_archive_path")
+    expected_sha = apply_receipt.get("before_coverage_sha256")
+    if not _nonempty(relative) or not _nonempty(expected_sha):
+        raise ValueError(
+            "delta application %s does not name a pre-apply Coverage archive. "
+            "%s" % (apply_receipt.get("receipt_id"), manual))
+    try:
+        archive_path = kblib.managed_repository_path(
+            result["root"], relative, ".cambium/receipts",
+            suffixes=(".yaml",), must_exist=True,
+        )
+        with open(archive_path, encoding="utf-8") as handle:
+            text = handle.read()
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise ValueError(
+            "pre-apply Coverage archive %s is missing or unreadable (%s). %s" %
+            (relative, exc, manual))
+    actual_sha = kblib.sha256_bytes(text)
+    if actual_sha != expected_sha:
+        raise ValueError(
+            "pre-apply Coverage archive %s holds %s, but delta application %s "
+            "recorded %s. %s" %
+            (relative, actual_sha, apply_receipt.get("receipt_id"),
+             expected_sha, manual))
+    try:
+        parsed = kblib.parse_yaml_subset(text)
+    except kblib.YamlSubsetError as exc:
+        raise ValueError(
+            "pre-apply Coverage archive %s does not parse (%s). %s" %
+            (relative, exc, manual))
+    if not isinstance(parsed, dict):
+        raise ValueError(
+            "pre-apply Coverage archive %s is not a mapping. %s" %
+            (relative, manual))
+    return relative, text, actual_sha, parsed
+
+
 def _corpus_plan_close_expectation(result, item):
     """Derive the non-bypassable current Corpus Planning close condition."""
     plan = check_corpus_plan.validate_corpus_plan(result["root"])
@@ -503,6 +553,54 @@ def _transition_item(item, args, result):
         expected_source = ".cambium/deltas/%s.yaml" % item["id"]
         if source_delta != expected_source:
             raise ValueError("merge-ready batch has no canonical delta to invalidate")
+        # A rollback taken after the delta was applied must additionally undo
+        # the Coverage write.  Binding it to the exact unconsumed application
+        # keeps the tool from deciding which apply is being undone -- the
+        # integrator names it, the tool only verifies the evidence is present
+        # and matches.
+        pending = result.get("pending_delta_applies") or {}
+        pending_current = pending.get("current") or []
+        applied_entry = None
+        if (pending.get("status") == "close-required" and
+                len(pending_current) == 1 and
+                pending_current[0].get("batch") == item["id"]):
+            applied_entry = pending_current[0]
+        applied_receipt_id = None
+        coverage_restore = None
+        if applied_entry is not None:
+            applied_receipt_id = applied_entry.get("selected_receipt")
+            if not _nonempty(args.delta_apply_receipt):
+                raise ValueError(
+                    "batch %s has an unconsumed delta application; rolling it "
+                    "back requires --delta-apply-receipt %s" %
+                    (item["id"], applied_receipt_id))
+            if args.delta_apply_receipt != applied_receipt_id:
+                raise ValueError(
+                    "--delta-apply-receipt %s does not name the unconsumed "
+                    "delta application %s being rolled back" %
+                    (args.delta_apply_receipt, applied_receipt_id))
+            apply_receipt = _receipt(
+                result, args.delta_apply_receipt, "delta application",
+                expected={
+                    "tool": apply_delta.TOOL,
+                    "check": "delta_apply",
+                    "target": item["id"],
+                    "batch_id": item["id"],
+                    "task_id": result["queue"].get("task_id"),
+                    "actor_role": "integrator",
+                    "coverage_ledger_path": check_queue.COVERAGE_PATH,
+                    "delta_path": source_delta,
+                    "delta_sha256": item.get("delta_sha256"),
+                    "after_coverage_sha256": result.get("coverage_sha256"),
+                },
+            )
+            coverage_restore = _pre_apply_coverage_restore(
+                result, apply_receipt)
+            args.coverage_restore = coverage_restore
+        elif _nonempty(args.delta_apply_receipt):
+            raise ValueError(
+                "--delta-apply-receipt is valid only when rolling back a "
+                "batch whose delta was applied")
         archive_delta = (
             ".cambium/receipts/invalidated-deltas/%s-r%d.yaml" %
             (item["id"], result["queue"].get("state_revision", 0) + 1)
@@ -513,7 +611,7 @@ def _transition_item(item, args, result):
             history = []
         if not isinstance(history, list):
             raise ValueError("invalidation_history must be an explicit list")
-        item["invalidation_history"] = history + [{
+        invalidation_record = {
             "transition_receipt": None,
             "invalidated_at": now,
             "reason": args.reason,
@@ -522,7 +620,14 @@ def _transition_item(item, args, result):
             "batch_receipts": previous,
             "delta_gate_receipts": delta_gate_receipts,
             "revalidation_receipts": revalidation_receipts,
-        }]
+        }
+        if coverage_restore is not None:
+            invalidation_record.update({
+                "delta_apply_receipt": applied_receipt_id,
+                "coverage_restored_from": coverage_restore[0],
+                "coverage_restored_sha256": coverage_restore[2],
+            })
+        item["invalidation_history"] = history + [invalidation_record]
         item["state"] = "open"
         item["hold_state"] = "revalidation-required"
         item["hold_reason"] = args.reason
@@ -683,13 +788,22 @@ def main(argv=None):
         print("[FAIL] %s" % exc)
         return 1
 
-    write_coverage = args.transition == "closed"
+    coverage_restore = getattr(args, "coverage_restore", None)
+    write_coverage = args.transition == "closed" or coverage_restore is not None
     try:
-        coverage_new = (_project_closed_coverage(
-            result["coverage"], queue_new, args.id
-        ) if write_coverage else copy.deepcopy(result["coverage"]))
-        coverage_text = (kblib.canonical_yaml(coverage_new)
-                         if write_coverage else before_coverage_text)
+        if args.transition == "closed":
+            coverage_new = _project_closed_coverage(
+                result["coverage"], queue_new, args.id)
+            coverage_text = kblib.canonical_yaml(coverage_new)
+        elif coverage_restore is not None:
+            # Byte-exact restore, not a re-projection: the archived bytes are
+            # the only representation of the pre-apply Coverage that is
+            # provably what the delta was applied on top of.
+            coverage_text = coverage_restore[1]
+            coverage_new = copy.deepcopy(coverage_restore[3])
+        else:
+            coverage_new = copy.deepcopy(result["coverage"])
+            coverage_text = before_coverage_text
     except (TypeError, ValueError, kblib.YamlSubsetError) as exc:
         print("[FAIL] cannot project Coverage close route: %s" % exc)
         return 1
@@ -942,7 +1056,7 @@ def main(argv=None):
                             "batch-close gate changed before write: %s" %
                             "; ".join(locked_close_errors)
                         )
-                if write_coverage:
+                if args.transition == "closed":
                     locked_projection = _project_closed_coverage(
                         current["coverage"], queue_new, args.id
                     )
@@ -951,6 +1065,16 @@ def main(argv=None):
                             coverage_text):
                         raise ValueError(
                             "Coverage close projection changed under lock")
+                elif coverage_restore is not None:
+                    locked_restore = _pre_apply_coverage_restore(
+                        dict(current, root=root),
+                        _receipt(current, args.delta_apply_receipt,
+                                 "delta application"),
+                    )
+                    if (locked_restore[1] != coverage_text or
+                            locked_restore[2] != coverage_restore[2]):
+                        raise ValueError(
+                            "pre-apply Coverage archive changed under lock")
 
             moved_delta = None
             attempted_receipts = []

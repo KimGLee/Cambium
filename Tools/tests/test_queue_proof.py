@@ -319,23 +319,28 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
     def test_pending_guidance_or_amendment_fails(self):
         progress = dict(self.progress)
         progress["guidance_queue"] = [
-            {"id": "G-1", "status": "mapped"},
+            {"guidance_id": "G-1", "disposition": "queue-next",
+             "status": "mapped"},
         ]
         progress["amendments"] = [
             {"id": "A-1", "status": "approved", "writeback_done": False},
             {"id": "A-2", "status": "verified", "writeback_done": False},
         ]
-        checks = self.checks(check_proof._validate_terminal_progress_state(
+        failures = check_proof._validate_terminal_progress_state(
             self.proof, progress
-        ))
+        )
+        checks = self.checks(failures)
         self.assertIn("progress-guidance-pending", checks)
+        self.assertIn("guidance 'G-1' has non-final status 'mapped'",
+                      "\n".join(detail for _, _, detail in failures))
         self.assertIn("progress-amendment-pending", checks)
         self.assertIn("progress-amendment-writeback-pending", checks)
 
     def test_explicit_final_guidance_dispositions_are_not_pending(self):
         progress = dict(self.progress)
         progress["guidance_queue"] = [
-            {"id": "G-1", "status": status}
+            {"guidance_id": "G-1", "disposition": "queue-next",
+             "status": status}
             for status in sorted(check_proof.FINAL_GUIDANCE_STATUSES)
         ]
         progress["amendments"] = [

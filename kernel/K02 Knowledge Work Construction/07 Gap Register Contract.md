@@ -22,9 +22,12 @@ exactly `gap_id`, `gap_statement`, `capability_ids`,
 `candidate_owner_entry_id`, `status`, `close_condition`, `evidence_paths`,
 `promoted_coverage_path`, and `rationale`.
 
-`capability_ids` and `evidence_paths` are explicit YAML lists, including when
-empty. `candidate_owner_entry_id` is either `null` or an existing Global Map
-Entry ID. `promoted_coverage_path` is `null` before promotion and equals the
+`capability_ids` and `evidence_paths` are explicit YAML lists in every
+record, written as a list even when that list is empty. `capability_ids`
+carries at least one Capability ID and is never empty; `evidence_paths` is
+the one that may be empty, and the status vocabulary below states when a
+status requires evidence. `candidate_owner_entry_id` is either `null` or an
+existing Global Map Entry ID. `promoted_coverage_path` is `null` before promotion and equals the
 canonical Coverage object path after promotion. Evidence and promoted paths
 remain outside `.cambium/`.
 

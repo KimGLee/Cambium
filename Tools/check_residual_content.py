@@ -467,9 +467,11 @@ def main(argv=None):
     receipt_context = {"config_fingerprint": None}
 
     def add(check, target, result, details):
+        # The scanned root also binds the Required Queue identity a Gate
+        # consumer compares against; outside a runtime those fields stay absent.
         receipt = kblib.make_receipt(
             TOOL, TOOL_VERSION, check, target, result, details,
-            len(receipts) + 1)
+            len(receipts) + 1, root=args.vault_root)
         receipt["gate_id"] = GATE_ID
         receipt["scan_id"] = safe_scan_id
         receipt["config_fingerprint"] = receipt_context["config_fingerprint"]

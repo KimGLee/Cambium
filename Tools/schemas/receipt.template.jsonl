@@ -80,6 +80,15 @@
 # Stable Gate ID Registry's Tool/Tool-version/Check/Mode tuple selects the
 # canonical summary or aggregator from the producer's diagnostic/member
 # receipts and fails closed on a version mismatch.
+# Every registered Gate producer additionally binds the current Required Queue
+# identity -- `task_id`, `standards_version`, `selected_profile_manifest` --
+# read from `.cambium/state/required_queue.yaml`, because a Standards
+# revalidation boundary consumes a Gate receipt only when those three equal the
+# live Queue values. `adopt_standards.py` binds the planned post-adoption
+# identity, since its receipts are built before the state write and consumed
+# after it. A run outside any Cambium runtime (no `.cambium/state/`) omits the
+# three fields rather than writing null: an omitted field claims nothing, while
+# an explicit null would satisfy consumers that only test field presence.
 # `open -> merge-ready` additionally consumes one current in-batch wrapper:
 #   tool                    : manual-attestation
 #   tool_version            : 1.0.0

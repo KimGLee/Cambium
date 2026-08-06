@@ -41,7 +41,7 @@ manifest objects, their receipts, and `.cambium/deltas/<batch-id>.yaml`.
 | `queued -> open` | current `--require-ready` receipt; closed dependencies; bound confirmation when required; valid current Work Spec pair when non-null; disjoint active manifest; concurrency/exclusivity satisfied |
 | `open -> merge-ready` | exact-manifest delta; valid page receipts and scoped checks; one current K12/14 `batch-review` wrapper binding their exact IDs |
 | `merge-ready -> closed` | delta applied; global gates and Coverage/Queue reconciliation passed; current consistency and batch-close receipts bind the recomputed repository snapshot; when R13 is selected or the manifest intersects the validator-parsed Corpus Planning affected set, the close bundle contains a distinct current Corpus Planning child receipt |
-| `merge-ready -> open` | failed merge; append-only `invalidation_history` freezes the archived delta SHA/path and invalidated receipts |
+| `merge-ready -> open` | failed merge; append-only `invalidation_history` freezes the archived delta SHA/path and invalidated receipts. Before the apply that is the whole record. After the apply the record also names the delta-apply receipt being undone and the byte-exact Coverage restore that undid it, read from the pre-apply Coverage archive the apply wrote; an absent or non-matching archive fails closed for manual recovery |
 
 `Tools/update_queue.py` recomputes the Corpus Planning requirement from the
 current Progress route selection, Queue manifest, and validator-parsed explicit

@@ -409,6 +409,131 @@ class AdoptStandardsTests(unittest.TestCase):
                       check_queue.current_attempt_evidence_barrier(
                           poisoned, "B1"))
 
+    def test_deterministic_boundary_gate_receipt_satisfies_revalidation(self):
+        """A named `check_links` boundary must be satisfiable, not a deadlock.
+
+        The boundary consumer requires the Gate receipt to carry `task_id`,
+        `standards_version`, and `selected_profile_manifest` equal to the
+        post-adoption Queue.  A producer that omits them can never clear the
+        boundary it was named for.
+        """
+        registry = (self.root /
+                    "kernel/K00 Standards Control/12 Control Registry.md")
+        registry.write_text(
+            registry.read_text(encoding="utf-8") +
+            "| wiki-link-integrity | check_links | 1.5.0 "
+            "| link-check-summary | * |\n",
+            encoding="utf-8")
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        self.plan(invalidated_receipt=invalidated_gate, overrides={
+            "changed_predicates": [{
+                "predicate_id": "PRED-LINK-001",
+                "owner_path": self.GOVERNANCE,
+                "change_kind": "modified",
+                "affected_gate_ids": ["wiki-link-integrity"],
+            }],
+            "invalidated_evidence": [{
+                "receipt_id": invalidated_gate,
+                "predicate_ids": ["PRED-LINK-001"],
+                "dimension_ids": ["coverage_and_integration"],
+                "boundary_ids": ["INV-B1-LINKS"],
+                "reason_code": "predicate-changed",
+                "revalidation_scope_ids": ["B1"],
+            }],
+            "invalidation_boundaries": [{
+                "boundary_id": "INV-B1-LINKS",
+                "predicate_ids": ["PRED-LINK-001"],
+                "target_kind": "batch",
+                "target_ids": ["B1"],
+                "required_gate_ids": ["wiki-link-integrity"],
+            }],
+            "boundary_gate_reruns": ["wiki-link-integrity"],
+        })
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+
+        receipts = self.root / ".cambium/receipts/links.jsonl"
+        completed = self.run_tool(
+            "check_links.py", "--receipts", str(receipts))
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        summary = [
+            json.loads(line) for line in
+            receipts.read_text(encoding="utf-8").splitlines()
+        ][-1]
+        self.assertEqual("link-check-summary", summary["check"])
+
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        for field in ("task_id", "standards_version",
+                      "selected_profile_manifest"):
+            self.assertEqual(result["queue"].get(field), summary.get(field),
+                             field)
+        self.assertEqual("3.1.0", summary["standards_version"])
+        context, errors = check_queue.standards_revalidation_context(
+            result, "B1", {"wiki-link-integrity": summary["receipt_id"]})
+        self.assertEqual([], errors)
+        self.assertEqual(
+            [{"required_gate_id": "wiki-link-integrity",
+              "receipt_id": summary["receipt_id"]}],
+            context["boundary_gate_receipts"])
+
+    def test_boundary_gate_receipt_without_identity_cannot_clear(self):
+        """Dropping the bound identity must fail closed, not silently pass."""
+        registry = (self.root /
+                    "kernel/K00 Standards Control/12 Control Registry.md")
+        registry.write_text(
+            registry.read_text(encoding="utf-8") +
+            "| wiki-link-integrity | check_links | 1.5.0 "
+            "| link-check-summary | * |\n",
+            encoding="utf-8")
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        self.plan(invalidated_receipt=invalidated_gate, overrides={
+            "changed_predicates": [{
+                "predicate_id": "PRED-LINK-001",
+                "owner_path": self.GOVERNANCE,
+                "change_kind": "modified",
+                "affected_gate_ids": ["wiki-link-integrity"],
+            }],
+            "invalidated_evidence": [{
+                "receipt_id": invalidated_gate,
+                "predicate_ids": ["PRED-LINK-001"],
+                "dimension_ids": ["coverage_and_integration"],
+                "boundary_ids": ["INV-B1-LINKS"],
+                "reason_code": "predicate-changed",
+                "revalidation_scope_ids": ["B1"],
+            }],
+            "invalidation_boundaries": [{
+                "boundary_id": "INV-B1-LINKS",
+                "predicate_ids": ["PRED-LINK-001"],
+                "target_kind": "batch",
+                "target_ids": ["B1"],
+                "required_gate_ids": ["wiki-link-integrity"],
+            }],
+            "boundary_gate_reruns": ["wiki-link-integrity"],
+        })
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+        receipts = self.root / ".cambium/receipts/links.jsonl"
+        completed = self.run_tool(
+            "check_links.py", "--receipts", str(receipts))
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        # Reproduce the pre-fix producer byte-for-byte: same Gate ID, same
+        # producer tuple, no bound Queue identity.
+        rows = [json.loads(line) for line in
+                receipts.read_text(encoding="utf-8").splitlines()]
+        for row in rows:
+            for field in kblib.RECEIPT_IDENTITY_FIELDS:
+                row.pop(field, None)
+        receipts.write_text(
+            "".join(json.dumps(row, ensure_ascii=False) + "\n"
+                    for row in rows), encoding="utf-8")
+        summary = rows[-1]
+        result = check_queue.validate_runtime(self.root)
+        _context, errors = check_queue.standards_revalidation_context(
+            result, "B1", {"wiki-link-integrity": summary["receipt_id"]})
+        self.assertTrue(any("standards_version" in error for error in errors),
+                        errors)
+
     def test_affected_open_and_merge_ready_batches_fail_without_safe_state(self):
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         plan = self.plan(invalidated_receipt=invalidated_gate)
@@ -427,6 +552,62 @@ class AdoptStandardsTests(unittest.TestCase):
             self.root, plan, catalog=runtime["receipt_catalog"],
             queue=queue, progress=runtime["progress"], validate_current=True)
         self.assertTrue(any("roll it back" in error for error in errors), errors)
+
+    def plan_errors(self, plan):
+        runtime = check_queue.validate_runtime(self.root)
+        return check_queue.standards_adoption_plan_errors(
+            self.root, plan, catalog=runtime["receipt_catalog"],
+            queue=runtime["queue"], progress=runtime["progress"],
+            validate_current=True)
+
+    def test_boundary_without_any_enforcement_path_is_refused(self):
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        for kind, targets in (
+                ("terminal-audit", ["terminal-audit"]),
+                ("maintenance-completion", ["maintenance-completion"]),
+                ("profile-load", ["profiles/test-profile/profile.md"]),
+                ("task", ["fixture-task"]),
+                ("receipt", [invalidated_gate])):
+            with self.subTest(target_kind=kind):
+                plan = self.plan(invalidated_receipt=invalidated_gate)
+                plan["invalidation_boundaries"][0].update({
+                    "target_kind": kind, "target_ids": targets,
+                })
+                plan["invalidated_evidence"][0]["revalidation_scope_ids"] = []
+                self.assertTrue(any(
+                    "boundary INV-B1-READY has target_kind %r and no "
+                    "invalidated evidence scoping it to a Queue batch" % kind
+                    in error for error in self.plan_errors(plan)),
+                    self.plan_errors(plan))
+
+    def test_non_batch_boundary_stays_valid_when_evidence_scopes_a_batch(self):
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        plan = self.plan(invalidated_receipt=invalidated_gate)
+        plan["invalidation_boundaries"][0].update({
+            "target_kind": "terminal-audit",
+            "target_ids": ["terminal-audit"],
+        })
+        self.assertEqual(["B1"],
+                         plan["invalidated_evidence"][0]["revalidation_scope_ids"])
+        self.assertEqual([], [error for error in self.plan_errors(plan)
+                              if "no gate rerun" in error])
+        # Enforcement is per boundary, not per target_kind: this
+        # `terminal-audit` boundary binds B1 exactly as a batch boundary would.
+        requirements = check_queue.standards_revalidation_requirements(
+            self.root, {"standards_adoptions": [{
+                "plan_path": self.PLAN,
+                "plan_sha256": kblib.sha256_file(self.root / self.PLAN),
+                "adopted_at": "2026-08-04T00:05:00Z",
+            }]})
+        self.assertEqual(["INV-B1-READY"],
+                         [row["boundary_id"] for row in requirements["B1"]])
+
+    def test_batch_boundary_needs_no_invalidated_evidence_scope(self):
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        plan = self.plan(invalidated_receipt=invalidated_gate)
+        plan["invalidated_evidence"][0]["revalidation_scope_ids"] = []
+        self.assertEqual([], [error for error in self.plan_errors(plan)
+                              if "no gate rerun" in error])
 
     def test_invalidated_consumer_must_be_bound_by_its_own_scope(self):
         invalidated_gate = self.open_b1_and_hold_for_revalidation()

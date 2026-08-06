@@ -105,7 +105,8 @@ def _pending_controls(progress):
             raise ValueError("Progress guidance_queue[%d] must be a mapping" %
                              index)
         if entry.get("status") not in FINAL_CONTROL_STATUSES:
-            pending_guidance.append(str(entry.get("id") or "#%d" % index))
+            pending_guidance.append(
+                str(entry.get("guidance_id") or "#%d" % index))
 
     pending_amendments = []
     amendments = progress.get("amendments")
