@@ -104,7 +104,7 @@ The category does not transfer ownership of definitions, mechanisms, metrics, or
 |---|---|
 | `not-required` | The canonical topic does not require an independent Card; the record names the accepted combined Card or gives a bounded reason that no interview artifact is required. |
 | `missing` | The topic requires interview expression coverage, but no target Card has been registered. |
-| `mapped` | A target Card and reciprocal canonical binding resolve, but [[profiles/examples/agent-atlas/registries/audit-dimensions#Interview Readiness Acceptance|Interview Readiness Acceptance]] has not passed. |
+| `mapped` | A target Card and reciprocal canonical binding resolve, but [[profiles/examples/agent-atlas/registries/audit-dimensions#Interview Readiness Acceptance\|Interview Readiness Acceptance]] has not passed. |
 | `interview-ready` | The mapped Card has passed Interview Readiness Acceptance under the registered gate and authority. |
 
 No intermediate expression values are defined. Drafting progress stays in `authoring_status`; it never creates or advances `interview_status`. Status-axis independence is governed by [[kernel/K11 Expression Layer/02 Expression Coverage and Readiness|K11/02 Expression Coverage and Readiness]] and [[kernel/K08 Metadata and Status/03 Status Axes|K08/03 Status Axes]].

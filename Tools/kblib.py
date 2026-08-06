@@ -1272,11 +1272,15 @@ def repository_snapshot_sha256(root):
 
     The digest is a deterministic, path-sensitive snapshot of every regular
     file below ``root`` except the top-level ``.git`` and ``.cambium`` control
-    namespaces.  Runtime state is bound separately by Queue receipts, so
-    excluding it avoids a receipt/state hash cycle.  Symlinks and special
-    files fail closed because their target bytes are not a stable repository
-    snapshot.  Each file is checked before and after reading so an in-place
-    concurrent mutation cannot silently produce a mixed digest.
+    namespaces and every ``__pycache__`` directory at any depth.  Runtime state
+    is bound separately by Queue receipts, so excluding it avoids a
+    receipt/state hash cycle.  ``__pycache__`` is excluded because the gates
+    execute in-repository Python against the same tree they measure: importing
+    a Tools module writes bytecode into the snapshot, so a digest taken before
+    a check would no longer match the digest observed after it.  Symlinks and
+    special files fail closed because their target bytes are not a stable
+    repository snapshot.  Each file is checked before and after reading so an
+    in-place concurrent mutation cannot silently produce a mixed digest.
     """
     root_real = os.path.realpath(os.path.abspath(root))
     if not os.path.isdir(root_real):
@@ -1291,10 +1295,13 @@ def repository_snapshot_sha256(root):
         if relative_dir == ".":
             directories[:] = sorted(
                 name for name in directories
-                if name not in (".git", ".cambium")
+                if name not in (".git", ".cambium", "__pycache__")
             )
         else:
-            directories[:] = sorted(directories)
+            directories[:] = sorted(
+                name for name in directories
+                if name != "__pycache__"
+            )
         for name in directories:
             candidate = os.path.join(current, name)
             if os.path.islink(candidate):

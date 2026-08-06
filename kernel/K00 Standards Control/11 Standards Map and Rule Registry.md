@@ -29,42 +29,42 @@ The following high-risk objects have a single canonical owner corpus-wide. Modif
 
 | Object | Canonical owner |
 |---|---|
-| Kernel runtime route membership and route-to-Read-Set binding | [[kernel/Read Sets/Read Sets Index|Read Sets Index]] |
-| Task-to-route combinations | [[kernel/K00 Standards Control/02 Task Routing|Task Routing]] |
-| Runtime Card ownership, loading order, and source read-back protocol | [[kernel/K00 Standards Control/01 Operating Role and Reading Protocol|Operating Role and Reading Protocol]] |
-| Runtime namespace startup and interrupted-state recovery | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Runtime Startup Gate|Runtime Startup Gate]] |
-| Large-scale creation, move, or deletion admission | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Large-scale Pre-execution Gate|Large-scale Pre-execution Gate]] |
-| Corpus Planning applicability, lifecycle, and reconciliation | [[kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle|Corpus Planning Applicability and Lifecycle]] |
-| Corpus Planning runtime, audit, deterministic-check, receipt, and affected-path boundaries | [[kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries|Corpus Planning Runtime Audit and Gate Boundaries]] |
-| `Global Map` exact role and record contract | [[kernel/K02 Knowledge Work Construction/05 Global Map Contract|Global Map Contract]] |
-| `Capability Matrix` exact role and record contract | [[kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract|Capability Matrix Contract]] |
-| `Gap Register` exact role and record contract | [[kernel/K02 Knowledge Work Construction/07 Gap Register Contract|Gap Register Contract]] |
-| M-tier page acceptance checklist | [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review#M-tier Gate Checklist|M-tier Gate Checklist]] |
-| Terminal Proof formula | [[kernel/K13 Task Runtime and Execution Control/11 Completion Policy|Completion Policy]] |
-| Terminal Audit procedure and finding convergence | [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence|Terminal Audit and Convergence]] |
-| Terminal Proof field contract and deterministic completion gate | [[kernel/K12 Quality Assurance/16 Terminal Proof Contract|Terminal Proof Contract]] |
-| `task_state` vocabulary | [[kernel/K13 Task Runtime and Execution Control/03 Task State and Transition Rules|Task State and Transition Rules]] |
-| Required Queue schema, revisions, batch lifecycle, and holds | [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue Contract and Lifecycle]] |
-| Simple/complex Batch Work Spec declaration, managed binding, immutability, and Queue ownership boundary | [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle#Batch Work Specification Binding|Batch Work Specification Binding]] |
-| Queue transition authority, concurrency, write partition, and serial integration | [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]] |
-| Active-task Standards adoption semantics, changed-predicate scope, evidence invalidation, and required gate reruns | [[kernel/K12 Quality Assurance/10 Standards Version Adoption|Standards Version Adoption]] |
-| Active-task Standards adoption state-write and interrupted-transaction boundary | [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction|Standards Adoption State Transaction]] |
-| Guidance classification and impact | [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis|Guidance Classification and Impact Analysis]] |
-| Guidance disposition and safe switching | [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching|Guidance Disposition and Safe Switching]] |
-| Amendment record and controlled replanning | [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|Amendment Log and Controlled Replanning]] |
-| authoring / expression / learning status vocabularies | [[kernel/K08 Metadata and Status/03 Status Axes|Status Axes]] + `Expression Status Axis` role |
-| `evidence_maturity` definition | [[kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]] |
-| Evidence roles | [[kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] |
-| Source Note / Research Synthesis templates | [[kernel/K06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles|Intake Note Types and Source Roles]] |
-| Evaluation provenance element list | [[kernel/K07 Sources and Accuracy/04 Evaluation and Source Quality|Evaluation and Source Quality]] |
-| Official source policy | [[kernel/K07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]] |
+| Kernel runtime route membership and route-to-Read-Set binding | [[kernel/Read Sets/Read Sets Index\|Read Sets Index]] |
+| Task-to-route combinations | [[kernel/K00 Standards Control/02 Task Routing\|Task Routing]] |
+| Runtime Card ownership, loading order, and source read-back protocol | [[kernel/K00 Standards Control/01 Operating Role and Reading Protocol\|Operating Role and Reading Protocol]] |
+| Runtime namespace startup and interrupted-state recovery | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Runtime Startup Gate\|Runtime Startup Gate]] |
+| Large-scale creation, move, or deletion admission | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Large-scale Pre-execution Gate\|Large-scale Pre-execution Gate]] |
+| Corpus Planning applicability, lifecycle, and reconciliation | [[kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle\|Corpus Planning Applicability and Lifecycle]] |
+| Corpus Planning runtime, audit, deterministic-check, receipt, and affected-path boundaries | [[kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries\|Corpus Planning Runtime Audit and Gate Boundaries]] |
+| `Global Map` exact role and record contract | [[kernel/K02 Knowledge Work Construction/05 Global Map Contract\|Global Map Contract]] |
+| `Capability Matrix` exact role and record contract | [[kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract\|Capability Matrix Contract]] |
+| `Gap Register` exact role and record contract | [[kernel/K02 Knowledge Work Construction/07 Gap Register Contract\|Gap Register Contract]] |
+| M-tier page acceptance checklist | [[kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review#M-tier Gate Checklist\|M-tier Gate Checklist]] |
+| Terminal Proof formula | [[kernel/K13 Task Runtime and Execution Control/11 Completion Policy\|Completion Policy]] |
+| Terminal Audit procedure and finding convergence | [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence\|Terminal Audit and Convergence]] |
+| Terminal Proof field contract and deterministic completion gate | [[kernel/K12 Quality Assurance/16 Terminal Proof Contract\|Terminal Proof Contract]] |
+| `task_state` vocabulary | [[kernel/K13 Task Runtime and Execution Control/03 Task State and Transition Rules\|Task State and Transition Rules]] |
+| Required Queue schema, revisions, batch lifecycle, and holds | [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle\|Required Queue Contract and Lifecycle]] |
+| Simple/complex Batch Work Spec declaration, managed binding, immutability, and Queue ownership boundary | [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle#Batch Work Specification Binding\|Batch Work Specification Binding]] |
+| Queue transition authority, concurrency, write partition, and serial integration | [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration\|Batch Admission Transitions and Serial Integration]] |
+| Active-task Standards adoption semantics, changed-predicate scope, evidence invalidation, and required gate reruns | [[kernel/K12 Quality Assurance/10 Standards Version Adoption\|Standards Version Adoption]] |
+| Active-task Standards adoption state-write and interrupted-transaction boundary | [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction\|Standards Adoption State Transaction]] |
+| Guidance classification and impact | [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis\|Guidance Classification and Impact Analysis]] |
+| Guidance disposition and safe switching | [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching\|Guidance Disposition and Safe Switching]] |
+| Amendment record and controlled replanning | [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning\|Amendment Log and Controlled Replanning]] |
+| authoring / expression / learning status vocabularies | [[kernel/K08 Metadata and Status/03 Status Axes\|Status Axes]] + `Expression Status Axis` role |
+| `evidence_maturity` definition | [[kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata\|Evidence and Relationship Metadata]] |
+| Evidence roles | [[kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline\|Source-to-Knowledge Pipeline]] |
+| Source Note / Research Synthesis templates | [[kernel/K06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles\|Intake Note Types and Source Roles]] |
+| Evaluation provenance element list | [[kernel/K07 Sources and Accuracy/04 Evaluation and Source Quality\|Evaluation and Source Quality]] |
+| Official source policy | [[kernel/K07 Sources and Accuracy/03 Official and Cross-source Verification\|Official and Cross-source Verification]] |
 | Reader-facing language policy | `Language Contract` slot |
 | Expression-layer language policy | `Language Contract` slot + `Expression Layer Entry` registry |
 | Deep-dive expression skeleton | `Expression Layer Entry` registry |
-| Batch acceptance checklist | [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]] |
-| Module and Coverage acceptance checklist | [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]] |
-| Source-to-Knowledge pipeline | [[kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline|Source-to-Knowledge Pipeline]] |
-| Freshness and volatility vocabulary | [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]] |
-| Retirement and merge procedure | [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]] |
-| Maintenance-run budget envelope | [[kernel/K00 Standards Control/08 Maintenance Run Envelope|Maintenance Run Envelope]] |
-| Judgment item to receipt dimension map | [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]] |
+| Batch acceptance checklist | [[kernel/K12 Quality Assurance/14 Batch Review\|Batch Review]] |
+| Module and Coverage acceptance checklist | [[kernel/K12 Quality Assurance/03 Module and Coverage Review\|Module and Coverage Review]] |
+| Source-to-Knowledge pipeline | [[kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline\|Source-to-Knowledge Pipeline]] |
+| Freshness and volatility vocabulary | [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata\|Review Source and Migration Metadata]] |
+| Retirement and merge procedure | [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy\|Split and Duplication Policy]] |
+| Maintenance-run budget envelope | [[kernel/K00 Standards Control/08 Maintenance Run Envelope\|Maintenance Run Envelope]] |
+| Judgment item to receipt dimension map | [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] |
