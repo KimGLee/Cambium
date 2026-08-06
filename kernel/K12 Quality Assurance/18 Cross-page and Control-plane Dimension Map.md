@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/K12 Quality Assurance Standard|K12 Quality Assurance Standard]].
 - Previous: [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract|Gate Receipt Payload Contract]].
+- Next: [[kernel/K12 Quality Assurance/19 Incremental Audit Planning|Incremental Audit Planning]].
 
 ## Purpose
 
@@ -23,7 +24,7 @@
 | `K11/04` | evidence qualification is preserved in expression | emits | source_and_currentness |
 | `K11/05` | resolvable bidirectional canonical bindings | emits | structure_and_links |
 | `K11/07` | migration conservation of content and bindings | emits | coverage_and_integration |
-| `K12/03 Coverage` | the other eight items | emits | coverage_and_integration |
+| `K12/03 Coverage` | the other nine items | emits | coverage_and_integration |
 | `K12/03 Coverage` | core pages not thinner than new peripheral or frontier pages | triggers → `K12/03 Module` depth balance | — |
 | `K12/14 Batch` | Required pages at target `authoring_status`; delta applied, both ledgers in sync | emits | coverage_and_integration |
 | `K12/14 Batch` | canonical ownership, body links, navigation synchronized | emits | structure_and_links |

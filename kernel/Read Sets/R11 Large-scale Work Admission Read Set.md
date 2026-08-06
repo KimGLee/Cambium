@@ -22,7 +22,7 @@ First load [[kernel/Read Sets/R01 Core Bootstrap Read Set|R01 Core Bootstrap]], 
 - [[kernel/K02 Knowledge Work Construction/07 Gap Register Contract|Gap Register Contract]]
 - [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue Contract and Lifecycle]]
 - [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]]
-- [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Incremental Audit Planning|Incremental Audit Planning]]
+- [[kernel/K12 Quality Assurance/19 Incremental Audit Planning#Incremental Audit Planning|Incremental Audit Planning]]
 
 Also load the route for the actual work. R11 never replaces that route.
 

@@ -1,0 +1,49 @@
+# Gap Register for the worked-planning example.
+# Contract owner: kernel/K02 Knowledge Work Construction/07 Gap Register Contract.md
+# `capability_ids` always carries at least one Capability ID; `evidence_paths`
+# is an explicit list even when empty. Every link here is reciprocated by the
+# `gap_ids` of the named capability.
+#
+# Four of the six statuses appear below. `promoted` and `resolved` are absent on
+# purpose: both require a real Coverage object and initialized runtime state
+# under `.cambium/`, which this public repository deliberately does not carry.
+
+schema_version: 1
+
+gaps:
+  - gap_id: GAP-TORQUE-COVERAGE
+    gap_statement: "The bearing service procedure quotes torque figures for two of the three bearing families; the hybrid family has none."
+    capability_ids: [CAP-CHOOSE-BEARING-SERVICE]
+    candidate_owner_entry_id: GM-BEARING-SERVICE
+    status: confirmed
+    close_condition: "The hybrid-family torque and preload figures are quoted with their document revision on the bearing service procedure page."
+    evidence_paths: ["profiles/examples/worked-planning/corpus/Source Notes/Manufacturer Service Documents.md"]
+    promoted_coverage_path: null
+    rationale: "Two volunteers independently stopped at the hybrid case, so this is a real gap in the decision path rather than a wording problem."
+  - gap_id: GAP-PRESS-FIT-TOOLING
+    gap_statement: "The workshop has no page on press tooling selection for cartridge replacement."
+    capability_ids: [CAP-CHOOSE-BEARING-SERVICE]
+    candidate_owner_entry_id: null
+    status: rejected
+    close_condition: "Not applicable; the workshop does not press cartridges in-house."
+    evidence_paths: []
+    promoted_coverage_path: null
+    rationale: "Cartridge pressing is sent to the partner shop, so tooling selection is not a capability this corpus owns. Recorded rather than deleted so the question is not re-asked each season."
+  - gap_id: GAP-CARBON-RIM-RANGE
+    gap_statement: "The working tension range does not cover carbon rims, whose published maximum differs materially from the alloy rims in stock."
+    capability_ids: [CAP-TRUE-WHEEL-TO-SPEC]
+    candidate_owner_entry_id: GM-SPOKE-TENSION
+    status: deferred
+    close_condition: "A carbon-rim working range is stated with its own published maximum and safety margin."
+    evidence_paths: []
+    promoted_coverage_path: null
+    rationale: "The workshop stocks no carbon rims this year. The decision re-opens when the first carbon rim is accepted for a rebuild."
+  - gap_id: GAP-BENCH-TIME-DATA
+    gap_statement: "Bench time is recorded on only one completed case, which is too little to quote a member a service time."
+    capability_ids: [CAP-QUOTE-SERVICE-TIME]
+    candidate_owner_entry_id: GM-REBUILD-CASE
+    status: candidate
+    close_condition: "Retained bench-time measurements exist for enough completed cases that a quoted range can name its own spread."
+    evidence_paths: []
+    promoted_coverage_path: null
+    rationale: "Discovered while reading the one existing case; not yet accepted as a corpus gap because the workshop may decide quoting service time is out of scope."

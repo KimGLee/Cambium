@@ -13,6 +13,8 @@ This module specifies how verification evidence is reused across single pages, b
 
 The core chain: changed objects and acceptance predicates generate a dimension-specific AuditPlan, which produces append-only AuditReceipt records carrying dependency / contract fingerprints; receipts are reusable while predicates and fingerprints remain valid, relevant changes trigger invalidation, bounded expansion applies when local failures show systemic impact, and finally Terminal reconciliation runs on the frozen snapshot. Append-only and immutable mean protocol-level history preservation, not cryptographic tamper resistance.
 
+The `AuditPlan` a batch generates from this decision, and the checks that are incremental by default, are owned by [[kernel/K12 Quality Assurance/19 Incremental Audit Planning|Incremental Audit Planning]].
+
 ## Audit Layers
 
 Each layer owns different questions; identical work must not be hidden behind different names:
@@ -161,38 +163,6 @@ If a targeted check finds a systemic problem that may affect pages of the same k
 
 A local problem MUST NOT lead to unbounded re-review of the whole vault, and a passing sample MUST NOT override a known failure.
 
-## Incremental Audit Planning
-
-Each batch generates an `AuditPlan` exactly once, before close; at batch start only the Audit Receipt Register is loaded, with no separate AuditPlan:
-
-```text
-1. Freeze current artifact and contract snapshot.
-2. Diff against the latest accepted snapshot.
-3. Resolve direct and dependency invalidations.
-4. Partition checks into:
-   - mandatory full deterministic
-   - changed-scope deterministic
-   - invalidated semantic review
-   - overdue (freshness) targeted review
-   - bounded sampling
-   - reusable evidence
-5. Run checks and emit new receipts.
-6. Reconcile invalidated, replaced and reused receipts.
-7. Close only when required invalidations are zero.
-```
-
-The mandatory full deterministic partition of step 4 is the [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]]; this module decides the plan, not the list's membership.
-
-## Incremental By Default
-
-The following checks cover only the changed, invalidated, overdue, or sampled scope by default (long-term assurance for P0/P1 pages is carried by freshness-expiry re-verification, with no permanent manual review scope):
-
-- Manual review of mechanisms, why-chains, failures, and production depth;
-- Item-by-item verification of source claims against body tone;
-- Deep review of formula derivations and numeric context;
-- host-specific rendering exceptions;
-- profile-specific semantic review registered in the `Audit Dimension Registry`.
-
 ## Specialized Audit Boundary
 
 A specialized Audit MUST first declare its cross-batch invariant:
@@ -211,7 +181,7 @@ If a specialized Audit finds a local receipt already invalidated, it SHOULD crea
 
 The canonical Terminal Audit procedure lives in [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence#Terminal Audit|Terminal Audit]], while the Terminal Proof field list (including `full_deterministic_results`) lives in [[kernel/K12 Quality Assurance/16 Terminal Proof Contract#Terminal Proof Contract|Terminal Proof Contract]]; this section specifies only the evidence reuse and invalidation reconciliation rules within that procedure.
 
-`unresolved_invalidations` MUST be `0`. Reusing a receipt is not lowering the standard; it requires proving that the audited object and the acceptance conditions have not undergone relevant change.
+Reusing a receipt is not lowering the standard; it requires proving that the audited object and the acceptance conditions have not undergone relevant change.
 
 ## Related
 

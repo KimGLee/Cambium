@@ -35,6 +35,8 @@ The following rules are in effect by default in all long-running tasks:
   ([[kernel/K12 Quality Assurance/06 Completion Gate and Reporting|K12/06]],
   [[kernel/K13 Task Runtime and Execution Control/11 Completion Policy|K13/11]]).
 
+The machine-readable membership of the execution defaults a selected profile MAY override, and of the constants it MUST NOT, is registered in `kernel/K00 Standards Control/execution-defaults-base.yaml`. That registry owns membership only: each entry names the module that owns the item's meaning, kernel default value, unit, and range, and the grant or prohibition itself stays with that module. The profile-side declaration form is owned by the profile interface, which points at the same registry.
+
 ## Related
 
 - [[kernel/K00 Standards Overview|Standards Overview]]

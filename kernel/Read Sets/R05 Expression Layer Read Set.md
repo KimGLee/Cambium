@@ -51,7 +51,7 @@ Before an expression artifact closes or advances readiness, read:
 - [[kernel/K12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - The profile's supplemental audit dimensions, scans, readiness gate, and extension gates that apply to the artifact.
 
-Once an expression artifact enters scope, the R05 kernel floor cannot be marked `not_applicable`. A profile with no registered artifact has no concrete R05 task target; that is absence of an object, not permission to bypass the route.
+Once an expression artifact enters scope, the R05 kernel floor cannot be marked `not_applicable`. A profile with no registered artifact has no concrete R05 task target; that is absence of an object, not permission to bypass the route. Both sentences are the loading consequence of [[kernel/K11 Expression Layer/01 Expression Architecture and Separation#Core Separation|Core Separation]], which owns the rule.
 
 ## Related
 

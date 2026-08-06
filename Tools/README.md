@@ -38,8 +38,11 @@ The core distribution tools are `check_links`, `check_vocab`, `check_moc`,
 `check_queue`, `check_batch_close`, `compile_queue`, `update_task`,
 `update_queue`, `register_amendment`, `apply_amendment`, `adopt_standards`,
 `render_queue`, `apply_delta`, `compose_vocab`, `check_profile`,
-`check_residual_content`, `stamp_cards`, and `kblib`.
+`check_residual_content`, `stamp_cards`, `maintenance_candidates`, and
+`kblib`.
 `check_freshness` and `duplicate_check` are maintenance-run tools.
+This list and the inventory table below name every `Tools/*.py` file shipped
+with Cambium; a script absent from both is not part of the distribution.
 
 ## Tool inventory
 
@@ -61,13 +64,14 @@ The core distribution tools are `check_links`, `check_vocab`, `check_moc`,
 | `apply_amendment.py` | Consume one registered approved scope/disposition change as a guarded Coverage/Queue/Progress transaction. The plan and registration receipt bind exact before revisions and all three SHAs to a complete Coverage proposal; `scope-replan` recompiles current Queue structure and `cancel-batch` retires one queued/open leaf without erasing history. A durable prepare receipt plus lock-owner fingerprints make an interrupted multi-file write diagnosable; commit/abort receipts record the consumed registration and outcome. It does not write non-scope Task Contract changes; direct post-materialization edits fail closed and currently require a preserved successor task | `python3 Tools/apply_amendment.py . --plan .cambium/deltas/amendments/A1.yaml --expected-coverage-sha256 sha256:... --expected-progress-sha256 sha256:... --expected-queue-sha256 sha256:... --actor-role integrator --apply` |
 | `adopt_standards.py` | Sole active-task Standards/Profile adoption writer (K12/10 semantics; K13/15 transaction). Its closed YAML plan binds approved K00/03 bytes, deterministic after Kernel/Profile snapshots, Task/Contract identity, Queue revisions, three state SHAs, changed predicates, dimension/boundary-specific invalidated evidence, and immediate/deferred gates. Dry-run is default; apply accepts only `active`/`paused`, rejects incompatible Work Specs, affected `merge-ready` batches, or affected `open` batches without `revalidation-required`, and changes no lifecycle/hold itself. It requires all three canonical state objects to satisfy the current schema, synchronizes identity/load set, advances Queue/Progress `queue_revision` once, records append-only adoption history, and consumes immediate Queue consistency before commit. Deferred batch-close/Terminal gates wait for their boundaries. Historical receipts are not rewritten and remain catalogued, but only current producer protocols may satisfy the live execution chain. Prepare/commit/abort plus the lock recover partial writes; no Markdown adoption report is produced | `python3 Tools/adopt_standards.py . --plan .cambium/deltas/standards-adoptions/SA-001.yaml --apply --actor-role integrator` |
 | `render_queue.py` | Deterministically render the optional human view at `.cambium/reports/required_queue.md`, including each Queue item's Work Spec path/SHA binding; validates canonical state first and never reads the Markdown back as input | `python3 Tools/render_queue.py .` |
-| `apply_delta.py` | Deterministic application of one worker Coverage delta during serial merge. Every mode rejects Queue/compiler-owned control fields. Canonical `--root` mode binds the exact managed paths and merge-ready manifest, requires integrator role plus current Coverage/Queue SHAs, uses the shared writer lock, revalidates the result, rolls back ordinary failures, and publishes a bound receipt; `next_batch_updates` remains a suggestion for the integrator. Detached two-path mode remains for non-runtime ledgers and is not a canonical-state write | `python3 Tools/apply_delta.py .cambium/state/coverage_ledger.yaml .cambium/deltas/B1.yaml --root . --expected-coverage-sha256 sha256:... --expected-queue-sha256 sha256:... --actor-role integrator --apply` |
+| `apply_delta.py` | Deterministic application of one worker Coverage delta during serial merge. Every mode rejects Queue/compiler-owned control fields. Canonical `--root` mode binds the exact managed paths and merge-ready manifest, requires integrator role plus current Coverage/Queue SHAs, uses the shared writer lock, revalidates the result, rolls back ordinary failures, and publishes a bound receipt into a new file rather than appending to a shared JSONL -- omit `--receipts` and the run names `.cambium/receipts/<receipt_id>.jsonl` itself; an existing `--receipts` path is refused. `next_batch_updates` remains a suggestion for the integrator. Detached two-path mode remains for non-runtime ledgers and is not a canonical-state write | `python3 Tools/apply_delta.py .cambium/state/coverage_ledger.yaml .cambium/deltas/B1.yaml --root . --expected-coverage-sha256 sha256:... --expected-queue-sha256 sha256:... --actor-role integrator --apply` |
 | `compose_vocab.py` | Persistent vocabulary compiler: composes `vocab.yaml` from the kernel base and the profile selected in K00/03 active state. The selected manifest declares `profile_id` and its one `Vocabulary Extensions` binding; `volatility_defaults` registers each domain once; the resolved extensions path supplies base-field extension ownership; profile-only controlled fields are added to the frontmatter list automatically. `--extensions` may repeat the bound active path but cannot select another profile; the output header is provenance only. `--check` requires both parsed values and deterministic provenance/rendering to match | `python3 Tools/compose_vocab.py --check` |
-| `check_profile.py` | Filled-profile structural check: derives the slot list from `profiles/README.md`; verifies identity syntax and directory agreement, slot bindings, sparse execution overrides against their closed registry, and `Configured`/inactive table consistency; rejects leftover `TODO(profile)` markers and reserved IDs. It checks structure, never answer quality, and is not run against `_template` itself | `python3 Tools/check_profile.py profiles/<profile-id> --receipts Tools/receipts/profile.jsonl` |
+| `check_profile.py` | Filled-profile structural check: derives the slot list from `profiles/README.md`; verifies identity syntax and directory agreement, slot bindings, sparse execution overrides against the closed kernel registry `kernel/K00 Standards Control/execution-defaults-base.yaml` (membership, and the `value_domain` an item's owner module fixes), and `Configured`/inactive table consistency; rejects leftover `TODO(profile)` markers and reserved IDs. It checks structure, never answer quality, and is not run against `_template` itself | `python3 Tools/check_profile.py profiles/<profile-id> --receipts Tools/receipts/profile.jsonl` |
 | `check_residual_content.py` | Generic K12/09 item 6 residual-content scanner. The selected profile owns every accepted/excluded content root and every literal frontmatter/heading matcher; only VCS metadata directories named `.git`, `.hg`, or `.svn` are always outside traversal. The tool owns safe traversal, fence-aware matching, a hard ≤55-second evidence-production budget, zero-file, missing-accepted-root, and inert-matcher failure, receipts, and `0/1/2` exit semantics; missing excluded roots are allowed. K12/09 item 6 non-triviality: when a run finds no candidate, the accepted roots are re-read as the profile's own known-residual sample and the configuration must recognise at least one Markdown file there, otherwise the run fails with `residual-content-inert-matcher` instead of reporting a zero-candidate pass; the passing summary names the witness. The caller must still satisfy the kernel's ≤60-second whole-command contract. `--scan-id` binds every receipt to the stable registry ID; receipts from a successfully loaded config record its SHA-256 so configuration changes invalidate old evidence. Findings are candidates only. Tool contract owner: K12/09 item 6; scan-definition owner: selected profile `Registered Scan Registry` | `python3 Tools/check_residual_content.py . --scan-id <stable-scan-id> --config profiles/<profile-id>/scan-configs/<scan>.yaml --time-limit 55 --receipts Tools/receipts/residual.jsonl` |
-| `stamp_cards.py` | Kernel route and Runtime Card verification (K00/03 Write-back Checklist): checks the shared `kernel-runtime-routes` registry identity, exact R01-R13 coverage across both indexes and the on-disk Read Set/Card pairs, filename prefixes, source boundaries, `source_hash`, that every `compiled_from` equals K00/03 active `standards_version`, and that every `python3`-prefixed command span in the layer supplies the required arguments its tool declares; defaults to `kernel/Cards`; missing, empty, incomplete, or malformed layers fail closed; `--check` is read-only; `--set-version` must equal the active version and stamps every Card including the Index | `python3 Tools/stamp_cards.py . --check` |
+| `stamp_cards.py` | Kernel route and Runtime Card verification (K00/03 Write-back Checklist): checks the shared `kernel-runtime-routes` registry identity, exact R01-R13 coverage across both indexes and the on-disk Read Set/Card pairs, filename prefixes, source boundaries, `source_hash`, that every `compiled_from` equals K00/03 active `standards_version`, that every `python3`-prefixed command span in the layer supplies the required arguments its tool declares, that every Card and Read Set carries the H2 sequence registered for it in K00/14 `Card And Read Set Skeleton`, that every kernel leaf module is named by some Read Set loading boundary registered in K00/15, and that every kernel leaf module satisfies the K00/03 size budget as amended by the K00/16 register; defaults to `kernel/Cards`; missing, empty, incomplete, or malformed layers fail closed; `--check` is read-only; `--set-version` must equal the active version and stamps every Card including the Index | `python3 Tools/stamp_cards.py . --check` |
 | `check_freshness.py` | Freshness check: computes review_by from volatility and last_verified (fallback: last_reviewed, then file modification time per K08/05, flagged pending first verification); `--defaults` accepts a flat mapping or `Tools/vocab.yaml` / a profile's `vocabulary-extensions.yaml` (their `volatility_defaults`); an all-skip run reports NOTHING CHECKED as a candidate, not a pass | `python3 Tools/check_freshness.py . --as-of 2026-07-21 --defaults profiles/<your-profile-id>/vocabulary-extensions.yaml --exclude Cards --receipts Tools/receipts/fresh.jsonl` |
 | `duplicate_check.py` | Cross-file duplicate paragraph candidate detection; full vault by default; `--exclude` is repeatable and defaults to the single component `legacy`, the conventional name for a frozen-snapshot area that a vault need not have; compiled Cards and profile skeletons should be excluded from corpus-duplication review; supports `--receipts` and exits 2 when candidates exist | `python3 Tools/duplicate_check.py . --exclude _template --exclude Cards --receipts Tools/receipts/dup.jsonl` |
+| `maintenance_candidates.py` | Shared library, not a command: the pure K00/08 maintenance-candidate set algebra `check_queue.py` uses for `--require-maintenance-complete` and `--resume-status`. It validates the closed candidate record fields, the four `source_kinds` (`freshness`, `watermark`, `needs-rereview`, `candidate-pool`), the selected/deferred partition against Coverage and the budget manifest, deferral age, and re-entry disposition, and it computes the stable `candidate-sha256:` identity and candidate-state fingerprint. It performs no writes, produces no receipts, and never decides whether the source scans found the right candidates | imported by `check_queue.py`; no command-line entry point |
 | `kblib.py` | Shared library and sole restricted-YAML parser owner. Duplicate keys and unsupported constructs fail closed; it also provides deterministic YAML rendering, repository-contained managed paths, file and repository-snapshot SHA-256 fingerprints, atomic writes, Markdown helpers, and receipts | imported by the scripts above |
 
 ## Required Queue flow
@@ -288,6 +292,30 @@ positional and required option it declares. Each contract is read statically
 from the tool's own source, so no argument list is duplicated in `stamp_cards`
 and the tool stays the sole owner of its interface. A span that only names a
 tool or a flag in prose is a reference, not a command, and is not scanned.
+
+Two further checks read their rule out of the kernel pages that own it:
+`Card And Read Set Skeleton` in `kernel/K00 Standards Control/14 Card And Read
+Set Skeleton.md`, and `Read Set Loading Boundaries` in `kernel/K00 Standards
+Control/15 Read Set Loading Boundaries.md`. Every Runtime Card and kernel Read
+Set must carry exactly the H2
+sequence registered for it there — the default sequence, or the variant
+registered under its route ID — so a new section name is created by registering
+it in the same governance change, never by editing the artifact alone. And
+every kernel leaf module must be named by some Read Set loading boundary, which
+is every Read Set section other than `Purpose` and `Related`; a leaf no boundary
+names cannot be reached by any routed task. Both fail closed: a missing or
+unparseable owner section exits 1 rather than skipping the check. No section
+name, route shape, or leaf path is restated in tool code.
+
+A fourth check measures the leaf module size budget. `kernel/K00 Standards
+Control/03 Standards Governance.md` states the target and the soft cap, and
+`kernel/K00 Standards Control/16 Leaf Module Size Register.md` carries the
+approved exceptions; both numbers and every registered cap are read from those
+pages rather than restated in tool code. Exceeding a registered cap is an
+error. Standing over the soft cap with no registered exception, and a
+registered measured value that no longer matches the file, are candidates,
+because the owner calls that value a soft cap and asks only for a re-measure.
+
 Uniform Cards carrying an older version are still stale. Its successful
 summary reports routes, Read Sets, Runtime Cards, indexes, and stale artifacts
 separately.
@@ -375,7 +403,13 @@ not skip the canonical rule text, which remains under the rest of `kernel/`.
   with `--completion-semantics maintenance` and closes through
   `check_queue.py --require-maintenance-complete`, never R08 or Terminal Proof.
 - **Governance** = `stamp_cards.py . --check`, `check_moc.py`, and
-  `check_profile.py` against each filled profile a deployment selects. The
+  `check_profile.py` against each filled profile a deployment selects.
+  `check_moc.py` is a pure diagnostic: it carries no Gate ID, has no row in
+  the K00/12 Control Registry, is not a member of the K12/09 Batch-close
+  Closed List, and is not one of the four `source_kinds` a maintenance run
+  fuses. Its receipts are candidates for the governance or maintenance
+  operator to read; no gate consumes them and finding a candidate creates no
+  automatic obligation. K12/05 is the kernel statement of that boundary. The
   published `_template` is a form, not a runnable profile.
   `compose_vocab.py --check` joins that list in a vault that has composed a
   vocabulary. This repository ships no composed `vocab.yaml`, so here the
@@ -393,6 +427,22 @@ Shared conventions:
 
 - Human-readable summaries go to stdout; machine-readable receipts are
   appended as JSONL via `--receipts PATH`.
+- Two receipt destinations exist and they are not interchangeable. The runtime
+  receipt register is `.cambium/receipts/**/*.jsonl` and nothing else: every
+  tool that reads evidence by receipt ID -- `check_queue.py`,
+  `check_batch_close.py`, `check_proof.py`, `update_queue.py`,
+  `update_task.py`, `adopt_standards.py`, `apply_amendment.py`,
+  `register_amendment.py` -- builds its catalog by walking that one directory,
+  so a receipt written anywhere else can never be consumed by ID, by a gate,
+  or by Coverage `gate_receipts`. Tools whose receipts are gate evidence
+  therefore default `--receipts` into that namespace, and `kblib` rejects a
+  `.cambium` path that is not `.cambium/receipts/**/*.jsonl`. The
+  `Tools/receipts/...` paths in the invocation column above are the other
+  case: a standalone diagnostic run outside any Cambium runtime, where the
+  receipt is a local artifact for the operator to read. `LICENSE.md` treats
+  that directory as adopter-generated output. Pass an explicit
+  `.cambium/receipts/<name>.jsonl` whenever the run is meant to become
+  evidence.
 - Exit codes: `0` = clean success; `1` = failure or unreliable evidence;
   `2` = reliable but non-clean outcome as defined by that tool. Receipt-based
   candidate checks use 2 for one or more candidates; `stamp_cards.py` uses it
@@ -504,11 +554,21 @@ evidence silently.
   its fields copy K12/16 field by field, including current Queue completion
   evidence; `check_proof.py` reads the projection while K12/16 remains the
   normative field-list owner; it applies only to `build` completion semantics
-- `execution_defaults.template.yaml` -- the canonical machine-readable
+- `execution_defaults.template.yaml` -- executor-side placeholder
+  configuration for the shipped `profiles/_template/` form: the reserved
+  `profile_id` values and the unfilled sentinel, consumed by
+  `check_profile.py`, `check_queue.py`, and `check_proof.py`. The closed
   membership registry of which kernel execution defaults a profile may
-  override and which constants it may not. Each entry points to the kernel
-  module that owns the item's meaning and value; `check_profile.py` consumes
-  this registry directly
+  override and which constants it may not is a rule carrier and lives at
+  `kernel/K00 Standards Control/execution-defaults-base.yaml`; the file header
+  here carries the block-by-block relocation table
+- `standards_adoption_plan.template.yaml` -- the closed restricted-YAML
+  changed-predicate plan consumed by `adopt_standards.py` (semantics owner:
+  K12/10; transaction owner: K13/15); it binds approved K00/03 bytes, the
+  deterministic after Kernel/Profile snapshots, Task/Contract identity, Queue
+  revisions, all three state SHA-256 values, the changed predicates, the
+  dimension- and boundary-specific invalidated evidence, and the immediate
+  versus deferred gate split
 - `residual_scan_config.template.yaml` -- machine-parameter form for
   `check_residual_content.py`; a selected profile owns its filled copy while
   its Registered Scan Registry remains the owner of scan identity, invocation,

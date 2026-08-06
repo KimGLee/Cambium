@@ -18,7 +18,7 @@ implemented_unverified_guidance = 0
 
 The checks include:
 
-- All **significant Guidance** (positively defined: messages that change objective, scope, acceptance, priority, or content judgment) has a `guidance_id` and an Amendment Record; pure status inquiries or confirmation-type messages get one log line, consume no `guidance_id`, and do not enter an Amendment.
+- Every **important Guidance Event** (positively defined: messages that change objective, scope, acceptance, priority, or content judgment) has a `guidance_id` and an Amendment Record; pure status inquiries or confirmation-type messages get one log line, consume no `guidance_id`, and do not enter an Amendment.
 - Raw guidance and normalized intent have the same meaning, with no suggestion widened into a command and no command downgraded into a suggestion.
 - New requirements modify only the contract dimensions explicitly involved; non-conflicting old constraints remain in effect.
 - Version bumps of scope, contract, queue, batch, and Standards match the actual impact.

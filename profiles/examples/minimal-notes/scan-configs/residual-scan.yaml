@@ -1,0 +1,31 @@
+# Machine matching parameters for the Minimal Notes scratch-residual scan.
+# Filled from profiles/_template/scan-configs/residual-scan.yaml. Scan identity,
+# activation, candidate semantics, and judgment binding remain owned by
+# registries/registered-scans.md.
+
+residual_scan_config_version: 1
+
+# Dated scratch entries legitimately live here and nowhere else. This root is
+# also the non-triviality control: a run that reports no candidate elsewhere
+# must still recognise at least one file here, so every matcher below is a form
+# that the dated entries themselves actually use.
+allowed_roots:
+  - Notes/Daily Log
+
+# Nothing else is excluded: the vault is one directory tree and the scan is
+# meant to see all of it.
+excluded_roots: []
+
+frontmatter_match:
+  field: type
+  values:
+    - daily-log
+
+heading_match:
+  any:
+    - Daily Log Entry
+  combination:
+    - Scratch
+    - To Sort
+    - Loose Ends
+  minimum_distinct: 2

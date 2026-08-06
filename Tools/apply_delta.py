@@ -6,6 +6,12 @@ legacy two-path mode remains available for detached ledgers.  Supplying
 ``--root`` selects the canonical runtime mode: paths and Queue state are
 bound, writes use the shared runtime lock and optimistic fingerprints, and a
 post-write Queue reconciliation must pass before a receipt is published.
+
+Unlike the neighbouring tools, a canonical apply publishes its receipt into a
+*new* file rather than appending to a shared JSONL, so that an interrupted
+apply cannot be confused with a completed one.  Omitting ``--receipts`` names
+``.cambium/receipts/<receipt_id>.jsonl`` automatically; an explicit
+``--receipts`` path that already exists is refused.
 """
 
 import argparse
@@ -509,6 +515,10 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
     if os.path.lexists(receipt_path):
         print("[FAIL] canonical receipt target already exists: %s" %
               receipt_relative)
+        print("       A canonical apply writes one fresh receipt file rather "
+              "than appending to a shared JSONL. Omit --receipts to let this "
+              "run name .cambium/receipts/<receipt_id>.jsonl itself, or pass "
+              "a path that does not exist yet.")
         return 1
     if not os.path.isdir(os.path.dirname(receipt_path)):
         print("[FAIL] canonical receipt parent must already exist")

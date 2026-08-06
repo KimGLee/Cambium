@@ -15,7 +15,7 @@ source_files:
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
   - kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
-source_hash: '0ffed1e057c3'
+source_hash: 'ecb8292aa067'
 ---
 # R01 Core Bootstrap Card
 
@@ -31,7 +31,7 @@ Load this Card for every task, then combine the task Card selected in [[kernel/C
 |---|---|---|
 | S | `priority=P2`, terminology stub, placeholder, or link-aggregation page | Deterministic checks; no separate note gate; sampled at batch close |
 | M | Regular `priority=P1` page | Deterministic checks plus the canonical M-tier checklist compiled in `R02`; folded into Batch Review |
-| L | `priority=P0`, a kernel-listed mainline type, or a profile-registered L trigger | Full K12/01 review, standalone note gate, and applicable expression checks |
+| L | `priority=P0`, a core concept / process-flow / system / risk-control mainline page, or a profile-registered L trigger | Full K12/01 review, standalone note gate, and applicable expression checks |
 
 The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Coverage Ledger and escalate one tier when disputed.
 
@@ -45,10 +45,10 @@ The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Co
   multi-batch route may initialize it.
 - [ ] Confirm the active Standards state is instantiated and its one selected profile manifest resolves to a filled, checked profile. If a placeholder remains, stop before freezing a content task.
 - [ ] Confirm modification authority, especially for the Standards and other protected paths.
-- [ ] Inspect existing ownership, incoming links, and user modifications in the target scope; do not overwrite changes of unknown origin.
+- [ ] Do not roll back, overwrite, or delete user modifications whose origin cannot be confirmed. A large-scale task additionally inventories ownership, incoming links, and user modifications in the target scope under R11.
 - [ ] Resolve the task Card, triggered modules, future Gate modules, selected profile slots, and any profile extension route.
 - [ ] Record Standards version, exact `selected_profile_manifest`, selected Rxx route IDs and Runtime Card paths, and every Read Set or leaf path actually read back.
-- [ ] Identify foundational dependencies; do not bury shared foundations inside a profile application mainline.
+- [ ] Keep the prerequisite chain continuous; foundational knowledge is not deleted, compressed, or reduced to an empty shell for the application mainline. A large-scale task additionally identifies foundational dependencies under R11.
 - [ ] If the task is large-scale creation, moves, or deletion, load and pass [[kernel/Cards/R11 Large-scale Work Admission Card|R11 Large-scale Work Admission]] before execution.
 
 ## During

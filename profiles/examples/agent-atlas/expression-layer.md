@@ -35,10 +35,6 @@ Interface: [Expression Layer Entry slot](../../README.md#expression-layer-entry-
 | Vocabulary Extensions readiness-field ID | `None` |
 | Routing/Gate Registry supplemental Gate ID | `None` |
 
-## Terminology Extraction Extension
-
-For a proper noun, satisfying the profile's [[profiles/examples/agent-atlas/expression-layer#Card Granularity|independent-Card predicate]] is an additional reason to consider a standalone Term Note under [[kernel/K05 Terminology/01 Terminology Extraction#Extraction Criteria|K05/01 Terminology Extraction]]. The Card still does not own the term's definition, and this trigger does not bypass the kernel's Do Not Extract or terminology-acceptance rules.
-
 ### Artifact: Interview Cheat Sheet
 
 | Property | Value |
@@ -53,6 +49,10 @@ For a proper noun, satisfying the profile's [[profiles/examples/agent-atlas/expr
 | Testable regeneration/invalidation predicate | Re-evaluate an affected cheat sheet when a summarized canonical owner, linked card, or high-priority retrieval route changes. |
 | Vocabulary Extensions readiness-field ID | `None` |
 | Routing/Gate Registry supplemental Gate ID | `None` |
+
+## Terminology Extraction Extension
+
+For a proper noun, satisfying the profile's [[profiles/examples/agent-atlas/expression-layer#Card Granularity|independent-Card predicate]] is an additional reason to consider a standalone Term Note under [[kernel/K05 Terminology/01 Terminology Extraction#Extraction Criteria|K05/01 Terminology Extraction]]. The Card still does not own the term's definition, and this trigger does not bypass the kernel's Do Not Extract or terminology-acceptance rules.
 
 ## Interview Card Contract
 

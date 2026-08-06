@@ -1,9 +1,26 @@
+# Gap Register contract for a selected Profile's Corpus Planning slot.
+# Owner standard: "kernel/K02 Knowledge Work Construction/07 Gap Register Contract.md"
+# Copy this file into the selected profile, bind it from the Corpus Planning
+# slot's `artifact_bindings.gap_register`, and replace every TODO(profile).
+# Repeat the record block once per gap.
+#
+# `capability_ids` and `evidence_paths` are explicit YAML lists in every
+# record, even when the list is empty. K02/07 fixes which of them may be empty:
+#   capability_ids  never empty; each value is an existing Capability ID whose
+#                   own `gap_ids` names this gap back
+#   evidence_paths  may be empty; a `resolved` gap names current evidence
+# `status` is exactly one of candidate, confirmed, promoted, resolved,
+# deferred, or rejected. `candidate_owner_entry_id` is null or an existing
+# Global Map Entry ID; `promoted_coverage_path` is null before promotion and
+# the canonical Coverage object path after it.
+
 schema_version: 1
 
 gaps:
   - gap_id: TODO(profile)
     gap_statement: TODO(profile)
-    capability_ids: []
+    capability_ids:
+      - TODO(profile)
     candidate_owner_entry_id: null
     status: TODO(profile)
     close_condition: TODO(profile)

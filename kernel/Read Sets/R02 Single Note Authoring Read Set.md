@@ -22,6 +22,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - [[kernel/K09 Wiki Link and Navigation/01 Link Semantics and Body Links|Link Semantics and Body Links]]
 - [[kernel/K10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]
 - The `Language Contract` registered by the selected profile, as a mandatory `Start` module of this Read Set.
+- The selected profile's `Vocabulary Extensions`, which is the separate slot registering extension frontmatter fields and their values; the `Language Contract` does not carry them.
 
 ## Triggered
 

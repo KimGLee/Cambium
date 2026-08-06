@@ -1,0 +1,38 @@
+# Capability Matrix for the worked-planning example.
+# Contract owner: kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract.md
+# The four multi-value fields are written as explicit lists in every record.
+# `map_entry_ids` and `canonical_markdown_paths` always carry at least one
+# value; `evidence_paths` is empty only while the capability is still at the
+# scale's lowest rank, and `gap_ids` is empty only when the capability is not
+# below its target.
+
+schema_version: 1
+
+capabilities:
+  - capability_id: CAP-CHOOSE-BEARING-SERVICE
+    capability: "Decide which hub service a wheel needs and carry it out to the procedure's finish condition."
+    priority: P0
+    map_entry_ids: [GM-BEARING-TYPES, GM-BEARING-SERVICE]
+    canonical_markdown_paths: ["profiles/examples/worked-planning/corpus/Foundations/Wheel Bearing Types.md", "profiles/examples/worked-planning/corpus/Procedures/Bearing Service Procedure.md"]
+    current_level: "2 Working"
+    target_level: "3 Verified"
+    evidence_paths: ["profiles/examples/worked-planning/corpus/Source Notes/Manufacturer Service Documents.md"]
+    gap_ids: [GAP-TORQUE-COVERAGE, GAP-PRESS-FIT-TOOLING]
+  - capability_id: CAP-TRUE-WHEEL-TO-SPEC
+    capability: "Bring a built wheel to lateral truth, radial truth, dish, and a tension band inside the working range."
+    priority: P1
+    map_entry_ids: [GM-SPOKE-TENSION, GM-TRUING-PROCEDURE]
+    canonical_markdown_paths: ["profiles/examples/worked-planning/corpus/Foundations/Spoke Tension Basics.md", "profiles/examples/worked-planning/corpus/Procedures/Wheel Truing Procedure.md"]
+    current_level: "3 Verified"
+    target_level: "3 Verified"
+    evidence_paths: ["profiles/examples/worked-planning/corpus/Service Cases/Rear Wheel Rebuild Case.md"]
+    gap_ids: [GAP-CARBON-RIM-RANGE]
+  - capability_id: CAP-QUOTE-SERVICE-TIME
+    capability: "Quote a member the bench time a wheel service will take before starting it."
+    priority: P2
+    map_entry_ids: [GM-REBUILD-CASE]
+    canonical_markdown_paths: ["profiles/examples/worked-planning/corpus/Service Cases/Rear Wheel Rebuild Case.md"]
+    current_level: "0 Absent"
+    target_level: "2 Working"
+    evidence_paths: []
+    gap_ids: [GAP-BENCH-TIME-DATA]

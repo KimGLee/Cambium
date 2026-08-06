@@ -20,7 +20,7 @@
 - `K09` [[kernel/K09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]: body links, structural navigation, path, alias, and verification.
 - `K10` [[kernel/K10 Writing and Formatting Standard|Writing and Formatting Standard]]: naming, formulas, tables, diagrams, rendering workflow, and the reader-facing language binding provided by `Language Contract`.
 - `K11` [[kernel/K11 Expression Layer Standard|Expression Layer Standard]]: expression artifacts, coverage, readiness, evidence binding, and migration audit; concrete artifact bindings are registered by the `Expression Layer Entry`.
-- `K12` [[kernel/K12 Quality Assurance Standard|Quality Assurance Standard]]: single-note, batch, Guidance / Coverage reconciliation, module, source promotion, active-task Standards adoption semantics, tiered rendering, and Terminal Audit; extension QA dimensions, scans, and gates are activated by the `Audit Dimension Registry`, the `Registered Scan Registry`, and the `Routing And Gate Registry` respectively; which receipt dimension each judgment item files under is fixed by [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|K12/08]] and [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|K12/18]].
+- `K12` [[kernel/K12 Quality Assurance Standard|Quality Assurance Standard]]: single-note, batch, Guidance / Coverage reconciliation, module, source promotion, audit evidence reuse and invalidation, content-level propagation, substantive correctness review, active-task Standards adoption semantics, tiered rendering, and Terminal Audit; extension QA dimensions, scans, and gates are activated by the `Audit Dimension Registry`, the `Registered Scan Registry`, and the `Routing And Gate Registry` respectively; which receipt dimension each judgment item files under is fixed by [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|K12/08]] and [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|K12/18]].
 - `K13` [[kernel/K13 Task Runtime and Execution Control Standard|Task Runtime and Execution Control Standard]]: Task Contract, time semantics, task state, Guidance/Amendment, Progress Ledger, Required Queue, batch admission/integration, controlled Standards-adoption state writes, completion, handoff, and recovery.
 
 ## Cross-domain Rule Registry
@@ -41,8 +41,12 @@ This registry governs rule text. The three conditions do not authorize a view of
 | Kernel runtime route membership and route-to-Read-Set binding | [[kernel/Read Sets/Read Sets Index\|Read Sets Index]] |
 | Task-to-route combinations | [[kernel/K00 Standards Control/02 Task Routing\|Task Routing]] |
 | Runtime Card ownership, loading order, and source read-back protocol | [[kernel/K00 Standards Control/01 Operating Role and Reading Protocol\|Operating Role and Reading Protocol]] |
+| Runtime Card and kernel Read Set section skeleton and its registered variants | [[kernel/K00 Standards Control/14 Card And Read Set Skeleton\|Card And Read Set Skeleton]] |
+| The current Read Sets and leaf coverage of the loading boundaries | [[kernel/K00 Standards Control/15 Read Set Loading Boundaries\|Read Set Loading Boundaries]] |
+| Leaf module size budget, its disposition classes, and the register of approved exceptions | [[kernel/K00 Standards Control/03 Standards Governance#Leaf Module Size Budget\|Leaf Module Size Budget]], registered in [[kernel/K00 Standards Control/16 Leaf Module Size Register\|Leaf Module Size Register]] |
 | Runtime namespace startup and interrupted-state recovery | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Runtime Startup Gate\|Runtime Startup Gate]] |
 | Large-scale creation, move, or deletion admission | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Large-scale Pre-execution Gate\|Large-scale Pre-execution Gate]] |
+| Task Contract decision list and what a task freezes | [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract#Task Contract Decisions\|Task Contract Decisions]] |
 | Corpus Planning applicability, lifecycle, and reconciliation | [[kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle\|Corpus Planning Applicability and Lifecycle]] |
 | Corpus Planning runtime, audit, deterministic-check, receipt, and affected-path boundaries | [[kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries\|Corpus Planning Runtime Audit and Gate Boundaries]] |
 | `Global Map` exact role and record contract | [[kernel/K02 Knowledge Work Construction/05 Global Map Contract\|Global Map Contract]] |
@@ -55,7 +59,9 @@ This registry governs rule text. The three conditions do not authorize a view of
 | `task_state` vocabulary | [[kernel/K13 Task Runtime and Execution Control/03 Task State and Transition Rules\|Task State and Transition Rules]] |
 | Required Queue schema, revisions, batch lifecycle, and holds | [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle\|Required Queue Contract and Lifecycle]] |
 | Simple/complex Batch Work Spec declaration, managed binding, immutability, and Queue ownership boundary | [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle#Batch Work Specification Binding\|Batch Work Specification Binding]] |
+| Queue compilation, same-scope replanning, writer transaction scope, and the human Queue view | [[kernel/K13 Task Runtime and Execution Control/09 Queue Compilation Replanning and Views\|Queue Compilation Replanning and Views]] |
 | Queue transition authority, concurrency, write partition, and serial integration | [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration\|Batch Admission Transitions and Serial Integration]] |
+| Execution role vocabulary: `agent`, `subagent`, and `integrator` | [[kernel/K13 Task Runtime and Execution Control/01 Runtime State Model and Namespace#Execution Roles\|Execution Roles]] |
 | Active-task Standards adoption semantics, changed-predicate scope, evidence invalidation, and required gate reruns | [[kernel/K12 Quality Assurance/10 Standards Version Adoption\|Standards Version Adoption]] |
 | Active-task Standards adoption state-write and interrupted-transaction boundary | [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction\|Standards Adoption State Transaction]] |
 | Resume `next_action` token vocabulary | [[kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary\|Resume Next Action Vocabulary]] |
@@ -63,6 +69,7 @@ This registry governs rule text. The three conditions do not authorize a view of
 | Guidance disposition and safe switching | [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching\|Guidance Disposition and Safe Switching]] |
 | Amendment record and controlled replanning | [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning\|Amendment Log and Controlled Replanning]] |
 | authoring / expression / learning status vocabularies | [[kernel/K08 Metadata and Status/03 Status Axes\|Status Axes]] + `Expression Status Axis` role |
+| `coverage_disposition` vocabulary and its scope semantics | [[kernel/K08 Metadata and Status/03 Status Axes#Coverage Disposition\|Coverage Disposition]] |
 | `evidence_maturity` definition | [[kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata\|Evidence and Relationship Metadata]] |
 | Evidence roles | [[kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline\|Source-to-Knowledge Pipeline]] |
 | Source Note / Research Synthesis templates | [[kernel/K06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles\|Intake Note Types and Source Roles]] |
@@ -72,11 +79,13 @@ This registry governs rule text. The three conditions do not authorize a view of
 | Expression-layer language policy | `Language Contract` slot + `Expression Layer Entry` registry |
 | Deep-dive expression skeleton | `Expression Layer Entry` registry |
 | Batch acceptance checklist | [[kernel/K12 Quality Assurance/14 Batch Review\|Batch Review]] |
+| Batch-close Closed List membership | [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List\|Batch-close Closed List]] |
 | Module and Coverage acceptance checklist | [[kernel/K12 Quality Assurance/03 Module and Coverage Review\|Module and Coverage Review]] |
 | Source-to-Knowledge pipeline | [[kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline\|Source-to-Knowledge Pipeline]] |
 | Freshness and volatility vocabulary | [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata\|Review Source and Migration Metadata]] |
 | Retirement and merge procedure | [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy\|Split and Duplication Policy]] |
 | Maintenance-run budget envelope | [[kernel/K00 Standards Control/08 Maintenance Run Envelope\|Maintenance Run Envelope]] |
+| Closed membership of the profile-overridable execution defaults and of the constitutional constants | `kernel/K00 Standards Control/execution-defaults-base.yaml`, registered by [[kernel/K00 Standards Control/09 Default Constraints Snapshot\|Default Constraints Snapshot]] |
 | Judgment item to receipt dimension map, Single Note Review layer | [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] |
 | Judgment item to receipt dimension map above one page, and the receipt dimension of a control-plane Gate | [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map\|Cross-page and Control-plane Dimension Map]] |
 | Gate receipt payload and `manual-attestation` recording authority | [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract\|Gate Receipt Payload Contract]] |

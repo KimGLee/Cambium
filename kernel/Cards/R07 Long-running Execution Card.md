@@ -32,7 +32,7 @@ source_files:
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'bbbd495023b9'
+source_hash: '609203555c95'
 ---
 # R07 Long-running Execution Card
 
@@ -78,4 +78,4 @@ Each batch follows the fixed loop: version/Guidance self-check → `check_queue.
 
 ## Read Back When
 
-Read R07 Read Set and the canonical owner for full Guidance dispositions, concurrent-write boundaries, receipt fingerprints, invalidation propagation, adoption execution/recovery, checkpoint recovery, or Terminal Proof fields.
+Read R07 Read Set and the canonical owner for full Guidance dispositions, concurrent-write boundaries, receipt fingerprints, invalidation propagation, adoption execution/recovery, checkpoint recovery, or Terminal Proof fields. Read the Gate Receipt Payload Contract before recording or accepting a `manual-attestation` receipt, and the Resume Next Action Vocabulary for the exact token a resume scan reported.

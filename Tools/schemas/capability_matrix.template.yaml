@@ -1,12 +1,32 @@
+# Capability Matrix contract for a selected Profile's Corpus Planning slot.
+# Owner standard: "kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract.md"
+# Copy this file into the selected profile, bind it from the Corpus Planning
+# slot's `artifact_bindings.capability_matrix`, and replace every
+# TODO(profile). Repeat the record block once per capability.
+#
+# All four multi-value fields are explicit YAML lists in every record, even
+# when the list is empty. K02/06 fixes which of them may be empty:
+#   map_entry_ids            never empty; each value is an existing Global Map Entry ID
+#   canonical_markdown_paths never empty; each path shares a Profile Scope
+#                            directory with at least one linked Map Entry
+#   evidence_paths           empty only while `current_level` is the scale's
+#                            lowest rank; any higher current level needs one
+#   gap_ids                  empty only when the capability is not below its
+#                            target; each link is reciprocated by that gap's
+#                            `capability_ids` in the Gap Register
+
 schema_version: 1
 
 capabilities:
   - capability_id: TODO(profile)
     capability: TODO(profile)
     priority: TODO(profile)
-    map_entry_ids: []
-    canonical_markdown_paths: []
+    map_entry_ids:
+      - TODO(profile)
+    canonical_markdown_paths:
+      - TODO(profile)
     current_level: TODO(profile)
     target_level: TODO(profile)
     evidence_paths: []
-    gap_ids: []
+    gap_ids:
+      - TODO(profile)

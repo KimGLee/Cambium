@@ -57,14 +57,15 @@ The module registry is the independent continuous closed set `K00` through
 | Create, migrate, or review expression-layer content | [[kernel/Read Sets/R05 Expression Layer Read Set\|R05 Expression Layer]], plus the selected profile's concrete artifact binding and any supplemental gate |
 | Move, rename, split, merge, or directory restructuring | [[kernel/Read Sets/R06 Migration and Refactor Read Set\|Migration and Refactor]] |
 | Admit large-scale creation, moves, or deletion to execution | [[kernel/Read Sets/R11 Large-scale Work Admission Read Set\|Large-scale Work Admission]], plus the route for the actual work |
-| Multi-batch, sustained execution, checkpoint, or resume | [[kernel/Read Sets/R07 Long-running Execution Read Set\|Long-running Execution]] |
+| Multi-batch, sustained execution, checkpoint, or resume | [[kernel/Read Sets/R07 Long-running Execution Read Set\|Long-running Execution]], plus the content route for the actual work |
+| Periodic knowledge-corpus update or freshness run | [[kernel/Read Sets/R10 Maintenance Run Read Set\|Maintenance Run]], plus the content route for every selected object |
 | Run a targeted or specialized audit | [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set\|Targeted and Specialized Audit]], plus the route relevant to the finding |
 | Create or reconcile corpus topology, capability coverage, or semantic-gap history and Coverage handoff | [[kernel/Read Sets/R13 Corpus Planning Read Set\|Corpus Planning]]; combine the route for any resulting content work |
-| Enter the task Completion Gate or Terminal Audit | [[kernel/Read Sets/R08 Audit and Completion Read Set\|Audit and Completion]] |
+| Enter the task Completion Gate or Terminal Audit | [[kernel/Read Sets/R08 Audit and Completion Read Set\|Audit and Completion]], plus R12 and every route relevant to the completion predicates |
 | Modify Standards, Read Sets, version, or control-plane structure | [[kernel/Read Sets/R09 Standards Governance Read Set\|Standards Governance]] |
 | Mid-task guidance, scope, priority, or correction | [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis\|Guidance Classification and Impact Analysis]] + [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching\|Guidance Disposition and Safe Switching]] + [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning\|Amendment Log and Controlled Replanning]] |
 
-Periodic knowledge-base update and freshness tasks go through the kernel-owned [[kernel/Cards/R10 Maintenance Run Card|Maintenance Run Card]], with [[kernel/Read Sets/R10 Maintenance Run Read Set|R10 Read Set]] used for source read-back.
+The Maintenance Run row above enters through the kernel-owned [[kernel/Cards/R10 Maintenance Run Card|Maintenance Run Card]], with [[kernel/Read Sets/R10 Maintenance Run Read Set|R10 Read Set]] used for source read-back.
 
 Detailed task combinations are located in [[kernel/K00 Standards Control/02 Task Routing|Task Routing]]. Runtime-state startup/recovery and the large-scale admission gate are owned by [[kernel/K00 Standards Control/13 Runtime Admission and Recovery|Runtime Admission and Recovery]].
 
@@ -85,6 +86,9 @@ Detailed task combinations are located in [[kernel/K00 Standards Control/02 Task
 | [[kernel/K00 Standards Control/11 Standards Map and Rule Registry\|Standards Map and Rule Registry]] | canonical content-rule ownership |
 | [[kernel/K00 Standards Control/12 Control Registry\|Control Registry]] | canonical control-gate ownership |
 | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery\|Runtime Admission and Recovery]] | runtime startup/recovery and large-scale pre-execution admission |
+| [[kernel/K00 Standards Control/14 Card And Read Set Skeleton\|Card And Read Set Skeleton]] | the registered H2 sequence of every Runtime Card and kernel Read Set |
+| [[kernel/K00 Standards Control/15 Read Set Loading Boundaries\|Read Set Loading Boundaries]] | the current Read Sets and leaf coverage of the loading boundaries |
+| [[kernel/K00 Standards Control/16 Leaf Module Size Register\|Leaf Module Size Register]] | the register of approved leaf module size exceptions |
 
 ## Standard Module Index
 
@@ -102,7 +106,7 @@ Detailed task combinations are located in [[kernel/K00 Standards Control/02 Task
 | `K09` | [[kernel/K09 Wiki Link and Navigation Standard\|Wiki Link and Navigation]] | semantic links, MOC, path, alias, heading, and graph verification |
 | `K10` | [[kernel/K10 Writing and Formatting Standard\|Writing and Formatting]] | naming, prose, math, tables, code, diagrams, assets, and rendering; reader-facing language is provided by the `Language Contract` |
 | `K11` | [[kernel/K11 Expression Layer Standard\|Expression Layer]] | expression artifacts, canonical knowledge separation, readiness, and migration interface |
-| `K12` | [[kernel/K12 Quality Assurance Standard\|Quality Assurance]] | note, module, batch, source, expression, active-task Standards adoption, rendering, and terminal gates |
+| `K12` | [[kernel/K12 Quality Assurance Standard\|Quality Assurance]] | note, module, batch, source, expression, audit evidence reuse and invalidation, content-level propagation, substantive correctness, active-task Standards adoption, rendering, and terminal gates |
 | `K13` | [[kernel/K13 Task Runtime and Execution Control Standard\|Task Runtime and Execution Control]] | task contract, state, Guidance/Amendment, Progress, Required Queue, hash-bound batch Work Specs, batch control, controlled Standards-adoption state writes, completion, handoff, and recovery |
 
 ## Loading Contract

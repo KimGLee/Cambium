@@ -1,0 +1,67 @@
+# Global Map for the worked-planning example.
+# Contract owner: kernel/K02 Knowledge Work Construction/05 Global Map Contract.md
+# Layer IDs come from the Profile Scope; this file never redeclares them.
+# Entry and edge IDs match ^[A-Za-z0-9][A-Za-z0-9._:-]*$ and stay stable across
+# path renames.
+
+schema_version: 1
+
+entries:
+  - entry_id: GM-BEARING-TYPES
+    layer_id: L-FOUNDATION
+    canonical_markdown_path: "profiles/examples/worked-planning/corpus/Foundations/Wheel Bearing Types.md"
+    single_responsibility: "Own the bearing-family distinction and how a volunteer makes it at the bench."
+  - entry_id: GM-SPOKE-TENSION
+    layer_id: L-FOUNDATION
+    canonical_markdown_path: "profiles/examples/worked-planning/corpus/Foundations/Spoke Tension Basics.md"
+    single_responsibility: "Own tension, balance, and dish as quantities, including the working range."
+  - entry_id: GM-TRUING-PROCEDURE
+    layer_id: L-PROCEDURE
+    canonical_markdown_path: "profiles/examples/worked-planning/corpus/Procedures/Wheel Truing Procedure.md"
+    single_responsibility: "Own the truing sequence and its finish condition."
+  - entry_id: GM-BEARING-SERVICE
+    layer_id: L-PROCEDURE
+    canonical_markdown_path: "profiles/examples/worked-planning/corpus/Procedures/Bearing Service Procedure.md"
+    single_responsibility: "Own the per-family hub service steps and the bench setup they establish."
+  - entry_id: GM-REBUILD-CASE
+    layer_id: L-CASES
+    canonical_markdown_path: "profiles/examples/worked-planning/corpus/Service Cases/Rear Wheel Rebuild Case.md"
+    single_responsibility: "Own one completed rebuild and the measurements retained from it."
+  - entry_id: GM-MANUFACTURER-DOCS
+    layer_id: L-SOURCES
+    canonical_markdown_path: "profiles/examples/worked-planning/corpus/Source Notes/Manufacturer Service Documents.md"
+    single_responsibility: "Own which external documents are canonical and what each is canonical for."
+
+typed_dependencies:
+  - edge_id: GM-E-01
+    upstream_entry_id: GM-BEARING-TYPES
+    downstream_entry_id: GM-BEARING-SERVICE
+    relation_type: prerequisite-for
+  - edge_id: GM-E-02
+    upstream_entry_id: GM-SPOKE-TENSION
+    downstream_entry_id: GM-TRUING-PROCEDURE
+    relation_type: capability-input-to
+  - edge_id: GM-E-03
+    upstream_entry_id: GM-TRUING-PROCEDURE
+    downstream_entry_id: GM-REBUILD-CASE
+    relation_type: realized-by
+  - edge_id: GM-E-04
+    upstream_entry_id: GM-REBUILD-CASE
+    downstream_entry_id: GM-SPOKE-TENSION
+    relation_type: evidence-input-to
+  - edge_id: GM-E-05
+    upstream_entry_id: GM-BEARING-SERVICE
+    downstream_entry_id: GM-TRUING-PROCEDURE
+    relation_type: system-input-to
+  - edge_id: GM-E-06
+    upstream_entry_id: GM-MANUFACTURER-DOCS
+    downstream_entry_id: GM-BEARING-SERVICE
+    relation_type: control-input-to
+  - edge_id: GM-E-07
+    upstream_entry_id: GM-MANUFACTURER-DOCS
+    downstream_entry_id: GM-BEARING-TYPES
+    relation_type: canonical-source-for
+  - edge_id: GM-E-08
+    upstream_entry_id: GM-BEARING-TYPES
+    downstream_entry_id: GM-REBUILD-CASE
+    relation_type: downstream-impact

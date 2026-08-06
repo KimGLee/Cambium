@@ -23,6 +23,16 @@ Atlas dated 2026-07-31 and was subsequently translated and refactored. KimGLee
 is currently designated as the attribution party for the Cambium material.
 This provenance note does not supersede any third-party rights or notices.
 
+Part of the material now covered by this file was first released under
+Apache-2.0 in the Cambium-maintained `Tools/**` scope: on 2026-08-06 the closed
+membership registry of profile-overridable execution defaults and
+constitutional constants moved from
+`Tools/schemas/execution_defaults.template.yaml` to
+`kernel/K00 Standards Control/execution-defaults-base.yaml` and is CC BY 4.0
+from that path onward. Both scopes are copyright 2026 KimGLee. The move is
+listed in the Relicensing Record of [`LICENSE.md`](LICENSE.md) and does not
+withdraw the earlier Apache-2.0 release of that material.
+
 ## Suggested Attribution
 
 For an unmodified copy:

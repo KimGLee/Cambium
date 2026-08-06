@@ -23,6 +23,24 @@ tool is imported or executed, and no argument list is duplicated here. A span
 that only names a tool or a flag in prose is a reference, not a command, and is
 not scanned.
 
+Two further checks read their rule out of `Card And Read Set Skeleton` in
+kernel/K00 Standards Control/14 Card And Read Set Skeleton and out of
+kernel/K00 Standards Control/15 Read Set Loading Boundaries, which own them:
+every Card and Read Set must carry the H2 sequence registered for it there, and
+every kernel leaf module must be named by some Read Set loading boundary. Both
+fail closed when that section is missing or unparseable, and no section name or
+leaf path is restated here.
+
+A fourth check measures the size budget. kernel/K00 Standards Control/03
+Standards Governance states the target and the soft cap and kernel/K00
+Standards Control/16 Leaf Module Size Register carries the approved exceptions;
+both numbers and every registered cap are read from those pages, never restated
+here. A registered cap that is exceeded is an error, because its owner writes
+that the registered cap must not be exceeded without a new governance change. A
+page over the soft cap with no registered exception, and a registered measured
+value that no longer matches the file, are candidates: the owner calls the 6KB
+value a soft cap and asks for a re-measure, and neither sentence is a MUST.
+
 Usage:
   python3 Tools/stamp_cards.py <standards_root> [--cards-dir DIR]
       [--set-version VERSION] [--check]
@@ -56,6 +74,33 @@ EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 14))
 ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
 CODE_SPAN_RE = re.compile(r"`([^`\n]+)`")
 COMMAND_PREFIX = "python3"
+SKELETON_OWNER_PATH = (
+    "kernel/K00 Standards Control/14 Card And Read Set Skeleton.md"
+)
+SKELETON_SECTION = "Card And Read Set Skeleton"
+COVERAGE_OWNER_PATH = (
+    "kernel/K00 Standards Control/15 Read Set Loading Boundaries.md"
+)
+SKELETON_KEY_RE = re.compile(r"(?:(R[0-9]{2}) (Card|Read Set))|(?:(Card|Read Set) default)")
+KERNEL_LEAF_RE = re.compile(r"K[0-9]{2} [^/]+/[0-9]{2} .+\.md")
+NON_BOUNDARY_SECTIONS = ("Purpose", "Related")
+WIKI_TARGET_RE = re.compile(r"\[\[([^\]|#]+)")
+SIZE_BUDGET_OWNER_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
+SIZE_BUDGET_SECTION = "Leaf Module Size Budget"
+SIZE_REGISTER_OWNER_PATH = (
+    "kernel/K00 Standards Control/16 Leaf Module Size Register.md"
+)
+SIZE_REGISTER_SECTION = "Leaf Module Size Register"
+SIZE_BUDGET_RE = re.compile(
+    r"target\s*[≤<]=?\s*([0-9]+(?:\.[0-9]+)?)\s*KB.*?soft cap\s*"
+    r"([0-9]+(?:\.[0-9]+)?)\s*KB",
+    re.IGNORECASE,
+)
+KB_UNIT_RE = re.compile(r"KB means ([0-9]+) bytes", re.IGNORECASE)
+MEASURED_RE = re.compile(r"^([0-9]+)\s*bytes$", re.IGNORECASE)
+CAP_RE = re.compile(r"^([0-9]+(?:\.[0-9]+)?)\s*KB$", re.IGNORECASE)
+ACTIVE_COUNT_RE = re.compile(r"^([0-9]+) active\b")
+ESCAPED_PIPE_RE = re.compile(r"(?<!\\)\|")
 
 
 def replace_frontmatter_scalar(text, field, value):
@@ -115,6 +160,19 @@ def as_repo_path(root, value, label, failures):
         failures.append("%s escapes the repository root: %s" % (label, raw))
         return None
     return resolved
+
+
+def read_owner_text(root, rel, label, failures):
+    """Read one kernel rule owner, failing closed when it cannot be read."""
+    path = as_repo_path(root, rel, label, failures)
+    if path is None or not path.is_file():
+        failures.append("%s is missing: %s" % (label, rel))
+        return None
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        failures.append("%s is unreadable: %s (%s)" % (label, rel, exc))
+        return None
 
 
 def source_digest(paths):
@@ -267,6 +325,309 @@ def command_span_failures(rel, text, root, tool_contracts):
     return failures
 
 
+def heading_sequence(text):
+    """Return one document's ordered H2 names."""
+    return tuple(
+        line[3:].strip() for line in text.splitlines() if line.startswith("## ")
+    )
+
+
+def parse_skeleton_contract(text):
+    """Read the registered Card and Read Set section skeletons from their owner.
+
+    The owner section carries one registry table whose first cell is a single
+    code span naming the artifact (`Card default`, `Read Set default`, or
+    `Rxx Card` / `Rxx Read Set`) and whose second cell lists that artifact's H2
+    sequence as ordered code spans. The sequences live in the kernel leaf; this
+    function only reads them, so no section name is restated in tool code.
+    """
+    contract = {}
+    errors = []
+    inside = False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            inside = line[3:].strip() == SKELETON_SECTION
+            continue
+        if not inside or not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        keys = CODE_SPAN_RE.findall(cells[0])
+        if len(keys) != 1 or not SKELETON_KEY_RE.fullmatch(keys[0]):
+            continue
+        key = keys[0]
+        route_id = key.split(" ", 1)[0]
+        if ROUTE_ID_RE.fullmatch(route_id) and route_id not in EXPECTED_ROUTE_IDS:
+            errors.append(
+                "%s registers a section skeleton for %s, which is outside the "
+                "closed route set" % (SKELETON_OWNER_PATH, route_id)
+            )
+            continue
+        sequence = tuple(CODE_SPAN_RE.findall(cells[1]))
+        if not sequence:
+            errors.append(
+                "%s registers %s with an empty section sequence"
+                % (SKELETON_OWNER_PATH, key)
+            )
+            continue
+        if key in contract:
+            errors.append("%s registers %s more than once" % (SKELETON_OWNER_PATH, key))
+            continue
+        contract[key] = sequence
+    for required in ("Card default", "Read Set default"):
+        if required not in contract:
+            errors.append(
+                "%s does not register the `%s` section skeleton"
+                % (SKELETON_OWNER_PATH, required)
+            )
+    return contract, errors
+
+
+def skeleton_failure(kind, route_id, rel, text, contract):
+    """Compare one artifact's H2 sequence with the skeleton registered for it."""
+    if not contract:
+        return None
+    key = "%s %s" % (route_id, kind) if route_id else ""
+    expected = contract.get(key) or contract.get("%s default" % kind)
+    if expected is None:
+        return None
+    actual = heading_sequence(text)
+    if actual == expected:
+        return None
+    return (
+        "%s does not follow the %s skeleton registered in %s; expected %s, found %s"
+        % (
+            rel,
+            key if key in contract else "%s default" % kind,
+            SKELETON_OWNER_PATH,
+            list(expected),
+            list(actual),
+        )
+    )
+
+
+def leaf_coverage_failures(root, read_set_records):
+    """Report kernel leaf modules that no Read Set loading boundary names.
+
+    A leaf no boundary names cannot be reached by any routed task. `Purpose`
+    states applicability and `Related` is navigation, so neither is a boundary;
+    every other Read Set section is one.
+    """
+    kernel_dir = (root / "kernel").resolve()
+    if not kernel_dir.is_dir():
+        return ["kernel directory is missing; leaf coverage cannot be resolved"]
+    named = set()
+    for record in read_set_records:
+        section = ""
+        for line in (record.get("text") or "").splitlines():
+            if line.startswith("## "):
+                section = line[3:].strip()
+                continue
+            if not section or section in NON_BOUNDARY_SECTIONS:
+                continue
+            for target in WIKI_TARGET_RE.findall(line):
+                named.add(target.strip() + ".md")
+    failures = []
+    for path in markdown_paths(kernel_dir):
+        family_rel = path.relative_to(kernel_dir).as_posix()
+        if not KERNEL_LEAF_RE.fullmatch(family_rel):
+            continue
+        rel = path.relative_to(root).as_posix()
+        if rel not in named:
+            failures.append(
+                "%s is named by no Read Set loading boundary; every kernel leaf "
+                "module enters one, per %s" % (rel, COVERAGE_OWNER_PATH)
+            )
+    return failures
+
+
+def table_cells(line):
+    """Split one Markdown table row, honouring the escaped Wiki-alias pipe."""
+    return [cell.strip() for cell in ESCAPED_PIPE_RE.split(line.strip().strip("|"))]
+
+
+def registered_target(cell):
+    """Return the repository path a register cell's Wiki Link names, or ''."""
+    match = WIKI_TARGET_RE.search(cell)
+    if match is None:
+        return ""
+    return match.group(1).rstrip("\\").strip() + ".md"
+
+
+def parse_size_budget(text):
+    """Read the leaf module target, soft cap, and KB unit from their owner.
+
+    The three numbers live in the owner's budget section. They are read, never
+    restated here, so a governance change to the budget takes effect without a
+    tool change and a budget this function cannot read fails closed.
+    """
+    inside = False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            inside = line[3:].strip() == SIZE_BUDGET_SECTION
+            continue
+        if not inside:
+            continue
+        budget = SIZE_BUDGET_RE.search(line)
+        unit = KB_UNIT_RE.search(line)
+        if budget is None or unit is None:
+            continue
+        factor = int(unit.group(1))
+        target = int(float(budget.group(1)) * factor)
+        soft_cap = int(float(budget.group(2)) * factor)
+        if factor <= 0 or target <= 0 or soft_cap < target:
+            return None, [
+                "%s states an unusable leaf module budget: target %d, soft cap "
+                "%d, KB %d" % (SIZE_BUDGET_OWNER_PATH, target, soft_cap, factor)
+            ]
+        return (target, soft_cap, factor), []
+    return None, [
+        "%s does not state a leaf module target, soft cap, and KB unit in `%s`"
+        % (SIZE_BUDGET_OWNER_PATH, SIZE_BUDGET_SECTION)
+    ]
+
+
+def parse_size_register(text, factor):
+    """Read the registered size exceptions and the outside-the-cap list.
+
+    Both live in one section of the register page. A five-column row whose
+    first cell links a page is an exception carrying that page's measured value
+    and growth cap; a two-column row whose first cell links a page declares it
+    outside the cap; the row stating `N active` declares how many exceptions the
+    register believes it holds.
+    """
+    entries = {}
+    outside = {}
+    declared = None
+    errors = []
+    inside = False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            inside = line[3:].strip() == SIZE_REGISTER_SECTION
+            continue
+        if not inside or not line.startswith("|"):
+            continue
+        cells = table_cells(line)
+        rel = registered_target(cells[0]) if cells else ""
+        if not rel:
+            count = ACTIVE_COUNT_RE.search(cells[1]) if len(cells) > 1 else None
+            if count is not None:
+                declared = int(count.group(1))
+            continue
+        if len(cells) == 2:
+            if rel in outside:
+                errors.append(
+                    "%s declares %s outside the cap more than once"
+                    % (SIZE_REGISTER_OWNER_PATH, rel)
+                )
+            outside[rel] = cells[1]
+            continue
+        if len(cells) < 4:
+            continue
+        measured = MEASURED_RE.match(cells[1])
+        cap = CAP_RE.match(cells[3])
+        if measured is None or cap is None:
+            errors.append(
+                "%s registers %s without a readable measured value and growth "
+                "cap" % (SIZE_REGISTER_OWNER_PATH, rel)
+            )
+            continue
+        if rel in entries:
+            errors.append(
+                "%s registers %s more than once" % (SIZE_REGISTER_OWNER_PATH, rel)
+            )
+            continue
+        entries[rel] = {
+            "measured": int(measured.group(1)),
+            "cap": int(float(cap.group(1)) * factor),
+        }
+    return entries, outside, declared, errors
+
+
+def size_budget_findings(root, budget, entries, outside, declared):
+    """Measure every kernel leaf module against the budget and the register.
+
+    Returns (errors, candidates). Exceeding a registered growth cap is an
+    error: its owner writes that the registered cap MUST NOT be exceeded
+    without a new governance change. Standing over the soft cap with no
+    declared disposition, and a registered measured value that no longer
+    matches the file, are candidates: the owner calls 6KB a soft cap and asks
+    for a re-measure, and neither sentence is a MUST.
+    """
+    _target, soft_cap, _factor = budget
+    kernel_dir = (root / "kernel").resolve()
+    if not kernel_dir.is_dir():
+        return ["kernel directory is missing; leaf sizes cannot be measured"], []
+    errors = []
+    candidates = []
+    seen = set()
+    for path in markdown_paths(kernel_dir):
+        family_rel = path.relative_to(kernel_dir).as_posix()
+        if not KERNEL_LEAF_RE.fullmatch(family_rel):
+            continue
+        rel = path.relative_to(root).as_posix()
+        seen.add(rel)
+        try:
+            size = path.stat().st_size
+        except OSError as exc:
+            errors.append("%s cannot be measured: %s" % (rel, exc))
+            continue
+        entry = entries.get(rel)
+        if rel in outside:
+            if entry is not None:
+                errors.append(
+                    "%s both registers %s as an exception and declares it "
+                    "outside the cap; the two dispositions are exclusive, per %s"
+                    % (SIZE_REGISTER_OWNER_PATH, rel, SIZE_BUDGET_OWNER_PATH)
+                )
+            continue
+        if entry is None:
+            if size > soft_cap:
+                candidates.append(
+                    "%s is %d bytes, over the %d-byte soft cap, and %s neither "
+                    "registers an exception for it nor declares it outside the "
+                    "cap" % (rel, size, soft_cap, SIZE_REGISTER_OWNER_PATH)
+                )
+            continue
+        if size > entry["cap"]:
+            errors.append(
+                "%s is %d bytes, over the %d-byte growth cap registered for it "
+                "in %s; that cap MUST NOT be exceeded without a new governance "
+                "change, per %s"
+                % (
+                    rel,
+                    size,
+                    entry["cap"],
+                    SIZE_REGISTER_OWNER_PATH,
+                    SIZE_BUDGET_OWNER_PATH,
+                )
+            )
+        if size != entry["measured"]:
+            candidates.append(
+                "%s measures %d bytes; %s still registers %d and asks for a "
+                "re-measure"
+                % (rel, size, SIZE_REGISTER_OWNER_PATH, entry["measured"])
+            )
+    for rel in sorted(set(entries) | set(outside)):
+        if rel not in seen:
+            errors.append(
+                "%s registers %s, which is not a kernel leaf module in this "
+                "repository" % (SIZE_REGISTER_OWNER_PATH, rel)
+            )
+    if declared is None:
+        errors.append(
+            "%s does not state how many leaf module exceptions are active"
+            % SIZE_REGISTER_OWNER_PATH
+        )
+    elif declared != len(entries):
+        candidates.append(
+            "%s states %d active leaf module exception(s) and carries %d"
+            % (SIZE_REGISTER_OWNER_PATH, declared, len(entries))
+        )
+    return errors, candidates
+
+
 def route_id_of(value, label, failures):
     """Validate and return one Rxx route identity, or an empty string."""
     route_id = str(value or "")
@@ -401,6 +762,29 @@ def main():
         )
         return 1
 
+    # ---- Registered section skeletons, read from their kernel owner ----
+    skeleton_contract = {}
+    skeleton_path = as_repo_path(
+        root, SKELETON_OWNER_PATH, "section skeleton owner", failures
+    )
+    if skeleton_path is None or not skeleton_path.is_file():
+        failures.append(
+            "section skeleton owner is missing: %s" % SKELETON_OWNER_PATH
+        )
+    else:
+        try:
+            skeleton_text = skeleton_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            failures.append(
+                "section skeleton owner is unreadable: %s (%s)"
+                % (SKELETON_OWNER_PATH, exc)
+            )
+        else:
+            skeleton_contract, skeleton_errors = parse_skeleton_contract(
+                skeleton_text
+            )
+            failures.extend(skeleton_errors)
+
     # ---- Read Set Index and on-disk Read Sets ----
     read_set_records = []
     read_set_index_record = None
@@ -451,8 +835,19 @@ def main():
                 failures.append(
                     "%s filename must start with its route_id %s" % (rel, route_id)
                 )
+        skeleton_error = skeleton_failure(
+            "Read Set", route_id, rel, text, skeleton_contract
+        )
+        if skeleton_error:
+            failures.append(skeleton_error)
         read_set_records.append(
-            {"path": path, "rel": rel, "data": data, "route_id": route_id}
+            {
+                "path": path,
+                "rel": rel,
+                "text": text,
+                "data": data,
+                "route_id": route_id,
+            }
         )
 
     if read_set_index_record is None:
@@ -563,6 +958,11 @@ def main():
                     failures.append(
                         "%s filename must start with its route_id %s" % (rel, route_id)
                     )
+            skeleton_error = skeleton_failure(
+                "Card", route_id, rel, text, skeleton_contract
+            )
+            if skeleton_error:
+                failures.append(skeleton_error)
 
         compiled_from = str(data.get("compiled_from") or "")
         if not compiled_from:
@@ -718,6 +1118,29 @@ def main():
                 )
             )
 
+    failures.extend(leaf_coverage_failures(root, read_set_records))
+
+    # ---- Leaf module size budget, read from its owner and its register ----
+    budget_candidates = []
+    budget_text = read_owner_text(
+        root, SIZE_BUDGET_OWNER_PATH, "leaf module size budget owner", failures
+    )
+    register_text = read_owner_text(
+        root, SIZE_REGISTER_OWNER_PATH, "leaf module size register", failures
+    )
+    if budget_text is not None and register_text is not None:
+        budget, budget_errors = parse_size_budget(budget_text)
+        failures.extend(budget_errors)
+        if budget is not None:
+            entries, outside, declared, register_errors = parse_size_register(
+                register_text, budget[2]
+            )
+            failures.extend(register_errors)
+            size_errors, budget_candidates = size_budget_findings(
+                root, budget, entries, outside, declared
+            )
+            failures.extend(size_errors)
+
     canonical_read_sets = dict(read_registry_pairs)
     for record in runtime_records:
         route_id = record["route_id"]
@@ -758,7 +1181,10 @@ def main():
         )
         return 1
 
-    stale = []
+    stale = list(budget_candidates)
+    for candidate in budget_candidates:
+        print("  [CAND] %s" % candidate)
+
     rendered = []
     for record in records:
         try:

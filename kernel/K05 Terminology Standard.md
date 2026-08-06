@@ -23,6 +23,7 @@ Sections added to this domain after a frozen baseline are registered here for co
 
 | Version | Extension | Canonical owner | Responsibility |
 |---|---|---|---|
+
 ## Applicable Read Sets
 
 - [[kernel/Read Sets/R02 Single Note Authoring Read Set|Single Note Authoring]]
