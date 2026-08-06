@@ -8,6 +8,7 @@ source_files:
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/08 Judgment Item Dimension Map.md
+  - kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map.md
   - kernel/K12 Quality Assurance/02 Rendering Verification.md
   - kernel/K12 Quality Assurance/04 Guidance and Source Review.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
@@ -15,7 +16,7 @@ source_files:
   - kernel/K02 Knowledge Work Construction/05 Global Map Contract.md
   - kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract.md
   - kernel/K02 Knowledge Work Construction/07 Gap Register Contract.md
-source_hash: '17c1b79a2d00'
+source_hash: 'bb2b863c8625'
 ---
 # R12 Targeted and Specialized Audit Card
 

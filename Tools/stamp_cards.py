@@ -14,6 +14,15 @@ version stamps are stale, not synchronized.
 Hash = the first 12 hexadecimal digits of SHA-256 over each source file's
 bytes, concatenated in source_files order.
 
+A code span whose first token is `python3` is the copy-and-run command form an
+agent types verbatim, so the Card and Read Set layer is also checked against
+the tools' own declared interfaces: the named script must exist, and every
+required positional and required option that script declares must be supplied.
+Each tool's argument contract is read statically from its own source bytes; no
+tool is imported or executed, and no argument list is duplicated here. A span
+that only names a tool or a flag in prose is a reference, not a command, and is
+not scanned.
+
 Usage:
   python3 Tools/stamp_cards.py <standards_root> [--cards-dir DIR]
       [--set-version VERSION] [--check]
@@ -25,6 +34,7 @@ Exit codes:
 """
 
 import argparse
+import ast
 import hashlib
 import os
 from pathlib import Path
@@ -44,6 +54,8 @@ REGISTRY_ID = "kernel-runtime-routes"
 ROUTE_ID_RE = re.compile(r"^R([0-9]{2})$")
 EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 14))
 ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
+CODE_SPAN_RE = re.compile(r"`([^`\n]+)`")
+COMMAND_PREFIX = "python3"
 
 
 def replace_frontmatter_scalar(text, field, value):
@@ -147,6 +159,114 @@ def parse_document(path, root, failures):
     return rel, text, data
 
 
+def tool_argument_contract(source_text):
+    """Read one tool's argparse contract from its own source bytes.
+
+    Returns (required positional dests, required option flags). The scan is a
+    static AST walk: no tool code is imported or executed, so the same bytes
+    always yield the same contract. Only `add_argument` calls are read; the
+    tool remains the sole owner of its own interface.
+    """
+    tree = ast.parse(source_text)
+    positionals = []
+    required_options = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != "add_argument":
+            continue
+        names = [
+            arg.value for arg in node.args
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+        ]
+        if not names:
+            continue
+        keywords = {
+            keyword.arg: keyword.value for keyword in node.keywords
+            if keyword.arg
+        }
+        if not names[0].startswith("-"):
+            if "default" not in keywords and "nargs" not in keywords:
+                positionals.append(names[0])
+            continue
+        required = keywords.get("required")
+        if isinstance(required, ast.Constant) and required.value is True:
+            required_options.append(names[0])
+    return positionals, required_options
+
+
+def command_span_failures(rel, text, root, tool_contracts):
+    """Report Card/Read Set command spans that their own tool would reject.
+
+    A code span whose first token is `python3` is the copy-and-run form an
+    agent types verbatim, so it must name an existing tool and supply every
+    argument that tool declares as required. A span that only names a tool or
+    a flag in prose is a reference, not a command, and is not scanned.
+    """
+    failures = []
+    for number, line in enumerate(text.splitlines(), 1):
+        for match in CODE_SPAN_RE.finditer(line):
+            tokens = match.group(1).split()
+            if len(tokens) < 2 or tokens[0] != COMMAND_PREFIX:
+                continue
+            script = tokens[1]
+            location = "%s:%d" % (rel, number)
+            tool_path = as_repo_path(root, script, "%s command" % location, failures)
+            if tool_path is None:
+                continue
+            if not tool_path.is_file():
+                failures.append(
+                    "%s runs a tool that does not exist: %s" % (location, script)
+                )
+                continue
+            if script not in tool_contracts:
+                try:
+                    source_text = tool_path.read_text(encoding="utf-8")
+                    tool_contracts[script] = tool_argument_contract(source_text)
+                except (OSError, UnicodeError, SyntaxError, ValueError) as exc:
+                    failures.append(
+                        "%s names a tool whose argument contract is unreadable: "
+                        "%s (%s)" % (location, script, exc)
+                    )
+                    tool_contracts[script] = None
+            contract = tool_contracts[script]
+            if contract is None:
+                continue
+            positionals, required_options = contract
+            arguments = tokens[2:]
+            supplied_options = {
+                argument.split("=", 1)[0] for argument in arguments
+                if argument.startswith("-")
+            }
+            supplied_positionals = [
+                argument for argument in arguments if not argument.startswith("-")
+            ]
+            # An option that takes a value consumes the token after it, which
+            # would otherwise be counted as a positional.
+            consumed = 0
+            for index, argument in enumerate(arguments[:-1]):
+                if argument.startswith("-") and "=" not in argument:
+                    following = arguments[index + 1]
+                    if not following.startswith("-"):
+                        consumed += 1
+            filled = max(0, len(supplied_positionals) - consumed)
+            missing_positionals = positionals[filled:]
+            missing_options = [
+                flag for flag in required_options if flag not in supplied_options
+            ]
+            if missing_positionals or missing_options:
+                failures.append(
+                    "%s command is missing required argument(s) of %s: %s"
+                    % (
+                        location,
+                        script,
+                        ", ".join(sorted(missing_positionals) + sorted(missing_options)),
+                    )
+                )
+    return failures
+
+
 def route_id_of(value, label, failures):
     """Validate and return one Rxx route identity, or an empty string."""
     route_id = str(value or "")
@@ -180,6 +300,7 @@ def main():
         return 1
 
     failures = []
+    tool_contracts = {}
     active_path = as_repo_path(
         root, ACTIVE_STATE_PATH, "active Standards state", failures
     )
@@ -287,6 +408,10 @@ def main():
 
     for path in read_set_paths:
         rel, text, data = parse_document(path, root, failures)
+        if text is not None:
+            failures.extend(
+                command_span_failures(rel, text, root, tool_contracts)
+            )
         if data is None:
             continue
 
@@ -401,6 +526,10 @@ def main():
 
     for path in card_paths:
         rel, text, data = parse_document(path, root, failures)
+        if text is not None:
+            failures.extend(
+                command_span_failures(rel, text, root, tool_contracts)
+            )
         if data is None:
             continue
 

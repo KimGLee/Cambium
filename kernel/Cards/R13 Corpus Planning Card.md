@@ -46,10 +46,10 @@ owns that work.
 
 ## Gate
 
-- [ ] `Tools/check_corpus_plan.py --json` reports `structural_reconciliation_valid: true` for a configured plan and records Gate ID `corpus-plan-structure` when receipts are requested.
+- [ ] `python3 Tools/check_corpus_plan.py . --json` reports `structural_reconciliation_valid: true` for a configured plan and records Gate ID `corpus-plan-structure` when receipts are requested.
 - [ ] Every promoted gap resolves to exactly one current Coverage object.
 - [ ] No planning artifact contains a competing task state, batch lifecycle, Queue order, hold, revision, fingerprint, or receipt ledger.
-- [ ] When capabilities are accepted, `record_corpus_acceptance.py --apply` consumes the closed YAML decision plan and records a current Gate ID `corpus-plan-semantic-acceptance` receipt from the Profile-bound authority role; it remains distinct from the structural receipt.
+- [ ] When capabilities are accepted, `python3 Tools/record_corpus_acceptance.py . --plan <plan> --actor-role <Profile-bound-role> --apply` consumes the closed YAML decision plan and records a current Gate ID `corpus-plan-semantic-acceptance` receipt from the Profile-bound authority role; it remains distinct from the structural receipt.
 
 ## Read Back When
 

@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/K12 Quality Assurance Standard|K12 Quality Assurance Standard]].
 - Previous: [[kernel/K12 Quality Assurance/16 Terminal Proof Contract|Terminal Proof Contract]].
+- Next: [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|Cross-page and Control-plane Dimension Map]].
 
 ## Purpose
 

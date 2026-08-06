@@ -19,7 +19,7 @@ This page is the stable entry for the Quality Assurance standard. The detailed r
 | [[kernel/K12 Quality Assurance/05 Automated and Manual Checks\|Automated and Manual Checks]] | `Automated Checks`, `Domain-specific Checks`, `Manual Checks` |
 | [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting\|Completion Gate and Reporting]] | `Completion Gate`, `Final Report`, `Related` |
 | [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation\|Audit Evidence Reuse and Invalidation]] | `Purpose`, `Audit Layers`, `Dimension-specific Audit Receipt`, `Reuse Gate`, `Invalidation`, `Incremental Audit Planning`, `Incremental By Default`, `Specialized Audit Boundary`, `Terminal Reconciliation Rules`, `Related` |
-| [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] | `Purpose`, `Terms`, `Evidence Role`, `Uniform Sections`, `Item Map`, `Reverse Check`, `Profile Registration`, `Related` |
+| [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] | `Purpose`, `Terms`, `Evidence Role`, `Uniform Sections`, `Item Map`, `Reverse Check`, `Profile Registration`, `Related`; this half files the Single Note Review layer |
 | [[kernel/K12 Quality Assurance/09 Batch-close Closed List\|Batch-close Closed List]] | `Purpose`, `Batch-close Closed List`, `Related` |
 | [[kernel/K12 Quality Assurance/10 Standards Version Adoption\|Standards Version Adoption]] | `Purpose And Sole Ownership`, `Trigger And Invariants`, `Restricted-YAML Adoption Plan`, `Adoption Branches`, `Acceptance And Resume` |
 | [[kernel/K12 Quality Assurance/11 Content-level Propagation\|Content-level Propagation]] | `Purpose`, `Content-level Propagation`, `Related` |
@@ -29,6 +29,7 @@ This page is the stable entry for the Quality Assurance standard. The detailed r
 | [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence\|Terminal Audit and Convergence]] | `Terminal Audit`, `Terminal Findings And Convergence` |
 | [[kernel/K12 Quality Assurance/16 Terminal Proof Contract\|Terminal Proof Contract]] | `Terminal Proof Contract`, `Terminal Completion Gate`, `Evidence Trust Boundary` |
 | [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract\|Gate Receipt Payload Contract]] | `Purpose`, `Gate Receipt Payload`, `Recording Authority`, `Consumption And Rejection`, `Related` |
+| [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map\|Cross-page and Control-plane Dimension Map]] | `Purpose`, `Item Map`, `Gate Receipt Dimensions`, `Reverse Check`; this half files the layers above one page and the control-plane Gates |
 | `Audit Dimension Registry` + `Registered Scan Registry` + `Routing And Gate Registry` | profile-owned QA dimensions, scans, and extension gates |
 
 ## Extension Registry

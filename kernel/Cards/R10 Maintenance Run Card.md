@@ -5,9 +5,11 @@ read_set: kernel/Read Sets/R10 Maintenance Run Read Set.md
 compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R10 Maintenance Run Read Set.md
+  - kernel/K00 Standards Control/02 Task Routing.md
   - kernel/K00 Standards Control/13 Runtime Admission and Recovery.md
   - kernel/K00 Standards Control/08 Maintenance Run Envelope.md
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
+  - kernel/K03 Note Types and Ownership/03 Split and Duplication Policy.md
   - kernel/K08 Metadata and Status/05 Review Source and Migration Metadata.md
   - kernel/K06 Knowledge Intake and Evolution/07 Environmental Scanning and Watermark.md
   - kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production.md
@@ -18,7 +20,7 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-source_hash: 'd360f9eb99b8'
+source_hash: '50e8e0903447'
 ---
 # R10 Maintenance Run Card
 

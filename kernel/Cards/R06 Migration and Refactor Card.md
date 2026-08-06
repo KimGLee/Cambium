@@ -14,12 +14,13 @@ source_files:
   - kernel/K08 Metadata and Status/05 Review Source and Migration Metadata.md
   - kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links.md
   - kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns.md
+  - kernel/K10 Writing and Formatting/01 Naming Language and Prose.md
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '1700547b1f3b'
+source_hash: '0e2ce57f12cd'
 ---
 # R06 Migration and Refactor Card
 

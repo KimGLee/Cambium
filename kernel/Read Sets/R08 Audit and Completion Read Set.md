@@ -17,6 +17,7 @@ First read:
 - [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/K12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]]
 - [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]]
+- [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|Cross-page and Control-plane Dimension Map]]
 - [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]]
 - [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence|Terminal Audit and Convergence]]
 - [[kernel/K12 Quality Assurance/16 Terminal Proof Contract|Terminal Proof Contract]]
