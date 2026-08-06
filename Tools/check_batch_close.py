@@ -51,6 +51,9 @@ import kblib
 TOOL = "check_batch_close"
 TOOL_VERSION = "1.2.0"
 GATE_ID = "batch-close"
+# The `Check` cell K00/12 registers for this Gate; every receipt this
+# tool offers as gate evidence carries it verbatim.
+GATE_CHECK = "batch_close_gate"
 DEFAULT_RECEIPTS = ".cambium/receipts/batch-close.jsonl"
 MAX_CHECK_SECONDS = 60
 IDENTITY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]*\Z")
@@ -846,7 +849,7 @@ def _append_receipts(path, receipts):
 def _failure_receipt(attempt_id, root, batch, details, snapshot=None,
                      runtime=None):
     receipt = _make_receipt(
-        TOOL, TOOL_VERSION, "batch_close_gate", batch, "fail", details, 1,
+        TOOL, TOOL_VERSION, GATE_CHECK, batch, "fail", details, 1,
         root=root)
     receipt["receipt_id"] = attempt_id
     receipt["batch_id"] = batch
@@ -946,7 +949,7 @@ def main(argv=None):
         return 1
     delta_apply_receipt = current[0].get("selected_receipt")
     attempt_id = _make_receipt(
-        TOOL, TOOL_VERSION, "batch_close_gate", args.batch, "candidate",
+        TOOL, TOOL_VERSION, GATE_CHECK, args.batch, "candidate",
         "batch-close evidence is being produced", 9999,
         root=root)["receipt_id"]
     pre_snapshot = kblib.repository_snapshot_sha256(root)
@@ -1187,7 +1190,7 @@ def main(argv=None):
                 records.append(corpus_plan_receipt)
 
             aggregator = _make_receipt(
-                TOOL, TOOL_VERSION, "batch_close_gate", args.batch, "pass",
+                TOOL, TOOL_VERSION, GATE_CHECK, args.batch, "pass",
                 "seven Closed List checks passed and declared review attestation was recorded",
                 11, root=root)
             aggregator["receipt_id"] = attempt_id

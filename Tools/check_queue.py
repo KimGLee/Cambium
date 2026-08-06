@@ -20,6 +20,7 @@ Usage:
 
 import argparse
 import datetime
+import importlib
 import json
 import os
 import re
@@ -35,6 +36,9 @@ import maintenance_candidates
 
 TOOL = "check_queue"
 TOOL_VERSION = "1.5.0"
+# The `Check` cell K00/12 registers for every Gate this tool produces; each
+# such Gate is distinguished by `Mode`, not by a second check name.
+GATE_CHECK = "required_queue"
 REGISTER_AMENDMENT_TOOL = "register_amendment"
 REGISTER_AMENDMENT_TOOL_VERSION = "1.0.0"
 OPERATIONAL_AMENDMENT_OPERATIONS = frozenset((
@@ -278,6 +282,37 @@ STANDARDS_ADOPTION_TOOL_VERSION = "1.1.0"
 STANDARDS_ADOPTION_PLAN_PREFIX = ".cambium/deltas/standards-adoptions"
 STANDARDS_GATE_REGISTRY_PATH = \
     "kernel/K00 Standards Control/12 Control Registry.md"
+
+# --- Registered producer identity -------------------------------------------
+# K00/12 registers one producer tuple per Gate ID and K12/17 requires every
+# receipt offered for that Gate to carry it exactly.  Nothing deterministic
+# used to compare the registered tuple against the producer that actually
+# writes it, so a `Check` or `Mode` cell could disagree with its tool and the
+# only symptom would be a receipt that silently misses every boundary it was
+# recorded for.  The two tables below give the comparison its second source.
+#
+# `Check` for a Gate whose producer module does not export the name itself.
+# The value is the one this module's own consumers compare a receipt against,
+# so a drift is caught exactly where it would reject the receipt.  A module
+# that later exports `GATE_CHECK` wins, and the two are required to agree.
+CONSUMED_GATE_CHECKS = {
+    "terminal-proof": "proof-check-summary",
+    "registered-residual-content": "residual-content-summary",
+}
+# Gates whose receipts this module consumes against its own producer-identity
+# constants.  A registry row that disagrees with one of these would register a
+# producer whose receipts this consumer rejects.
+CONSUMED_PRODUCER_IDENTITY = {
+    "batch-close": (BATCH_CLOSE_TOOL, BATCH_CLOSE_TOOL_VERSION),
+    "corpus-plan-structure": (CORPUS_PLAN_TOOL, CORPUS_PLAN_TOOL_VERSION),
+    "terminal-proof": (TERMINAL_PROOF_TOOL, TERMINAL_PROOF_TOOL_VERSION),
+    "standards-adoption": (STANDARDS_ADOPTION_TOOL,
+                           STANDARDS_ADOPTION_TOOL_VERSION),
+    BATCH_REVIEW_GATE_ID: (MANUAL_ATTESTATION_TOOL,
+                           MANUAL_ATTESTATION_TOOL_VERSION),
+}
+PRODUCER_MODULE_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
+_PRODUCER_MODULE_CACHE = {}
 STANDARDS_ADOPTION_PLAN_FIELDS = frozenset((
     "schema_version", "adoption_id", "task_id", "task_state_before",
     "contract_version_before", "contract_version_after",
@@ -404,7 +439,128 @@ def standards_gate_registry(root):
         errors.append("K00/12 must contain exactly one Stable Gate ID Registry")
     if not registry:
         errors.append("Stable Gate ID Registry has no gate rows")
+    errors.extend(gate_registry_producer_errors(registry))
     return registry, errors
+
+
+def producer_module(tool):
+    """Return the installed module a registry ``Tool`` cell names, or None.
+
+    The producer is resolved next to this file rather than under the
+    repository being checked: the module that will actually run is the one
+    whose constants end up in the receipt, and an adopter's copy of the
+    Standards text never redefines that identity.
+    """
+    if tool in _PRODUCER_MODULE_CACHE:
+        return _PRODUCER_MODULE_CACHE[tool]
+    module = None
+    if isinstance(tool, str) and PRODUCER_MODULE_RE.match(tool) and \
+            os.path.isfile(os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), tool + ".py")):
+        try:
+            module = importlib.import_module(tool)
+        except Exception:  # pragma: no cover - a broken producer is an error
+            module = None
+    _PRODUCER_MODULE_CACHE[tool] = module
+    return module
+
+
+def registered_gate_check(gate_id, module):
+    """Return the check name the producer of ``gate_id`` actually writes."""
+    declared = getattr(module, "GATE_CHECK", None) if module else None
+    consumed = CONSUMED_GATE_CHECKS.get(gate_id)
+    if declared is not None and consumed is not None and declared != consumed:
+        return None
+    return declared if declared is not None else consumed
+
+
+def gate_registry_producer_errors(registry):
+    """Return every K00/12 row whose producer tuple its producer contradicts.
+
+    All four selector columns are compared against a source outside the table:
+
+    * ``Tool`` names either the ``manual-attestation`` producer class or an
+      installed module whose ``TOOL`` equals the cell.
+    * ``Tool version`` equals that module's ``TOOL_VERSION`` -- the value it
+      stamps on every receipt -- or, for a hand-recorded receipt, the single
+      current ``manual-attestation`` protocol version K00/12 states.
+    * ``Check`` equals the check name the producer writes for this Gate, and
+      ``Gate ID`` equals the Gate the producer binds, where the module
+      exports them.
+    * ``Mode`` narrows on ``queue_check_mode``, a field only ``check_queue``
+      writes.  A ``check_queue`` row therefore carries a mode that
+      :func:`queue_gate_id_for_mode` maps back to the same Gate ID, and every
+      other row carries ``*``: a narrower mode elsewhere could never match.
+
+    The four cells together are the receipt selector, so two Gate IDs may not
+    share one tuple either.  This is a judgment, not an adjudication: the
+    caller is told the two sides disagree, never which side to change.
+    """
+    errors = []
+    selectors = {}
+    for gate_id in sorted(registry):
+        predicate = registry[gate_id]
+        tool = predicate["tool"]
+        mode = predicate["mode"]
+        selector = (tool, predicate["tool_version"], predicate["check"], mode)
+        selectors.setdefault(selector, []).append(gate_id)
+        consumed = CONSUMED_PRODUCER_IDENTITY.get(gate_id)
+        if consumed is not None and consumed != (tool,
+                                                 predicate["tool_version"]):
+            errors.append(
+                "Gate ID %s registers producer %s/%s but this checker "
+                "consumes its receipts as %s/%s" % (
+                    gate_id, tool, predicate["tool_version"], *consumed))
+        if tool == TOOL:
+            probe = mode[:-1] if mode.endswith("*") else mode
+            if queue_gate_id_for_mode(probe) != gate_id:
+                errors.append(
+                    "Gate ID %s registers Mode %s, which %s does not emit for "
+                    "that Gate" % (gate_id, mode, TOOL))
+        elif mode != "*":
+            errors.append(
+                "Gate ID %s registers Mode %s, but only %s receipts carry "
+                "queue_check_mode" % (gate_id, mode, TOOL))
+        if tool == MANUAL_ATTESTATION_TOOL:
+            if predicate["tool_version"] != MANUAL_ATTESTATION_TOOL_VERSION:
+                errors.append(
+                    "Gate ID %s registers manual-attestation protocol version "
+                    "%s, not the current %s" % (
+                        gate_id, predicate["tool_version"],
+                        MANUAL_ATTESTATION_TOOL_VERSION))
+            continue
+        module = producer_module(tool)
+        if module is None or getattr(module, "TOOL", None) != tool:
+            errors.append(
+                "Gate ID %s registers Tool %s, which is not an installed "
+                "producer of that name" % (gate_id, tool))
+            continue
+        if getattr(module, "TOOL_VERSION", None) != predicate["tool_version"]:
+            errors.append(
+                "Gate ID %s registers Tool version %s but %s stamps %s" % (
+                    gate_id, predicate["tool_version"], tool,
+                    getattr(module, "TOOL_VERSION", None)))
+        declared_gate = getattr(module, "GATE_ID", None)
+        if declared_gate is not None and tool != TOOL and \
+                declared_gate != gate_id:
+            errors.append(
+                "Gate ID %s registers Tool %s, which binds %s to its receipts"
+                % (gate_id, tool, declared_gate))
+        expected_check = registered_gate_check(gate_id, module)
+        if expected_check is None:
+            errors.append(
+                "Gate ID %s registers Check %s against %s, which declares no "
+                "check name for it" % (gate_id, predicate["check"], tool))
+        elif expected_check != predicate["check"]:
+            errors.append(
+                "Gate ID %s registers Check %s but %s writes %s" % (
+                    gate_id, predicate["check"], tool, expected_check))
+    for selector, gate_ids in sorted(selectors.items()):
+        if len(gate_ids) > 1:
+            errors.append(
+                "Gate IDs %s share one receipt selector %s" % (
+                    ", ".join(gate_ids), "/".join(selector)))
+    return errors
 
 
 def receipt_matches_gate_id(receipt, gate_id, registry):
@@ -7990,7 +8146,7 @@ def make_check_receipt(result, outcome, details, mode,
     does not authenticate the caller or stop another writer copying labels.
     """
     receipt = kblib.make_receipt(
-        TOOL, TOOL_VERSION, "required_queue", QUEUE_PATH, outcome,
+        TOOL, TOOL_VERSION, GATE_CHECK, QUEUE_PATH, outcome,
         details, 1,
     )
     if result.get("queue_sha256"):

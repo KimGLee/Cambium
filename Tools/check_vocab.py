@@ -50,6 +50,9 @@ import kblib
 TOOL = "check_vocab"
 TOOL_VERSION = "1.4.0"
 GATE_ID = "frontmatter-vocabulary"
+# The `Check` cell K00/12 registers for this Gate; every receipt this
+# tool offers as gate evidence carries it verbatim.
+GATE_CHECK = "vocab-check-summary"
 
 
 def _make_receipt(check, target, result, details, seq, root=None):
@@ -217,7 +220,7 @@ def main():
     if not any(r["result"] == "fail" for r in receipts):
         seq += 1
         receipts.append(_make_receipt(
-            "vocab-check-summary",
+            GATE_CHECK,
             (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
             "no illegal controlled-vocabulary values found (unknown_value=0; "
             "candidates counted separately)", seq, root=args.vault_root))

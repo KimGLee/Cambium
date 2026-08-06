@@ -8,7 +8,10 @@
 residual_scan_config_version: 1
 
 # Residual structures are valid under these vault-relative roots. Every root
-# must exist as a real directory when the scan runs.
+# must exist as a real directory when the scan runs, and it doubles as the
+# known-residual positive control required by K12/09 item 6: a run that finds
+# no candidate outside these roots must still recognise at least one Markdown
+# file inside them, otherwise the configuration is inert and the run fails.
 allowed_roots:
   - TODO(profile)
 

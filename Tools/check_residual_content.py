@@ -5,6 +5,13 @@ The selected profile owns the scan configuration and acceptance predicate;
 this tool owns only deterministic traversal, matching, receipts, and failure
 semantics. Content findings are candidates (exit 2), never automatic defects.
 Exit 1 is reserved for a scan that failed to produce reliable evidence.
+
+Rule owner: "kernel/K12 Quality Assurance/09 Batch-close Closed List.md"
+(item 6 -- membership, the deterministic/whole-vault/<=60s execution contract,
+and the non-triviality requirement enforced by ``probe_accepted_roots``).
+A configuration that recognises nothing anywhere in the vault cannot
+distinguish a clean corpus from an inert matcher, so it fails closed instead of
+reporting a zero-candidate pass.
 """
 
 import argparse
@@ -362,6 +369,50 @@ def scan_scope(root, config, add):
     return scanned, candidates
 
 
+def probe_accepted_roots(root, config):
+    """Prove the configured matchers can still fire (K12/09 item 6).
+
+    A registered residual scan asserts the absence of the registered structures
+    outside the accepted roots.  That assertion is evidence only when the same
+    configuration still recognises those structures where the profile declares
+    they legitimately live, so the accepted roots are used as the positive
+    control.  Returns ``(probed_file_count, first_matching_relative_path)``
+    with a deterministic sorted traversal; the witness is ``None`` when nothing
+    under the accepted roots matches.  Unreadable, symlinked, or non-regular
+    files cannot serve as a witness and are skipped rather than failed: the
+    accepted roots are the control sample, not the audited scope.
+    """
+    probed = 0
+    for allowed_root in config["allowed_roots"]:
+        base = os.path.join(root, *allowed_root.split("/"))
+        for directory, dirnames, filenames in os.walk(
+                base, followlinks=False, onerror=lambda _exc: None):
+            dirnames[:] = sorted(
+                name for name in dirnames
+                if name not in VCS_CONTROL_DIRS and
+                not os.path.islink(os.path.join(directory, name)))
+            for name in sorted(filenames):
+                if not name.lower().endswith(".md"):
+                    continue
+                full = os.path.join(directory, name)
+                if os.path.islink(full) or not os.path.isfile(full):
+                    continue
+                try:
+                    with open(full, "r", encoding="utf-8") as handle:
+                        text = handle.read()
+                except (OSError, UnicodeError):
+                    continue
+                probed += 1
+                try:
+                    markers = classify(text, config)
+                except (TypeError, ValueError):
+                    continue
+                if markers:
+                    return probed, os.path.relpath(
+                        full, root).replace(os.sep, "/")
+    return probed, None
+
+
 def produce_evidence(root, config_path, time_limit, add, receipt_context):
     """Load, validate, and scan under one evidence-production deadline."""
     started = time.monotonic()
@@ -422,6 +473,21 @@ def produce_evidence(root, config_path, time_limit, add, receipt_context):
                 scope_valid = False
         if scope_valid:
             scanned, candidates = scan_scope(root, config, add)
+            if candidates == 0:
+                # K12/09 item 6 non-triviality: a zero-candidate report only
+                # means "clean" when the configuration can still recognise the
+                # structures it describes.  The accepted roots are the
+                # profile's own known-residual sample.
+                probed, witness = probe_accepted_roots(root, config)
+                receipt_context["nontriviality_witness"] = witness
+                if witness is None:
+                    add("residual-content-inert-matcher", config_path, "fail",
+                        "configured matchers recognised no Markdown file in "
+                        "the vault: %d file(s) probed under the accepted "
+                        "root(s) and %d file(s) scanned outside them produced "
+                        "no match; a configuration that cannot recognise the "
+                        "structures it registers is not scan evidence" %
+                        (probed, scanned))
     except ScanTimeBudgetExceeded:
         add("residual-content-time-budget", root, "fail",
             "evidence production exceeded the %g-second hard budget" % time_limit)
@@ -464,7 +530,8 @@ def main(argv=None):
     receipts = []
     safe_scan_id = (args.scan_id if SCAN_ID_RE.fullmatch(args.scan_id)
                     else "invalid-residual-scan")
-    receipt_context = {"config_fingerprint": None}
+    receipt_context = {"config_fingerprint": None,
+                       "nontriviality_witness": None}
 
     def add(check, target, result, details):
         # The scanned root also binds the Required Queue identity a Gate
@@ -505,8 +572,10 @@ def main(argv=None):
         failures = [receipts[-1]]
     if not failures and candidates == 0:
         add("residual-content-summary", root, "pass",
-            "scanned %d Markdown file(s); no configured residual-content candidate found" %
-            scanned)
+            "scanned %d Markdown file(s); no configured residual-content "
+            "candidate found; matchers proven live against accepted-root "
+            "witness %s" %
+            (scanned, receipt_context["nontriviality_witness"]))
 
     print("check_residual_content: scanned %d file(s), candidates=%d, "
           "failures=%d, elapsed=%.3fs" %

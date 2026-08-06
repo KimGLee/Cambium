@@ -59,6 +59,9 @@ import kblib
 TOOL = "check_links"
 TOOL_VERSION = "1.5.0"
 GATE_ID = "wiki-link-integrity"
+# The `Check` cell K00/12 registers for this Gate; every receipt this
+# tool offers as gate evidence carries it verbatim.
+GATE_CHECK = "link-check-summary"
 
 LINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
 
@@ -263,7 +266,7 @@ def main():
     if problems == 0:
         seq += 1
         receipts.append(_make_receipt(
-            "link-check-summary",
+            GATE_CHECK,
             (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
             "missing=0 ambiguous=0 bad_heading=0 (%d link(s) total)"
             % counts["links"], seq, root=args.vault_root))

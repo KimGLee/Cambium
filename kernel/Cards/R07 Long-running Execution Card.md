@@ -18,6 +18,7 @@ source_files:
   - kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries.md
   - kernel/K13 Task Runtime and Execution Control/07 Progress Ledger Contract.md
   - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
+  - kernel/K13 Task Runtime and Execution Control/09 Queue Compilation Replanning and Views.md
   - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
   - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
@@ -30,7 +31,7 @@ source_files:
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'dc0a10862708'
+source_hash: 'afb65867b473'
 ---
 # R07 Long-running Execution Card
 

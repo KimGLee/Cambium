@@ -909,6 +909,27 @@ raise SystemExit(update_task.main(sys.argv[2:]))
             "audit_receipt_register": completion_register,
             "full_deterministic_results": completion_register,
             "incremental_manual_scope": [],
+            # K12/16 per-dimension accounting: the two dimensions this fixture
+            # actually produced receipts for cite them; the rest carry an
+            # explicit not-applicable declaration rather than silence.
+            "dimension_coverage": {
+                "coverage_and_integration": [proof_queue_receipt],
+                "guidance_and_contract": [corpus_plan_receipt],
+                "structure_and_links":
+                    "not-applicable: the frozen fixture scope holds no "
+                    "authored knowledge page to review for links",
+                "content_and_depth":
+                    "not-applicable: the frozen fixture scope holds no "
+                    "authored knowledge page",
+                "formula_and_numeric":
+                    "not-applicable: the frozen fixture scope states no "
+                    "formula, symbol, numeric example, or metric provenance",
+                "source_and_currentness":
+                    "not-applicable: the frozen fixture scope cites no "
+                    "external source",
+                "rendering":
+                    "not-applicable: visual_trigger: not_applicable",
+            },
         })
         proof_relative = ".cambium/receipts/terminal-proof.yaml"
         (self.root / proof_relative).write_text(

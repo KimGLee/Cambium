@@ -21,6 +21,9 @@ import kblib
 TOOL = "adopt_standards"
 TOOL_VERSION = "1.1.0"
 GATE_ID = "standards-adoption"
+# The `Check` cell K00/12 registers for this Gate; every receipt this
+# tool offers as gate evidence carries it verbatim.
+GATE_CHECK = "standards_adoption"
 PLAN_PREFIX = check_queue.STANDARDS_ADOPTION_PLAN_PREFIX
 RECEIPT_PATH = ".cambium/receipts/standards-adoptions.jsonl"
 ALLOWED_TASK_STATES = frozenset(("active", "paused"))
@@ -143,7 +146,7 @@ def _new_receipt(phase, result, plan, transaction_id, plan_path, plan_sha,
                  before, after, before_sha, after_sha, projection_shas,
                  immediate_receipts):
     receipt = _make_receipt(
-        "standards_adoption", plan["adoption_id"],
+        GATE_CHECK, plan["adoption_id"],
         result,
         "%s Standards adoption %s -> %s" % (
             phase, plan["standards_version_before"],
@@ -331,7 +334,7 @@ def _prepare_result(root, plan_relative):
     # Commit id/time are known before serializing Progress, avoiding a
     # self-referential after-Progress hash while retaining an exact reference.
     commit_stub = _make_receipt(
-        "standards_adoption", plan["adoption_id"],
+        GATE_CHECK, plan["adoption_id"],
         "pass", "Standards adoption commit", 2,
         identity=_plan_identity(plan))
     record = {
@@ -492,7 +495,7 @@ def _lock_operation(prepared, receipt_path, abort_id):
 def _commit_transaction(prepared, receipt_path):
     abort = copy.deepcopy(prepared["prepare"])
     abort.update(_make_receipt(
-        "standards_adoption",
+        GATE_CHECK,
         prepared["plan"]["adoption_id"], "fail",
         "Standards adoption aborted and before state restored", 3,
         identity=_plan_identity(prepared["plan"])))

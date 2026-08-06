@@ -48,6 +48,26 @@ automated_QA_result: "passed"
 manual_review_result: "passed"
 rendering_evidence: "level-0/1 deterministic passed; visual_trigger: not_applicable"
 audit_snapshot_id: "snap-20260721-01"
+# One entry per base receipt dimension fixed by K12/07: either the receipt IDs
+# that carry the dimension's verdicts, or an explicit
+# "not-applicable: <reason>" declaration. An omitted dimension, an empty list,
+# or a reasonless declaration fails; absence of receipts is never read as
+# "nothing was in scope". Extension dimensions registered by the profile's
+# Audit Dimension Registry may be added as further entries.
+dimension_coverage:
+  structure_and_links:
+    - "audit-check_links-20260721T000000Z-4f9c2a7d6e8b4a10b3c5d7e9f1023456-0001"
+  content_and_depth:
+    - "audit-manual-attestation-20260721T000000Z-5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a-0001"
+  formula_and_numeric: "not-applicable: no page in the frozen scope states a formula, symbol, numeric example, or metric-provenance claim"
+  source_and_currentness:
+    - "audit-manual-attestation-20260721T000000Z-6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b-0001"
+  coverage_and_integration:
+    - "audit-check_queue-20260721T000000Z-11111111111111111111111111111111-0001"
+  rendering:
+    - "audit-check_batch_close-20260721T000000Z-7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c-0001"
+  guidance_and_contract:
+    - "audit-check_vocab-20260721T000000Z-8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d-0001"
 audit_receipt_register: ".cambium/receipts/terminal.jsonl"
 reused_receipts: []
 superseded_receipts: []

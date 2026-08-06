@@ -38,6 +38,7 @@ automated_QA_result
 manual_review_result
 rendering_evidence
 audit_snapshot_id
+dimension_coverage
 audit_receipt_register
 reused_receipts
 superseded_receipts
@@ -78,6 +79,8 @@ repository snapshot. A rejected, stale, absent, duplicate, or structurally
 unmatched receipt blocks completion.
 
 `rendering_evidence` MUST state the highest level actually used and the verification result. When there is no visual exception trigger, recording `visual_trigger: not_applicable` suffices; the absence of UI, screenshots, or recordings MUST NOT block completion on that account.
+
+`dimension_coverage` accounts for each of the seven base receipt dimensions fixed by [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Dimension-specific Audit Receipt|K12/07]]. A dimension that ran records the receipt IDs carrying its verdicts; a dimension with no in-scope object records an explicit `not-applicable: <reason>` declaration. An omitted dimension, an empty receipt list, or a reasonless declaration is not a pass, because a dimension nobody ran and a dimension with nothing to review are the same absence of receipts until the Proof separates them. The Terminal Proof owns this declaration, as it owns `rendering_evidence`; an extension dimension registered through the `Audit Dimension Registry` MAY appear as an additional entry under the same rules. Every cited receipt MUST resolve to exactly one uninvalidated record of the declared dimension in `audit_receipt_register`, and MUST NOT be cited under two dimensions, since a receipt carries one dimension. Whether a stated reason is true remains a manual review item.
 
 ## Terminal Completion Gate
 
