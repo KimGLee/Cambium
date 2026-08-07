@@ -318,6 +318,47 @@ def headings_of(text):
     return result
 
 
+# ---------------------------------------------------------------------------
+# Batch lifecycle transition map
+# ---------------------------------------------------------------------------
+# The single map of which batch lifecycle state may follow which.  It lives
+# here, beside the other rules two tools share, because both sides of the
+# lifecycle need it and neither may import the other: the writer that applies
+# a transition (`update_queue`) already imports the checker (`check_queue`),
+# so the checker cannot import the writer back to ask what is reachable.  A
+# second copy would let the two disagree about which position a batch can
+# still get to, and a boundary gate would then be waived or demanded wrongly.
+
+BATCH_LIFECYCLE_TRANSITIONS = {
+    "queued": frozenset(("open",)),
+    "open": frozenset(("merge-ready",)),
+    "merge-ready": frozenset(("closed", "open")),
+    "closed": frozenset(),
+    "cancelled": frozenset(),
+}
+
+
+def reachable_batch_states(state):
+    """Return every state reachable from ``state`` by one or more transitions.
+
+    Reachability is transitive and follows cycles: ``merge-ready -> open``
+    means an ``open`` batch can return to ``open``, so ``open`` is in its own
+    forward set.  An unknown state has no sanctioned successor and returns the
+    empty set, which makes every position judged against it fail closed.
+    """
+    if state not in BATCH_LIFECYCLE_TRANSITIONS:
+        return frozenset()
+    seen = set()
+    pending = list(BATCH_LIFECYCLE_TRANSITIONS[state])
+    while pending:
+        candidate = pending.pop()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        pending.extend(BATCH_LIFECYCLE_TRANSITIONS.get(candidate, ()))
+    return frozenset(seen)
+
+
 WIKI_LINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
 READ_SET_NON_BOUNDARY_SECTIONS = ("Purpose", "Related")
 READ_SET_DOCUMENT_TYPES = frozenset(("read-set", "profile-read-set"))
