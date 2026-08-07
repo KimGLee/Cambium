@@ -4,6 +4,10 @@ Interface: [Audit Dimension Registry slot](../../README.md#audit-dimension-regis
 
 ## Extension Dimensions
 
+Keep this block and its declaration even when nothing is registered: the Terminal Completion Gate reads it to enumerate the receipt dimensions a Terminal Proof must cover, and an absent or unfilled block is an unreadable registry rather than an empty one. A `receipt` target obliges every Terminal Proof to account for that dimension in `dimension_coverage`, on the same terms as the seven base dimensions (K12/16); a `review`-only registration does not.
+
+Use `Configured` with one or more rows, or `None` with no rows. Give each extension a unique lower-snake-case ID that does not reuse a base dimension, and use exactly `review`, `receipt`, or `review + receipt` in the target cell.
+
 - Registration: TODO(profile)
 
 | Dimension ID | Target list(s): `review`, `receipt`, or `review + receipt` | Meaning |

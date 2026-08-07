@@ -318,6 +318,101 @@ def headings_of(text):
     return result
 
 
+WIKI_LINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
+READ_SET_NON_BOUNDARY_SECTIONS = ("Purpose", "Related")
+READ_SET_DOCUMENT_TYPES = frozenset(("read-set", "profile-read-set"))
+
+
+def parse_wiki_link(inner):
+    r"""Return one Wiki Link's normalized target and optional heading.
+
+    Markdown tables escape the alias separator as ``\|`` while ordinary prose
+    uses ``|``.  Both forms share one path rule, and an explicit ``.md`` suffix
+    is normalized away so callers can choose their own storage form without
+    ever producing ``.md.md``.
+    """
+    target_part = re.split(r"\\\||\|", inner, maxsplit=1)[0].strip()
+    target, _, heading = target_part.partition("#")
+    target = target.strip()
+    if target.lower().endswith(".md"):
+        target = target[:-3]
+    return target, heading.strip()
+
+
+def read_set_document_type(text):
+    """Return a recognized Read Set frontmatter type, otherwise ``None``.
+
+    Kernel routes use ``type: read-set`` and profile supplemental routes use
+    ``type: profile-read-set``.  A boundary target is traversed as a Read Set
+    only when its own bytes prove one of those types; directory names alone do
+    not turn an index or ordinary profile page into a Read Set.
+    """
+    frontmatter = extract_frontmatter(text or "")
+    if frontmatter is None:
+        return None
+    try:
+        fields = parse_yaml_subset(frontmatter)
+    except (ValueError, YamlSubsetError):
+        return None
+    if not isinstance(fields, dict):
+        return None
+    document_type = fields.get("type")
+    return (document_type if isinstance(document_type, str) and
+            document_type in READ_SET_DOCUMENT_TYPES else None)
+
+
+def read_set_boundary_targets(text):
+    """Return the repository paths one Read Set's loading boundaries name.
+
+    A Read Set's `Purpose` states applicability and `Related` is navigation, so
+    neither is a loading boundary; every other H2 is one, and every Wiki Link
+    inside a boundary names a module the route loads.  A Wiki Link is the only
+    boundary syntax: a code span such as a `python3 Tools/...` command line is
+    an instruction the route runs, not a module its reader loads.  Targets come
+    back as repository-relative `.md` paths, deduplicated and sorted.
+
+    Both consumers of this rule share this one parser -- the leaf-coverage
+    check that asks which kernel leaves no boundary names, and the adoption
+    check that asks which boundary-named modules a declared load set omits --
+    so the two can never disagree about what a boundary names.
+    """
+    targets = set()
+    section = ""
+    fence_character = None
+    fence_length = 0
+    for line in (text or "").splitlines():
+        if fence_character is None:
+            fence = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+            if fence:
+                marker = fence.group(1)
+                info = fence.group(2)
+                if marker[0] == "`" and "`" in info:
+                    fence = None
+            if fence:
+                fence_character = marker[0]
+                fence_length = len(marker)
+                continue
+        else:
+            closing = re.match(
+                r"^ {0,3}%s{%d,}[ \t]*$" %
+                (re.escape(fence_character), fence_length), line)
+            if closing:
+                fence_character = None
+                fence_length = 0
+            continue
+        heading = re.match(r"^ {0,3}##[ \t]+(.+?)\s*#*\s*$", line)
+        if heading:
+            section = heading.group(1).strip()
+            continue
+        if not section or section in READ_SET_NON_BOUNDARY_SECTIONS:
+            continue
+        for inner in WIKI_LINK_RE.findall(line):
+            target, _heading = parse_wiki_link(inner)
+            if target:
+                targets.add(target + ".md")
+    return sorted(targets)
+
+
 PROFILE_ID_LINE_RE = re.compile(
     r"^\s*-\s+`profile_id`\s*:\s*`([^`]*)`\s*$"
 )

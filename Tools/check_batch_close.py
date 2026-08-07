@@ -49,7 +49,7 @@ import kblib
 
 
 TOOL = "check_batch_close"
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.3.0"
 GATE_ID = "batch-close"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -719,6 +719,10 @@ def _profile_scan_command(root, runtime):
         raise ValueError("registered verifier must bind the whole repository root as '.'")
     if "--receipts" in tokens:
         raise ValueError("registered verifier command must leave --receipts to the gate")
+    if "--positive-controls-only" in tokens:
+        raise ValueError(
+            "registered verifier command must leave --positive-controls-only "
+            "to the gate")
     forbidden = {";", "&&", "||", "|", ">", ">>", "<"}
     if forbidden.intersection(tokens):
         raise ValueError("registered verifier command contains a shell operator")
@@ -764,6 +768,78 @@ def _tool_member_run(run, member):
         "details": details,
         "source_command": run.get("command"),
     }
+
+
+POSITIVE_CONTROL_BINDING_FIELDS = (
+    "tool", "tool_version", "check", "scan_id", "config_fingerprint",
+    "positive_control_result", "positive_control_mode",
+    "positive_control_count", "positive_control_fingerprint",
+)
+
+
+def _positive_control_summary_errors(run):
+    """Validate one side of the verifier-neutral K12/09 control protocol."""
+    receipts = run.get("receipts") or []
+    if not receipts:
+        return ["registered verifier emitted no positive-control summary"]
+    summary = receipts[-1]
+    errors = []
+    if summary.get("result") != "pass":
+        errors.append(
+            "registered verifier final summary must be a pass receipt")
+    scan_id = summary.get("scan_id")
+    if not isinstance(scan_id, str) or not scan_id:
+        errors.append(
+            "registered verifier final summary must declare a non-empty "
+            "scan_id")
+    config_fingerprint = summary.get("config_fingerprint")
+    if (not isinstance(config_fingerprint, str) or
+            re.fullmatch(r"sha256:[0-9a-f]{64}",
+                         config_fingerprint) is None):
+        errors.append(
+            "registered verifier final summary must declare a canonical "
+            "config_fingerprint")
+    if summary.get("positive_control_result") != "passed":
+        errors.append(
+            "registered verifier final summary must declare "
+            "positive_control_result=passed")
+    if summary.get("positive_control_mode") != "production-classifier":
+        errors.append(
+            "registered verifier final summary must declare "
+            "positive_control_mode=production-classifier")
+    count = summary.get("positive_control_count")
+    if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+        errors.append(
+            "registered verifier final summary must declare a positive "
+            "positive_control_count value")
+    fingerprint = summary.get("positive_control_fingerprint")
+    if (not isinstance(fingerprint, str) or
+            re.fullmatch(r"sha256:[0-9a-f]{64}", fingerprint) is None):
+        errors.append(
+            "registered verifier final summary must declare a canonical "
+            "positive_control_fingerprint")
+    return errors
+
+
+def _positive_control_binding_errors(control_run, production_run):
+    """Bind an explicit control invocation to the following production run."""
+    errors = []
+    errors.extend("positive-control invocation: %s" % error
+                  for error in _positive_control_summary_errors(control_run))
+    errors.extend("production invocation: %s" % error
+                  for error in _positive_control_summary_errors(production_run))
+    control_receipts = control_run.get("receipts") or []
+    production_receipts = production_run.get("receipts") or []
+    if not control_receipts or not production_receipts:
+        return errors
+    control = control_receipts[-1]
+    production = production_receipts[-1]
+    for field in POSITIVE_CONTROL_BINDING_FIELDS:
+        if control.get(field) != production.get(field):
+            errors.append(
+                "registered verifier positive-control and production "
+                "summaries disagree on %s" % field)
+    return errors
 
 
 def _internal_member_run(run, member):
@@ -1053,10 +1129,21 @@ def main(argv=None):
                         _guidance_contract_check(runtime),
                         "guidance_and_contract_continuity")
                 residual_command = _profile_scan_command(root, runtime)
+                residual_control = _run_receipting_command(
+                    residual_command + ["--positive-controls-only"], root,
+                    "registered residual-content positive controls")
                 residual = _run_receipting_command(
                     residual_command, root, "registered residual-content scan")
-                checks["registered_residual_content"] = _tool_member_run(
+                residual_member = _tool_member_run(
                     residual, "registered_residual_content")
+                residual_member["errors"].extend(
+                    _positive_control_binding_errors(
+                        residual_control, residual))
+                if residual_control.get("errors"):
+                    residual_member["errors"].extend(
+                        "positive-control invocation: %s" % error
+                        for error in residual_control["errors"])
+                checks["registered_residual_content"] = residual_member
                 vocab_path = kblib.repository_path(
                     root, "Tools/vocab.yaml", must_exist=True,
                     reject_symlink=True)

@@ -402,6 +402,30 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
             checks.count("proof-progress-contract-mismatch"), 2
         )
 
+    def test_frozen_load_contract_must_match_proof_exactly(self):
+        """A green live Queue gate cannot license a different Proof list."""
+        load_contract = {
+            "selected_route_ids": ["R01"],
+            "selected_card_paths": ["kernel/Cards/R01 Core Bootstrap Card.md"],
+            "selected_profile_route_ids": ["P:test:supplemental"],
+            "selected_read_sets": ["kernel/Read Sets/R01 Core Bootstrap Read Set.md"],
+            "loaded_module_paths": ["kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md"],
+        }
+        for field in load_contract:
+            with self.subTest(field=field):
+                proof = dict(self.proof)
+                proof.update(load_contract)
+                proof[field] = []
+                progress = dict(self.progress)
+                progress["contract"] = dict(self.progress["contract"])
+                progress["contract"].update(load_contract)
+                failures = check_proof._validate_terminal_progress_state(
+                    proof, progress)
+                self.assertIn(
+                    "proof-progress-contract-mismatch",
+                    self.checks(failures),
+                )
+
     def test_canonical_progress_and_coverage_fingerprints_must_match_proof(self):
         progress_checks = self.checks(
             check_proof._validate_terminal_progress_state(
@@ -552,6 +576,7 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             "corpus_plan", self.profile_manifest, "pass",
             "terminal fixture Corpus Planning bytes passed", 1)
         corpus_receipt["gate_id"] = "corpus-plan-structure"
+        self.corpus_receipt_id = corpus_receipt["receipt_id"]
         corpus_receipt.update(
             check_proof.check_corpus_plan.current_freshness_binding(
                 self.root, self.profile_manifest,
@@ -767,11 +792,30 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
         self.assertIn("formula_and_numeric", result.stdout)
 
     def test_dimension_receipt_absent_from_the_register_fails_closed(self):
+        receipt_id = (
+            "audit-manual-attestation-20260804T000000Z-"
+            "99999999999999999999999999999999-0001")
+        # Keep the ID current in the repository-wide catalog while omitting it
+        # from the Proof's declared register, so this isolates the register
+        # membership contract from the separate current-evidence contract.
+        current_record = {
+            "receipt_id": receipt_id,
+            "tool": "manual-attestation",
+            "tool_version": "1.0.0",
+            "check": "audit_dimension",
+            "target": "frozen snapshot",
+            "result": "pass",
+            "details": "fixture register-membership isolation",
+            "dimension": "formula_and_numeric",
+            "invalidated_by": None,
+        }
+        (self.root / ".cambium/receipts/current-outside-proof.jsonl").write_text(
+            json.dumps(current_record, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
         self.rewrite_dimension_coverage(
             lambda coverage: coverage.__setitem__(
-                "formula_and_numeric",
-                ["audit-manual-attestation-20260804T000000Z-"
-                 "99999999999999999999999999999999-0001"]))
+                "formula_and_numeric", [receipt_id]))
         result = self.run_proof()
         self.assertEqual(1, result.returncode, result.stdout + result.stderr)
         self.assertIn("proof-dimension-receipt-missing", result.stdout)
@@ -797,6 +841,191 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
         self.assertEqual(1, result.returncode, result.stdout + result.stderr)
         self.assertIn("proof-dimension-receipt-duplicate", result.stdout)
 
+    REGISTRY_TABLE_HEADER = (
+        "| Dimension ID | Target list(s): `review`, `receipt`, or "
+        "`review + receipt` | Meaning |\n|---|---|---|\n"
+    )
+
+    def rebind_corpus_plan_receipt(self):
+        """Re-take the Corpus Planning receipt against the edited tree.
+
+        Editing a profile file changes the frozen repository snapshot and the
+        slot bytes that receipt binds, so without this every registry test
+        would fail on Corpus Planning currency instead of on the behaviour
+        under test.
+        """
+        def rebind(record):
+            record.update(
+                check_proof.check_corpus_plan.current_freshness_binding(
+                    self.root, self.profile_manifest,
+                    task_id=record["task_id"],
+                    queue_revision=record["queue_revision"],
+                    queue_state_revision=record["queue_state_revision"],
+                    coverage_ledger_sha256=record["coverage_ledger_sha256"],
+                    required_queue_sha256=record["required_queue_sha256"],
+                    progress_ledger_sha256=record["progress_ledger_sha256"],
+                    repository_snapshot_sha256=(
+                        kblib.repository_snapshot_sha256(self.root)),
+                ))
+
+        self.rewrite_register_record(self.corpus_receipt_id, rebind)
+
+    def rewrite_extension_dimensions(self, block):
+        """Replace the selected profile's Extension Dimensions registration.
+
+        `Extension Dimensions` is the last H2 of the fixture slot file, so the
+        whole registration block is replaced; `block` of None removes it.
+        """
+        registry = self.root / "profiles/test-profile/slots.md"
+        head, marker, _tail = registry.read_text(
+            encoding="utf-8").partition("## Extension Dimensions\n")
+        self.assertTrue(marker, "fixture slot file has no registration block")
+        registry.write_text(
+            head if block is None else head + marker + block,
+            encoding="utf-8")
+        self.rebind_corpus_plan_receipt()
+
+    def register_extension_dimension(self, targets="`review + receipt`"):
+        """Register one profile-owned dimension the way a real profile does."""
+        self.rewrite_extension_dimensions(
+            "\n- Registration: Configured\n\n" + self.REGISTRY_TABLE_HEADER +
+            "| `glossary` | %s | Fitness of the profile's terminology "
+            "pages against its registered glossary contract. |\n" % targets)
+
+    def append_dimension_record(self, dimension):
+        """Append one passing AuditReceipt for `dimension` to the register."""
+        record = kblib.make_receipt(
+            "manual-attestation", "1.0.0", "audit_dimension",
+            "frozen snapshot", "pass",
+            "fixture %s verdict for the frozen snapshot" % dimension, 9)
+        record["dimension"] = dimension
+        register = self.root / ".cambium/receipts/terminal.jsonl"
+        with register.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, sort_keys=True) + "\n")
+        return record["receipt_id"]
+
+    def test_registered_receipt_dimension_omitted_from_the_proof_fails(self):
+        """K12/16: a registered `receipt` dimension is not optional.
+
+        The defect this closes: the profile registers a dimension, judgment
+        items emit into it, and a Terminal Proof that never mentions it passes
+        because the checker only ever iterated the base seven.
+        """
+        self.register_extension_dimension()
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-missing", result.stdout)
+        self.assertIn("glossary", result.stdout)
+
+    def test_registered_receipt_dimension_accounted_for_passes(self):
+        """The obligation is dischargeable by receipts, like the base seven."""
+        self.register_extension_dimension()
+        receipt_id = self.append_dimension_record("glossary")
+        self.rewrite_dimension_coverage(
+            lambda coverage: coverage.__setitem__("glossary", [receipt_id]))
+        result = self.run_proof()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_registered_dimension_declared_not_applicable_passes(self):
+        self.register_extension_dimension()
+        self.rewrite_dimension_coverage(
+            lambda coverage: coverage.__setitem__(
+                "glossary",
+                "not-applicable: the frozen fixture scope holds no "
+                "terminology page"))
+        result = self.run_proof()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_registered_dimension_receipt_still_resolves_by_dimension(self):
+        """A registered dimension reuses the base evidence rules unchanged."""
+        self.register_extension_dimension()
+        self.rewrite_dimension_coverage(
+            lambda coverage: coverage.__setitem__(
+                "glossary",
+                [self.dimension_receipts["structure_and_links"]]))
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-receipt-mismatch", result.stdout)
+
+    def test_review_only_registration_owes_the_proof_no_entry(self):
+        """Only a `receipt` target produces receipts to account for."""
+        self.register_extension_dimension(targets="`review`")
+        result = self.run_proof()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_review_only_dimension_cannot_supply_terminal_receipt(self):
+        """The registry, not an ad-hoc Proof key, grants receipt authority."""
+        self.register_extension_dimension(targets="`review`")
+        receipt_id = self.append_dimension_record("glossary")
+        self.rewrite_dimension_coverage(
+            lambda coverage: coverage.__setitem__("glossary", [receipt_id]))
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-review-only", result.stdout)
+
+    def test_review_only_dimension_may_use_explicit_na_declaration(self):
+        """K12/16 permits the key but grants it no receipt target."""
+        self.register_extension_dimension(targets="`review`")
+        self.rewrite_dimension_coverage(
+            lambda coverage: coverage.__setitem__(
+                "glossary",
+                "not-applicable: the frozen scope has no terminology page"))
+        result = self.run_proof()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_unregistered_extension_dimension_fails_closed(self):
+        """Terminal Proof cannot invent a Profile extension dimension."""
+        self.rewrite_dimension_coverage(
+            lambda coverage: coverage.__setitem__(
+                "invented_dimension",
+                "not-applicable: no object in the frozen fixture scope"))
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-unregistered", result.stdout)
+
+    def test_registration_colliding_with_a_base_dimension_fails(self):
+        """K12/07: the registry appends dimensions, it never redefines one."""
+        self.rewrite_extension_dimensions(
+            "\n- Registration: Configured\n\n" + self.REGISTRY_TABLE_HEADER +
+            "| `rendering` | `review + receipt` | A second, profile-owned "
+            "meaning for a base dimension name. |\n")
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-audit-dimension-base-collision", result.stdout)
+        self.assertIn("rendering", result.stdout)
+
+    def test_registry_without_a_registration_block_fails_closed(self):
+        """The silent-empty case: no block must not read as "registers none".
+
+        Profile admission and Terminal Proof share one parser, so the malformed
+        registry is rejected both when the profile loads and when the Proof
+        tries to enumerate its receipt obligations.
+        """
+        self.rewrite_extension_dimensions(None)
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn(
+            "proof-audit-dimension-section-count", result.stdout)
+        self.assertIn("proof-profile-not-loadable", result.stdout)
+
+    def test_unreadable_target_list_fails_closed(self):
+        """An unreadable target list leaves the obligation undecidable."""
+        self.register_extension_dimension(targets="`review + audit`")
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn(
+            "proof-audit-dimension-target-invalid", result.stdout)
+
+    def test_registration_value_outside_the_interface_fails_closed(self):
+        """Only `None` or `Configured` states what is registered."""
+        self.rewrite_extension_dimensions(
+            "\n- Registration: Not applicable — nothing to register\n\n" +
+            self.REGISTRY_TABLE_HEADER)
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn(
+            "proof-audit-dimension-registration", result.stdout)
+
     def rewrite_register_record(self, receipt_id, mutate):
         """Apply one mutation to a record of the Audit Receipt Register."""
         register = self.root / ".cambium/receipts/terminal.jsonl"
@@ -820,6 +1049,36 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
         result = self.run_proof()
         self.assertEqual(1, result.returncode, result.stdout + result.stderr)
         self.assertIn("proof-dimension-receipt-invalidated", result.stdout)
+
+    def test_standards_adoption_invalidated_dimension_receipt_fails_closed(self):
+        """Immutable history cannot authorize a post-adoption Proof.
+
+        This models the exact current view produced by a completed Standards
+        adoption: the receipt remains in the historical catalog, while the
+        adoption record removes it from current evidence and names its ID in
+        the invalidation set.
+        """
+        receipt_id = self.dimension_receipts["content_and_depth"]
+        runtime = check_proof.check_queue.validate_runtime(self.root)
+        historical = dict(
+            check_proof.check_queue.historical_receipt_catalog(runtime))
+        self.assertIn(receipt_id, historical)
+        filtered = dict(runtime)
+        filtered["receipt_catalog"] = historical
+        filtered["current_receipt_catalog"] = {
+            key: value for key, value in historical.items()
+            if key != receipt_id
+        }
+        filtered["invalidated_evidence_receipt_ids"] = [receipt_id]
+        proof = kblib.load_yaml_file(self.proof_path)
+        failures = check_proof._validate_dimension_coverage_evidence(
+            self.root, proof, {receipt_id: "content_and_depth"},
+            runtime=filtered,
+        )
+        self.assertIn(
+            "proof-dimension-receipt-invalidated-evidence",
+            [failure[0] for failure in failures],
+        )
 
     def test_dimension_receipt_without_a_dimension_field_fails_closed(self):
         """Absence must not be read as agreement with the citing dimension."""

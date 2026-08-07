@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.5.0"
+TOOL_VERSION = "1.6.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -182,7 +182,7 @@ GENERIC_WRITER_TOOLS = frozenset((
     "check_batch_close", "adopt_standards", "register_amendment",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.2.0"
+BATCH_CLOSE_TOOL_VERSION = "1.3.0"
 SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((BATCH_CLOSE_TOOL_VERSION,))
 SUPPORTED_QUEUE_GATE_TOOL_VERSIONS = frozenset((TOOL_VERSION,))
 CORPUS_PLAN_TOOL = "check_corpus_plan"
@@ -206,7 +206,7 @@ UNNARROWED_GATE_DIMENSION = "*"
 BATCH_REVIEW_GATE_ID = "batch-review"
 BATCH_REVIEW_CHECK = "batch_gate"
 TERMINAL_PROOF_TOOL = "check_proof"
-TERMINAL_PROOF_TOOL_VERSION = "1.14.0"
+TERMINAL_PROOF_TOOL_VERSION = "1.15.0"
 SUPPORTED_TERMINAL_PROOF_TOOL_VERSIONS = frozenset((
     TERMINAL_PROOF_TOOL_VERSION,
 ))
@@ -292,10 +292,13 @@ AMENDMENT_COMMON_FIELDS = frozenset((
     "id", "date", "summary", "status", "writeback_done",
 ))
 STANDARDS_ADOPTION_TOOL = "adopt_standards"
-STANDARDS_ADOPTION_TOOL_VERSION = "1.1.0"
+STANDARDS_ADOPTION_TOOL_VERSION = "1.2.0"
 STANDARDS_ADOPTION_PLAN_PREFIX = ".cambium/deltas/standards-adoptions"
 STANDARDS_GATE_REGISTRY_PATH = \
     "kernel/K00 Standards Control/12 Control Registry.md"
+READ_SET_BOUNDARY_OWNER_PATH = \
+    "kernel/K00 Standards Control/15 Read Set Loading Boundaries.md"
+READ_SET_PATH_PREFIX = "kernel/Read Sets/"
 
 # --- Registered producer identity -------------------------------------------
 # K00/12 registers one producer tuple per Gate ID and K12/17 requires every
@@ -1912,6 +1915,173 @@ def standards_revalidation_receipt_errors(result, batch_id, receipt_id):
     return errors
 
 
+def _read_set_load_closure(root, selected_paths,
+                           selected_profile_manifest=None,
+                           selected_profile_route_ids=None):
+    """Resolve Read Sets and non-Read-Set targets from selected boundaries.
+
+    Boundary references to another Read Set select that route too, so traversal
+    continues until no new Read Set remains. ``visited`` makes cycles benign.
+    A kernel Read Set proves both its canonical namespace and ``type:
+    read-set``; a profile supplemental Read Set proves ``type:
+    profile-read-set`` in its own frontmatter. Every other boundary target is
+    a loaded module, including ordinary indexes inside ``kernel/Read Sets``.
+
+    Every selected or boundary-referenced Read Set is decoded as UTF-8 and
+    classified from its own frontmatter.  Kernel and profile namespaces are
+    not interchangeable: ``read-set`` belongs under ``kernel/Read Sets/``;
+    ``profile-read-set`` belongs under the selected profile directory and its
+    route ID must be in the selected profile-route list.  Read/decode failures
+    and namespace/route mismatches are explicit closure errors rather than a
+    reason to silently shrink the load obligation.
+    """
+    selected = {
+        value for value in (selected_paths or []) if _nonempty_string(value)
+    }
+    read_sets = set()
+    invalid_selected = set()
+    modules = set()
+    pending = []
+    visited = set()
+    closure_errors = []
+    profile_dir = (os.path.dirname(selected_profile_manifest)
+                   if _nonempty_string(selected_profile_manifest) else None)
+    profile_routes = {
+        value for value in (selected_profile_route_ids or [])
+        if _nonempty_string(value)
+    }
+
+    def read_text(relative):
+        try:
+            path = kblib.repository_path(
+                root, relative, must_exist=True, reject_symlink=True)
+            with open(path, encoding="utf-8") as handle:
+                return handle.read(), None
+        except (OSError, UnicodeError, ValueError) as exc:
+            return None, str(exc)
+
+    def frontmatter_fields(text):
+        frontmatter = kblib.extract_frontmatter(text or "")
+        if frontmatter is None:
+            return {}
+        try:
+            fields = kblib.parse_yaml_subset(frontmatter)
+        except (ValueError, kblib.YamlSubsetError):
+            return {}
+        return fields if isinstance(fields, dict) else {}
+
+    def read_set_role_error(relative, text):
+        document_type = kblib.read_set_document_type(text)
+        if document_type is None:
+            return ("%s does not prove frontmatter type read-set or "
+                    "profile-read-set" % relative)
+        if document_type == "read-set":
+            if not relative.startswith(READ_SET_PATH_PREFIX):
+                return ("%s declares type read-set outside the canonical %s "
+                        "namespace" % (relative, READ_SET_PATH_PREFIX))
+            return None
+        if not profile_dir or not (relative == profile_dir or
+                                   relative.startswith(profile_dir + "/")):
+            return ("%s declares type profile-read-set outside the selected "
+                    "profile directory %r" % (relative, profile_dir))
+        route_id = frontmatter_fields(text).get("route_id")
+        if not _nonempty_string(route_id) or route_id not in profile_routes:
+            return ("%s declares profile Read Set route_id %r, which is not "
+                    "present in selected_profile_route_ids" %
+                    (relative, route_id))
+        return None
+
+    for relative in sorted(selected):
+        text, read_error = read_text(relative)
+        if text is None:
+            closure_errors.append(
+                "selected Read Set %s is unsafe or unreadable UTF-8: %s" %
+                (relative, read_error))
+            continue
+        role_error = read_set_role_error(relative, text)
+        if role_error:
+            invalid_selected.add(relative)
+            closure_errors.append(role_error)
+            continue
+        read_sets.add(relative)
+        pending.append(relative)
+
+    pending.sort(reverse=True)
+    while pending:
+        relative = pending.pop()
+        if relative in visited:
+            continue
+        visited.add(relative)
+        text, read_error = read_text(relative)
+        if text is None:
+            closure_errors.append(
+                "transitively selected Read Set %s is unsafe or unreadable "
+                "UTF-8: %s" % (relative, read_error))
+            continue
+        for target in kblib.read_set_boundary_targets(text):
+            target_text, target_error = read_text(target)
+            if target_text is None:
+                closure_errors.append(
+                    "Read Set boundary target %s is unsafe or unreadable "
+                    "UTF-8: %s" % (target, target_error))
+                continue
+            document_type = (
+                kblib.read_set_document_type(target_text)
+            )
+            if document_type is not None:
+                role_error = read_set_role_error(target, target_text)
+                if role_error:
+                    closure_errors.append(role_error)
+                    continue
+                if target not in read_sets:
+                    read_sets.add(target)
+                    pending.append(target)
+                continue
+            modules.add(target)
+
+    return read_sets, modules, invalid_selected, sorted(set(closure_errors))
+
+
+def _live_read_set_load_errors(root, contract):
+    """Validate the derived Read Set closure of the current Task Contract."""
+    if not isinstance(contract, dict):
+        return []
+    selected_values = contract.get("selected_read_sets")
+    loaded_values = contract.get("loaded_module_paths")
+    if not isinstance(selected_values, list) or not isinstance(
+            loaded_values, list):
+        return []
+    selected = set(value for value in selected_values
+                   if _nonempty_string(value))
+    loaded = set(value for value in loaded_values
+                 if _nonempty_string(value))
+    read_sets, modules, invalid_selected, closure_errors = \
+        _read_set_load_closure(
+            root, selected,
+            contract.get("selected_profile_manifest"),
+            contract.get("selected_profile_route_ids"),
+        )
+    errors = ["Progress contract Read Set load closure: %s" % error
+              for error in closure_errors]
+    for target in sorted(invalid_selected):
+        if not any(target in error for error in closure_errors):
+            errors.append(
+                "Progress contract.selected_read_sets path %s cannot be used "
+                "as a Read Set traversal root, per %s" %
+                (target, READ_SET_BOUNDARY_OWNER_PATH))
+    for target in sorted(read_sets - selected):
+        errors.append(
+            "Progress contract.selected_read_sets omits %s, which a loading "
+            "boundary of its transitive Read Set closure selects, per %s" %
+            (target, READ_SET_BOUNDARY_OWNER_PATH))
+    for target in sorted(modules - loaded):
+        errors.append(
+            "Progress contract.loaded_module_paths omits %s, which a loading "
+            "boundary in the transitive Read Set closure names, per %s" %
+            (target, READ_SET_BOUNDARY_OWNER_PATH))
+    return errors
+
+
 def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
                                     progress=None, validate_current=True):
     """Return closed-schema and referential errors for one adoption plan."""
@@ -2225,6 +2395,54 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
                 "and no invalidated evidence scoping it to a Queue batch, so "
                 "no gate rerun would ever be required for it" %
                 (index, boundary_id, boundary.get("target_kind")))
+
+    # K00/15: selected Read Sets are transitively closed over Read Sets named by
+    # their loading boundaries, and every non-Read-Set target in that closure
+    # belongs in the declared module load set. The obligations are containment,
+    # not equality: additional tool and profile paths remain legitimate.
+    #
+    # Only a plan being admitted is judged, for the reason the boundary rule
+    # above is so scoped: a historical adoption's plan bytes are sealed into
+    # append-only receipts and no sanctioned transaction can rewrite them, so
+    # refusing one here would strand an instance with an under-declaration it
+    # has no legal way to repair.  Replay passes validate_current=False.
+    if validate_current and root is not None:
+        declared_values = plan.get("loaded_module_paths_after")
+        declared = {
+            value for value in declared_values
+            if _nonempty_string(value)
+        } if isinstance(declared_values, list) else set()
+        selected_values = plan.get("selected_read_sets_after")
+        selected = {
+            value for value in selected_values
+            if _nonempty_string(value)
+        } if isinstance(selected_values, list) else set()
+        read_sets, modules, invalid_selected, closure_errors = \
+            _read_set_load_closure(
+                root, selected,
+                plan.get("selected_profile_manifest_after"),
+                plan.get("selected_profile_route_ids_after"),
+            )
+        errors.extend("Read Set load closure: %s" % error
+                      for error in closure_errors)
+        for target in sorted(invalid_selected):
+            if not any(target in error for error in closure_errors):
+                errors.append(
+                    "selected_read_sets_after path %s cannot be used as a "
+                    "Read Set traversal root, per %s" %
+                    (target, READ_SET_BOUNDARY_OWNER_PATH))
+        for target in sorted(read_sets - selected):
+            errors.append(
+                "selected_read_sets_after omits %s, which a loading boundary "
+                "of its transitive Read Set closure selects; every "
+                "boundary-referenced Read Set MUST be declared, per %s" %
+                (target, READ_SET_BOUNDARY_OWNER_PATH))
+        for target in sorted(modules - declared):
+            errors.append(
+                "loaded_module_paths_after omits %s, which a loading boundary "
+                "in the transitive Read Set closure names; the load set MUST "
+                "contain every non-Read-Set target, per %s" %
+                (target, READ_SET_BOUNDARY_OWNER_PATH))
 
     if predicate_set:
         if not boundary_ids:
@@ -4494,6 +4712,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
     task_state = progress.get("task_state")
     contract = progress.get("contract") if isinstance(
         progress.get("contract"), dict) else {}
+    errors.extend(_live_read_set_load_errors(root, contract))
     completion_semantics = contract.get("completion_semantics")
     live_contract_sha = _contract_sha256(progress)
     contract_chain, _ = _contract_anchor_chain(progress, catalog)

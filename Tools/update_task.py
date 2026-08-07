@@ -24,7 +24,7 @@ import kblib
 TOOL = "update_task"
 TOOL_VERSION = "1.1.0"
 TERMINAL_PROOF_TOOL = "check_proof"
-TERMINAL_PROOF_TOOL_VERSION = "1.14.0"
+TERMINAL_PROOF_TOOL_VERSION = "1.15.0"
 TERMINAL_PROOF_GATE_ID = "terminal-proof"
 RECEIPT_PATH = ".cambium/receipts/task-transitions.jsonl"
 FINAL_CONTROL_STATUSES = frozenset((

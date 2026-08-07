@@ -1,24 +1,18 @@
-"""A registered residual scan must recognise the form its profile mandates.
+"""A registered verifier must execute controls for its claimed structures.
 
-K12/09 item 6 accepts a zero-candidate report as evidence only when the same
-configuration "still recognises those structures where the profile declares
-they legitimately live". Reading that as "recognises *some* file" is too weak:
-a configuration whose matchers carry only bare heading text still fires on a
-legacy page under its accepted root, passes the liveness probe, and reports
-"clean" over exactly the decorated pages the profile's own structure rules
-mandate -- the generic matcher strips Markdown heading syntax only, so
-`Deep Dive Follow-up Tree` never fires on `Deep-Dive Follow-up Tree（深挖追问树）`.
-
-`mandated_headings` closes that gap: the profile transcribes the forms its own
-rules mandate, and the tool proves the matchers can recognise every one of them
-before any scan result counts. The tool reports the disagreement between two
-profile-owned declarations and fails closed; which one is right stays the
-registering profile's judgment.
+K12/09 owns the generic positive-control/liveness contract, while each verifier
+owns the representation of its controls. ``mandated_headings`` is specific to
+the bundled heading verifier: it constructs a synthetic Markdown control page
+and sends that page through the same ``classify`` path used for corpus files.
+The failure is easy to ship because this matcher strips Markdown heading syntax
+only: a registered bare ``Open Questions`` never fires on a required
+``Open Questions（待解问题）``.
 
 Only set/existence/equality/count judgments are made here.
 """
 
 import importlib.util
+import re
 import subprocess
 import sys
 import tempfile
@@ -27,13 +21,23 @@ from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parents[1]
 REPOSITORY = TOOLS.parent
-AGENT_ATLAS = REPOSITORY / "profiles" / "examples" / "agent-atlas"
-SCAN_CONFIG = AGENT_ATLAS / "scan-configs" / "interview-residuals.yaml"
-EXPRESSION_LAYER = AGENT_ATLAS / "expression-layer.md"
+KERNEL = REPOSITORY / "kernel"
+OWNER = KERNEL / "K12 Quality Assurance" / "09 Batch-close Closed List.md"
+OWNER_DECLARATION = re.compile(r'Rule owner:\s*"([^"]+)"')
 
-sys.path.insert(0, str(TOOLS))
-import kblib  # noqa: E402
+# The implementation-independent obligation, quoted from the owner. Both the
+# owner and the tool that implements it must carry these words; nothing else in
+# `kernel/` may.
+OBLIGATION = (
+    "Any registered verifier whose clean result depends on finding no "
+    "candidate MUST provide executable positive controls that exercise the "
+    "same production classification path and collectively represent every "
+    "required structure the verifier claims to recognise.")
 
+
+def squeezed(text):
+    """Line wrapping differs between Markdown and a Python docstring."""
+    return " ".join(text.split())
 
 def load_module():
     specification = importlib.util.spec_from_file_location(
@@ -52,7 +56,7 @@ excluded_roots: []
 frontmatter_match:
   field: type
   values:
-    - interview-card
+    - glossary-entry
 heading_match:
 %(any)s%(combination)s  minimum_distinct: %(minimum)d
 %(mandated)s"""
@@ -78,6 +82,47 @@ def write_config(directory, text):
     return str(path)
 
 
+class ThePositiveControlContractHasOneKernelOwner(unittest.TestCase):
+    """No judgment rule may live only in code, and each rule has one owner.
+
+    The Kernel owns the cross-verifier evidence rule without imposing one
+    implementation's field layout. These assertions fail if the owner is
+    dropped, duplicated, or coupled to ``mandated_headings``.
+    """
+
+    def test_the_owner_states_the_obligation(self):
+        self.assertIn(
+            OBLIGATION, squeezed(OWNER.read_text(encoding="utf-8")),
+            "K12/09 item 6 must state the generic positive-control contract")
+
+    def test_exactly_one_kernel_page_owns_it(self):
+        owners = sorted(
+            path for path in KERNEL.rglob("*.md")
+            if OBLIGATION in squeezed(path.read_text(encoding="utf-8")))
+        self.assertEqual(
+            [OWNER], owners,
+            "the obligation must be stated in exactly one kernel page; a "
+            "second copy creates a second place the rule can be changed")
+
+    def test_the_bundled_tool_quotes_the_generic_owner_contract(self):
+        self.assertIn(
+            OBLIGATION, squeezed(MODULE.__doc__),
+            "the bundled verifier must identify the generic contract it "
+            "implements")
+
+    def test_kernel_does_not_require_the_bundled_tools_field(self):
+        self.assertNotIn(
+            "mandated_headings", OWNER.read_text(encoding="utf-8"),
+            "mandated_headings is this bundled verifier's configuration, not "
+            "a field every registered verifier must implement")
+
+    def test_the_tool_names_a_rule_owner_that_exists(self):
+        declared = OWNER_DECLARATION.search(MODULE.__doc__)
+        self.assertIsNotNone(declared, "the tool must declare a rule owner")
+        self.assertEqual(OWNER, REPOSITORY / declared.group(1))
+        self.assertTrue((REPOSITORY / declared.group(1)).is_file())
+
+
 class MandatedHeadingCoverage(unittest.TestCase):
     """The predicate itself, exercised through `load_config`."""
 
@@ -87,10 +132,10 @@ class MandatedHeadingCoverage(unittest.TestCase):
 
     def test_a_config_covering_its_mandated_forms_loads(self):
         config, _fingerprint = self.load(render_config(
-            any_headings=["Interview Card（面试卡片）"],
-            combination=["Question（问题）", "Answer（回答）"],
-            mandated=["Interview Card（面试卡片）", "Question（问题）",
-                      "Answer（回答）"]))
+            any_headings=["Glossary Entry（术语条目）"],
+            combination=["Definition（定义）", "Source（来源）"],
+            mandated=["Glossary Entry（术语条目）", "Definition（定义）",
+                      "Source（来源）"]))
         self.assertEqual(3, len(config["mandated_headings"]))
 
     def test_bare_matchers_that_miss_every_mandated_form_are_refused(self):
@@ -102,22 +147,22 @@ class MandatedHeadingCoverage(unittest.TestCase):
         """
         with self.assertRaises(ValueError) as raised:
             self.load(render_config(
-                any_headings=["Interview Card"],
-                combination=["Question", "Answer"],
-                mandated=["Interview Card（面试卡片）", "Question（问题）",
-                          "Answer（回答）"]))
+                any_headings=["Glossary Entry"],
+                combination=["Definition", "Source"],
+                mandated=["Glossary Entry（术语条目）", "Definition（定义）",
+                          "Source（来源）"]))
         message = str(raised.exception)
         self.assertIn("does not recognise 3 of the 3 mandated_headings",
                       message)
-        self.assertIn("Interview Card（面试卡片）", message)
+        self.assertIn("Glossary Entry（术语条目）", message)
 
     def test_a_single_missing_mandated_form_is_refused(self):
         with self.assertRaises(ValueError) as raised:
             self.load(render_config(
-                any_headings=["Interview Card（面试卡片）"],
-                combination=["Question（问题）", "Answer（回答）"],
-                mandated=["Interview Card（面试卡片）", "Question（问题）",
-                          "Answer（回答）", "Scope（范围）"]))
+                any_headings=["Glossary Entry（术语条目）"],
+                combination=["Definition（定义）", "Source（来源）"],
+                mandated=["Glossary Entry（术语条目）", "Definition（定义）",
+                          "Source（来源）", "Scope（范围）"]))
         message = str(raised.exception)
         self.assertIn("1 of the 4 mandated_headings", message)
         self.assertIn("Scope（范围）", message)
@@ -125,8 +170,8 @@ class MandatedHeadingCoverage(unittest.TestCase):
     def test_the_key_is_required_rather_than_optional(self):
         """An omitted key must not silently restore the weak predicate."""
         text = render_config(
-            any_headings=["Interview Card"], combination=["A", "B"],
-            mandated=["Interview Card"])
+            any_headings=["Glossary Entry"], combination=["A", "B"],
+            mandated=["Glossary Entry"])
         without = text[:text.index("mandated_headings:")]
         with self.assertRaises(ValueError) as raised:
             self.load(without)
@@ -134,18 +179,18 @@ class MandatedHeadingCoverage(unittest.TestCase):
 
     def test_an_empty_mandated_list_is_refused(self):
         text = render_config(
-            any_headings=["Interview Card"], combination=["A", "B"],
-            mandated=["Interview Card"])
+            any_headings=["Glossary Entry"], combination=["A", "B"],
+            mandated=["Glossary Entry"])
         with self.assertRaises(ValueError):
             self.load(text.replace(
-                "mandated_headings:\n  - Interview Card\n",
+                "mandated_headings:\n  - Glossary Entry\n",
                 "mandated_headings: []\n"))
 
     def test_duplicate_mandated_entries_are_refused(self):
         with self.assertRaises(ValueError):
             self.load(render_config(
-                any_headings=["Interview Card"], combination=["A", "B"],
-                mandated=["Interview Card", "Interview Card"]))
+                any_headings=["Glossary Entry"], combination=["A", "B"],
+                mandated=["Glossary Entry", "Glossary Entry"]))
 
     def test_minimum_distinct_above_the_mandated_count_is_refused(self):
         """Registered but uncountable is still blind."""
@@ -161,62 +206,6 @@ class MandatedHeadingCoverage(unittest.TestCase):
             any_headings=[], combination=["A", "B", "C"],
             mandated=["A", "B", "C"], minimum=3))
         self.assertEqual(3, config["minimum_distinct"])
-
-
-class AgentAtlasConfigMatchesItsOwnExpressionLayer(unittest.TestCase):
-    """The shipped example is the case this check was written for."""
-
-    @staticmethod
-    def mandated_from_expression_layer():
-        """The non-indented entries of `Required Card Structure`'s fence."""
-        lines = EXPRESSION_LAYER.read_text(encoding="utf-8").splitlines()
-        start = next(index for index, line in enumerate(lines)
-                     if line.strip() == "### Required Card Structure")
-        fence = next(index for index in range(start, len(lines))
-                     if lines[index].startswith("```"))
-        entries = []
-        for line in lines[fence + 1:]:
-            if line.startswith("```"):
-                break
-            if line and not line.startswith(" "):
-                entries.append(line.strip())
-        return entries
-
-    def setUp(self):
-        self.config, _fingerprint = MODULE.load_config(str(SCAN_CONFIG))
-
-    def test_the_config_transcribes_every_mandated_section(self):
-        declared = set(self.config["mandated_headings"])
-        mandated = self.mandated_from_expression_layer()
-        self.assertEqual(14, len(mandated),
-                         "the Required Card Structure block changed shape; "
-                         "re-check the scan configuration against it")
-        missing = [entry for entry in mandated if entry not in declared]
-        self.assertEqual(
-            [], missing,
-            "expression-layer.md mandates these sections but the scan "
-            "configuration does not list them in mandated_headings, so the "
-            "registered scan cannot see a page written the way this profile "
-            "requires")
-
-    def test_a_page_in_the_mandated_form_is_a_candidate(self):
-        page = "".join("## %s\n\nbody\n\n" % heading
-                       for heading in self.mandated_from_expression_layer())
-        self.assertTrue(
-            MODULE.classify(page, self.config),
-            "a page carrying exactly the profile's mandated Interview Card "
-            "sections must be recognised")
-
-    def test_the_bare_form_still_matches(self):
-        page = ("## Core Knowledge Links\n\nbody\n\n"
-                "## Deep Dive Follow-up Tree\n\nbody\n")
-        self.assertTrue(
-            MODULE.classify(page, self.config),
-            "legacy undecorated pages must keep matching; the decorated forms "
-            "are added to the matcher lists, not swapped in")
-
-    def test_the_config_is_restricted_yaml(self):
-        kblib.parse_yaml_subset(SCAN_CONFIG.read_text(encoding="utf-8"))
 
 
 class EndToEndSilentPass(unittest.TestCase):
@@ -261,13 +250,19 @@ class EndToEndSilentPass(unittest.TestCase):
                                          encoding="utf-8")
         return tree
 
-    def test_the_shipped_config_now_sees_the_mandated_form_page(self):
+    def test_a_complete_synthetic_config_sees_the_mandated_form_page(self):
         with tempfile.TemporaryDirectory() as temporary:
             tree = self.build(temporary)
-            # The shipped configuration verbatim: its accepted root is the one
-            # this fixture creates and its excluded roots simply do not exist
-            # here, which the tool allows.
-            completed = self.scan(tree, SCAN_CONFIG)
+            accepted = tree / "Accepted"
+            accepted.mkdir()
+            (accepted / "witness.md").write_text(
+                self.page(self.BARE), encoding="utf-8")
+            config = Path(temporary) / "complete.yaml"
+            config.write_text(render_config(
+                any_headings=self.MANDATED,
+                combination=self.BARE,
+                mandated=self.MANDATED), encoding="utf-8")
+            completed = self.scan(tree, config)
             self.assertEqual(
                 2, completed.returncode,
                 "a page written in the profile's own mandated form must be "
@@ -280,7 +275,7 @@ class EndToEndSilentPass(unittest.TestCase):
             tree = self.build(temporary)
             config = Path(temporary) / "blind.yaml"
             config.write_text(render_config(
-                any_headings=["Interview Card"],
+                any_headings=["Glossary Entry"],
                 combination=self.BARE,
                 mandated=self.MANDATED), encoding="utf-8")
             # The accepted root has to line up with this narrower config.

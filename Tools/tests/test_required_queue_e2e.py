@@ -878,10 +878,13 @@ raise SystemExit(update_task.main(sys.argv[2:]))
         # it files its verdict under -- with the script receipt_id as
         # evidence_ref. dimension_coverage cites those completed records.
         dimension_receipts = {}
+        # This test already writes manual-attestation sequence 1/2 into the
+        # same second-scoped register; reserve a disjoint range so generated
+        # receipt IDs stay unique even on a fast run.
         for index, (dimension, evidence_ref) in enumerate((
                 ("coverage_and_integration", proof_queue_receipt),
                 ("guidance_and_contract", corpus_plan_receipt),
-        ), start=1):
+        ), start=101):
             record = kblib.make_receipt(
                 "manual-attestation", "1.0.0", "audit_dimension",
                 "frozen snapshot", "pass",
