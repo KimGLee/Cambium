@@ -291,6 +291,19 @@ class TerminalProofCurrentEvidenceTests(unittest.TestCase):
 
 class TerminalRuntimeClosureTests(unittest.TestCase):
     def setUp(self):
+        self.load_contract = {
+            "selected_route_ids": ["R01"],
+            "selected_card_paths": [
+                "kernel/Cards/R01 Core Bootstrap Card.md",
+            ],
+            "selected_profile_route_ids": ["P:test:supplemental"],
+            "selected_read_sets": [
+                "kernel/Read Sets/R01 Core Bootstrap Read Set.md",
+            ],
+            "loaded_module_paths": [
+                "kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md",
+            ],
+        }
         self.proof = {
             "task_id": "task-1",
             "scope_version": "s1",
@@ -299,6 +312,7 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
             "selected_profile_manifest": "profiles/test/profile.md",
             "coverage_ledger_sha256": "sha256:" + "2" * 64,
             "progress_ledger_sha256": "sha256:" + "3" * 64,
+            **self.load_contract,
         }
         self.progress = {
             "task_id": "task-1",
@@ -309,6 +323,7 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
                 "contract_version": "c1",
                 "standards_version": "cambium-test-v1",
                 "selected_profile_manifest": "profiles/test/profile.md",
+                **self.load_contract,
             },
             "amendments": [],
             "guidance_queue": [],
@@ -404,21 +419,12 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
 
     def test_frozen_load_contract_must_match_proof_exactly(self):
         """A green live Queue gate cannot license a different Proof list."""
-        load_contract = {
-            "selected_route_ids": ["R01"],
-            "selected_card_paths": ["kernel/Cards/R01 Core Bootstrap Card.md"],
-            "selected_profile_route_ids": ["P:test:supplemental"],
-            "selected_read_sets": ["kernel/Read Sets/R01 Core Bootstrap Read Set.md"],
-            "loaded_module_paths": ["kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md"],
-        }
-        for field in load_contract:
+        for field in self.load_contract:
             with self.subTest(field=field):
                 proof = dict(self.proof)
-                proof.update(load_contract)
                 proof[field] = []
                 progress = dict(self.progress)
                 progress["contract"] = dict(self.progress["contract"])
-                progress["contract"].update(load_contract)
                 failures = check_proof._validate_terminal_progress_state(
                     proof, progress)
                 self.assertIn(
@@ -509,6 +515,19 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
         queue_path = state_dir / "required_queue.yaml"
         queue_path.write_text(kblib.canonical_yaml(queue), encoding="utf-8")
         queue_sha = kblib.sha256_file(queue_path)
+        self.terminal_load_contract = {
+            "selected_route_ids": ["R01", "R08", "R12"],
+            "selected_card_paths": [
+                "kernel/Cards/R01 Core Bootstrap Card.md",
+                "kernel/Cards/R08 Audit and Completion Card.md",
+                "kernel/Cards/R12 Targeted and Specialized Audit Card.md",
+            ],
+            "selected_profile_route_ids": [],
+            "selected_read_sets": [],
+            "loaded_module_paths": [
+                "kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md",
+            ],
+        }
         progress = {
             "schema_version": 1,
             "task_id": "task-1",
@@ -523,6 +542,7 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
                 "scope_version": "s1",
                 "standards_version": SYNTHETIC_STANDARDS_VERSION,
                 "selected_profile_manifest": self.profile_manifest,
+                **self.terminal_load_contract,
             },
             "amendments": [],
             "guidance_queue": [],
@@ -635,17 +655,7 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             "corpus_plan_check_receipt": corpus_receipt["receipt_id"],
             "standards_version": SYNTHETIC_STANDARDS_VERSION,
             "selected_profile_manifest": self.profile_manifest,
-            "selected_route_ids": ["R01", "R08", "R12"],
-            "selected_card_paths": [
-                "kernel/Cards/R01 Core Bootstrap Card.md",
-                "kernel/Cards/R08 Audit and Completion Card.md",
-                "kernel/Cards/R12 Targeted and Specialized Audit Card.md",
-            ],
-            "selected_profile_route_ids": [],
-            "selected_read_sets": [],
-            "loaded_module_paths": [
-                "kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md",
-            ],
+            **self.terminal_load_contract,
             "guidance_cutoff_id": "G-000",
             "audit_receipt_register": ".cambium/receipts/terminal.jsonl",
             "full_deterministic_results":

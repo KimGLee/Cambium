@@ -485,6 +485,19 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         coverage["selected_profile_manifest"] = manifest
         queue["selected_profile_manifest"] = manifest
         progress["contract"]["selected_profile_manifest"] = manifest
+        progress["contract"].update({
+            "selected_route_ids": ["R01", "R08", "R12"],
+            "selected_card_paths": [
+                "kernel/Cards/R01 Core Bootstrap Card.md",
+                "kernel/Cards/R08 Audit and Completion Card.md",
+                "kernel/Cards/R12 Targeted and Specialized Audit Card.md",
+            ],
+            "selected_profile_route_ids": [],
+            "selected_read_sets": [],
+            "loaded_module_paths": [
+                "kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md",
+            ],
+        })
         coverage_path.write_text(kblib.canonical_yaml(coverage), encoding="utf-8")
         queue_text = kblib.canonical_yaml(queue)
         queue_path.write_text(queue_text, encoding="utf-8")
@@ -899,6 +912,8 @@ raise SystemExit(update_task.main(sys.argv[2:]))
         proof = kblib.parse_yaml_subset((
             TOOLS / "schemas/terminal_proof.template.yaml"
         ).read_text(encoding="utf-8"))
+        progress_contract = kblib.load_yaml_file(
+            self.root / check_queue.PROGRESS_PATH)["contract"]
         proof.update({
             "task_id": "fixture-task",
             "scope_version": "s1",
@@ -918,16 +933,14 @@ raise SystemExit(update_task.main(sys.argv[2:]))
             "corpus_plan_semantic_acceptance_receipt": None,
             "standards_version": "3.0.0",
             "selected_profile_manifest": "profiles/test-profile/profile.md",
-            "selected_route_ids": ["R01", "R08", "R12"],
-            "selected_card_paths": [
-                "kernel/Cards/R01 Core Bootstrap Card.md",
-                "kernel/Cards/R08 Audit and Completion Card.md",
-                "kernel/Cards/R12 Targeted and Specialized Audit Card.md",
-            ],
-            "selected_profile_route_ids": [],
-            "selected_read_sets": [],
-            "loaded_module_paths": [
-                "kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md"],
+            **{
+                field: progress_contract[field]
+                for field in (
+                    "selected_route_ids", "selected_card_paths",
+                    "selected_profile_route_ids", "selected_read_sets",
+                    "loaded_module_paths",
+                )
+            },
             "guidance_cutoff_id": "G-000",
             "audit_receipt_register": completion_register,
             "full_deterministic_results": completion_register,
