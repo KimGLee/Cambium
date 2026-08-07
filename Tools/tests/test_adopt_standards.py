@@ -706,6 +706,36 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertEqual(["INV-B1-READY"],
                          [row["boundary_id"] for row in requirements["B1"]])
 
+    def test_a_historical_plan_is_not_refused_by_this_admission_rule(self):
+        """A sealed adoption cannot be repaired, so it is not re-judged.
+
+        The plan bytes of a completed adoption are fingerprinted inside
+        append-only receipts (K13/15: the writer never edits historical
+        receipt bytes), so an instance whose earlier plan carries an
+        unreachable boundary has no sanctioned way to rewrite it.  Applying
+        the admission rule to history would strand that instance
+        permanently.  A live instance hit exactly this during an upgrade.
+        """
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        plan = self.plan(invalidated_receipt=invalidated_gate)
+        plan["invalidation_boundaries"][0].update({
+            "target_kind": "profile-load",
+            "target_ids": ["profiles/example/profile.md"],
+        })
+        plan["invalidated_evidence"][0]["revalidation_scope_ids"] = []
+
+        admission = [error for error in self.plan_errors(plan)
+                     if "no gate rerun" in error]
+        self.assertEqual(1, len(admission), admission)
+
+        runtime = check_queue.validate_runtime(self.root)
+        replay = check_queue.standards_adoption_plan_errors(
+            self.root, plan, catalog=runtime["receipt_catalog"],
+            queue=runtime["queue"], progress=runtime["progress"],
+            validate_current=False)
+        self.assertEqual([], [error for error in replay
+                              if "no gate rerun" in error])
+
     def test_batch_boundary_needs_no_invalidated_evidence_scope(self):
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         plan = self.plan(invalidated_receipt=invalidated_gate)

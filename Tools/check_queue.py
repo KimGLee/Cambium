@@ -2197,7 +2197,13 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
     # evidence puts the batch in its revalidation scope.  A boundary that
     # reaches neither is silently discharged, so the plan is refused instead
     # of recording protection nothing will apply.
-    if queue is not None and boundaries:
+    # Only a plan being admitted is refused.  A historical adoption was
+    # approved under the rules of its own day, its plan bytes are sealed into
+    # append-only receipts, and no sanctioned transaction can rewrite them --
+    # so refusing it here would strand the instance with a defect it has no
+    # legal way to repair.  Historical records are replayed with
+    # validate_current=False for exactly this reason.
+    if validate_current and queue is not None and boundaries:
         enforced = set(boundary_batch_targets)
         for evidence in invalidated:
             if not isinstance(evidence, dict):
