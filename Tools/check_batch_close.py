@@ -738,8 +738,10 @@ def _priority_quotas(root, runtime):
             number = float(overrides[item].strip("% "))
         except ValueError:
             raise ValueError("%s override is not a numeric percent" % item)
-        if not 0 <= number <= 100:
-            raise ValueError("%s override is outside 0..100" % item)
+        if not 0 <= number < 100:
+            raise ValueError(
+                "%s override is not a corpus share at least 0 and under 100"
+                % item)
         if item.endswith("P0"):
             p0 = number
         else:

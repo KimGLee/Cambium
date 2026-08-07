@@ -21,6 +21,13 @@ frontmatter_match:
   values:
     - interview-card
 
+# The generic matcher strips Markdown heading syntax only: numbering,
+# parentheticals, and bilingual suffixes are NOT removed. `Required Card
+# Structure` in ../expression-layer.md mandates the compound
+# `English（中文）` form, so each mandated form is registered verbatim below
+# alongside the bare and CJK variants that legacy pages still carry. Dropping a
+# mandated form here does not weaken the scan quietly: `mandated_headings`
+# makes it a hard configuration error.
 heading_match:
   any:
     - Interview Card
@@ -28,13 +35,19 @@ heading_match:
     - Interview Answer（待迁移）
     - Interview Question
     - 30-Second Answer
+    - 30-Second Answer（30 秒回答）
     - 90-Second Answer
+    - 90-Second Answer（90 秒回答）
     - Common Follow-ups
     - Common Follow-ups（常见追问）
     - Common Followups
     - Follow-up Answers
+    - Follow-up Answers（追问答案）
     - Strong Answer Signals
+    - Strong Answer Signals（强回答信号）
     - Weak Answer Signals
+    - Weak Answer Signals（弱回答信号）
+    - Related Interview Cards（相关面试卡片）
     - 面试卡
     - 面试卡片
     - 面试回答
@@ -47,11 +60,19 @@ heading_match:
     - 弱回答信号
   combination:
     - Core Knowledge Links
+    - Core Knowledge Links（核心知识链接）
     - Deep Dive Follow-up Tree
+    - Deep-Dive Follow-up Tree（深挖追问树）
     - Common Misconceptions
+    - Common Misconceptions（常见误解）
     - Comparison Questions
+    - Comparison Questions（比较类问题）
     - Scenario Questions
+    - Scenario Questions（场景类问题）
     - Self-test Questions
+    - Self-test Questions（自测问题）
+    - Scope（范围）
+    - Knowledge Prerequisites（知识前置）
     - 核心知识链接
     - 深挖追问树
     - 常见误解
@@ -59,3 +80,24 @@ heading_match:
     - 场景类问题
     - 自测问题
   minimum_distinct: 2
+
+# The section headings `Required Card Structure` in ../expression-layer.md
+# mandates for every Interview Card, transcribed verbatim and in order. The
+# tool proves every one of them is matchable above and that a page carrying
+# exactly this set classifies as a candidate; it does not judge whether this
+# list is the right one, which stays this profile's call.
+mandated_headings:
+  - Scope（范围）
+  - Knowledge Prerequisites（知识前置）
+  - Core Knowledge Links（核心知识链接）
+  - 30-Second Answer（30 秒回答）
+  - 90-Second Answer（90 秒回答）
+  - Deep-Dive Follow-up Tree（深挖追问树）
+  - Follow-up Answers（追问答案）
+  - Common Misconceptions（常见误解）
+  - Strong Answer Signals（强回答信号）
+  - Weak Answer Signals（弱回答信号）
+  - Comparison Questions（比较类问题）
+  - Scenario Questions（场景类问题）
+  - Self-test Questions（自测问题）
+  - Related Interview Cards（相关面试卡片）

@@ -50,6 +50,7 @@ the planning artifacts, and no persisted planning report is an input.
 - A gate receipt is recorded by hand or offered as current authorization at a boundary: read [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract|Gate Receipt Payload Contract]] for the payload a consumer compares and the actor who may record a `manual-attestation` one.
 - A resume scan reports a `next_action` token: read [[kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary|Resume Next Action Vocabulary]] for what that exact token selects; K13/14 owns the obligation to consume the reported token rather than infer a fresh start.
 - A resumed or active task must create, change, or reconcile the Global Map, Capability Matrix, Gap Register, or a semantic-gap handoff: combine [[kernel/Read Sets/R13 Corpus Planning Read Set|Corpus Planning]]. Query the current validated plan with `check_corpus_plan.py --json`; do not restore from a copied planning report.
+- Coverage reconciliation meets a sequence position, checkbox, or other progress marker: read [[kernel/K11 Expression Layer/06 Sequence and Progress Semantics|Sequence and Progress Semantics]], which [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]] names as the owner of that status separation.
 
 ## Gate
 

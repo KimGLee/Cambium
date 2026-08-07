@@ -19,6 +19,7 @@ A receipt offered as current authorization for a Gate ID MUST carry all of the f
 | `receipt_id` | this record's append-only ID, never reused |
 | `gate_id` | exactly the Gate ID being authorized |
 | `tool`, `tool_version`, `check` | exactly the producer tuple registered for that Gate ID in the [[kernel/K00 Standards Control/12 Control Registry#Stable Gate ID Registry\|Stable Gate ID Registry]]; a hand-recorded receipt uses the `manual-attestation` producer class and its current protocol version |
+| `dimension` | exactly one of the values that registry's `Dimension` cell admits for the Gate ID, where it narrows: a Gate covering several dimensions is not identified by the producer tuple alone, so a receipt that names none of them has not said which obligation it answers. A row carrying `none` takes no such field, and a row carrying `*` names a producer that writes none |
 | `target` | the exact object verified |
 | `result` | `pass` |
 | `details` | the concrete evidence statement; a bare "QA passed" is not one |

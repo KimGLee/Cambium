@@ -189,6 +189,20 @@ CORPUS_PLAN_TOOL = "check_corpus_plan"
 CORPUS_PLAN_TOOL_VERSION = "1.5.0"
 MANUAL_ATTESTATION_TOOL = "manual-attestation"
 MANUAL_ATTESTATION_TOOL_VERSION = "1.0.0"
+# K12/07 fixes these seven base receipt dimensions and K12/08 / K12/18 file
+# every judgment item and Gate under one of them.  Like the Kxx numbers this
+# only projects a closed kernel set into the checker; `check_proof` carries the
+# same projection for the Terminal Proof, and a test asserts the two agree.
+BASE_RECEIPT_DIMENSIONS = frozenset((
+    "structure_and_links", "content_and_depth", "formula_and_numeric",
+    "source_and_currentness", "coverage_and_integration", "rendering",
+    "guidance_and_contract",
+))
+# The two Dimension cells that are not a dimension: `none` says the Gate's
+# receipt carries no `dimension` because its members hold the verdicts, and
+# `*` says a named producer's identity already fixes what its receipt means.
+UNDIMENSIONED_GATE = "none"
+UNNARROWED_GATE_DIMENSION = "*"
 BATCH_REVIEW_GATE_ID = "batch-review"
 BATCH_REVIEW_CHECK = "batch_gate"
 TERMINAL_PROOF_TOOL = "check_proof"
@@ -410,14 +424,15 @@ def standards_gate_registry(root):
         if not inside or not line.lstrip().startswith("|"):
             continue
         cells = [cell.strip().strip("`") for cell in line.strip().strip("|").split("|")]
-        if cells == ["Gate ID", "Tool", "Tool version", "Check", "Mode"]:
+        if cells == ["Gate ID", "Tool", "Tool version", "Check", "Mode",
+                     "Dimension"]:
             continue
         if cells and all(re.fullmatch(r":?-+:?", cell) for cell in cells):
             continue
-        if len(cells) != 5:
-            errors.append("Stable Gate ID Registry row must have five cells")
+        if len(cells) != 6:
+            errors.append("Stable Gate ID Registry row must have six cells")
             continue
-        gate_id, tool, tool_version, check, mode = cells
+        gate_id, tool, tool_version, check, mode, dimension = cells
         if not all(_nonempty_string(value) for value in cells):
             errors.append("Stable Gate ID Registry row has an empty cell")
             continue
@@ -429,11 +444,20 @@ def standards_gate_registry(root):
         if gate_id in registry:
             errors.append("Stable Gate ID Registry repeats %s" % gate_id)
             continue
+        # The Dimension cell is a list, so it is tokenized rather than taken
+        # whole: a Gate whose canonical gate files verdicts under several
+        # dimensions registers all of them, and the consumer narrows to the
+        # one its obligation names.
+        dimensions = tuple(sorted({
+            token.strip().strip("`")
+            for token in re.split(r"[,\s]+", dimension) if token.strip()
+        }))
         registry[gate_id] = {
             "tool": tool,
             "tool_version": tool_version,
             "check": check,
             "mode": mode,
+            "dimensions": dimensions,
         }
     if seen_section != 1:
         errors.append("K00/12 must contain exactly one Stable Gate ID Registry")
@@ -477,7 +501,7 @@ def registered_gate_check(gate_id, module):
 def gate_registry_producer_errors(registry):
     """Return every K00/12 row whose producer tuple its producer contradicts.
 
-    All four selector columns are compared against a source outside the table:
+    All five selector columns are compared against a source outside the table:
 
     * ``Tool`` names either the ``manual-attestation`` producer class or an
       installed module whose ``TOOL`` equals the cell.
@@ -491,8 +515,14 @@ def gate_registry_producer_errors(registry):
       writes.  A ``check_queue`` row therefore carries a mode that
       :func:`queue_gate_id_for_mode` maps back to the same Gate ID, and every
       other row carries ``*``: a narrower mode elsewhere could never match.
+    * ``Dimension`` narrows on ``dimension``, a field only a hand-recorded
+      receipt carries.  Its tokens are the base receipt dimensions K12/07
+      fixes, so a typo or an invented dimension is caught here rather than
+      silently matching nothing; a row whose producer is a named tool carries
+      ``*`` because that producer writes no ``dimension`` at all, and a row
+      that carries ``none`` says the Gate's own receipt has none.
 
-    The four cells together are the receipt selector, so two Gate IDs may not
+    The five cells together are the receipt selector, so two Gate IDs may not
     share one tuple either.  This is a judgment, not an adjudication: the
     caller is told the two sides disagree, never which side to change.
     """
@@ -502,8 +532,36 @@ def gate_registry_producer_errors(registry):
         predicate = registry[gate_id]
         tool = predicate["tool"]
         mode = predicate["mode"]
-        selector = (tool, predicate["tool_version"], predicate["check"], mode)
+        dimensions = predicate.get("dimensions") or ()
+        selector = (tool, predicate["tool_version"], predicate["check"], mode,
+                    ",".join(dimensions))
         selectors.setdefault(selector, []).append(gate_id)
+        if UNNARROWED_GATE_DIMENSION in dimensions or \
+                UNDIMENSIONED_GATE in dimensions:
+            if len(dimensions) != 1:
+                errors.append(
+                    "Gate ID %s registers Dimension %s, which mixes %r with "
+                    "named dimensions" % (
+                        gate_id, "/".join(dimensions), dimensions[0]))
+            elif (dimensions[0] == UNNARROWED_GATE_DIMENSION) != (
+                    tool != MANUAL_ATTESTATION_TOOL):
+                errors.append(
+                    "Gate ID %s registers Dimension %s against Tool %s; only a "
+                    "named producer, which writes no dimension field, carries "
+                    "%s" % (gate_id, dimensions[0], tool,
+                            UNNARROWED_GATE_DIMENSION))
+        else:
+            unknown = sorted(set(dimensions) - BASE_RECEIPT_DIMENSIONS)
+            if unknown:
+                errors.append(
+                    "Gate ID %s registers Dimension %s, which K12/07 does not "
+                    "fix as a base receipt dimension" % (
+                        gate_id, ", ".join(unknown)))
+            if tool != MANUAL_ATTESTATION_TOOL:
+                errors.append(
+                    "Gate ID %s narrows Dimension to %s, but its producer %s "
+                    "writes no dimension field" % (
+                        gate_id, ", ".join(dimensions), tool))
         consumed = CONSUMED_PRODUCER_IDENTITY.get(gate_id)
         if consumed is not None and consumed != (tool,
                                                  predicate["tool_version"]):
@@ -563,8 +621,34 @@ def gate_registry_producer_errors(registry):
     return errors
 
 
-def receipt_matches_gate_id(receipt, gate_id, registry):
-    """Return whether one receipt satisfies the registered producer tuple."""
+def registered_gate_dimensions(gate_id, registry):
+    """Return the receipt dimensions K00/12 admits for ``gate_id``.
+
+    ``None`` means the row is not narrowed on dimension at all.  An empty
+    frozenset means the Gate's receipt carries no ``dimension`` field.
+    """
+    predicate = registry.get(gate_id)
+    if not isinstance(predicate, dict):
+        return None
+    dimensions = predicate.get("dimensions") or ()
+    if UNNARROWED_GATE_DIMENSION in dimensions:
+        return None
+    if dimensions == (UNDIMENSIONED_GATE,):
+        return frozenset()
+    return frozenset(dimensions)
+
+
+def receipt_matches_gate_id(receipt, gate_id, registry, dimension=None):
+    """Return whether one receipt satisfies the registered producer tuple.
+
+    ``dimension``, when given, is the single receipt dimension the consumer's
+    own obligation was raised in.  A Gate ID whose canonical gate files
+    verdicts under several dimensions -- `content-correctness` and `rendering`
+    are the live cases -- is not identified by the producer tuple alone: every
+    dimension's attestation carries the same tool, version, check, and mode,
+    so without this argument evidence re-established in one dimension
+    discharges an obligation raised in another.
+    """
     predicate = registry.get(gate_id)
     if not isinstance(receipt, dict) or not isinstance(predicate, dict):
         return False
@@ -581,6 +665,20 @@ def receipt_matches_gate_id(receipt, gate_id, registry):
         return False
     if predicate["check"] != "*" and receipt.get("check") != predicate["check"]:
         return False
+    registered = registered_gate_dimensions(gate_id, registry)
+    if registered is not None:
+        actual_dimension = receipt.get("dimension")
+        if registered:
+            # A missing field is a rejection, not a wildcard: an attestation
+            # that never said which dimension it filed under has not been
+            # narrowed by anyone, and reading silence as agreement is exactly
+            # the hole this closes.
+            if actual_dimension not in registered:
+                return False
+        elif actual_dimension is not None:
+            return False
+        if dimension is not None and actual_dimension != dimension:
+            return False
     expected_mode = predicate["mode"]
     if expected_mode == "*":
         return True
@@ -1294,21 +1392,111 @@ def _current_item_transition_evidence(item, catalog):
     if last_rollback in transition_ids:
         start = transition_ids.index(last_rollback) + 1
     evidence = set()
+    window = set(transition_ids[start:])
     for transition_id in transition_ids[start:]:
         entry = catalog.get(transition_id)
         transition = entry[1] if entry is not None else None
         if not isinstance(transition, dict):
             continue
-        if (transition.get("before_state") == transition.get("after_state") and
-                transition.get("before_hold_state") ==
-                "revalidation-required" and
-                transition.get("after_hold_state") == "none" and
-                _nonempty_string(transition.get("evidence_receipt"))):
-            evidence.add(transition["evidence_receipt"])
         revalidation = transition.get("standards_revalidation_receipt")
         if _nonempty_string(revalidation):
             evidence.add(revalidation)
+    # A discharge is recognized by the replayed hold machine, not by the
+    # adjacent `revalidation-required -> none` edge: the clear may legitimately
+    # be taken from a hold the item moved to while the obligation stood.  The
+    # machine is replayed over the whole history and the result filtered to
+    # the current attempt, because the rollback that opened this attempt's
+    # obligation sits just before the window.
+    for transition in item_revalidation_discharges(item, catalog):
+        if (transition.get("receipt_id") in window and
+                transition.get("before_state") == transition.get("after_state")
+                and _nonempty_string(transition.get("evidence_receipt"))):
+            evidence.add(transition["evidence_receipt"])
     return evidence
+
+
+def _clears_revalidation_hold(transition):
+    """Return whether one transition discharges a `revalidation-required` hold.
+
+    The discharge is the evidence, not the edge.  ``update_queue.py`` records
+    whichever receipt authorized the clear -- the Standards revalidation
+    aggregate when adoption bindings are outstanding, otherwise the bound
+    Queue-consistency gate -- in ``evidence_receipt``, and additionally names
+    the aggregate in ``standards_revalidation_receipt``.  A transition that
+    lands on ``none`` carrying neither has proved nothing, whatever hold it
+    came from.
+    """
+    if not isinstance(transition, dict):
+        return False
+    if transition.get("after_hold_state") != "none":
+        return False
+    return (_nonempty_string(transition.get("evidence_receipt")) or
+            _nonempty_string(transition.get("standards_revalidation_receipt")))
+
+
+def walk_revalidation_hold(transitions):
+    """Replay the hold sub-state machine over one item's ordered history.
+
+    Returns ``(outstanding, discharges)``: whether a ``revalidation-required``
+    hold is still owed, and the transitions that actually retired one.
+
+    ``hold_state`` is a sub-state machine, not a set of independent flags, so
+    the obligation it records cannot be read off the current value alone.
+    Entering ``revalidation-required`` opens the obligation; only a transition
+    that lands on ``none`` with its discharge evidence retires it.  Moving to
+    any other hold -- ``paused``, ``blocked``, ``confirmation-required`` --
+    defers the obligation and never settles it, so
+    ``revalidation-required -> paused -> none`` clears exactly as much as the
+    direct ``revalidation-required -> none`` edge it routes around, which is
+    nothing.
+
+    Replaying the whole ordered list rather than reading the adjacent edge is
+    the point: the bypass is only visible across an arbitrary number of
+    intermediate holds, and a hand-edited ``hold_state`` that never recorded
+    a clearing transition stays outstanding here too.
+    """
+    outstanding = False
+    discharges = []
+    for transition in transitions or []:
+        if not isinstance(transition, dict):
+            continue
+        if transition.get("after_hold_state") == "revalidation-required":
+            outstanding = True
+        elif outstanding and _clears_revalidation_hold(transition):
+            outstanding = False
+            discharges.append(transition)
+    return outstanding, discharges
+
+
+def undischarged_revalidation_hold(transitions):
+    """Return whether a `revalidation-required` hold is still outstanding."""
+    return walk_revalidation_hold(transitions)[0]
+
+
+def _ordered_item_transitions(item, catalog):
+    """Return the item's transition receipts, in order, that resolve."""
+    transition_ids = item.get("transition_receipts")
+    if not isinstance(transition_ids, list):
+        return []
+    transitions = []
+    for transition_id in transition_ids:
+        entry = catalog.get(transition_id) if _nonempty_string(
+            transition_id) else None
+        if entry is not None and isinstance(entry[1], dict):
+            transitions.append(entry[1])
+    return transitions
+
+
+def item_undischarged_revalidation_hold(item, catalog):
+    """Resolve :func:`undischarged_revalidation_hold` from receipt IDs."""
+    return undischarged_revalidation_hold(
+        _ordered_item_transitions(item, catalog))
+
+
+def item_revalidation_discharges(item, catalog):
+    """Return the transitions that retired a `revalidation-required` hold."""
+    return walk_revalidation_hold(
+        _ordered_item_transitions(item, catalog))[1]
 
 
 def invalidated_receipt_consumers(root, queue, catalog):
@@ -1405,6 +1593,21 @@ def standards_revalidation_requirements(root, progress):
                         invalidated.get("revalidation_scope_ids") or []) or
                      boundary.get("target_kind") == "batch")
                 })
+                # The dimensions this boundary put back in question.  They come
+                # from the plan's own `dimension_ids`, not from reading the
+                # superseded receipts: what has to be re-established is what
+                # the adoption declared it invalidated.
+                relevant_dimensions = sorted({
+                    dimension
+                    for invalidated in invalidated_by_boundary.get(
+                        boundary_id, [])
+                    if _nonempty_string(invalidated.get("receipt_id")) and
+                    (batch_id in (
+                        invalidated.get("revalidation_scope_ids") or []) or
+                     boundary.get("target_kind") == "batch")
+                    for dimension in invalidated.get("dimension_ids") or []
+                    if _nonempty_string(dimension)
+                })
                 for gate_id in boundary.get("required_gate_ids") or []:
                     binding = {
                         "adoption_id": plan.get("adoption_id"),
@@ -1414,6 +1617,7 @@ def standards_revalidation_requirements(root, progress):
                         "predicate_ids": sorted(
                             boundary.get("predicate_ids") or []),
                         "required_gate_id": gate_id,
+                        "required_dimension_ids": relevant_dimensions,
                         "superseded_invalidated_receipt_ids":
                             relevant_invalidated,
                     }
@@ -1428,20 +1632,19 @@ def standards_revalidation_requirements(root, progress):
 
 def _consumed_standards_revalidation_keys(item, catalog):
     consumed = set()
-    transition_ids = item.get("transition_receipts")
-    if not isinstance(transition_ids, list):
+    transitions = _ordered_item_transitions(item, catalog)
+    if not transitions:
         return consumed
-    for transition_id in transition_ids:
-        entry = catalog.get(transition_id)
-        transition = entry[1] if entry is not None else None
-        if not isinstance(transition, dict):
-            continue
+    # The `evidence_receipt` fallback applies to a transition the replayed
+    # hold machine recognizes as a discharge, not to the adjacent
+    # `revalidation-required -> none` edge alone.
+    discharges = {transition.get("receipt_id")
+                  for transition in walk_revalidation_hold(transitions)[1]}
+    for transition in transitions:
         receipt_id = transition.get("standards_revalidation_receipt")
         if not _nonempty_string(receipt_id) and (
-                transition.get("before_state") == transition.get("after_state") and
-                transition.get("before_hold_state") ==
-                "revalidation-required" and
-                transition.get("after_hold_state") == "none"):
+                transition.get("before_state") == transition.get("after_state")
+                and transition.get("receipt_id") in discharges):
             receipt_id = transition.get("evidence_receipt")
         receipt_entry = catalog.get(receipt_id) if _nonempty_string(
             receipt_id) else None
@@ -1564,7 +1767,36 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
                           (gate_id, receipt_id))
             continue
         receipt = entry[1]
-        if not receipt_matches_gate_id(receipt, gate_id, registry):
+        # One Gate ID may cover several receipt dimensions, so the Gate ID
+        # alone does not say which evidence the boundary is owed.  Narrow to
+        # the dimensions the plan declared invalidated for this Gate, and
+        # refuse a boundary whose declaration and registry cannot both hold
+        # rather than falling back to the unnarrowed match.
+        registered = registered_gate_dimensions(gate_id, registry)
+        required_dimension = None
+        if registered:
+            declared = {
+                dimension for row in outstanding
+                if row.get("required_gate_id") == gate_id
+                for dimension in row.get("required_dimension_ids") or []
+            }
+            admissible = sorted(declared & registered)
+            if declared and not admissible:
+                errors.append(
+                    "Gate ID %s is required for dimension(s) %s, which K00/12 "
+                    "does not register for it" % (
+                        gate_id, ", ".join(sorted(declared))))
+                continue
+            if len(admissible) == 1:
+                required_dimension = admissible[0]
+            elif admissible and receipt.get("dimension") not in admissible:
+                errors.append(
+                    "Gate ID %s receipt %s files under %r; this boundary is "
+                    "owed one of %s" % (
+                        gate_id, receipt_id, receipt.get("dimension"),
+                        ", ".join(admissible)))
+        if not receipt_matches_gate_id(receipt, gate_id, registry,
+                                       dimension=required_dimension):
             errors.append("receipt %s does not match registered Gate ID %s" %
                           (receipt_id, gate_id))
         for field, expected in (
@@ -6778,6 +7010,19 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
     if state in ("closed", "cancelled") and hold != "none":
         errors.append("%s history is immutable and must have hold_state none" %
                       item_id)
+
+    # The hold sub-state machine, read over the whole ordered history rather
+    # than the last edge.  An item sitting at any hold other than
+    # `revalidation-required` while its revalidation obligation is still
+    # undischarged reached that hold by routing around the clear, and an item
+    # sitting at `none` has had the obligation silently dropped.  Both fail
+    # closed here, including for state written by hand.
+    if hold != "revalidation-required" and undischarged_revalidation_hold(
+            transition_history):
+        errors.append(
+            "%s left revalidation-required for hold_state %r without the "
+            "clearing evidence; the hold is discharged by its own gate, not "
+            "by an intermediate hold" % (item_id, hold))
 
     if hold != "none" and not _nonempty_string(item.get("hold_reason")):
         errors.append("%s hold_state %s requires hold_reason" % (item_id, hold))

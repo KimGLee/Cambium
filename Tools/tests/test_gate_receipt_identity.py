@@ -22,6 +22,16 @@ import adopt_standards
 import kblib
 import record_corpus_acceptance
 
+# K12/18 files these two Gates' canonical judgment items under more than one
+# receipt dimension, so K00/12 registers every one of them.
+DIMENSIONS = {
+    "source-promotion": ("coverage_and_integration", "source_and_currentness"),
+    "expression-layer-acceptance": (
+        "content_and_depth", "coverage_and_integration",
+        "guidance_and_contract", "source_and_currentness",
+        "structure_and_links"),
+}
+
 
 class DeterministicGateReceiptIdentityTests(unittest.TestCase):
     def test_producer_constants_match_stable_gate_registry(self):
@@ -34,48 +44,56 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 "tool_version": check_links.TOOL_VERSION,
                 "check": "link-check-summary",
                 "mode": "*",
+                "dimensions": ("*",),
             },
             check_vocab.GATE_ID: {
                 "tool": check_vocab.TOOL,
                 "tool_version": check_vocab.TOOL_VERSION,
                 "check": "vocab-check-summary",
                 "mode": "*",
+                "dimensions": ("*",),
             },
             check_residual_content.GATE_ID: {
                 "tool": check_residual_content.TOOL,
                 "tool_version": check_residual_content.TOOL_VERSION,
                 "check": "residual-content-summary",
                 "mode": "*",
+                "dimensions": ("*",),
             },
             check_batch_close.GATE_ID: {
                 "tool": check_batch_close.TOOL,
                 "tool_version": check_batch_close.TOOL_VERSION,
                 "check": "batch_close_gate",
                 "mode": "*",
+                "dimensions": ("*",),
             },
             check_proof.GATE_ID: {
                 "tool": check_proof.TOOL,
                 "tool_version": check_proof.TOOL_VERSION,
                 "check": "proof-check-summary",
                 "mode": "*",
+                "dimensions": ("*",),
             },
             adopt_standards.GATE_ID: {
                 "tool": adopt_standards.TOOL,
                 "tool_version": adopt_standards.TOOL_VERSION,
                 "check": "standards_adoption",
                 "mode": "*",
+                "dimensions": ("*",),
             },
             "corpus-plan-structure": {
                 "tool": check_corpus_plan.TOOL,
                 "tool_version": check_corpus_plan.TOOL_VERSION,
                 "check": "corpus_plan",
                 "mode": "*",
+                "dimensions": ("*",),
             },
             "corpus-plan-semantic-acceptance": {
                 "tool": record_corpus_acceptance.TOOL,
                 "tool_version": record_corpus_acceptance.TOOL_VERSION,
                 "check": "corpus_plan_semantic_acceptance",
                 "mode": "*",
+                "dimensions": ("*",),
             },
             check_queue.BATCH_REVIEW_GATE_ID: {
                 "tool": check_queue.MANUAL_ATTESTATION_TOOL,
@@ -83,6 +101,9 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                     check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
                 "check": check_queue.BATCH_REVIEW_CHECK,
                 "mode": "*",
+                # The wrapper binds member receipts that already carry the
+                # verdicts, so K12/18 files it under no dimension at all.
+                "dimensions": ("none",),
             },
         }
         for gate_id, predicate in expected.items():
@@ -112,9 +133,10 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
             registry_path.parent.mkdir(parents=True)
             registry_path.write_text(
                 "## Stable Gate ID Registry\n\n"
-                "| Gate ID | Tool | Tool version | Check | Mode |\n"
-                "|---|---|---|---|---|\n"
-                "| unsafe | * | * | * | * |\n",
+                "| Gate ID | Tool | Tool version | Check | Mode "
+                "| Dimension |\n"
+                "|---|---|---|---|---|---|\n"
+                "| unsafe | * | * | * | * | * |\n",
                 encoding="utf-8",
             )
             registry, errors = check_queue.standards_gate_registry(root)
@@ -228,7 +250,9 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 "  combination:\n"
                 "    - Question\n"
                 "    - Answer\n"
-                "  minimum_distinct: 2\n",
+                "  minimum_distinct: 2\n"
+                "mandated_headings:\n"
+                "  - Interview Card\n",
                 encoding="utf-8",
             )
             receipts = root / "residual.jsonl"
@@ -274,7 +298,9 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
             "  any:\n"
             "    - %s\n"
             "  combination: []\n"
-            "  minimum_distinct: 0\n" % (frontmatter_value, heading),
+            "  minimum_distinct: 0\n"
+            "mandated_headings:\n"
+            "  - %s\n" % (frontmatter_value, heading, heading),
             encoding="utf-8",
         )
         return config
@@ -412,10 +438,11 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
             registry_path.parent.mkdir(parents=True)
             registry_path.write_text(
                 "## Stable Gate ID Registry\n\n"
-                "| Gate ID | Tool | Tool version | Check | Mode |\n"
-                "|---|---|---|---|---|\n"
+                "| Gate ID | Tool | Tool version | Check | Mode "
+                "| Dimension |\n"
+                "|---|---|---|---|---|---|\n"
                 "| wiki-link-integrity | check_links | 9.9.9 "
-                "| link-check-summary | * |\n",
+                "| link-check-summary | * | * |\n",
                 encoding="utf-8",
             )
             registry, errors = check_queue.standards_gate_registry(root)
@@ -464,9 +491,110 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
                             in error for error in errors), errors)
 
     def test_two_gate_ids_may_not_share_one_receipt_selector(self):
-        errors = self.drifted("depth-balance", check="rendering")
+        errors = self.drifted(
+            "depth-balance", check="rendering",
+            dimensions=("rendering", "structure_and_links"))
         self.assertTrue(any("share one receipt selector" in error
                             for error in errors), errors)
+
+    def test_every_row_registers_a_dimension_the_kernel_fixes(self):
+        """F01-F03: the fifth selector column, checked against K12/07."""
+        registry = self.registry()
+        for gate_id, predicate in sorted(registry.items()):
+            dimensions = predicate["dimensions"]
+            self.assertTrue(dimensions, gate_id)
+            if dimensions in (("*",), ("none",)):
+                continue
+            self.assertEqual(
+                set(), set(dimensions) - check_queue.BASE_RECEIPT_DIMENSIONS,
+                gate_id)
+            self.assertEqual(
+                check_queue.MANUAL_ATTESTATION_TOOL, predicate["tool"],
+                "%s narrows Dimension but is not hand-recorded" % gate_id)
+
+    def test_the_two_dimension_projections_agree(self):
+        """`check_queue` and `check_proof` project the same closed K12/07 set."""
+        self.assertEqual(check_queue.BASE_RECEIPT_DIMENSIONS,
+                         frozenset(check_proof.BASE_RECEIPT_DIMENSIONS))
+
+    def test_a_named_producer_may_not_narrow_dimension(self):
+        errors = self.drifted("wiki-link-integrity",
+                              dimensions=("structure_and_links",))
+        self.assertTrue(any("writes no dimension field" in error
+                            for error in errors), errors)
+
+    def test_an_invented_dimension_is_reported(self):
+        errors = self.drifted("depth-balance", dimensions=("depth_balance",))
+        self.assertTrue(any("K12/07 does not fix as a base receipt dimension"
+                            in error for error in errors), errors)
+
+    def test_a_hand_recorded_row_may_not_carry_the_unnarrowed_marker(self):
+        errors = self.drifted("depth-balance", dimensions=("*",))
+        self.assertTrue(any("only a named producer" in error
+                            for error in errors), errors)
+
+    def test_a_row_may_not_mix_the_markers_with_named_dimensions(self):
+        errors = self.drifted("depth-balance",
+                              dimensions=("content_and_depth", "none"))
+        self.assertTrue(any("mixes" in error for error in errors), errors)
+
+    def test_one_gate_id_covering_several_dimensions_is_registered_whole(self):
+        """The reported one-to-many cases, counted from K12/08 and K12/18."""
+        registry = self.registry()
+        self.assertEqual(
+            ("content_and_depth", "formula_and_numeric", "rendering",
+             "source_and_currentness", "structure_and_links"),
+            registry["content-correctness"]["dimensions"])
+        self.assertEqual(("rendering", "structure_and_links"),
+                         registry["rendering"]["dimensions"])
+
+    def test_one_dimensions_receipt_does_not_satisfy_another(self):
+        """The defect itself: A's attestation answering B's obligation."""
+        registry = self.registry()
+        attestation = {
+            "gate_id": "content-correctness",
+            "tool": check_queue.MANUAL_ATTESTATION_TOOL,
+            "tool_version": check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+            "check": "content-correctness",
+            "dimension": "structure_and_links",
+        }
+        # Registered for the Gate, so the unnarrowed predicate admits it ...
+        self.assertTrue(check_queue.receipt_matches_gate_id(
+            attestation, "content-correctness", registry))
+        # ... but not for an obligation raised in a different dimension.
+        self.assertFalse(check_queue.receipt_matches_gate_id(
+            attestation, "content-correctness", registry,
+            dimension="formula_and_numeric"))
+        self.assertTrue(check_queue.receipt_matches_gate_id(
+            dict(attestation, dimension="formula_and_numeric"),
+            "content-correctness", registry,
+            dimension="formula_and_numeric"))
+
+    def test_an_attestation_without_a_dimension_is_rejected(self):
+        """Silence is not a wildcard."""
+        registry = self.registry()
+        attestation = {
+            "gate_id": "rendering",
+            "tool": check_queue.MANUAL_ATTESTATION_TOOL,
+            "tool_version": check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+            "check": "rendering",
+        }
+        self.assertFalse(check_queue.receipt_matches_gate_id(
+            attestation, "rendering", registry))
+
+    def test_a_none_dimension_gate_rejects_a_receipt_that_claims_one(self):
+        registry = self.registry()
+        wrapper = {
+            "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
+            "tool": check_queue.MANUAL_ATTESTATION_TOOL,
+            "tool_version": check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+            "check": check_queue.BATCH_REVIEW_CHECK,
+        }
+        self.assertTrue(check_queue.receipt_matches_gate_id(
+            wrapper, check_queue.BATCH_REVIEW_GATE_ID, registry))
+        self.assertFalse(check_queue.receipt_matches_gate_id(
+            dict(wrapper, dimension="content_and_depth"),
+            check_queue.BATCH_REVIEW_GATE_ID, registry))
 
     def test_the_registry_guard_runs_on_the_stamp_cards_gate_input(self):
         """Placement, not existence: an adopter must reach this guard.
@@ -521,7 +649,8 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
             self.assertEqual(
                 {"tool": check_queue.MANUAL_ATTESTATION_TOOL,
                  "tool_version": check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-                 "check": gate_id, "mode": "*"},
+                 "check": gate_id, "mode": "*",
+                 "dimensions": DIMENSIONS[gate_id]},
                 registry.get(gate_id), gate_id)
 
 

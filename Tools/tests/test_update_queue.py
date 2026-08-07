@@ -1418,6 +1418,100 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("held open batch", completed.stdout)
 
+    def hold_b1_for_revalidation(self):
+        """Put an open B1 under `revalidation-required` and return the state."""
+        self.open_b1()
+        revision, fingerprint = self.expected()
+        held = self.command(
+            "--id", "B1", "--hold-state", "revalidation-required",
+            "--reason", "standards changed under this batch",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T01:30:00Z",
+            "--apply",
+        )
+        self.assertEqual(0, held.returncode, held.stdout)
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+
+    def test_intermediate_hold_cannot_launder_a_revalidation_hold(self):
+        """A78-F03: two legal writes must not clear what neither discharged.
+
+        The guard used to name one edge, `revalidation-required -> none`, so
+        `revalidation-required -> paused -> none` walked around it: each write
+        was legal on its own and the pair left the batch at `hold_state: none`
+        with no revalidation evidence anywhere in its history.
+        """
+        self.hold_b1_for_revalidation()
+        revision, fingerprint = self.expected()
+        stepped = self.command(
+            "--id", "B1", "--hold-state", "paused", "--reason", "step aside",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T01:40:00Z",
+            "--apply",
+        )
+        self.assertEqual(1, stepped.returncode, stepped.stdout)
+        self.assertIn("left revalidation-required", stepped.stdout)
+        item = check_queue.validate_runtime(self.root)["items_by_id"]["B1"]
+        self.assertEqual("revalidation-required", item["hold_state"])
+
+    def test_hand_written_hold_none_over_an_owed_revalidation_fails_closed(self):
+        """The reader replays the machine, so a hand edit is caught too."""
+        self.hold_b1_for_revalidation()
+        queue = self.load(check_queue.QUEUE_PATH)
+        item = next(entry for entry in queue["required_queue"]
+                    if entry["id"] == "B1")
+        item["hold_state"] = "none"
+        item.pop("hold_reason", None)
+        self.write_queue(queue)
+        errors = check_queue.validate_runtime(self.root)["errors"]
+        self.assertTrue(
+            any("left revalidation-required for hold_state 'none'" in error
+                for error in errors), errors)
+
+    def test_clearing_a_revalidation_hold_from_none_still_needs_its_gate(self):
+        """The obligation, not the edge: the last hop does not matter."""
+        self.hold_b1_for_revalidation()
+        revision, fingerprint = self.expected()
+        cleared = self.command(
+            "--id", "B1", "--hold-state", "none",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T01:40:00Z",
+            "--apply",
+        )
+        self.assertEqual(1, cleared.returncode, cleared.stdout)
+        self.assertIn("clearing revalidation-required needs --gate-receipt",
+                      cleared.stdout)
+
+    def test_an_ordinary_hold_still_clears_without_revalidation_evidence(self):
+        """The tightening must not reach holds that owe nothing.
+
+        `paused` and `blocked` mark a batch that cannot be worked right now
+        for reasons of their own.  Entering and leaving one when no
+        revalidation is owed is untouched by the sub-state machine.
+        """
+        self.open_b1()
+        for index, (hold, reason, when) in enumerate((
+                ("paused", "worker away", "2026-08-04T01:30:00Z"),
+                ("none", "worker back", "2026-08-04T01:40:00Z"),
+                ("blocked", "external dependency", "2026-08-04T01:50:00Z"),
+                ("none", "dependency resolved", "2026-08-04T02:00:00Z"))):
+            revision, fingerprint = self.expected()
+            arguments = ["--id", "B1", "--hold-state", hold,
+                         "--expected-state-revision", revision,
+                         "--expected-sha256", fingerprint,
+                         "--actor-role", "integrator", "--at", when, "--apply"]
+            if hold != "none":
+                arguments += ["--reason", reason]
+            completed = self.command(*arguments)
+            self.assertEqual(0, completed.returncode,
+                             "%s: %s" % (hold, completed.stdout))
+            self.assertEqual(
+                [], check_queue.validate_runtime(self.root)["errors"])
+        item = check_queue.validate_runtime(self.root)["items_by_id"]["B1"]
+        self.assertEqual("none", item["hold_state"])
+
     def test_hold_noop_does_not_bump_state_revision(self):
         self.make_task_active_without_open()
         before = (self.root / check_queue.QUEUE_PATH).read_bytes()

@@ -686,8 +686,14 @@ def main(argv=None):
               % args.output)
         return 0
 
-    with open(output_path, "w", encoding="utf-8") as fh:
-        fh.write(rendered)
+    # The artifact is a gate input: `check_vocab` reads it to decide whether a
+    # frontmatter value is legal, and an empty or half-written file makes every
+    # value legal. A non-atomic write leaves exactly that state behind when the
+    # process dies between truncate and flush, so the bytes are staged and
+    # renamed into place, and never published unless they satisfy the same
+    # predicate the consumer applies.
+    kblib.atomic_write_text(output_path, rendered,
+                            validator=kblib.parse_vocabulary_artifact)
     field_count = len(output.get("fields") or {})
     value_count = sum(
         len(spec.get("values") or [])

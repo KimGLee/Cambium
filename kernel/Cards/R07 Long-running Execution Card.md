@@ -28,11 +28,12 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction.md
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
+  - kernel/K11 Expression Layer/06 Sequence and Progress Semantics.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '52a15b31357d'
+source_hash: 'b0927ca418b5'
 ---
 # R07 Long-running Execution Card
 
@@ -73,6 +74,7 @@ Each batch follows the fixed loop: version/Guidance self-check → `check_queue.
 - [ ] No batch reported `closed` has an unapplied delta; open and merge-ready work remains explicit in the Queue.
 - [ ] Guidance counters, Required gaps, unverified batches, and unresolved invalidations stay explicit.
 - [ ] Ledger, receipt, source, link, rendering, and watermark state are updated at the layer that owns them.
+- [ ] Coverage reconciliation does not read a sequence position, checkbox, file existence, resolvable link, or `Related` reference as authoring completion.
 - [ ] A completion candidate loads [[kernel/Cards/R08 Audit and Completion Card|Audit and Completion]]; elapsed time or exhausted context never substitutes for it.
 - [ ] Each durable checkpoint refreshes the configured corpus-planning check; resume revalidates current inputs and requests a fresh JSON projection when orientation is needed.
 

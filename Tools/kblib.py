@@ -214,6 +214,40 @@ def parse_yaml_subset(text):
     return value
 
 
+def parse_vocabulary_artifact(text):
+    """Parse the composed vocabulary artifact and prove it is a composition.
+
+    ``kernel/K12 Quality Assurance/05 Automated and Manual Checks.md`` requires
+    that the input of the frontmatter vocabulary check "MUST be composed from
+    the kernel base vocabulary and the selected profile's `Vocabulary
+    Extensions`".  ``parse_yaml_subset`` maps empty input to ``{}``, so on its
+    own it cannot tell a composed artifact from a truncated or half-written
+    file; both yield an empty field set, and an empty field set makes every
+    controlled value legal.  This predicate is the deterministic reading of
+    that MUST: the bytes must parse, be a mapping, and carry a non-empty
+    ``fields`` mapping, because the kernel base contributes fields
+    unconditionally.  Whether the *values* are the right ones stays with the
+    rule owners and with ``compose_vocab.py --check``; this function only
+    separates "a vocabulary" from "a file".
+
+    Returns the parsed mapping. Raises ``YamlSubsetError`` when the bytes are
+    outside the subset grammar and ``ValueError`` when they parse but are not
+    a vocabulary artifact.
+    """
+    data = parse_yaml_subset(text)
+    if not isinstance(data, dict):
+        raise ValueError(
+            "composed vocabulary must be a mapping, found %s"
+            % type(data).__name__)
+    fields = data.get("fields")
+    if not isinstance(fields, dict) or not fields:
+        raise ValueError(
+            "composed vocabulary carries no `fields` mapping; an empty, "
+            "truncated, or half-written artifact is not the composition of "
+            "the kernel base and the selected profile's Vocabulary Extensions")
+    return data
+
+
 # ---------------------------------------------------------------------------
 # Markdown helpers
 # ---------------------------------------------------------------------------

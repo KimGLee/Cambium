@@ -50,3 +50,13 @@ heading_match:
     - TODO(profile)
     - TODO(profile)
   minimum_distinct: 2
+
+# The heading forms this profile's own structure rules mandate, transcribed
+# verbatim from the page that mandates them. Recognising *something* is not
+# enough for K12/09 item 6: a matcher list that misses the mandated form
+# reports "clean" over exactly the pages the scan was registered to find. The
+# tool proves every entry here is registered above and that a page carrying
+# exactly this set classifies as a candidate; it does not judge whether the
+# list is complete, which stays this profile's call. List at least one entry.
+mandated_headings:
+  - TODO(profile)

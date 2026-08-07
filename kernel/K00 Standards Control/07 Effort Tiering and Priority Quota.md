@@ -33,6 +33,8 @@ tier is derived from priority; priority inflation defeats tiering. Kernel defaul
 
 P0/P1 pages exceeding quota MUST be demoted, or an explicit exemption rationale MUST be recorded in the Coverage Ledger; over-allocation without an exemption record is handled as a coverage reconciliation gap. Coverage reconciliation for REBASE and Maintenance Runs MUST check the priority and tier distributions (`Tools/check_vocab.py` outputs distribution statistics and over-allocation candidates). The selected profile MAY override the 15% / 35% defaults, but MUST register the override explicitly.
 
+An overriding share is a share of the same corpus the three classes partition, so it is admissible only where it leaves that partition intact. Each of the two overriding values is therefore at least 0% and strictly below 100%, and the two together stay strictly below 100%: the remainder class above is `P2` and it carries all terminology stubs and placeholder pages, so a quota that consumes the whole corpus states that a page class the section requires to be non-empty is empty. A quota at or above the whole corpus also silences this section's own demotion rule, because no page can then exceed it — the override registers a quota, and a value that no page can exceed is not one.
+
 ## Related
 
 - [[kernel/K00 Standards Overview|Standards Overview]]

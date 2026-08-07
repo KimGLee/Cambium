@@ -275,6 +275,215 @@ class LeafCoverageTests(unittest.TestCase):
         )
 
 
+class CardRouteLoadTests(unittest.TestCase):
+    """A Card names no route its own Read Set's boundaries leave out.
+
+    The rule is the loading-boundary owner's: a Card compiles its route's
+    boundaries and owns none of them. These cases fix the two edges that
+    matter -- a Card-only route is reported wherever in the Card it appears,
+    and a boundary the Card does not repeat is not.
+    """
+
+    def records(self, read_set_body, card_body, read_set_extra=()):
+        read_sets = [
+            {
+                "rel": "kernel/Read Sets/R03 Demo Read Set.md",
+                "route_id": "R03",
+                "text": read_set_body,
+            },
+            {
+                "rel": "kernel/Read Sets/R02 Other Read Set.md",
+                "route_id": "R02",
+                "text": "## Purpose\n\nother\n",
+            },
+            {
+                "rel": "kernel/Read Sets/R11 Admission Read Set.md",
+                "route_id": "R11",
+                "text": "## Purpose\n\nadmission\n",
+            },
+        ]
+        read_sets.extend(read_set_extra)
+        cards = [
+            {
+                "rel": "kernel/Cards/R03 Demo Card.md",
+                "route_id": "R03",
+                "read_set": "kernel/Read Sets/R03 Demo Read Set.md",
+                "text": card_body,
+            },
+            {
+                "rel": "kernel/Cards/R02 Other Card.md",
+                "route_id": "R02",
+                "read_set": "kernel/Read Sets/R02 Other Read Set.md",
+                "text": "## Use When\n\nother\n",
+            },
+            {
+                "rel": "kernel/Cards/R11 Admission Card.md",
+                "route_id": "R11",
+                "read_set": "kernel/Read Sets/R11 Admission Read Set.md",
+                "text": "## Use When\n\nadmission\n",
+            },
+        ]
+        return read_sets, cards
+
+    def failures(self, read_set_body, card_body):
+        read_sets, cards = self.records(read_set_body, card_body)
+        return stamp_cards.card_route_load_failures(read_sets, cards)
+
+    def test_a_route_both_sides_name_is_not_reported(self):
+        read_set = (
+            "## Triggered\n\n"
+            "- Authoring a page: combine "
+            "[[kernel/Read Sets/R02 Other Read Set|Other]].\n"
+        )
+        card = (
+            "## Use When\n\n"
+            "Load [[kernel/Cards/R02 Other Card|Other]] for pages authored.\n"
+        )
+
+        self.assertEqual(self.failures(read_set, card), [])
+
+    def test_a_route_only_the_card_names_is_reported_with_both_paths(self):
+        read_set = "## Triggered\n\n- Nothing conditional here.\n"
+        card = (
+            "## Use When\n\n"
+            "Load [[kernel/Cards/R02 Other Card|Other]] for pages authored.\n"
+        )
+
+        failures = self.failures(read_set, card)
+
+        self.assertEqual(len(failures), 1, failures)
+        self.assertIn("kernel/Cards/R03 Demo Card.md", failures[0])
+        self.assertIn("R02", failures[0])
+        self.assertIn("kernel/Read Sets/R03 Demo Read Set.md", failures[0])
+
+    def test_a_route_named_only_outside_a_boundary_is_still_reported(self):
+        read_set = (
+            "## Purpose\n\n"
+            "Pairs with [[kernel/Read Sets/R02 Other Read Set|Other]].\n\n"
+            "## Related\n\n"
+            "- [[kernel/Read Sets/R02 Other Read Set|Other]]\n"
+        )
+        card = "## Use When\n\nLoad [[kernel/Cards/R02 Other Card|Other]].\n"
+
+        failures = self.failures(read_set, card)
+
+        self.assertEqual(len(failures), 1, failures)
+        self.assertIn("R02", failures[0])
+
+    def test_a_boundary_the_card_does_not_repeat_is_not_reported(self):
+        read_set = (
+            "## Triggered\n\n"
+            "- Large-scale work: pass "
+            "[[kernel/Read Sets/R11 Admission Read Set|Admission]].\n"
+            "- Authoring: combine "
+            "[[kernel/Read Sets/R02 Other Read Set|Other]].\n"
+        )
+        card = "## Use When\n\nBuild a module.\n"
+
+        self.assertEqual(self.failures(read_set, card), [])
+
+    def test_the_cards_own_route_is_never_reported_against_itself(self):
+        read_set = "## Triggered\n\n- Nothing conditional here.\n"
+        card = (
+            "## Read Back When\n\n"
+            "Read [[kernel/Read Sets/R03 Demo Read Set|this route]] for a "
+            "dispute.\n"
+        )
+
+        self.assertEqual(self.failures(read_set, card), [])
+
+    def test_every_card_section_is_scanned_not_only_the_first(self):
+        read_set = "## Triggered\n\n- Nothing conditional here.\n"
+        card = (
+            "## Use When\n\nBuild a module.\n\n"
+            "## Gate\n\n"
+            "- [ ] A completion candidate loads "
+            "[[kernel/Cards/R11 Admission Card|Admission]].\n"
+        )
+
+        failures = self.failures(read_set, card)
+
+        self.assertEqual(len(failures), 1, failures)
+        self.assertIn("R11", failures[0])
+
+    def test_an_artifact_without_a_route_identity_names_no_route(self):
+        read_set = "## Triggered\n\n- Nothing conditional here.\n"
+        card = (
+            "## Use When\n\n"
+            "Select the task Card in [[kernel/Cards/Card Index|Card Index]] "
+            "listed in [[kernel/Read Sets/Read Sets Index|Read Sets Index]].\n"
+        )
+
+        self.assertEqual(self.failures(read_set, card), [])
+
+    def test_a_heading_link_still_names_the_route(self):
+        read_set = "## Triggered\n\n- Nothing conditional here.\n"
+        card = (
+            "## Use When\n\n"
+            "See [[kernel/Cards/R02 Other Card#Use When|Other]].\n"
+        )
+
+        failures = self.failures(read_set, card)
+
+        self.assertEqual(len(failures), 1, failures)
+        self.assertIn("R02", failures[0])
+
+    def test_the_same_records_give_the_same_report(self):
+        read_set = "## Triggered\n\n- Nothing conditional here.\n"
+        card = (
+            "## Use When\n\nLoad [[kernel/Cards/R11 Admission Card|A]].\n\n"
+            "## Gate\n\n- [ ] Then [[kernel/Cards/R02 Other Card|O]].\n"
+        )
+
+        self.assertEqual(self.failures(read_set, card),
+                         self.failures(read_set, card))
+
+
+class DelegatedLeafReachabilityTests(unittest.TestCase):
+    """A delegated rule is loadable on every route that reads its delegator.
+
+    `K12/03 Module and Coverage Review` sends status separation to
+    `K11/06 Sequence and Progress Semantics`. A route whose boundary names the
+    delegator but not the delegate reaches the delegation and cannot follow
+    it, which is what the loading-boundary owner means by one link not being a
+    substitute. No tool can tell a delegation from navigation, so the edge is
+    pinned here instead.
+    """
+
+    DELEGATOR = "kernel/K12 Quality Assurance/03 Module and Coverage Review"
+    DELEGATE = "kernel/K11 Expression Layer/06 Sequence and Progress Semantics"
+
+    def boundary_text(self, path):
+        section = ""
+        kept = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("## "):
+                section = line[3:].strip()
+                continue
+            if section and section not in stamp_cards.NON_BOUNDARY_SECTIONS:
+                kept.append(line)
+        return "\n".join(kept)
+
+    def test_the_delegate_is_in_every_boundary_that_names_the_delegator(self):
+        directory = REPO_ROOT / "kernel" / "Read Sets"
+        read_sets = sorted(
+            path for path in directory.glob("*.md")
+            if path.name.split(" ", 1)[0] in stamp_cards.EXPECTED_ROUTE_IDS
+        )
+        self.assertEqual(
+            len(read_sets), len(stamp_cards.EXPECTED_ROUTE_IDS), read_sets)
+        naming_delegator = []
+        for path in read_sets:
+            text = self.boundary_text(path)
+            if self.DELEGATOR in text:
+                naming_delegator.append(path.name)
+                self.assertIn(
+                    self.DELEGATE, text,
+                    "%s loads %s but no boundary of it can reach %s"
+                    % (path.name, self.DELEGATOR, self.DELEGATE))
+        self.assertTrue(naming_delegator, "no route loads the delegator")
+
+
 class ShippedLayerGateTests(unittest.TestCase):
     """End-to-end: a drifted section name or an orphaned leaf fails the layer."""
 
@@ -346,6 +555,24 @@ class ShippedLayerGateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("16 Resume Next Action Vocabulary.md", result.stdout)
         self.assertIn("named by no Read Set loading boundary", result.stdout)
+
+    def test_a_route_dropped_from_the_paired_boundary_fails_closed(self):
+        read_set = (
+            self.root / "kernel" / "Read Sets" / "R03 Module Build Read Set.md"
+        )
+        text = read_set.read_text(encoding="utf-8")
+        kept = [
+            line for line in text.splitlines(keepends=True)
+            if "R02 Single Note Authoring Read Set" not in line
+        ]
+        self.assertNotEqual(len(kept), len(text.splitlines()))
+        read_set.write_text("".join(kept), encoding="utf-8")
+
+        result = self.run_check()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("kernel/Cards/R03 Module Build Card.md", result.stdout)
+        self.assertIn("tells its reader to load R02", result.stdout)
 
     def test_an_unreadable_skeleton_owner_fails_closed(self):
         owner = self.root / stamp_cards.SKELETON_OWNER_PATH

@@ -213,7 +213,7 @@ class TemplateScaffold(unittest.TestCase):
         scaffold = (self.TEMPLATE / "scan-configs" / "residual-scan.yaml"
                     ).read_text(encoding="utf-8")
         answers = iter(["Accepted Root", "accepted-type", "Accepted Heading",
-                        "Weak One", "Weak Two"])
+                        "Weak One", "Weak Two", "Accepted Heading"])
         # An adopter replaces the sentinels that carry values; the ones inside
         # comments go away with the comment.
         filled = "\n".join(

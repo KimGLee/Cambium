@@ -15,12 +15,13 @@ source_files:
   - kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links.md
   - kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns.md
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
+  - kernel/K11 Expression Layer/06 Sequence and Progress Semantics.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/08 Judgment Item Dimension Map.md
   - kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'dac514ee29aa'
+source_hash: 'c65d31156dcb'
 ---
 # R09 Standards Governance Card
 
@@ -50,6 +51,7 @@ Modify kernel rules, Read Sets, Cards, versions, directories, ownership, tooling
 ## Gate
 
 - [ ] Content conservation, owner uniqueness, routing, headings, tables, fences, links, MOCs, and coverage are verified.
+- [ ] Coverage reconciliation does not read a sequence position, checkbox, file existence, resolvable link, or `Related` reference as authoring completion.
 - [ ] The Revision Write-back Checklist is complete for every affected snapshot location.
 - [ ] `python3 Tools/stamp_cards.py . --check` exits 0; missing or stale Cards, an exceeded registered growth cap, and a K00/12 Stable Gate ID Registry row its producer contradicts each block governance close.
 - [ ] Every affected existing task has one validated agent-readable adoption plan or an explicit blocker; no persistent prose adoption report or direct Ledger edit was created.

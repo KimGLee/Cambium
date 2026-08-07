@@ -636,7 +636,27 @@ class CheckBatchCloseTests(unittest.TestCase):
         runtime = self.set_override_rows("| `priority_quota.P1` | `140` |\n")
         with self.assertRaises(ValueError) as caught:
             check_batch_close._priority_quotas(self.root, runtime)
-        self.assertIn("outside 0..100", str(caught.exception))
+        self.assertIn("under 100", str(caught.exception))
+
+    def test_a_quota_of_the_whole_corpus_is_refused_by_the_consumer_too(self):
+        """The same open upper end the profile checker enforces on the row.
+
+        The consumer reads an already-checked manifest, but its own guard must
+        not disagree with the checker about which values exist.
+        """
+        for item in ("priority_quota.P0", "priority_quota.P1"):
+            for value in ("100", "100%"):
+                with self.subTest(item=item, value=value):
+                    runtime = self.set_override_rows(
+                        "| `%s` | `%s` |\n" % (item, value))
+                    with self.assertRaises(ValueError) as caught:
+                        check_batch_close._priority_quotas(self.root, runtime)
+                    self.assertIn("under 100", str(caught.exception))
+        runtime = self.set_override_rows(
+            "| `priority_quota.P0` | `99.9%` |\n")
+        self.assertEqual(
+            (99.9, 35.0),
+            check_batch_close._priority_quotas(self.root, runtime))
 
     def test_priority_quotas_fail_closed_on_a_malformed_override_row(self):
         """The shared reader refuses; the close attempt must not proceed."""
