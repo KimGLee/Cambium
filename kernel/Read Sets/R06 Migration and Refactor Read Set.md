@@ -31,6 +31,7 @@ Before migration, a manifest of source paths, target paths, incoming links, head
 - A bound planning artifact or mapped canonical-owner path changes: combine [[kernel/Read Sets/R13 Corpus Planning Read Set|Corpus Planning]] so the Global Map, Capability Matrix, and Gap Register are reconciled after the migration.
 - A targeted or specialized migration audit: combine [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set|Targeted and Specialized Audit]].
 - A whole-task completion candidate: combine [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]].
+- Coverage reconciliation meets a sequence position, checkbox, or other progress marker: read [[kernel/K11 Expression Layer/06 Sequence and Progress Semantics|Sequence and Progress Semantics]], which [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]] names as the owner of that status separation.
 
 ## Gate
 

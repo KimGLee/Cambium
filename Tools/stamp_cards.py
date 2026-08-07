@@ -34,6 +34,17 @@ every kernel leaf module must be named by some Read Set loading boundary. Both
 fail closed when that section is missing or unparseable, and no section name or
 leaf path is restated here.
 
+The same loading-boundary owner states that a Card compiles its route's
+boundaries and owns none of them, so a route the Card names is one the paired
+Read Set's boundaries name too. A route reachable only from the Card is
+reported: the reader who follows the Card loads it and the reader who resolves
+the Read Set does not, and a leaf named only through that route is reachable
+for one of them. Only that direction is checked. A boundary the Card does not
+repeat is the compression judgment its owner is entitled to make, and which
+side of a reported disagreement moves is not decided here. Routes are read
+from the artifacts on disk that carry a route identity, so no route path
+spelling is restated here either.
+
 A fourth check measures the size budget. kernel/K00 Standards Control/03
 Standards Governance states the target and the soft cap and kernel/K00
 Standards Control/16 Leaf Module Size Register carries the approved exceptions;
@@ -482,6 +493,76 @@ def leaf_coverage_failures(root, read_set_records):
             failures.append(
                 "%s is named by no Read Set loading boundary; every kernel leaf "
                 "module enters one, per %s" % (rel, COVERAGE_OWNER_PATH)
+            )
+    return failures
+
+
+def named_routes(text, artifact_routes, sections=None):
+    """Return the route IDs one document's Wiki Links name.
+
+    A route is named by linking an artifact that carries a route identity, so
+    the mapping comes from the artifacts actually on disk rather than from a
+    path spelling restated here; the two indexes carry no route identity and
+    therefore name no route. `sections` restricts the scan to the H2 sections
+    it contains, and scanning the whole document when it is None.
+    """
+    found = set()
+    section = ""
+    for line in text.splitlines():
+        if line.startswith("## "):
+            section = line[3:].strip()
+            continue
+        if sections is not None and section not in sections:
+            continue
+        for target in WIKI_TARGET_RE.findall(line):
+            route_id = artifact_routes.get(target.strip() + ".md", "")
+            if route_id:
+                found.add(route_id)
+    return found
+
+
+def card_route_load_failures(read_set_records, runtime_records):
+    """Report routes a Card names that its own Read Set's boundaries do not.
+
+    A Card compiles the loading boundaries of its route and owns none of them,
+    so a route the Card tells its reader to load is one the paired Read Set
+    already names. A route reachable only from the Card is a load instruction
+    with no boundary behind it: the reader who follows the Card loads it and
+    the reader who resolves the Read Set does not.
+
+    `Purpose` and `Related` are excluded on the Read Set side for the same
+    reason they are excluded from leaf coverage, and no Card section is
+    excluded, because the Card's own applicability section is where it states
+    what loads with the route. Only the Card-adds-a-route direction is
+    reported: a boundary the Card does not repeat is a compression judgment
+    its owner makes, while a Card-only route is a disagreement about what the
+    task read. Which side moves is not decided here.
+    """
+    artifact_routes = {}
+    for record in list(read_set_records) + list(runtime_records):
+        if record.get("route_id"):
+            artifact_routes[record["rel"]] = record["route_id"]
+    boundaries = {}
+    for record in read_set_records:
+        route_id = record.get("route_id")
+        if not route_id:
+            continue
+        text = record.get("text") or ""
+        sections = set(heading_sequence(text)) - set(NON_BOUNDARY_SECTIONS)
+        boundaries[route_id] = named_routes(text, artifact_routes, sections)
+    failures = []
+    for record in runtime_records:
+        route_id = record.get("route_id")
+        if not route_id or route_id not in boundaries:
+            continue
+        named = named_routes(record.get("text") or "", artifact_routes)
+        for missing in sorted(named - boundaries[route_id] - {route_id}):
+            failures.append(
+                "%s tells its reader to load %s, which no loading boundary of "
+                "%s names; a Card compiles its route's boundaries and owns "
+                "none of them, per %s"
+                % (record["rel"], missing, record["read_set"] or route_id,
+                   COVERAGE_OWNER_PATH)
             )
     return failures
 
@@ -1178,6 +1259,7 @@ def main():
             )
 
     failures.extend(leaf_coverage_failures(root, read_set_records))
+    failures.extend(card_route_load_failures(read_set_records, runtime_records))
 
     # ---- Leaf module size budget, read from its owner and its register ----
     budget_candidates = []

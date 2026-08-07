@@ -1,0 +1,49 @@
+name: verify
+
+# The two blocking defects in the 2026-08-05 review both survived a full
+# release cycle because nothing ran the checks. This is that missing runner.
+# It calls `make ci` and nothing else, so what CI enforces and what a
+# maintainer runs locally cannot drift apart.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The tools use only the standard library. The floor is the oldest
+        # interpreter the distribution claims to support; the ceiling catches
+        # deprecations before an adopter does.
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Deterministic checks
+        run: make check
+
+      - name: Unit tests across three cache states
+        run: make test-cache-states
+
+      - name: Working tree must be unchanged
+        # No check may write to the tree it measures. A diff here means a
+        # read-only gate is not read-only.
+        run: |
+          git status --porcelain > /tmp/dirty
+          if [ -s /tmp/dirty ]; then
+            echo "verification modified the working tree:"
+            cat /tmp/dirty
+            exit 1
+          fi

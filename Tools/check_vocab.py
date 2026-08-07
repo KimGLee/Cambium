@@ -15,7 +15,10 @@ Vocabulary values come from the composed artifact Tools/vocab.yaml, produced by
 compose_vocab.py from the kernel base plus one selected profile's extensions.
 It is not a file the standard ships: a vault that has selected no profile
 carries none, and this check says so and exits 1 rather than assuming a
-vocabulary. It must be regenerated after revising the owner pages.
+vocabulary. Existence is not validity either: an artifact that is empty,
+unparseable, or carries no `fields` mapping is refused the same way, because
+an empty field set makes every controlled value legal and turns this gate into
+an unconditional pass. It must be regenerated after revising the owner pages.
 
 Method:
 - Parse each .md file's `---` fenced frontmatter with the restricted YAML
@@ -68,7 +71,18 @@ def _make_receipt(check, target, result, details, seq, root=None):
 
 
 def load_vocab(path):
-    data = kblib.parse_yaml_subset(open(path, encoding="utf-8").read())
+    """Load the composed artifact, refusing anything that is not a vocabulary.
+
+    File existence is not validity. `parse_yaml_subset` maps empty input to
+    `{}`, so a truncated or half-written `vocab.yaml` used to yield an empty
+    field set, and an empty field set silently makes every controlled value
+    legal -- the gate then reports a pass it never checked. K12/05 requires
+    this check's input to be composed from the kernel base and the selected
+    profile's `Vocabulary Extensions`; `kblib.parse_vocabulary_artifact`
+    is that requirement as a deterministic predicate.
+    """
+    with open(path, encoding="utf-8") as handle:
+        data = kblib.parse_vocabulary_artifact(handle.read())
     fields = data.get("fields") or {}
     vocab = {}
     for name, spec in fields.items():
@@ -115,7 +129,23 @@ def main():
         print("    python3 Tools/compose_vocab.py")
         print("  Or point this check at an existing artifact with --vocab PATH.")
         return 1
-    vocab = load_vocab(vocab_path)
+    try:
+        vocab = load_vocab(vocab_path)
+    except (ValueError, OSError, UnicodeError) as exc:
+        # An unreadable or non-composed artifact is an evidence-production
+        # failure, not a clean corpus: continuing would report "no illegal
+        # value" against a vocabulary that was never loaded.
+        receipts = [_make_receipt(
+            "vocab-artifact-invalid", vocab_path, "fail",
+            "the composed vocabulary at %s is not usable as this gate's "
+            "input: %s; K12/05 requires it to be composed from the kernel "
+            "base and the selected profile's Vocabulary Extensions, so "
+            "regenerate it with Tools/compose_vocab.py" % (vocab_path, exc),
+            1, root=args.vault_root)]
+        print("check_vocab: FAIL — composed vocabulary at %s is not usable: %s"
+              % (vocab_path, exc))
+        kblib.write_receipts(args.receipts, receipts)
+        return kblib.exit_code(receipts)
 
     receipts = []
     seq = 0

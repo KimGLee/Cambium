@@ -8,10 +8,13 @@ Exit 1 is reserved for a scan that failed to produce reliable evidence.
 
 Rule owner: "kernel/K12 Quality Assurance/09 Batch-close Closed List.md"
 (item 6 -- membership, the deterministic/whole-vault/<=60s execution contract,
-and the non-triviality requirement enforced by ``probe_accepted_roots``).
-A configuration that recognises nothing anywhere in the vault cannot
-distinguish a clean corpus from an inert matcher, so it fails closed instead of
-reporting a zero-candidate pass.
+and the non-triviality requirement enforced by ``check_mandated_coverage`` and
+``probe_accepted_roots``). A configuration that recognises nothing anywhere in
+the vault cannot distinguish a clean corpus from an inert matcher, so it fails
+closed instead of reporting a zero-candidate pass. Recognising *something* is
+not enough either: a configuration blind to the heading form the registering
+profile's own structure rules mandate reports "clean" over exactly the pages it
+was registered to find, so ``mandated_headings`` must also be matchable.
 """
 
 import argparse
@@ -40,6 +43,7 @@ TOP_LEVEL_CONFIG_KEYS = {
     "excluded_roots",
     "frontmatter_match",
     "heading_match",
+    "mandated_headings",
 }
 FRONTMATTER_CONFIG_KEYS = {"field", "values"}
 HEADING_CONFIG_KEYS = {"any", "combination", "minimum_distinct"}
@@ -200,6 +204,11 @@ def load_config(path):
     if not (normalized_values or normalized_any or normalized_combination):
         raise ValueError("config must define at least one residual-content matcher")
 
+    mandated = string_list(
+        data["mandated_headings"], "mandated_headings", allow_empty=False)
+    normalized_mandated = normalized_unique(
+        mandated, "mandated_headings", normalized_heading)
+
     config = {
         "allowed_roots": tuple(allowed),
         "excluded_roots": tuple(excluded),
@@ -208,8 +217,60 @@ def load_config(path):
         "any_headings": frozenset(normalized_any),
         "combination_headings": frozenset(normalized_combination),
         "minimum_distinct": minimum,
+        "mandated_headings": tuple(normalized_mandated),
     }
+    check_mandated_coverage(config)
     return config, hashlib.sha256(raw).hexdigest()
+
+
+def check_mandated_coverage(config):
+    """Prove the matchers can recognise the heading forms the profile mandates.
+
+    K12/09 item 6 accepts a zero-candidate report as evidence only when the
+    same configuration "still recognises those structures where the profile
+    declares they legitimately live".  ``probe_accepted_roots`` reads that as
+    "recognises *some* file", which a configuration passes while being blind to
+    the very heading form the profile's own structure rules require: the
+    generic matcher strips Markdown heading syntax only, so a registered bare
+    ``Deep Dive Follow-up Tree`` never fires on a mandated
+    ``Deep-Dive Follow-up Tree（深挖追问树）``, and the scan reports "clean"
+    over a corpus it cannot see.
+
+    ``mandated_headings`` is the profile's own transcription of that mandated
+    form, so this is a consistency check between two profile-owned
+    declarations, not an adjudication of either: the tool reports that the two
+    disagree and fails closed, and which one is right stays the registering
+    profile's judgment.  Two conditions, both pure set/count operations on
+    repository bytes:
+
+    1. every mandated heading is registered in ``any`` or ``combination``;
+    2. a page carrying exactly the mandated headings classifies as a
+       candidate, which additionally catches a ``minimum_distinct`` set higher
+       than the number of mandated headings the ``combination`` list covers.
+    """
+    recognised = config["any_headings"] | config["combination_headings"]
+    unmatched = [value for value in config["mandated_headings"]
+                 if value not in recognised]
+    if unmatched:
+        raise ValueError(
+            "heading_match does not recognise %d of the %d mandated_headings "
+            "this profile registers: %s. The matcher compares exact heading "
+            "text after Markdown syntax is stripped; numbering, "
+            "parentheticals, and bilingual suffixes are not removed, so a "
+            "bare variant never fires on a decorated mandated form. Register "
+            "each mandated form verbatim in heading_match.any or "
+            "heading_match.combination." %
+            (len(unmatched), len(config["mandated_headings"]),
+             ", ".join(repr(value) for value in unmatched)))
+    probe = "".join("## %s\n\nbody\n\n" % value
+                    for value in config["mandated_headings"])
+    if not classify(probe, config):
+        raise ValueError(
+            "a page carrying exactly the %d mandated_headings does not "
+            "classify as a residual-content candidate; with every mandated "
+            "heading in heading_match.combination, minimum_distinct=%d is "
+            "above the number this configuration can count" %
+            (len(config["mandated_headings"]), config["minimum_distinct"]))
 
 
 def frontmatter(text):

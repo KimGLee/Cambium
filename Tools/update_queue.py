@@ -166,19 +166,26 @@ def _current_attempt_revalidation_receipts(item, result):
             start = transition_ids.index(last_rollback_id) + 1
         except ValueError:
             raise ValueError("latest invalidation transition is absent from history")
-    receipts = []
-    for transition_id in transition_ids[start:]:
-        entry = result.get("receipt_catalog", {}).get(transition_id)
-        if entry is None:
+    catalog = result.get("receipt_catalog", {})
+    for transition_id in transition_ids:
+        if catalog.get(transition_id) is None:
             raise ValueError("transition receipt %s is missing" % transition_id)
-        transition = entry[1]
-        if (transition.get("before_state") == transition.get("after_state") and
-                transition.get("before_hold_state") == "revalidation-required" and
-                transition.get("after_hold_state") == "none"):
-            evidence = transition.get("evidence_receipt")
-            if not _nonempty(evidence):
-                raise ValueError("revalidation transition has no evidence receipt")
-            receipts.append(evidence)
+    # The hold machine is replayed over the whole history and the discharges
+    # filtered to the current attempt: the rollback that opened this attempt's
+    # revalidation obligation is the transition immediately before the window,
+    # so seeding the replay at the window would read every later clear as
+    # discharging nothing.
+    window = set(transition_ids[start:])
+    receipts = []
+    for transition in check_queue.item_revalidation_discharges(item, catalog):
+        if transition.get("receipt_id") not in window:
+            continue
+        if transition.get("before_state") != transition.get("after_state"):
+            continue
+        evidence = transition.get("evidence_receipt")
+        if not _nonempty(evidence):
+            raise ValueError("revalidation transition has no evidence receipt")
+        receipts.append(evidence)
     if len(receipts) != len(set(receipts)):
         raise ValueError("current attempt repeats revalidation evidence")
     return receipts
@@ -640,8 +647,15 @@ def _transition_item(item, args, result):
             raise ValueError("invalid hold state %s" % args.hold_state)
         if args.hold_state == item.get("hold_state"):
             raise ValueError("hold transition is a no-op")
-        if (item.get("hold_state") == "revalidation-required" and
-                args.hold_state == "none"):
+        # The obligation, not the edge.  Guarding only the adjacent
+        # `revalidation-required -> none` edge left
+        # `revalidation-required -> paused -> none` open: two writes each
+        # legal on their own cleared a hold neither one discharged.  The
+        # predicate is the item's own transition history, so it holds for a
+        # return to `none` through any number of intermediate holds.
+        if (args.hold_state == "none" and
+                check_queue.item_undischarged_revalidation_hold(
+                    item, result.get("receipt_catalog") or {})):
             outstanding = check_queue.outstanding_standards_revalidation(
                 result, item["id"])
             if outstanding:

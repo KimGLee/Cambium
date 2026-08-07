@@ -34,6 +34,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 
 ## Triggered
 
+- Authoring, rewriting, or targetedly completing any page of the module: combine [[kernel/Read Sets/R02 Single Note Authoring Read Set|Single Note Authoring]]. R03 owns placement, coverage, and batch acceptance; R02 owns the page's own `Start`, `Triggered`, and note gate modules.
 - Source-driven expansion: combine [[kernel/Read Sets/R04 Source-driven Expansion Read Set|Source-driven Expansion]].
 - Expression-layer work or synchronization: combine [[kernel/Read Sets/R05 Expression Layer Read Set|R05 Expression Layer]] and the artifact's profile binding or supplemental gate.
 - Large-scale module work: pass [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]] before execution.
@@ -41,6 +42,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - Renaming or moving existing pages: combine [[kernel/Read Sets/R06 Migration and Refactor Read Set|Migration and Refactor]].
 - Creating or reconciling a Global Map, Capability Matrix, or Gap Register, or promoting a module gap into Coverage: combine [[kernel/Read Sets/R13 Corpus Planning Read Set|Corpus Planning]]. R03 authors the module; R13 owns the planning artifacts and handoff.
 - Mechanism sections of an existing page (Definition, Mechanism, formulas, core conclusions) are substantively modified: read [[kernel/K12 Quality Assurance/11 Content-level Propagation|Content-level Propagation]] and mark the direct downstream notes.
+- Coverage reconciliation meets a sequence position, checkbox, or other progress marker: read [[kernel/K11 Expression Layer/06 Sequence and Progress Semantics|Sequence and Progress Semantics]], which [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]] names as the owner of that status separation.
 
 ## Gate
 

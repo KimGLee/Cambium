@@ -36,3 +36,10 @@ heading_match:
     - TODO(profile)
     - TODO(profile)
   minimum_distinct: 2
+
+# The heading forms this profile's own structure rules mandate, verbatim. Every
+# entry must be registered in heading_match above, and a page carrying exactly
+# this set must classify as a candidate; otherwise the scan reports "clean"
+# over the very pages it was registered to find. At least one entry.
+mandated_headings:
+  - TODO(profile)

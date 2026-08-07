@@ -31,7 +31,8 @@ Method:
   sparse-default semantics are owned by the profile interface. Duplicate,
   unknown, default-restating, and constitutional rows fail, and so does a row
   whose value leaves the `value_domain` the kernel registry records for that
-  item. An item the registry gives no `value_domain` is left to its owner
+  item. A registered form may carry the bound its owner module writes into
+  it. An item the registry gives no `value_domain` is left to its owner
   module; this script invents no bound of its own.
 - Corpus Planning: the bound slot is a closed restricted-YAML document whose
   applicability, three artifact bindings, ordered capability scale, and pass
@@ -122,13 +123,19 @@ def _positive_integer_domain(value):
     return None
 
 
-def _percent_domain(value):
-    """A percentage of the corpus, optionally carrying a trailing `%`."""
+def _percent_share_under_100_domain(value):
+    """A share of a corpus its owner also partitions, so under the whole.
+
+    The upper end is open because the owner module that fixes this form keeps
+    a remainder class outside the quota: a share of 100% leaves that class
+    empty and leaves nothing able to exceed the quota it registers. The bound
+    belongs to that owner; this function only implements the form it names.
+    """
     number = value[:-1].strip() if value.endswith("%") else value
     if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", number):
         return "expected a number, optionally followed by `%`"
-    if not 0 <= float(number) <= 100:
-        return "expected a percentage between 0 and 100"
+    if not 0 <= float(number) < 100:
+        return "expected a percentage share that is at least 0 and under 100"
     return None
 
 
@@ -138,7 +145,7 @@ def _percent_domain(value):
 # silently treated as "anything goes".
 VALUE_DOMAINS = {
     "positive-integer": _positive_integer_domain,
-    "percent-0-100": _percent_domain,
+    "percent-share-under-100": _percent_share_under_100_domain,
 }
 
 

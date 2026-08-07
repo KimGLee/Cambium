@@ -50,7 +50,7 @@ First read:
 
 ## Gate
 
-- Use [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]] to verify directories, MOC, and coverage.
+- Use [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]] to verify directories, MOC, and coverage. Where that reconciliation meets a sequence position, checkbox, or other progress marker, read [[kernel/K11 Expression Layer/06 Sequence and Progress Semantics|Sequence and Progress Semantics]], which it names as the owner of that status separation.
 - Use [[kernel/K12 Quality Assurance/10 Standards Version Adoption|Standards Version Adoption]] as the sole owner of affected-task compatibility, targeted invalidation, and required gate reruns. After governance closure, hand each validated agent-readable plan to R07; K13/15's writer performs the runtime transaction. R09 neither duplicates those rules nor mutates active-task state.
 - When the revision adds, retires, or re-scopes a check, use [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]] and [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|Cross-page and Control-plane Dimension Map]] to fix the item's receipt dimension, audit layer, audit object, and evidence role before the revision closes.
 - Use [[kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]] to verify vault-wide incoming links.

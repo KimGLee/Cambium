@@ -43,42 +43,61 @@ The [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-doma
 ## Stable Gate ID Registry
 
 This closed table is the machine registry for Standards revalidation. `Tool`,
-`Tool version`, `Check`, and `Mode` are the canonical receipt selector. Tool,
-version, and check are always exact; only Mode may use `*` when no narrower
+`Tool version`, `Check`, `Mode`, and `Dimension` are the canonical receipt
+selector. Tool,
+version, and check are always exact; only Mode and Dimension may use `*` when no narrower
 mode exists. `manual-attestation` is an explicit producer class with current
 protocol version `1.0.0`, not a request for an Agent to guess a tool or version
 from the descriptive table above. What a receipt of either kind MUST carry to be
 consumed for its Gate ID, and who may record a `manual-attestation` one, are
 owned by [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract#Gate Receipt Payload|Gate Receipt Payload Contract]].
 
-| Gate ID | Tool | Tool version | Check | Mode |
-|---|---|---|---|---|
-| `runtime-card-synchronization` | `manual-attestation` | `1.0.0` | `runtime-card-synchronization` | `*` |
-| `runtime-startup-recovery` | `check_queue` | `1.5.0` | `required_queue` | `resume-status` |
-| `large-scale-execution-admission` | `manual-attestation` | `1.0.0` | `large-scale-execution-admission` | `*` |
-| `wiki-link-integrity` | `check_links` | `1.5.0` | `link-check-summary` | `*` |
-| `frontmatter-vocabulary` | `check_vocab` | `1.4.0` | `vocab-check-summary` | `*` |
-| `required-queue-consistency` | `check_queue` | `1.5.0` | `required_queue` | `consistency` |
-| `required-queue-admission` | `check_queue` | `1.5.0` | `required_queue` | `require-ready:*` |
-| `required-queue-completion` | `check_queue` | `1.5.0` | `required_queue` | `require-complete` |
-| `maintenance-completion` | `check_queue` | `1.5.0` | `required_queue` | `require-maintenance-complete` |
-| `batch-review` | `manual-attestation` | `1.0.0` | `batch_gate` | `*` |
-| `batch-close` | `check_batch_close` | `1.2.0` | `batch_close_gate` | `*` |
-| `corpus-plan-structure` | `check_corpus_plan` | `1.5.0` | `corpus_plan` | `*` |
-| `corpus-plan-semantic-acceptance` | `record_corpus_acceptance` | `1.0.0` | `corpus_plan_semantic_acceptance` | `*` |
-| `content-correctness` | `manual-attestation` | `1.0.0` | `content-correctness` | `*` |
-| `source-promotion` | `manual-attestation` | `1.0.0` | `source-promotion` | `*` |
-| `expression-layer-acceptance` | `manual-attestation` | `1.0.0` | `expression-layer-acceptance` | `*` |
-| `coverage-reconciliation` | `manual-attestation` | `1.0.0` | `coverage-reconciliation` | `*` |
-| `standards-adoption` | `adopt_standards` | `1.1.0` | `standards_adoption` | `*` |
-| `standards-revalidation` | `check_queue` | `1.5.0` | `required_queue` | `require-revalidation:*` |
-| `guidance-disposition` | `manual-attestation` | `1.0.0` | `guidance-disposition` | `*` |
-| `receipt-validity` | `manual-attestation` | `1.0.0` | `receipt-validity` | `*` |
-| `rendering` | `manual-attestation` | `1.0.0` | `rendering` | `*` |
-| `registered-residual-content` | `check_residual_content` | `1.1.0` | `residual-content-summary` | `*` |
-| `duplicate-detection` | `manual-attestation` | `1.0.0` | `duplicate-detection` | `*` |
-| `knowledge-freshness` | `manual-attestation` | `1.0.0` | `knowledge-freshness` | `*` |
-| `depth-balance` | `manual-attestation` | `1.0.0` | `depth-balance` | `*` |
-| `prerequisite-completeness` | `manual-attestation` | `1.0.0` | `prerequisite-completeness` | `*` |
-| `canonical-ownership-uniqueness` | `manual-attestation` | `1.0.0` | `canonical-ownership-uniqueness` | `*` |
-| `terminal-proof` | `check_proof` | `1.14.0` | `proof-check-summary` | `*` |
+`Dimension` closes the last gap in that selector: a Gate ID whose canonical gate
+files verdicts under several receipt dimensions was, without it, satisfied by a
+receipt for any one of them, so evidence re-established in one dimension
+discharged an obligation raised in another. It is a **derived selector view**,
+not the authority: the values are owned by the
+[[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map#Gate Receipt Dimensions\|Gate Receipt Dimensions]]
+half of the dimension map together with the
+[[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map#Item Map\|K12/08 Item Map]] it is read with, and those prevail on disagreement.
+
+A cell holds one of three things. One or more base receipt dimensions: the
+receipt MUST carry `dimension` and it MUST be one of them, and a consumer that
+knows which dimension its obligation was raised in narrows to that one value.
+`none`: the Gate binds member receipts that already carry the verdicts, so its
+own receipt carries no `dimension` at all. `*`: the row's producer is a named
+tool whose identity already fixes what its receipt means and which writes no
+`dimension` field, so nothing is narrowed here; it is not a licence to file such
+a receipt under any dimension.
+
+| Gate ID | Tool | Tool version | Check | Mode | Dimension |
+|---|---|---|---|---|---|
+| `runtime-card-synchronization` | `manual-attestation` | `1.0.0` | `runtime-card-synchronization` | `*` | `guidance_and_contract` |
+| `runtime-startup-recovery` | `check_queue` | `1.5.0` | `required_queue` | `resume-status` | `*` |
+| `large-scale-execution-admission` | `manual-attestation` | `1.0.0` | `large-scale-execution-admission` | `*` | `guidance_and_contract` |
+| `wiki-link-integrity` | `check_links` | `1.5.0` | `link-check-summary` | `*` | `*` |
+| `frontmatter-vocabulary` | `check_vocab` | `1.4.0` | `vocab-check-summary` | `*` | `*` |
+| `required-queue-consistency` | `check_queue` | `1.5.0` | `required_queue` | `consistency` | `*` |
+| `required-queue-admission` | `check_queue` | `1.5.0` | `required_queue` | `require-ready:*` | `*` |
+| `required-queue-completion` | `check_queue` | `1.5.0` | `required_queue` | `require-complete` | `*` |
+| `maintenance-completion` | `check_queue` | `1.5.0` | `required_queue` | `require-maintenance-complete` | `*` |
+| `batch-review` | `manual-attestation` | `1.0.0` | `batch_gate` | `*` | `none` |
+| `batch-close` | `check_batch_close` | `1.2.0` | `batch_close_gate` | `*` | `*` |
+| `corpus-plan-structure` | `check_corpus_plan` | `1.5.0` | `corpus_plan` | `*` | `*` |
+| `corpus-plan-semantic-acceptance` | `record_corpus_acceptance` | `1.0.0` | `corpus_plan_semantic_acceptance` | `*` | `*` |
+| `content-correctness` | `manual-attestation` | `1.0.0` | `content-correctness` | `*` | `content_and_depth`, `formula_and_numeric`, `rendering`, `source_and_currentness`, `structure_and_links` |
+| `source-promotion` | `manual-attestation` | `1.0.0` | `source-promotion` | `*` | `coverage_and_integration`, `source_and_currentness` |
+| `expression-layer-acceptance` | `manual-attestation` | `1.0.0` | `expression-layer-acceptance` | `*` | `content_and_depth`, `coverage_and_integration`, `guidance_and_contract`, `source_and_currentness`, `structure_and_links` |
+| `coverage-reconciliation` | `manual-attestation` | `1.0.0` | `coverage-reconciliation` | `*` | `coverage_and_integration` |
+| `standards-adoption` | `adopt_standards` | `1.1.0` | `standards_adoption` | `*` | `*` |
+| `standards-revalidation` | `check_queue` | `1.5.0` | `required_queue` | `require-revalidation:*` | `*` |
+| `guidance-disposition` | `manual-attestation` | `1.0.0` | `guidance-disposition` | `*` | `guidance_and_contract` |
+| `receipt-validity` | `manual-attestation` | `1.0.0` | `receipt-validity` | `*` | `guidance_and_contract` |
+| `rendering` | `manual-attestation` | `1.0.0` | `rendering` | `*` | `rendering`, `structure_and_links` |
+| `registered-residual-content` | `check_residual_content` | `1.1.0` | `residual-content-summary` | `*` | `*` |
+| `duplicate-detection` | `manual-attestation` | `1.0.0` | `duplicate-detection` | `*` | `structure_and_links` |
+| `knowledge-freshness` | `manual-attestation` | `1.0.0` | `knowledge-freshness` | `*` | `source_and_currentness` |
+| `depth-balance` | `manual-attestation` | `1.0.0` | `depth-balance` | `*` | `content_and_depth` |
+| `prerequisite-completeness` | `manual-attestation` | `1.0.0` | `prerequisite-completeness` | `*` | `coverage_and_integration` |
+| `canonical-ownership-uniqueness` | `manual-attestation` | `1.0.0` | `canonical-ownership-uniqueness` | `*` | `structure_and_links` |
+| `terminal-proof` | `check_proof` | `1.14.0` | `proof-check-summary` | `*` | `*` |

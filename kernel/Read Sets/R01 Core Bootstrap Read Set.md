@@ -47,7 +47,7 @@ Core Bootstrap alone does not authorize starting the following work:
 - Long-running batch execution.
 - Completion or Terminal Audit.
 
-This work MUST proceed by loading the corresponding Read Set.
+This work MUST proceed by loading the corresponding Read Set. Large-scale creation, moves, or deletion additionally passes [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]] alongside that route.
 
 ## Related
 

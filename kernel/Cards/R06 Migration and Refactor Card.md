@@ -16,11 +16,12 @@ source_files:
   - kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns.md
   - kernel/K10 Writing and Formatting/01 Naming Language and Prose.md
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
+  - kernel/K11 Expression Layer/06 Sequence and Progress Semantics.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'b0e481d86dd7'
+source_hash: '1cacdb7a9fc7'
 ---
 # R06 Migration and Refactor Card
 
@@ -55,6 +56,7 @@ Use the safe order: create and verify the target → update references and headi
 - [ ] Missing, ambiguous, path, alias, and heading links are resolved.
 - [ ] Module/Coverage Review, Batch Review, applicable deterministic checks, and the Batch-close Closed List pass on the merged snapshot.
 - [ ] The Coverage projection, Required Queue manifest, rollback record, and final file system agree.
+- [ ] Coverage reconciliation does not read a sequence position, checkbox, file existence, resolvable link, or `Related` reference as authoring completion.
 
 ## Read Back When
 

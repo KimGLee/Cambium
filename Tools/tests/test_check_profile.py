@@ -111,20 +111,49 @@ class ExecutionDefaultOverrideTests(unittest.TestCase):
                 self.assertIn("override-value-domain",
                               self.override_checks(receipts))
 
-    def test_percent_domain_accepts_bare_and_suffixed_percentages(self):
-        for value in ("20", "20%", "0", "100%", "12.5%"):
+    def test_share_domain_accepts_bare_and_suffixed_percentages(self):
+        for value in ("20", "20%", "0", "99.9%", "12.5%"):
             with self.subTest(value=value):
                 _, receipts = self.run_check(
                     "| `priority_quota.P0` | `%s` |\n" % value)
                 self.assertEqual(set(), self.override_checks(receipts))
 
-    def test_percent_domain_rejects_out_of_range_and_non_numeric(self):
+    def test_share_domain_rejects_out_of_range_and_non_numeric(self):
         for value in ("120%", "-5", "a lot"):
             with self.subTest(value=value):
                 _, receipts = self.run_check(
                     "| `priority_quota.P1` | `%s` |\n" % value)
                 self.assertIn("override-value-domain",
                               self.override_checks(receipts))
+
+    def test_a_share_of_the_whole_corpus_is_rejected_on_both_quota_items(self):
+        """The named degenerate value: in 0..100, but it empties `P2`.
+
+        Its owner keeps a remainder class outside the quota and demotes what
+        exceeds the quota, so a share of the whole corpus states an empty
+        class and leaves nothing able to exceed it.
+        """
+        for item in ("priority_quota.P0", "priority_quota.P1"):
+            for value in ("100", "100%", "100.0"):
+                with self.subTest(item=item, value=value):
+                    _, receipts = self.run_check(
+                        "| `%s` | `%s` |\n" % (item, value))
+                    self.assertIn("override-value-domain",
+                                  self.override_checks(receipts))
+
+    def test_the_registry_names_a_domain_the_checker_implements(self):
+        """Registry and checker are updated together, per the unknown path."""
+        sys.path.insert(0, str(REPOSITORY / "Tools"))
+        import check_profile
+        import kblib
+        registry = kblib.load_yaml_file(EXECUTION_DEFAULTS)
+        named = {entry["item"]: entry.get("value_domain")
+                 for entry in registry["overridable"]}
+        self.assertEqual("percent-share-under-100", named["priority_quota.P0"])
+        self.assertEqual("percent-share-under-100", named["priority_quota.P1"])
+        for item, domain in named.items():
+            if domain is not None:
+                self.assertIn(domain, check_profile.VALUE_DOMAINS, item)
 
     def test_item_without_a_registered_domain_is_left_to_its_owner(self):
         _, receipts = self.run_check("| `batch_size.S` | `whatever` |\n")

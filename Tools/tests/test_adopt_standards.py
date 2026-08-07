@@ -48,11 +48,11 @@ class AdoptStandardsTests(unittest.TestCase):
                     "kernel/K00 Standards Control/12 Control Registry.md")
         registry.write_text(
             "## Stable Gate ID Registry\n\n"
-            "| Gate ID | Tool | Tool version | Check | Mode |\n"
-            "|---|---|---|---|---|\n"
-            "| required-queue-consistency | check_queue | 1.5.0 | required_queue | consistency |\n"
-            "| required-queue-admission | check_queue | 1.5.0 | required_queue | require-ready:* |\n"
-            "| batch-close | check_batch_close | 1.2.0 | batch_close_gate | * |\n",
+            "| Gate ID | Tool | Tool version | Check | Mode | Dimension |\n"
+            "|---|---|---|---|---|---|\n"
+            "| required-queue-consistency | check_queue | 1.5.0 | required_queue | consistency | * |\n"
+            "| required-queue-admission | check_queue | 1.5.0 | required_queue | require-ready:* | * |\n"
+            "| batch-close | check_batch_close | 1.2.0 | batch_close_gate | * | * |\n",
             encoding="utf-8")
 
     def tearDown(self):
@@ -422,7 +422,7 @@ class AdoptStandardsTests(unittest.TestCase):
         registry.write_text(
             registry.read_text(encoding="utf-8") +
             "| wiki-link-integrity | check_links | 1.5.0 "
-            "| link-check-summary | * |\n",
+            "| link-check-summary | * | * |\n",
             encoding="utf-8")
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         self.plan(invalidated_receipt=invalidated_gate, overrides={
@@ -477,6 +477,110 @@ class AdoptStandardsTests(unittest.TestCase):
               "receipt_id": summary["receipt_id"]}],
             context["boundary_gate_receipts"])
 
+    def dimension_boundary_plan(self, invalidated_gate, dimension):
+        """Name `content-correctness` at a boundary raised in one dimension."""
+        registry = (self.root /
+                    "kernel/K00 Standards Control/12 Control Registry.md")
+        registry.write_text(
+            registry.read_text(encoding="utf-8") +
+            "| content-correctness | manual-attestation | 1.0.0 "
+            "| content-correctness | * "
+            "| content_and_depth, formula_and_numeric, rendering, "
+            "source_and_currentness, structure_and_links |\n",
+            encoding="utf-8")
+        self.plan(invalidated_receipt=invalidated_gate, overrides={
+            "changed_predicates": [{
+                "predicate_id": "PRED-CONTENT-001",
+                "owner_path": self.GOVERNANCE,
+                "change_kind": "modified",
+                "affected_gate_ids": ["content-correctness"],
+            }],
+            "invalidated_evidence": [{
+                "receipt_id": invalidated_gate,
+                "predicate_ids": ["PRED-CONTENT-001"],
+                "dimension_ids": [dimension],
+                "boundary_ids": ["INV-B1-CONTENT"],
+                "reason_code": "predicate-changed",
+                "revalidation_scope_ids": ["B1"],
+            }],
+            "invalidation_boundaries": [{
+                "boundary_id": "INV-B1-CONTENT",
+                "predicate_ids": ["PRED-CONTENT-001"],
+                "target_kind": "batch",
+                "target_ids": ["B1"],
+                "required_gate_ids": ["content-correctness"],
+            }],
+            "boundary_gate_reruns": ["content-correctness"],
+        })
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+
+    def attestation(self, receipt_id, dimension):
+        """Record one hand-written `content-correctness` attestation."""
+        queue = self.load(check_queue.QUEUE_PATH)
+        kblib.write_receipts(
+            self.root / ".cambium/receipts/attestations.jsonl", [{
+                "receipt_id": receipt_id,
+                "gate_id": "content-correctness",
+                "tool": check_queue.MANUAL_ATTESTATION_TOOL,
+                "tool_version":
+                    check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+                "check": "content-correctness",
+                "dimension": dimension,
+                "target": "B1", "result": "pass", "invalidated_by": None,
+                "details": "re-reviewed after adoption",
+                "checked_at": "2026-08-09T00:00:00Z",
+                "task_id": queue["task_id"],
+                "standards_version": queue["standards_version"],
+                "selected_profile_manifest":
+                    queue["selected_profile_manifest"],
+            }])
+        return receipt_id
+
+    def test_a_boundary_is_owed_the_dimension_it_was_raised_in(self):
+        """F01-F03: one Gate ID, several dimensions, one obligation.
+
+        `content-correctness` covers five receipt dimensions, so its producer
+        tuple is the same for all five.  An attestation filed under one of
+        them used to satisfy a boundary raised over another.
+        """
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        self.dimension_boundary_plan(invalidated_gate, "formula_and_numeric")
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+
+        wrong = self.attestation("attest-structure", "structure_and_links")
+        result = check_queue.validate_runtime(self.root)
+        _, errors = check_queue.standards_revalidation_context(
+            result, "B1", {"content-correctness": wrong})
+        self.assertTrue(
+            any("does not match registered Gate ID content-correctness"
+                in error for error in errors), errors)
+
+        right = self.attestation("attest-formula", "formula_and_numeric")
+        result = check_queue.validate_runtime(self.root)
+        context, errors = check_queue.standards_revalidation_context(
+            result, "B1", {"content-correctness": right})
+        self.assertEqual([], errors)
+        self.assertEqual(
+            [{"required_gate_id": "content-correctness",
+              "receipt_id": right}],
+            context["boundary_gate_receipts"])
+
+    def test_a_boundary_naming_an_unregisterable_dimension_fails_closed(self):
+        """The plan and the registry cannot both hold, so neither is guessed."""
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        self.dimension_boundary_plan(
+            invalidated_gate, "coverage_and_integration")
+        receipt = self.attestation("attest-coverage",
+                                   "coverage_and_integration")
+        result = check_queue.validate_runtime(self.root)
+        _, errors = check_queue.standards_revalidation_context(
+            result, "B1", {"content-correctness": receipt})
+        self.assertTrue(
+            any("which K00/12 does not register for it" in error
+                for error in errors), errors)
+
     def test_boundary_gate_receipt_without_identity_cannot_clear(self):
         """Dropping the bound identity must fail closed, not silently pass."""
         registry = (self.root /
@@ -484,7 +588,7 @@ class AdoptStandardsTests(unittest.TestCase):
         registry.write_text(
             registry.read_text(encoding="utf-8") +
             "| wiki-link-integrity | check_links | 1.5.0 "
-            "| link-check-summary | * |\n",
+            "| link-check-summary | * | * |\n",
             encoding="utf-8")
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         self.plan(invalidated_receipt=invalidated_gate, overrides={
@@ -601,6 +705,36 @@ class AdoptStandardsTests(unittest.TestCase):
             }]})
         self.assertEqual(["INV-B1-READY"],
                          [row["boundary_id"] for row in requirements["B1"]])
+
+    def test_a_historical_plan_is_not_refused_by_this_admission_rule(self):
+        """A sealed adoption cannot be repaired, so it is not re-judged.
+
+        The plan bytes of a completed adoption are fingerprinted inside
+        append-only receipts (K13/15: the writer never edits historical
+        receipt bytes), so an instance whose earlier plan carries an
+        unreachable boundary has no sanctioned way to rewrite it.  Applying
+        the admission rule to history would strand that instance
+        permanently.  A live instance hit exactly this during an upgrade.
+        """
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        plan = self.plan(invalidated_receipt=invalidated_gate)
+        plan["invalidation_boundaries"][0].update({
+            "target_kind": "profile-load",
+            "target_ids": ["profiles/example/profile.md"],
+        })
+        plan["invalidated_evidence"][0]["revalidation_scope_ids"] = []
+
+        admission = [error for error in self.plan_errors(plan)
+                     if "no gate rerun" in error]
+        self.assertEqual(1, len(admission), admission)
+
+        runtime = check_queue.validate_runtime(self.root)
+        replay = check_queue.standards_adoption_plan_errors(
+            self.root, plan, catalog=runtime["receipt_catalog"],
+            queue=runtime["queue"], progress=runtime["progress"],
+            validate_current=False)
+        self.assertEqual([], [error for error in replay
+                              if "no gate rerun" in error])
 
     def test_batch_boundary_needs_no_invalidated_evidence_scope(self):
         invalidated_gate = self.open_b1_and_hold_for_revalidation()

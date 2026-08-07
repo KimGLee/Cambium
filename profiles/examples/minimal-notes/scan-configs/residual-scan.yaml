@@ -29,3 +29,14 @@ heading_match:
     - To Sort
     - Loose Ends
   minimum_distinct: 2
+
+# The section headings a dated scratch entry is written with, verbatim. This
+# profile mandates undecorated English headings, so each form is already
+# registered above; a profile whose rules mandate a numbered or bilingual form
+# has to register that exact string instead, and the tool refuses the
+# configuration until it does.
+mandated_headings:
+  - Daily Log Entry
+  - Scratch
+  - To Sort
+  - Loose Ends
