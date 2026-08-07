@@ -179,7 +179,7 @@ If a specialized Audit finds a local receipt already invalidated, it SHOULD crea
 
 ## Terminal Reconciliation Rules
 
-The canonical Terminal Audit procedure lives in [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence#Terminal Audit|Terminal Audit]], while the Terminal Proof field list (including `full_deterministic_results`) lives in [[kernel/K12 Quality Assurance/16 Terminal Proof Contract#Terminal Proof Contract|Terminal Proof Contract]]; this section specifies only the evidence reuse and invalidation reconciliation rules within that procedure.
+The canonical Terminal Audit procedure lives in [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence#Terminal Audit|Terminal Audit]], while the Terminal Proof field list (including `full_deterministic_results`) lives in [[kernel/K12 Quality Assurance/16 Terminal Proof Contract#Terminal Proof Contract|Terminal Proof Contract]], which also states the `unresolved_invalidations` threshold this section's reconciliation feeds; this section specifies only the evidence reuse and invalidation reconciliation rules within that procedure.
 
 Reusing a receipt is not lowering the standard; it requires proving that the audited object and the acceptance conditions have not undergone relevant change.
 

@@ -873,6 +873,26 @@ raise SystemExit(update_task.main(sys.argv[2:]))
                 encoding="utf-8").splitlines()[-1]
         )["receipt_id"]
 
+        # K12/07: a script-level receipt entering the Audit Receipt Register is
+        # completed to the full AuditReceipt fields -- including the dimension
+        # it files its verdict under -- with the script receipt_id as
+        # evidence_ref. dimension_coverage cites those completed records.
+        dimension_receipts = {}
+        for index, (dimension, evidence_ref) in enumerate((
+                ("coverage_and_integration", proof_queue_receipt),
+                ("guidance_and_contract", corpus_plan_receipt),
+        ), start=1):
+            record = kblib.make_receipt(
+                "manual-attestation", "1.0.0", "audit_dimension",
+                "frozen snapshot", "pass",
+                "AuditPlan completion of %s for the frozen snapshot"
+                % evidence_ref, index)
+            record["dimension"] = dimension
+            record["evidence_ref"] = evidence_ref
+            dimension_receipts[dimension] = record["receipt_id"]
+            kblib.write_receipts(
+                self.root / completion_register, [record])
+
         proof = kblib.parse_yaml_subset((
             TOOLS / "schemas/terminal_proof.template.yaml"
         ).read_text(encoding="utf-8"))
@@ -913,8 +933,10 @@ raise SystemExit(update_task.main(sys.argv[2:]))
             # actually produced receipts for cite them; the rest carry an
             # explicit not-applicable declaration rather than silence.
             "dimension_coverage": {
-                "coverage_and_integration": [proof_queue_receipt],
-                "guidance_and_contract": [corpus_plan_receipt],
+                "coverage_and_integration": [
+                    dimension_receipts["coverage_and_integration"]],
+                "guidance_and_contract": [
+                    dimension_receipts["guidance_and_contract"]],
                 "structure_and_links":
                     "not-applicable: the frozen fixture scope holds no "
                     "authored knowledge page to review for links",

@@ -24,7 +24,7 @@ source_files:
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
-source_hash: '2f363b361934'
+source_hash: '56e9108ec507'
 ---
 # R05 Expression Layer Card
 

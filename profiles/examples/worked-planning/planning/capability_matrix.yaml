@@ -17,7 +17,7 @@ capabilities:
     current_level: "2 Working"
     target_level: "3 Verified"
     evidence_paths: ["profiles/examples/worked-planning/corpus/Source Notes/Manufacturer Service Documents.md"]
-    gap_ids: [GAP-TORQUE-COVERAGE, GAP-PRESS-FIT-TOOLING]
+    gap_ids: [GAP-HYBRID-SERVICE-STEPS, GAP-PRESS-FIT-TOOLING]
   - capability_id: CAP-TRUE-WHEEL-TO-SPEC
     capability: "Bring a built wheel to lateral truth, radial truth, dish, and a tension band inside the working range."
     priority: P1

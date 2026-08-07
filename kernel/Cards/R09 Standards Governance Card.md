@@ -20,7 +20,7 @@ source_files:
   - kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '7bd72c689175'
+source_hash: 'dac514ee29aa'
 ---
 # R09 Standards Governance Card
 
@@ -51,7 +51,7 @@ Modify kernel rules, Read Sets, Cards, versions, directories, ownership, tooling
 
 - [ ] Content conservation, owner uniqueness, routing, headings, tables, fences, links, MOCs, and coverage are verified.
 - [ ] The Revision Write-back Checklist is complete for every affected snapshot location.
-- [ ] `python3 Tools/stamp_cards.py . --check` exits 0; missing or stale Cards block governance close.
+- [ ] `python3 Tools/stamp_cards.py . --check` exits 0; missing or stale Cards, an exceeded registered growth cap, and a K00/12 Stable Gate ID Registry row its producer contradicts each block governance close.
 - [ ] Every affected existing task has one validated agent-readable adoption plan or an explicit blocker; no persistent prose adoption report or direct Ledger edit was created.
 - [ ] Applicable rendering evidence and the governance Completion Gate pass.
 

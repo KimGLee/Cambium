@@ -167,6 +167,50 @@ class RegisterParseTests(unittest.TestCase):
         self.assertEqual(len(errors), 1, errors)
         self.assertIn("readable measured value", errors[0])
 
+    def test_a_truncated_exception_row_is_an_error_not_a_skip(self):
+        """A short row must not silently drop the page's growth cap."""
+        text = REGISTER_TEXT.replace(
+            "| [[kernel/K01 Demo/01 Big\\|Big]] | 7000 bytes | one answer "
+            "| 7KB | re-measure |",
+            "| [[kernel/K01 Demo/01 Big\\|Big]] | 7000 bytes | one answer |",
+        )
+
+        entries, outside, _declared, errors = self.parse(text)
+
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("3 cell(s)", errors[0])
+        self.assertIn("kernel/K01 Demo/01 Big.md", errors[0])
+        # The page is left with neither disposition, which is exactly why the
+        # row may not be skipped.
+        self.assertNotIn("kernel/K01 Demo/01 Big.md", entries)
+        self.assertNotIn("kernel/K01 Demo/01 Big.md", outside)
+
+    def test_a_row_missing_two_cells_is_not_read_as_outside_the_cap(self):
+        """Two survivors of a truncated exception row are not a declaration."""
+        text = REGISTER_TEXT.replace(
+            "| [[kernel/K01 Demo/01 Big\\|Big]] | 7000 bytes | one answer "
+            "| 7KB | re-measure |",
+            "| [[kernel/K01 Demo/01 Big\\|Big]] | 7000 bytes | one answer "
+            "| 7KB |",
+        )
+
+        entries, outside, _declared, errors = self.parse(text)
+
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("4 cell(s)", errors[0])
+        self.assertNotIn("kernel/K01 Demo/01 Big.md", entries)
+        self.assertNotIn("kernel/K01 Demo/01 Big.md", outside)
+
+    def test_an_over_wide_row_is_an_error(self):
+        text = REGISTER_TEXT.replace(
+            "| 7KB | re-measure |", "| 7KB | re-measure | extra |")
+
+        entries, _outside, _declared, errors = self.parse(text)
+
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("6 cell(s)", errors[0])
+        self.assertNotIn("kernel/K01 Demo/01 Big.md", entries)
+
     def test_the_shipped_register_parses_without_error(self):
         budget, _errors = stamp_cards.parse_size_budget(
             (REPO_ROOT / stamp_cards.SIZE_BUDGET_OWNER_PATH).read_text(
@@ -400,6 +444,47 @@ class ShippedBudgetGateTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("[FAIL]", result.stdout)
+
+    def truncate_register_row(self, rel, keep):
+        """Cut the register row naming ``rel`` down to ``keep`` cells."""
+        path = self.root / stamp_cards.SIZE_REGISTER_OWNER_PATH
+        lines = path.read_text(encoding="utf-8").splitlines()
+        cut = 0
+        for index, line in enumerate(lines):
+            if not line.startswith("|"):
+                continue
+            cells = stamp_cards.table_cells(line)
+            if cells and stamp_cards.registered_target(cells[0]) == rel and \
+                    len(cells) == 5:
+                lines[index] = "| %s |" % " | ".join(cells[:keep])
+                cut += 1
+        self.assertEqual(1, cut, rel)
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def test_a_broken_register_row_cannot_downgrade_a_cap_breach(self):
+        """The reviewer's bypass: a short row plus a leaf past its cap."""
+        _budget, rel, entry = self.registered_leaf()
+        self.truncate_register_row(rel, 3)
+        path = self.root / rel
+        path.write_bytes(path.read_bytes() + b"\n" * (entry["cap"] + 1))
+
+        result = self.run_check()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("[FAIL]", result.stdout)
+        self.assertIn("3 cell(s)", result.stdout)
+        self.assertIn(rel, result.stdout)
+
+    def test_a_broken_register_row_alone_fails_the_layer(self):
+        """Even with every leaf inside its cap, the register must be readable."""
+        _budget, rel, _entry = self.registered_leaf()
+        self.truncate_register_row(rel, 3)
+
+        result = self.run_check()
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("[FAIL]", result.stdout)
+        self.assertIn("outside-the-cap declaration", result.stdout)
 
 
 if __name__ == "__main__":

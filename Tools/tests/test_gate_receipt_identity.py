@@ -389,6 +389,12 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
         self.assertEqual([], errors)
         return registry
 
+    def run_tool(self, script, *arguments):
+        return subprocess.run(
+            [sys.executable, str(TOOLS_DIR / script), *map(str, arguments)],
+            text=True, capture_output=True, check=False,
+        )
+
     def drifted(self, gate_id, **changes):
         registry = self.registry()
         registry[gate_id] = dict(registry[gate_id], **changes)
@@ -461,6 +467,45 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
         errors = self.drifted("depth-balance", check="rendering")
         self.assertTrue(any("share one receipt selector" in error
                             for error in errors), errors)
+
+    def test_the_registry_guard_runs_on_the_stamp_cards_gate_input(self):
+        """Placement, not existence: an adopter must reach this guard.
+
+        ``standards_gate_registry`` is otherwise reached only when a Standards
+        revalidation is outstanding or an adoption plan is validated, so a
+        producer version bumped without its K00/12 row surfaces first as a
+        rejected receipt at ``open -> merge-ready``.  ``stamp_cards.py --check``
+        is the run K00/12 names as the input of
+        ``runtime-card-synchronization``, so the disagreement is reported there.
+        """
+        repository_root = TOOLS_DIR.parent
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "repo"
+            root.mkdir()
+            shutil.copytree(repository_root / "kernel", root / "kernel")
+            shutil.copytree(
+                repository_root / "Tools", root / "Tools",
+                ignore=shutil.ignore_patterns("tests", "__pycache__"))
+
+            clean = self.run_tool("stamp_cards.py", root, "--check")
+            self.assertEqual(0, clean.returncode, clean.stdout + clean.stderr)
+
+            registry_path = root / check_queue.STANDARDS_GATE_REGISTRY_PATH
+            text = registry_path.read_text(encoding="utf-8")
+            row = "| `batch-close` | `check_batch_close` | `%s` |" % (
+                check_batch_close.TOOL_VERSION)
+            self.assertIn(row, text)
+            registry_path.write_text(
+                text.replace(row, row.replace(
+                    "`%s`" % check_batch_close.TOOL_VERSION, "`9.9.9`")),
+                encoding="utf-8")
+
+            drifted = self.run_tool("stamp_cards.py", root, "--check")
+        self.assertEqual(1, drifted.returncode, drifted.stdout + drifted.stderr)
+        self.assertIn("Gate ID batch-close registers Tool version 9.9.9",
+                      drifted.stdout)
+        self.assertIn("check_batch_close stamps %s"
+                      % check_batch_close.TOOL_VERSION, drifted.stdout)
 
     def test_consumer_side_identity_must_match_the_registered_row(self):
         errors = self.drifted("terminal-proof", tool=check_vocab.TOOL,

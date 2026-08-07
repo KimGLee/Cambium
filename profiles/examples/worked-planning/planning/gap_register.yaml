@@ -11,12 +11,12 @@
 schema_version: 1
 
 gaps:
-  - gap_id: GAP-TORQUE-COVERAGE
-    gap_statement: "The bearing service procedure quotes torque figures for two of the three bearing families; the hybrid family has none."
+  - gap_id: GAP-HYBRID-SERVICE-STEPS
+    gap_statement: "The bearing service procedure carries service steps for two of the three bearing families the bearing types page names; the hybrid family has none."
     capability_ids: [CAP-CHOOSE-BEARING-SERVICE]
     candidate_owner_entry_id: GM-BEARING-SERVICE
     status: confirmed
-    close_condition: "The hybrid-family torque and preload figures are quoted with their document revision on the bearing service procedure page."
+    close_condition: "The bearing service procedure carries a hybrid-family section covering its cartridge-style replacement and its cone-style preload, on the same terms as the two families already there."
     evidence_paths: ["profiles/examples/worked-planning/corpus/Source Notes/Manufacturer Service Documents.md"]
     promoted_coverage_path: null
     rationale: "Two volunteers independently stopped at the hybrid case, so this is a real gap in the decision path rather than a wording problem."
@@ -25,10 +25,10 @@ gaps:
     capability_ids: [CAP-CHOOSE-BEARING-SERVICE]
     candidate_owner_entry_id: null
     status: rejected
-    close_condition: "Not applicable; the workshop does not press cartridges in-house."
+    close_condition: "Not applicable; the press step on the bearing service procedure page already names the tool it needs, so no separate page is owed."
     evidence_paths: []
     promoted_coverage_path: null
-    rationale: "Cartridge pressing is sent to the partner shop, so tooling selection is not a capability this corpus owns. Recorded rather than deleted so the question is not re-asked each season."
+    rationale: "Drift selection is one line of the cartridge step and the procedure page owns it; a separate tooling page would give that rule a second owner. Recorded rather than deleted so the question is not re-asked each season."
   - gap_id: GAP-CARBON-RIM-RANGE
     gap_statement: "The working tension range does not cover carbon rims, whose published maximum differs materially from the alloy rims in stock."
     capability_ids: [CAP-TRUE-WHEEL-TO-SPEC]

@@ -89,3 +89,4 @@ This registry governs rule text. The three conditions do not authorize a view of
 | Judgment item to receipt dimension map, Single Note Review layer | [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] |
 | Judgment item to receipt dimension map above one page, and the receipt dimension of a control-plane Gate | [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map\|Cross-page and Control-plane Dimension Map]] |
 | Gate receipt payload and `manual-attestation` recording authority | [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract\|Gate Receipt Payload Contract]] |
+| Batch `AuditPlan` generation and the incremental-by-default check scope | [[kernel/K12 Quality Assurance/19 Incremental Audit Planning\|Incremental Audit Planning]] |

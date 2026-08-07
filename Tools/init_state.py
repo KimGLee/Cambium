@@ -232,6 +232,11 @@ def resolve_concurrency_cap(root, manifest_relative, explicit):
     is written into Progress, which is what "the resolved cap MUST be recorded
     at runtime" requires and what ``check_queue.py`` then enforces; no runtime
     check reads the manifest prose.
+
+    Reading the override table is fail-closed: a row whose shape the shared
+    reader cannot interpret raises rather than resolving to the kernel default,
+    because "the manifest declares nothing" and "the manifest declares
+    something this reader dropped" must not produce the same frozen contract.
     """
     manifest_value = None
     if manifest_relative:

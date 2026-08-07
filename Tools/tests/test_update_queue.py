@@ -1781,6 +1781,64 @@ class UpdateQueueTests(unittest.TestCase):
             (self.root / record["delta_archive_path"]).exists(),
             record["delta_archive_path"])
 
+    def tamper_invalidation_record(self, **changes):
+        """Rewrite the last invalidation record in the Queue and its receipt.
+
+        The transition receipt embeds a copy of the record, so a Queue-only
+        edit is already caught by the equality check. Editing both leaves the
+        triple internally consistent, which is exactly the state the recorded
+        Coverage fingerprint has to be cross-checked against.
+        """
+        queue = self.load(check_queue.QUEUE_PATH)
+        item = next(entry for entry in queue["required_queue"]
+                    if entry["id"] == "B1")
+        record = item["invalidation_history"][-1]
+        record.update(changes)
+        self.write_queue(queue)
+        self.rewrite_receipt_for_negative_test(
+            record["transition_receipt"],
+            lambda receipt: receipt["invalidation"].update(changes))
+        return record
+
+    def test_a_restored_coverage_digest_must_match_both_witnesses(self):
+        """A well-formed but wrong digest is not evidence of a restore."""
+        self.merge_b1()
+        receipt = self.apply_b1()
+        self.assertEqual(0, self.rollback_b1(receipt=receipt).returncode)
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+
+        self.tamper_invalidation_record(
+            coverage_restored_sha256="sha256:" + "0" * 64)
+
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("left Coverage at", errors)
+        self.assertIn("recorded pre-apply Coverage", errors)
+
+    def test_a_restored_coverage_path_must_match_the_delta_application(self):
+        self.merge_b1()
+        receipt = self.apply_b1()
+        self.assertEqual(0, self.rollback_b1(receipt=receipt).returncode)
+
+        self.tamper_invalidation_record(
+            coverage_restored_from=".cambium/receipts/pre-apply-coverage/"
+                                   "B1-r99.yaml")
+
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("archived the pre-apply Coverage at", errors)
+
+    def test_a_truthful_applied_rollback_still_validates(self):
+        """Positive control: the shipped restore satisfies both witnesses."""
+        self.merge_b1()
+        receipt = self.apply_b1()
+        self.assertEqual(0, self.rollback_b1(receipt=receipt).returncode)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        record = result["items_by_id"]["B1"]["invalidation_history"][-1]
+        transition = result["receipt_catalog"][
+            record["transition_receipt"]][1]
+        self.assertEqual(record["coverage_restored_sha256"],
+                         transition["after_coverage_sha256"])
+
     def test_applied_rollback_requires_the_exact_delta_apply_receipt(self):
         self.merge_b1()
         receipt = self.apply_b1()
@@ -1840,6 +1898,50 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertIn("recorded", failed.stdout)
         self.assertIn("an integrator must recover Coverage manually",
                       failed.stdout)
+
+    def test_applied_rollback_rejects_a_valid_but_substituted_archive(self):
+        """Only the digest comparison can reject this substitute.
+
+        The previous case injects an unsupported `tampered` key, so the
+        downstream Coverage schema would reject the restored document even if
+        the archive were never hashed. This one swaps in a document that is a
+        well-formed Coverage Ledger with exactly the supported field set, so
+        nothing after the restore has anything to object to: the byte digest
+        recorded by the delta application is the whole defence.
+        """
+        self.merge_b1()
+        receipt = self.apply_b1()
+        archives = self.pre_apply_archive()
+        self.assertEqual(1, len(archives), archives)
+        recorded_sha = kblib.sha256_file(archives[0])
+        substitute = kblib.load_yaml_file(archives[0])
+        substitute["updated_at"] = "2026-08-04T02:59:59Z"
+        archives[0].write_text(
+            kblib.canonical_yaml(substitute), encoding="utf-8")
+        substitute_sha = kblib.sha256_file(archives[0])
+        self.assertNotEqual(recorded_sha, substitute_sha)
+        # No unsupported field and no missing one: the substitute is a Coverage
+        # document every downstream check accepts.
+        self.assertEqual(
+            set(check_queue.COVERAGE_TOP_LEVEL_FIELDS), set(substitute))
+        applied_coverage = (
+            self.root / check_queue.COVERAGE_PATH).read_bytes()
+
+        failed = self.rollback_b1(receipt=receipt)
+
+        self.assertEqual(1, failed.returncode, failed.stdout)
+        # The rejection names both digests, so it is the archive comparison
+        # itself that refused, not a later schema or binding check.
+        self.assertIn(substitute_sha, failed.stdout)
+        self.assertIn(recorded_sha, failed.stdout)
+        self.assertIn("an integrator must recover Coverage manually",
+                      failed.stdout)
+        self.assertEqual(
+            applied_coverage,
+            (self.root / check_queue.COVERAGE_PATH).read_bytes())
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual("merge-ready", result["items_by_id"]["B1"]["state"])
 
     def test_rolled_back_batch_reaches_merge_ready_and_closes_again(self):
         """The deadlock is broken: roll back, redo the work, close for real."""

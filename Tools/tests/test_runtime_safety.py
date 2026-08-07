@@ -383,6 +383,53 @@ class InitPublicationTests(unittest.TestCase):
             "--apply",
         ]
 
+    def write_overrides(self, rows):
+        manifest = self.root / "profiles/sample/profile.md"
+        manifest.write_text(
+            "# Profile\n\n## Profile Identity\n\n"
+            "- `profile_id`: `sample`\n\n"
+            "## Execution Default Overrides\n\n"
+            "| Override item ID from the registry | Non-default profile value |\n"
+            "|---|---|\n" + rows, encoding="utf-8")
+
+    def test_a_manifest_override_row_is_read_and_frozen(self):
+        self.write_overrides("| `concurrency_cap` | `8` |\n")
+
+        self.assertEqual(
+            (8, "profile-manifest"),
+            init_state.resolve_concurrency_cap(
+                str(self.root), "profiles/sample/profile.md", None))
+
+    def test_a_malformed_override_row_never_resolves_to_the_kernel_default(self):
+        """A dropped row would freeze 3 while the manifest declares 8."""
+        self.write_overrides(
+            "| `concurrency_cap` | `8` | governance note |\n")
+
+        with self.assertRaises(kblib.ProfileOverrideRowError) as caught:
+            init_state.resolve_concurrency_cap(
+                str(self.root), "profiles/sample/profile.md", None)
+        self.assertIn("3 cell(s)", str(caught.exception))
+
+    def test_an_itemless_override_row_fails_closed(self):
+        self.write_overrides("| | `8` |\n")
+
+        with self.assertRaises(kblib.ProfileOverrideRowError):
+            init_state.resolve_concurrency_cap(
+                str(self.root), "profiles/sample/profile.md", None)
+
+    def test_initialization_stops_on_a_malformed_override_row(self):
+        self.write_overrides(
+            "| `concurrency_cap` | `8` | governance note |\n")
+
+        completed = subprocess.run(
+            self.command(), text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, check=False)
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("cannot resolve concurrency_cap", completed.stdout)
+        self.assertNotIn("concurrency_cap=3", completed.stdout)
+        self.assertFalse((self.root / ".cambium").exists())
+
     def test_competing_initializers_publish_exactly_one_complete_tree(self):
         first = subprocess.Popen(
             self.command(), text=True, stdout=subprocess.PIPE,

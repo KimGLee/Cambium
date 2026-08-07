@@ -7,7 +7,7 @@ source_files:
   - kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md
   - kernel/K00 Standards Control/02 Task Routing.md
   - kernel/K00 Standards Control/03 Standards Governance.md
-source_hash: 'e9f76b50100d'
+source_hash: 'a01c61bb4df4'
 route_registry:
   - route_id: R01
     path: "kernel/Cards/R01 Core Bootstrap Card.md"

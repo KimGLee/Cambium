@@ -638,6 +638,15 @@ class CheckBatchCloseTests(unittest.TestCase):
             check_batch_close._priority_quotas(self.root, runtime)
         self.assertIn("outside 0..100", str(caught.exception))
 
+    def test_priority_quotas_fail_closed_on_a_malformed_override_row(self):
+        """The shared reader refuses; the close attempt must not proceed."""
+        runtime = self.set_override_rows(
+            "| `priority_quota.P0` | `20%` | why |\n")
+        with self.assertRaises(kblib.ProfileOverrideRowError) as caught:
+            check_batch_close._priority_quotas(self.root, runtime)
+        self.assertIn("3 cell(s)", str(caught.exception))
+        self.assertIsInstance(caught.exception, ValueError)
+
     def test_override_reader_ignores_fenced_examples_and_other_sections(self):
         manifest_text = (
             "# Profile\n\n"

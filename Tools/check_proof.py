@@ -42,8 +42,9 @@ Method:
   explicit "not-applicable: <reason>" string. A missing dimension, an empty
   list, a reasonless declaration, or a receipt cited under two dimensions ->
   fail; with --root every cited receipt must resolve to exactly one
-  uninvalidated record of that dimension in audit_receipt_register. Zero
-  receipts is never read as "nothing was in scope";
+  uninvalidated record in audit_receipt_register that itself carries the cited
+  dimension (an absent dimension field is not a record of that dimension) and a
+  passing result. Zero receipts is never read as "nothing was in scope";
 - a zero-condition field (required_authoring_gaps / unverified_batches /
   remaining_required_work_units / unresolved_invalidations) that is not 0 ->
   fail;
@@ -140,6 +141,14 @@ PASSED_FIELDS = ("guidance_reconciliation_result",
 # Free-text evidence fields: deterministically reject an explicit failure
 # statement; anything else stays a human call.
 NO_FAIL_TOKEN_FIELDS = ("rendering_evidence", "time_contract_result")
+
+# The two kernel-stated spellings of a passing receipt verdict. The K12/07
+# AuditReceipt shape writes `passed` (its Reuse Gate reads
+# `receipt.result = passed`); the script-level receipt schema and the K12/17
+# Gate Receipt Payload write `pass`. The Audit Receipt Register holds records
+# of both layers, so a consumer of that register accepts exactly these two and
+# nothing else. This restates no rule: it names the two owners' own values.
+PASSING_RECEIPT_RESULTS = frozenset(("pass", "passed"))
 
 # Fields whose values are vault-relative paths that must exist when --root is
 # given (K12/15 steps 1-2 and 7: loaded sources, evidence, and incremental
@@ -671,13 +680,34 @@ def _validate_dimension_coverage_evidence(root, proof, cited):
                 "cannot carry a current verdict" %
                 (dimension, receipt_id, record.get("invalidated_by")),
             ))
+        # K12/16 requires the cited receipt to resolve to a record *of the
+        # declared dimension*.  An absent field is not that record: it states
+        # no dimension at all, so treating absence as agreement would let one
+        # receipt be filed under whichever dimension the Proof names.
         recorded = record.get("dimension")
-        if recorded is not None and recorded != dimension:
+        if recorded != dimension:
             failures.append(_queue_linkage_failure(
                 "proof-dimension-receipt-mismatch", target,
                 "%s cites receipt %r, whose own dimension field is %r; an "
-                "AuditReceipt files its verdict under one dimension" %
+                "AuditReceipt files its verdict under one dimension, and a "
+                "record carrying no dimension is not a record of this one" %
                 (dimension, receipt_id, recorded),
+            ))
+        # A receipt recording a failed verdict is not completion evidence:
+        # K12/06 admits a historical gate result into the Terminal Proof only
+        # through the K12/07 Reuse Gate (`receipt.result = passed`), and
+        # K12/17 rejects a Gate receipt whose `result` is other than `pass`.
+        # Both passing spellings are kernel-stated -- `passed` in the K12/07
+        # AuditReceipt shape, `pass` in the script-level receipt schema and
+        # K12/17 -- so both are accepted here and nothing else is.
+        result = record.get("result")
+        if result not in PASSING_RECEIPT_RESULTS:
+            failures.append(_queue_linkage_failure(
+                "proof-dimension-receipt-not-passed", target,
+                "%s cites receipt %r, which records result=%r; only a passing "
+                "verdict (%s) carries a dimension into the Terminal Proof" %
+                (dimension, receipt_id, result,
+                 " or ".join(sorted(PASSING_RECEIPT_RESULTS))),
             ))
     return failures
 

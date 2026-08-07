@@ -86,7 +86,7 @@ For any structural migration of the standards corpus (splits, moves, renames, or
 - Leaf module target ≤5KB, soft cap 6KB; KB means 1024 bytes.
 - The cap applies by function, not by folder or file type. It applies to a page that owns rule text: a task that needs one of its rules reads the page whole, so the page's size is what reaching that rule costs.
 - A page that owns no rule text is outside the cap, because every normative sentence in it points to a rule owned elsewhere (Core Principle 20), and splitting such a page raises resolution cost instead of lowering it. Standard Module MOCs, Read Sets, and the standards maps and registries are the usual cases. These pages are likewise kept lean.
-- Being outside the cap and being a registered exception are exclusive dispositions; a page outside the cap is not registered below.
+- Being outside the cap and being a registered exception are exclusive dispositions; a page outside the cap is not registered as an exception in [[kernel/K00 Standards Control/16 Leaf Module Size Register|Leaf Module Size Register]].
 - When over the limit, cut examples first; if still over, then consider a split, which follows this page's governance change process. An example that illustrates a rule the page states MAY be cut. An example a reader needs in order to decide which of the page's rules applies to the case in hand is doing the page's work rather than illustrating it: it is not cut, and the page goes straight to the split test.
 - Examples default to one good / one bad per rule point.
 - Each approved exception MUST register the object, the measured value, the necessity, the growth cap, and the follow-up disposition; the registered cap MUST NOT be exceeded without a new governance change.

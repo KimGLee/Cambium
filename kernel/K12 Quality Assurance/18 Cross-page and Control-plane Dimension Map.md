@@ -24,7 +24,7 @@
 | `K11/04` | evidence qualification is preserved in expression | emits | source_and_currentness |
 | `K11/05` | resolvable bidirectional canonical bindings | emits | structure_and_links |
 | `K11/07` | migration conservation of content and bindings | emits | coverage_and_integration |
-| `K12/03 Coverage` | the other nine items | emits | coverage_and_integration |
+| `K12/03 Coverage` | the other nine of its ten items (was eight) | emits | coverage_and_integration |
 | `K12/03 Coverage` | core pages not thinner than new peripheral or frontier pages | triggers → `K12/03 Module` depth balance | — |
 | `K12/14 Batch` | Required pages at target `authoring_status`; delta applied, both ledgers in sync | emits | coverage_and_integration |
 | `K12/14 Batch` | canonical ownership, body links, navigation synchronized | emits | structure_and_links |

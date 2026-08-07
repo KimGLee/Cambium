@@ -404,6 +404,10 @@ PROFILE_OVERRIDES_SECTION = "Execution Default Overrides"
 PROFILE_TABLE_SEPARATOR_RE = re.compile(r":?-{2,}:?")
 
 
+class ProfileOverrideRowError(ValueError):
+    """An override row whose shape no resolver may silently interpret."""
+
+
 def profile_execution_default_overrides(manifest_text):
     """Return the manifest's ``Execution Default Overrides`` rows as a mapping.
 
@@ -415,6 +419,14 @@ def profile_execution_default_overrides(manifest_text):
     surrounding backticks removed, because each item's type, unit, and range
     belong to that item's kernel owner, not here.  Fenced examples are ignored
     and a repeated item keeps its last row, matching the shape validator.
+
+    A data row that is not exactly two cells, or whose item cell is empty,
+    raises :class:`ProfileOverrideRowError`.  Dropping such a row would leave a
+    resolver reporting the kernel default for an item the manifest does declare
+    -- the one outcome a reader must never produce, because a declared value
+    that nobody saw is indistinguishable from no declaration at all.  Reporting
+    the row is ``check_profile.py``'s ``override-row-shape``; refusing to
+    resolve from it is this reader's, and the two are not substitutes.
     """
     rows = []
     inside = False
@@ -450,12 +462,20 @@ def profile_execution_default_overrides(manifest_text):
     overrides = {}
     # The first non-separator row is the header, exactly as the shape
     # validator in check_profile.py treats it.
-    for cells in rows[1:]:
+    for number, cells in enumerate(rows[1:], start=2):
         if len(cells) != 2:
-            continue
+            raise ProfileOverrideRowError(
+                "%s data row %d has %d cell(s); every override row carries "
+                "exactly two (item ID, profile value), and a row of another "
+                "shape declares a value no resolver can read"
+                % (PROFILE_OVERRIDES_SECTION, number, len(cells)))
         item = cells[0].strip("` ")
-        if item:
-            overrides[item] = cells[1].strip("` ")
+        if not item:
+            raise ProfileOverrideRowError(
+                "%s data row %d names no override item; the value %r belongs "
+                "to no item ID"
+                % (PROFILE_OVERRIDES_SECTION, number, cells[1].strip("` ")))
+        overrides[item] = cells[1].strip("` ")
     return overrides
 
 

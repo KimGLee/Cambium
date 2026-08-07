@@ -39,10 +39,14 @@ DEMO_TOOL = (
 
 class ToolArgumentContractTests(unittest.TestCase):
     def test_contract_is_read_from_the_tool_source_without_executing_it(self):
-        positionals, required_options = stamp_cards.tool_argument_contract(DEMO_TOOL)
+        positionals, required_options, reads_value = (
+            stamp_cards.tool_argument_contract(DEMO_TOOL))
 
         self.assertEqual(positionals, ["root"])
         self.assertEqual(required_options, ["--plan"])
+        self.assertEqual(
+            {"--plan": True, "--receipts": True, "--json": False},
+            reads_value)
 
     def test_optional_and_defaulted_positionals_are_not_required(self):
         source = (
@@ -53,20 +57,25 @@ class ToolArgumentContractTests(unittest.TestCase):
             "parser.add_argument('--flag', action='store_true')\n"
         )
 
-        positionals, required_options = stamp_cards.tool_argument_contract(source)
+        positionals, required_options, reads_value = (
+            stamp_cards.tool_argument_contract(source))
 
         self.assertEqual(positionals, [])
         self.assertEqual(required_options, [])
+        self.assertEqual({"--flag": False}, reads_value)
 
     def test_real_kernel_tools_declare_the_contract_the_cards_satisfy(self):
         source = (TOOLS_DIR / "record_corpus_acceptance.py").read_text(
             encoding="utf-8"
         )
 
-        positionals, required_options = stamp_cards.tool_argument_contract(source)
+        positionals, required_options, reads_value = (
+            stamp_cards.tool_argument_contract(source))
 
         self.assertEqual(positionals, ["root"])
         self.assertIn("--plan", required_options)
+        self.assertTrue(reads_value["--plan"])
+        self.assertFalse(reads_value["--apply"])
 
 
 class CommandSpanFailureTests(unittest.TestCase):
@@ -110,6 +119,27 @@ class CommandSpanFailureTests(unittest.TestCase):
 
     def test_option_value_is_not_counted_as_a_positional(self):
         body = "- [ ] Run `python3 Tools/demo.py --plan <plan>`.\n"
+
+        failures = self.scan(body)
+
+        self.assertEqual(len(failures), 1, failures)
+        self.assertIn("root", failures[0])
+
+    def test_a_store_true_flag_never_swallows_the_positional(self):
+        """`--json .` supplies root; the flag declares that it reads nothing."""
+        body = "- [ ] Run `python3 Tools/demo.py --plan <plan> --json .`.\n"
+
+        self.assertEqual(self.scan(body), [])
+
+    def test_the_flag_first_spelling_of_a_real_tool_is_accepted(self):
+        """The reviewer's case: this exact command is legal and must pass."""
+        shutil.copy(TOOLS_DIR / "stamp_cards.py", self.root / "Tools")
+        body = "- [ ] Run `python3 Tools/stamp_cards.py --check .`.\n"
+
+        self.assertEqual(self.scan(body), [])
+
+    def test_a_value_reading_flag_still_consumes_its_value(self):
+        body = "- [ ] Run `python3 Tools/demo.py --plan <plan> --receipts r`.\n"
 
         failures = self.scan(body)
 
@@ -168,6 +198,22 @@ class StampCardsCommandGateTests(unittest.TestCase):
 
         self.assertNotIn("[FAIL]", result.stdout, result.stdout + result.stderr)
         self.assertIn("runtime_cards=13", result.stdout)
+
+    def test_a_flag_before_the_positional_does_not_fail_the_layer(self):
+        """Reordering a legal command must not turn into a Card layer failure."""
+        card = self.root / "kernel" / "Cards" / "R13 Corpus Planning Card.md"
+        text = card.read_text(encoding="utf-8")
+        reordered = text.replace(
+            "`python3 Tools/check_corpus_plan.py . --json`",
+            "`python3 Tools/check_corpus_plan.py --json .`",
+        )
+        self.assertNotEqual(text, reordered, "R13 Card no longer carries the gate command")
+        card.write_text(reordered, encoding="utf-8")
+
+        result = self.run_check()
+
+        self.assertNotIn("[FAIL]", result.stdout, result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_dropping_a_required_argument_from_a_card_command_fails_closed(self):
         card = self.root / "kernel" / "Cards" / "R13 Corpus Planning Card.md"

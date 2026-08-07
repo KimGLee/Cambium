@@ -18,7 +18,7 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
-source_hash: '6ace9158e0e1'
+source_hash: 'fb68929a1e3f'
 ---
 # R11 Large-scale Work Admission Card
 

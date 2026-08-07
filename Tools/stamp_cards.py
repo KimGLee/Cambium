@@ -19,7 +19,10 @@ agent types verbatim, so the Card and Read Set layer is also checked against
 the tools' own declared interfaces: the named script must exist, and every
 required positional and required option that script declares must be supplied.
 Each tool's argument contract is read statically from its own source bytes; no
-tool is imported or executed, and no argument list is duplicated here. A span
+tool is imported or executed, and no argument list is duplicated here. Whether a
+flag consumes the token after it comes from that declared contract -- a
+`store_true` flag consumes nothing -- so a flag-before-positional spelling such
+as `stamp_cards.py --check .` is read exactly as the tool would read it. A span
 that only names a tool or a flag in prose is a reference, not a command, and is
 not scanned.
 
@@ -39,7 +42,11 @@ here. A registered cap that is exceeded is an error, because its owner writes
 that the registered cap must not be exceeded without a new governance change. A
 page over the soft cap with no registered exception, and a registered measured
 value that no longer matches the file, are candidates: the owner calls the 6KB
-value a soft cap and asks for a re-measure, and neither sentence is a MUST.
+value a soft cap and asks for a re-measure, and neither sentence is a MUST. A
+register row naming a leaf module in any width other than the two the register
+defines -- 2 cells for an outside-the-cap declaration, 5 for an exception -- is
+an error rather than a skipped row, because a dropped exception row would leave
+its page measured against the soft cap alone.
 
 Usage:
   python3 Tools/stamp_cards.py <standards_root> [--cards-dir DIR]
@@ -62,6 +69,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import check_queue
 
 
 DEFAULT_CARDS_DIR = "kernel/Cards"
@@ -217,17 +225,34 @@ def parse_document(path, root, failures):
     return rel, text, data
 
 
+# argparse actions that store a constant and therefore never read the token
+# after the flag. Every other action reads at least one value.
+VALUELESS_ACTIONS = frozenset((
+    "store_true", "store_false", "store_const", "count", "help", "version",
+))
+
+
 def tool_argument_contract(source_text):
     """Read one tool's argparse contract from its own source bytes.
 
-    Returns (required positional dests, required option flags). The scan is a
-    static AST walk: no tool code is imported or executed, so the same bytes
-    always yield the same contract. Only `add_argument` calls are read; the
-    tool remains the sole owner of its own interface.
+    Returns (required positional dests, required option flags, option flag ->
+    whether it reads a value). The third element is what a command span needs
+    in order to tell an option's value from a positional: `--json` declared
+    `action='store_true'` reads nothing, so the token after it is a positional,
+    while `--plan <plan>` consumes one. Guessing from the shape of the next
+    token instead reports a legitimate `stamp_cards.py --check .` as missing
+    its `root`.
+
+    The scan is a static AST walk: no tool code is imported or executed, so the
+    same bytes always yield the same contract. Only `add_argument` calls are
+    read; the tool remains the sole owner of its own interface. Every option
+    string of a call carries the same answer, so a short alias resolves like its
+    long form.
     """
     tree = ast.parse(source_text)
     positionals = []
     required_options = []
+    option_reads_value = {}
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -248,10 +273,20 @@ def tool_argument_contract(source_text):
             if "default" not in keywords and "nargs" not in keywords:
                 positionals.append(names[0])
             continue
+        action = keywords.get("action")
+        nargs = keywords.get("nargs")
+        reads_value = True
+        if isinstance(action, ast.Constant) and action.value in VALUELESS_ACTIONS:
+            reads_value = False
+        elif isinstance(nargs, ast.Constant) and nargs.value == 0:
+            reads_value = False
+        for name in names:
+            if name.startswith("-"):
+                option_reads_value[name] = reads_value
         required = keywords.get("required")
         if isinstance(required, ast.Constant) and required.value is True:
             required_options.append(names[0])
-    return positionals, required_options
+    return positionals, required_options, option_reads_value
 
 
 def command_span_failures(rel, text, root, tool_contracts):
@@ -291,7 +326,7 @@ def command_span_failures(rel, text, root, tool_contracts):
             contract = tool_contracts[script]
             if contract is None:
                 continue
-            positionals, required_options = contract
+            positionals, required_options, option_reads_value = contract
             arguments = tokens[2:]
             supplied_options = {
                 argument.split("=", 1)[0] for argument in arguments
@@ -300,14 +335,23 @@ def command_span_failures(rel, text, root, tool_contracts):
             supplied_positionals = [
                 argument for argument in arguments if not argument.startswith("-")
             ]
-            # An option that takes a value consumes the token after it, which
-            # would otherwise be counted as a positional.
+            # An option that reads a value consumes the token after it, which
+            # would otherwise be counted as a positional. Whether it reads one
+            # is taken from the tool's own argparse declaration, never from the
+            # shape of the following token: a `store_true` flag reads nothing,
+            # so the token after it is a positional the command did supply.
             consumed = 0
             for index, argument in enumerate(arguments[:-1]):
-                if argument.startswith("-") and "=" not in argument:
-                    following = arguments[index + 1]
-                    if not following.startswith("-"):
-                        consumed += 1
+                if not argument.startswith("-") or "=" in argument:
+                    continue
+                # An option this tool does not declare has no contract to read.
+                # Whether the span may name it at all is a separate question;
+                # for counting positionals, fall back to the token shape rather
+                # than asserting either answer.
+                reads_value = option_reads_value.get(argument, True)
+                following = arguments[index + 1]
+                if reads_value and not following.startswith("-"):
+                    consumed += 1
             filled = max(0, len(supplied_positionals) - consumed)
             missing_positionals = positionals[filled:]
             missing_options = [
@@ -496,6 +540,14 @@ def parse_size_register(text, factor):
     and growth cap; a two-column row whose first cell links a page declares it
     outside the cap; the row stating `N active` declares how many exceptions the
     register believes it holds.
+
+    Cell count is the whole discriminator, so a row whose first cell links a
+    page and whose width is neither 2 nor 5 is an error, never a skip: the two
+    dispositions are exclusive and a page carrying neither would otherwise be
+    measured against the soft cap only, turning a "MUST NOT be exceeded" growth
+    cap into a candidate. A malformed row cannot be read as an outside-the-cap
+    declaration either, because that disposition is a claim the register makes,
+    not the residue of a truncated exception row.
     """
     entries = {}
     outside = {}
@@ -523,7 +575,14 @@ def parse_size_register(text, factor):
                 )
             outside[rel] = cells[1]
             continue
-        if len(cells) < 4:
+        if len(cells) != 5:
+            errors.append(
+                "%s registers %s in a row of %d cell(s); a register row naming "
+                "a leaf module is either a 2-cell outside-the-cap declaration "
+                "or a 5-cell exception (object, measured, necessity, growth "
+                "cap, follow-up)"
+                % (SIZE_REGISTER_OWNER_PATH, rel, len(cells))
+            )
             continue
         measured = MEASURED_RE.match(cells[1])
         cap = CAP_RE.match(cells[3])
@@ -1140,6 +1199,21 @@ def main():
                 root, budget, entries, outside, declared
             )
             failures.extend(size_errors)
+
+    # ---- Stable Gate ID Registry against the producers it names ----
+    # The registry rows are kernel text; the Tool/Tool-version/Check/Gate ID
+    # they select is a constant in an installed producer.  Nothing on the
+    # runtime path notices the two drifting apart: `check_queue` consumes the
+    # registry only at a Standards revalidation boundary and at
+    # `open -> merge-ready`, so a bumped TOOL_VERSION shows up as a receipt
+    # that "does not match registered Gate ID" after the batch is already
+    # built.  This run is the input K00/12 itself names for
+    # `runtime-card-synchronization`, and Governance close -- when a producer
+    # version or a registry row changes -- is exactly when the two sides move.
+    # The check reports that the two disagree; which side to change is the
+    # governance decision, not this tool's.
+    _registry, registry_errors = check_queue.standards_gate_registry(root)
+    failures.extend(registry_errors)
 
     canonical_read_sets = dict(read_registry_pairs)
     for record in runtime_records:

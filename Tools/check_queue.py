@@ -6596,6 +6596,58 @@ def _global_transition_errors(items_by_id, catalog, queue, queue_sha):
     return errors
 
 
+def _applied_rollback_restore_errors(label, record, transition, catalog,
+                                     item_id):
+    """Cross-check the recorded Coverage restore against both its witnesses.
+
+    ``coverage_restored_sha256`` is the only field in the applied-rollback
+    triple that names bytes, so a non-empty check proves nothing: any well-
+    formed digest passes.  Two independent records already state what those
+    bytes must be.  The delta application being undone archived the pre-apply
+    Coverage and recorded its path and digest; the rollback transition receipt
+    recorded the Coverage fingerprint the rollback actually left on disk.  A
+    truthful restore makes all three the same value, and a restore that put
+    other bytes in place disagrees with at least one of them.
+    """
+    errors = []
+    restored_sha = record.get("coverage_restored_sha256")
+    restored_from = record.get("coverage_restored_from")
+    if not SHA256_RE.fullmatch(restored_sha):
+        errors.append("%s coverage_restored_sha256 is invalid" % label)
+        restored_sha = None
+    if transition is not None:
+        after_coverage = transition.get("after_coverage_sha256")
+        if not SHA256_RE.fullmatch(after_coverage or ""):
+            errors.append("%s rollback transition receipt has no valid "
+                          "after_coverage_sha256 to restore against" % label)
+        elif restored_sha is not None and restored_sha != after_coverage:
+            errors.append(
+                "%s records coverage_restored_sha256=%s but its rollback "
+                "transition receipt left Coverage at %s" %
+                (label, restored_sha, after_coverage))
+    apply_receipt = _require_receipt(
+        catalog, record.get("delta_apply_receipt"),
+        "%s delta application" % label, errors,
+        expected={"check": "delta_apply", "target": item_id},
+    )
+    if apply_receipt is not None:
+        archived_path = apply_receipt.get("before_coverage_archive_path")
+        archived_sha = apply_receipt.get("before_coverage_sha256")
+        if restored_from != archived_path:
+            errors.append(
+                "%s restores from %r but delta application %s archived the "
+                "pre-apply Coverage at %r" %
+                (label, restored_from, apply_receipt.get("receipt_id"),
+                 archived_path))
+        if restored_sha is not None and restored_sha != archived_sha:
+            errors.append(
+                "%s records coverage_restored_sha256=%s but delta application "
+                "%s recorded pre-apply Coverage %s" %
+                (label, restored_sha, apply_receipt.get("receipt_id"),
+                 archived_sha))
+    return errors
+
+
 def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                           queue):
     errors = []
@@ -7046,6 +7098,11 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                 errors.append("%s %s must be non-empty" % (label, field))
         transition = (rollback_transitions[index]
                       if index < len(rollback_transitions) else None)
+        if applied_present == INVALIDATION_APPLIED_ROLLBACK_FIELDS and all(
+                _nonempty_string(record.get(field))
+                for field in INVALIDATION_APPLIED_ROLLBACK_FIELDS):
+            errors.extend(_applied_rollback_restore_errors(
+                label, record, transition, catalog, item_id))
         receipt_id = record.get("transition_receipt")
         if not _nonempty_string(receipt_id):
             errors.append("%s transition_receipt must be non-empty" % label)
