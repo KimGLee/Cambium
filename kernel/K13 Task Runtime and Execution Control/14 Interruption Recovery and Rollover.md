@@ -50,7 +50,10 @@ conflicting, or snapshot-mismatched bundles are reported but not selected.
 This is a local consistency decision, not authentication of the recorded
 producer, actor, or reviewer. An unresolved writer lock takes precedence as
 `reconcile-interrupted-write`; other malformed or conflicting evidence becomes
-`repair-runtime`.
+`repair-runtime`. The tokens named here are part of a larger reported set; the
+complete `next_action` vocabulary, with each token's reporting condition and
+selected action, is owned by
+[[kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary|K13/16]].
 Its checkpoint binding is `current`, `historical`, or `initial`; `historical`
 means later recorded state must be followed from receipts and deltas rather
 than mistaken for a clean checkpoint. The Agent then checks:

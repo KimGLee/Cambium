@@ -14,6 +14,7 @@ First load [[kernel/Read Sets/R01 Core Bootstrap Read Set|R01 Core Bootstrap]] a
 - [[kernel/K12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]
 - [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]]
+- [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|Cross-page and Control-plane Dimension Map]]
 
 Declare the acceptance predicate, audit object, receipt dimension, affected scope, evidence eligible for reuse, and either the changed / invalidated / overdue / sampled partition or the specialized invariant before review begins.
 

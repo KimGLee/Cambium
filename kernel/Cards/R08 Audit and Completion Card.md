@@ -6,8 +6,10 @@ compiled_from: '{{ standards_version }}'
 source_files:
   - kernel/Read Sets/R08 Audit and Completion Read Set.md
   - kernel/Read Sets/R12 Targeted and Specialized Audit Read Set.md
+  - kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/08 Judgment Item Dimension Map.md
+  - kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
   - kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md
@@ -17,7 +19,7 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
   - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
   - kernel/K13 Task Runtime and Execution Control/13 Final Handoff.md
-source_hash: '8fd5a6ebcd55'
+source_hash: '31bff0682600'
 ---
 # R08 Audit and Completion Card
 

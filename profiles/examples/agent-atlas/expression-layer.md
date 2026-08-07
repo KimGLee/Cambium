@@ -35,10 +35,6 @@ Interface: [Expression Layer Entry slot](../../README.md#expression-layer-entry-
 | Vocabulary Extensions readiness-field ID | `None` |
 | Routing/Gate Registry supplemental Gate ID | `None` |
 
-## Terminology Extraction Extension
-
-For a proper noun, satisfying the profile's [[profiles/examples/agent-atlas/expression-layer#Card Granularity|independent-Card predicate]] is an additional reason to consider a standalone Term Note under [[kernel/K05 Terminology/01 Terminology Extraction#Extraction Criteria|K05/01 Terminology Extraction]]. The Card still does not own the term's definition, and this trigger does not bypass the kernel's Do Not Extract or terminology-acceptance rules.
-
 ### Artifact: Interview Cheat Sheet
 
 | Property | Value |
@@ -53,6 +49,10 @@ For a proper noun, satisfying the profile's [[profiles/examples/agent-atlas/expr
 | Testable regeneration/invalidation predicate | Re-evaluate an affected cheat sheet when a summarized canonical owner, linked card, or high-priority retrieval route changes. |
 | Vocabulary Extensions readiness-field ID | `None` |
 | Routing/Gate Registry supplemental Gate ID | `None` |
+
+## Terminology Extraction Extension
+
+For a proper noun, satisfying the profile's [[profiles/examples/agent-atlas/expression-layer#Card Granularity|independent-Card predicate]] is an additional reason to consider a standalone Term Note under [[kernel/K05 Terminology/01 Terminology Extraction#Extraction Criteria|K05/01 Terminology Extraction]]. The Card still does not own the term's definition, and this trigger does not bypass the kernel's Do Not Extract or terminology-acceptance rules.
 
 ## Interview Card Contract
 
@@ -104,7 +104,7 @@ The category does not transfer ownership of definitions, mechanisms, metrics, or
 |---|---|
 | `not-required` | The canonical topic does not require an independent Card; the record names the accepted combined Card or gives a bounded reason that no interview artifact is required. |
 | `missing` | The topic requires interview expression coverage, but no target Card has been registered. |
-| `mapped` | A target Card and reciprocal canonical binding resolve, but [[profiles/examples/agent-atlas/registries/audit-dimensions#Interview Readiness Acceptance|Interview Readiness Acceptance]] has not passed. |
+| `mapped` | A target Card and reciprocal canonical binding resolve, but [[profiles/examples/agent-atlas/registries/audit-dimensions#Interview Readiness Acceptance\|Interview Readiness Acceptance]] has not passed. |
 | `interview-ready` | The mapped Card has passed Interview Readiness Acceptance under the registered gate and authority. |
 
 No intermediate expression values are defined. Drafting progress stays in `authoring_status`; it never creates or advances `interview_status`. Status-axis independence is governed by [[kernel/K11 Expression Layer/02 Expression Coverage and Readiness|K11/02 Expression Coverage and Readiness]] and [[kernel/K08 Metadata and Status/03 Status Axes|K08/03 Status Axes]].

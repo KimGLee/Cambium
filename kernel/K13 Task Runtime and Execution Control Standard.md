@@ -12,7 +12,7 @@ This page is the stable entry point of the Task Runtime and Execution Control st
 
 | Module | Canonical sections |
 |---|---|
-| [[kernel/K13 Task Runtime and Execution Control/01 Runtime State Model and Namespace\|Runtime State Model and Namespace]] | `Runtime State Namespace`, `Control Accretion Decision` |
+| [[kernel/K13 Task Runtime and Execution Control/01 Runtime State Model and Namespace\|Runtime State Model and Namespace]] | `Runtime State Namespace`, `Execution Roles`, `Control Accretion Decision` |
 | [[kernel/K13 Task Runtime and Execution Control/02 Task Contract Binding and Time Semantics\|Task Contract Binding and Time Semantics]] | `Purpose`, `Core Execution Principle`, `Phase 0: Freeze The Contract`, `Time And Stop Semantics` |
 | [[kernel/K13 Task Runtime and Execution Control/03 Task State and Transition Rules\|Task State and Transition Rules]] | `Task State Machine` |
 | [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis\|Guidance Classification and Impact Analysis]] | `Mid-task Guidance And Contract Amendment`: cumulative rule, classification, intake, and impact |
@@ -27,6 +27,7 @@ This page is the stable entry point of the Task Runtime and Execution Control st
 | [[kernel/K13 Task Runtime and Execution Control/13 Final Handoff\|Final Handoff]] | `Final Handoff`, `Related` |
 | [[kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover\|Interruption Recovery and Rollover]] | `Interruption And Resume` |
 | [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction\|Standards Adoption State Transaction]] | `Purpose And Boundary`, `Permitted Transaction`, `Guarded Write Protocol`, `Resume Boundary`, `Related` |
+| [[kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary\|Resume Next Action Vocabulary]] | `Purpose And Boundary`, `Token Table`, `Tokens Without An Automated Path`, `Related` |
 
 ## Applicable Read Sets
 

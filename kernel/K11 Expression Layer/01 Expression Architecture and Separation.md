@@ -19,6 +19,8 @@ Sequence Role = order the work
 
 The selected profile MAY bind these roles to one or more concrete artifacts, but MUST NOT interpret a role merger as a transfer of ownership. A canonical note does not store complete derived expressions, practice sets, or evaluation sets; it retains only the minimal context needed to understand the current knowledge and a wiki link to the corresponding expression artifact.
 
+A profile that registers no expression artifact supplies no valid expression target: the agent stops rather than inventing an artifact or treating an unconfigured target as loaded. That is absence of an object, not permission to bypass the route. Once an artifact is registered and enters scope, this separation and the rest of the R05 kernel floor apply and MUST NOT be marked `not_applicable`.
+
 For the base rules of ownership, see [[kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]].
 
 ## Physical Structure

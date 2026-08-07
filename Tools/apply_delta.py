@@ -6,6 +6,12 @@ legacy two-path mode remains available for detached ledgers.  Supplying
 ``--root`` selects the canonical runtime mode: paths and Queue state are
 bound, writes use the shared runtime lock and optimistic fingerprints, and a
 post-write Queue reconciliation must pass before a receipt is published.
+
+Unlike the neighbouring tools, a canonical apply publishes its receipt into a
+*new* file rather than appending to a shared JSONL, so that an interrupted
+apply cannot be confused with a completed one.  Omitting ``--receipts`` names
+``.cambium/receipts/<receipt_id>.jsonl`` automatically; an explicit
+``--receipts`` path that already exists is refused.
 """
 
 import argparse
@@ -353,8 +359,24 @@ def _canonical_paths(args, batch):
     return expected_ledger, expected_delta, errors
 
 
+def pre_apply_coverage_archive_path(batch, queue_state_revision):
+    """Return the canonical pre-apply Coverage archive path for one apply.
+
+    The delta_apply receipt records ``before_coverage_sha256`` but not the
+    bytes behind it, so a post-apply rollback would have nothing to restore
+    byte-exactly.  Archiving the pre-apply Coverage under a path keyed by the
+    batch and the Queue state revision observed at apply time makes the
+    authorised ``merge-ready -> open`` rollback a byte-exact restore instead
+    of a reconstruction.  The revision key keeps successive applies of the
+    same batch from colliding.
+    """
+    return ".cambium/receipts/pre-apply-coverage/%s-r%d.yaml" % (
+        batch, int(queue_state_revision or 0))
+
+
 def _prepare_receipt(result, batch, delta_path, delta_sha,
-                     before_coverage_sha, after_coverage_sha, actor_role):
+                     before_coverage_sha, after_coverage_sha, actor_role,
+                     before_coverage_archive):
     receipt = kblib.make_receipt(
         TOOL, TOOL_VERSION, "delta_apply", batch, "pass",
         "canonical Coverage delta applied and Queue post-check passed", 1,
@@ -367,6 +389,7 @@ def _prepare_receipt(result, batch, delta_path, delta_sha,
         "delta_path": delta_path,
         "delta_sha256": delta_sha,
         "before_coverage_sha256": before_coverage_sha,
+        "before_coverage_archive_path": before_coverage_archive,
         "after_coverage_sha256": after_coverage_sha,
         "before_required_queue_sha256": result.get("queue_sha256"),
         "after_required_queue_sha256": result.get("queue_sha256"),
@@ -439,6 +462,15 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
         print("[FAIL] batch %s is %s, expected merge-ready" %
               (batch, item.get("state")))
         return 1
+    # A held batch may not be applied.  `hold_state` is orthogonal to the
+    # lifecycle (K13/08), but applying under a hold reaches a state the
+    # runtime cannot leave: closing rejects held batches, and clearing the
+    # hold is itself a Queue write the post-apply barrier forbids.  Refusing
+    # at the entrance keeps that deadlock unreachable.
+    if item.get("hold_state") not in (None, "none"):
+        print("[FAIL] batch %s is held (hold_state=%s); canonical delta apply "
+              "requires hold_state=none" % (batch, item.get("hold_state")))
+        return 1
     if item.get("delta_path") != expected_delta:
         print("[FAIL] batch delta_path does not match %s" % expected_delta)
         return 1
@@ -463,9 +495,11 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
     before_queue_sha = current.get("queue_sha256")
     before_progress_sha = current.get("progress_sha256")
     after_coverage_sha = kblib.sha256_bytes(new_text)
+    archive_relative = pre_apply_coverage_archive_path(
+        batch, current["queue"].get("state_revision"))
     receipt = _prepare_receipt(
         current, batch, expected_delta, planned_delta_sha, before_coverage_sha,
-        after_coverage_sha, args.actor_role,
+        after_coverage_sha, args.actor_role, archive_relative,
     )
     receipt_relative = args.receipts or (
         ".cambium/receipts/%s.jsonl" % receipt["receipt_id"]
@@ -481,6 +515,10 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
     if os.path.lexists(receipt_path):
         print("[FAIL] canonical receipt target already exists: %s" %
               receipt_relative)
+        print("       A canonical apply writes one fresh receipt file rather "
+              "than appending to a shared JSONL. Omit --receipts to let this "
+              "run name .cambium/receipts/<receipt_id>.jsonl itself, or pass "
+              "a path that does not exist yet.")
         return 1
     if not os.path.isdir(os.path.dirname(receipt_path)):
         print("[FAIL] canonical receipt parent must already exist")
@@ -552,19 +590,51 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
                 locked_item = locked.get("items_by_id", {}).get(batch)
                 if (locked_item is None or
                         locked_item.get("state") != "merge-ready" or
+                        locked_item.get("hold_state") not in (None, "none") or
                         locked_item.get("delta_path") != expected_delta or
                         locked_item.get("delta_sha256") != planned_delta_sha):
                     raise ValueError(
-                        "batch is no longer the validated merge-ready delta")
+                        "batch is no longer the validated unheld merge-ready "
+                        "delta")
+                if locked["queue"].get("state_revision") != \
+                        current["queue"].get("state_revision"):
+                    raise ValueError(
+                        "Queue state revision changed after validation; the "
+                        "pre-apply Coverage archive key is no longer current")
 
                 with open(ledger_path, encoding="utf-8") as handle:
                     old_text = handle.read()
+                archive_path = kblib.managed_repository_path(
+                    root, archive_relative, ".cambium/receipts",
+                    suffixes=(".yaml",), must_exist=False,
+                )
+                archive_exists = os.path.lexists(archive_path)
+                if archive_exists:
+                    # An identical archive is a resumed apply of the same
+                    # revision and is reusable.  Different bytes under the
+                    # same key would silently redefine what "before" means
+                    # for the authorised rollback, so fail closed instead.
+                    if (not os.path.isfile(archive_path) or
+                            kblib.sha256_file(archive_path) !=
+                            before_coverage_sha):
+                        raise ValueError(
+                            "pre-apply Coverage archive %s already exists and "
+                            "does not hold the pre-apply bytes" %
+                            archive_relative)
                 receipt_before = kblib.receipt_append_observation(
                     receipt_path, [receipt]
                 )
             wrote_coverage = False
             receipt_attempted = False
+            wrote_archive = False
             try:
+                if not archive_exists:
+                    os.makedirs(os.path.dirname(archive_path), exist_ok=True)
+                    kblib.atomic_write_text(
+                        archive_path, old_text,
+                        validator=kblib.parse_yaml_subset,
+                    )
+                    wrote_archive = True
                 kblib.atomic_write_text(
                     ledger_path, new_text, validator=kblib.parse_yaml_subset
                 )
@@ -623,6 +693,15 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
                         )
                     except Exception as exc:
                         rollback_failures.append("coverage: %s" % exc)
+                if wrote_archive:
+                    # The archive only ever describes a completed apply.  A
+                    # failed apply that left it behind would advertise a
+                    # rollback point for a delta that was never applied.
+                    try:
+                        os.remove(archive_path)
+                    except OSError as exc:
+                        rollback_failures.append(
+                            "pre-apply coverage archive: %s" % exc)
                 if rollback_failures:
                     raise ValueError(
                         "delta apply failed and rollback is incomplete: %s; %s" %

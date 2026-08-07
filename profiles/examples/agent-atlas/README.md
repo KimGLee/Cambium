@@ -74,4 +74,14 @@ python3 Tools/check_residual_content.py "/path/to/Agent Systems Atlas" \
 
 Exit 2 means the scan produced candidates for the registered judgment item. It is not a defect count, deletion list, migration authorization, or automatic gate failure.
 
+## Validation Provenance
+
+The public Cambium distribution is intentionally uninstantiated: `kernel/K00 Standards Control/03 Standards Governance.md` still carries `{{ standards_version }}`, so there is no released version string for an example to declare. The machine-checkable stand-in is the validating tool version below. Re-run every command in this table — and update the versions — after any Standards revision, interface change, or tool bump; `Tools/tests/test_profile_examples.py` enforces exactly this table.
+
+| Validator | Tool version | Command | Expected result |
+|---|---|---|---|
+| `check_profile` | `1.6.0` | `python3 Tools/check_profile.py profiles/examples/agent-atlas` | exit 0 |
+
+`check_corpus_plan.py` is deliberately absent from that table: this example's Corpus Planning slot is `configured` and binds three artifacts that a real adopter materializes, and the public example does not fabricate them. [Worked Planning](../worked-planning/README.md) is the example that carries filled planning artifacts.
+
 Reuse the answer shape—bounded applicability, stable IDs, testable predicates, single-owner pointers, and deterministic candidate boundaries. Do not reuse Atlas identity, paths, language choices, priority criteria, vocabulary, sources, roles, Interview structure, gate IDs, exclusions, or pre-adoption states as another profile's defaults.

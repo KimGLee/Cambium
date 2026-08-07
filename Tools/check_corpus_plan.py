@@ -21,6 +21,10 @@ import kblib
 
 TOOL = "check_corpus_plan"
 TOOL_VERSION = "1.5.0"
+# The Gate ID and the `Check` cell K00/12 registers for it; every receipt
+# this tool offers as gate evidence carries both verbatim.
+GATE_ID = "corpus-plan-structure"
+GATE_CHECK = "corpus_plan"
 
 SLOT_NAME = "Corpus Planning"
 SCOPE_SLOT_NAME = "Profile Scope"
@@ -1386,11 +1390,13 @@ def make_pass_receipt(result, *, repository_snapshot_sha256=None,
             len(result["gap_register"].get("gaps", [])),
         )
     )
+    # The runtime identity is bound first so a Gate consumer can compare it;
+    # the explicit artifact binding still owns every field it declares.
     receipt = kblib.make_receipt(
-        TOOL, TOOL_VERSION, "corpus_plan",
+        TOOL, TOOL_VERSION, GATE_CHECK,
         result.get("profile_manifest") or "<unresolved>", "pass",
-        details, seq)
-    receipt["gate_id"] = "corpus-plan-structure"
+        details, seq, root=result.get("root"))
+    receipt["gate_id"] = GATE_ID
     receipt.update(binding)
     return receipt
 
@@ -1520,8 +1526,8 @@ def pass_receipt_errors(root, receipt, *, result=None,
     common = {
         "tool": TOOL,
         "tool_version": TOOL_VERSION,
-        "check": "corpus_plan",
-        "gate_id": "corpus-plan-structure",
+        "check": GATE_CHECK,
+        "gate_id": GATE_ID,
         "target": expected_binding["selected_profile_manifest"],
         "result": "pass",
         "invalidated_by": None,
@@ -1693,7 +1699,7 @@ def semantic_acceptance_receipt_errors(
         "tool": SEMANTIC_ACCEPTANCE_TOOL,
         "tool_version": SEMANTIC_ACCEPTANCE_TOOL_VERSION,
         "check": SEMANTIC_ACCEPTANCE_CHECK,
-        "gate_id": "corpus-plan-semantic-acceptance",
+        "gate_id": SEMANTIC_ACCEPTANCE_SCOPE,
         "target": expected_binding["selected_profile_manifest"],
         "invalidated_by": None,
     }
@@ -2040,7 +2046,7 @@ def _receipts_for(result, *, repository_snapshot_sha256=None):
     for seq, error in enumerate(result["errors"], 1):
         receipts.append(kblib.make_receipt(
             TOOL, TOOL_VERSION, error["check"], error["target"], "fail",
-            error["details"], seq))
+            error["details"], seq, root=result.get("root")))
     return receipts
 
 

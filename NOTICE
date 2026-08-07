@@ -3,3 +3,11 @@ Copyright 2026 KimGLee
 
 The Apache-2.0-licensed portion of this distribution is identified in
 LICENSE.md.
+
+Material that has moved out of the Apache-2.0 portion into the CC BY 4.0
+portion is listed in the Relicensing Record of LICENSE.md. As of 2026-08-06
+that list holds one entry: the closed membership registry of
+profile-overridable execution defaults and constitutional constants, moved
+from Tools/schemas/execution_defaults.template.yaml to
+"kernel/K00 Standards Control/execution-defaults-base.yaml". Its earlier
+Apache-2.0 release is not withdrawn.

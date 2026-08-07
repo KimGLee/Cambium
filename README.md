@@ -68,9 +68,17 @@ Cambium separates durable work units from execution contexts.
   batches concurrently.
 - A **subagent** is a child execution context created by a runtime. It is not a
   separate Cambium work unit or authority class and may act as a worker,
-  researcher, or independent reviewer.
-- A logical **integrator** exclusively controls shared state, batch activation,
-  queue changes, and serial merges.
+  researcher, or independent reviewer. Acting as the independent reviewer is
+  the narrowest of those roles: [`K12/12 Substantive Correctness
+  Review`](<kernel/K12 Quality Assurance/12 Substantive Correctness Review.md>)
+  requires a subagent started with a clean context and carrying no author
+  context, whose input is only the note body and its Sources. An ordinary child
+  context that inherits the author's context does not satisfy it.
+- A logical **integrator** exclusively controls the shared state named in
+  [`K13/10 Concurrent Batches and Merge`](<kernel/K13 Task Runtime and Execution Control/10 Concurrent Batches and Merge.md>):
+  guidance disposition, Queue structural revision, Queue state transition,
+  contract changes, Standards adoption, batch activation, and merging. That
+  module states the enumeration; this list is a reader's summary of it.
 
 The active-batch concurrency limit is not an agent-count limit. Concurrent
 workers produce isolated batch outputs; the integrator merges those outputs
@@ -122,9 +130,11 @@ earlier persistent task was interrupted:
 `state/`, `work_specs/`, `deltas/`, and `receipts/` are durable. Reports are
 projections, not tool inputs, and `tmp/` is ignored by Git; a surviving writer
 lock remains recovery evidence until its operation is reconciled. Cambium
-publishes the schemas and conformance fixtures; an adopter creates its own
-runtime state with `Tools/init_state.py` after selecting a profile and defining
-a task. The tool
+publishes the schemas under `Tools/schemas/`; a conformance fixture suite is
+planned rather than shipped, and this repository carries none today (see
+[`ROADMAP.md`](ROADMAP.md) `Observability And Conformance`). An adopter creates
+its own runtime state with `Tools/init_state.py` after selecting a profile and
+defining a task. The tool
 requires an explicit objective and exclusions, does not invent Required work,
 and does not overwrite any existing `.cambium/` namespace.
 If the namespace already exists, a restarted or newly assigned Agent first

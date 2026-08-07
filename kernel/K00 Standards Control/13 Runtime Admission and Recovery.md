@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/K00 Standards Overview|K00 Standards Overview]].
 - Previous: [[kernel/K00 Standards Control/12 Control Registry|Control Registry]].
+- Next: [[kernel/K00 Standards Control/14 Card And Read Set Skeleton|Card And Read Set Skeleton]].
 
 ## Purpose And Ownership
 

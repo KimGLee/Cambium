@@ -40,9 +40,11 @@
 #   required_queue_sha256         : SHA-256 over the exact Queue bytes checked
 #   remaining_required_work_units : non-terminal Required work-unit count
 #   queue_check_mode              : consistency, require-ready:<id>,
+#                                   require-revalidation:<batch-id>,
 #                                   require-complete,
 #                                   require-maintenance-complete, or resume-status
-#                                   (bound to checker version)
+#                                   (the complete set, bound to checker version;
+#                                   `check_queue.py` argparse is its owner)
 # A successful `consistency` receipt also carries
 # `repository_snapshot_sha256`: a path-sensitive SHA-256 over every regular
 # repository file except the root `.git/` and `.cambium/` namespaces. The
@@ -71,15 +73,28 @@
 # repository-snapshot change makes the semantic acceptance stale. The decision
 # plan lives only under `.cambium/deltas/corpus-plan-acceptances/`; no Markdown
 # report is a receipt input or output.
-# Current stable-Gate producer protocols are: check_links 1.5.0 /
+# Examples of current stable-Gate producer protocols -- not the complete set;
+# the Stable Gate ID Registry in K00/12 is the only complete enumeration of
+# registered Gate IDs and their producers: check_links 1.5.0 /
 # wiki-link-integrity; check_vocab 1.4.0 / frontmatter-vocabulary;
 # check_residual_content 1.1.0 / registered-residual-content;
 # check_batch_close 1.2.0 / batch-close; check_proof 1.14.0 /
-# terminal-proof; and adopt_standards 1.1.0 / standards-adoption. Every receipt
+# terminal-proof; and adopt_standards 1.1.0 / standards-adoption. Deterministic
+# producers not shown above -- among them check_queue, check_corpus_plan, and
+# record_corpus_acceptance -- follow the same rule. Every receipt
 # created by one of these producer versions carries that exact Gate ID. The
 # Stable Gate ID Registry's Tool/Tool-version/Check/Mode tuple selects the
 # canonical summary or aggregator from the producer's diagnostic/member
 # receipts and fails closed on a version mismatch.
+# Every registered Gate producer additionally binds the current Required Queue
+# identity -- `task_id`, `standards_version`, `selected_profile_manifest` --
+# read from `.cambium/state/required_queue.yaml`, because a Standards
+# revalidation boundary consumes a Gate receipt only when those three equal the
+# live Queue values. `adopt_standards.py` binds the planned post-adoption
+# identity, since its receipts are built before the state write and consumed
+# after it. A run outside any Cambium runtime (no `.cambium/state/`) omits the
+# three fields rather than writing null: an omitted field claims nothing, while
+# an explicit null would satisfy consumers that only test field presence.
 # `open -> merge-ready` additionally consumes one current in-batch wrapper:
 #   tool                    : manual-attestation
 #   tool_version            : 1.0.0

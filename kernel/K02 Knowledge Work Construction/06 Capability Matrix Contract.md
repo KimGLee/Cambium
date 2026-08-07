@@ -20,7 +20,11 @@ restricted-YAML document has exactly `schema_version: 1` and `capabilities`.
 Each capability record has exactly `capability_id`, `capability`, `priority`,
 `map_entry_ids`, `canonical_markdown_paths`, `current_level`, `target_level`,
 `evidence_paths`, and `gap_ids`. The four multi-value fields are explicit YAML
-lists, including when empty. `priority` is exactly `P0`, `P1`, or `P2`.
+lists in every record, written as a list even when that list is empty.
+`map_entry_ids` and `canonical_markdown_paths` each carry at least one value
+and are never empty; `evidence_paths` and `gap_ids` are the two that may be
+empty, and the level rules below state when each MUST NOT be. `priority` is
+exactly `P0`, `P1`, or `P2`.
 
 `current_level` and `target_level` come from the selected profile's declared
 scale, whose explicit integer rank is contiguous from `0` and orders values
@@ -29,7 +33,10 @@ values may use any registered scale row. Every canonical
 path shares a Profile Scope directory with at least one linked Map Entry; a
 leaf owner does not become a global navigation entry merely because the Matrix
 uses it. A capability below target names at least one Gap ID, and each
-Matrix/Gap link is bidirectional.
+Matrix/Gap link is bidirectional. A capability whose `current_level` is any
+scale row above rank `0` MUST name at least one evidence path; only a
+capability still at rank `0`, the scale's lowest row, leaves `evidence_paths`
+empty.
 
 A capability passes only when its current rank is at least its target rank,
 the target scale row is eligible, and a current

@@ -62,6 +62,19 @@ Closed rows:
 - boundary: `boundary_id`, `predicate_ids`, `target_kind`, `target_ids`,
   `required_gate_ids`.
 
+Boundary `target_kind` is one of six values. Only `batch` names its enforcement
+scope by itself; the other five reach a rerun only through invalidated evidence
+whose `revalidation_scope_ids` name Queue batches, because a deferred gate is
+claimed at a batch transition. A boundary reaching no batch by either route is
+rejected, not recorded as protection nothing applies.
+
+| `target_kind` | `target_ids` resolve against | Own enforcement point |
+|---|---|---|
+| `batch` | the Required Queue | each `required_gate_ids` entry holds that batch's next transition |
+| `receipt` | the current receipt catalog | none |
+| `task` | exactly the plan's `task_id` | none |
+| `terminal-audit`, `maintenance-completion`, `profile-load` | unresolved | none |
+
 IDs/references must resolve. Invalidated-evidence `reason_code` is
 `predicate-changed`, `receipt-schema-changed`, `profile-binding-changed`, or
 `gate-semantics-changed`. Managed paths are repository-contained/non-symlinked.

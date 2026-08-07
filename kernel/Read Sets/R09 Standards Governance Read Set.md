@@ -25,6 +25,9 @@ First read:
 - [[kernel/K00 Standards Control/08 Maintenance Run Envelope|Maintenance Run Envelope]]
 - [[kernel/K00 Standards Control/09 Default Constraints Snapshot|Default Constraints Snapshot]]
 - [[kernel/K00 Standards Control/10 Batch Execution Checklist|Batch Execution Checklist]]
+- [[kernel/K00 Standards Control/14 Card And Read Set Skeleton|Card And Read Set Skeleton]]
+- [[kernel/K00 Standards Control/15 Read Set Loading Boundaries|Read Set Loading Boundaries]]
+- [[kernel/K00 Standards Control/16 Leaf Module Size Register|Leaf Module Size Register]]
 - [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis|Guidance Classification and Impact Analysis]], [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching|Guidance Disposition and Safe Switching]], and [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|Amendment Log and Controlled Replanning]] (when the revision involves an active-task Amendment; preserve the current-registration versus historical-verification boundary)
 - [[kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - Profile input for the applicable branch:
@@ -49,7 +52,7 @@ First read:
 
 - Use [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]] to verify directories, MOC, and coverage.
 - Use [[kernel/K12 Quality Assurance/10 Standards Version Adoption|Standards Version Adoption]] as the sole owner of affected-task compatibility, targeted invalidation, and required gate reruns. After governance closure, hand each validated agent-readable plan to R07; K13/15's writer performs the runtime transaction. R09 neither duplicates those rules nor mutates active-task state.
-- When the revision adds, retires, or re-scopes a check, use [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]] to fix the item's receipt dimension, audit layer, audit object, and evidence role before the revision closes.
+- When the revision adds, retires, or re-scopes a check, use [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|Judgment Item Dimension Map]] and [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|Cross-page and Control-plane Dimension Map]] to fix the item's receipt dimension, audit layer, audit object, and evidence role before the revision closes.
 - Use [[kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]] to verify vault-wide incoming links.
 - When rendering policy, diagrams, tables, formulas, assets, or host behavior are involved, use [[kernel/K12 Quality Assurance/02 Rendering Verification|Rendering Verification]] to select and record the actual level.
 - Use [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]] to close the governance task.

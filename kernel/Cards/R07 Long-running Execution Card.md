@@ -16,8 +16,10 @@ source_files:
   - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
   - kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md
   - kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries.md
+  - kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production.md
   - kernel/K13 Task Runtime and Execution Control/07 Progress Ledger Contract.md
   - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
+  - kernel/K13 Task Runtime and Execution Control/09 Queue Compilation Replanning and Views.md
   - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
   - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
@@ -30,7 +32,7 @@ source_files:
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'b34507dc2eb7'
+source_hash: '52a15b31357d'
 ---
 # R07 Long-running Execution Card
 
@@ -76,4 +78,4 @@ Each batch follows the fixed loop: version/Guidance self-check → `check_queue.
 
 ## Read Back When
 
-Read R07 Read Set and the canonical owner for full Guidance dispositions, concurrent-write boundaries, receipt fingerprints, invalidation propagation, adoption execution/recovery, checkpoint recovery, or Terminal Proof fields.
+Read R07 Read Set and the canonical owner for full Guidance dispositions, concurrent-write boundaries, receipt fingerprints, invalidation propagation, adoption execution/recovery, checkpoint recovery, or Terminal Proof fields. Read the Gate Receipt Payload Contract before recording or accepting a `manual-attestation` receipt, and the Resume Next Action Vocabulary for the exact token a resume scan reported.

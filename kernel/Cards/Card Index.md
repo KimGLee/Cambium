@@ -7,7 +7,7 @@ source_files:
   - kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md
   - kernel/K00 Standards Control/02 Task Routing.md
   - kernel/K00 Standards Control/03 Standards Governance.md
-source_hash: '0df1fe2b1ace'
+source_hash: 'a01c61bb4df4'
 route_registry:
   - route_id: R01
     path: "kernel/Cards/R01 Core Bootstrap Card.md"
@@ -93,7 +93,7 @@ the same `route_id`.
 - Long-running work combines R07 with the content route.
 - Targeted or specialized audits combine R12 with every route relevant to the findings.
 - Corpus-planning changes use R13; content production, batch execution, migration, and audit still combine their own routes.
-- Task completion candidates combine R08 with every route relevant to the completion predicates; R08 uses R12 for the bounded review inside Terminal Audit.
+- Task completion candidates combine R08 with every route relevant to the completion predicates; R08 uses R12 for the bounded review inside Terminal Audit. The combinations are owned by [[kernel/K00 Standards Control/02 Task Routing|Task Routing]].
 - Governance decisions load R09 and read its Read Set source text in full; the
   Card is navigation only.
 - A profile extension uses its own namespaced identity and loads alongside a

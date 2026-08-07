@@ -400,6 +400,85 @@ def profile_slot_bindings(manifest_text, include_duplicates=False):
     return bindings
 
 
+PROFILE_OVERRIDES_SECTION = "Execution Default Overrides"
+PROFILE_TABLE_SEPARATOR_RE = re.compile(r":?-{2,}:?")
+
+
+class ProfileOverrideRowError(ValueError):
+    """An override row whose shape no resolver may silently interpret."""
+
+
+def profile_execution_default_overrides(manifest_text):
+    """Return the manifest's ``Execution Default Overrides`` rows as a mapping.
+
+    One reader for the whole sparse table, so every owner tool that resolves
+    one of its items sees the same rows.  ``check_profile.py`` owns whether a
+    row is admissible (closed item registry, exactly two cells, no duplicate,
+    no redundant ``use-kernel-default``); this reader only reports what the
+    manifest declares.  Values are returned as the manifest's raw strings with
+    surrounding backticks removed, because each item's type, unit, and range
+    belong to that item's kernel owner, not here.  Fenced examples are ignored
+    and a repeated item keeps its last row, matching the shape validator.
+
+    A data row that is not exactly two cells, or whose item cell is empty,
+    raises :class:`ProfileOverrideRowError`.  Dropping such a row would leave a
+    resolver reporting the kernel default for an item the manifest does declare
+    -- the one outcome a reader must never produce, because a declared value
+    that nobody saw is indistinguishable from no declaration at all.  Reporting
+    the row is ``check_profile.py``'s ``override-row-shape``; refusing to
+    resolve from it is this reader's, and the two are not substitutes.
+    """
+    rows = []
+    inside = False
+    fence = None
+    for line in manifest_text.splitlines():
+        stripped = line.lstrip()
+        fence_match = re.match(r"^(```+|~~~+)", stripped)
+        if fence is None and fence_match:
+            fence = fence_match.group(1)[0] * 3
+            continue
+        if fence is not None:
+            if fence_match and stripped.startswith(fence):
+                fence = None
+            continue
+        heading = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
+        if heading:
+            if inside and len(heading.group(1)) <= 2:
+                break
+            inside = (len(heading.group(1)) == 2 and
+                      heading.group(2).strip() == PROFILE_OVERRIDES_SECTION)
+            continue
+        if not inside:
+            continue
+        value = line.strip()
+        if not value.startswith("|") or not value.endswith("|"):
+            continue
+        cells = [cell.replace("\\|", "|").strip()
+                 for cell in re.split(r"(?<!\\)\|", value[1:-1])]
+        if all(PROFILE_TABLE_SEPARATOR_RE.fullmatch(cell.replace(" ", ""))
+               for cell in cells if cell):
+            continue
+        rows.append(cells)
+    overrides = {}
+    # The first non-separator row is the header, exactly as the shape
+    # validator in check_profile.py treats it.
+    for number, cells in enumerate(rows[1:], start=2):
+        if len(cells) != 2:
+            raise ProfileOverrideRowError(
+                "%s data row %d has %d cell(s); every override row carries "
+                "exactly two (item ID, profile value), and a row of another "
+                "shape declares a value no resolver can read"
+                % (PROFILE_OVERRIDES_SECTION, number, len(cells)))
+        item = cells[0].strip("` ")
+        if not item:
+            raise ProfileOverrideRowError(
+                "%s data row %d names no override item; the value %r belongs "
+                "to no item ID"
+                % (PROFILE_OVERRIDES_SECTION, number, cells[1].strip("` ")))
+        overrides[item] = cells[1].strip("` ")
+    return overrides
+
+
 def _profile_binding_looks_like_path(value):
     return "/" in value or value.lower().endswith((".md", ".yaml", ".yml"))
 
@@ -538,14 +617,92 @@ def profile_identity(manifest_text, directory_name, reserved_ids=()):
 # one invocation.
 _RECEIPT_RUN_TOKEN = uuid.uuid4().hex
 
+# A Gate receipt is consumed against the canonical Required Queue identity:
+# check_queue's boundary-gate consumer requires exactly these three fields to
+# equal the live Queue values.  The canonical Queue is their sole owner, so a
+# producer binds them by reading that one file -- never by deriving them from
+# its own descriptive fields.
+RECEIPT_IDENTITY_FIELDS = ("task_id", "standards_version",
+                           "selected_profile_manifest")
+RUNTIME_STATE_PREFIX = ".cambium/state"
+RUNTIME_QUEUE_PATH = ".cambium/state/required_queue.yaml"
 
-def make_receipt(tool, tool_version, check, target, result, details, seq):
-    """Build one receipt dict; result must be pass / fail / candidate."""
+# Receipts are produced one per finding, so a large scan may build thousands of
+# them from one unchanged Queue file.  The stat signature keys the cache, so an
+# in-process rewrite of the Queue is observed rather than served from cache.
+_RUNTIME_IDENTITY_CACHE = {}
+_RUNTIME_IDENTITY_CACHE_LIMIT = 64
+
+
+def runtime_receipt_identity(root):
+    """Return the Required Queue identity fields a receipt under ``root`` binds.
+
+    The values are read from the one canonical Queue file, exactly where
+    ``check_queue`` and ``check_proof`` read them, so a producer cannot drift
+    from its consumer.
+
+    A field this function cannot read is **omitted**, never written as
+    ``null``.  Absence is the fail-closed spelling:
+
+    * the boundary-gate consumer compares ``receipt.get(field)`` against the
+      live Queue value, where an omitted field already behaves as ``null``, so
+      omission introduces no new failure mode;
+    * consumers that demand an explicit binding spell it
+      ``field not in receipt or receipt.get(field) != expected``; an explicit
+      ``null`` satisfies the presence half of that test and could admit a
+      receipt those consumers reject today -- a loosening;
+    * receipts are append-only evidence.  ``task_id: null`` asserts an identity
+      the producer never observed, which is the inference
+      ``check_queue.receipt_matches_gate_id`` exists to forbid.
+
+    Returning ``{}`` therefore covers every case with no runtime to read: the
+    Standards repository itself, an adopter who has not run ``init_state``, and
+    a ``.cambium`` tree whose Queue is unreadable, unparseable, or reached
+    through a symlink.
+    """
+    if root is None:
+        return {}
+    try:
+        queue_path = managed_repository_path(
+            root, RUNTIME_QUEUE_PATH, RUNTIME_STATE_PREFIX,
+            suffixes=(".yaml",), must_exist=True)
+        descriptor = os.stat(queue_path)
+    except (OSError, TypeError, ValueError):
+        return {}
+    if not stat.S_ISREG(descriptor.st_mode):
+        return {}
+    key = (queue_path, descriptor.st_dev, descriptor.st_ino,
+           descriptor.st_mtime_ns, descriptor.st_size)
+    identity = _RUNTIME_IDENTITY_CACHE.get(key)
+    if identity is None:
+        try:
+            queue = load_yaml_file(queue_path)
+        except (OSError, UnicodeError, ValueError):
+            queue = {}
+        identity = {field: queue[field] for field in RECEIPT_IDENTITY_FIELDS
+                    if field in queue}
+        if len(_RUNTIME_IDENTITY_CACHE) >= _RUNTIME_IDENTITY_CACHE_LIMIT:
+            _RUNTIME_IDENTITY_CACHE.clear()
+        _RUNTIME_IDENTITY_CACHE[key] = identity
+    return dict(identity)
+
+
+def make_receipt(tool, tool_version, check, target, result, details, seq,
+                 *, root=None, identity=None):
+    """Build one receipt dict; result must be pass / fail / candidate.
+
+    ``root`` binds the Required Queue identity fields read from that
+    repository's runtime state; ``identity`` supplies them directly and wins,
+    for a producer whose receipt describes a state transition and must bind the
+    post-transaction identity rather than the bytes currently on disk.  Only
+    :data:`RECEIPT_IDENTITY_FIELDS` are taken from either source, and a field
+    absent there stays absent from the receipt.
+    """
     assert result in ("pass", "fail", "candidate"), result
     now = time.time()
     checked_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now))
-    return {
+    receipt = {
         "receipt_id": "audit-%s-%s-%s-%04d" % (
             tool, stamp, _RECEIPT_RUN_TOKEN, seq),
         "check": check,
@@ -557,6 +714,12 @@ def make_receipt(tool, tool_version, check, target, result, details, seq):
         "tool_version": tool_version,
         "invalidated_by": None,
     }
+    if identity is None:
+        identity = runtime_receipt_identity(root)
+    for field in RECEIPT_IDENTITY_FIELDS:
+        if field in identity:
+            receipt[field] = identity[field]
+    return receipt
 
 
 def validate_receipt_output_path(path):
@@ -1272,11 +1435,15 @@ def repository_snapshot_sha256(root):
 
     The digest is a deterministic, path-sensitive snapshot of every regular
     file below ``root`` except the top-level ``.git`` and ``.cambium`` control
-    namespaces.  Runtime state is bound separately by Queue receipts, so
-    excluding it avoids a receipt/state hash cycle.  Symlinks and special
-    files fail closed because their target bytes are not a stable repository
-    snapshot.  Each file is checked before and after reading so an in-place
-    concurrent mutation cannot silently produce a mixed digest.
+    namespaces and every ``__pycache__`` directory at any depth.  Runtime state
+    is bound separately by Queue receipts, so excluding it avoids a
+    receipt/state hash cycle.  ``__pycache__`` is excluded because the gates
+    execute in-repository Python against the same tree they measure: importing
+    a Tools module writes bytecode into the snapshot, so a digest taken before
+    a check would no longer match the digest observed after it.  Symlinks and
+    special files fail closed because their target bytes are not a stable
+    repository snapshot.  Each file is checked before and after reading so an
+    in-place concurrent mutation cannot silently produce a mixed digest.
     """
     root_real = os.path.realpath(os.path.abspath(root))
     if not os.path.isdir(root_real):
@@ -1291,10 +1458,13 @@ def repository_snapshot_sha256(root):
         if relative_dir == ".":
             directories[:] = sorted(
                 name for name in directories
-                if name not in (".git", ".cambium")
+                if name not in (".git", ".cambium", "__pycache__")
             )
         else:
-            directories[:] = sorted(directories)
+            directories[:] = sorted(
+                name for name in directories
+                if name != "__pycache__"
+            )
         for name in directories:
             candidate = os.path.join(current, name)
             if os.path.islink(candidate):

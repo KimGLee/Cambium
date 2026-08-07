@@ -1,6 +1,24 @@
+# Global Map contract for a selected Profile's Corpus Planning slot.
+# Owner standard: "kernel/K02 Knowledge Work Construction/05 Global Map Contract.md"
+# Copy this file into the selected profile, bind it from the Corpus Planning
+# slot's `artifact_bindings.global_map`, and replace every TODO(profile).
+#
+# Two entry records ship because one is not fillable: every Profile Scope layer
+# needs at least one entry, and each dependency edge needs two different entry
+# IDs. Repeat the entry block until every layer in the selected Profile Scope
+# is represented, and the edge block once per explicit directed relationship.
+# `layer_id` values come from Profile Scope and are never redeclared here.
+# `relation_type` is exactly one of prerequisite-for, capability-input-to,
+# realized-by, evidence-input-to, system-input-to, control-input-to,
+# canonical-source-for, or downstream-impact.
+
 schema_version: 1
 
 entries:
+  - entry_id: TODO(profile)
+    layer_id: TODO(profile)
+    canonical_markdown_path: TODO(profile)
+    single_responsibility: TODO(profile)
   - entry_id: TODO(profile)
     layer_id: TODO(profile)
     canonical_markdown_path: TODO(profile)

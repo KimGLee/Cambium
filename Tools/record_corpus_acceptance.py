@@ -19,6 +19,11 @@ import kblib
 
 TOOL = check_corpus_plan.SEMANTIC_ACCEPTANCE_TOOL
 TOOL_VERSION = check_corpus_plan.SEMANTIC_ACCEPTANCE_TOOL_VERSION
+# The Gate ID and the `Check` cell K00/12 registers for this recorder
+# are owned next to K02/04's acceptance contract; this module
+# re-exports them rather than restating them.
+GATE_ID = check_corpus_plan.SEMANTIC_ACCEPTANCE_SCOPE
+GATE_CHECK = check_corpus_plan.SEMANTIC_ACCEPTANCE_CHECK
 DEFAULT_RECEIPTS = ".cambium/receipts/corpus-plan-acceptance.jsonl"
 
 
@@ -50,18 +55,21 @@ def _make_receipts(result, plan, plan_path, plan_sha, snapshot):
         1 for row in decisions if row.get("decision") == "accepted")
     rejected = len(decisions) - accepted
     semantic_result = "pass" if rejected == 0 else "fail"
+    # The validated repository root also binds the Required Queue identity a
+    # Gate consumer compares against; the artifact binding below still owns
+    # every field it declares.
     semantic = kblib.make_receipt(
         TOOL, TOOL_VERSION,
         check_corpus_plan.SEMANTIC_ACCEPTANCE_CHECK,
         result["profile_manifest"], semantic_result,
         "authority_role=%s; accepted=%d; rejected=%d" %
         (plan["authority_role_id"], accepted, rejected),
-        2,
+        2, root=result.get("root"),
     )
     semantic.update(check_corpus_plan.receipt_binding(
         result, repository_snapshot_sha256=snapshot))
     semantic.update({
-        "gate_id": "corpus-plan-semantic-acceptance",
+        "gate_id": GATE_ID,
         "acceptance_id": plan["acceptance_id"],
         "acceptance_plan_path": plan_path,
         "acceptance_plan_sha256": plan_sha,

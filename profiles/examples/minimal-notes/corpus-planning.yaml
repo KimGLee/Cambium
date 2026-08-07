@@ -1,0 +1,23 @@
+# Minimal Notes corpus-planning slot: the inactive branch.
+# Interface: profiles/README.md#Corpus-Planning-Slot
+# `not-applicable` requires a nonempty reason, three null bindings, an empty
+# scale, and two null authority values. Nothing below is a placeholder for a
+# future `configured` plan; see profiles/examples/worked-planning/ for that
+# branch.
+
+schema_version: 1
+
+applicability:
+  state: not-applicable
+  reason: "Fewer than fifty pages maintained by one person one note at a time; no corpus-wide capability plan is needed or changed, and no multi-batch construction or migration is planned."
+
+artifact_bindings:
+  global_map: null
+  capability_matrix: null
+  gap_register: null
+
+capability_scale: []
+
+pass_authority:
+  role_id: null
+  decision_scope_id: null

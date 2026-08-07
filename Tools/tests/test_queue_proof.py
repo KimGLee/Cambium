@@ -137,6 +137,45 @@ class QueueProofStructuralTests(unittest.TestCase):
                                  result.stdout + result.stderr)
                 self.assertIn(check, result.stdout)
 
+    def test_zero_receipts_never_reads_as_nothing_in_scope(self):
+        """K12/16: silence about a dimension is not an applicability claim."""
+        for mutation, check in (
+                (lambda coverage: coverage.pop("formula_and_numeric"),
+                 "proof-dimension-missing"),
+                (lambda coverage: coverage.__setitem__(
+                    "formula_and_numeric", []),
+                 "proof-dimension-empty"),
+                (lambda coverage: coverage.__setitem__(
+                    "formula_and_numeric", "not-applicable:   "),
+                 "proof-dimension-declaration-invalid"),
+                (lambda coverage: coverage.__setitem__(
+                    "formula_and_numeric", "none found"),
+                 "proof-dimension-declaration-invalid")):
+            with self.subTest(check=check):
+                proof = dict(self.proof)
+                proof["dimension_coverage"] = dict(proof["dimension_coverage"])
+                mutation(proof["dimension_coverage"])
+                result = self.run_proof(proof)
+                self.assertEqual(
+                    1, result.returncode, result.stdout + result.stderr)
+                self.assertIn(check, result.stdout)
+                self.assertIn("formula_and_numeric", result.stdout)
+
+    def test_explicit_not_applicable_declaration_is_accepted(self):
+        proof = dict(self.proof)
+        proof["dimension_coverage"] = dict(proof["dimension_coverage"])
+        proof["dimension_coverage"]["formula_and_numeric"] = (
+            "not-applicable: no page in the frozen scope states a formula")
+        result = self.run_proof(proof)
+        self.assertNotIn("proof-dimension", result.stdout)
+
+    def test_dimension_coverage_must_be_a_mapping(self):
+        proof = dict(self.proof)
+        proof["dimension_coverage"] = []
+        result = self.run_proof(proof)
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-coverage-invalid", result.stdout)
+
     def test_receipt_output_cannot_overwrite_runtime_state(self):
         state = self.root / ".cambium/state/required_queue.yaml"
         state.parent.mkdir(parents=True)
@@ -319,23 +358,28 @@ class TerminalRuntimeClosureTests(unittest.TestCase):
     def test_pending_guidance_or_amendment_fails(self):
         progress = dict(self.progress)
         progress["guidance_queue"] = [
-            {"id": "G-1", "status": "mapped"},
+            {"guidance_id": "G-1", "disposition": "queue-next",
+             "status": "mapped"},
         ]
         progress["amendments"] = [
             {"id": "A-1", "status": "approved", "writeback_done": False},
             {"id": "A-2", "status": "verified", "writeback_done": False},
         ]
-        checks = self.checks(check_proof._validate_terminal_progress_state(
+        failures = check_proof._validate_terminal_progress_state(
             self.proof, progress
-        ))
+        )
+        checks = self.checks(failures)
         self.assertIn("progress-guidance-pending", checks)
+        self.assertIn("guidance 'G-1' has non-final status 'mapped'",
+                      "\n".join(detail for _, _, detail in failures))
         self.assertIn("progress-amendment-pending", checks)
         self.assertIn("progress-amendment-writeback-pending", checks)
 
     def test_explicit_final_guidance_dispositions_are_not_pending(self):
         progress = dict(self.progress)
         progress["guidance_queue"] = [
-            {"id": "G-1", "status": status}
+            {"guidance_id": "G-1", "disposition": "queue-next",
+             "status": status}
             for status in sorted(check_proof.FINAL_GUIDANCE_STATUSES)
         ]
         progress["amendments"] = [
@@ -519,9 +563,34 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
                 repository_snapshot_sha256=
                     kblib.repository_snapshot_sha256(self.root),
             ))
+        # AuditPlan-completed records carrying an explicit K12/07 dimension, so
+        # the Proof's per-dimension accounting has real evidence to resolve
+        # against. Two are hand-recorded verdicts; two complete the script-level
+        # Queue and Corpus Planning receipts, which K12/07 requires when a
+        # script receipt enters the Audit Receipt Register (its `receipt_id`
+        # becomes the completed record's `evidence_ref`).
+        self.dimension_receipts = {}
+        dimension_lines = []
+        for index, (dimension, evidence_ref) in enumerate((
+                ("structure_and_links", None),
+                ("content_and_depth", None),
+                ("coverage_and_integration", self.receipt_id),
+                ("guidance_and_contract", corpus_receipt["receipt_id"]),
+        ), start=1):
+            record = kblib.make_receipt(
+                "manual-attestation", "1.0.0", "audit_dimension",
+                "frozen snapshot", "pass",
+                "fixture %s verdict for the frozen snapshot" % dimension,
+                index)
+            record["dimension"] = dimension
+            if evidence_ref is not None:
+                record["evidence_ref"] = evidence_ref
+            self.dimension_receipts[dimension] = record["receipt_id"]
+            dimension_lines.append(json.dumps(record, sort_keys=True) + "\n")
         register.write_text(
             json.dumps(receipt, sort_keys=True) + "\n" +
-            json.dumps(corpus_receipt, sort_keys=True) + "\n",
+            json.dumps(corpus_receipt, sort_keys=True) + "\n" +
+            "".join(dimension_lines),
             encoding="utf-8",
         )
 
@@ -558,6 +627,25 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
                 ".cambium/receipts/terminal-full.jsonl",
             "incremental_manual_scope": [],
             "corpus_plan_semantic_acceptance_receipt": None,
+            "dimension_coverage": {
+                "structure_and_links": [
+                    self.dimension_receipts["structure_and_links"]],
+                "content_and_depth": [
+                    self.dimension_receipts["content_and_depth"]],
+                "coverage_and_integration": [
+                    self.dimension_receipts["coverage_and_integration"]],
+                "guidance_and_contract": [
+                    self.dimension_receipts["guidance_and_contract"]],
+                "formula_and_numeric":
+                    "not-applicable: the frozen one-batch fixture scope states "
+                    "no formula, symbol, numeric example, or metric provenance",
+                "source_and_currentness":
+                    "not-applicable: the fixture scope cites no external "
+                    "source and carries no time-sensitive claim",
+                "rendering":
+                    "not-applicable: visual_trigger: not_applicable, matching "
+                    "rendering_evidence",
+            },
         })
         self.proof_path = receipt_dir / "terminal-proof.yaml"
         self.proof_path.write_text(
@@ -662,6 +750,137 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             "proof-corpus-plan-receipt-not-current",
             [failure[0] for failure in failures],
         )
+
+    def rewrite_dimension_coverage(self, mutate):
+        proof = kblib.load_yaml_file(self.proof_path)
+        mutate(proof["dimension_coverage"])
+        self.proof_path.write_text(
+            kblib.canonical_yaml(proof), encoding="utf-8")
+
+    def test_base_dimension_without_evidence_or_declaration_fails_closed(self):
+        """A dimension nobody ran must not pass by having no receipts."""
+        self.rewrite_dimension_coverage(
+            lambda coverage: coverage.pop("formula_and_numeric"))
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-missing", result.stdout)
+        self.assertIn("formula_and_numeric", result.stdout)
+
+    def test_dimension_receipt_absent_from_the_register_fails_closed(self):
+        self.rewrite_dimension_coverage(
+            lambda coverage: coverage.__setitem__(
+                "formula_and_numeric",
+                ["audit-manual-attestation-20260804T000000Z-"
+                 "99999999999999999999999999999999-0001"]))
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-receipt-missing", result.stdout)
+
+    def test_receipt_filed_under_another_dimension_fails_closed(self):
+        def move_content_receipt(coverage):
+            coverage["content_and_depth"] = (
+                "not-applicable: moved for this fixture")
+            coverage["formula_and_numeric"] = [
+                self.dimension_receipts["content_and_depth"]]
+
+        self.rewrite_dimension_coverage(move_content_receipt)
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-receipt-mismatch", result.stdout)
+
+    def test_receipt_cited_under_two_dimensions_fails_closed(self):
+        self.rewrite_dimension_coverage(
+            lambda coverage: coverage.__setitem__(
+                "formula_and_numeric",
+                [self.dimension_receipts["structure_and_links"]]))
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-receipt-duplicate", result.stdout)
+
+    def rewrite_register_record(self, receipt_id, mutate):
+        """Apply one mutation to a record of the Audit Receipt Register."""
+        register = self.root / ".cambium/receipts/terminal.jsonl"
+        records = [json.loads(line) for line in register.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        matched = False
+        for record in records:
+            if record.get("receipt_id") == receipt_id:
+                mutate(record)
+                matched = True
+        self.assertTrue(matched, receipt_id)
+        register.write_text("".join(
+            json.dumps(record, sort_keys=True) + "\n" for record in records),
+            encoding="utf-8")
+
+    def test_invalidated_dimension_receipt_fails_closed(self):
+        self.rewrite_register_record(
+            self.dimension_receipts["content_and_depth"],
+            lambda record: record.__setitem__(
+                "invalidated_by", "audit-superseding-review"))
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-receipt-invalidated", result.stdout)
+
+    def test_dimension_receipt_without_a_dimension_field_fails_closed(self):
+        """Absence must not be read as agreement with the citing dimension."""
+        self.rewrite_register_record(
+            self.dimension_receipts["content_and_depth"],
+            lambda record: record.pop("dimension"))
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-receipt-mismatch", result.stdout)
+        self.assertIn("content_and_depth", result.stdout)
+
+    def test_dimensionless_receipt_cannot_be_moved_to_another_dimension(self):
+        """The exact bypass: strip `dimension`, then cite it elsewhere."""
+        self.rewrite_register_record(
+            self.dimension_receipts["content_and_depth"],
+            lambda record: record.pop("dimension"))
+
+        def move_content_receipt(coverage):
+            coverage["content_and_depth"] = (
+                "not-applicable: moved for this fixture")
+            coverage["formula_and_numeric"] = [
+                self.dimension_receipts["content_and_depth"]]
+
+        self.rewrite_dimension_coverage(move_content_receipt)
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-receipt-mismatch", result.stdout)
+
+    def test_failed_dimension_receipt_cannot_carry_a_dimension(self):
+        """A recorded failure verdict is not completion evidence."""
+        self.rewrite_register_record(
+            self.dimension_receipts["structure_and_links"],
+            lambda record: record.__setitem__("result", "fail"))
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-receipt-not-passed", result.stdout)
+        self.assertIn("structure_and_links", result.stdout)
+
+    def test_candidate_dimension_receipt_fails_closed(self):
+        self.rewrite_register_record(
+            self.dimension_receipts["structure_and_links"],
+            lambda record: record.__setitem__("result", "candidate"))
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-receipt-not-passed", result.stdout)
+
+    def test_dimension_receipt_without_a_result_fails_closed(self):
+        self.rewrite_register_record(
+            self.dimension_receipts["structure_and_links"],
+            lambda record: record.pop("result"))
+        result = self.run_proof()
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("proof-dimension-receipt-not-passed", result.stdout)
+
+    def test_k12_07_passed_spelling_is_accepted(self):
+        """The AuditReceipt shape writes `passed`; it is a passing verdict."""
+        self.rewrite_register_record(
+            self.dimension_receipts["structure_and_links"],
+            lambda record: record.__setitem__("result", "passed"))
+        result = self.run_proof()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
     def test_same_bytes_in_substitute_ledger_paths_cannot_pass(self):
         substitute_progress = self.root / "progress-substitute.yaml"

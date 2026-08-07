@@ -59,14 +59,21 @@ import kblib
 TOOL = "check_links"
 TOOL_VERSION = "1.5.0"
 GATE_ID = "wiki-link-integrity"
+# The `Check` cell K00/12 registers for this Gate; every receipt this
+# tool offers as gate evidence carries it verbatim.
+GATE_CHECK = "link-check-summary"
 
 LINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
 
 
-def _make_receipt(check, target, result, details, seq):
-    """Build one producer-era link receipt with its stable Gate ID."""
+def _make_receipt(check, target, result, details, seq, root=None):
+    """Build one producer-era link receipt with its stable Gate ID.
+
+    ``root`` binds the Required Queue identity a Gate consumer compares
+    against; outside a Cambium runtime those fields stay absent.
+    """
     receipt = kblib.make_receipt(
-        TOOL, TOOL_VERSION, check, target, result, details, seq)
+        TOOL, TOOL_VERSION, check, target, result, details, seq, root=root)
     receipt["gate_id"] = GATE_ID
     return receipt
 
@@ -171,7 +178,7 @@ def main():
             "scan-empty", target, "fail",
             "effective scan set contains no .md files (path missing, empty, "
             "or fully excluded); a zero-file scan cannot serve as a gate "
-            "result", 1)]
+            "result", 1, root=args.vault_root)]
         print("check_links: scanned 0 file(s) — FAIL: effective scan set is empty")
         kblib.write_receipts(args.receipts, receipts)
         return kblib.exit_code(receipts)
@@ -214,14 +221,17 @@ def main():
                     seq += 1
                     receipts.append(_make_receipt(
                         "link-missing", where, "fail",
-                        "[[%s]] has no matching target (missing)" % m.group(1), seq))
+                        "[[%s]] has no matching target (missing)" % m.group(1),
+                        seq, root=args.vault_root))
                     continue
                 if status == "ambiguous":
                     counts["ambiguous"] += 1
                     seq += 1
                     receipts.append(_make_receipt(
                         "link-ambiguous", where, "fail",
-                        "[[%s]] has multiple basename matches (ambiguous): %s" % (m.group(1), "; ".join(resolved)), seq))
+                        "[[%s]] has multiple basename matches (ambiguous): %s"
+                        % (m.group(1), "; ".join(resolved)), seq,
+                        root=args.vault_root))
                     continue
                 # Target page retired/merged: candidate (K03/03 requires inbound
                 # links to be repointed to the successor page), not a fail
@@ -236,7 +246,8 @@ def main():
                         receipts.append(_make_receipt(
                             "link-retired-target", where, "candidate",
                             "[[%s]] points to page %s with lifecycle: %s; consider repointing to the successor page (%s; K03/03 retirement gate)"
-                            % (m.group(1), resolved, life["lifecycle"], hint), seq))
+                            % (m.group(1), resolved, life["lifecycle"], hint),
+                            seq, root=args.vault_root))
                 if heading:
                     if heading.startswith("^"):
                         counts["block_ref_skipped"] += 1  # block references cannot be checked deterministically
@@ -247,15 +258,18 @@ def main():
                         seq += 1
                         receipts.append(_make_receipt(
                             "link-bad-heading", where, "fail",
-                            "[[%s]]: heading '%s' does not exist in target %s" % (m.group(1), heading, resolved), seq))
+                            "[[%s]]: heading '%s' does not exist in target %s"
+                            % (m.group(1), heading, resolved), seq,
+                            root=args.vault_root))
 
     problems = counts["missing"] + counts["ambiguous"] + counts["bad_heading"]
     if problems == 0:
         seq += 1
         receipts.append(_make_receipt(
-            "link-check-summary",
+            GATE_CHECK,
             (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
-            "missing=0 ambiguous=0 bad_heading=0 (%d link(s) total)" % counts["links"], seq))
+            "missing=0 ambiguous=0 bad_heading=0 (%d link(s) total)"
+            % counts["links"], seq, root=args.vault_root))
 
     print("check_links: scanned %d file(s), %d link(s)" % (len(scan_files), counts["links"]))
     print("  missing=%(missing)d ambiguous=%(ambiguous)d bad_heading=%(bad_heading)d "

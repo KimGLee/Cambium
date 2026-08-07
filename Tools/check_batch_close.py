@@ -51,6 +51,9 @@ import kblib
 TOOL = "check_batch_close"
 TOOL_VERSION = "1.2.0"
 GATE_ID = "batch-close"
+# The `Check` cell K00/12 registers for this Gate; every receipt this
+# tool offers as gate evidence carries it verbatim.
+GATE_CHECK = "batch_close_gate"
 DEFAULT_RECEIPTS = ".cambium/receipts/batch-close.jsonl"
 MAX_CHECK_SECONDS = 60
 IDENTITY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]*\Z")
@@ -58,12 +61,17 @@ SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 
-def _make_receipt(tool, tool_version, check, target, result, details, seq):
-    """Build one producer-era batch-close receipt with its stable Gate ID."""
+def _make_receipt(tool, tool_version, check, target, result, details, seq,
+                  root=None):
+    """Build one producer-era batch-close receipt with its stable Gate ID.
+
+    ``root`` binds the Required Queue identity a Gate consumer compares
+    against; outside a Cambium runtime those fields stay absent.
+    """
     if tool != TOOL or tool_version != TOOL_VERSION:
         raise ValueError("check_batch_close receipt producer identity drift")
     receipt = kblib.make_receipt(
-        tool, tool_version, check, target, result, details, seq)
+        tool, tool_version, check, target, result, details, seq, root=root)
     receipt["gate_id"] = GATE_ID
     return receipt
 
@@ -721,24 +729,13 @@ def _profile_scan_command(root, runtime):
 
 def _priority_quotas(root, runtime):
     p0, p1 = 15.0, 35.0
-    text = Path(_manifest_path(root, runtime)).read_text(encoding="utf-8")
-    inside = False
-    for line in text.splitlines():
-        heading = re.match(r"^##\s+(.+?)\s*$", line)
-        if heading:
-            inside = heading.group(1).strip() == "Execution Default Overrides"
-            continue
-        if not inside:
-            continue
-        cells = _split_pipe_row(line)
-        if len(cells) != 2 or _table_separator(cells):
-            continue
-        item = cells[0].strip("` ")
-        value = cells[1].strip("` %")
-        if item not in ("priority_quota.P0", "priority_quota.P1"):
+    overrides = kblib.profile_execution_default_overrides(
+        Path(_manifest_path(root, runtime)).read_text(encoding="utf-8"))
+    for item in ("priority_quota.P0", "priority_quota.P1"):
+        if item not in overrides:
             continue
         try:
-            number = float(value)
+            number = float(overrides[item].strip("% "))
         except ValueError:
             raise ValueError("%s override is not a numeric percent" % item)
         if not 0 <= number <= 100:
@@ -811,7 +808,7 @@ def _member_receipt(field, run, snapshot, runtime, item, integrator,
                     reviewer, accepted_candidates, sequence):
     receipt = _make_receipt(
         TOOL, TOOL_VERSION, "closed_list_%s" % field, ".", "pass",
-        run["details"], sequence,
+        run["details"], sequence, root=runtime.get("root"),
     )
     receipt.update({
         "task_id": runtime["queue"].get("task_id"),
@@ -852,7 +849,8 @@ def _append_receipts(path, receipts):
 def _failure_receipt(attempt_id, root, batch, details, snapshot=None,
                      runtime=None):
     receipt = _make_receipt(
-        TOOL, TOOL_VERSION, "batch_close_gate", batch, "fail", details, 1)
+        TOOL, TOOL_VERSION, GATE_CHECK, batch, "fail", details, 1,
+        root=root)
     receipt["receipt_id"] = attempt_id
     receipt["batch_id"] = batch
     if snapshot:
@@ -951,8 +949,9 @@ def main(argv=None):
         return 1
     delta_apply_receipt = current[0].get("selected_receipt")
     attempt_id = _make_receipt(
-        TOOL, TOOL_VERSION, "batch_close_gate", args.batch, "candidate",
-        "batch-close evidence is being produced", 9999)["receipt_id"]
+        TOOL, TOOL_VERSION, GATE_CHECK, args.batch, "candidate",
+        "batch-close evidence is being produced", 9999,
+        root=root)["receipt_id"]
     pre_snapshot = kblib.repository_snapshot_sha256(root)
     operation = {
         "tool": TOOL,
@@ -1144,7 +1143,8 @@ def main(argv=None):
 
             attestation = _make_receipt(
                 TOOL, TOOL_VERSION, "batch_global_review_attestation",
-                args.batch, "pass", args.review_attestation.strip(), 8)
+                args.batch, "pass", args.review_attestation.strip(), 8,
+                root=root)
             attestation.update({
                 "task_id": runtime["queue"].get("task_id"),
                 "batch_id": args.batch,
@@ -1162,7 +1162,7 @@ def main(argv=None):
             global_review = _make_receipt(
                 TOOL, TOOL_VERSION, "batch_global_review", args.batch,
                 "pass", "declared reviewer attestation recorded for the seven-member merged-snapshot review",
-                9)
+                9, root=root)
             global_review.update({
                 "task_id": runtime["queue"].get("task_id"),
                 "batch_id": args.batch,
@@ -1190,9 +1190,9 @@ def main(argv=None):
                 records.append(corpus_plan_receipt)
 
             aggregator = _make_receipt(
-                TOOL, TOOL_VERSION, "batch_close_gate", args.batch, "pass",
+                TOOL, TOOL_VERSION, GATE_CHECK, args.batch, "pass",
                 "seven Closed List checks passed and declared review attestation was recorded",
-                11)
+                11, root=root)
             aggregator["receipt_id"] = attempt_id
             aggregator.update({
                 "task_id": runtime["queue"].get("task_id"),

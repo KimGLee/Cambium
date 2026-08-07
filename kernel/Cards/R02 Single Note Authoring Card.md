@@ -19,7 +19,8 @@ source_files:
   - kernel/K10 Writing and Formatting/01 Naming Language and Prose.md
   - kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
-source_hash: 'e623d0a2e6c8'
+  - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
+source_hash: '3448317cdbc1'
 ---
 # R02 Single Note Authoring Card
 
@@ -27,7 +28,7 @@ source_hash: 'e623d0a2e6c8'
 
 ## Use When
 
-Create, rewrite, or target one canonical note. Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]] and the selected profile's `Language Contract`. Combine another Card when source intake, module construction, migration, or long-running execution is involved.
+Create, rewrite, or target one canonical note. Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]] and the selected profile's `Language Contract` and `Vocabulary Extensions`. Combine another Card when source intake, module construction, migration, or long-running execution is involved.
 
 ## Before Start
 
@@ -35,7 +36,7 @@ Create, rewrite, or target one canonical note. Load [[kernel/Cards/R01 Core Boot
 - [ ] Search for an existing synonymous owner; expand it rather than creating a competing definition.
 - [ ] Choose the applicable concept, process, system, or source/evaluation structure.
 - [ ] Resolve prerequisite, parent, key dependency, source, and terminology needs.
-- [ ] Apply the selected profile's language and vocabulary values without weakening kernel ownership or quality rules.
+- [ ] Apply the `Language Contract` values and any `Vocabulary Extensions` field the selected profile registers, without weakening kernel ownership or quality rules.
 
 ## During
 

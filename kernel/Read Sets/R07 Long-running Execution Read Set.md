@@ -22,6 +22,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - [[kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries|Corpus Planning Runtime Audit and Gate Boundaries]]
 - [[kernel/K13 Task Runtime and Execution Control/07 Progress Ledger Contract|Progress Ledger Contract]]
 - [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue Contract and Lifecycle]]
+- [[kernel/K13 Task Runtime and Execution Control/09 Queue Compilation Replanning and Views|Queue Compilation Replanning and Views]]
 - [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]]
 - [[kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover|Interruption Recovery and Rollover]]
 - [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]]
@@ -46,6 +47,8 @@ the planning artifacts, and no persisted planning report is an input.
 - Closing a guidance amendment: read [[kernel/K12 Quality Assurance/04 Guidance and Source Review|Guidance and Source Review]].
 - New source-driven batch: read [[kernel/K06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]].
 - Batch activation, resume, or completion entry finds the active Standards/Profile identity differs from the contract-frozen one: read [[kernel/K12 Quality Assurance/10 Standards Version Adoption|Standards Version Adoption]] for the already-approved plan semantics, then [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction|Standards Adoption State Transaction]] to dry-run, apply, or recover the sole controlled writer. R07 executes or resumes this handoff; it does not redefine the governance revision or changed predicates.
+- A gate receipt is recorded by hand or offered as current authorization at a boundary: read [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract|Gate Receipt Payload Contract]] for the payload a consumer compares and the actor who may record a `manual-attestation` one.
+- A resume scan reports a `next_action` token: read [[kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary|Resume Next Action Vocabulary]] for what that exact token selects; K13/14 owns the obligation to consume the reported token rather than infer a fresh start.
 - A resumed or active task must create, change, or reconcile the Global Map, Capability Matrix, Gap Register, or a semantic-gap handoff: combine [[kernel/Read Sets/R13 Corpus Planning Read Set|Corpus Planning]]. Query the current validated plan with `check_corpus_plan.py --json`; do not restore from a copied planning report.
 
 ## Gate

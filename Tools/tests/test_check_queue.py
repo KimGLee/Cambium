@@ -170,6 +170,196 @@ class QueueFixture(unittest.TestCase):
         )
         return lock
 
+    # --- K13/10 admission condition 2 (control / hub pages) helpers ---
+
+    def write_page(self, relative, text):
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def set_coverage_page_field(self, page_path, field, value):
+        coverage = kblib.load_yaml_file(self.coverage_path)
+        page = next(entry for entry in coverage["pages"]
+                    if entry["path"] == page_path)
+        page[field] = value
+        self.coverage_path.write_text(kblib.canonical_yaml(coverage),
+                                      encoding="utf-8")
+        self.refresh_initial_origin()
+
+    def set_execution_mode(self, batch_id, mode):
+        coverage = kblib.load_yaml_file(self.coverage_path)
+        next(entry for entry in coverage["batch_specs"]
+             if entry["id"] == batch_id)["execution_mode"] = mode
+        self.coverage_path.write_text(kblib.canonical_yaml(coverage),
+                                      encoding="utf-8")
+        queue = self.queue()
+        next(entry for entry in queue["required_queue"]
+             if entry["id"] == batch_id)["execution_mode"] = mode
+        self.write_queue(queue)
+        self.refresh_initial_origin()
+
+    def register_expression_layer(self, rows, binding="`expression-layer.md`"):
+        """Register dependency-map rows in the fixture profile's slot."""
+        manifest = self.root / "profiles/test-profile/profile.md"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8") +
+            "\n## Implemented Slots\n\n- `Expression Layer Entry`: %s\n" %
+            binding,
+            encoding="utf-8",
+        )
+        if rows is None:
+            return
+        table = ["# Expression Layer", "", "## Registered Artifacts", "",
+                 "- Registration: Configured", "", "| Property | Value |",
+                 "|---|---|"]
+        for label, value in rows:
+            table.append("| %s | %s |" % (label, value))
+        (self.root / "profiles/test-profile/expression-layer.md").write_text(
+            "\n".join(table) + "\n", encoding="utf-8")
+
+    def blocked_reasons(self, batch_id):
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        return result, dict(result["blocked"]).get(batch_id, [])
+
+
+class HubPageAdmissionTests(QueueFixture):
+    """K13/10 concurrency admission condition 2."""
+
+    def test_existing_hub_page_in_manifest_blocks_activation(self):
+        self.write_page("Topics/A.md", "---\ntype: overview\n---\n\n# A\n")
+        result, reasons = self.blocked_reasons("B1")
+        self.assertNotIn("B1", result["ready"])
+        joined = "; ".join(reasons)
+        self.assertIn("existing control or hub page(s): Topics/A.md", joined)
+        self.assertIn("type=overview", joined)
+        self.assertIn("exclusive", joined)
+        self.assertIn("serial-integrator", joined)
+        completed = self.run_cli("--require-ready", "B1")
+        self.assertEqual(2, completed.returncode, completed.stdout)
+        self.assertIn("existing control or hub page(s)", completed.stdout)
+        self.assertIn("exclusive or serial-integrator", completed.stdout)
+
+    def test_runtime_card_and_card_index_types_are_hub_pages(self):
+        for page_type in ("runtime-card", "card-index"):
+            with self.subTest(page_type=page_type):
+                self.write_page("Topics/A.md",
+                                "---\ntype: %s\n---\n\n# A\n" % page_type)
+                _, reasons = self.blocked_reasons("B1")
+                self.assertIn("type=%s" % page_type, "; ".join(reasons))
+
+    def test_shared_term_page_is_a_hub_page(self):
+        self.write_page("Topics/A.md",
+                        "---\ntype: term\nscope: shared\n---\n\n# A\n")
+        _, reasons = self.blocked_reasons("B1")
+        self.assertIn("type=term scope=shared", "; ".join(reasons))
+
+    def test_term_page_outside_shared_scope_is_not_a_hub_page(self):
+        for scope in ("domain-specific", "case-specific", "source-specific"):
+            with self.subTest(scope=scope):
+                self.write_page(
+                    "Topics/A.md",
+                    "---\ntype: term\nscope: %s\n---\n\n# A\n" % scope)
+                result, reasons = self.blocked_reasons("B1")
+                self.assertEqual([], reasons)
+                self.assertIn("B1", result["ready"])
+                self.assertEqual(
+                    [], result["hub_page_admission"]["B1"]["blocking"])
+
+    def test_ordinary_page_without_frontmatter_is_not_a_hub_page(self):
+        result, reasons = self.blocked_reasons("B1")
+        self.assertEqual([], reasons)
+        self.assertIn("B1", result["ready"])
+
+    def test_hub_page_created_by_this_batch_is_a_candidate_not_a_blocker(self):
+        (self.root / "Topics/A.md").unlink()
+        self.set_coverage_page_field("Topics/A.md", "type", "overview")
+        result, reasons = self.blocked_reasons("B1")
+        self.assertEqual([], reasons)
+        self.assertIn("B1", result["ready"])
+        self.assertEqual(["Topics/A.md (Coverage type=overview)"],
+                         result["hub_page_admission"]["B1"]["candidates"])
+        completed = self.run_cli("--require-ready", "B1")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertIn("hub_page_candidates=Topics/A.md (Coverage type=overview)",
+                      completed.stdout)
+
+    def test_serial_integrator_batch_may_edit_hub_pages(self):
+        self.write_page("Topics/A.md", "---\ntype: overview\n---\n\n# A\n")
+        self.set_execution_mode("B1", "serial-integrator")
+        result, reasons = self.blocked_reasons("B1")
+        self.assertEqual([], reasons)
+        self.assertIn("B1", result["ready"])
+        self.assertNotIn("B1", result["hub_page_admission"])
+        completed = self.run_cli("--require-ready", "B1")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+
+    def test_expression_layer_registered_dependency_map_is_a_hub_page(self):
+        self.register_expression_layer([
+            ("Stable artifact ID", "`probe`"),
+            ("Existing canonical dependency-map path", "`Topics/A.md`"),
+        ])
+        _, reasons = self.blocked_reasons("B1")
+        self.assertIn("Topics/A.md (Expression Layer Entry)",
+                      "; ".join(reasons))
+
+    def test_registered_dependency_map_not_yet_created_is_a_candidate(self):
+        (self.root / "Topics/A.md").unlink()
+        self.register_expression_layer([
+            ("Existing canonical dependency-map ID/path", "`Topics/A.md`"),
+        ])
+        result, reasons = self.blocked_reasons("B1")
+        self.assertEqual([], reasons)
+        self.assertEqual(["Topics/A.md (Expression Layer Entry)"],
+                         result["hub_page_admission"]["B1"]["candidates"])
+
+    def test_unfilled_or_opaque_dependency_map_cells_are_skipped(self):
+        self.register_expression_layer([
+            ("Existing canonical dependency-map ID/path", "TODO(profile)"),
+            ("Existing canonical dependency-map path", "`None`"),
+            ("Existing canonical dependency-map ID", "`atlas-map-01`"),
+        ])
+        paths, errors = check_queue.profile_hub_paths(
+            str(self.root), "profiles/test-profile/profile.md")
+        self.assertEqual(set(), paths)
+        self.assertEqual([], errors)
+
+    def test_profile_without_expression_layer_slot_still_classifies(self):
+        paths, errors = check_queue.profile_hub_paths(
+            str(self.root), "profiles/test-profile/profile.md")
+        self.assertEqual(set(), paths)
+        self.assertEqual([], errors)
+        self.write_page("Topics/A.md", "---\ntype: overview\n---\n\n# A\n")
+        _, reasons = self.blocked_reasons("B1")
+        self.assertIn("type=overview", "; ".join(reasons))
+
+    def test_declared_expression_layer_slot_that_cannot_be_read_fails_closed(self):
+        self.register_expression_layer(None)
+        result, reasons = self.blocked_reasons("B1")
+        self.assertNotIn("B1", result["ready"])
+        joined = "; ".join(reasons)
+        self.assertIn("hub set cannot be derived", joined)
+        self.assertIn("serial-integrator", joined)
+
+    def test_unclassifiable_manifest_page_is_not_silently_admitted(self):
+        for body in ("---\ntype: overview\n\n# A\n",
+                     "---\ntype: overview\n  stray: 1\n---\n\n# A\n",
+                     "---\n- overview\n---\n\n# A\n"):
+            with self.subTest(body=body):
+                self.write_page("Topics/A.md", body)
+                result, reasons = self.blocked_reasons("B1")
+                self.assertNotIn("B1", result["ready"])
+                self.assertIn("cannot be classified against K13/10 hub roles",
+                              "; ".join(reasons))
+
+    def test_shipped_example_profile_registration_is_parsed(self):
+        paths, errors = check_queue.profile_hub_paths(
+            str(REPO), "profiles/examples/agent-atlas/profile.md")
+        self.assertEqual([], errors)
+        self.assertEqual({"Interview Preparation/Interview Overview.md"},
+                         paths)
+
 
 class CheckQueueTests(QueueFixture):
     def test_simple_batch_work_spec_pair_is_explicit_and_closed(self):
@@ -1345,6 +1535,152 @@ class CheckQueueTests(QueueFixture):
                     check_queue.validate_runtime(self.root)["errors"])
                 self.assertIn(expected, errors)
 
+    def write_guidance_queue(self, entries):
+        progress = kblib.load_yaml_file(self.progress_path)
+        progress["guidance_queue"] = entries
+        self.progress_path.write_text(kblib.canonical_yaml(progress),
+                                      encoding="utf-8")
+        self.refresh_initial_origin()
+        return progress
+
+    def guidance_errors(self):
+        return "\n".join(
+            error for error in check_queue.validate_runtime(self.root)["errors"]
+            if "guidance_queue" in error
+        )
+
+    def test_guidance_records_use_kernel_field_names_and_closed_values(self):
+        self.write_guidance_queue([
+            {"guidance_id": "G-%03d" % index, "disposition": disposition,
+             "status": "verified"}
+            for index, disposition in enumerate(
+                sorted(check_queue.GUIDANCE_DISPOSITIONS), start=1)
+        ])
+        self.assertEqual("", self.guidance_errors())
+
+    def test_guidance_record_rejects_retired_field_names(self):
+        self.write_guidance_queue([
+            {"id": "G-001", "class": "apply-to-current-batch",
+             "status": "verified"},
+        ])
+        errors = self.guidance_errors()
+        self.assertIn("Progress guidance_queue[0] misses explicit field(s): "
+                      "disposition, guidance_id", errors)
+        self.assertIn("Progress guidance_queue[0] has unsupported field(s): "
+                      "class, id", errors)
+
+    def test_guidance_disposition_and_status_domains_are_closed(self):
+        cases = (
+            ("unknown disposition",
+             {"guidance_id": "G-001", "disposition": "NOT-A-DISPOSITION-AT-ALL",
+              "status": "verified"},
+             "Progress guidance_queue[0] disposition has invalid value "
+             "'NOT-A-DISPOSITION-AT-ALL'"),
+            ("status borrowed from the disposition list",
+             {"guidance_id": "G-001", "disposition": "queue-next",
+              "status": "queue-next"},
+             "Progress guidance_queue[0] status has invalid value "
+             "'queue-next'"),
+            ("misspelled final status",
+             {"guidance_id": "G-001", "disposition": "queue-next",
+              "status": "verifed"},
+             "Progress guidance_queue[0] status has invalid value 'verifed'"),
+        )
+        for label, entry, expected in cases:
+            with self.subTest(label=label):
+                self.write_guidance_queue([entry])
+                self.assertIn(expected, self.guidance_errors())
+
+    def test_guidance_id_uniqueness_and_intermediate_status_stay_pending(self):
+        progress = self.write_guidance_queue([
+            {"guidance_id": "G-001", "disposition": "queue-next",
+             "status": "mapped"},
+            {"guidance_id": "G-001", "disposition": "queue-next",
+             "status": "verified"},
+        ])
+        self.assertIn("Progress guidance_queue repeats guidance_id G-001",
+                      self.guidance_errors())
+        # `mapped` is an intermediate K13/06 status: structurally valid, and it
+        # keeps the guidance pending for resume and batch close.
+        pending_guidance, _ = check_queue._pending_control_ids(progress)
+        self.assertEqual(["G-001"], pending_guidance)
+
+    def test_last_reconciled_guidance_id_is_derived_not_stored(self):
+        progress = self.write_guidance_queue([
+            {"guidance_id": "G-001", "disposition": "queue-next",
+             "status": "verified"},
+            {"guidance_id": "G-002", "disposition": "queue-next",
+             "status": "mapped"},
+            {"guidance_id": "G-003", "disposition": "queue-next",
+             "status": "received"},
+            {"guidance_id": "G-004", "disposition": "queue-next",
+             "status": "verified"},
+        ])
+        # The boundary is the longest recorded prefix that has left
+        # `received`; the entries after it stay in pending_guidance.
+        self.assertEqual("G-002",
+                         check_queue._last_reconciled_guidance_id(progress))
+        self.assertEqual(["G-002", "G-003"],
+                         check_queue._pending_control_ids(progress)[0])
+        # No checkpoint slot is created for it.
+        self.assertNotIn("last_reconciled_guidance_id",
+                         check_queue.CHECKPOINT_FIELDS)
+        checkpoint = dict(progress["checkpoint"] or {})
+        checkpoint["last_reconciled_guidance_id"] = "G-004"
+        progress["checkpoint"] = checkpoint
+        self.progress_path.write_text(kblib.canonical_yaml(progress),
+                                      encoding="utf-8")
+        self.assertIn(
+            "Progress checkpoint has unsupported field(s): "
+            "last_reconciled_guidance_id",
+            "\n".join(check_queue.validate_runtime(self.root)["errors"]))
+
+    def test_derived_guidance_boundary_is_monotone_over_mixed_dispositions(self):
+        cases = (
+            ("empty queue", [], None),
+            ("only unreconciled",
+             [{"guidance_id": "G-001", "disposition": "queue-next",
+               "status": "received"}], None),
+            ("superseded and deferred still count as reconciled",
+             [{"guidance_id": "G-001", "disposition": "superseded",
+               "status": "superseded"},
+              {"guidance_id": "G-002", "disposition": "deferred",
+               "status": "deferred"},
+              {"guidance_id": "G-003", "disposition": "queue-next",
+               "status": "mapped"}], "G-003"),
+            ("a new received entry does not lower the boundary",
+             [{"guidance_id": "G-001", "disposition": "superseded",
+               "status": "superseded"},
+              {"guidance_id": "G-002", "disposition": "deferred",
+               "status": "deferred"},
+              {"guidance_id": "G-003", "disposition": "queue-next",
+               "status": "mapped"},
+              {"guidance_id": "G-004", "disposition": "queue-next",
+               "status": "received"}], "G-003"),
+        )
+        for label, entries, expected in cases:
+            with self.subTest(label=label):
+                self.assertEqual(
+                    expected,
+                    check_queue._last_reconciled_guidance_id(
+                        {"guidance_queue": entries}))
+
+    def test_resume_status_reports_the_derived_guidance_boundary(self):
+        receipt_path = ".cambium/receipts/resume.jsonl"
+        self.write_guidance_queue([
+            {"guidance_id": "G-001", "disposition": "apply-to-current-batch",
+             "status": "verified"},
+            {"guidance_id": "G-002", "disposition": "queue-next",
+             "status": "mapped"},
+        ])
+        completed = self.run_cli("--resume-status", "--receipts", receipt_path)
+        self.assertEqual(2, completed.returncode, completed.stdout)
+        self.assertIn("last_reconciled_guidance_id=G-002", completed.stdout)
+        self.assertIn("pending_guidance=G-002", completed.stdout)
+        receipt = json.loads(
+            (self.root / receipt_path).read_text(encoding="utf-8"))
+        self.assertEqual("G-002", receipt["last_reconciled_guidance_id"])
+
     def test_unknown_coverage_disposition_cannot_disappear_from_queue(self):
         coverage = kblib.load_yaml_file(self.coverage_path)
         coverage["pages"][1]["coverage_disposition"] = "reuqired"
@@ -1674,6 +2010,7 @@ class CheckQueueTests(QueueFixture):
                 "queue_revision=1", "state_revision=0",
                 "checkpoint.recorded_at=None",
                 "checkpoint.binding=initial",
+                "last_reconciled_guidance_id=none",
                 "task_transition.latest=none",
                 "next_action=activate-ready-batch:B1",
                 "batches.queued=B1,B2",
@@ -1956,6 +2293,72 @@ class CheckQueueTests(QueueFixture):
             "batch: UNKNOWN\npages: []\n", encoding="utf-8")
         errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
         self.assertIn("unknown batch UNKNOWN", errors)
+
+    def init_profile_repo(self, override_rows=""):
+        fresh = Path(self.tmp.name) / ("cap-%d" % len(
+            list(Path(self.tmp.name).glob("cap-*"))))
+        (fresh / "profiles" / "sample").mkdir(parents=True)
+        (fresh / "profiles" / "sample" / "profile.md").write_text(
+            "# Profile\n\n## Profile Identity\n\n"
+            "- `profile_id`: `sample`\n\n"
+            "## Execution Default Overrides\n\n"
+            "| Override item ID from the registry | Non-default profile value |\n"
+            "|---|---|\n" + override_rows, encoding="utf-8")
+        return fresh
+
+    def run_init(self, root, *extra):
+        return subprocess.run(
+            [sys.executable, str(TOOLS / "init_state.py"), str(root),
+             "--task-id", "cap-task", "--objective", "Exercise the cap",
+             "--exclude", "Do not infer Required work",
+             "--scope-version", "s1", "--completion-semantics", "build",
+             "--standards-version", "3.0.0", "--profile-manifest",
+             "profiles/sample/profile.md", "--at", "2026-08-04T00:00:00Z",
+             "--apply", *extra],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+
+    def test_profile_manifest_concurrency_cap_override_reaches_progress(self):
+        fresh = self.init_profile_repo("| `concurrency_cap` | `5` |\n")
+        completed = self.run_init(fresh)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertIn("concurrency_cap=5 (resolved from profile-manifest)",
+                      completed.stdout)
+        progress = kblib.load_yaml_file(fresh / check_queue.PROGRESS_PATH)
+        self.assertEqual(5, progress["contract"]["concurrency_cap"])
+
+    def test_unregistered_override_keeps_the_kernel_default_cap(self):
+        fresh = self.init_profile_repo()
+        completed = self.run_init(fresh)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertIn("concurrency_cap=3 (resolved from kernel-default)",
+                      completed.stdout)
+        progress = kblib.load_yaml_file(fresh / check_queue.PROGRESS_PATH)
+        self.assertEqual(3, progress["contract"]["concurrency_cap"])
+
+    def test_two_explicit_concurrency_cap_overrides_must_agree(self):
+        fresh = self.init_profile_repo("| `concurrency_cap` | `5` |\n")
+        conflicting = self.run_init(fresh, "--concurrency-cap", "2")
+        self.assertEqual(1, conflicting.returncode, conflicting.stdout)
+        self.assertIn("contradicts the selected profile manifest's registered "
+                      "concurrency_cap 5", conflicting.stdout)
+        self.assertFalse((fresh / ".cambium").exists())
+        agreeing = self.run_init(fresh, "--concurrency-cap", "5")
+        self.assertEqual(0, agreeing.returncode, agreeing.stdout)
+        self.assertIn("concurrency_cap=5 (resolved from "
+                      "task-contract+profile-manifest)", agreeing.stdout)
+
+    def test_unusable_profile_concurrency_cap_fails_closed(self):
+        for value in ("many", "0", "-1", "2.5"):
+            with self.subTest(value=value):
+                fresh = self.init_profile_repo(
+                    "| `concurrency_cap` | `%s` |\n" % value)
+                completed = self.run_init(fresh)
+                self.assertEqual(1, completed.returncode, completed.stdout)
+                self.assertIn("K13/10 requires a positive integer",
+                              completed.stdout)
+                self.assertFalse((fresh / ".cambium").exists())
 
     def test_init_creates_empty_state_without_fake_work_and_refuses_overwrite(self):
         fresh = Path(self.tmp.name) / "fresh"

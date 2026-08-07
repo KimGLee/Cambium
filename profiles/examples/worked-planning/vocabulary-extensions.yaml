@@ -1,0 +1,20 @@
+# Worked Planning profile vocabulary extensions.
+# Interface: profiles/README.md#Vocabulary-Extensions-Slot
+#
+# One kernel-field extension only. No expression artifact is registered, so the
+# readiness-axis mapping shipped by profiles/_template/ has been deleted.
+
+schema_version: 1
+
+# No freeform profile fields.
+frontmatter_extensions:
+  fields: []
+
+fields:
+  type:
+    values:
+      - service-case
+
+# key = domain ID; value = fast | slow | stable
+volatility_defaults:
+  wheel-service: slow

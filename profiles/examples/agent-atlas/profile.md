@@ -22,7 +22,7 @@ Normative interface: [Profile interface](../../README.md). Example namespace rul
 
 ## Execution Default Overrides
 
-Allowed items: [execution-default registry](../../../Tools/schemas/execution_defaults.template.yaml).
+Allowed items: [execution-default registry](../../../kernel/K00%20Standards%20Control/execution-defaults-base.yaml).
 
 | Override item ID from the registry | Non-default profile value |
 |---|---|

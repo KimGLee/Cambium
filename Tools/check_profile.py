@@ -4,9 +4,11 @@
 Rule owners:
 - "profiles/README.md" (the normative profile interface: which slots exist and
   what constrains each; the Execution Default Overrides Contract);
-- "Tools/schemas/execution_defaults.template.yaml" (the canonical membership
-  registry for the overridable / constitutional split, reserved profile_id
-  values, and the unfilled sentinel).
+- "kernel/K00 Standards Control/execution-defaults-base.yaml" (the canonical
+  membership registry for the overridable / constitutional split, and the
+  admissible value form of an item whose owner module fixes one);
+- "Tools/schemas/execution_defaults.template.yaml" (executor-side placeholder
+  configuration only: reserved profile_id values and the unfilled sentinel).
 
 What this script is for: a profile copied from `profiles/_template/` is a
 skeleton of constraints and TODOs, not a runnable profile. Nothing in prose can
@@ -27,7 +29,10 @@ Method:
   path. Anything else is unrecognized.
 - Execution Default Overrides: the table contains only explicit overrides;
   sparse-default semantics are owned by the profile interface. Duplicate,
-  unknown, default-restating, and constitutional rows fail.
+  unknown, default-restating, and constitutional rows fail, and so does a row
+  whose value leaves the `value_domain` the kernel registry records for that
+  item. An item the registry gives no `value_domain` is left to its owner
+  module; this script invents no bound of its own.
 - Corpus Planning: the bound slot is a closed restricted-YAML document whose
   applicability, three artifact bindings, ordered capability scale, and pass
   authority are validated directly; Markdown declaration heuristics do not
@@ -60,6 +65,7 @@ Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
 Usage: python3 check_profile.py <profile_dir> [--root VAULT_ROOT]
        [--interface profiles/README.md]
        [--defaults Tools/schemas/execution_defaults.template.yaml]
+       [--execution-defaults "kernel/K00 Standards Control/execution-defaults-base.yaml"]
        [--receipts PATH]
 """
 
@@ -78,6 +84,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DEFAULT_INTERFACE = "profiles/README.md"
 DEFAULT_DEFAULTS = "Tools/schemas/execution_defaults.template.yaml"
+DEFAULT_EXECUTION_DEFAULTS = (
+    "kernel/K00 Standards Control/execution-defaults-base.yaml"
+)
 
 MANIFEST_NAME = "profile.md"
 SLOT_SUFFIX = " Slot"
@@ -104,6 +113,33 @@ CORPUS_ARTIFACT_FIELDS = {
 CORPUS_SCALE_FIELDS = {"rank", "value", "predicate", "target_eligible"}
 CORPUS_AUTHORITY_FIELDS = {"role_id", "decision_scope_id"}
 CORPUS_DECISION_SCOPE = "corpus-plan-semantic-acceptance"
+
+
+def _positive_integer_domain(value):
+    """A whole count of one or more, written without sign, unit, or decimals."""
+    if not re.fullmatch(r"[0-9]+", value) or int(value) < 1:
+        return "expected a positive integer"
+    return None
+
+
+def _percent_domain(value):
+    """A percentage of the corpus, optionally carrying a trailing `%`."""
+    number = value[:-1].strip() if value.endswith("%") else value
+    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", number):
+        return "expected a number, optionally followed by `%`"
+    if not 0 <= float(number) <= 100:
+        return "expected a percentage between 0 and 100"
+    return None
+
+
+# Admissible value forms a `value_domain` in the kernel execution-default
+# registry may name.  The registry decides which item carries which form; this
+# table only implements the form, and an unknown name is reported rather than
+# silently treated as "anything goes".
+VALUE_DOMAINS = {
+    "positive-integer": _positive_integer_domain,
+    "percent-0-100": _percent_domain,
+}
 
 
 def blank_fenced(text):
@@ -410,8 +446,12 @@ def main():
                     help="normative slot interface file "
                          "(default: %s under --root)" % DEFAULT_INTERFACE)
     ap.add_argument("--defaults", default=None,
-                    help="machine-readable execution default registry "
+                    help="machine-readable profile-form placeholder registry "
                          "(default: %s under --root)" % DEFAULT_DEFAULTS)
+    ap.add_argument("--execution-defaults", default=None,
+                    help="kernel execution-default override registry "
+                         "(default: %s under --root)"
+                         % DEFAULT_EXECUTION_DEFAULTS)
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
     args = ap.parse_args()
 
@@ -420,6 +460,8 @@ def main():
     profile_disp = os.path.relpath(profile_dir, root).replace(os.sep, "/")
     interface_path = args.interface or os.path.join(root, DEFAULT_INTERFACE)
     defaults_path = args.defaults or os.path.join(root, DEFAULT_DEFAULTS)
+    execution_defaults_path = (args.execution_defaults or
+                               os.path.join(root, DEFAULT_EXECUTION_DEFAULTS))
 
     receipts = []
     seq = 0
@@ -462,16 +504,29 @@ def main():
         defaults = kblib.parse_yaml_subset(read_text(defaults_path))
     except (OSError, kblib.YamlSubsetError) as exc:
         add("defaults-unreadable", DEFAULT_DEFAULTS, "fail",
-            "cannot read/parse the execution default registry: %s" % exc)
+            "cannot read/parse the profile-form placeholder registry: %s" % exc)
         print("check_profile: FAIL — cannot read defaults %s: %s" % (defaults_path, exc))
+        kblib.write_receipts(args.receipts, receipts)
+        return kblib.exit_code(receipts)
+
+    try:
+        execution_defaults = kblib.parse_yaml_subset(
+            read_text(execution_defaults_path))
+    except (OSError, kblib.YamlSubsetError) as exc:
+        add("execution-defaults-unreadable", DEFAULT_EXECUTION_DEFAULTS, "fail",
+            "cannot read/parse the kernel execution-default registry: %s" % exc)
+        print("check_profile: FAIL — cannot read execution defaults %s: %s"
+              % (execution_defaults_path, exc))
         kblib.write_receipts(args.receipts, receipts)
         return kblib.exit_code(receipts)
 
     sentinel = str(defaults.get("unfilled_sentinel") or "TODO(profile)")
     reserved_ids = {str(v) for v in (defaults.get("reserved_profile_ids") or [])}
-    overridable = [str(e.get("item")) for e in (defaults.get("overridable") or [])
-                   if isinstance(e, dict) and e.get("item")]
-    constitutional = {str(e.get("item")): e for e in (defaults.get("constitutional") or [])
+    overridable = {str(e.get("item")): e
+                   for e in (execution_defaults.get("overridable") or [])
+                   if isinstance(e, dict) and e.get("item")}
+    constitutional = {str(e.get("item")): e
+                      for e in (execution_defaults.get("constitutional") or [])
                       if isinstance(e, dict) and e.get("item")}
 
     manifest_text = read_text(manifest_path)
@@ -663,6 +718,26 @@ def main():
                 add("override-redundant-default", target, "fail",
                     "remove `%s`; unlisted items already use the kernel default"
                     % item)
+            else:
+                entry = overridable[item]
+                domain = entry.get("value_domain")
+                if domain is None:
+                    continue
+                domain = str(domain)
+                validate = VALUE_DOMAINS.get(domain)
+                if validate is None:
+                    add("override-value-domain-unknown", target, "fail",
+                        "the registry gives `%s` the value domain %r, which "
+                        "this checker does not implement; registry and checker "
+                        "must be updated together" % (item, domain))
+                    continue
+                reason = validate(value)
+                if reason:
+                    add("override-value-domain", target, "fail",
+                        "override value `%s` for `%s` leaves its registered "
+                        "value domain %r (owner: %s): %s"
+                        % (value, item, domain,
+                           entry.get("owner", "kernel"), reason))
 
     fails = [r for r in receipts if r["result"] == "fail"]
     if not fails:

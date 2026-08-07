@@ -20,12 +20,14 @@ Concrete artifact types, display names, organization, and the readiness vocabula
 | [[kernel/K11 Expression Layer/06 Sequence and Progress Semantics\|Sequence and Progress Semantics]] | `Sequence And Progress Semantics` |
 | [[kernel/K11 Expression Layer/07 Expression Migration Audit and Acceptance\|Expression Migration Audit and Acceptance]] | `Migration Policy`, `Scoped Migration Audit`, `Candidate-only Automation`, `Acceptance Criteria` |
 
+Module 03 is retired; the gap is permanent and nothing is missing from this index. Module numbers are never reused, per the [[kernel/K00 Standards Control/03 Standards Governance#Revision Write-back Checklist|Revision Write-back Checklist]].
+
 ## Profile Interface
 
 - `Expression Layer Entry` registers the current profile's expression artifacts, entry points, and single-rule owners.
 - A profile MAY add artifact types, templates, classifications, and readiness values, but MUST NOT remove this domain's separation of responsibilities, canonical evidence, status independence, bidirectional binding, or create-before-remove invariants.
 - The kernel references only slots and abstract roles; it does not name any profile implementation directly.
-- A profile that registers no expression artifact creates no R05 task target. Once an artifact is registered and enters scope, the R05 separation, evidence, binding, migration, and acceptance floor is applicable and cannot be disabled by the profile.
+- A profile that registers no expression artifact creates no R05 task target; the agent stops rather than inventing one. Once an artifact is registered and enters scope, the R05 separation, evidence, binding, migration, and acceptance floor is applicable and cannot be disabled by the profile. The rule is owned by [[kernel/K11 Expression Layer/01 Expression Architecture and Separation#Core Separation|Core Separation]].
 
 ## Related Standards
 

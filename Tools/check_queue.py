@@ -20,6 +20,7 @@ Usage:
 
 import argparse
 import datetime
+import importlib
 import json
 import os
 import re
@@ -35,6 +36,9 @@ import maintenance_candidates
 
 TOOL = "check_queue"
 TOOL_VERSION = "1.5.0"
+# The `Check` cell K00/12 registers for every Gate this tool produces; each
+# such Gate is distinguished by `Mode`, not by a second check name.
+GATE_CHECK = "required_queue"
 REGISTER_AMENDMENT_TOOL = "register_amendment"
 REGISTER_AMENDMENT_TOOL_VERSION = "1.0.0"
 OPERATIONAL_AMENDMENT_OPERATIONS = frozenset((
@@ -98,6 +102,15 @@ INVALIDATION_FIELDS = frozenset((
     "delta_archive_path", "delta_sha256", "batch_receipts",
     "delta_gate_receipts", "revalidation_receipts",
 ))
+# A rollback taken after the delta was applied additionally names the
+# application it undoes and the byte-exact Coverage restore that undid it.
+# The three appear together or not at all: a pre-apply rollback never touched
+# Coverage and carries none of them, and a partial set would assert a restore
+# nobody can verify.
+INVALIDATION_APPLIED_ROLLBACK_FIELDS = frozenset((
+    "delta_apply_receipt", "coverage_restored_from",
+    "coverage_restored_sha256",
+))
 STATES = frozenset(("queued", "open", "merge-ready", "closed", "cancelled"))
 HOLDS = frozenset((
     "none", "confirmation-required", "blocked", "revalidation-required",
@@ -113,6 +126,22 @@ EXECUTION_MODES = frozenset(("concurrent-worker", "serial-integrator"))
 COVERAGE_DISPOSITIONS = frozenset((
     "required", "optional", "deferred", "excluded",
 ))
+
+# K13/10 concurrency admission condition 2 ("B does not edit control or hub
+# pages").  The kernel enumerates the members; these constants only spell the
+# machine judgment for that enumeration.  `type` and `scope` are the K08
+# closed vocabularies in `kernel/K08 Metadata and Status/vocabulary-base.yaml`;
+# the profile side reuses the `Expression Layer Entry` rows the selected
+# profile already registers, so no profile slot or interface is added here.
+# The kernel's "other profile-registered hub roles" clause has no registration
+# path today and therefore contributes no member; see K13/10.
+HUB_PAGE_TYPES = frozenset(("overview", "runtime-card", "card-index"))
+HUB_TERM_TYPE = "term"
+HUB_TERM_SCOPE = "shared"
+EXPRESSION_LAYER_SLOT = "Expression Layer Entry"
+HUB_DEPENDENCY_MAP_LABEL = "existing canonical dependency-map"
+HUB_EXIT_HINT = ("K13/10 admits a hub-editing batch only through an exclusive "
+                 "or serial-integrator execution mode")
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 BATCH_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\Z")
 
@@ -229,7 +258,22 @@ MAINTENANCE_COMPLETION_STATES = frozenset((
     "pending", "passed", "invalidated", "not-applicable",
 ))
 COMPLETION_SEMANTICS = frozenset(("build", "maintenance"))
-GUIDANCE_FIELDS = frozenset(("id", "class", "status"))
+# Guidance records carry the kernel's own field names.  ``guidance_id`` and
+# ``disposition`` are named by K13/06 Amendment Record; the accepted
+# dispositions are the closed list K13/05 requires for every important
+# guidance, and the accepted statuses are K13/06's recommended status values
+# plus ``not-applicable``, the disposition-closing status both this checker
+# and check_proof already treat as final.
+GUIDANCE_FIELDS = frozenset(("guidance_id", "disposition", "status"))
+GUIDANCE_DISPOSITIONS = frozenset((
+    "interrupt-now", "apply-to-current-batch", "queue-next",
+    "queue-by-dependency", "research-first", "deferred",
+    "clarification-required", "superseded", "not-applicable",
+))
+GUIDANCE_STATUSES = frozenset((
+    "received", "classified", "mapped", "in-progress", "verified",
+    "clarification-required", "deferred", "superseded", "not-applicable",
+))
 AMENDMENT_COMMON_FIELDS = frozenset((
     "id", "date", "summary", "status", "writeback_done",
 ))
@@ -238,6 +282,37 @@ STANDARDS_ADOPTION_TOOL_VERSION = "1.1.0"
 STANDARDS_ADOPTION_PLAN_PREFIX = ".cambium/deltas/standards-adoptions"
 STANDARDS_GATE_REGISTRY_PATH = \
     "kernel/K00 Standards Control/12 Control Registry.md"
+
+# --- Registered producer identity -------------------------------------------
+# K00/12 registers one producer tuple per Gate ID and K12/17 requires every
+# receipt offered for that Gate to carry it exactly.  Nothing deterministic
+# used to compare the registered tuple against the producer that actually
+# writes it, so a `Check` or `Mode` cell could disagree with its tool and the
+# only symptom would be a receipt that silently misses every boundary it was
+# recorded for.  The two tables below give the comparison its second source.
+#
+# `Check` for a Gate whose producer module does not export the name itself.
+# The value is the one this module's own consumers compare a receipt against,
+# so a drift is caught exactly where it would reject the receipt.  A module
+# that later exports `GATE_CHECK` wins, and the two are required to agree.
+CONSUMED_GATE_CHECKS = {
+    "terminal-proof": "proof-check-summary",
+    "registered-residual-content": "residual-content-summary",
+}
+# Gates whose receipts this module consumes against its own producer-identity
+# constants.  A registry row that disagrees with one of these would register a
+# producer whose receipts this consumer rejects.
+CONSUMED_PRODUCER_IDENTITY = {
+    "batch-close": (BATCH_CLOSE_TOOL, BATCH_CLOSE_TOOL_VERSION),
+    "corpus-plan-structure": (CORPUS_PLAN_TOOL, CORPUS_PLAN_TOOL_VERSION),
+    "terminal-proof": (TERMINAL_PROOF_TOOL, TERMINAL_PROOF_TOOL_VERSION),
+    "standards-adoption": (STANDARDS_ADOPTION_TOOL,
+                           STANDARDS_ADOPTION_TOOL_VERSION),
+    BATCH_REVIEW_GATE_ID: (MANUAL_ATTESTATION_TOOL,
+                           MANUAL_ATTESTATION_TOOL_VERSION),
+}
+PRODUCER_MODULE_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
+_PRODUCER_MODULE_CACHE = {}
 STANDARDS_ADOPTION_PLAN_FIELDS = frozenset((
     "schema_version", "adoption_id", "task_id", "task_state_before",
     "contract_version_before", "contract_version_after",
@@ -364,7 +439,128 @@ def standards_gate_registry(root):
         errors.append("K00/12 must contain exactly one Stable Gate ID Registry")
     if not registry:
         errors.append("Stable Gate ID Registry has no gate rows")
+    errors.extend(gate_registry_producer_errors(registry))
     return registry, errors
+
+
+def producer_module(tool):
+    """Return the installed module a registry ``Tool`` cell names, or None.
+
+    The producer is resolved next to this file rather than under the
+    repository being checked: the module that will actually run is the one
+    whose constants end up in the receipt, and an adopter's copy of the
+    Standards text never redefines that identity.
+    """
+    if tool in _PRODUCER_MODULE_CACHE:
+        return _PRODUCER_MODULE_CACHE[tool]
+    module = None
+    if isinstance(tool, str) and PRODUCER_MODULE_RE.match(tool) and \
+            os.path.isfile(os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), tool + ".py")):
+        try:
+            module = importlib.import_module(tool)
+        except Exception:  # pragma: no cover - a broken producer is an error
+            module = None
+    _PRODUCER_MODULE_CACHE[tool] = module
+    return module
+
+
+def registered_gate_check(gate_id, module):
+    """Return the check name the producer of ``gate_id`` actually writes."""
+    declared = getattr(module, "GATE_CHECK", None) if module else None
+    consumed = CONSUMED_GATE_CHECKS.get(gate_id)
+    if declared is not None and consumed is not None and declared != consumed:
+        return None
+    return declared if declared is not None else consumed
+
+
+def gate_registry_producer_errors(registry):
+    """Return every K00/12 row whose producer tuple its producer contradicts.
+
+    All four selector columns are compared against a source outside the table:
+
+    * ``Tool`` names either the ``manual-attestation`` producer class or an
+      installed module whose ``TOOL`` equals the cell.
+    * ``Tool version`` equals that module's ``TOOL_VERSION`` -- the value it
+      stamps on every receipt -- or, for a hand-recorded receipt, the single
+      current ``manual-attestation`` protocol version K00/12 states.
+    * ``Check`` equals the check name the producer writes for this Gate, and
+      ``Gate ID`` equals the Gate the producer binds, where the module
+      exports them.
+    * ``Mode`` narrows on ``queue_check_mode``, a field only ``check_queue``
+      writes.  A ``check_queue`` row therefore carries a mode that
+      :func:`queue_gate_id_for_mode` maps back to the same Gate ID, and every
+      other row carries ``*``: a narrower mode elsewhere could never match.
+
+    The four cells together are the receipt selector, so two Gate IDs may not
+    share one tuple either.  This is a judgment, not an adjudication: the
+    caller is told the two sides disagree, never which side to change.
+    """
+    errors = []
+    selectors = {}
+    for gate_id in sorted(registry):
+        predicate = registry[gate_id]
+        tool = predicate["tool"]
+        mode = predicate["mode"]
+        selector = (tool, predicate["tool_version"], predicate["check"], mode)
+        selectors.setdefault(selector, []).append(gate_id)
+        consumed = CONSUMED_PRODUCER_IDENTITY.get(gate_id)
+        if consumed is not None and consumed != (tool,
+                                                 predicate["tool_version"]):
+            errors.append(
+                "Gate ID %s registers producer %s/%s but this checker "
+                "consumes its receipts as %s/%s" % (
+                    gate_id, tool, predicate["tool_version"], *consumed))
+        if tool == TOOL:
+            probe = mode[:-1] if mode.endswith("*") else mode
+            if queue_gate_id_for_mode(probe) != gate_id:
+                errors.append(
+                    "Gate ID %s registers Mode %s, which %s does not emit for "
+                    "that Gate" % (gate_id, mode, TOOL))
+        elif mode != "*":
+            errors.append(
+                "Gate ID %s registers Mode %s, but only %s receipts carry "
+                "queue_check_mode" % (gate_id, mode, TOOL))
+        if tool == MANUAL_ATTESTATION_TOOL:
+            if predicate["tool_version"] != MANUAL_ATTESTATION_TOOL_VERSION:
+                errors.append(
+                    "Gate ID %s registers manual-attestation protocol version "
+                    "%s, not the current %s" % (
+                        gate_id, predicate["tool_version"],
+                        MANUAL_ATTESTATION_TOOL_VERSION))
+            continue
+        module = producer_module(tool)
+        if module is None or getattr(module, "TOOL", None) != tool:
+            errors.append(
+                "Gate ID %s registers Tool %s, which is not an installed "
+                "producer of that name" % (gate_id, tool))
+            continue
+        if getattr(module, "TOOL_VERSION", None) != predicate["tool_version"]:
+            errors.append(
+                "Gate ID %s registers Tool version %s but %s stamps %s" % (
+                    gate_id, predicate["tool_version"], tool,
+                    getattr(module, "TOOL_VERSION", None)))
+        declared_gate = getattr(module, "GATE_ID", None)
+        if declared_gate is not None and tool != TOOL and \
+                declared_gate != gate_id:
+            errors.append(
+                "Gate ID %s registers Tool %s, which binds %s to its receipts"
+                % (gate_id, tool, declared_gate))
+        expected_check = registered_gate_check(gate_id, module)
+        if expected_check is None:
+            errors.append(
+                "Gate ID %s registers Check %s against %s, which declares no "
+                "check name for it" % (gate_id, predicate["check"], tool))
+        elif expected_check != predicate["check"]:
+            errors.append(
+                "Gate ID %s registers Check %s but %s writes %s" % (
+                    gate_id, predicate["check"], tool, expected_check))
+    for selector, gate_ids in sorted(selectors.items()):
+        if len(gate_ids) > 1:
+            errors.append(
+                "Gate IDs %s share one receipt selector %s" % (
+                    ", ".join(gate_ids), "/".join(selector)))
+    return errors
 
 
 def receipt_matches_gate_id(receipt, gate_id, registry):
@@ -962,10 +1158,21 @@ def _progress_shape_errors(progress):
                 if not _nonempty_string(entry.get(field)):
                     errors.append("%s %s must be a non-empty string" %
                                   (label, field))
-            entry_id = entry.get("id")
+            disposition = entry.get("disposition")
+            if (_nonempty_string(disposition) and
+                    disposition not in GUIDANCE_DISPOSITIONS):
+                errors.append("%s disposition has invalid value %r" %
+                              (label, disposition))
+            status = entry.get("status")
+            if _nonempty_string(status) and status not in GUIDANCE_STATUSES:
+                errors.append("%s status has invalid value %r" %
+                              (label, status))
+            entry_id = entry.get("guidance_id")
             if _nonempty_string(entry_id):
                 if entry_id in seen:
-                    errors.append("Progress guidance_queue repeats id %s" % entry_id)
+                    errors.append(
+                        "Progress guidance_queue repeats guidance_id %s" %
+                        entry_id)
                 seen.add(entry_id)
 
     amendments = progress.get("amendments")
@@ -1752,6 +1959,34 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
     if invalidated_ids != sorted(invalidated_ids):
         errors.append(
             "Standards adoption invalidated_evidence must be sorted by receipt_id")
+
+    # K12/10: a boundary is only ever claimed at a Queue batch's next
+    # transition, either because it targets that batch or because invalidated
+    # evidence puts the batch in its revalidation scope.  A boundary that
+    # reaches neither is silently discharged, so the plan is refused instead
+    # of recording protection nothing will apply.
+    if queue is not None and boundaries:
+        enforced = set(boundary_batch_targets)
+        for evidence in invalidated:
+            if not isinstance(evidence, dict):
+                continue
+            if not any(value in queue_ids
+                       for value in evidence.get("revalidation_scope_ids") or []):
+                continue
+            enforced.update(
+                value for value in evidence.get("boundary_ids") or []
+                if _nonempty_string(value))
+        for index, boundary in enumerate(boundaries):
+            if not isinstance(boundary, dict):
+                continue
+            boundary_id = boundary.get("boundary_id")
+            if not _nonempty_string(boundary_id) or boundary_id in enforced:
+                continue
+            errors.append(
+                "invalidation_boundaries[%d] boundary %s has target_kind %r "
+                "and no invalidated evidence scoping it to a Queue batch, so "
+                "no gate rerun would ever be required for it" %
+                (index, boundary_id, boundary.get("target_kind")))
 
     if predicate_set:
         if not boundary_ids:
@@ -3879,7 +4114,7 @@ def _pending_control_ids(progress):
             if (not isinstance(entry, dict) or
                     entry.get("status") not in FINAL_CONTROL_STATUSES):
                 pending_guidance.append(str(
-                    entry.get("id") if isinstance(entry, dict) else
+                    entry.get("guidance_id") if isinstance(entry, dict) else
                     "#%d" % index))
     pending_amendments = []
     amendments = progress.get("amendments")
@@ -3894,6 +4129,34 @@ def _pending_control_ids(progress):
                      entry.get("writeback_done") is not True)):
                 pending_amendments.append(str(entry.get("id") or "#%d" % index))
     return pending_guidance, pending_amendments
+
+
+def _last_reconciled_guidance_id(progress):
+    """Derive the incremental guidance boundary named by K00/10 and K12/04.
+
+    K13/07 keeps Pending/reconciled Guidance in Progress but forbids Progress
+    holding a second authority for anything the owned records already
+    determine.  ``last_reconciled_guidance_id`` is exactly such a value: it is
+    the last entry of the longest recorded prefix that has left ``received``,
+    so it is a projection of ``guidance_queue`` rather than an independently
+    editable cursor.  ``guidance_id`` is task-local and monotonically
+    increasing (K13/06), and no status transition returns to ``received``, so
+    the projection never moves backwards.  Batch-close reconciliation still
+    carries the existing open items separately (K12/04); this boundary only
+    bounds what is *new*.
+    """
+    guidance = progress.get("guidance_queue")
+    if not isinstance(guidance, list):
+        return None
+    boundary = None
+    for entry in guidance:
+        if not isinstance(entry, dict) or entry.get("status") == "received":
+            break
+        entry_id = entry.get("guidance_id")
+        if not _nonempty_string(entry_id):
+            break
+        boundary = entry_id
+    return boundary
 
 
 def _task_transition_receipt_record_errors(
@@ -4436,6 +4699,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         "checkpoint_binding": checkpoint_binding,
         "pending_guidance": pending_guidance,
         "pending_amendments": pending_amendments,
+        "last_reconciled_guidance_id": _last_reconciled_guidance_id(progress),
     }
 
 
@@ -5677,6 +5941,171 @@ def selected_profile_manifest_errors(root, profile):
     return errors
 
 
+def _normalized_repository_path(value):
+    """Normalize one declared repository-relative path for set comparison."""
+    if not isinstance(value, str):
+        return None
+    value = check_profile.unbacktick(value).strip()
+    while value.startswith("./"):
+        value = value[2:]
+    value = value.strip("/")
+    return value or None
+
+
+def profile_hub_paths(root, profile_manifest):
+    """Return the hub pages the selected profile already registers.
+
+    K13/10 binds pages registered by the ``Expression Layer Entry`` into the
+    hub set.  That slot already records one canonical dependency-map cell per
+    registered artifact, so this reads the existing registration rather than
+    adding a profile slot.  Returns ``(paths, errors)``; a cell holding an
+    opaque ID, ``None``, or an unfilled sentinel carries no machine judgment
+    and is skipped.  Profile quality stays owned by ``check_profile.py``: an
+    error here is raised only when a declared slot cannot be read at all, so
+    the admission gate cannot silently conclude "no hub page".
+    """
+    paths = set()
+    if not _nonempty_string(profile_manifest):
+        return paths, []
+    parts = Path(profile_manifest).parts
+    if len(parts) < 3 or parts[0] != "profiles" or parts[-1] != "profile.md":
+        # The exact runtime shape is owned by
+        # selected_profile_manifest_errors; this only refuses to read a
+        # package that is not a profile manifest at all.
+        return paths, []
+    try:
+        manifest_path = kblib.repository_path(
+            root, profile_manifest, must_exist=True, reject_symlink=True)
+        manifest_text = check_profile.read_text(manifest_path)
+    except (OSError, UnicodeError, ValueError) as exc:
+        return paths, ["selected profile manifest is unreadable, so the "
+                       "K13/10 hub set cannot be derived: %s" % exc]
+    binding = kblib.profile_slot_bindings(manifest_text).get(
+        EXPRESSION_LAYER_SLOT)
+    if not _nonempty_string(binding):
+        # No slot binding at all: the profile registers no expression hub.
+        return paths, []
+    profile_dir = os.path.dirname(manifest_path)
+    kind, detail = kblib.resolve_profile_binding(binding, root, profile_dir)
+    if kind != "path":
+        return paths, [
+            "selected profile %s binding is %s, so the K13/10 hub set cannot "
+            "be derived" % (EXPRESSION_LAYER_SLOT, kind)
+        ]
+    try:
+        text = check_profile.read_text(detail)
+    except (OSError, UnicodeError, ValueError) as exc:
+        return paths, ["selected profile %s is unreadable, so the K13/10 hub "
+                       "set cannot be derived: %s" % (EXPRESSION_LAYER_SLOT,
+                                                      exc)]
+    for cells in check_profile.table_rows(text.splitlines()):
+        if len(cells) != 2:
+            continue
+        label = check_profile.unbacktick(cells[0]).strip().lower()
+        if not label.startswith(HUB_DEPENDENCY_MAP_LABEL):
+            continue
+        for declared in cells[1].split(";"):
+            candidate = _normalized_repository_path(declared)
+            if candidate is None or candidate.lower() == "none":
+                continue
+            if "TODO(" in candidate or "/" not in candidate:
+                # An unfilled sentinel or an opaque artifact ID is not a
+                # decidable repository path; check_profile owns that verdict.
+                continue
+            if _path_error(root, candidate, must_exist=False) is None:
+                paths.add(candidate)
+    return paths, []
+
+
+def _page_frontmatter(root, relative_path):
+    """Return ``(exists, fields, error)`` for one repository page.
+
+    ``fields`` is ``None`` when the page exists but its metadata cannot be
+    read, which the caller reports instead of treating as "not a hub".
+    """
+    try:
+        absolute = kblib.repository_path(root, relative_path)
+    except (OSError, ValueError) as exc:
+        return False, None, "path is unsafe: %s" % exc
+    if os.path.islink(absolute) or not os.path.isfile(absolute):
+        return False, {}, None
+    try:
+        with open(absolute, encoding="utf-8") as handle:
+            text = handle.read()
+    except (OSError, UnicodeError, ValueError) as exc:
+        return True, None, "page is unreadable: %s" % exc
+    raw = kblib.extract_frontmatter(text)
+    if raw is None:
+        if text.startswith("---\n") or text.startswith("---\r\n"):
+            return True, None, "frontmatter has no closing fence"
+        return True, {}, None
+    try:
+        fields = kblib.parse_yaml_subset(raw)
+    except (ValueError, kblib.YamlSubsetError) as exc:
+        return True, None, "frontmatter is unparsable: %s" % exc
+    if not isinstance(fields, dict):
+        return True, None, "frontmatter is not a mapping"
+    return True, fields, None
+
+
+def _hub_basis(fields):
+    """Name the K13/10 hub role a page's own metadata proves, or ``None``."""
+    page_type = fields.get("type")
+    if page_type in HUB_PAGE_TYPES:
+        return "type=%s" % page_type
+    if page_type == HUB_TERM_TYPE and fields.get("scope") == HUB_TERM_SCOPE:
+        return "type=%s scope=%s" % (HUB_TERM_TYPE, HUB_TERM_SCOPE)
+    return None
+
+
+def hub_page_admission(root, manifest, records, registered_hub_paths, cache):
+    """Classify one batch manifest against K13/10 admission condition 2.
+
+    The kernel forbids a concurrently admitted batch from *editing* a control
+    or hub page.  A hub page that already exists is an edit and blocks
+    activation; a hub page this batch creates is not, and is reported as a
+    candidate for the integrator's post-merge hub synchronization step.  This
+    only reports what the bytes say; choosing the execution mode is the
+    integrator's decision.
+    """
+    blocking = []
+    candidates = []
+    unresolved = []
+    for path in sorted(set(manifest or [])):
+        if not _nonempty_string(path):
+            continue
+        if path not in cache:
+            cache[path] = _page_frontmatter(root, path)
+        exists, fields, error = cache[path]
+        registered = path in registered_hub_paths
+        if error is not None:
+            if exists and registered:
+                blocking.append("%s (%s)" % (path, EXPRESSION_LAYER_SLOT))
+            else:
+                unresolved.append("%s (%s)" % (path, error))
+            continue
+        if exists:
+            basis = _hub_basis(fields)
+            if registered:
+                basis = EXPRESSION_LAYER_SLOT if basis is None else basis
+            if basis is not None:
+                blocking.append("%s (%s)" % (path, basis))
+            continue
+        declared = records.get(path) or {}
+        basis = None
+        if declared.get("type") in HUB_PAGE_TYPES:
+            basis = "Coverage type=%s" % declared.get("type")
+        elif registered:
+            basis = EXPRESSION_LAYER_SLOT
+        if basis is not None:
+            candidates.append("%s (%s)" % (path, basis))
+    return {
+        "blocking": blocking,
+        "candidates": candidates,
+        "unresolved": unresolved,
+    }
+
+
 def _identity(data, key, nested=False):
     if nested:
         contract = data.get("contract")
@@ -6167,6 +6596,58 @@ def _global_transition_errors(items_by_id, catalog, queue, queue_sha):
     return errors
 
 
+def _applied_rollback_restore_errors(label, record, transition, catalog,
+                                     item_id):
+    """Cross-check the recorded Coverage restore against both its witnesses.
+
+    ``coverage_restored_sha256`` is the only field in the applied-rollback
+    triple that names bytes, so a non-empty check proves nothing: any well-
+    formed digest passes.  Two independent records already state what those
+    bytes must be.  The delta application being undone archived the pre-apply
+    Coverage and recorded its path and digest; the rollback transition receipt
+    recorded the Coverage fingerprint the rollback actually left on disk.  A
+    truthful restore makes all three the same value, and a restore that put
+    other bytes in place disagrees with at least one of them.
+    """
+    errors = []
+    restored_sha = record.get("coverage_restored_sha256")
+    restored_from = record.get("coverage_restored_from")
+    if not SHA256_RE.fullmatch(restored_sha):
+        errors.append("%s coverage_restored_sha256 is invalid" % label)
+        restored_sha = None
+    if transition is not None:
+        after_coverage = transition.get("after_coverage_sha256")
+        if not SHA256_RE.fullmatch(after_coverage or ""):
+            errors.append("%s rollback transition receipt has no valid "
+                          "after_coverage_sha256 to restore against" % label)
+        elif restored_sha is not None and restored_sha != after_coverage:
+            errors.append(
+                "%s records coverage_restored_sha256=%s but its rollback "
+                "transition receipt left Coverage at %s" %
+                (label, restored_sha, after_coverage))
+    apply_receipt = _require_receipt(
+        catalog, record.get("delta_apply_receipt"),
+        "%s delta application" % label, errors,
+        expected={"check": "delta_apply", "target": item_id},
+    )
+    if apply_receipt is not None:
+        archived_path = apply_receipt.get("before_coverage_archive_path")
+        archived_sha = apply_receipt.get("before_coverage_sha256")
+        if restored_from != archived_path:
+            errors.append(
+                "%s restores from %r but delta application %s archived the "
+                "pre-apply Coverage at %r" %
+                (label, restored_from, apply_receipt.get("receipt_id"),
+                 archived_path))
+        if restored_sha is not None and restored_sha != archived_sha:
+            errors.append(
+                "%s records coverage_restored_sha256=%s but delta application "
+                "%s recorded pre-apply Coverage %s" %
+                (label, restored_sha, apply_receipt.get("receipt_id"),
+                 archived_sha))
+    return errors
+
+
 def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                           queue):
     errors = []
@@ -6596,15 +7077,32 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             errors.append("%s must be a mapping" % label)
             continue
         missing = sorted(INVALIDATION_FIELDS - set(record))
-        extra = sorted(set(record) - INVALIDATION_FIELDS)
+        extra = sorted(set(record) - INVALIDATION_FIELDS -
+                       INVALIDATION_APPLIED_ROLLBACK_FIELDS)
+        applied_present = INVALIDATION_APPLIED_ROLLBACK_FIELDS & set(record)
         if missing:
             errors.append("%s misses explicit field(s): %s" %
                           (label, ", ".join(missing)))
         if extra:
             errors.append("%s has unsupported field(s): %s" %
                           (label, ", ".join(extra)))
+        if applied_present and applied_present != \
+                INVALIDATION_APPLIED_ROLLBACK_FIELDS:
+            errors.append(
+                "%s records an applied-delta rollback but misses explicit "
+                "field(s): %s" %
+                (label, ", ".join(sorted(
+                    INVALIDATION_APPLIED_ROLLBACK_FIELDS - applied_present))))
+        for field in sorted(applied_present):
+            if not _nonempty_string(record.get(field)):
+                errors.append("%s %s must be non-empty" % (label, field))
         transition = (rollback_transitions[index]
                       if index < len(rollback_transitions) else None)
+        if applied_present == INVALIDATION_APPLIED_ROLLBACK_FIELDS and all(
+                _nonempty_string(record.get(field))
+                for field in INVALIDATION_APPLIED_ROLLBACK_FIELDS):
+            errors.extend(_applied_rollback_restore_errors(
+                label, record, transition, catalog, item_id))
         receipt_id = record.get("transition_receipt")
         if not _nonempty_string(receipt_id):
             errors.append("%s transition_receipt must be non-empty" % label)
@@ -6929,7 +7427,18 @@ def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
 
 
 def delta_apply_write_barrier(result, tool, action, target=None):
-    """Return a fail-closed writer error while an apply awaits Queue close."""
+    """Return a fail-closed writer error while an apply awaits Queue close.
+
+    An applied delta opens a strict serial critical section: Coverage already
+    carries the batch content while the Queue still says ``merge-ready``.  Two
+    writes close that window, and no others.  ``merge-ready -> closed`` is the
+    passing outcome.  ``merge-ready -> open`` is the failing one, required by
+    K00/10, K12/14 and K13/10 whenever the Batch-close Closed List rejects the
+    merge -- which can only happen after the apply, because the Closed List
+    runs against the merged snapshot.  The rollback carries its own evidence
+    (the invalidated delta archive and a byte-exact Coverage restore), so it
+    leaves the ledgers reconciled rather than diverged.
+    """
     standards_barrier = (result.get("standards_revalidation_barriers") or {}).get(
         target)
     if standards_barrier and action in ("apply", "merge-ready", "closed"):
@@ -6942,12 +7451,13 @@ def delta_apply_write_barrier(result, tool, action, target=None):
         return ("pending delta_apply state is ambiguous; repair the runtime "
                 "before any Queue/Coverage write")
     applied = current[0]
-    if (tool == "update_queue" and action == "closed" and
+    if (tool == "update_queue" and action in ("closed", "open") and
             target == applied.get("batch")):
         return None
     return ("batch %s already has current-compatible unconsumed delta_apply "
-            "receipt %s; the only allowed Queue/Coverage write is "
-            "update_queue merge-ready->closed for that batch" %
+            "receipt %s; the only allowed Queue/Coverage writes are "
+            "update_queue merge-ready->closed and the integrator-authorised "
+            "merge-ready->open rollback for that batch" %
             (applied.get("batch"), applied.get("selected_receipt")))
 
 
@@ -6983,7 +7493,7 @@ def validate_runtime(root, allowed_open_delta=None,
             "coverage_sha256": None, "queue_sha256": None,
             "progress_sha256": None, "remaining": None,
             "receipt_catalog": catalog, "writer_locks": writer_locks,
-            "managed_deltas": [],
+            "managed_deltas": [], "hub_page_admission": {},
         }
 
     coverage_sha = kblib.sha256_bytes(coverage_raw)
@@ -7514,10 +8024,31 @@ def validate_runtime(root, allowed_open_delta=None,
     active_manifest = set()
     for item in active:
         active_manifest.update(item.get("manifest") or [])
+    # K13/10 admission condition 2.  Derived once per run and only for the
+    # queued items whose activation the condition governs.
+    registered_hub_paths, hub_derivation_errors = profile_hub_paths(
+        root, queue.get("selected_profile_manifest"))
+    hub_page_cache = {}
+    hub_admission = {}
     for item_id, item in items_by_id.items():
         if item.get("state") != "queued":
             continue
         reasons = []
+        if item.get("execution_mode") != "serial-integrator":
+            hub = hub_page_admission(
+                root, item.get("manifest"), records, registered_hub_paths,
+                hub_page_cache)
+            hub_admission[item_id] = hub
+            for reason in hub_derivation_errors:
+                reasons.append("%s; %s" % (reason, HUB_EXIT_HINT))
+            if hub["blocking"]:
+                reasons.append(
+                    "batch edits existing control or hub page(s): %s; %s" %
+                    (", ".join(hub["blocking"]), HUB_EXIT_HINT))
+            if hub["unresolved"]:
+                reasons.append(
+                    "manifest page(s) cannot be classified against K13/10 hub "
+                    "roles: %s" % ", ".join(hub["unresolved"]))
         if task_state not in ("planned", "active"):
             reasons.append("task_state=%s forbids activation" % task_state)
         pending_amendments = _pending_cross_ledger_amendments(progress)
@@ -7634,6 +8165,7 @@ def validate_runtime(root, allowed_open_delta=None,
     }
     return {
         "root": root, "errors": errors, "ready": ready, "blocked": blocked,
+        "hub_page_admission": hub_admission,
         "queue": queue, "coverage": coverage, "progress": progress,
         "queue_path": queue_path, "coverage_sha256": coverage_sha,
         "queue_sha256": queue_sha, "progress_sha256": progress_sha,
@@ -7660,7 +8192,8 @@ def validate_runtime(root, allowed_open_delta=None,
 def make_check_receipt(result, outcome, details, mode,
                        confirmation_receipt=None, runtime_errors=None,
                        maintenance_context=None,
-                       standards_revalidation_context=None):
+                       standards_revalidation_context=None,
+                       hub_page_candidates=None):
     """Build the canonical receipt for one already-evaluated Queue result.
 
     This is the canonical construction path for ``check_queue`` receipt bytes.
@@ -7670,7 +8203,7 @@ def make_check_receipt(result, outcome, details, mode,
     does not authenticate the caller or stop another writer copying labels.
     """
     receipt = kblib.make_receipt(
-        TOOL, TOOL_VERSION, "required_queue", QUEUE_PATH, outcome,
+        TOOL, TOOL_VERSION, GATE_CHECK, QUEUE_PATH, outcome,
         details, 1,
     )
     if result.get("queue_sha256"):
@@ -7691,6 +8224,11 @@ def make_check_receipt(result, outcome, details, mode,
             "standards_version")
         receipt["selected_profile_manifest"] = result["queue"].get(
             "selected_profile_manifest")
+        if mode.startswith("require-ready:"):
+            # K13/10 hands the hub pages this batch creates to the
+            # integrator's post-merge synchronization step; the durable
+            # record travels with the activation receipt.
+            receipt["hub_page_candidates"] = list(hub_page_candidates or [])
         if mode == "consistency" and outcome == "pass":
             receipt["repository_snapshot_sha256"] = \
                 kblib.repository_snapshot_sha256(result["root"])
@@ -7723,6 +8261,10 @@ def make_check_receipt(result, outcome, details, mode,
                 "pending_guidance", [])
             receipt["pending_amendments"] = task_runtime.get(
                 "pending_amendments", [])
+            # Derived boundary, never stored state: see
+            # ``_last_reconciled_guidance_id``.
+            receipt["last_reconciled_guidance_id"] = task_runtime.get(
+                "last_reconciled_guidance_id")
             receipt["standards_revalidation_outstanding"] = result.get(
                 "standards_revalidation_outstanding", {})
             receipt["standards_revalidation_barriers"] = result.get(
@@ -7758,7 +8300,8 @@ def make_check_receipt(result, outcome, details, mode,
 def _write_receipt(root, relative_path, result, outcome, details, mode,
                    confirmation_receipt=None, runtime_errors=None,
                    maintenance_context=None,
-                   standards_revalidation_context=None):
+                   standards_revalidation_context=None,
+                   hub_page_candidates=None):
     if not relative_path:
         return
     path = kblib.managed_repository_path(
@@ -7771,6 +8314,7 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
         runtime_errors=runtime_errors,
         maintenance_context=maintenance_context,
         standards_revalidation_context=standards_revalidation_context,
+        hub_page_candidates=hub_page_candidates,
     )
     kblib.write_receipts(path, [receipt])
 
@@ -8257,6 +8801,8 @@ def _print_resume_status(result, errors):
           (latest_task_receipt.get("receipt_id") or "none"))
     print("  task_transition.count=%d" %
           len(task_runtime.get("history") or []))
+    print("  last_reconciled_guidance_id=%s" %
+          (task_runtime.get("last_reconciled_guidance_id") or "none"))
     print("  pending_guidance=%s" %
           (",".join(task_runtime.get("pending_guidance") or []) or "none"))
     print("  pending_amendments=%s" %
@@ -8477,6 +9023,7 @@ def main(argv=None):
     result = validate_runtime(args.root)
     errors = list(result["errors"])
     candidates = []
+    hub_page_candidates = []
     writer_locks = result.get("writer_locks") or []
     maintenance_context = None
     revalidation_context = None
@@ -8548,6 +9095,10 @@ def main(argv=None):
                 errors.extend(context_errors)
     elif not errors and args.require_ready:
         item = result.get("items_by_id", {}).get(args.require_ready)
+        # K13/10: a hub page this batch creates does not block activation; it
+        # is handed to the integrator's post-merge hub synchronization step.
+        hub_page_candidates = list((result.get("hub_page_admission") or {}).get(
+            args.require_ready, {}).get("candidates") or [])
         if item is None:
             errors.append("requested batch %s does not exist" % args.require_ready)
         elif item.get("state") != "queued":
@@ -8656,6 +9207,9 @@ def main(argv=None):
             ",".join(result["ready"]) or "none",
         ))
         print("required_queue_sha256=%s" % result.get("queue_sha256"))
+        if args.require_ready:
+            print("hub_page_candidates=%s" %
+                  ("; ".join(hub_page_candidates) or "none"))
 
     code = 1 if errors else (2 if candidates else 0)
     outcome = "fail" if errors else ("candidate" if candidates else "pass")
@@ -8673,6 +9227,7 @@ def main(argv=None):
     try:
         _write_receipt(
             args.root, args.receipts, result, outcome, details, mode,
+            hub_page_candidates=hub_page_candidates,
             confirmation_receipt=args.confirmation_receipt,
             runtime_errors=errors,
             maintenance_context=maintenance_context,

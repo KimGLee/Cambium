@@ -78,3 +78,19 @@ Any future Cambium-maintained file outside the scopes listed above must be
 explicitly assigned a license here or by an SPDX license identifier before it
 is released. No license for otherwise unlisted material is implied by
 proximity to licensed material.
+
+## Relicensing Record
+
+Material moved between the two scopes above is recorded here, because the file
+paths alone no longer show which license the material was released under
+before the move.
+
+- 2026-08-06 — The closed membership registry of profile-overridable execution
+  defaults and constitutional constants (the `overridable` and
+  `constitutional` blocks) moved from
+  `Tools/schemas/execution_defaults.template.yaml`, released under
+  Apache-2.0, to `kernel/K00 Standards Control/execution-defaults-base.yaml`,
+  released under CC BY 4.0. Both scopes are Cambium-maintained and
+  copyright 2026 KimGLee, so the move required no third-party permission; the
+  earlier Apache-2.0 release of that material is not withdrawn by it. The
+  remaining blocks of the original file stay Apache-2.0 under `Tools/**`.

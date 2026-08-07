@@ -26,6 +26,8 @@ Current phase, completed objects, Coverage counts, ready/open/merge status, batc
 
 Batch membership, order, dependencies, lifecycle, holds, and transition receipts exist only in the [[kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle|Required Queue]]. Any display cache is explicitly derived, regenerated from the Queue, and checked by `Tools/check_queue.py`; it is never independently edited.
 
+The recorded Guidance statuses are the sole authority for how far reconciliation has reached. `last_reconciled_guidance_id` is therefore derived from them, not stored beside them: `Tools/check_queue.py --resume-status` reports it as the last entry of the longest recorded prefix that has left `received`. The checkpoint holds no separate reconciliation cursor. `guidance_cutoff_id` is different and is recorded, because it freezes the moment the Terminal Audit started rather than restating a status.
+
 Progress is measured by quality state, not by the cumulative count of created files.
 
 The Progress Ledger cannot use profile-registered hub checkboxes or the user's `learning_status` to compute build progress. Page writing completion, Expression Layer coverage and readiness, evidence maturity, and personal learning progress MUST be summarized separately.

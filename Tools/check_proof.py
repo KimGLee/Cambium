@@ -37,6 +37,14 @@ Method:
   paths are registry-checked; profile Read Set paths receive existence and
   uniqueness checks only because the profile registry is prose, not a
   machine-readable canonical map;
+- dimension_coverage must carry one entry for every base receipt dimension
+  K12/07 fixes; each entry is either a non-empty list of receipt IDs or an
+  explicit "not-applicable: <reason>" string. A missing dimension, an empty
+  list, a reasonless declaration, or a receipt cited under two dimensions ->
+  fail; with --root every cited receipt must resolve to exactly one
+  uninvalidated record in audit_receipt_register that itself carries the cited
+  dimension (an absent dimension field is not a record of that dimension) and a
+  passing result. Zero receipts is never read as "nothing was in scope";
 - a zero-condition field (required_authoring_gaps / unverified_batches /
   remaining_required_work_units / unresolved_invalidations) that is not 0 ->
   fail;
@@ -134,6 +142,14 @@ PASSED_FIELDS = ("guidance_reconciliation_result",
 # statement; anything else stays a human call.
 NO_FAIL_TOKEN_FIELDS = ("rendering_evidence", "time_contract_result")
 
+# The two kernel-stated spellings of a passing receipt verdict. The K12/07
+# AuditReceipt shape writes `passed` (its Reuse Gate reads
+# `receipt.result = passed`); the script-level receipt schema and the K12/17
+# Gate Receipt Payload write `pass`. The Audit Receipt Register holds records
+# of both layers, so a consumer of that register accepts exactly these two and
+# nothing else. This restates no rule: it names the two owners' own values.
+PASSING_RECEIPT_RESULTS = frozenset(("pass", "passed"))
+
 # Fields whose values are vault-relative paths that must exist when --root is
 # given (K12/15 steps 1-2 and 7: loaded sources, evidence, and incremental
 # manual-review scope).
@@ -162,6 +178,19 @@ CANONICAL_PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
 NULLABLE_REQUIRED_FIELDS = frozenset((
     "corpus_plan_semantic_acceptance_receipt",
 ))
+# K12/07 fixes these seven base receipt dimensions; K12/16 requires the
+# Terminal Proof to account for every one of them.  Like EXPECTED_ROUTE_IDS
+# above this tuple only projects a closed kernel set into the checker.
+BASE_RECEIPT_DIMENSIONS = (
+    "structure_and_links",
+    "content_and_depth",
+    "formula_and_numeric",
+    "source_and_currentness",
+    "coverage_and_integration",
+    "rendering",
+    "guidance_and_contract",
+)
+NOT_APPLICABLE_PREFIX = "not-applicable:"
 TERMINAL_TASK_STATES = frozenset(("completion-candidate", "complete"))
 FINAL_GUIDANCE_STATUSES = frozenset(
     ("verified", "deferred", "superseded", "not-applicable")
@@ -514,6 +543,172 @@ def _reused_receipt_evidence_failures(root, proof, runtime=None):
             check_prefix="proof-reused-receipt", runtime=runtime,
         )
         failures.extend(membership_failures)
+    return failures
+
+
+def _dimension_coverage_failures(proof):
+    """Check the per-dimension accounting K12/16 requires (shape only).
+
+    Absence of receipts is not evidence of absence of work: a dimension that
+    was never run and a dimension with nothing in scope produce the same empty
+    register.  The Proof must therefore state which one it is for every base
+    dimension, and the checker never infers "not applicable" from silence.
+    Whether a stated reason is true is a human call (it is not decided here).
+
+    Returns ``(failures, cited)`` where ``cited`` maps each syntactically valid
+    receipt ID to the dimension that cited it, for the ``--root`` pass.
+    """
+    failures = []
+    cited = {}
+    coverage = proof.get("dimension_coverage")
+    if not isinstance(coverage, dict):
+        return [(
+            "proof-dimension-coverage-invalid",
+            "dimension_coverage",
+            "dimension_coverage must be a mapping from receipt dimension to "
+            "either a non-empty receipt_id list or an explicit "
+            "'not-applicable: <reason>' declaration",
+        )], cited
+    for dimension in BASE_RECEIPT_DIMENSIONS:
+        if dimension in coverage:
+            continue
+        failures.append((
+            "proof-dimension-missing",
+            "dimension_coverage#%s" % dimension,
+            "base receipt dimension %s has no entry; K12/07 fixes seven base "
+            "dimensions and a dimension with neither a receipt nor an "
+            "explicit not-applicable declaration is unverified, not passed"
+            % dimension,
+        ))
+    for dimension in sorted(coverage):
+        value = coverage[dimension]
+        target = "dimension_coverage#%s" % dimension
+        if isinstance(value, str):
+            if not value.startswith(NOT_APPLICABLE_PREFIX):
+                failures.append((
+                    "proof-dimension-declaration-invalid", target,
+                    "%s records the string %r; a non-receipt entry must be an "
+                    "explicit 'not-applicable: <reason>' declaration"
+                    % (dimension, value),
+                ))
+            elif not value[len(NOT_APPLICABLE_PREFIX):].strip():
+                failures.append((
+                    "proof-dimension-declaration-invalid", target,
+                    "%s declares not-applicable without a reason; the reason "
+                    "is what a reviewer checks against the frozen scope"
+                    % dimension,
+                ))
+            continue
+        if not isinstance(value, list) or not value:
+            failures.append((
+                "proof-dimension-empty", target,
+                "%s records no receipt; declare "
+                "'not-applicable: <reason>' when the dimension has no "
+                "in-scope object, never an empty or absent list" % dimension,
+            ))
+            continue
+        for index, receipt_id in enumerate(value):
+            entry_target = "%s[%d]" % (target, index)
+            if not isinstance(receipt_id, str) or not receipt_id.strip():
+                failures.append((
+                    "proof-dimension-receipt-invalid", entry_target,
+                    "%s cites %r; each entry must be a non-empty receipt_id"
+                    % (dimension, receipt_id),
+                ))
+                continue
+            if receipt_id in cited:
+                failures.append((
+                    "proof-dimension-receipt-duplicate", entry_target,
+                    "receipt %r is already cited under %s; an AuditReceipt "
+                    "carries one dimension and cannot cover two"
+                    % (receipt_id, cited[receipt_id]),
+                ))
+                continue
+            cited[receipt_id] = dimension
+    return failures, cited
+
+
+def _validate_dimension_coverage_evidence(root, proof, cited):
+    """Resolve every cited dimension receipt against the audit register."""
+    failures = []
+    if not cited:
+        return failures
+    receipt_path_raw = proof.get("audit_receipt_register")
+    try:
+        receipt_path = Path(kblib.managed_repository_path(
+            str(root), receipt_path_raw, ".cambium/receipts",
+            suffixes=(".jsonl",), must_exist=True,
+        ))
+    except (OSError, TypeError, ValueError):
+        # The Queue linkage pass already reported the unreadable register with
+        # its precise diagnosis; do not duplicate that failure here.
+        return failures
+    if not receipt_path.is_file():
+        return failures
+    try:
+        lines = receipt_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return failures
+    records = {}
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        records.setdefault(record.get("receipt_id"), []).append(record)
+    for receipt_id in sorted(cited):
+        dimension = cited[receipt_id]
+        target = "Terminal Proof#dimension_coverage#%s" % dimension
+        matches = records.get(receipt_id, [])
+        if len(matches) != 1:
+            failures.append(_queue_linkage_failure(
+                "proof-dimension-receipt-missing", target,
+                "%s cites receipt %r, which must identify exactly one record "
+                "in %s; found %d" %
+                (dimension, receipt_id, receipt_path_raw, len(matches)),
+            ))
+            continue
+        record = matches[0]
+        if record.get("invalidated_by") is not None:
+            failures.append(_queue_linkage_failure(
+                "proof-dimension-receipt-invalidated", target,
+                "%s cites receipt %r, which records invalidated_by=%r and "
+                "cannot carry a current verdict" %
+                (dimension, receipt_id, record.get("invalidated_by")),
+            ))
+        # K12/16 requires the cited receipt to resolve to a record *of the
+        # declared dimension*.  An absent field is not that record: it states
+        # no dimension at all, so treating absence as agreement would let one
+        # receipt be filed under whichever dimension the Proof names.
+        recorded = record.get("dimension")
+        if recorded != dimension:
+            failures.append(_queue_linkage_failure(
+                "proof-dimension-receipt-mismatch", target,
+                "%s cites receipt %r, whose own dimension field is %r; an "
+                "AuditReceipt files its verdict under one dimension, and a "
+                "record carrying no dimension is not a record of this one" %
+                (dimension, receipt_id, recorded),
+            ))
+        # A receipt recording a failed verdict is not completion evidence:
+        # K12/06 admits a historical gate result into the Terminal Proof only
+        # through the K12/07 Reuse Gate (`receipt.result = passed`), and
+        # K12/17 rejects a Gate receipt whose `result` is other than `pass`.
+        # Both passing spellings are kernel-stated -- `passed` in the K12/07
+        # AuditReceipt shape, `pass` in the script-level receipt schema and
+        # K12/17 -- so both are accepted here and nothing else is.
+        result = record.get("result")
+        if result not in PASSING_RECEIPT_RESULTS:
+            failures.append(_queue_linkage_failure(
+                "proof-dimension-receipt-not-passed", target,
+                "%s cites receipt %r, which records result=%r; only a passing "
+                "verdict (%s) carries a dimension into the Terminal Proof" %
+                (dimension, receipt_id, result,
+                 " or ".join(sorted(PASSING_RECEIPT_RESULTS))),
+            ))
     return failures
 
 
@@ -1122,7 +1317,7 @@ def _validate_terminal_progress_state(proof, progress_ledger,
                     "progress-guidance-pending",
                     "Progress Ledger#guidance_queue[%d]" % index,
                     "guidance %r has non-final status %r" %
-                    (entry.get("id"), status),
+                    (entry.get("guidance_id"), status),
                 ))
 
     amendments = progress_ledger.get("amendments")
@@ -1607,6 +1802,20 @@ def main():
             "selected_card_paths has %d item(s) for %d selected_route_ids; "
             "Terminal Proof requires one Card path per selected Rxx route"
             % (len(selected_card_paths), len(route_ids)), seq))
+
+    # K12/16: every base receipt dimension is accounted for explicitly. A
+    # dimension that simply has no receipts fails closed instead of passing.
+    dimension_bad = 0
+    cited_dimension_receipts = {}
+    if "dimension_coverage" not in missing:
+        dimension_failures, cited_dimension_receipts = (
+            _dimension_coverage_failures(proof))
+        dimension_bad = len(dimension_failures)
+        for check, target, details in dimension_failures:
+            seq += 1
+            receipts.append(_make_receipt(
+                TOOL, TOOL_VERSION, check,
+                "%s#%s" % (proof_name, target), "fail", details, seq))
 
     zero_bad = []
     for field in ZERO_FIELDS:
@@ -2160,6 +2369,16 @@ def main():
             queue_live_check_passed and not queue_failures
         )
 
+    if (args.root and root is not None and root.is_dir() and
+            cited_dimension_receipts):
+        dimension_evidence_failures = _validate_dimension_coverage_evidence(
+            root, proof, cited_dimension_receipts)
+        dimension_bad += len(dimension_evidence_failures)
+        for check, target, details in dimension_evidence_failures:
+            seq += 1
+            receipts.append(_make_receipt(
+                TOOL, TOOL_VERSION, check, target, "fail", details, seq))
+
     corpus_plan_cross_fail = 0
     corpus_plan_linkage_checked = False
     if args.root and root is not None and root.is_dir():
@@ -2197,7 +2416,9 @@ def main():
         summary_receipt = _make_receipt(
             TOOL, TOOL_VERSION, "proof-check-summary", proof_receipt_path,
             "pass",
-            "fields complete (%d/%d), all zero-condition fields are 0%s%s%s%s%s%s%s" % (
+            "fields complete (%d/%d), all zero-condition fields are 0, every "
+            "base receipt dimension explicitly covered or declared "
+            "not-applicable%s%s%s%s%s%s%s" % (
                 len(required_fields), len(required_fields),
                 route_summary, profile_summary,
                 ", consistent with the active K00/03 Standards state"
@@ -2232,6 +2453,7 @@ def main():
           "frozen_field_violations=%d profile_manifest_violations=%d "
           "queue_structure_violations=%d "
           "active_state_violations=%d "
+          "dimension_coverage_violations=%d "
           "zero_condition_violations=%d status_violations=%d "
           "path_failures=%d extra_fields(candidate)=%d "
           "progress_cross_failures=%d queue_cross_failures=%d "
@@ -2243,7 +2465,7 @@ def main():
           % (len(missing), route_id_bad, profile_route_id_bad, card_path_bad,
              read_set_bad, registry_bad, path_structure_bad,
              frozen_string_bad, profile_manifest_bad, queue_structure_bad,
-             active_state_bad,
+             active_state_bad, dimension_bad,
              len(zero_bad),
              len(status_bad), path_bad, len(extra), progress_cross_fail,
              queue_cross_fail, coverage_cross_fail, corpus_plan_cross_fail,

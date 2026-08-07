@@ -113,7 +113,9 @@ amendments:
 # after-Progress hash.  It does not duplicate task or batch lifecycle.
 standards_adoptions: []
 
+# Guidance records use the kernel's own field names.  `disposition` is one of
+# the nine K13/05 dispositions; `status` is one of the K13/06 status values.
 guidance_queue:
-  - id: "G-001"
-    class: apply-to-current-batch
+  - guidance_id: "G-001"
+    disposition: apply-to-current-batch
     status: verified

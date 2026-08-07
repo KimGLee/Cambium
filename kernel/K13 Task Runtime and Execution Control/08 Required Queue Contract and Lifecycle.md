@@ -22,6 +22,10 @@ positive `record_count`, nonempty unique `manifest`, nullable `source_route`,
 `execution_mode`, `depends_on`, `confirmation_required`, `state`, and
 `hold_state`. It also explicitly supplies `work_spec_path` and
 `work_spec_sha256` under the Batch Work Specification Binding below.
+An item compiled from a Coverage `batch` -> `next_batch` handoff also carries
+`successor_of`, its one predecessor's id; two predecessors are adjudicated, not
+compiled. That predecessor MUST already be in the item's `batch_specs`
+`depends_on`, which `successor_of` never replaces.
 Dependencies are explicit, acyclic, earlier than dependents, and never
 inferred. `concurrent-worker` may coexist; `serial-integrator` is exclusive.
 

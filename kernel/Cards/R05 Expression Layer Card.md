@@ -24,7 +24,7 @@ source_files:
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
-source_hash: 'e1edec09b3dd'
+source_hash: '56e9108ec507'
 ---
 # R05 Expression Layer Card
 
@@ -50,7 +50,7 @@ Stop rather than inventing one or treating an unconfigured artifact as loaded.
   canonical support.
 - [ ] Record evidence gaps and the consequence for claim strength or readiness.
 
-## During Work
+## During
 
 - Derive expression content from canonical owners; do not create a second owner
   for definitions, claims, or mechanisms.

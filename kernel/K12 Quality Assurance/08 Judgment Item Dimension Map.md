@@ -6,7 +6,7 @@
 
 ## Purpose
 
-An `AuditReceipt` carries one `dimension` field, holding one of the seven base dimensions fixed in [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Dimension-specific Audit Receipt|K12/07]]. This module fixes, for every judgment item the kernel states, which dimension its verdict is filed under and whether it produces a receipt at all. Without the map that field has no determinate value for most kernel checks, and the same work can be filed twice under two names.
+An `AuditReceipt` carries one `dimension` field, holding one of the seven base dimensions fixed in [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation#Dimension-specific Audit Receipt|K12/07]]. This module fixes, for every judgment item the kernel states whose audit object is one page, which dimension its verdict is filed under and whether it produces a receipt at all; the layers above it are filed by [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|K12/18]]. Without the map that field has no determinate value for most kernel checks, and the same work can be filed twice under two names.
 
 ## Terms
 
@@ -38,10 +38,8 @@ All items in these sections emit under one dimension:
 | `K12/01 Content` | 8 | content_and_depth |
 | `K12/12 Substantive Correctness Review` | 3 | content_and_depth |
 | `K12/02` Level 1 – Level 4 | all | rendering |
-| `K12/04 Guidance Reconciliation Review` | 11 | guidance_and_contract |
-| `K12/04 Source Intake And Promotion Review` | 9 | source_and_currentness |
 
-The language-acceptance line of `K12/01 Content` is a registry pointer, not a check. The graph-impact-rationale item of `K12/04 Source Intake` files under coverage_and_integration.
+The language-acceptance line of `K12/01 Content` is a registry pointer, not a check.
 
 ## Item Map
 
@@ -61,34 +59,14 @@ The language-acceptance line of `K12/01 Content` is a registry pointer, not a ch
 | `K12/01 Rendering` | code fences and languages | consumes ← `K12/02` Level 0 | — |
 | `K12/02` Level 0 | heading / fence / link / table pipe; body extraction for structure, duplication, missing sections, term links | emits | structure_and_links |
 | `K12/02` Level 0 | formula delimiter / image / embed / Mermaid fence | emits | rendering |
-| `K12/03 Module` | Overview reflects real structure; duplicate canonical notes; orphans; Standards ownership and Read Set reciprocity | emits | structure_and_links |
-| `K12/03 Module` | unexplained P0 / P1 concepts; prerequisite chain continuous; `Profile Scope` mainline and foundation | emits | coverage_and_integration |
-| `K12/03 Module` | Case Study usable; depth balance, core not thinner than peripheral | emits | content_and_depth |
-| `K12/03 Module` | new external sources went through gap analysis | emits | source_and_currentness |
-| `K12/03 Module` | R05 artifact synchronization across the module | emits | guidance_and_contract |
-| `K11/01` | canonical/expression responsibility separation | emits | content_and_depth |
-| `K11/02` | readiness-axis independence | emits | guidance_and_contract |
-| `K11/04` | evidence qualification is preserved in expression | emits | source_and_currentness |
-| `K11/05` | resolvable bidirectional canonical bindings | emits | structure_and_links |
-| `K11/07` | migration conservation of content and bindings | emits | coverage_and_integration |
-| `K12/03 Coverage` | the other eight items | emits | coverage_and_integration |
-| `K12/03 Coverage` | core pages not thinner than new peripheral or frontier pages | triggers → `K12/03 Module` depth balance | — |
-| `K12/14 Batch` | Required pages at target `authoring_status`; delta applied, both ledgers in sync | emits | coverage_and_integration |
-| `K12/14 Batch` | canonical ownership, body links, navigation synchronized | emits | structure_and_links |
-| `K12/14 Batch` | Sources synchronized | emits | source_and_currentness |
-| `K12/14 Batch` | metadata; registered migrations; AuditPlan `reused_receipt_id`; delta written out; guidance reconciliation; `unresolved_invalidations = 0` | emits | guidance_and_contract |
-| `K12/09` Closed List | 1 `check_links`; 2 structural validity; 3 graph JSON and basename candidates | emits | structure_and_links |
-| `K12/09` Closed List | 4 Coverage file-count reconciliation | emits | coverage_and_integration |
-| `K12/09` Closed List | 5 guidance ID and contract continuity; 7 `check_vocab` | emits | guidance_and_contract |
-| `K12/09` Closed List | 6 registered residual-content scan | declared by the registered scan | declared there |
 
-The `K12/14 Batch` roll-up line covering automated checks, manual content review and the applicable rendering level emits nothing of its own. [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting|K12/06]] and [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence|K12/15]] state no judgment items: the Completion Gate and the Terminal Audit consume receipts.
+Within one page, duplicate headings are a `K12/02` Level 0 finding.
 
-Closed List 3 emits a candidate list; whether two candidates are one canonical concept with two owners is decided by the `K12/03 Module` duplicate item. Within one page, duplicate headings are a `K12/02` Level 0 finding.
+A [[kernel/K12 Quality Assurance/05 Automated and Manual Checks#Manual Checks|K12/05 Manual]] item reviewing one page emits under content_and_depth, except its three visual-escalation items, which emit under rendering.
 
 ## Reverse Check
 
-Every base dimension has an emitting item. formula_and_numeric draws from two `K12/01 Accuracy` items only; the concentration is deliberate but thin, and a profile adding numeric obligations SHOULD register them here rather than widening another dimension.
+Every base dimension has an emitting item across this map and K12/18, which are read together for this check. formula_and_numeric draws from two `K12/01 Accuracy` items only; the concentration is deliberate but thin, and a profile adding numeric obligations SHOULD register them here rather than widening another dimension.
 
 ## Profile Registration
 

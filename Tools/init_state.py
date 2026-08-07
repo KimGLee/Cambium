@@ -9,6 +9,7 @@ import argparse
 import ctypes
 import errno
 import os
+import re
 import shlex
 import shutil
 import sys
@@ -217,6 +218,56 @@ def publish_runtime(root, documents):
             shutil.rmtree(staging)
 
 
+KERNEL_CONCURRENCY_CAP = 3
+
+
+def resolve_concurrency_cap(root, manifest_relative, explicit):
+    """Resolve K13/10's concurrency cap and name the layer that decided it.
+
+    K13/10 makes `3` the kernel default and lets the selected profile manifest
+    or the task contract override it explicitly; it fixes no precedence
+    between those two.  This resolver therefore does not invent one.  It reads
+    whichever of the two is present, and when both are present and disagree it
+    reports the inconsistency instead of picking a winner.  The resolved value
+    is written into Progress, which is what "the resolved cap MUST be recorded
+    at runtime" requires and what ``check_queue.py`` then enforces; no runtime
+    check reads the manifest prose.
+
+    Reading the override table is fail-closed: a row whose shape the shared
+    reader cannot interpret raises rather than resolving to the kernel default,
+    because "the manifest declares nothing" and "the manifest declares
+    something this reader dropped" must not produce the same frozen contract.
+    """
+    manifest_value = None
+    if manifest_relative:
+        path = kblib.repository_path(root, manifest_relative, must_exist=True,
+                                     reject_symlink=True)
+        with open(path, encoding="utf-8") as handle:
+            overrides = kblib.profile_execution_default_overrides(handle.read())
+        raw = overrides.get("concurrency_cap")
+        if raw is not None:
+            if not re.fullmatch(r"[0-9]+", raw) or int(raw) < 1:
+                raise ValueError(
+                    "selected profile manifest declares concurrency_cap=%r; "
+                    "K13/10 requires a positive integer" % raw
+                )
+            manifest_value = int(raw)
+    if manifest_value is None:
+        if explicit is None:
+            return KERNEL_CONCURRENCY_CAP, "kernel-default"
+        return explicit, "task-contract"
+    if explicit is None:
+        return manifest_value, "profile-manifest"
+    if explicit != manifest_value:
+        raise ValueError(
+            "--concurrency-cap %d contradicts the selected profile "
+            "manifest's registered concurrency_cap %d; K13/10 sets no "
+            "precedence between them, so reconcile the two explicit "
+            "overrides before initializing" % (explicit, manifest_value)
+        )
+    return manifest_value, "task-contract+profile-manifest"
+
+
 def build_documents(args):
     if getattr(args, "completion_semantics", None) not in (
             "build", "maintenance"):
@@ -225,6 +276,13 @@ def build_documents(args):
         )
     if not isinstance(args.objective, str) or not args.objective.strip():
         raise ValueError("objective must be a non-empty string")
+    if (not isinstance(args.concurrency_cap, int) or
+            isinstance(args.concurrency_cap, bool) or
+            args.concurrency_cap < 1):
+        raise ValueError(
+            "concurrency_cap must be resolved to a positive integer before "
+            "the contract is materialized"
+        )
     if (not isinstance(args.exclusions, list) or
             not all(isinstance(value, str) and value.strip()
                     for value in args.exclusions)):
@@ -347,7 +405,13 @@ def main(argv=None):
               "maintenance closes directly through the bounded maintenance "
               "completion gate"),
     )
-    parser.add_argument("--concurrency-cap", type=int, default=3)
+    parser.add_argument(
+        "--concurrency-cap", type=int, default=None,
+        help=("explicit task-contract override of K13/10's concurrency cap; "
+              "omit it to take the selected profile manifest's registered "
+              "override, or the kernel default 3 when the manifest registers "
+              "none"),
+    )
     parser.add_argument("--at", default=None,
                         help="initial Coverage timestamp (default: current UTC)")
     parser.add_argument("--apply", action="store_true")
@@ -357,7 +421,7 @@ def main(argv=None):
     if not os.path.isdir(root):
         print("[FAIL] root is not an existing directory: %s" % args.root)
         return 1
-    if args.concurrency_cap < 1:
+    if args.concurrency_cap is not None and args.concurrency_cap < 1:
         print("[FAIL] --concurrency-cap must be >= 1")
         return 1
     for label, value in (("task id", args.task_id),
@@ -377,6 +441,13 @@ def main(argv=None):
     if profile_errors:
         for error in profile_errors:
             print("[FAIL] %s" % error)
+        return 1
+    try:
+        args.concurrency_cap, concurrency_cap_source = \
+            resolve_concurrency_cap(root, args.profile_manifest,
+                                    args.concurrency_cap)
+    except (OSError, ValueError) as exc:
+        print("[FAIL] cannot resolve concurrency_cap: %s" % exc)
         return 1
 
     runtime = os.path.join(root, ".cambium")
@@ -403,6 +474,8 @@ def main(argv=None):
     print("  objective=%s" % args.objective)
     print("  exclusions=%s" % (", ".join(args.exclusions) or "none"))
     print("  completion_semantics=%s" % args.completion_semantics)
+    print("  concurrency_cap=%d (resolved from %s)" %
+          (args.concurrency_cap, concurrency_cap_source))
     print("queue_revision=1 state_revision=0")
     print("required_queue_sha256=%s" %
           kblib.sha256_bytes(documents["required_queue.yaml"]))

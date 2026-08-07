@@ -1,0 +1,33 @@
+# Machine matching parameters for the Worked Planning case-residual scan.
+# Filled from profiles/_template/scan-configs/residual-scan.yaml. Scan identity,
+# activation, candidate semantics, and judgment binding remain owned by
+# registries/registered-scans.md.
+
+residual_scan_config_version: 1
+
+# The case layer is the only root where service-case structure belongs. It is
+# also the non-triviality control: a run that reports no candidate elsewhere
+# must still recognise a file here, and the one case page carries both the
+# frontmatter value and the heading registered below.
+allowed_roots:
+  - "profiles/examples/worked-planning/corpus/Service Cases"
+
+# The control plane and the standards distribution are outside the scanned
+# corpus. An adopter's list names their own control subtrees instead.
+excluded_roots:
+  - kernel
+  - Tools
+
+frontmatter_match:
+  field: type
+  values:
+    - service-case
+
+heading_match:
+  any:
+    - Service Case Log
+  combination:
+    - Intake Notes
+    - Parts Used
+    - Bench Time
+  minimum_distinct: 2

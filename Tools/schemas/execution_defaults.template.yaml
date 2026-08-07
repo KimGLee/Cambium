@@ -1,12 +1,29 @@
 # =============================================================================
-# Execution default registry (machine-readable; the template is the schema doc)
-# This file owns membership in the overridable / constitutional sets used by
-# Tools/check_profile.py. Each entry points to the kernel module that owns the
-# item's meaning and value; this registry does not restate those rules.
+# Profile-form placeholder registry (machine-readable; the template is the
+# schema doc).
 #
-# profiles/README.md defines how a profile declares its choices and points here
-# for the closed item set. When a kernel owner adds, removes, or reclassifies an
-# item, update this registry in the same governance batch.
+# MOVED OUT (2026-08-06): the closed execution-default rule set that used to
+# live here is a rule carrier, so it now lives under kernel/ (CC BY 4.0) per
+# the licensing scope in LICENSE.md. This file keeps only executor-side
+# configuration: the literal placeholder strings the shipped
+# `profiles/_template/` form uses.
+#
+# Block-by-block relocation table:
+#
+#   original block         -> now at
+#   ---------------------------------------------------------------------
+#   overridable            -> kernel/K00 Standards Control/execution-defaults-base.yaml#overridable
+#   constitutional         -> kernel/K00 Standards Control/execution-defaults-base.yaml#constitutional
+#   reserved_profile_ids   -> stays here (shipped-form placeholder inventory, not a rule)
+#   unfilled_sentinel      -> stays here (shipped-form placeholder token, not a rule)
+#   schema_version         -> stays here; the kernel registry carries its own
+#
+# The kernel registry is registered by
+# "kernel/K00 Standards Control/09 Default Constraints Snapshot.md" and owned
+# per "kernel/K00 Standards Control/11 Standards Map and Rule Registry.md".
+# `Tools/check_profile.py` reads the closed item sets from there and the two
+# placeholder blocks below from here; `Tools/check_queue.py` and
+# `Tools/check_proof.py` read only the placeholder blocks below.
 #
 # Only the restricted YAML subset is allowed (parseable by Tools/kblib.py
 # parse_yaml_subset):
@@ -16,36 +33,6 @@
 # =============================================================================
 
 schema_version: 1
-
-# Items a profile may explicitly override. Anything absent from the manifest
-# table uses its kernel default. `item` is the exact string check_profile.py
-# accepts; `owner` is the only source for meaning, default, unit, and range.
-overridable:
-  - item: "concurrency_cap"
-    owner: "kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md"
-  - item: "batch_size.S"
-    owner: "kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production.md"
-  - item: "batch_size.M"
-    owner: "kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production.md"
-  - item: "batch_size.L"
-    owner: "kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production.md"
-  - item: "priority_quota.P0"
-    owner: "kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md"
-  - item: "priority_quota.P1"
-    owner: "kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md"
-  - item: "maintenance.unselected_rounds_before_log_only"
-    owner: "kernel/K00 Standards Control/08 Maintenance Run Envelope.md"
-  - item: "maintenance.incoming_retarget_divisor"
-    owner: "kernel/K00 Standards Control/08 Maintenance Run Envelope.md"
-
-# Constitutional constants. A profile that registers one of these in its
-# Execution Default Overrides table is registering something it cannot
-# override, which check_profile.py reports as a failure.
-constitutional:
-  - item: "substantive_review.round_cap"
-    owner: "kernel/K12 Quality Assurance/12 Substantive Correctness Review.md"
-  - item: "terminal_audit.round_cap"
-    owner: "kernel/K12 Quality Assurance/15 Terminal Audit and Convergence.md"
 
 # Placeholder profile_id values that a filled profile must not carry.
 reserved_profile_ids:

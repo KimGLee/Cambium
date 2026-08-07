@@ -19,7 +19,7 @@ source_files:
   - kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata.md
   - kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes.md
   - kernel/K12 Quality Assurance/04 Guidance and Source Review.md
-source_hash: '1f2cd38d6e94'
+source_hash: '64d57896a1e7'
 ---
 # R04 Source-driven Expansion Card
 
@@ -32,7 +32,7 @@ Turn documentation, papers, code, benchmarks, cases, postmortems, community sign
 ## Before Start
 
 - [ ] Declare the source scope, scan boundary or source lead, target questions, and affected canonical objects.
-- [ ] Create a source inventory and claim-extraction plan; preserve original identity text while writing claims in the profile's body language.
+- [ ] Preserve original identity text while writing claims in the profile's body language. Large-scale source work additionally establishes the source inventory and claim-extraction plan under [[kernel/Cards/R11 Large-scale Work Admission Card|R11 Large-scale Work Admission]].
 - [ ] Assign source and evidence roles before drawing conclusions.
 - [ ] Identify the current canonical owner and whether the likely disposition is update, new owner, split, merge, synthesis, case, signal, defer, or supersede.
 
