@@ -33,10 +33,11 @@ Method:
 - selected_profile_route_ids must be a list of unique namespaced supplemental
   route IDs; an empty list records that no profile route was combined;
 - selected_read_sets is the possibly empty, unique list of Read Sets actually
-  read back, not a second declaration of every selected route. Kernel Read Set
-  paths are registry-checked; profile Read Set paths receive existence and
-  uniqueness checks only because the profile registry is prose, not a
-  machine-readable canonical map;
+  read back, not a second declaration of every selected route. Together with
+  the other four selection lists it must exactly match the frozen Progress
+  Task Contract, including order. Kernel Read Set paths are registry-checked;
+  profile Read Set paths receive existence and uniqueness checks only because
+  the profile registry is prose, not a machine-readable canonical map;
 - dimension_coverage must carry one entry for every base receipt dimension
   K12/07 fixes; each entry is either a non-empty list of receipt IDs or an
   explicit "not-applicable: <reason>" string. A missing dimension, an empty
@@ -44,7 +45,22 @@ Method:
   fail; with --root every cited receipt must resolve to exactly one
   uninvalidated record in audit_receipt_register that itself carries the cited
   dimension (an absent dimension field is not a record of that dimension) and a
-  passing result. Zero receipts is never read as "nothing was in scope";
+  passing result. The same receipt ID must remain in the Standards-adoption-
+  filtered current receipt catalog; immutable history is not a fallback for a
+  new Terminal Proof. Zero receipts is never read as "nothing was in scope";
+- with --root, dimension_coverage must additionally carry one entry, on those
+  same terms, for every dimension the selected profile's Audit Dimension
+  Registry registers with a `receipt` target. It must not invent an
+  unregistered dimension or cite a receipt for a `review`-only dimension. The
+  registration block is read from the manifest's `Audit Dimension Registry`
+  slot; an unbound slot, an
+  unresolvable binding, a missing or duplicated `## Extension Dimensions`
+  section, a registration that is neither `None` nor `Configured`, a table
+  without the interface columns, `Registration: None` over a non-empty table,
+  or an unreadable row or target list -> fail, because a registry that cannot
+  be enumerated is not a profile that registered nothing. A row registering one
+  of the seven base dimension names -> fail (K12/07 owns that prohibition; this
+  script only decides the collision);
 - a zero-condition field (required_authoring_gaps / unverified_batches /
   remaining_required_work_units / unresolved_invalidations) that is not 0 ->
   fail;
@@ -108,10 +124,15 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import check_corpus_plan
+# The selected profile is executed as a subprocess (the audited repository
+# ships its own copy), but its Audit Dimension Registry is *parsed* with this
+# distribution's own profile-registry helpers: the checker must not read a
+# registry through a parser the audited repository could replace.
+import check_profile
 import check_queue
 
 TOOL = "check_proof"
-TOOL_VERSION = "1.14.0"
+TOOL_VERSION = "1.15.0"
 GATE_ID = "terminal-proof"
 
 
@@ -179,17 +200,13 @@ NULLABLE_REQUIRED_FIELDS = frozenset((
     "corpus_plan_semantic_acceptance_receipt",
 ))
 # K12/07 fixes these seven base receipt dimensions; K12/16 requires the
-# Terminal Proof to account for every one of them.  Like EXPECTED_ROUTE_IDS
-# above this tuple only projects a closed kernel set into the checker.
-BASE_RECEIPT_DIMENSIONS = (
-    "structure_and_links",
-    "content_and_depth",
-    "formula_and_numeric",
-    "source_and_currentness",
-    "coverage_and_integration",
-    "rendering",
-    "guidance_and_contract",
-)
+# Terminal Proof to account for every one of them, and for every dimension the
+# selected profile registers with a `receipt` target on the same terms.  Like
+# EXPECTED_ROUTE_IDS above this tuple only projects a closed kernel set into
+# the checker.  K12/07 also owns the prohibition this file enforces but does
+# not restate: the `Audit Dimension Registry` MUST NOT delete, rename, or
+# redefine a base dimension.
+BASE_RECEIPT_DIMENSIONS = check_profile.BASE_RECEIPT_DIMENSIONS
 NOT_APPLICABLE_PREFIX = "not-applicable:"
 TERMINAL_TASK_STATES = frozenset(("completion-candidate", "complete"))
 FINAL_GUIDANCE_STATUSES = frozenset(
@@ -546,7 +563,91 @@ def _reused_receipt_evidence_failures(root, proof, runtime=None):
     return failures
 
 
-def _dimension_coverage_failures(proof):
+def _registered_receipt_dimensions(root, manifest_relative):
+    """Enumerate the dimensions the selected profile registers.
+
+    K12/16 accounts for a registered dimension whose target list carries
+    ``receipt`` on the same terms as the base seven, so that obligation is
+    exactly as complete as this enumeration.  A registry that cannot be
+    enumerated therefore fails instead of returning an empty set: "this profile
+    registers nothing" and "the registry could not be read" are the same
+    silence the rest of this module refuses to read as a pass.
+
+    K12/07 owns the prohibition on deleting, renaming, or redefining a base
+    dimension; this function only decides whether a registration collides with
+    one.  Whether a registration is a good idea stays a human call.
+
+    Returns ``(receipt_dimensions, all_dimensions, authoritative, failures)``.
+    The first tuple contains the IDs carrying a ``receipt`` target; the second
+    contains every registered extension ID, including `review`-only rows.
+    ``authoritative`` is true only after the complete registry envelope parsed
+    successfully. Failures are ``(check, target, details)`` triples.
+    """
+    failures = []
+    slot = check_profile.AUDIT_DIMENSION_SLOT
+    target = "selected_profile_manifest#%s" % slot
+
+    def refuse(details, check="proof-audit-dimension-registry-unreadable"):
+        failures.append((check, target, details))
+        return (), (), False, failures
+
+    # A manifest that is missing, malformed, or unresolvable already fails with
+    # its own precise diagnosis; restating it here would only duplicate it, and
+    # the run cannot pass either way.
+    if _selected_profile_manifest_error(manifest_relative):
+        return (), (), False, failures
+    manifest_path, resolve_error = _resolve_under_root(root, manifest_relative)
+    if resolve_error or not manifest_path.is_file():
+        return (), (), False, failures
+    try:
+        manifest_text = manifest_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        return refuse("%s is unreadable: %s" % (manifest_relative, exc))
+
+    binding = kblib.profile_slot_bindings(manifest_text).get(
+        slot)
+    if not binding:
+        return refuse(
+            "the selected manifest binds no `%s` slot, so the receipt "
+            "dimensions this Proof must account for cannot be enumerated"
+            % slot)
+    kind, detail = kblib.resolve_profile_binding(
+        binding, str(root), str(manifest_path.parent))
+    if kind != "path":
+        return refuse(
+            "the `%s` binding %r resolves as %s, not to a file inside the "
+            "selected profile" % (slot, binding, kind))
+    try:
+        registry_text = Path(detail).read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        return refuse("the `%s` binding %r is unreadable: %s"
+                      % (slot, binding, exc))
+
+    _registration, rows, parser_errors = (
+        check_profile.parse_audit_dimension_registry(registry_text))
+    if parser_errors:
+        for check, details in parser_errors:
+            failures.append(("proof-%s" % check, target,
+                             "%s#%s: %s" %
+                             (binding,
+                              check_profile.AUDIT_DIMENSION_SECTION,
+                              details)))
+        # A partial parse is diagnostic only. Proof must never consume the
+        # readable subset of a registry whose complete envelope failed.
+        return (), (), False, failures
+
+    return (
+        tuple(sorted(row["id"] for row in rows
+                     if "receipt" in row["targets"])),
+        tuple(sorted(row["id"] for row in rows)),
+        True,
+        failures,
+    )
+
+
+def _dimension_coverage_failures(proof, registered_dimensions=(),
+                                 all_registered_dimensions=(),
+                                 registry_authoritative=False):
     """Check the per-dimension accounting K12/16 requires (shape only).
 
     Absence of receipts is not evidence of absence of work: a dimension that
@@ -554,6 +655,14 @@ def _dimension_coverage_failures(proof):
     register.  The Proof must therefore state which one it is for every base
     dimension, and the checker never infers "not applicable" from silence.
     Whether a stated reason is true is a human call (it is not decided here).
+
+    ``registered_dimensions`` carries the selected profile's registered
+    ``receipt`` dimensions, which K12/16 accounts for on the same terms as the
+    base seven. ``all_registered_dimensions`` also contains review-only IDs so
+    the checker can distinguish those from wholly unregistered IDs. The
+    registry becomes the closed authority only when
+    ``registry_authoritative`` is true; without ``--root`` this function stays
+    structural lint and cannot enumerate profile extensions.
 
     Returns ``(failures, cited)`` where ``cited`` maps each syntactically valid
     receipt ID to the dimension that cited it, for the ``--root`` pass.
@@ -580,9 +689,43 @@ def _dimension_coverage_failures(proof):
             "explicit not-applicable declaration is unverified, not passed"
             % dimension,
         ))
+    for dimension in registered_dimensions:
+        if dimension in coverage:
+            continue
+        failures.append((
+            "proof-dimension-missing",
+            "dimension_coverage#%s" % dimension,
+            "the selected profile registers receipt dimension %s and this "
+            "Proof has no entry for it; K12/16 accounts for a registered "
+            "`receipt` dimension on the same terms as the base seven, so "
+            "silence about it is neither a receipt nor a not-applicable "
+            "declaration" % dimension,
+        ))
     for dimension in sorted(coverage):
         value = coverage[dimension]
         target = "dimension_coverage#%s" % dimension
+        if (registry_authoritative and
+                dimension not in BASE_RECEIPT_DIMENSIONS and
+                dimension not in all_registered_dimensions):
+            failures.append((
+                "proof-dimension-unregistered", target,
+                "%s is not a base dimension or an extension in the selected "
+                "profile's Audit Dimension Registry; the registry is the "
+                "sole extension authority" % dimension,
+            ))
+            # Do not promote an unauthorized key into the cited receipt map.
+            continue
+        if (registry_authoritative and
+                dimension in all_registered_dimensions and
+                dimension not in registered_dimensions and
+                isinstance(value, list)):
+            failures.append((
+                "proof-dimension-review-only", target,
+                "%s is registered for review only; it emits no receipt and "
+                "cannot supply receipt IDs to Terminal Proof "
+                "dimension_coverage" % dimension,
+            ))
+            continue
         if isinstance(value, str):
             if not value.startswith(NOT_APPLICABLE_PREFIX):
                 failures.append((
@@ -628,8 +771,14 @@ def _dimension_coverage_failures(proof):
     return failures, cited
 
 
-def _validate_dimension_coverage_evidence(root, proof, cited):
-    """Resolve every cited dimension receipt against the audit register."""
+def _validate_dimension_coverage_evidence(root, proof, cited, runtime=None):
+    """Resolve cited dimensions through current evidence and the register.
+
+    The append-only register remains the byte-level source for the declared
+    dimension and verdict. Standards adoption may retain those exact bytes as
+    history while invalidating them for current use, so membership in the
+    adoption-filtered current catalog is an independent prerequisite.
+    """
     failures = []
     if not cited:
         return failures
@@ -663,6 +812,15 @@ def _validate_dimension_coverage_evidence(root, proof, cited):
     for receipt_id in sorted(cited):
         dimension = cited[receipt_id]
         target = "Terminal Proof#dimension_coverage#%s" % dimension
+        _current, membership_failures = _current_receipt_evidence(
+            root, receipt_id,
+            field="dimension_coverage#%s" % dimension,
+            check_prefix="proof-dimension-receipt",
+            runtime=runtime,
+        )
+        if membership_failures:
+            failures.extend(membership_failures)
+            continue
         matches = records.get(receipt_id, [])
         if len(matches) != 1:
             failures.append(_queue_linkage_failure(
@@ -1282,6 +1440,12 @@ def _validate_terminal_progress_state(proof, progress_ledger,
         "selected_profile_manifest": contract.get(
             "selected_profile_manifest"
         ),
+        "selected_route_ids": contract.get("selected_route_ids"),
+        "selected_card_paths": contract.get("selected_card_paths"),
+        "selected_profile_route_ids": contract.get(
+            "selected_profile_route_ids"),
+        "selected_read_sets": contract.get("selected_read_sets"),
+        "loaded_module_paths": contract.get("loaded_module_paths"),
     }
     for field, actual in progress_values.items():
         expected = proof.get(field)
@@ -1805,12 +1969,35 @@ def main():
 
     # K12/16: every base receipt dimension is accounted for explicitly. A
     # dimension that simply has no receipts fails closed instead of passing.
+    # With --root the selected profile's Audit Dimension Registry is read as
+    # well, because K12/16 accounts for a dimension the profile registers with
+    # a `receipt` target on those same terms. Without --root no profile is
+    # resolvable, so this stays the structural lint K12/16 says it is -- which
+    # is also why lint alone cannot support a transition to `complete`.
     dimension_bad = 0
     cited_dimension_receipts = {}
+    registered_dimensions = ()
+    all_registered_dimensions = ()
+    dimension_registry_authoritative = False
+    if args.root:
+        profile_root = Path(args.root).resolve()
+        if profile_root.is_dir():
+            (registered_dimensions, all_registered_dimensions,
+             dimension_registry_authoritative, registry_failures) = (
+                _registered_receipt_dimensions(
+                    profile_root, proof.get("selected_profile_manifest")))
+            for check, target, details in registry_failures:
+                dimension_bad += 1
+                seq += 1
+                receipts.append(_make_receipt(
+                    TOOL, TOOL_VERSION, check,
+                    "%s#%s" % (proof_name, target), "fail", details, seq))
     if "dimension_coverage" not in missing:
         dimension_failures, cited_dimension_receipts = (
-            _dimension_coverage_failures(proof))
-        dimension_bad = len(dimension_failures)
+            _dimension_coverage_failures(
+                proof, registered_dimensions, all_registered_dimensions,
+                dimension_registry_authoritative))
+        dimension_bad += len(dimension_failures)
         for check, target, details in dimension_failures:
             seq += 1
             receipts.append(_make_receipt(
@@ -1888,6 +2075,7 @@ def main():
     profile_identity_checked = False
     profile_manifest_checked = False
     current_evidence_bad = 0
+    current_runtime = None
     selected_profile_id = None
     root = None
     if args.root:
@@ -2372,7 +2560,7 @@ def main():
     if (args.root and root is not None and root.is_dir() and
             cited_dimension_receipts):
         dimension_evidence_failures = _validate_dimension_coverage_evidence(
-            root, proof, cited_dimension_receipts)
+            root, proof, cited_dimension_receipts, runtime=current_runtime)
         dimension_bad += len(dimension_evidence_failures)
         for check, target, details in dimension_evidence_failures:
             seq += 1

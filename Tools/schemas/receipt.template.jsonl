@@ -33,6 +33,18 @@
 # `check_residual_content.py` receipts:
 #   scan_id            : stable ID from the selected profile's Registered Scan Registry
 #   config_fingerprint : `sha256:<hex>` over the exact profile-owned config bytes; null when the config could not be read or validated
+# Both the explicit `--positive-controls-only` invocation and the following
+# production invocation of a registered K12/09 item-6 verifier finish with a
+# reliable summary carrying:
+#   positive_control_result      : `passed`
+#   positive_control_mode        : `production-classifier`
+#   positive_control_count       : positive integer number of executed controls
+#   positive_control_fingerprint : `sha256:<64 lowercase hex>` over the exact
+#                                  verifier-owned control set
+# These shared evidence fields do not prescribe the verifier's control-input
+# representation. `check_batch_close.py` 1.3.0 requires the two final pass
+# summaries to agree exactly on tool, tool_version, check, scan_id,
+# config_fingerprint, and every positive_control_* field.
 # `check_queue.py` pass receipts:
 #   task_id                       : frozen task identity
 #   queue_revision                : structural Queue revision
@@ -77,9 +89,9 @@
 # the Stable Gate ID Registry in K00/12 is the only complete enumeration of
 # registered Gate IDs and their producers: check_links 1.5.0 /
 # wiki-link-integrity; check_vocab 1.4.0 / frontmatter-vocabulary;
-# check_residual_content 1.1.0 / registered-residual-content;
-# check_batch_close 1.2.0 / batch-close; check_proof 1.14.0 /
-# terminal-proof; and adopt_standards 1.1.0 / standards-adoption. Deterministic
+# check_residual_content 1.2.0 / registered-residual-content;
+# check_batch_close 1.3.0 / batch-close; check_proof 1.15.0 /
+# terminal-proof; and adopt_standards 1.2.0 / standards-adoption. Deterministic
 # producers not shown above -- among them check_queue, check_corpus_plan, and
 # record_corpus_acceptance -- follow the same rule. Every receipt
 # created by one of these producer versions carries that exact Gate ID. The

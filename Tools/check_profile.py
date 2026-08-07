@@ -79,7 +79,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_profile"
-TOOL_VERSION = "1.6.0"
+TOOL_VERSION = "1.7.0"
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -114,6 +114,30 @@ CORPUS_ARTIFACT_FIELDS = {
 CORPUS_SCALE_FIELDS = {"rank", "value", "predicate", "target_eligible"}
 CORPUS_AUTHORITY_FIELDS = {"role_id", "decision_scope_id"}
 CORPUS_DECISION_SCOPE = "corpus-plan-semantic-acceptance"
+
+AUDIT_DIMENSION_SLOT = "Audit Dimension Registry"
+AUDIT_DIMENSION_SECTION = "Extension Dimensions"
+AUDIT_DIMENSION_TABLE_HEADER = (
+    "Dimension ID",
+    "Target list(s): `review`, `receipt`, or `review + receipt`",
+    "Meaning",
+)
+AUDIT_DIMENSION_REGISTRATIONS = frozenset(("None", "Configured"))
+AUDIT_DIMENSION_TARGETS = {
+    "review": frozenset(("review",)),
+    "receipt": frozenset(("receipt",)),
+    "review + receipt": frozenset(("review", "receipt")),
+}
+AUDIT_DIMENSION_ID_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
+BASE_RECEIPT_DIMENSIONS = (
+    "structure_and_links",
+    "content_and_depth",
+    "formula_and_numeric",
+    "source_and_currentness",
+    "coverage_and_integration",
+    "rendering",
+    "guidance_and_contract",
+)
 
 
 def _positive_integer_domain(value):
@@ -300,6 +324,130 @@ def unbacktick(value):
     value = value.strip()
     m = re.fullmatch(r"`([^`]*)`", value)
     return m.group(1).strip() if m else value
+
+
+def parse_audit_dimension_registry(text):
+    """Parse the closed ``Extension Dimensions`` profile registration.
+
+    Returns ``(registration, rows, errors)``. ``rows`` contains dictionaries
+    with ``id``, normalized ``targets``, and ``meaning``. ``errors`` contains
+    ``(check, details)`` pairs. Callers MUST treat any error as making the
+    complete registry unreadable; valid-looking rows from a partial parse are
+    diagnostic data, not authorization to consume a subset.
+
+    This is the one parser shared by profile admission and Terminal Proof. It
+    intentionally decides only the machine-readable envelope. Whether a
+    dimension is useful, or whether its meaning is true, remains review work.
+    """
+    errors = []
+    matching = [lines for heading, lines in h2_sections(text)
+                if heading == AUDIT_DIMENSION_SECTION]
+    if len(matching) != 1:
+        errors.append((
+            "audit-dimension-section-count",
+            "expected exactly one `## %s` section; found %d" %
+            (AUDIT_DIMENSION_SECTION, len(matching)),
+        ))
+        return None, (), tuple(errors)
+
+    lines = matching[0]
+    declarations = [match.group(2).strip()
+                    for match in (DECLARATION_RE.match(line)
+                                  for line in lines)
+                    if match and match.group(1) == "Registration"]
+    registration = declarations[0] if len(declarations) == 1 else None
+    if (len(declarations) != 1 or
+            registration not in AUDIT_DIMENSION_REGISTRATIONS):
+        errors.append((
+            "audit-dimension-registration",
+            "expected exactly one `- Registration:` declaration whose value "
+            "is `None` or `Configured`; found %r" % declarations,
+        ))
+
+    tables = markdown_table_data(lines)
+    if len(tables) != 1:
+        errors.append((
+            "audit-dimension-table-count",
+            "expected exactly one Markdown registration table; found %d" %
+            len(tables),
+        ))
+        return registration, (), tuple(errors)
+
+    header, data_rows = tables[0]
+    if tuple(header) != AUDIT_DIMENSION_TABLE_HEADER:
+        errors.append((
+            "audit-dimension-table-shape",
+            "registration table header must be exactly `%s`; found `%s`" %
+            (" | ".join(AUDIT_DIMENSION_TABLE_HEADER),
+             " | ".join(header)),
+        ))
+
+    if registration == "Configured" and not data_rows:
+        errors.append((
+            "audit-dimension-configured-empty",
+            "`Registration: Configured` requires at least one extension "
+            "dimension row",
+        ))
+    if registration == "None" and data_rows:
+        errors.append((
+            "audit-dimension-none-with-rows",
+            "`Registration: None` requires an empty registration table; "
+            "found %d row(s)" % len(data_rows),
+        ))
+
+    parsed = []
+    seen = set()
+    for row_number, cells in enumerate(data_rows, 1):
+        label = "registration row %d" % row_number
+        if len(cells) != len(AUDIT_DIMENSION_TABLE_HEADER) or any(
+                not cell.strip() for cell in cells):
+            errors.append((
+                "audit-dimension-row-shape",
+                "%s must have exactly three non-empty cells; found %d" %
+                (label, len(cells)),
+            ))
+            continue
+
+        dimension_id = unbacktick(cells[0])
+        if not AUDIT_DIMENSION_ID_RE.fullmatch(dimension_id):
+            errors.append((
+                "audit-dimension-id-invalid",
+                "%s has invalid Dimension ID %r; use lower_snake_case "
+                "starting with a letter" % (label, dimension_id),
+            ))
+        if dimension_id in seen:
+            errors.append((
+                "audit-dimension-id-duplicate",
+                "%s repeats Dimension ID %r; each extension dimension has "
+                "one registration" % (label, dimension_id),
+            ))
+        else:
+            seen.add(dimension_id)
+        if dimension_id in BASE_RECEIPT_DIMENSIONS:
+            errors.append((
+                "audit-dimension-base-collision",
+                "%s registers %r, one of the seven base receipt dimensions; "
+                "profile registrations may append dimensions but cannot "
+                "redefine a base dimension" % (label, dimension_id),
+            ))
+
+        target_literal = unbacktick(cells[1])
+        targets = AUDIT_DIMENSION_TARGETS.get(target_literal)
+        if targets is None:
+            errors.append((
+                "audit-dimension-target-invalid",
+                "%s has target %r; use exactly `review`, `receipt`, or "
+                "`review + receipt`" % (label, target_literal),
+            ))
+            targets = frozenset()
+
+        parsed.append({
+            "id": dimension_id,
+            "targets": targets,
+            "meaning": cells[2].strip(),
+        })
+
+    return registration, tuple(parsed), tuple(errors)
 
 
 def scan_sentinel(profile_dir, sentinel):
@@ -650,8 +798,28 @@ def main():
                         "Corpus Planning must bind a restricted-YAML .yaml file")
                 else:
                     validate_corpus_planning_slot(detail, target, add)
+            elif slot == AUDIT_DIMENSION_SLOT:
+                target = (os.path.relpath(detail, root).replace(os.sep, "/") +
+                          "#" + AUDIT_DIMENSION_SECTION)
+                try:
+                    with open(detail, encoding="utf-8") as handle:
+                        registry_text = handle.read()
+                except (OSError, UnicodeError) as exc:
+                    add("audit-dimension-registry-unreadable", target, "fail",
+                        "cannot read the bound registry: %s" % exc)
+                else:
+                    _registration, _rows, registry_errors = (
+                        parse_audit_dimension_registry(registry_text))
+                    for check, details in registry_errors:
+                        add(check, target, "fail", details)
         elif kind == "inline":
-            if any(h == slot or h.startswith(slot + " ")
+            if slot == AUDIT_DIMENSION_SLOT:
+                add("audit-dimension-binding", "%s#%s" %
+                    (manifest_disp, slot), "fail",
+                    "Audit Dimension Registry is a required file-bound slot; "
+                    "an inline declaration cannot supply its canonical "
+                    "Extension Dimensions table")
+            elif any(h == slot or h.startswith(slot + " ")
                    for h in h2_headings(manifest_text)):
                 bound_ok += 1
             else:

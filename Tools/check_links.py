@@ -85,12 +85,7 @@ def parse_link(inner):
     alias pipe must be escaped in Markdown tables), so both `\\|` and `|` are
     treated as the target/alias separator.
     """
-    target_part = re.split(r"\\\||\|", inner, maxsplit=1)[0].strip()
-    target, _, heading = target_part.partition("#")
-    target = target.strip()
-    if target.lower().endswith(".md"):
-        target = target[:-3]
-    return target, heading.strip()
+    return kblib.parse_wiki_link(inner)
 
 
 def build_index(files):

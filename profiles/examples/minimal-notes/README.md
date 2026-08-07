@@ -62,7 +62,7 @@ The public Cambium distribution is intentionally uninstantiated: `kernel/K00 Sta
 
 | Validator | Tool version | Command | Expected result |
 |---|---|---|---|
-| `check_profile` | `1.6.0` | `python3 Tools/check_profile.py profiles/examples/minimal-notes` | exit 0 |
+| `check_profile` | `1.7.0` | `python3 Tools/check_profile.py profiles/examples/minimal-notes` | exit 0 |
 | `check_corpus_plan` | `1.5.0` | `python3 Tools/check_corpus_plan.py . --profile profiles/examples/minimal-notes/profile.md` | exit 0 |
 
 The registered residual scan is not in that table: it runs against a live vault root, which this repository does not contain.

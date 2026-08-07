@@ -346,9 +346,45 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
             self.assertEqual(2, completed.returncode,
                              completed.stdout + completed.stderr)
             self.assertIn("Leftover.md", completed.stdout)
+            rows = self.receipt_rows(receipts)
             self.assertEqual(
-                [], [row["check"] for row in self.receipt_rows(receipts)
+                [], [row["check"] for row in rows
                      if row["result"] == "fail"])
+            summary = rows[-1]
+            self.assertEqual("residual-content-summary", summary["check"])
+            self.assertEqual("pass", summary["result"])
+            self.assertEqual("passed", summary["positive_control_result"])
+            self.assertEqual(
+                "production-classifier", summary["positive_control_mode"])
+            self.assertGreater(summary["positive_control_count"], 0)
+            self.assertRegex(
+                summary["positive_control_fingerprint"],
+                r"\Asha256:[0-9a-f]{64}\Z")
+
+    def test_explicit_positive_control_mode_matches_production_summary(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.build_residual_corpus(root, residual_outside=True)
+            config = self.write_residual_config(
+                root, "honest.yaml", "interview-card", "Interview Card")
+            control_receipts = root / "controls.jsonl"
+            production_receipts = root / "production.jsonl"
+            control = self.run_tool(
+                "check_residual_content.py", root,
+                "--scan-id", "fixture-residual", "--config", config,
+                "--positive-controls-only", "--receipts", control_receipts)
+            production = self.run_residual_scan(
+                root, config, production_receipts)
+            self.assertEqual(0, control.returncode,
+                             control.stdout + control.stderr)
+            self.assertEqual(2, production.returncode,
+                             production.stdout + production.stderr)
+            control_summary = self.receipt_rows(control_receipts)[-1]
+            production_summary = self.receipt_rows(production_receipts)[-1]
+            for field in check_batch_close.POSITIVE_CONTROL_BINDING_FIELDS:
+                self.assertEqual(
+                    control_summary.get(field), production_summary.get(field),
+                    field)
 
     def test_clean_corpus_passes_and_names_the_positive_control(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -364,6 +400,13 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
             self.assertEqual("residual-content-summary", summary["check"])
             self.assertEqual("pass", summary["result"])
             self.assertIn("Content/Card.md", summary["details"])
+            self.assertEqual("passed", summary["positive_control_result"])
+            self.assertEqual(
+                "production-classifier", summary["positive_control_mode"])
+            self.assertEqual(1, summary["positive_control_count"])
+            self.assertRegex(
+                summary["positive_control_fingerprint"],
+                r"\Asha256:[0-9a-f]{64}\Z")
 
     def test_accepted_root_without_any_registered_structure_fails(self):
         """An accepted root that proves nothing cannot certify the scan."""
@@ -452,7 +495,7 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
 
     def test_tool_version_drift_from_the_producer_is_reported(self):
         errors = self.drifted("batch-close", tool_version="9.9.9")
-        self.assertTrue(any("but check_batch_close stamps 1.2.0" in error
+        self.assertTrue(any("but check_batch_close stamps 1.3.0" in error
                             for error in errors), errors)
 
     def test_check_drift_from_the_producer_is_reported(self):

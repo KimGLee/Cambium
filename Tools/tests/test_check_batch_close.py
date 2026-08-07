@@ -70,18 +70,33 @@ class CheckBatchCloseTests(unittest.TestCase):
         shutil.copy2(TOOLS / "kblib.py", tools / "kblib.py")
         (tools / "fixture_residual.py").write_text(
             "#!/usr/bin/env python3\n"
-            "import argparse, os, sys\n"
+            "import argparse, hashlib, json, os, sys\n"
             "sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n"
             "import kblib\n"
             "p=argparse.ArgumentParser()\n"
             "p.add_argument('root')\n"
             "p.add_argument('--scan-id', required=True)\n"
             "p.add_argument('--receipts')\n"
+            "p.add_argument('--positive-controls-only', action='store_true')\n"
             "a=p.parse_args()\n"
+            "def classify(text):\n"
+            "    return text.startswith('residual:')\n"
+            "controls=('residual:alpha','residual:beta')\n"
+            "if not all(classify(item) for item in controls):\n"
+            "    raise SystemExit(1)\n"
+            "control_bytes=json.dumps(controls,separators=(',',':')).encode()\n"
+            "control_fp='sha256:' + hashlib.sha256(control_bytes).hexdigest()\n"
+            "config_fp='sha256:' + hashlib.sha256(b'fixture-config-v1').hexdigest()\n"
             "r=kblib.make_receipt('fixture_residual','1.0.0',"
             "'residual-content-summary',a.root,'pass',"
-            "'fixture residual scan passed',1)\n"
+            "('fixture controls passed' if a.positive_controls_only else "
+            "'fixture production scan passed'),1)\n"
             "r['scan_id']=a.scan_id\n"
+            "r['config_fingerprint']=config_fp\n"
+            "r['positive_control_result']='passed'\n"
+            "r['positive_control_mode']='production-classifier'\n"
+            "r['positive_control_count']=len(controls)\n"
+            "r['positive_control_fingerprint']=control_fp\n"
             "kblib.write_receipts(a.receipts,[r])\n",
             encoding="utf-8",
         )
@@ -791,6 +806,80 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertEqual(1, len(records))
         self.assertEqual("fail", records[0]["result"])
         self.assertNotIn("closed_list_evidence", records[0])
+
+    def test_registered_blind_pass_without_positive_control_evidence_fails(self):
+        script = self.root / "Tools/fixture_residual.py"
+        source = script.read_text(encoding="utf-8")
+        for line in (
+                "r['positive_control_result']='passed'\n",
+                "r['positive_control_mode']='production-classifier'\n",
+                "r['positive_control_count']=len(controls)\n",
+                "r['positive_control_fingerprint']=control_fp\n"):
+            source = source.replace(line, "")
+        script.write_text(source, encoding="utf-8")
+        completed = self.batch_close(
+            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn(
+            "positive_control_result=passed", completed.stdout)
+        records = [json.loads(line) for line in
+                   (self.root / ".cambium/receipts/batch-close.jsonl")
+                   .read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(1, len(records))
+        self.assertEqual("fail", records[0]["result"])
+        self.assertNotIn("closed_list_evidence", records[0])
+
+    def test_registered_positive_control_invocation_failure_fails(self):
+        script = self.root / "Tools/fixture_residual.py"
+        source = script.read_text(encoding="utf-8").replace(
+            "a=p.parse_args()\n",
+            "a=p.parse_args()\n"
+            "if a.positive_controls_only:\n"
+            "    raise SystemExit(1)\n")
+        script.write_text(source, encoding="utf-8")
+        completed = self.batch_close(
+            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("positive-control invocation", completed.stdout)
+        self.assertIn("checker exited 1", completed.stdout)
+
+    def test_registered_control_and_production_binding_mismatch_fails(self):
+        script = self.root / "Tools/fixture_residual.py"
+        source = script.read_text(encoding="utf-8").replace(
+            "r['config_fingerprint']=config_fp\n",
+            "r['config_fingerprint']=(('sha256:' + 'f'*64) "
+            "if a.positive_controls_only else config_fp)\n")
+        script.write_text(source, encoding="utf-8")
+        completed = self.batch_close(
+            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn(
+            "positive-control and production summaries disagree on "
+            "config_fingerprint", completed.stdout)
+
+    def test_candidate_production_receipts_do_not_replace_bound_summary(self):
+        summary = {
+            "tool": "fixture_residual",
+            "tool_version": "1.0.0",
+            "check": "residual-content-summary",
+            "scan_id": "fixture-residuals",
+            "config_fingerprint": "sha256:" + "b" * 64,
+            "positive_control_result": "passed",
+            "positive_control_mode": "production-classifier",
+            "positive_control_count": 2,
+            "positive_control_fingerprint": "sha256:" + "c" * 64,
+            "result": "pass",
+        }
+        candidate = {
+            "tool": "fixture_residual",
+            "tool_version": "1.0.0",
+            "check": "residual-content-candidate",
+            "result": "candidate",
+        }
+        self.assertEqual(
+            [], check_batch_close._positive_control_binding_errors(
+                {"receipts": [dict(summary)]},
+                {"receipts": [candidate, dict(summary)]}))
 
     def _install_authoritative_state_mutating_verifier(self, exit_code):
         script = self.root / "Tools/fixture_residual.py"

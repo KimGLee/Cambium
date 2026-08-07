@@ -6,6 +6,7 @@ Covers the closed item registry now carried by
 """
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -221,6 +222,136 @@ class ShippedRegistryTests(unittest.TestCase):
             self.assertTrue(str(entry["owner"]).startswith("kernel/"), entry)
             self.assertTrue(
                 (REPOSITORY / entry["owner"]).is_file(), entry["owner"])
+
+
+class AuditDimensionRegistryTests(unittest.TestCase):
+    """The shared parser is the Profile and Terminal Proof envelope owner."""
+
+    HEADER = (
+        "| Dimension ID | Target list(s): `review`, `receipt`, or "
+        "`review + receipt` | Meaning |\n"
+        "|---|---|---|\n"
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(REPOSITORY / "Tools"))
+        import check_profile
+        cls.check_profile = check_profile
+
+    def registry(self, registration="None", rows="", header=None):
+        return (
+            "# Audit Dimension Registry\n\n"
+            "## Extension Dimensions\n\n"
+            "- Registration: %s\n\n%s%s" %
+            (registration, self.HEADER if header is None else header, rows)
+        )
+
+    def parse(self, text):
+        return self.check_profile.parse_audit_dimension_registry(text)
+
+    def checks(self, text):
+        return {check for check, _details in self.parse(text)[2]}
+
+    def test_none_with_the_canonical_empty_table_is_readable(self):
+        registration, rows, errors = self.parse(self.registry())
+        self.assertEqual("None", registration)
+        self.assertEqual((), rows)
+        self.assertEqual((), errors)
+
+    def test_configured_rows_normalize_the_three_public_target_literals(self):
+        rows = "".join((
+            "| `manual_depth` | `review` | Manual review only. |\n",
+            "| `source_receipt` | `receipt` | Receipt only. |\n",
+            "| `glossary_fitness` | `review + receipt` | Both targets. |\n",
+        ))
+        registration, parsed, errors = self.parse(
+            self.registry("Configured", rows))
+        self.assertEqual("Configured", registration)
+        self.assertEqual((), errors)
+        self.assertEqual(
+            [frozenset(("review",)), frozenset(("receipt",)),
+             frozenset(("review", "receipt"))],
+            [row["targets"] for row in parsed])
+
+    def test_extension_section_must_exist_exactly_once(self):
+        missing = "# Audit Dimension Registry\n"
+        duplicated = self.registry() + "\n## Extension Dimensions\n"
+        for text in (missing, duplicated):
+            with self.subTest(text=text):
+                self.assertIn("audit-dimension-section-count",
+                              self.checks(text))
+
+    def test_registration_and_table_shape_are_closed(self):
+        wrong_header = "| ID | Target | Meaning |\n|---|---|---|\n"
+        cases = (
+            (self.registry("Not applicable — no extensions"),
+             "audit-dimension-registration"),
+            (self.registry(header=wrong_header),
+             "audit-dimension-table-shape"),
+            ("# Registry\n\n## Extension Dimensions\n\n"
+             "- Registration: None\n", "audit-dimension-table-count"),
+        )
+        for text, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertIn(expected, self.checks(text))
+
+    def test_registration_state_and_row_count_must_agree(self):
+        row = "| `glossary` | `receipt` | Glossary fitness. |\n"
+        self.assertIn("audit-dimension-configured-empty",
+                      self.checks(self.registry("Configured")))
+        self.assertIn("audit-dimension-none-with-rows",
+                      self.checks(self.registry("None", row)))
+
+    def test_ids_are_valid_unique_and_do_not_collide_with_base(self):
+        rows = "".join((
+            "| `Bad-ID` | `review` | Invalid ID. |\n",
+            "| `glossary` | `review` | First owner. |\n",
+            "| `glossary` | `receipt` | Duplicate owner. |\n",
+            "| `rendering` | `receipt` | Base collision. |\n",
+        ))
+        checks = self.checks(self.registry("Configured", rows))
+        self.assertIn("audit-dimension-id-invalid", checks)
+        self.assertIn("audit-dimension-id-duplicate", checks)
+        self.assertIn("audit-dimension-base-collision", checks)
+
+    def test_targets_are_exactly_the_three_public_literals(self):
+        for target in ("both", "receipt + review", "review + audit", ""):
+            with self.subTest(target=target):
+                row = "| `glossary` | `%s` | Glossary fitness. |\n" % target
+                self.assertIn(
+                    "audit-dimension-target-invalid",
+                    self.checks(self.registry("Configured", row)))
+
+    def test_profile_cli_rejects_a_malformed_registry_during_loading(self):
+        """The shared parser is admission, not only a Terminal Proof check."""
+        fixture = REPOSITORY / "Tools/tests/fixtures/synthetic_profile"
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = Path(tmp) / "test-profile"
+            shutil.copytree(fixture, profile)
+            slot = profile / "slots.md"
+            slot.write_text("# Synthetic Slot Fixture\n", encoding="utf-8")
+            completed = subprocess.run(
+                [sys.executable, str(SCRIPT), str(profile),
+                 "--root", str(REPOSITORY)],
+                text=True, capture_output=True, check=False)
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("audit-dimension-section-count", completed.stdout)
+
+    def test_profile_cli_rejects_invalid_utf8_registry_during_loading(self):
+        """Bad bytes cannot be replaced and then admitted as valid prose."""
+        fixture = REPOSITORY / "Tools/tests/fixtures/synthetic_profile"
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = Path(tmp) / "test-profile"
+            shutil.copytree(fixture, profile)
+            slot = profile / "slots.md"
+            slot.write_bytes(slot.read_bytes() + b"\ninvalid meaning: \xff\n")
+            completed = subprocess.run(
+                [sys.executable, str(SCRIPT), str(profile),
+                 "--root", str(REPOSITORY)],
+                text=True, capture_output=True, check=False)
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("audit-dimension-registry-unreadable", completed.stdout)
 
 
 if __name__ == "__main__":

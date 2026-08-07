@@ -50,9 +50,9 @@ class AdoptStandardsTests(unittest.TestCase):
             "## Stable Gate ID Registry\n\n"
             "| Gate ID | Tool | Tool version | Check | Mode | Dimension |\n"
             "|---|---|---|---|---|---|\n"
-            "| required-queue-consistency | check_queue | 1.5.0 | required_queue | consistency | * |\n"
-            "| required-queue-admission | check_queue | 1.5.0 | required_queue | require-ready:* | * |\n"
-            "| batch-close | check_batch_close | 1.2.0 | batch_close_gate | * | * |\n",
+            "| required-queue-consistency | check_queue | 1.6.0 | required_queue | consistency | * |\n"
+            "| required-queue-admission | check_queue | 1.6.0 | required_queue | require-ready:* | * |\n"
+            "| batch-close | check_batch_close | 1.3.0 | batch_close_gate | * | * |\n",
             encoding="utf-8")
 
     def tearDown(self):
@@ -735,6 +735,307 @@ class AdoptStandardsTests(unittest.TestCase):
             validate_current=False)
         self.assertEqual([], [error for error in replay
                               if "no gate rerun" in error])
+
+    READ_SET = "kernel/Read Sets/R99 Fixture Read Set.md"
+    CROSS_READ_SET = "kernel/Read Sets/R98 Cross Referenced Read Set.md"
+    PROFILE_READ_SET = "profiles/test-profile/P Supplemental Read Set.md"
+    READ_SET_INDEX = "kernel/Read Sets/Fixture Route Index.md"
+    LEAF_DIRECT = "kernel/K99 Fixture Family/01 Direct Leaf.md"
+    LEAF_NESTED = "kernel/K99 Fixture Family/02 Nested Leaf.md"
+    LEAF_PROFILE = "kernel/K99 Fixture Family/03 Profile Leaf.md"
+    LEAF_RELATED = "kernel/K99 Fixture Family/04 Related Only Leaf.md"
+    ORDINARY_SELECTED = "profiles/test-profile/ordinary.md"
+    BOUND_PROFILE_FILE = "profiles/test-profile/profile.md"
+    BOUND_TOOL_FILE = "Tools/fixture_tool.py"
+    MODULE_OMISSION = "loaded_module_paths_after omits"
+    READ_SET_OMISSION = "selected_read_sets_after omits"
+
+    def load_set_baseline_errors(self):
+        """Errors a plan of this fixture carries before any load set is set.
+
+        The fixture task is `planned`, so `plan_errors` always reports that;
+        comparing against this baseline states exactly what declaring a load
+        set adds and nothing else.
+        """
+        return set(self.plan_errors(
+            self.plan(overrides={"contract_version_after": "c2"})))
+
+    def write_boundary_fixture(self):
+        """Lay down a cycle-safe kernel/profile Read Set closure."""
+        for relative in (self.LEAF_DIRECT, self.LEAF_NESTED,
+                         self.LEAF_PROFILE, self.LEAF_RELATED):
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("## Purpose\n\nFixture leaf.\n", encoding="utf-8")
+        index = self.root / self.READ_SET_INDEX
+        index.parent.mkdir(parents=True, exist_ok=True)
+        index.write_text(
+            "---\ntype: route-index\n---\n\n## Purpose\n\nNot a Read Set.\n",
+            encoding="utf-8")
+        tool = self.root / self.BOUND_TOOL_FILE
+        tool.parent.mkdir(parents=True, exist_ok=True)
+        tool.write_text("# Extra bound tool.\n", encoding="utf-8")
+
+        read_set = self.root / self.READ_SET
+        read_set.parent.mkdir(parents=True, exist_ok=True)
+        read_set.write_text(
+            "---\ntype: read-set\nroute_id: R99\n---\n\n"
+            "## Purpose\n\n"
+            "Applicability only, so [[%s|Related Only Leaf]] here is not a\n"
+            "loading boundary target.\n\n"
+            "## Start\n\n"
+            "- [[%s|Direct Leaf]]\n"
+            "- First read [[%s|Cross Referenced]].\n"
+            "- Consult [[%s|Route Index]].\n"
+            "- Run `python3 Tools/check_queue.py .` before closing.\n\n"
+            "## Related\n\n"
+            "- [[%s|Related Only Leaf]]\n"
+            % (self.LEAF_RELATED[:-3], self.LEAF_DIRECT[:-3],
+               self.CROSS_READ_SET[:-3], self.READ_SET_INDEX[:-3],
+               self.LEAF_RELATED[:-3]),
+            encoding="utf-8")
+
+        cross = self.root / self.CROSS_READ_SET
+        cross.write_text(
+            "---\ntype: read-set\nroute_id: R98\n---\n\n"
+            "## Purpose\n\nKernel supplemental fixture.\n\n"
+            "## Start\n\n"
+            "- [[%s|Nested Leaf]]\n"
+            "- [[%s|Profile Supplemental Read Set]]\n"
+            % (self.LEAF_NESTED[:-3], self.PROFILE_READ_SET[:-3]),
+            encoding="utf-8")
+
+        profile = self.root / self.PROFILE_READ_SET
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text(
+            "---\ntype: profile-read-set\n"
+            "route_id: P:test-profile:supplemental\nsupplements: R98\n---\n\n"
+            "## Purpose\n\nProfile supplemental fixture.\n\n"
+            "## Start\n\n"
+            "- [[%s|Profile Leaf]]\n"
+            "- [[%s|Cycle Back To Root]]\n"
+            % (self.LEAF_PROFILE[:-3], self.READ_SET[:-3]),
+            encoding="utf-8")
+
+    def test_boundary_read_sets_form_a_transitive_cycle_safe_closure(self):
+        """Referenced kernel and profile Read Sets must also be declared."""
+        self.write_boundary_fixture()
+        baseline = self.load_set_baseline_errors()
+        plan = self.plan(overrides={
+            "contract_version_after": "c2",
+            "selected_profile_route_ids_after": [
+                "P:test-profile:supplemental"],
+            "selected_read_sets_after": [self.READ_SET],
+            "loaded_module_paths_after": sorted(
+                (self.LEAF_DIRECT, self.LEAF_NESTED, self.LEAF_PROFILE,
+                 self.READ_SET_INDEX)),
+        })
+        errors = self.plan_errors(plan)
+        omissions = [error for error in errors
+                     if self.READ_SET_OMISSION in error]
+
+        self.assertEqual(2, len(omissions), errors)
+        self.assertTrue(any(self.CROSS_READ_SET in error
+                            for error in omissions), omissions)
+        self.assertTrue(any(self.PROFILE_READ_SET in error
+                            for error in omissions), omissions)
+        self.assertEqual([], [error for error in errors
+                              if self.MODULE_OMISSION in error])
+        self.assertEqual(baseline | set(omissions), set(errors))
+
+    def test_every_non_read_set_target_in_the_closure_must_be_loaded(self):
+        """Nested leaves and a non-Read-Set index cannot disappear."""
+        self.write_boundary_fixture()
+        baseline = self.load_set_baseline_errors()
+        plan = self.plan(overrides={
+            "contract_version_after": "c2",
+            "selected_profile_route_ids_after": [
+                "P:test-profile:supplemental"],
+            "selected_read_sets_after": sorted(
+                (self.READ_SET, self.CROSS_READ_SET, self.PROFILE_READ_SET)),
+            "loaded_module_paths_after": sorted(
+                (self.LEAF_DIRECT, self.BOUND_PROFILE_FILE,
+                 self.BOUND_TOOL_FILE)),
+        })
+        errors = self.plan_errors(plan)
+        omissions = [error for error in errors
+                     if self.MODULE_OMISSION in error]
+
+        self.assertEqual(3, len(omissions), errors)
+        for target in (self.LEAF_NESTED, self.LEAF_PROFILE,
+                       self.READ_SET_INDEX):
+            self.assertTrue(any(target in error for error in omissions),
+                            omissions)
+        self.assertFalse(any(self.LEAF_RELATED in error for error in errors),
+                         errors)
+        self.assertEqual(baseline | set(omissions), set(errors))
+
+        runtime = check_queue.validate_runtime(self.root)
+        replay = check_queue.standards_adoption_plan_errors(
+            self.root, plan, catalog=runtime["receipt_catalog"],
+            queue=runtime["queue"], progress=runtime["progress"],
+            validate_current=False)
+        self.assertEqual([], [error for error in replay if "_after omits" in error])
+
+    def test_a_complete_closure_allows_additional_tool_and_profile_paths(self):
+        """Containment allows route-bound files that no boundary names."""
+        self.write_boundary_fixture()
+        baseline = self.load_set_baseline_errors()
+        plan = self.plan(overrides={
+            "contract_version_after": "c2",
+            "selected_profile_route_ids_after": [
+                "P:test-profile:supplemental"],
+            "selected_read_sets_after": sorted(
+                (self.READ_SET, self.CROSS_READ_SET, self.PROFILE_READ_SET)),
+            "loaded_module_paths_after": sorted(
+                (self.BOUND_PROFILE_FILE, self.BOUND_TOOL_FILE,
+                 self.LEAF_DIRECT, self.LEAF_NESTED, self.LEAF_PROFILE,
+                 self.READ_SET_INDEX)),
+        })
+        self.assertEqual(baseline, set(self.plan_errors(plan)))
+
+    def test_a_selected_read_set_must_prove_its_document_type(self):
+        """Ordinary Markdown is refused and its links are not traversed."""
+        self.write_boundary_fixture()
+        ordinary = self.root / self.ORDINARY_SELECTED
+        ordinary.write_text(
+            "## Start\n\n- [[%s|Not A Read Set Boundary]]\n" %
+            self.LEAF_DIRECT[:-3], encoding="utf-8")
+        baseline = self.load_set_baseline_errors()
+        plan = self.plan(overrides={
+            "contract_version_after": "c2",
+            "selected_read_sets_after": [self.ORDINARY_SELECTED],
+            "loaded_module_paths_after": [],
+        })
+        errors = self.plan_errors(plan)
+        type_errors = [error for error in errors
+                       if "does not prove frontmatter type" in error]
+
+        self.assertEqual(1, len(type_errors), errors)
+        self.assertIn(self.ORDINARY_SELECTED, type_errors[0])
+        self.assertEqual([], [error for error in errors
+                              if self.MODULE_OMISSION in error])
+        self.assertEqual(baseline | set(type_errors), set(errors))
+
+    def test_an_unreadable_read_set_is_reported_once_not_per_module(self):
+        """A Read Set path that does not resolve is already reported."""
+        plan = self.plan(overrides={
+            "contract_version_after": "c2",
+            "selected_read_sets_after": ["kernel/Read Sets/R99 Absent.md"],
+            "loaded_module_paths_after": [],
+        })
+        errors = self.plan_errors(plan)
+        self.assertEqual(1, len([error for error in errors
+                                 if "selected_read_sets_after path" in error]),
+                         errors)
+        self.assertEqual([], [error for error in errors
+                              if "_after omits" in error])
+
+    def test_invalid_utf8_read_set_fails_closed(self):
+        """A present but undecodable Read Set cannot shrink the closure."""
+        relative = "kernel/Read Sets/R99 Invalid UTF8.md"
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"---\ntype: read-set\n---\n\xff")
+        plan = self.plan(overrides={
+            "contract_version_after": "c2",
+            "selected_read_sets_after": [relative],
+            "loaded_module_paths_after": [],
+        })
+        errors = self.plan_errors(plan)
+        self.assertTrue(any(
+            relative in error and "unreadable UTF-8" in error
+            for error in errors), errors)
+
+    def test_invalid_utf8_boundary_target_fails_closed(self):
+        read_set = self.root / self.READ_SET
+        read_set.parent.mkdir(parents=True, exist_ok=True)
+        target = "kernel/K99 Fixture Family/Invalid UTF8.md"
+        read_set.write_text(
+            "---\ntype: read-set\nroute_id: R99\n---\n\n"
+            "## Start\n\n- [[%s|Broken Target]]\n" % target[:-3],
+            encoding="utf-8")
+        target_path = self.root / target
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(b"\xff")
+        errors = self.plan_errors(self.plan(overrides={
+            "contract_version_after": "c2",
+            "selected_read_sets_after": [self.READ_SET],
+            "loaded_module_paths_after": [],
+        }))
+        self.assertTrue(any(
+            target in error and "unreadable UTF-8" in error
+            for error in errors), errors)
+
+    def test_read_set_type_must_be_a_scalar_string(self):
+        """Malformed YAML types are rejected without raising TypeError."""
+        text = "---\ntype: [read-set]\n---\n\n## Start\n"
+        self.assertIsNone(kblib.read_set_document_type(text))
+
+    def test_malformed_load_lists_fail_without_validator_traceback(self):
+        """Shape errors remain evidence even when elements are unhashable."""
+        plan = self.plan(overrides={
+            "contract_version_after": "c2",
+            "selected_read_sets_after": [{"path": self.READ_SET}],
+            "loaded_module_paths_after": [{"path": self.LEAF_DIRECT}],
+        })
+        errors = self.plan_errors(plan)
+        self.assertTrue(any(
+            "selected_read_sets_after must contain only non-empty strings"
+            in error for error in errors), errors)
+        self.assertTrue(any(
+            "loaded_module_paths_after must contain only non-empty strings"
+            in error for error in errors), errors)
+
+    def test_profile_read_set_cannot_cross_the_selected_profile(self):
+        """A supplemental route belongs only to its selected profile."""
+        relative = "profiles/other-profile/P Other Read Set.md"
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "---\ntype: profile-read-set\n"
+            "route_id: P:test-profile:supplemental\n---\n\n"
+            "## Start\n\n- [[%s|Leaf]]\n" % self.LEAF_DIRECT[:-3],
+            encoding="utf-8")
+        plan = self.plan(overrides={
+            "contract_version_after": "c2",
+            "selected_profile_route_ids_after": [
+                "P:test-profile:supplemental"],
+            "selected_read_sets_after": [relative],
+            "loaded_module_paths_after": [],
+        })
+        errors = self.plan_errors(plan)
+        self.assertTrue(any(
+            relative in error and "outside the selected profile directory"
+            in error for error in errors), errors)
+
+    def test_profile_read_set_route_must_be_selected(self):
+        self.write_boundary_fixture()
+        plan = self.plan(overrides={
+            "contract_version_after": "c2",
+            "selected_profile_route_ids_after": [],
+            "selected_read_sets_after": [self.PROFILE_READ_SET],
+            "loaded_module_paths_after": [],
+        })
+        errors = self.plan_errors(plan)
+        self.assertTrue(any(
+            self.PROFILE_READ_SET in error and
+            "not present in selected_profile_route_ids" in error
+            for error in errors), errors)
+
+    def test_boundary_parser_ignores_fences_and_accepts_indented_h2(self):
+        text = (
+            "## Purpose\n\n[[Ignored/Purpose]]\n\n"
+            "  ## Start\n\n[[Included/Leaf]]\n\n"
+            "[[Included/WithSuffix.md|Explicit suffix]]\n\n"
+            "| Target |\n|---|\n| [[Included/Table\\|Alias]] |\n\n"
+            "```markdown\n## Triggered\n[[Ignored/Fenced]]\n```\n\n"
+            "   ## Gate\n\n[[Included/Gate]]\n\n"
+            "## Related\n\n[[Ignored/Related]]\n")
+        self.assertEqual(
+            ["Included/Gate.md", "Included/Leaf.md", "Included/Table.md",
+             "Included/WithSuffix.md"],
+            kblib.read_set_boundary_targets(text))
 
     def test_batch_boundary_needs_no_invalidated_evidence_scope(self):
         invalidated_gate = self.open_b1_and_hold_for_revalidation()

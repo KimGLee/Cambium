@@ -19,7 +19,7 @@ import check_queue
 import kblib
 
 TOOL = "adopt_standards"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 GATE_ID = "standards-adoption"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.

@@ -24,21 +24,14 @@ corpus_plan_check_receipt: "audit-check_corpus_plan-20260721T000000Z-22222222222
 corpus_plan_semantic_acceptance_receipt: "audit-record_corpus_acceptance-20260721T000000Z-33333333333333333333333333333333-0002"
 standards_version: ""
 selected_profile_manifest: ""
-selected_route_ids:
-  - "R01"
-  - "R07"
-  - "R12"
-  - "R08"
-selected_card_paths:
-  - "kernel/Cards/R01 Core Bootstrap Card.md"
-  - "kernel/Cards/R07 Long-running Execution Card.md"
-  - "kernel/Cards/R12 Targeted and Specialized Audit Card.md"
-  - "kernel/Cards/R08 Audit and Completion Card.md"
+selected_route_ids: []
+selected_card_paths: []
 selected_profile_route_ids: []
-selected_read_sets:
-  - "kernel/Read Sets/R07 Long-running Execution Read Set.md"
-loaded_module_paths:
-  - "kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md"
+# Copy these two lists byte-for-byte from the frozen Task Contract.  That
+# contract is valid only when the Read Set list is transitively closed and the
+# module list contains every ordinary target named by the derived closure.
+selected_read_sets: []
+loaded_module_paths: []
 guidance_cutoff_id: "G-012"
 guidance_reconciliation_result: "passed"
 coverage_reconciliation_result: "passed"
@@ -52,8 +45,12 @@ audit_snapshot_id: "snap-20260721-01"
 # that carry the dimension's verdicts, or an explicit
 # "not-applicable: <reason>" declaration. An omitted dimension, an empty list,
 # or a reasonless declaration fails; absence of receipts is never read as
-# "nothing was in scope". Extension dimensions registered by the profile's
-# Audit Dimension Registry may be added as further entries.
+# "nothing was in scope". Add exactly the extension dimensions whose rows in
+# the selected profile's Audit Dimension Registry target `receipt`; an
+# unregistered key or a receipt list under a `review`-only dimension is invalid.
+# Every cited receipt must remain in the Standards-adoption-filtered current
+# catalog as well as the append-only register; a historical or invalidated
+# receipt cannot authorize a new Terminal Proof.
 dimension_coverage:
   structure_and_links:
     - "audit-check_links-20260721T000000Z-4f9c2a7d6e8b4a10b3c5d7e9f1023456-0001"

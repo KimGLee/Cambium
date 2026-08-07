@@ -102,8 +102,13 @@ COVERAGE_OWNER_PATH = (
 )
 SKELETON_KEY_RE = re.compile(r"(?:(R[0-9]{2}) (Card|Read Set))|(?:(Card|Read Set) default)")
 KERNEL_LEAF_RE = re.compile(r"K[0-9]{2} [^/]+/[0-9]{2} .+\.md")
-NON_BOUNDARY_SECTIONS = ("Purpose", "Related")
-WIKI_TARGET_RE = re.compile(r"\[\[([^\]|#]+)")
+# The loading-boundary parser lives in kblib because two tools apply the same
+# K00/15 rule to the same bytes: this one asks which kernel leaves no boundary
+# names, and check_queue asks which boundary-named modules an adoption plan's
+# declared load set omits.  These names stay bound to it so neither tool
+# carries a second spelling of what a boundary is.
+NON_BOUNDARY_SECTIONS = kblib.READ_SET_NON_BOUNDARY_SECTIONS
+WIKI_LINK_RE = kblib.WIKI_LINK_RE
 SIZE_BUDGET_OWNER_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
 SIZE_BUDGET_SECTION = "Leaf Module Size Budget"
 SIZE_REGISTER_OWNER_PATH = (
@@ -465,24 +470,17 @@ def skeleton_failure(kind, route_id, rel, text, contract):
 def leaf_coverage_failures(root, read_set_records):
     """Report kernel leaf modules that no Read Set loading boundary names.
 
-    A leaf no boundary names cannot be reached by any routed task. `Purpose`
-    states applicability and `Related` is navigation, so neither is a boundary;
-    every other Read Set section is one.
+    A leaf no boundary names cannot be reached by any routed task. Which
+    sections are boundaries and what a boundary names are resolved by
+    `kblib.read_set_boundary_targets`, the single parser this rule has.
     """
     kernel_dir = (root / "kernel").resolve()
     if not kernel_dir.is_dir():
         return ["kernel directory is missing; leaf coverage cannot be resolved"]
     named = set()
     for record in read_set_records:
-        section = ""
-        for line in (record.get("text") or "").splitlines():
-            if line.startswith("## "):
-                section = line[3:].strip()
-                continue
-            if not section or section in NON_BOUNDARY_SECTIONS:
-                continue
-            for target in WIKI_TARGET_RE.findall(line):
-                named.add(target.strip() + ".md")
+        named.update(
+            kblib.read_set_boundary_targets(record.get("text") or ""))
     failures = []
     for path in markdown_paths(kernel_dir):
         family_rel = path.relative_to(kernel_dir).as_posix()
@@ -514,8 +512,9 @@ def named_routes(text, artifact_routes, sections=None):
             continue
         if sections is not None and section not in sections:
             continue
-        for target in WIKI_TARGET_RE.findall(line):
-            route_id = artifact_routes.get(target.strip() + ".md", "")
+        for inner in WIKI_LINK_RE.findall(line):
+            target, _heading = kblib.parse_wiki_link(inner)
+            route_id = artifact_routes.get(target + ".md", "")
             if route_id:
                 found.add(route_id)
     return found
@@ -574,10 +573,11 @@ def table_cells(line):
 
 def registered_target(cell):
     """Return the repository path a register cell's Wiki Link names, or ''."""
-    match = WIKI_TARGET_RE.search(cell)
+    match = WIKI_LINK_RE.search(cell)
     if match is None:
         return ""
-    return match.group(1).rstrip("\\").strip() + ".md"
+    target, _heading = kblib.parse_wiki_link(match.group(1))
+    return target + ".md" if target else ""
 
 
 def parse_size_budget(text):

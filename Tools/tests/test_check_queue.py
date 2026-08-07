@@ -170,6 +170,32 @@ class QueueFixture(unittest.TestCase):
         )
         return lock
 
+    def test_live_task_contract_requires_the_derived_read_set_closure(self):
+        """Ordinary runtime validation rejects an under-declared load set."""
+        read_set = "kernel/Read Sets/R99 Live Fixture.md"
+        leaf = "kernel/K99 Fixture/01 Required Leaf.md"
+        read_set_path = self.root / read_set
+        read_set_path.parent.mkdir(parents=True, exist_ok=True)
+        read_set_path.write_text(
+            "---\ntype: read-set\nroute_id: R99\n---\n\n"
+            "## Start\n\n- [[%s|Required Leaf]]\n" % leaf[:-3],
+            encoding="utf-8")
+        leaf_path = self.root / leaf
+        leaf_path.parent.mkdir(parents=True, exist_ok=True)
+        leaf_path.write_text("## Purpose\n\nFixture.\n", encoding="utf-8")
+
+        progress = kblib.load_yaml_file(self.progress_path)
+        progress["contract"]["selected_read_sets"] = [read_set]
+        progress["contract"]["loaded_module_paths"] = []
+        self.progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+        self.refresh_initial_origin()
+
+        errors = check_queue.validate_runtime(self.root)["errors"]
+        self.assertTrue(any(
+            "Progress contract.loaded_module_paths omits %s" % leaf in error
+            for error in errors), errors)
+
     # --- K13/10 admission condition 2 (control / hub pages) helpers ---
 
     def write_page(self, relative, text):

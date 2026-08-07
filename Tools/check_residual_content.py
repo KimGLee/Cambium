@@ -8,17 +8,22 @@ Exit 1 is reserved for a scan that failed to produce reliable evidence.
 
 Rule owner: "kernel/K12 Quality Assurance/09 Batch-close Closed List.md"
 (item 6 -- membership, the deterministic/whole-vault/<=60s execution contract,
-and the non-triviality requirement enforced by ``check_mandated_coverage`` and
-``probe_accepted_roots``). A configuration that recognises nothing anywhere in
-the vault cannot distinguish a clean corpus from an inert matcher, so it fails
-closed instead of reporting a zero-candidate pass. Recognising *something* is
-not enough either: a configuration blind to the heading form the registering
-profile's own structure rules mandate reports "clean" over exactly the pages it
-was registered to find, so ``mandated_headings`` must also be matchable.
+and the generic positive-control/liveness contract this tool implements). That
+module requires that "Any registered verifier whose clean result depends on
+finding no candidate MUST provide executable positive controls that exercise
+the same production classification path and collectively represent every
+required structure the verifier claims to recognise." This bundled heading
+verifier represents its synthetic controls with ``mandated_headings`` and runs
+them through ``classify`` in ``check_mandated_coverage``. For a zero-candidate
+result, ``probe_accepted_roots`` also proves repository-level liveness using
+the same configuration. The field and probe design are tool-specific; only
+the final summary Receipt's positive-control evidence fields are shared across
+verifiers.
 """
 
 import argparse
 import hashlib
+import json
 import os
 import re
 import signal
@@ -30,7 +35,7 @@ import kblib
 
 
 TOOL = "check_residual_content"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 GATE_ID = "registered-residual-content"
 CONFIG_VERSION = 1
 DEFAULT_TIME_LIMIT = 55.0
@@ -224,38 +229,37 @@ def load_config(path):
 
 
 def check_mandated_coverage(config):
-    """Prove the matchers can recognise the heading forms the profile mandates.
+    """Run this bundled heading verifier's synthetic positive controls.
 
-    K12/09 item 6 accepts a zero-candidate report as evidence only when the
-    same configuration "still recognises those structures where the profile
-    declares they legitimately live".  ``probe_accepted_roots`` reads that as
-    "recognises *some* file", which a configuration passes while being blind to
-    the very heading form the profile's own structure rules require: the
-    generic matcher strips Markdown heading syntax only, so a registered bare
-    ``Deep Dive Follow-up Tree`` never fires on a mandated
-    ``Deep-Dive Follow-up Tree（深挖追问树）``, and the scan reports "clean"
-    over a corpus it cannot see.
-
-    ``mandated_headings`` is the profile's own transcription of that mandated
-    form, so this is a consistency check between two profile-owned
-    declarations, not an adjudication of either: the tool reports that the two
-    disagree and fails closed, and which one is right stays the registering
-    profile's judgment.  Two conditions, both pure set/count operations on
-    repository bytes:
+    K12/09 owns the generic verifier contract: positive controls exercise the
+    production classification path and collectively represent every required
+    structure the verifier claims to recognise. It deliberately does not own
+    a common control field. ``mandated_headings`` is this tool's concrete
+    representation: the profile transcribes its required heading forms, this
+    function constructs one deterministic Markdown control page, and
+    ``classify`` evaluates that page with the production matcher.
 
     1. every mandated heading is registered in ``any`` or ``combination``;
     2. a page carrying exactly the mandated headings classifies as a
        candidate, which additionally catches a ``minimum_distinct`` set higher
        than the number of mandated headings the ``combination`` list covers.
+
+    The checks compare two profile-owned declarations without adjudicating either:
+    the tool reports that they disagree and fails closed, and which one is
+    right stays the registering profile's judgment.  Why the mismatch is easy
+    to ship: the matcher strips Markdown heading syntax only, so a registered
+    bare ``Open Questions`` never fires on a mandated
+    ``Open Questions（待解问题）``.
     """
     recognised = config["any_headings"] | config["combination_headings"]
     unmatched = [value for value in config["mandated_headings"]
                  if value not in recognised]
     if unmatched:
         raise ValueError(
-            "heading_match does not recognise %d of the %d mandated_headings "
-            "this profile registers: %s. The matcher compares exact heading "
-            "text after Markdown syntax is stripped; numbering, "
+            "bundled heading verifier positive control: heading_match does "
+            "not recognise %d of the %d mandated_headings this profile "
+            "registers: %s. The matcher compares exact heading text after "
+            "Markdown syntax is stripped; numbering, "
             "parentheticals, and bilingual suffixes are not removed, so a "
             "bare variant never fires on a decorated mandated form. Register "
             "each mandated form verbatim in heading_match.any or "
@@ -266,9 +270,10 @@ def check_mandated_coverage(config):
                     for value in config["mandated_headings"])
     if not classify(probe, config):
         raise ValueError(
-            "a page carrying exactly the %d mandated_headings does not "
-            "classify as a residual-content candidate; with every mandated "
-            "heading in heading_match.combination, minimum_distinct=%d is "
+            "bundled heading verifier positive control: a page carrying "
+            "exactly the %d mandated_headings does not classify as a "
+            "residual-content candidate; with every mandated heading in "
+            "heading_match.combination, minimum_distinct=%d is "
             "above the number this configuration can count" %
             (len(config["mandated_headings"]), config["minimum_distinct"]))
 
@@ -474,7 +479,8 @@ def probe_accepted_roots(root, config):
     return probed, None
 
 
-def produce_evidence(root, config_path, time_limit, add, receipt_context):
+def produce_evidence(root, config_path, time_limit, add, receipt_context,
+                     positive_controls_only=False):
     """Load, validate, and scan under one evidence-production deadline."""
     started = time.monotonic()
     scanned = 0
@@ -519,10 +525,30 @@ def produce_evidence(root, config_path, time_limit, add, receipt_context):
             add("residual-content-config", config_path, "fail", str(exc))
             return scanned, candidates, time.monotonic() - started
         receipt_context["config_fingerprint"] = "sha256:%s" % config_sha256
+        control_bytes = json.dumps(
+            config["mandated_headings"], ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        receipt_context.update({
+            "positive_control_result": "passed",
+            "positive_control_mode": "production-classifier",
+            "positive_control_count": len(config["mandated_headings"]),
+            "positive_control_fingerprint": "sha256:%s" % hashlib.sha256(
+                control_bytes).hexdigest(),
+        })
 
         if not os.path.isdir(root) or os.path.islink(root):
             add("residual-content-invocation", root, "fail",
                 "vault root must be a real directory")
+            return scanned, candidates, time.monotonic() - started
+
+        # The explicit gate preflight stops here.  load_config() has already
+        # run check_mandated_coverage(), which constructs the registered
+        # controls and sends them through classify(), the same production
+        # predicate scan_scope() uses below.  The production invocation then
+        # repeats that work before it inspects repository content, allowing
+        # check_batch_close to bind the two independent summaries.
+        if positive_controls_only:
             return scanned, candidates, time.monotonic() - started
 
         scope_valid = True
@@ -586,13 +612,24 @@ def main(argv=None):
         default=DEFAULT_TIME_LIMIT,
         help="hard evidence-production budget in seconds (greater than 0 and at most 55)",
     )
+    parser.add_argument(
+        "--positive-controls-only", action="store_true",
+        help=("execute the registered controls through the production "
+              "classifier without scanning repository content"),
+    )
     args = parser.parse_args(argv)
 
     receipts = []
     safe_scan_id = (args.scan_id if SCAN_ID_RE.fullmatch(args.scan_id)
                     else "invalid-residual-scan")
-    receipt_context = {"config_fingerprint": None,
-                       "nontriviality_witness": None}
+    receipt_context = {
+        "config_fingerprint": None,
+        "nontriviality_witness": None,
+        "positive_control_result": None,
+        "positive_control_mode": None,
+        "positive_control_count": None,
+        "positive_control_fingerprint": None,
+    }
 
     def add(check, target, result, details):
         # The scanned root also binds the Required Queue identity a Gate
@@ -603,6 +640,11 @@ def main(argv=None):
         receipt["gate_id"] = GATE_ID
         receipt["scan_id"] = safe_scan_id
         receipt["config_fingerprint"] = receipt_context["config_fingerprint"]
+        for field in (
+                "positive_control_result", "positive_control_mode",
+                "positive_control_count", "positive_control_fingerprint"):
+            if receipt_context[field] is not None:
+                receipt[field] = receipt_context[field]
         receipts.append(receipt)
 
     if safe_scan_id != args.scan_id:
@@ -624,19 +666,30 @@ def main(argv=None):
         return 1
 
     scanned, candidates, elapsed = produce_evidence(
-        root, os.path.abspath(args.config), args.time_limit, add, receipt_context)
+        root, os.path.abspath(args.config), args.time_limit, add,
+        receipt_context, positive_controls_only=args.positive_controls_only)
 
     failures = [item for item in receipts if item["result"] == "fail"]
-    if scanned == 0 and not failures:
+    if scanned == 0 and not failures and not args.positive_controls_only:
         add("residual-content-empty-scope", root, "fail",
             "effective scan set contains no Markdown files; zero-file scan is not a pass")
         failures = [receipts[-1]]
-    if not failures and candidates == 0:
-        add("residual-content-summary", root, "pass",
-            "scanned %d Markdown file(s); no configured residual-content "
-            "candidate found; matchers proven live against accepted-root "
-            "witness %s" %
-            (scanned, receipt_context["nontriviality_witness"]))
+    if not failures:
+        if args.positive_controls_only:
+            details = (
+                "executed %d positive control(s) through the production "
+                "classifier" % receipt_context["positive_control_count"])
+        else:
+            details = (
+                "scanned %d Markdown file(s); found %d configured "
+                "residual-content candidate(s); %d positive control(s) "
+                "passed through the production classifier%s" % (
+                    scanned, candidates,
+                    receipt_context["positive_control_count"],
+                    ("; zero-candidate liveness witness %s" %
+                     receipt_context["nontriviality_witness"])
+                    if candidates == 0 else ""))
+        add("residual-content-summary", root, "pass", details)
 
     print("check_residual_content: scanned %d file(s), candidates=%d, "
           "failures=%d, elapsed=%.3fs" %

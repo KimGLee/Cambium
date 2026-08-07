@@ -8,10 +8,10 @@
 residual_scan_config_version: 1
 
 # Residual structures are valid under these vault-relative roots. Every root
-# must exist as a real directory when the scan runs, and it doubles as the
-# known-residual positive control required by K12/09 item 6: a run that finds
-# no candidate outside these roots must still recognise at least one Markdown
-# file inside them, otherwise the configuration is inert and the run fails.
+# must exist as a real directory when the scan runs. For this bundled verifier
+# they also provide the repository-backed liveness control: a run that finds no
+# candidate outside these roots must still recognise at least one Markdown file
+# inside them, otherwise the configuration is inert and the run fails.
 allowed_roots:
   - TODO(profile)
 
@@ -37,9 +37,14 @@ heading_match:
     - TODO(profile)
   minimum_distinct: 2
 
-# The heading forms this profile's own structure rules mandate, verbatim. Every
-# entry must be registered in heading_match above, and a page carrying exactly
-# this set must classify as a candidate; otherwise the scan reports "clean"
-# over the very pages it was registered to find. At least one entry.
+# Tool-specific synthetic positive controls for the bundled heading verifier;
+# this is not a shared field required of other verifier implementations. List
+# the heading forms this profile's own structure rules require, verbatim. Every
+# entry must be registered in heading_match above, and a deterministic Markdown
+# page carrying exactly this set must classify as a candidate through the same
+# production predicate. At least one entry. A successful load fingerprints the
+# canonical control list, and every reliable run writes the shared positive-
+# control evidence fields on its final summary Receipt; candidate receipts do
+# not replace that summary.
 mandated_headings:
   - TODO(profile)
