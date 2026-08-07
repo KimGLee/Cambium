@@ -203,6 +203,16 @@ BASE_RECEIPT_DIMENSIONS = frozenset((
 # `*` says a named producer's identity already fixes what its receipt means.
 UNDIMENSIONED_GATE = "none"
 UNNARROWED_GATE_DIMENSION = "*"
+# The two Lifecycle cells that are not a batch lifecycle state.  Both name a
+# position the same way a batch state does, so the partition stays one rule:
+# `not-batch-scoped` is the position every batch is always at, because the
+# Gate's producer takes no batch and nothing about the Queue constrains it;
+# `queue-exhausted` is the position reached only once the Queue holds no
+# non-terminal batch, which is ahead of every live batch and behind none.
+NOT_BATCH_SCOPED_GATE = "not-batch-scoped"
+QUEUE_EXHAUSTED_GATE = "queue-exhausted"
+UNSCOPED_GATE_POSITIONS = frozenset((NOT_BATCH_SCOPED_GATE,
+                                     QUEUE_EXHAUSTED_GATE))
 BATCH_REVIEW_GATE_ID = "batch-review"
 BATCH_REVIEW_CHECK = "batch_gate"
 TERMINAL_PROOF_TOOL = "check_proof"
@@ -428,14 +438,14 @@ def standards_gate_registry(root):
             continue
         cells = [cell.strip().strip("`") for cell in line.strip().strip("|").split("|")]
         if cells == ["Gate ID", "Tool", "Tool version", "Check", "Mode",
-                     "Dimension"]:
+                     "Dimension", "Lifecycle"]:
             continue
         if cells and all(re.fullmatch(r":?-+:?", cell) for cell in cells):
             continue
-        if len(cells) != 6:
-            errors.append("Stable Gate ID Registry row must have six cells")
+        if len(cells) != 7:
+            errors.append("Stable Gate ID Registry row must have seven cells")
             continue
-        gate_id, tool, tool_version, check, mode, dimension = cells
+        gate_id, tool, tool_version, check, mode, dimension, lifecycle = cells
         if not all(_nonempty_string(value) for value in cells):
             errors.append("Stable Gate ID Registry row has an empty cell")
             continue
@@ -455,12 +465,39 @@ def standards_gate_registry(root):
             token.strip().strip("`")
             for token in re.split(r"[,\s]+", dimension) if token.strip()
         }))
+        # The Lifecycle cell is tokenized the same way: a producer that
+        # genuinely accepts several batch positions registers all of them.
+        # It is not part of the receipt selector -- it says when the Gate can
+        # be produced, not which receipt satisfies it -- so it is validated
+        # here rather than in the producer-tuple agreement check.
+        lifecycle_states = tuple(sorted({
+            token.strip().strip("`")
+            for token in re.split(r"[,\s]+", lifecycle) if token.strip()
+        }))
+        unknown_states = sorted(
+            set(lifecycle_states) - set(kblib.BATCH_LIFECYCLE_TRANSITIONS) -
+            UNSCOPED_GATE_POSITIONS)
+        if unknown_states:
+            errors.append(
+                "Gate ID %s registers Lifecycle %s, which is neither a batch "
+                "lifecycle state nor one of %s" % (
+                    gate_id, ", ".join(unknown_states),
+                    ", ".join(sorted(UNSCOPED_GATE_POSITIONS))))
+            continue
+        marker = sorted(set(lifecycle_states) & UNSCOPED_GATE_POSITIONS)
+        if marker and len(lifecycle_states) != 1:
+            errors.append(
+                "Gate ID %s registers Lifecycle %s, which mixes %s with "
+                "another position" % (
+                    gate_id, ", ".join(lifecycle_states), marker[0]))
+            continue
         registry[gate_id] = {
             "tool": tool,
             "tool_version": tool_version,
             "check": check,
             "mode": mode,
             "dimensions": dimensions,
+            "lifecycle_states": lifecycle_states,
         }
     if seen_section != 1:
         errors.append("K00/12 must contain exactly one Stable Gate ID Registry")
@@ -639,6 +676,79 @@ def registered_gate_dimensions(gate_id, registry):
     if dimensions == (UNDIMENSIONED_GATE,):
         return frozenset()
     return frozenset(dimensions)
+
+
+def registered_gate_position(gate_id, registry):
+    """Return the position K00/12 registers ``gate_id``'s producer for.
+
+    One of three forms, matching the three forms of the Lifecycle cell:
+
+    * ``None`` -- unpositioned.  The producer takes no batch and nothing about
+      the Queue constrains it, so every batch is always at this position.  An
+      unregistered Gate ID answers the same way, which is the fail-closed
+      answer here: an unknown Gate is treated as producible now and therefore
+      still owed a receipt, which the registry match then rejects.
+    * ``QUEUE_EXHAUSTED_GATE`` -- the position the Queue reaches when it holds
+      no non-terminal batch.
+    * a ``frozenset`` of batch lifecycle states -- the positions of the batch
+      itself at which the producer runs.
+    """
+    predicate = registry.get(gate_id)
+    if not isinstance(predicate, dict):
+        return None
+    states = predicate.get("lifecycle_states") or ()
+    if not states or NOT_BATCH_SCOPED_GATE in states:
+        return None
+    if QUEUE_EXHAUSTED_GATE in states:
+        return QUEUE_EXHAUSTED_GATE
+    return frozenset(states)
+
+
+def partition_boundary_gates_by_lifecycle(gate_ids, state, registry):
+    """Split boundary Gate IDs by where a batch at ``state`` can claim them.
+
+    A boundary's required gates are claimed at the transition each one belongs
+    to, not all at once when a hold is discharged.  Every Gate ID has one
+    registered position; judged against one target batch's own position, it
+    falls in exactly one of three sets:
+
+    * **due** -- the batch is at that position now, so the gate can be
+      produced and its receipt is required by the revalidation aggregate.  An
+      unpositioned Gate is always due.
+    * **deferred** -- the position is still ahead of the batch, so the gate is
+      claimed at the transition that reaches it.  That transition already
+      requires the gate natively, so nothing new enforces this.
+    * **passed** -- the position is behind the batch and no sanctioned
+      transition returns to it, so the evidence cannot be remade.  The batch
+      proceeds carrying what it has, recorded as unrepeatable.
+
+    The comparison is the same question for all three kinds of position; only
+    how "ahead" is read differs.  For a batch-state position it is the forward
+    closure of the one lifecycle map in ``kblib``, so this cannot disagree with
+    the writer that applies the transitions.  Queue exhaustion is ahead of
+    every non-terminal batch -- that batch must reach a terminal state before
+    the Queue can hold none -- and behind none, because a terminal batch never
+    returns to non-terminal.  A batch whose ``state`` is not a known lifecycle
+    state has no reachable successor, so every Gate is due and nothing is
+    waived.
+    """
+    due, deferred, passed = [], [], []
+    known_state = state in kblib.BATCH_LIFECYCLE_TRANSITIONS
+    reachable = kblib.reachable_batch_states(state)
+    for gate_id in sorted({value for value in gate_ids
+                           if _nonempty_string(value)}):
+        position = registered_gate_position(gate_id, registry)
+        if position is None or not known_state:
+            due.append(gate_id)
+        elif position == QUEUE_EXHAUSTED_GATE:
+            (due if state in TERMINAL_STATES else deferred).append(gate_id)
+        elif state in position:
+            due.append(gate_id)
+        elif position & reachable:
+            deferred.append(gate_id)
+        else:
+            passed.append(gate_id)
+    return due, deferred, passed
 
 
 def receipt_matches_gate_id(receipt, gate_id, registry, dimension=None):
@@ -1744,7 +1854,18 @@ def _parse_boundary_gate_arguments(values):
 
 
 def standards_revalidation_context(result, batch_id, gate_receipts):
-    """Validate boundary receipts and return the aggregate receipt payload."""
+    """Validate boundary receipts and return the aggregate receipt payload.
+
+    A boundary's required gates are claimed at the transition each one belongs
+    to, so they are partitioned against the target batch's current lifecycle
+    position before any receipt is demanded.  Only the **due** set -- what that
+    position can still produce -- is required here; the other two are recorded
+    on the aggregate.  Requiring the whole union regardless of position made
+    some boundaries impossible to discharge: an `open` batch can reach neither
+    `--require-ready` nor `check_batch_close`, so a boundary naming
+    `required-queue-admission` or `batch-close` against one deadlocked its
+    hold with no sanctioned way out.
+    """
     errors = []
     outstanding = outstanding_standards_revalidation(result, batch_id)
     if not outstanding:
@@ -1754,15 +1875,19 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
         row.get("required_gate_id") for row in outstanding
         if _nonempty_string(row.get("required_gate_id"))
     })
-    if sorted(gate_receipts) != required_gate_ids:
-        errors.append("boundary gate receipt IDs must be exactly %r" %
-                      required_gate_ids)
     registry, registry_errors = standards_gate_registry(result.get("root"))
     errors.extend(registry_errors)
+    item = (result.get("items_by_id") or {}).get(batch_id) or {}
+    due_gate_ids, deferred_gate_ids, unrepeatable_gate_ids = \
+        partition_boundary_gates_by_lifecycle(
+            required_gate_ids, item.get("state"), registry)
+    if sorted(gate_receipts) != due_gate_ids:
+        errors.append("boundary gate receipt IDs must be exactly %r" %
+                      due_gate_ids)
     catalog = current_receipt_catalog(result)
     queue = result.get("queue") or {}
     resolved = {}
-    for gate_id in required_gate_ids:
+    for gate_id in due_gate_ids:
         receipt_id = gate_receipts.get(gate_id)
         entry = catalog.get(receipt_id) if _nonempty_string(receipt_id) else None
         if entry is None:
@@ -1847,10 +1972,19 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
             row.get("boundary_id") for row in outstanding
             if _nonempty_string(row.get("boundary_id"))}),
         "required_gate_ids": required_gate_ids,
+        "target_batch_state": item.get("state"),
+        # The partition of `required_gate_ids` this aggregate was made under.
+        # Each Gate ID appears in exactly one of the three, and the three
+        # together are `required_gate_ids`: the aggregate says which gates it
+        # discharged, which it handed to a later transition, and which it
+        # recorded as beyond remaking.
+        "due_gate_ids": due_gate_ids,
+        "deferred_to_later_transition_gate_ids": deferred_gate_ids,
+        "unrepeatable_passed_gate_ids": unrepeatable_gate_ids,
         "boundary_gate_receipts": [
             {"required_gate_id": gate_id,
              "receipt_id": resolved.get(gate_id)}
-            for gate_id in required_gate_ids
+            for gate_id in due_gate_ids
         ],
         "revalidated_invalidated_receipt_ids": sorted({
             receipt_id for row in outstanding
@@ -2362,6 +2496,31 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
         errors.append(
             "Standards adoption invalidated_evidence must be sorted by receipt_id")
 
+    # The Queue batches each boundary actually reaches: the batches it targets
+    # directly, plus every Queue batch an invalidated-evidence row that lists
+    # this boundary puts in its revalidation scope.  This is the one
+    # derivation of that union; both the reachability rule below and the
+    # dead-gate refusal further down read it, so neither can disagree with the
+    # other about which batches a boundary binds.  A boundary target that is
+    # not a Queue batch stays in the mapping -- it is reported as an unknown
+    # batch target above -- and is filtered where live state is needed.
+    boundary_reached_batches = {
+        boundary_id: set(targets)
+        for boundary_id, targets in boundary_batch_targets.items()
+    }
+    for evidence in invalidated:
+        if not isinstance(evidence, dict):
+            continue
+        scoped = {value for value
+                  in evidence.get("revalidation_scope_ids") or []
+                  if value in queue_ids}
+        if not scoped:
+            continue
+        for boundary_id in evidence.get("boundary_ids") or []:
+            if _nonempty_string(boundary_id):
+                boundary_reached_batches.setdefault(
+                    boundary_id, set()).update(scoped)
+
     # K12/10: a boundary is only ever claimed at a Queue batch's next
     # transition, either because it targets that batch or because invalidated
     # evidence puts the batch in its revalidation scope.  A boundary that
@@ -2374,16 +2533,7 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
     # legal way to repair.  Historical records are replayed with
     # validate_current=False for exactly this reason.
     if validate_current and queue is not None and boundaries:
-        enforced = set(boundary_batch_targets)
-        for evidence in invalidated:
-            if not isinstance(evidence, dict):
-                continue
-            if not any(value in queue_ids
-                       for value in evidence.get("revalidation_scope_ids") or []):
-                continue
-            enforced.update(
-                value for value in evidence.get("boundary_ids") or []
-                if _nonempty_string(value))
+        enforced = set(boundary_reached_batches)
         for index, boundary in enumerate(boundaries):
             if not isinstance(boundary, dict):
                 continue
@@ -2467,6 +2617,63 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
         if unknown_gates:
             errors.append("Standards adoption names unregistered Gate ID(s): %s" %
                           ", ".join(unknown_gates))
+
+        # K12/10: a boundary's gates are claimed at the position each one
+        # belongs to.  A gate a batch is at the position of is claimed now;
+        # one whose position lies ahead is claimed there.  A boundary that
+        # reaches neither, at every batch it reaches, names only gates those
+        # batches have already left behind and can never remake, so it records
+        # protection that will never apply -- the same defect the reachability
+        # rule above refuses, one level down: that rule asks whether a
+        # boundary reaches a batch at all, this one whether reaching them
+        # obliges anything.  Both read the same reached-batch mapping, and
+        # this one judges every batch a boundary reaches by either route, not
+        # only its declared `batch` targets: a boundary bound to a batch
+        # through invalidated-evidence scope is enforced there identically.
+        #
+        # Only a plan being admitted is judged, for the reason stated there: a
+        # historical adoption's plan bytes are sealed into append-only
+        # receipts and no sanctioned transaction can rewrite them, so refusing
+        # one here would strand an instance with a defect it has no legal way
+        # to repair.  Replay passes validate_current=False.
+        if queue is not None:
+            states = {item.get("id"): item.get("state")
+                      for item in queue.get("required_queue", [])
+                      if isinstance(item, dict)}
+            for index, boundary in enumerate(boundaries):
+                if not isinstance(boundary, dict):
+                    continue
+                boundary_id = boundary.get("boundary_id")
+                gate_ids = [value for value
+                            in boundary.get("required_gate_ids") or []
+                            if _nonempty_string(value)]
+                reached = sorted(
+                    boundary_reached_batches.get(boundary_id, set()) &
+                    set(states))
+                if not gate_ids or not reached:
+                    continue
+                dead = {}
+                for batch_id in reached:
+                    due, deferred, passed = \
+                        partition_boundary_gates_by_lifecycle(
+                            gate_ids, states[batch_id], registry)
+                    if due or deferred:
+                        dead = {}
+                        break
+                    dead[batch_id] = passed
+                if not dead:
+                    continue
+                errors.append(
+                    "invalidation_boundaries[%d] boundary %s requires Gate "
+                    "ID(s) %s, and every Queue batch it reaches (%s) has "
+                    "already left every one of their producing positions and "
+                    "cannot return to one; nothing ahead of those batches can "
+                    "claim any of them, so the boundary records protection "
+                    "nothing will ever apply" % (
+                        index, boundary_id,
+                        ", ".join(sorted(set(gate_ids))),
+                        ", ".join("%s batch %s" % (states[batch_id], batch_id)
+                                  for batch_id in reached)))
 
     if validate_current and root is not None and queue is not None and \
             catalog is not None:

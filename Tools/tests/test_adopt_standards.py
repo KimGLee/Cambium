@@ -48,11 +48,12 @@ class AdoptStandardsTests(unittest.TestCase):
                     "kernel/K00 Standards Control/12 Control Registry.md")
         registry.write_text(
             "## Stable Gate ID Registry\n\n"
-            "| Gate ID | Tool | Tool version | Check | Mode | Dimension |\n"
-            "|---|---|---|---|---|---|\n"
-            "| required-queue-consistency | check_queue | 1.6.0 | required_queue | consistency | * |\n"
-            "| required-queue-admission | check_queue | 1.6.0 | required_queue | require-ready:* | * |\n"
-            "| batch-close | check_batch_close | 1.3.0 | batch_close_gate | * | * |\n",
+            "| Gate ID | Tool | Tool version | Check | Mode | Dimension "
+            "| Lifecycle |\n"
+            "|---|---|---|---|---|---|---|\n"
+            "| required-queue-consistency | check_queue | 1.6.0 | required_queue | consistency | * | not-batch-scoped |\n"
+            "| required-queue-admission | check_queue | 1.6.0 | required_queue | require-ready:* | * | queued |\n"
+            "| batch-close | check_batch_close | 1.3.0 | batch_close_gate | * | * | merge-ready |\n",
             encoding="utf-8")
 
     def tearDown(self):
@@ -409,6 +410,485 @@ class AdoptStandardsTests(unittest.TestCase):
                       check_queue.current_attempt_evidence_barrier(
                           poisoned, "B1"))
 
+    # --- Boundary gates against the target batch's lifecycle position ------
+    #
+    # `required-queue-admission` is producible only while a batch is `queued`
+    # and `batch-close` only while it is `merge-ready`, so an `open` batch
+    # named by a boundary carrying either can produce neither.  Requiring the
+    # whole union at hold-discharge time therefore deadlocked the hold: the
+    # only exit from `open` is `merge-ready`, which refuses a held batch, and
+    # the hold refuses to clear without an aggregate naming every gate.
+    LIFECYCLE_GATES = ["batch-close", "required-queue-admission",
+                       "wiki-link-integrity"]
+    LINK_RECEIPTS = ".cambium/receipts/links.jsonl"
+
+    def register_link_gate(self):
+        """Add the one boundary gate an `open` batch can still produce."""
+        registry = (self.root /
+                    "kernel/K00 Standards Control/12 Control Registry.md")
+        registry.write_text(
+            registry.read_text(encoding="utf-8") +
+            "| wiki-link-integrity | check_links | 1.5.0 "
+            "| link-check-summary | * | * | not-batch-scoped |\n",
+            encoding="utf-8")
+
+    def lifecycle_boundary_plan(self, invalidated_gate):
+        """Adopt a boundary naming one producible gate and two that are not."""
+        self.register_link_gate()
+        self.plan(invalidated_receipt=invalidated_gate, overrides={
+            "changed_predicates": [{
+                "predicate_id": "PRED-LIFECYCLE-001",
+                "owner_path": self.GOVERNANCE,
+                "change_kind": "modified",
+                "affected_gate_ids": list(self.LIFECYCLE_GATES),
+            }],
+            "invalidated_evidence": [{
+                "receipt_id": invalidated_gate,
+                "predicate_ids": ["PRED-LIFECYCLE-001"],
+                "dimension_ids": ["coverage_and_integration"],
+                "boundary_ids": ["INV-B1-LIFECYCLE"],
+                "reason_code": "predicate-changed",
+                "revalidation_scope_ids": ["B1"],
+            }],
+            "invalidation_boundaries": [{
+                "boundary_id": "INV-B1-LIFECYCLE",
+                "predicate_ids": ["PRED-LIFECYCLE-001"],
+                "target_kind": "batch",
+                "target_ids": ["B1"],
+                "required_gate_ids": list(self.LIFECYCLE_GATES),
+            }],
+            "boundary_gate_reruns": list(self.LIFECYCLE_GATES),
+        })
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+
+    def link_gate_receipt(self):
+        """Produce the `wiki-link-integrity` receipt the boundary is owed."""
+        receipts = self.root / self.LINK_RECEIPTS
+        completed = self.run_tool(
+            "check_links.py", "--receipts", str(receipts))
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        return json.loads(receipts.read_text(
+            encoding="utf-8").splitlines()[-1])["receipt_id"]
+
+    def revalidation_aggregate(self, link_receipt):
+        """Run the aggregate with only the producible gate supplied."""
+        relative = ".cambium/receipts/revalidation.jsonl"
+        completed = self.run_tool(
+            "check_queue.py", "--require-revalidation", "B1",
+            "--boundary-gate-receipt", "wiki-link-integrity=%s" % link_receipt,
+            "--receipts", relative)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        return json.loads((self.root / relative).read_text(
+            encoding="utf-8").splitlines()[-1])
+
+    @staticmethod
+    def seconds_after(stamp, seconds):
+        """Return ``stamp`` advanced by ``seconds``, in receipt format.
+
+        Transition timestamps may not move backward, so every step after the
+        aggregate is derived from the aggregate's own clock rather than fixed.
+        """
+        return (datetime.fromisoformat(stamp.replace("Z", "+00:00")) +
+                timedelta(seconds=seconds)).astimezone(
+                    timezone.utc).isoformat().replace("+00:00", "Z")
+
+    def clear_b1_hold(self, aggregate):
+        """Discharge the `revalidation-required` hold with that aggregate."""
+        transition_at = self.seconds_after(aggregate["checked_at"], 1)
+        result = check_queue.validate_runtime(self.root)
+        completed = self.run_tool(
+            "update_queue.py", "--id", "B1", "--hold-state", "none",
+            "--standards-revalidation-receipt", aggregate["receipt_id"],
+            "--expected-state-revision",
+            str(result["queue"]["state_revision"]),
+            "--expected-sha256", result["queue_sha256"],
+            "--actor-role", "integrator", "--at", transition_at, "--apply")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        return transition_at
+
+    def test_neither_unreachable_boundary_gate_has_a_producer_to_run(self):
+        """The deadlock's two halves, stated against the tools themselves."""
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        self.lifecycle_boundary_plan(invalidated_gate)
+        self.assertEqual(
+            "open",
+            check_queue.validate_runtime(self.root)["items_by_id"]["B1"]
+            ["state"])
+
+        admission = self.run_tool("check_queue.py", "--require-ready", "B1")
+        self.assertEqual(1, admission.returncode, admission.stdout)
+        self.assertIn("B1 is open, not queued", admission.stdout)
+
+        close = self.run_tool(
+            "check_batch_close.py", "--batch", "B1",
+            "--integrator", "fixture-integrator",
+            "--reviewer", "fixture-reviewer",
+            "--review-attestation", "audit-absent-attestation")
+        self.assertEqual(1, close.returncode, close.stdout)
+        self.assertIn("B1 is open, not merge-ready", close.stdout)
+
+    def test_an_open_batch_clears_on_the_gates_its_position_can_produce(self):
+        """The hold clears with the one producible receipt supplied."""
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        self.lifecycle_boundary_plan(invalidated_gate)
+        aggregate = self.revalidation_aggregate(self.link_gate_receipt())
+
+        self.assertEqual(self.LIFECYCLE_GATES, aggregate["required_gate_ids"])
+        self.assertEqual(["wiki-link-integrity"], aggregate["due_gate_ids"])
+        self.assertEqual(["batch-close"],
+                         aggregate["deferred_to_later_transition_gate_ids"])
+        self.assertEqual(["required-queue-admission"],
+                         aggregate["unrepeatable_passed_gate_ids"])
+        self.assertEqual("open", aggregate["target_batch_state"])
+        self.assertEqual(
+            [row["required_gate_id"]
+             for row in aggregate["boundary_gate_receipts"]],
+            ["wiki-link-integrity"])
+
+        self.clear_b1_hold(aggregate)
+        final = check_queue.validate_runtime(self.root)
+        self.assertEqual([], final["errors"])
+        self.assertEqual("none", final["items_by_id"]["B1"]["hold_state"])
+        self.assertEqual([], check_queue.outstanding_standards_revalidation(
+            final, "B1"))
+
+    def test_requiring_the_whole_union_regardless_of_position_deadlocks(self):
+        """Counterfactual: the pre-change requirement, run in this process.
+
+        Reverting only the partition -- every named gate due, nothing
+        deferred or unrepeatable -- must make the same aggregate refuse.  A
+        regression that passed either way would prove nothing.
+        """
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        self.lifecycle_boundary_plan(invalidated_gate)
+        supplied = {"wiki-link-integrity": self.link_gate_receipt()}
+        result = check_queue.validate_runtime(self.root)
+
+        context, errors = check_queue.standards_revalidation_context(
+            result, "B1", supplied)
+        self.assertEqual([], errors)
+        self.assertIsNotNone(context)
+
+        def whole_union(gate_ids, state, registry):
+            return sorted({value for value in gate_ids if value}), [], []
+
+        with mock.patch.object(
+                check_queue, "partition_boundary_gates_by_lifecycle",
+                whole_union):
+            _reverted, reverted_errors = \
+                check_queue.standards_revalidation_context(
+                    result, "B1", supplied)
+        demanded = [error for error in reverted_errors
+                    if "boundary gate receipt IDs must be exactly" in error]
+        self.assertEqual(1, len(demanded), reverted_errors)
+        for gate_id in ("batch-close", "required-queue-admission"):
+            self.assertIn(gate_id, demanded[0])
+
+    def test_the_partition_never_becomes_a_way_to_require_nothing(self):
+        """`due` is still enforced exactly as before the partition."""
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        self.lifecycle_boundary_plan(invalidated_gate)
+        link_receipt = self.link_gate_receipt()
+        result = check_queue.validate_runtime(self.root)
+
+        _context, absent = check_queue.standards_revalidation_context(
+            result, "B1", {})
+        self.assertTrue(any(
+            "boundary gate receipt IDs must be exactly "
+            "['wiki-link-integrity']" in error for error in absent), absent)
+
+        _context, unknown = check_queue.standards_revalidation_context(
+            result, "B1", {"wiki-link-integrity": "audit-not-a-receipt"})
+        self.assertTrue(any("references missing current receipt" in error
+                            for error in unknown), unknown)
+
+        _context, mismatched = check_queue.standards_revalidation_context(
+            result, "B1", {"batch-close": link_receipt})
+        self.assertTrue(any(
+            "boundary gate receipt IDs must be exactly" in error
+            for error in mismatched), mismatched)
+
+        # A receipt of the right Gate whose bound identity was stripped is
+        # still refused: the partition narrows which gates are owed, never
+        # what a receipt for one of them must carry.
+        rows = [json.loads(line) for line in
+                (self.root / self.LINK_RECEIPTS).read_text(
+                    encoding="utf-8").splitlines()]
+        for row in rows:
+            row.pop("standards_version", None)
+        (self.root / self.LINK_RECEIPTS).write_text(
+            "".join(json.dumps(row, ensure_ascii=False) + "\n"
+                    for row in rows), encoding="utf-8")
+        result = check_queue.validate_runtime(self.root)
+        _context, stripped = check_queue.standards_revalidation_context(
+            result, "B1", {"wiki-link-integrity": link_receipt})
+        self.assertTrue(any("standards_version" in error
+                            for error in stripped), stripped)
+
+    def append_fixture_receipt(self, receipt_id, **fields):
+        """Append one hand-written receipt to the fixture register."""
+        receipt = {"receipt_id": receipt_id, "result": "pass",
+                   "invalidated_by": None}
+        receipt.update(fields)
+        kblib.write_receipts(
+            self.root / ".cambium/receipts/fixture.jsonl", [receipt])
+        return receipt_id
+
+    def merge_and_apply_b1(self, at):
+        """Carry the cleared batch to `merge-ready` and apply its Delta."""
+        queue = self.load(check_queue.QUEUE_PATH)
+        self.append_fixture_receipt(
+            "audit-page-1", check="fixture", target="Topics/A.md")
+        self.append_fixture_receipt(
+            "audit-batch-1", check=check_queue.BATCH_REVIEW_CHECK,
+            target="B1", tool=check_queue.MANUAL_ATTESTATION_TOOL,
+            tool_version=check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+            gate_id=check_queue.BATCH_REVIEW_GATE_ID,
+            task_id=queue["task_id"], batch_id="B1",
+            delta_page_receipt_ids=["audit-page-1"])
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\ngenerated_at: %s\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-1\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n" % at,
+            encoding="utf-8")
+        result = check_queue.validate_runtime(self.root)
+        merged = self.run_tool(
+            "update_queue.py", "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+            "--expected-state-revision",
+            str(result["queue"]["state_revision"]),
+            "--expected-sha256", result["queue_sha256"],
+            "--actor-role", "integrator", "--at", at, "--apply")
+        self.assertEqual(0, merged.returncode, merged.stdout)
+        relative = ".cambium/receipts/delta-B1.jsonl"
+        applied = subprocess.run(
+            [sys.executable, str(TOOLS / "apply_delta.py"),
+             check_queue.COVERAGE_PATH, ".cambium/deltas/B1.yaml",
+             "--root", str(self.root),
+             "--expected-coverage-sha256",
+             kblib.sha256_file(self.root / check_queue.COVERAGE_PATH),
+             "--expected-queue-sha256",
+             kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+             "--actor-role", "integrator", "--receipts", relative, "--apply"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False)
+        self.assertEqual(0, applied.returncode, applied.stdout)
+        return json.loads((self.root / relative).read_text(
+            encoding="utf-8").splitlines()[-1])["receipt_id"]
+
+    def test_a_deferred_gate_is_still_required_at_the_transition_it_defers_to(
+            self):
+        """Deferral moves the claim; it does not waive it.
+
+        `batch-close` was recorded as deferred rather than required, so the
+        close transition -- which is where that Gate's producer can run --
+        must still refuse without it.
+        """
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        self.lifecycle_boundary_plan(invalidated_gate)
+        aggregate = self.revalidation_aggregate(self.link_gate_receipt())
+        self.assertEqual(["batch-close"],
+                         aggregate["deferred_to_later_transition_gate_ids"])
+        cleared_at = self.clear_b1_hold(aggregate)
+        delta_apply_receipt = self.merge_and_apply_b1(
+            self.seconds_after(cleared_at, 1))
+
+        consistency = self.run_tool(
+            "check_queue.py", "--receipts", ".cambium/receipts/close.jsonl")
+        self.assertEqual(0, consistency.returncode, consistency.stdout)
+        consistency_receipt = json.loads(
+            (self.root / ".cambium/receipts/close.jsonl").read_text(
+                encoding="utf-8").splitlines()[-1])["receipt_id"]
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual("merge-ready", result["items_by_id"]["B1"]["state"])
+        attempted = self.run_tool(
+            "update_queue.py", "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency_receipt,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision",
+            str(result["queue"]["state_revision"]),
+            "--expected-sha256", result["queue_sha256"],
+            "--actor-role", "integrator", "--at",
+            self.seconds_after(cleared_at, 2), "--apply")
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn("requires --close-gate-receipt", attempted.stdout)
+        self.assertEqual(
+            "merge-ready",
+            self.load(check_queue.QUEUE_PATH)["required_queue"][0]["state"])
+
+    def test_a_queue_exhaustion_gate_is_deferred_not_demanded_now(self):
+        """A gate whose position is Queue exhaustion, not a batch state.
+
+        `required-queue-completion` takes no batch, so it is not batch-scoped
+        in the narrow sense -- but its producer refuses while any non-terminal
+        batch remains, which every live batch is.  Treating it as producible
+        now would deadlock the hold exactly as `batch-close` did.
+        """
+        registry = (self.root /
+                    "kernel/K00 Standards Control/12 Control Registry.md")
+        registry.write_text(
+            registry.read_text(encoding="utf-8") +
+            "| required-queue-completion | check_queue | 1.6.0 "
+            "| required_queue | require-complete | * | queue-exhausted |\n",
+            encoding="utf-8")
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        gates = ["required-queue-completion", "wiki-link-integrity"]
+        self.register_link_gate()
+        self.plan(invalidated_receipt=invalidated_gate, overrides={
+            "changed_predicates": [{
+                "predicate_id": "PRED-EXHAUSTION-001",
+                "owner_path": self.GOVERNANCE,
+                "change_kind": "modified",
+                "affected_gate_ids": gates,
+            }],
+            "invalidated_evidence": [{
+                "receipt_id": invalidated_gate,
+                "predicate_ids": ["PRED-EXHAUSTION-001"],
+                "dimension_ids": ["coverage_and_integration"],
+                "boundary_ids": ["INV-B1-EXHAUSTION"],
+                "reason_code": "predicate-changed",
+                "revalidation_scope_ids": ["B1"],
+            }],
+            "invalidation_boundaries": [{
+                "boundary_id": "INV-B1-EXHAUSTION",
+                "predicate_ids": ["PRED-EXHAUSTION-001"],
+                "target_kind": "batch",
+                "target_ids": ["B1"],
+                "required_gate_ids": gates,
+            }],
+            "boundary_gate_reruns": gates,
+        })
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+
+        # The producer refuses while B1 is non-terminal, so this gate is as
+        # unreachable from `open` as `batch-close` is.
+        refused = self.run_tool("check_queue.py", "--require-complete")
+        self.assertEqual(1, refused.returncode, refused.stdout)
+        self.assertIn("remaining_required_work_units=2", refused.stdout)
+
+        aggregate = self.revalidation_aggregate(self.link_gate_receipt())
+        self.assertEqual(["wiki-link-integrity"], aggregate["due_gate_ids"])
+        self.assertEqual(["required-queue-completion"],
+                         aggregate["deferred_to_later_transition_gate_ids"])
+        self.assertEqual([], aggregate["unrepeatable_passed_gate_ids"])
+        self.clear_b1_hold(aggregate)
+        final = check_queue.validate_runtime(self.root)
+        self.assertEqual([], final["errors"])
+        self.assertEqual("none", final["items_by_id"]["B1"]["hold_state"])
+
+    def passed_only_boundary_plan(self, invalidated_gate, target_ids):
+        """A boundary naming only a gate its targets have already left."""
+        plan = self.plan(invalidated_receipt=invalidated_gate)
+        plan["changed_predicates"][0]["affected_gate_ids"] = [
+            "required-queue-admission"]
+        plan["invalidation_boundaries"][0].update({
+            "required_gate_ids": ["required-queue-admission"],
+            "target_ids": list(target_ids),
+        })
+        plan["boundary_gate_reruns"] = ["required-queue-admission"]
+        return plan
+
+    def test_a_boundary_of_only_passed_gates_is_refused_at_admission(self):
+        """Every named gate is behind the batch, so nothing would apply."""
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        plan = self.passed_only_boundary_plan(invalidated_gate, ["B1"])
+        dead = [error for error in self.plan_errors(plan)
+                if "records protection nothing will ever apply" in error]
+
+        self.assertEqual(1, len(dead), dead)
+        self.assertIn("INV-B1-READY", dead[0])
+        self.assertIn("required-queue-admission", dead[0])
+        self.assertIn("open batch B1", dead[0])
+
+    def test_one_reached_batch_that_can_still_claim_it_keeps_the_boundary(
+            self):
+        """The rule reads each reached batch's position, not a gate blacklist.
+
+        This boundary reaches `queued` B2 as a declared target and `open` B1
+        through its invalidated evidence's revalidation scope.  B1 has left
+        the gate's position, but B2 has not, so the boundary still protects
+        something and stands.
+        """
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        plan = self.passed_only_boundary_plan(invalidated_gate, ["B2"])
+        self.assertEqual(["B1"],
+                         plan["invalidated_evidence"][0][
+                             "revalidation_scope_ids"])
+        items = check_queue.validate_runtime(self.root)["items_by_id"]
+        self.assertEqual("queued", items["B2"]["state"])
+        self.assertEqual("open", items["B1"]["state"])
+        self.assertEqual([], [error for error in self.plan_errors(plan)
+                              if "records protection nothing" in error])
+
+    def evidence_scoped_boundary_plan(self, invalidated_gate, scope_ids):
+        """Reach a batch only through invalidated-evidence scope."""
+        plan = self.plan(invalidated_receipt=invalidated_gate)
+        plan["changed_predicates"][0]["affected_gate_ids"] = [
+            "required-queue-admission"]
+        plan["invalidation_boundaries"][0].update({
+            "required_gate_ids": ["required-queue-admission"],
+            "target_kind": "terminal-audit",
+            "target_ids": ["terminal-audit"],
+        })
+        plan["invalidated_evidence"][0]["revalidation_scope_ids"] = list(
+            scope_ids)
+        plan["boundary_gate_reruns"] = ["required-queue-admission"]
+        return plan
+
+    def test_a_boundary_reached_only_by_evidence_scope_is_judged_too(self):
+        """Enforcement is per boundary, so the refusal must be too.
+
+        A non-`batch` boundary binds a batch through its invalidated
+        evidence's revalidation scope exactly as a batch target does, so a
+        dead-gate refusal scoped to declared targets alone would miss it.
+        """
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        plan = self.evidence_scoped_boundary_plan(invalidated_gate, ["B1"])
+        errors = self.plan_errors(plan)
+        self.assertEqual([], [error for error in errors
+                              if "no gate rerun" in error])
+        dead = [error for error in errors
+                if "records protection nothing will ever apply" in error]
+
+        self.assertEqual(1, len(dead), errors)
+        self.assertIn("INV-B1-READY", dead[0])
+        self.assertIn("required-queue-admission", dead[0])
+        self.assertIn("open batch B1", dead[0])
+
+    def test_an_evidence_scoped_boundary_a_batch_can_claim_still_stands(self):
+        """Same route, live position: nothing is refused."""
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        plan = self.evidence_scoped_boundary_plan(invalidated_gate, ["B2"])
+        self.assertEqual([], [error for error in self.plan_errors(plan)
+                              if "records protection nothing" in error])
+
+    def test_a_sealed_plan_of_only_passed_gates_still_replays_clean(self):
+        """History is replayed under the rules of its own day.
+
+        A completed adoption's plan bytes are fingerprinted inside append-only
+        receipts, so an instance whose earlier boundary named only gates its
+        batch has left has no sanctioned way to rewrite them.  Judging that
+        plan here would strand it.
+        """
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        plan = self.passed_only_boundary_plan(invalidated_gate, ["B1"])
+        self.assertEqual(1, len([error for error in self.plan_errors(plan)
+                                 if "records protection nothing" in error]))
+        runtime = check_queue.validate_runtime(self.root)
+        replay = check_queue.standards_adoption_plan_errors(
+            self.root, plan, catalog=runtime["receipt_catalog"],
+            queue=runtime["queue"], progress=runtime["progress"],
+            validate_current=False)
+        self.assertEqual([], [error for error in replay
+                              if "records protection nothing" in error])
+
     def test_deterministic_boundary_gate_receipt_satisfies_revalidation(self):
         """A named `check_links` boundary must be satisfiable, not a deadlock.
 
@@ -422,7 +902,7 @@ class AdoptStandardsTests(unittest.TestCase):
         registry.write_text(
             registry.read_text(encoding="utf-8") +
             "| wiki-link-integrity | check_links | 1.5.0 "
-            "| link-check-summary | * | * |\n",
+            "| link-check-summary | * | * | not-batch-scoped |\n",
             encoding="utf-8")
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         self.plan(invalidated_receipt=invalidated_gate, overrides={
@@ -486,7 +966,8 @@ class AdoptStandardsTests(unittest.TestCase):
             "| content-correctness | manual-attestation | 1.0.0 "
             "| content-correctness | * "
             "| content_and_depth, formula_and_numeric, rendering, "
-            "source_and_currentness, structure_and_links |\n",
+            "source_and_currentness, structure_and_links "
+            "| not-batch-scoped |\n",
             encoding="utf-8")
         self.plan(invalidated_receipt=invalidated_gate, overrides={
             "changed_predicates": [{
@@ -588,7 +1069,7 @@ class AdoptStandardsTests(unittest.TestCase):
         registry.write_text(
             registry.read_text(encoding="utf-8") +
             "| wiki-link-integrity | check_links | 1.5.0 "
-            "| link-check-summary | * | * |\n",
+            "| link-check-summary | * | * | not-batch-scoped |\n",
             encoding="utf-8")
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         self.plan(invalidated_receipt=invalidated_gate, overrides={

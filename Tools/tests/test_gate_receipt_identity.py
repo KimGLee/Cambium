@@ -31,6 +31,12 @@ DIMENSIONS = {
         "guidance_and_contract", "source_and_currentness",
         "structure_and_links"),
 }
+# The K00/12 `Lifecycle` cell for a Gate whose producer takes no batch, so no
+# batch position can make it unproducible.
+NOT_BATCH_SCOPED = check_queue.NOT_BATCH_SCOPED_GATE
+# The cell for a Gate reachable only once the Queue holds no non-terminal
+# batch, which is ahead of every live batch and behind none.
+QUEUE_EXHAUSTED = check_queue.QUEUE_EXHAUSTED_GATE
 
 
 class DeterministicGateReceiptIdentityTests(unittest.TestCase):
@@ -45,6 +51,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 "check": "link-check-summary",
                 "mode": "*",
                 "dimensions": ("*",),
+                "lifecycle_states": (NOT_BATCH_SCOPED,),
             },
             check_vocab.GATE_ID: {
                 "tool": check_vocab.TOOL,
@@ -52,6 +59,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 "check": "vocab-check-summary",
                 "mode": "*",
                 "dimensions": ("*",),
+                "lifecycle_states": (NOT_BATCH_SCOPED,),
             },
             check_residual_content.GATE_ID: {
                 "tool": check_residual_content.TOOL,
@@ -59,6 +67,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 "check": "residual-content-summary",
                 "mode": "*",
                 "dimensions": ("*",),
+                "lifecycle_states": (NOT_BATCH_SCOPED,),
             },
             check_batch_close.GATE_ID: {
                 "tool": check_batch_close.TOOL,
@@ -66,6 +75,9 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 "check": "batch_close_gate",
                 "mode": "*",
                 "dimensions": ("*",),
+                # `check_batch_close` refuses a batch that is not
+                # `merge-ready`, so no other position can produce this Gate.
+                "lifecycle_states": ("merge-ready",),
             },
             check_proof.GATE_ID: {
                 "tool": check_proof.TOOL,
@@ -73,6 +85,10 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 "check": "proof-check-summary",
                 "mode": "*",
                 "dimensions": ("*",),
+                # `check_proof` fails any non-zero
+                # `remaining_required_work_units`, and cross-checks that field
+                # against the live count of non-terminal Queue batches.
+                "lifecycle_states": (QUEUE_EXHAUSTED,),
             },
             adopt_standards.GATE_ID: {
                 "tool": adopt_standards.TOOL,
@@ -80,6 +96,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 "check": "standards_adoption",
                 "mode": "*",
                 "dimensions": ("*",),
+                "lifecycle_states": (NOT_BATCH_SCOPED,),
             },
             "corpus-plan-structure": {
                 "tool": check_corpus_plan.TOOL,
@@ -87,6 +104,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 "check": "corpus_plan",
                 "mode": "*",
                 "dimensions": ("*",),
+                "lifecycle_states": (NOT_BATCH_SCOPED,),
             },
             "corpus-plan-semantic-acceptance": {
                 "tool": record_corpus_acceptance.TOOL,
@@ -94,6 +112,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 "check": "corpus_plan_semantic_acceptance",
                 "mode": "*",
                 "dimensions": ("*",),
+                "lifecycle_states": (NOT_BATCH_SCOPED,),
             },
             check_queue.BATCH_REVIEW_GATE_ID: {
                 "tool": check_queue.MANUAL_ATTESTATION_TOOL,
@@ -104,6 +123,10 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 # The wrapper binds member receipts that already carry the
                 # verdicts, so K12/18 files it under no dimension at all.
                 "dimensions": ("none",),
+                # Only `open -> merge-ready` consumes it, and that edge
+                # departs from `open`; the Delta page receipts it binds
+                # exist nowhere else.
+                "lifecycle_states": ("open",),
             },
         }
         for gate_id, predicate in expected.items():
@@ -134,15 +157,80 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
             registry_path.write_text(
                 "## Stable Gate ID Registry\n\n"
                 "| Gate ID | Tool | Tool version | Check | Mode "
-                "| Dimension |\n"
-                "|---|---|---|---|---|---|\n"
-                "| unsafe | * | * | * | * | * |\n",
+                "| Dimension | Lifecycle |\n"
+                "|---|---|---|---|---|---|---|\n"
+                "| unsafe | * | * | * | * | * | not-batch-scoped |\n",
                 encoding="utf-8",
             )
             registry, errors = check_queue.standards_gate_registry(root)
         self.assertEqual({}, registry)
         self.assertTrue(any("must be exact" in error for error in errors),
                         errors)
+
+    def parsed_registry(self, header, row):
+        """Parse one synthetic Stable Gate ID Registry table."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            registry_path = root / check_queue.STANDARDS_GATE_REGISTRY_PATH
+            registry_path.parent.mkdir(parents=True)
+            separator = "|%s|" % "|".join(
+                ["---"] * (header.count("|") - 1))
+            registry_path.write_text(
+                "## Stable Gate ID Registry\n\n%s\n%s\n%s\n" % (
+                    header, separator, row),
+                encoding="utf-8")
+            return check_queue.standards_gate_registry(root)
+
+    SIX_CELL_HEADER = ("| Gate ID | Tool | Tool version | Check | Mode "
+                       "| Dimension |")
+    SEVEN_CELL_HEADER = ("| Gate ID | Tool | Tool version | Check | Mode "
+                         "| Dimension | Lifecycle |")
+
+    def test_registry_rejects_a_row_without_the_lifecycle_cell(self):
+        """A pre-column table is a parse failure, not a defaulted column."""
+        registry, errors = self.parsed_registry(
+            self.SIX_CELL_HEADER,
+            "| wiki-link-integrity | check_links | 1.5.0 "
+            "| link-check-summary | * | * |")
+        self.assertEqual({}, registry)
+        self.assertTrue(any("must have seven cells" in error
+                            for error in errors), errors)
+
+    def test_registry_rejects_an_unknown_lifecycle_value(self):
+        """Only a batch lifecycle state or the not-batch-scoped marker."""
+        registry, errors = self.parsed_registry(
+            self.SEVEN_CELL_HEADER,
+            "| wiki-link-integrity | check_links | 1.5.0 "
+            "| link-check-summary | * | * | under-review |")
+        self.assertEqual({}, registry)
+        self.assertTrue(any(
+            "registers Lifecycle under-review, which is neither a batch "
+            "lifecycle state nor one of not-batch-scoped, queue-exhausted"
+            in error for error in errors), errors)
+
+    def test_registry_rejects_mixing_a_marker_with_another_position(self):
+        """The three cell forms each answer the whole question alone."""
+        for cell in ("not-batch-scoped, open", "queue-exhausted, merge-ready",
+                     "not-batch-scoped, queue-exhausted"):
+            with self.subTest(cell=cell):
+                registry, errors = self.parsed_registry(
+                    self.SEVEN_CELL_HEADER,
+                    "| wiki-link-integrity | check_links | 1.5.0 "
+                    "| link-check-summary | * | * | %s |" % cell)
+                self.assertEqual({}, registry)
+                self.assertTrue(any("mixes" in error and
+                                    "with another position" in error
+                                    for error in errors), errors)
+
+    def test_registry_accepts_the_queue_exhausted_position(self):
+        """A Queue-level position is a registrable cell, not an error."""
+        registry, errors = self.parsed_registry(
+            self.SEVEN_CELL_HEADER,
+            "| wiki-link-integrity | check_links | 1.5.0 "
+            "| link-check-summary | * | * | queue-exhausted |")
+        self.assertEqual([], errors)
+        self.assertEqual(("queue-exhausted",),
+                         registry["wiki-link-integrity"]["lifecycle_states"])
 
     def test_current_batch_review_cannot_wrap_absent_page_evidence(self):
         wrapper_id = "audit-batch-review"
@@ -482,10 +570,10 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
             registry_path.write_text(
                 "## Stable Gate ID Registry\n\n"
                 "| Gate ID | Tool | Tool version | Check | Mode "
-                "| Dimension |\n"
-                "|---|---|---|---|---|---|\n"
+                "| Dimension | Lifecycle |\n"
+                "|---|---|---|---|---|---|---|\n"
                 "| wiki-link-integrity | check_links | 9.9.9 "
-                "| link-check-summary | * | * |\n",
+                "| link-check-summary | * | * | not-batch-scoped |\n",
                 encoding="utf-8",
             )
             registry, errors = check_queue.standards_gate_registry(root)
@@ -685,6 +773,85 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
         self.assertTrue(any("this checker consumes its receipts as check_proof"
                             in error for error in errors), errors)
 
+    def test_the_registered_lifecycle_column_partitions_by_position(self):
+        """The K00/12 column, read through the one lifecycle map.
+
+        `merge-ready -> open` is a sanctioned edge, so `open` is reachable
+        from `open` and a `merge-ready` batch may still return for review;
+        `queued` is reachable from nothing, so an admission gate is behind
+        every batch that has left it.
+        """
+        registry = self.registry()
+        probe = ["batch-close", "batch-review", "required-queue-admission",
+                 "wiki-link-integrity"]
+        expected = {
+            "queued": (["required-queue-admission", "wiki-link-integrity"],
+                       ["batch-close", "batch-review"], []),
+            "open": (["batch-review", "wiki-link-integrity"],
+                     ["batch-close"], ["required-queue-admission"]),
+            "merge-ready": (["batch-close", "wiki-link-integrity"],
+                            ["batch-review"], ["required-queue-admission"]),
+            "closed": (["wiki-link-integrity"], [],
+                       ["batch-close", "batch-review",
+                        "required-queue-admission"]),
+        }
+        for state, partition in expected.items():
+            with self.subTest(state=state):
+                self.assertEqual(
+                    partition,
+                    check_queue.partition_boundary_gates_by_lifecycle(
+                        probe, state, registry))
+
+    def test_a_queue_exhausted_gate_is_deferred_by_every_live_batch(self):
+        """The Queue-level position, judged the same way as a batch state.
+
+        `required-queue-completion`, `maintenance-completion` and
+        `terminal-proof` all refuse while any non-terminal batch remains, so
+        every live batch has that position ahead of it and none has it behind:
+        they are deferred everywhere and unrepeatable nowhere.
+        """
+        registry = self.registry()
+        exhaustion = ["maintenance-completion", "required-queue-completion",
+                      "terminal-proof"]
+        for state in ("queued", "open", "merge-ready"):
+            with self.subTest(state=state):
+                self.assertEqual(
+                    ([], exhaustion, []),
+                    check_queue.partition_boundary_gates_by_lifecycle(
+                        exhaustion, state, registry))
+        for state in ("closed", "cancelled"):
+            with self.subTest(state=state):
+                self.assertEqual(
+                    (exhaustion, [], []),
+                    check_queue.partition_boundary_gates_by_lifecycle(
+                        exhaustion, state, registry))
+
+    def test_every_registered_position_is_one_of_the_three_forms(self):
+        """No row falls outside the vocabulary the partition can read."""
+        registry = self.registry()
+        for gate_id in sorted(registry):
+            with self.subTest(gate_id=gate_id):
+                position = check_queue.registered_gate_position(
+                    gate_id, registry)
+                self.assertTrue(
+                    position is None or
+                    position == check_queue.QUEUE_EXHAUSTED_GATE or
+                    (position and position.issubset(
+                        set(kblib.BATCH_LIFECYCLE_TRANSITIONS))), position)
+
+    def test_an_unknown_position_or_gate_leaves_every_gate_due(self):
+        """Fail closed: nothing is waived on an answer the map cannot give."""
+        registry = self.registry()
+        self.assertEqual(
+            (["batch-close", "required-queue-admission"], [], []),
+            check_queue.partition_boundary_gates_by_lifecycle(
+                ["batch-close", "required-queue-admission"], "in-review",
+                registry))
+        self.assertEqual(
+            (["never-registered"], [], []),
+            check_queue.partition_boundary_gates_by_lifecycle(
+                ["never-registered"], "open", registry))
+
     def test_completion_gate_families_have_stable_gate_ids(self):
         """K00/06 names these two gates; K13/11 requires them to pass."""
         registry = self.registry()
@@ -693,7 +860,8 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
                 {"tool": check_queue.MANUAL_ATTESTATION_TOOL,
                  "tool_version": check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
                  "check": gate_id, "mode": "*",
-                 "dimensions": DIMENSIONS[gate_id]},
+                 "dimensions": DIMENSIONS[gate_id],
+                 "lifecycle_states": (NOT_BATCH_SCOPED,)},
                 registry.get(gate_id), gate_id)
 
 

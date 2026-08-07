@@ -70,10 +70,22 @@ rejected, not recorded as protection nothing applies.
 
 | `target_kind` | `target_ids` resolve against | Own enforcement point |
 |---|---|---|
-| `batch` | the Required Queue | each `required_gate_ids` entry holds that batch's next transition |
+| `batch` | the Required Queue | each `required_gate_ids` entry holds the transition it belongs to |
 | `receipt` | the current receipt catalog | none |
 | `task` | exactly the plan's `task_id` | none |
 | `terminal-audit`, `maintenance-completion`, `profile-load` | unresolved | none |
+
+Each required gate is claimed at the position it belongs to, not all at hold
+discharge. Partition a boundary's gates by the position
+[[kernel/K00 Standards Control/12 Control Registry#Stable Gate ID Registry\|K00/12]]
+registers each producer for, judged against the target batch's own position.
+The aggregate MUST require receipts for exactly the gates whose position that
+batch is at, and MUST record the rest. A gate whose position lies ahead is
+claimed on arriving there, which already requires it, so nothing further
+enforces it here. A gate whose position the batch has left cannot be remade by
+any sanctioned action; it is recorded as unrepeatable and the batch proceeds on
+evidence made under the superseded predicate. A boundary all of whose gates lie
+behind every batch it reaches is refused at admission.
 
 IDs/references must resolve. Invalidated-evidence `reason_code` is
 `predicate-changed`, `receipt-schema-changed`, `profile-binding-changed`, or

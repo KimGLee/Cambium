@@ -22,13 +22,10 @@ import update_task
 import apply_delta
 
 TOOL_VERSION = "1.2.0"
-TRANSITIONS = {
-    "queued": frozenset(("open",)),
-    "open": frozenset(("merge-ready",)),
-    "merge-ready": frozenset(("closed", "open")),
-    "closed": frozenset(),
-    "cancelled": frozenset(),
-}
+# The lifecycle map moved to `kblib` so `check_queue` can read it without
+# importing this writer, which imports it.  The name stays here because it is
+# this tool's transition guard and every existing reference reads it here.
+TRANSITIONS = kblib.BATCH_LIFECYCLE_TRANSITIONS
 
 
 def _nonempty(value):

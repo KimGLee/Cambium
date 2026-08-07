@@ -70,34 +70,47 @@ tool whose identity already fixes what its receipt means and which writes no
 `dimension` field, so nothing is narrowed here; it is not a licence to file such
 a receipt under any dimension.
 
-| Gate ID | Tool | Tool version | Check | Mode | Dimension |
-|---|---|---|---|---|---|
-| `runtime-card-synchronization` | `manual-attestation` | `1.0.0` | `runtime-card-synchronization` | `*` | `guidance_and_contract` |
-| `runtime-startup-recovery` | `check_queue` | `1.6.0` | `required_queue` | `resume-status` | `*` |
-| `large-scale-execution-admission` | `manual-attestation` | `1.0.0` | `large-scale-execution-admission` | `*` | `guidance_and_contract` |
-| `wiki-link-integrity` | `check_links` | `1.5.0` | `link-check-summary` | `*` | `*` |
-| `frontmatter-vocabulary` | `check_vocab` | `1.4.0` | `vocab-check-summary` | `*` | `*` |
-| `required-queue-consistency` | `check_queue` | `1.6.0` | `required_queue` | `consistency` | `*` |
-| `required-queue-admission` | `check_queue` | `1.6.0` | `required_queue` | `require-ready:*` | `*` |
-| `required-queue-completion` | `check_queue` | `1.6.0` | `required_queue` | `require-complete` | `*` |
-| `maintenance-completion` | `check_queue` | `1.6.0` | `required_queue` | `require-maintenance-complete` | `*` |
-| `batch-review` | `manual-attestation` | `1.0.0` | `batch_gate` | `*` | `none` |
-| `batch-close` | `check_batch_close` | `1.3.0` | `batch_close_gate` | `*` | `*` |
-| `corpus-plan-structure` | `check_corpus_plan` | `1.5.0` | `corpus_plan` | `*` | `*` |
-| `corpus-plan-semantic-acceptance` | `record_corpus_acceptance` | `1.0.0` | `corpus_plan_semantic_acceptance` | `*` | `*` |
-| `content-correctness` | `manual-attestation` | `1.0.0` | `content-correctness` | `*` | `content_and_depth`, `formula_and_numeric`, `rendering`, `source_and_currentness`, `structure_and_links` |
-| `source-promotion` | `manual-attestation` | `1.0.0` | `source-promotion` | `*` | `coverage_and_integration`, `source_and_currentness` |
-| `expression-layer-acceptance` | `manual-attestation` | `1.0.0` | `expression-layer-acceptance` | `*` | `content_and_depth`, `coverage_and_integration`, `guidance_and_contract`, `source_and_currentness`, `structure_and_links` |
-| `coverage-reconciliation` | `manual-attestation` | `1.0.0` | `coverage-reconciliation` | `*` | `coverage_and_integration` |
-| `standards-adoption` | `adopt_standards` | `1.2.0` | `standards_adoption` | `*` | `*` |
-| `standards-revalidation` | `check_queue` | `1.6.0` | `required_queue` | `require-revalidation:*` | `*` |
-| `guidance-disposition` | `manual-attestation` | `1.0.0` | `guidance-disposition` | `*` | `guidance_and_contract` |
-| `receipt-validity` | `manual-attestation` | `1.0.0` | `receipt-validity` | `*` | `guidance_and_contract` |
-| `rendering` | `manual-attestation` | `1.0.0` | `rendering` | `*` | `rendering`, `structure_and_links` |
-| `registered-residual-content` | `check_residual_content` | `1.2.0` | `residual-content-summary` | `*` | `*` |
-| `duplicate-detection` | `manual-attestation` | `1.0.0` | `duplicate-detection` | `*` | `structure_and_links` |
-| `knowledge-freshness` | `manual-attestation` | `1.0.0` | `knowledge-freshness` | `*` | `source_and_currentness` |
-| `depth-balance` | `manual-attestation` | `1.0.0` | `depth-balance` | `*` | `content_and_depth` |
-| `prerequisite-completeness` | `manual-attestation` | `1.0.0` | `prerequisite-completeness` | `*` | `coverage_and_integration` |
-| `canonical-ownership-uniqueness` | `manual-attestation` | `1.0.0` | `canonical-ownership-uniqueness` | `*` | `structure_and_links` |
-| `terminal-proof` | `check_proof` | `1.15.0` | `proof-check-summary` | `*` | `*` |
+`Lifecycle` is not part of that selector. It records the position at which the
+Gate's producer can run, which is what
+[[kernel/K12 Quality Assurance/10 Standards Version Adoption#Restricted-YAML Adoption Plan\|Standards Version Adoption]]
+reads to decide, for one target batch, which of a boundary's gates are claimed
+now, which further ahead, and which can no longer be produced at all. A cell
+holds one of three things, and the three do not mix. One or more batch lifecycle
+states, tokenized the way `Dimension` is: the producer runs against a batch at
+those positions. `queue-exhausted`: it runs only once the Queue holds no
+non-terminal batch. `not-batch-scoped`: it takes no batch and no Queue position
+constrains it, so it can run at any time. Each value is the producing tool's own
+guard, not an expectation: a producer that begins accepting a further position
+moves its own cell.
+
+| Gate ID | Tool | Tool version | Check | Mode | Dimension | Lifecycle |
+|---|---|---|---|---|---|---|
+| `runtime-card-synchronization` | `manual-attestation` | `1.0.0` | `runtime-card-synchronization` | `*` | `guidance_and_contract` | `not-batch-scoped` |
+| `runtime-startup-recovery` | `check_queue` | `1.6.0` | `required_queue` | `resume-status` | `*` | `not-batch-scoped` |
+| `large-scale-execution-admission` | `manual-attestation` | `1.0.0` | `large-scale-execution-admission` | `*` | `guidance_and_contract` | `not-batch-scoped` |
+| `wiki-link-integrity` | `check_links` | `1.5.0` | `link-check-summary` | `*` | `*` | `not-batch-scoped` |
+| `frontmatter-vocabulary` | `check_vocab` | `1.4.0` | `vocab-check-summary` | `*` | `*` | `not-batch-scoped` |
+| `required-queue-consistency` | `check_queue` | `1.6.0` | `required_queue` | `consistency` | `*` | `not-batch-scoped` |
+| `required-queue-admission` | `check_queue` | `1.6.0` | `required_queue` | `require-ready:*` | `*` | `queued` |
+| `required-queue-completion` | `check_queue` | `1.6.0` | `required_queue` | `require-complete` | `*` | `queue-exhausted` |
+| `maintenance-completion` | `check_queue` | `1.6.0` | `required_queue` | `require-maintenance-complete` | `*` | `queue-exhausted` |
+| `batch-review` | `manual-attestation` | `1.0.0` | `batch_gate` | `*` | `none` | `open` |
+| `batch-close` | `check_batch_close` | `1.3.0` | `batch_close_gate` | `*` | `*` | `merge-ready` |
+| `corpus-plan-structure` | `check_corpus_plan` | `1.5.0` | `corpus_plan` | `*` | `*` | `not-batch-scoped` |
+| `corpus-plan-semantic-acceptance` | `record_corpus_acceptance` | `1.0.0` | `corpus_plan_semantic_acceptance` | `*` | `*` | `not-batch-scoped` |
+| `content-correctness` | `manual-attestation` | `1.0.0` | `content-correctness` | `*` | `content_and_depth`, `formula_and_numeric`, `rendering`, `source_and_currentness`, `structure_and_links` | `not-batch-scoped` |
+| `source-promotion` | `manual-attestation` | `1.0.0` | `source-promotion` | `*` | `coverage_and_integration`, `source_and_currentness` | `not-batch-scoped` |
+| `expression-layer-acceptance` | `manual-attestation` | `1.0.0` | `expression-layer-acceptance` | `*` | `content_and_depth`, `coverage_and_integration`, `guidance_and_contract`, `source_and_currentness`, `structure_and_links` | `not-batch-scoped` |
+| `coverage-reconciliation` | `manual-attestation` | `1.0.0` | `coverage-reconciliation` | `*` | `coverage_and_integration` | `not-batch-scoped` |
+| `standards-adoption` | `adopt_standards` | `1.2.0` | `standards_adoption` | `*` | `*` | `not-batch-scoped` |
+| `standards-revalidation` | `check_queue` | `1.6.0` | `required_queue` | `require-revalidation:*` | `*` | `queued`, `open` |
+| `guidance-disposition` | `manual-attestation` | `1.0.0` | `guidance-disposition` | `*` | `guidance_and_contract` | `not-batch-scoped` |
+| `receipt-validity` | `manual-attestation` | `1.0.0` | `receipt-validity` | `*` | `guidance_and_contract` | `not-batch-scoped` |
+| `rendering` | `manual-attestation` | `1.0.0` | `rendering` | `*` | `rendering`, `structure_and_links` | `not-batch-scoped` |
+| `registered-residual-content` | `check_residual_content` | `1.2.0` | `residual-content-summary` | `*` | `*` | `not-batch-scoped` |
+| `duplicate-detection` | `manual-attestation` | `1.0.0` | `duplicate-detection` | `*` | `structure_and_links` | `not-batch-scoped` |
+| `knowledge-freshness` | `manual-attestation` | `1.0.0` | `knowledge-freshness` | `*` | `source_and_currentness` | `not-batch-scoped` |
+| `depth-balance` | `manual-attestation` | `1.0.0` | `depth-balance` | `*` | `content_and_depth` | `not-batch-scoped` |
+| `prerequisite-completeness` | `manual-attestation` | `1.0.0` | `prerequisite-completeness` | `*` | `coverage_and_integration` | `not-batch-scoped` |
+| `canonical-ownership-uniqueness` | `manual-attestation` | `1.0.0` | `canonical-ownership-uniqueness` | `*` | `structure_and_links` | `not-batch-scoped` |
+| `terminal-proof` | `check_proof` | `1.15.0` | `proof-check-summary` | `*` | `*` | `queue-exhausted` |
