@@ -170,8 +170,35 @@ class QueueFixture(unittest.TestCase):
         )
         return lock
 
-    def test_live_task_contract_requires_the_derived_read_set_closure(self):
-        """Ordinary runtime validation rejects an under-declared load set."""
+    def write_live_load_set(self, selected, loaded=()):
+        """Declare the live contract's load set and re-anchor the contract.
+
+        The contract anchor chain starts at the initial Queue receipt, so a
+        fixture that edits the frozen contract moves that anchor with it or the
+        runtime reports an unrelated anchor error instead of the finding under
+        test.
+        """
+        progress = kblib.load_yaml_file(self.progress_path)
+        progress["contract"]["selected_read_sets"] = list(selected)
+        progress["contract"]["loaded_module_paths"] = list(loaded)
+        self.progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+        receipt_path = self.root / ".cambium/receipts/task-transitions.jsonl"
+        records = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for record in records:
+            if record.get("receipt_id") == "audit-fixture-initial-queue":
+                record["contract_sha256"] = kblib.sha256_bytes(
+                    kblib.canonical_yaml(progress["contract"]))
+        receipt_path.write_text(
+            "".join(json.dumps(record, separators=(",", ":")) + "\n"
+                    for record in records),
+            encoding="utf-8",
+        )
+        self.refresh_initial_origin()
+
+    def write_under_declaring_read_set(self):
+        """Lay down a Read Set whose boundary names an undeclared leaf."""
         read_set = "kernel/Read Sets/R99 Live Fixture.md"
         leaf = "kernel/K99 Fixture/01 Required Leaf.md"
         read_set_path = self.root / read_set
@@ -183,18 +210,57 @@ class QueueFixture(unittest.TestCase):
         leaf_path = self.root / leaf
         leaf_path.parent.mkdir(parents=True, exist_ok=True)
         leaf_path.write_text("## Purpose\n\nFixture.\n", encoding="utf-8")
+        return read_set, leaf
 
-        progress = kblib.load_yaml_file(self.progress_path)
-        progress["contract"]["selected_read_sets"] = [read_set]
-        progress["contract"]["loaded_module_paths"] = []
-        self.progress_path.write_text(
-            kblib.canonical_yaml(progress), encoding="utf-8")
-        self.refresh_initial_origin()
+    def open_b1_with_activation_receipt(self, **receipt_overrides):
+        """Record an already-authorized `queued -> open` edge for B1.
 
-        errors = check_queue.validate_runtime(self.root)["errors"]
-        self.assertTrue(any(
-            "Progress contract.loaded_module_paths omits %s" % leaf in error
-            for error in errors), errors)
+        The activation receipt is history: it authorized an edge the Queue has
+        already taken, and no sanctioned transaction can readmit the batch to
+        restamp it under a newer producer identity.
+        """
+        before_sha = kblib.sha256_file(self.queue_path)
+        queue = self.queue()
+        item = queue["required_queue"][0]
+        item.update({
+            "state": "open",
+            "opened_at": "2026-08-04T01:00:00Z",
+            "activation_receipt": "audit-ready-b1",
+            "transition_receipts": ["audit-transition-b1-open"],
+        })
+        queue["state_revision"] = 1
+        self.write_queue(queue)
+        activation = {
+            "receipt_id": "audit-ready-b1", "tool": "check_queue",
+            "tool_version": check_queue.TOOL_VERSION,
+            "check": "required_queue",
+            "queue_check_mode": "require-ready:B1",
+            "result": "pass", "invalidated_by": None,
+            "task_id": "fixture-task", "queue_revision": 1,
+            "queue_state_revision": 0,
+            "required_queue_sha256": before_sha,
+            "standards_version": "3.0.0",
+        }
+        activation.update(receipt_overrides)
+        receipts = [activation, {
+            "receipt_id": "audit-transition-b1-open",
+            "tool": "update_queue", "tool_version": "1.2.0",
+            "check": "queue_transition", "target": "B1",
+            "result": "pass", "invalidated_by": None,
+            "task_id": "fixture-task", "queue_revision": 1,
+            "before_state": "queued", "after_state": "open",
+            "before_hold_state": "none", "after_hold_state": "none",
+            "before_state_revision": 0, "after_state_revision": 1,
+            "before_required_queue_sha256": before_sha,
+            "after_required_queue_sha256": kblib.sha256_file(self.queue_path),
+        }]
+        receipt_path = self.root / ".cambium/receipts/history.jsonl"
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_text(
+            "".join(json.dumps(receipt) + "\n" for receipt in receipts),
+            encoding="utf-8",
+        )
+        return "\n".join(check_queue.validate_runtime(self.root)["errors"])
 
     # --- K13/10 admission condition 2 (control / hub pages) helpers ---
 
@@ -388,6 +454,70 @@ class HubPageAdmissionTests(QueueFixture):
 
 
 class CheckQueueTests(QueueFixture):
+    def test_live_task_contract_closure_gap_is_reported_not_refused(self):
+        """An under-declared live load set is a finding, never a runtime error.
+
+        The contract's five load fields are written only by a Standards
+        adoption, whose plan bytes are then sealed into append-only receipts.
+        Refusing the runtime that holds them would lock the instance out of the
+        sole writer that can re-declare them, so the gap is reported on
+        `task_runtime` and admission of the next plan is where K00/15 judges it.
+        """
+        read_set, leaf = self.write_under_declaring_read_set()
+        self.write_live_load_set([read_set])
+
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        gaps = result["task_runtime"]["contract_load_set_gaps"]
+        self.assertTrue(any(
+            "Progress contract.loaded_module_paths omits %s" % leaf in gap
+            for gap in gaps), gaps)
+
+    def test_a_broken_live_read_set_path_remains_a_runtime_error(self):
+        """Unresolvable bytes are not an under-declaration and stay errors."""
+        absent = "kernel/Read Sets/R99 Absent.md"
+        self.write_live_load_set([absent])
+
+        result = check_queue.validate_runtime(self.root)
+        closure = [error for error in result["errors"]
+                   if "Read Set load closure" in error]
+        self.assertEqual(1, len(closure), result["errors"])
+        self.assertIn(absent, closure[0])
+        self.assertEqual([], result["task_runtime"]["contract_load_set_gaps"])
+
+    def test_an_ordinary_selected_path_is_not_a_traversal_root(self):
+        """A selected path proving no Read Set type is a structural error."""
+        ordinary = "profiles/test-profile/ordinary.md"
+        (self.root / ordinary).write_text(
+            "## Start\n\n- [[Topics/A|A]]\n", encoding="utf-8")
+        self.write_live_load_set([ordinary])
+
+        result = check_queue.validate_runtime(self.root)
+        self.assertTrue(any(
+            "does not prove frontmatter type" in error and ordinary in error
+            for error in result["errors"]), result["errors"])
+        self.assertEqual([], result["task_runtime"]["contract_load_set_gaps"])
+
+    def test_a_superseded_activation_producer_version_is_not_an_error(self):
+        """History is not invalidated by a later producer version bump.
+
+        The receipt's own `standards_version` is the live identity, so the
+        instance's own chain accounts for the era it claims; the `tool_version`
+        it was stamped with is whatever `check_queue` was at the time.
+        """
+        errors = self.open_b1_with_activation_receipt(tool_version="0.1.0")
+        self.assertNotIn("tool_version", errors)
+        self.assertNotIn("claims standards_version", errors)
+
+    def test_an_activation_receipt_era_nothing_accounts_for_is_refused(self):
+        """The replacement check has teeth: an invented era is still refused."""
+        errors = self.open_b1_with_activation_receipt(
+            tool_version="0.1.0", standards_version="9.9.9")
+        self.assertIn(
+            "B1 activation receipt audit-ready-b1 claims "
+            "standards_version='9.9.9'", errors)
+        self.assertIn("no Standards adoption record or live identity", errors)
+
     def test_simple_batch_work_spec_pair_is_explicit_and_closed(self):
         self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
         queue = self.queue()

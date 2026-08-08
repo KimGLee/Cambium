@@ -773,6 +773,39 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
         self.assertTrue(any("this checker consumes its receipts as check_proof"
                             in error for error in errors), errors)
 
+    def test_a_superseded_producer_version_is_still_refused_as_current(self):
+        """Historical tolerance does not reach the current-action predicate.
+
+        Historical validation stopped comparing `tool_version` to the current
+        constant, because a sealed receipt cannot be restamped.  A receipt
+        offered as authorization for a Gate ID now is a different question:
+        `receipt_matches_gate_id` must still compare the registered producer
+        tuple exactly, so a receipt whose Standards era this instance did pass
+        through is nonetheless refused when its producer version has moved.
+        """
+        registry = self.registry()
+        superseded = {
+            "gate_id": "required-queue-consistency",
+            "tool": check_queue.TOOL,
+            "tool_version": "1.5.0",
+            "check": "required_queue",
+            "queue_check_mode": "consistency",
+            "standards_version": "3.0.0",
+        }
+        self.assertIn(
+            "3.0.0",
+            check_queue.accounted_standards_versions(
+                {"contract": {"standards_version": "3.0.0"},
+                 "standards_adoptions": []}))
+        self.assertFalse(check_queue.receipt_matches_gate_id(
+            superseded, "required-queue-consistency", registry))
+        self.assertEqual(
+            check_queue.TOOL_VERSION,
+            registry["required-queue-consistency"]["tool_version"])
+        superseded["tool_version"] = check_queue.TOOL_VERSION
+        self.assertTrue(check_queue.receipt_matches_gate_id(
+            superseded, "required-queue-consistency", registry))
+
     def test_the_registered_lifecycle_column_partitions_by_position(self):
         """The K00/12 column, read through the one lifecycle map.
 
