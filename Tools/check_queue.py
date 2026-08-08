@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.6.0"
+TOOL_VERSION = "1.7.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -191,7 +191,7 @@ BATCH_CLOSE_TOOL_VERSION = "1.3.0"
 # by :func:`accounted_standards_versions` instead.
 SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((BATCH_CLOSE_TOOL_VERSION,))
 CORPUS_PLAN_TOOL = "check_corpus_plan"
-CORPUS_PLAN_TOOL_VERSION = "1.5.0"
+CORPUS_PLAN_TOOL_VERSION = "1.6.0"
 MANUAL_ATTESTATION_TOOL = "manual-attestation"
 MANUAL_ATTESTATION_TOOL_VERSION = "1.0.0"
 # K12/07 fixes these seven base receipt dimensions and K12/08 / K12/18 file

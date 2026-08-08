@@ -20,7 +20,7 @@ import kblib
 
 
 TOOL = "check_corpus_plan"
-TOOL_VERSION = "1.5.0"
+TOOL_VERSION = "1.6.0"
 # The Gate ID and the `Check` cell K00/12 registers for it; every receipt
 # this tool offers as gate evidence carries both verbatim.
 GATE_ID = "corpus-plan-structure"
@@ -90,6 +90,7 @@ RELATION_TYPES = {
     "system-input-to",
     "control-input-to",
     "canonical-source-for",
+    "expressed-by",
     "downstream-impact",
 }
 

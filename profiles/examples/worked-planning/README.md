@@ -18,7 +18,7 @@ A Global Map entry must name a Markdown file that really exists, and a Profile S
 
 | Role | Count | Meaning |
 |---|---:|---|
-| Filled profile skeleton | 12 | [profile.md](profile.md) plus the eleven bound slot files corresponding to `_template/` |
+| Filled profile skeleton | 13 | [profile.md](profile.md) plus the twelve bound slot files corresponding to `_template/` |
 | Example orientation | 1 | This README; it is not loaded as profile policy |
 | Registered-scan parameters | 1 | [scan-configs/residual-scan.yaml](scan-configs/residual-scan.yaml), consumed by the one scan registration |
 | Planning artifacts | 3 | [planning/](planning/), bound by [corpus-planning.yaml](corpus-planning.yaml) and owned by K02/05–07 |
@@ -58,8 +58,8 @@ The public Cambium distribution is intentionally uninstantiated: `kernel/K00 Sta
 
 | Validator | Tool version | Command | Expected result |
 |---|---|---|---|
-| `check_profile` | `1.7.0` | `python3 Tools/check_profile.py profiles/examples/worked-planning` | exit 0 |
-| `check_corpus_plan` | `1.5.0` | `python3 Tools/check_corpus_plan.py . --profile profiles/examples/worked-planning/profile.md` | exit 0 |
+| `check_profile` | `1.8.0` | `python3 Tools/check_profile.py profiles/examples/worked-planning` | exit 0 |
+| `check_corpus_plan` | `1.6.0` | `python3 Tools/check_corpus_plan.py . --profile profiles/examples/worked-planning/profile.md` | exit 0 |
 | `check_residual_content` | `1.2.0` | `python3 Tools/check_residual_content.py . --scan-id worked-planning-case-residuals --config profiles/examples/worked-planning/scan-configs/residual-scan.yaml --time-limit 55` | exit 0 |
 
 The residual scan is runnable here only because this package's micro-corpus lives inside the repository: the accepted root `corpus/Service Cases` exists, so the scan's non-triviality control finds its witness there.

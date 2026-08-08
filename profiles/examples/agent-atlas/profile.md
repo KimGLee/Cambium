@@ -10,6 +10,7 @@ Normative interface: [Profile interface](../../README.md). Example namespace rul
 
 - `Profile Scope`: `scope-and-architecture.md`
 - `Corpus Planning`: `corpus-planning.yaml`
+- `Structure Registry`: `structure-registry.yaml`
 - `Priority Rubric`: `priority-rubric.md`
 - `Vocabulary Extensions`: `vocabulary-extensions.yaml`
 - `Language Contract`: `language-contract.md`

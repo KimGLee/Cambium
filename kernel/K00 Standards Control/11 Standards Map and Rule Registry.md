@@ -9,7 +9,7 @@
 - `Cards` [[kernel/Cards/Card Index|Card Index]]: kernel-owned compiled task guidance; every routine task enters here before escalating to Read Sets and leaf owners.
 - `Read Sets` [[kernel/Read Sets/Read Sets Index|Read Sets Index]]: combines the leaf modules to read by task, event, and execution phase.
 - `K00` [[kernel/K00 Standards Overview|Standards Overview]] and [[kernel/K00 Standards Control/03 Standards Governance|Standards Control]]: entry, route loading, precedence, governance, defaults, and control registries.
-- `K01` [[kernel/K01 Scope and Architecture Standard|Scope and Architecture Standard]]: generic scope boundaries, foundation preservation, logical architecture, and the concrete scope binding provided by `Profile Scope`.
+- `K01` [[kernel/K01 Scope and Architecture Standard|Scope and Architecture Standard]]: generic scope boundaries, foundation preservation, logical architecture, structural unit and support layer interfaces with their `Structure Registry` binding, and the concrete scope binding provided by `Profile Scope`.
 - `K02` [[kernel/K02 Knowledge Work Construction Standard|Knowledge Work Construction Standard]]: inventory, Coverage reconciliation, corpus-planning artifacts, architecture and dependency planning, knowledge-batch production, and migration safety.
 - `K03` [[kernel/K03 Note Types and Ownership Standard|Note Types and Ownership Standard]]: note types, Process / Flow, canonical ownership, split, and duplication.
 - `K04` [[kernel/K04 Content Depth Standard|Content Depth Standard]]: Atomic / Core / System depth, Process / Flow, system chains, and evaluation provenance.
@@ -47,6 +47,8 @@ This registry governs rule text. The three conditions do not authorize a view of
 | Runtime namespace startup and interrupted-state recovery | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Runtime Startup Gate\|Runtime Startup Gate]] |
 | Large-scale creation, move, or deletion admission | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Large-scale Pre-execution Gate\|Large-scale Pre-execution Gate]] |
 | Task Contract decision list and what a task freezes | [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract#Task Contract Decisions\|Task Contract Decisions]] |
+| Structural unit kinds, module admission, role implementation modes, and the Structure Registry ownership boundary | [[kernel/K01 Scope and Architecture/05 Structural Unit Interface\|Structural Unit Interface]] |
+| Support layer structural interfaces: shared base, layouts, and role-specific bindings | [[kernel/K01 Scope and Architecture/06 Support Layer Structural Interfaces\|Support Layer Structural Interfaces]] |
 | Corpus Planning applicability, lifecycle, and reconciliation | [[kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle\|Corpus Planning Applicability and Lifecycle]] |
 | Corpus Planning runtime, audit, deterministic-check, receipt, and affected-path boundaries | [[kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries\|Corpus Planning Runtime Audit and Gate Boundaries]] |
 | `Global Map` exact role and record contract | [[kernel/K02 Knowledge Work Construction/05 Global Map Contract\|Global Map Contract]] |

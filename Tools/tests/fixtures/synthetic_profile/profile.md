@@ -10,6 +10,7 @@ Interface: [Profile interface](../README.md)
 
 - `Profile Scope`: `slots.md`
 - `Corpus Planning`: `corpus-planning.yaml`
+- `Structure Registry`: `structure-registry.yaml`
 - `Priority Rubric`: `slots.md`
 - `Vocabulary Extensions`: `slots.md`
 - `Language Contract`: `slots.md`

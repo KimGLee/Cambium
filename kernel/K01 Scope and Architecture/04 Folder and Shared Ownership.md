@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/K01 Scope and Architecture Standard|K01 Scope and Architecture Standard]].
 - Previous: [[kernel/K01 Scope and Architecture/03 Foundation Preservation|Foundation Preservation]].
+- Next: [[kernel/K01 Scope and Architecture/05 Structural Unit Interface|Structural Unit Interface]].
 
 ## Physical Folder Policy
 

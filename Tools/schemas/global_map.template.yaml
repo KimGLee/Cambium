@@ -10,7 +10,7 @@
 # `layer_id` values come from Profile Scope and are never redeclared here.
 # `relation_type` is exactly one of prerequisite-for, capability-input-to,
 # realized-by, evidence-input-to, system-input-to, control-input-to,
-# canonical-source-for, or downstream-impact.
+# canonical-source-for, expressed-by, or downstream-impact.
 
 schema_version: 1
 

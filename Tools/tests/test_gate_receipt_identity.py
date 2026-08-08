@@ -17,6 +17,7 @@ import check_corpus_plan
 import check_proof
 import check_queue
 import check_residual_content
+import check_structure
 import check_vocab
 import adopt_standards
 import kblib
@@ -1052,7 +1053,8 @@ class RuntimeReceiptIdentityTests(unittest.TestCase):
         self.assertEqual(
             {check_links.TOOL, check_vocab.TOOL, check_residual_content.TOOL,
              check_batch_close.TOOL, check_corpus_plan.TOOL,
-             record_corpus_acceptance.TOOL, adopt_standards.TOOL},
+             record_corpus_acceptance.TOOL, adopt_standards.TOOL,
+             check_structure.TOOL},
             set(producers) - {check_queue.MANUAL_ATTESTATION_TOOL,
                               check_queue.TOOL, check_proof.TOOL})
         self.assertEqual(

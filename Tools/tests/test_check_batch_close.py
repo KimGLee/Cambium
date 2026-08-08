@@ -351,7 +351,7 @@ class CheckBatchCloseTests(unittest.TestCase):
         child = next(row for row in rows
                      if row.get("receipt_id") == close["corpus_plan_receipt"])
         self.assertEqual("check_corpus_plan", child["tool"])
-        self.assertEqual("1.5.0", child["tool_version"])
+        self.assertEqual("1.6.0", child["tool_version"])
         self.assertEqual("configured", child["corpus_plan_applicability"])
         runtime = check_queue.validate_runtime(self.root)
         item = runtime["items_by_id"]["B1"]

@@ -1,0 +1,194 @@
+# Agent Atlas structure-registry slot: the configured branch.
+# Interface: profiles/README.md#Structure-Registry-Slot
+# Semantics owners: kernel/K01 Scope and Architecture/05 Structural Unit
+# Interface.md and 06 Support Layer Structural Interfaces.md. Layer IDs come
+# from this profile's Profile Scope; paths are the adopting vault's own and,
+# as with corpus-planning.yaml, do not resolve inside the Cambium repository.
+# This example registers a representative subset: two domains, one admitted
+# module, and the four support layers. A real adoption registers every domain
+# and every admitted module.
+
+schema_version: 1
+
+applicability:
+  state: configured
+  reason: null
+
+units:
+  - id: U-MODELING
+    kind: domain
+    parent: null
+    root: "Modeling Fundamentals"
+    entry:
+      path: "Modeling Fundamentals/Modeling Fundamentals Overview.md"
+      expected_type: overview
+    global_map_entry: E-MODELING
+    roles:
+      sequence:
+        mode: embedded
+        path: "Modeling Fundamentals/Modeling Fundamentals Overview.md"
+        heading: "Prerequisite Map"
+      coverage:
+        mode: derived
+        generator: "Tools/render_coverage_projection.py"
+        inputs_owner: "Corpus Planning/capability_matrix.yaml"
+        path: "Modeling Fundamentals/Modeling Fundamentals Overview.md"
+        heading: "Coverage Reader View"
+      quick_reference:
+        mode: not-applicable
+        reason: "No general-audience quick reference exists; the interview cheat sheet is an expression artifact, not this role."
+      expression:
+        mode: standalone
+        path: "Interview Preparation/Roadmaps/Modeling Fundamentals Roadmap.md"
+  - id: U-AGENT
+    kind: domain
+    parent: null
+    root: "Agent Knowledge"
+    entry:
+      path: "Agent Knowledge/Agent Overview.md"
+      expected_type: overview
+    global_map_entry: E-AGENT
+    roles:
+      sequence:
+        mode: embedded
+        path: "Agent Knowledge/Agent Overview.md"
+        heading: "Reader Route"
+      coverage:
+        mode: derived
+        generator: "Tools/render_coverage_projection.py"
+        inputs_owner: "Corpus Planning/capability_matrix.yaml"
+        path: "Agent Knowledge/Agent Overview.md"
+        heading: "Coverage Reader View"
+      quick_reference:
+        mode: not-applicable
+        reason: "No general-audience quick reference is maintained for this domain."
+      expression:
+        mode: standalone
+        path: "Interview Preparation/Roadmaps/Agent Interview Roadmap.md"
+  - id: U-AGENT-HARNESS
+    kind: module
+    parent: U-AGENT
+    root: "Agent Knowledge/Harness"
+    entry:
+      path: "Agent Knowledge/Harness/Agent Harness.md"
+      expected_type: system-design
+    global_map_entry: E-HARNESS
+    roles:
+      sequence:
+        mode: embedded
+        path: "Agent Knowledge/Harness/Agent Harness.md"
+        heading: "Execution Path"
+      coverage:
+        mode: derived
+        generator: "Tools/render_coverage_projection.py"
+        inputs_owner: "Corpus Planning/capability_matrix.yaml"
+      quick_reference:
+        mode: not-applicable
+        reason: "The parent domain entry covers routing to this module."
+      expression:
+        mode: standalone
+        path: "Interview Preparation/Topic Cards/Agent/Agent Harness Interview Card.md"
+
+support_layers:
+  - layer_id: L-CASES
+    role: cases
+    root: "Industry Cases"
+    entry:
+      path: "Industry Cases/Industry Cases Overview.md"
+      expected_type: overview
+    global_map_entry: E-CASES
+    layout: grouped
+    taxonomy:
+      axis: evidence-form
+      page_field: case_class
+      classes:
+        - class: reported-system
+          directory: "Industry Cases/Reported Systems"
+        - class: controlled-study
+          directory: "Industry Cases/Controlled Studies"
+        - class: composite-reconstruction
+          directory: "Industry Cases/Composite Reconstructions"
+    coverage:
+      mode: derived
+      generator: "Tools/render_coverage_projection.py"
+      inputs_owner: "Corpus Planning/capability_matrix.yaml"
+    bindings:
+      evidence_binding_owner: "kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata.md"
+  - layer_id: L-SOURCES
+    role: sources
+    root: "Knowledge Sources"
+    entry:
+      path: "Knowledge Sources/Knowledge Sources Overview.md"
+      expected_type: overview
+    global_map_entry: E-SOURCES
+    layout: grouped
+    taxonomy:
+      axis: source-authority
+      page_field: source_type
+      classes:
+        - class: official-engineering
+          directory: "Knowledge Sources/Official Engineering"
+        - class: paper
+          directory: "Knowledge Sources/Papers"
+        - class: standard
+          directory: "Knowledge Sources/Standards"
+        - class: book
+          directory: "Knowledge Sources/Books"
+        - class: ecosystem-implementation
+          directory: "Knowledge Sources/Ecosystem Implementations"
+        - class: community-engineering
+          directory: "Knowledge Sources/Community Engineering"
+    coverage:
+      mode: derived
+      generator: "Tools/render_coverage_projection.py"
+      inputs_owner: "Corpus Planning/capability_matrix.yaml"
+    bindings:
+      authority_taxonomy_ref: "profiles/agent-atlas/source-policy.md#Source Authority"
+      intake_policy_ref: "profiles/agent-atlas/source-policy.md#Verification Entry Points"
+      freshness_policy_ref: "profiles/agent-atlas/vocabulary-extensions.yaml"
+      index_mode: derived
+  - layer_id: L-SYNTHESIS
+    role: synthesis
+    root: "Research Synthesis"
+    entry:
+      path: "Research Synthesis/Research Synthesis Overview.md"
+      expected_type: overview
+    global_map_entry: E-SYNTHESIS
+    layout: flat
+    taxonomy: null
+    coverage:
+      mode: derived
+      generator: "Tools/render_coverage_projection.py"
+      inputs_owner: "Corpus Planning/capability_matrix.yaml"
+    bindings:
+      question_identity_field: "claim_scope"
+      promotion_policy_ref: "kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline.md"
+  - layer_id: L-INTERVIEW
+    role: expression
+    root: "Interview Preparation"
+    entry:
+      path: "Interview Preparation/Interview Overview.md"
+      expected_type: overview
+    global_map_entry: E-INTERVIEW
+    layout: grouped
+    taxonomy:
+      axis: artifact-kind
+      page_field: type
+      classes:
+        - class: interview-roadmap
+          directory: "Interview Preparation/Roadmaps"
+        - class: interview-card
+          directory: "Interview Preparation/Topic Cards"
+        - class: interview-cheat-sheet
+          directory: "Interview Preparation/Cheat Sheets"
+    coverage:
+      mode: derived
+      generator: "Tools/render_coverage_projection.py"
+      inputs_owner: "Corpus Planning/capability_matrix.yaml"
+    bindings:
+      artifact_registry_ref: "profiles/agent-atlas/expression-layer.md"
+      preparation_route_ref: "Interview Preparation/Interview Overview.md#Preparation Routes"
+      readiness_projection:
+        mode: derived
+        generator: "Tools/render_coverage_projection.py"
+        inputs_owner: ".cambium/state/coverage_ledger.yaml"

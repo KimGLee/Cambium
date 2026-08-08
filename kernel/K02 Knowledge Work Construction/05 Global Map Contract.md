@@ -33,7 +33,15 @@ responsibility. Each edge is an explicit,
 directed assertion; links, backlinks, co-location, or semantic similarity do
 not create an edge. `relation_type` is exactly one of `prerequisite-for`,
 `capability-input-to`, `realized-by`, `evidence-input-to`, `system-input-to`,
-`control-input-to`, `canonical-source-for`, or `downstream-impact`. Together
+`control-input-to`, `canonical-source-for`, `expressed-by`, or
+`downstream-impact`. `expressed-by` points from a canonical knowledge
+entry to the derived expression artifact that presents it; the
+downstream artifact never becomes the upstream entry's canonical
+owner. Together with `evidence-input-to` and `canonical-source-for`
+it closes the minimal typed evidence flow — sources feed synthesis,
+stable conclusions reach canonical owners or cases, and expression
+artifacts derive from canonical knowledge. Only real dependencies
+gain edges; topic similarity never does. Together
 the records express the included logical
 architecture, Knowledge Spine, owner boundaries, and important prerequisite
 or downstream relationships.

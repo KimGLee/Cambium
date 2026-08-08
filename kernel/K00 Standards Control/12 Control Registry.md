@@ -21,6 +21,7 @@ The [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-doma
 | `maintenance-completion` | Maintenance Queue exhaustion, candidate partition, and maintenance evidence closure | K13/12 `check_queue.py --require-maintenance-complete` | Maintenance task completion consumes the frozen maintenance-complete receipt |
 | `batch-review` | In-batch review authorization for one exact Delta evidence set | K12/14 current `manual-attestation` batch-review gate | `open -> merge-ready` consumes exactly one current gate that binds the Delta's page receipt IDs; page receipts alone never authorize the transition |
 | `batch-close` | Complete merged-snapshot batch-close bundle | K12/09 `check_batch_close.py` batch-close aggregator | The close transition consumes the current bundle; later review reuses it only while its snapshot binding remains current |
+| `structure-registry` | Structure Registry resolution: unit and support-layer declarations against the vault, Profile Scope layers, Global Map bindings, and Coverage unit references | K01/05 `Tools/check_structure.py` structure-registry receipt | R03 module close, R06 structural migration, R13 reconciliation, and Terminal Audit consume the same receipt; it proves structure declarations, never content acceptance or class-assignment semantics |
 | `corpus-plan-structure` | Corpus-planning structure, role separation, explicit relations, and Gap-to-Coverage promotion drift | K02/04 `check_corpus_plan.py` structural/reconciliation receipt | R11, R13, Module Review, affected batch close, and Terminal Audit consume structure only; it is not semantic acceptance |
 | `corpus-plan-semantic-acceptance` | Profile-authorized semantic capability acceptance | K02/04 `record_corpus_acceptance.py` authority-decision receipt | R13 records it; Module Review and Terminal Audit consume it separately from structure and reject stale authority/artifact/runtime bindings |
 | `content-correctness` | Content correctness | K12/01 tiered review attestation | Batch review uses changed, invalidated, and sampled scope; Terminal Audit consumes current attestations and bounded sampling |
@@ -86,24 +87,25 @@ moves its own cell.
 | Gate ID | Tool | Tool version | Check | Mode | Dimension | Lifecycle |
 |---|---|---|---|---|---|---|
 | `runtime-card-synchronization` | `manual-attestation` | `1.0.0` | `runtime-card-synchronization` | `*` | `guidance_and_contract` | `not-batch-scoped` |
-| `runtime-startup-recovery` | `check_queue` | `1.6.0` | `required_queue` | `resume-status` | `*` | `not-batch-scoped` |
+| `runtime-startup-recovery` | `check_queue` | `1.7.0` | `required_queue` | `resume-status` | `*` | `not-batch-scoped` |
 | `large-scale-execution-admission` | `manual-attestation` | `1.0.0` | `large-scale-execution-admission` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `wiki-link-integrity` | `check_links` | `1.5.0` | `link-check-summary` | `*` | `*` | `not-batch-scoped` |
 | `frontmatter-vocabulary` | `check_vocab` | `1.4.0` | `vocab-check-summary` | `*` | `*` | `not-batch-scoped` |
-| `required-queue-consistency` | `check_queue` | `1.6.0` | `required_queue` | `consistency` | `*` | `not-batch-scoped` |
-| `required-queue-admission` | `check_queue` | `1.6.0` | `required_queue` | `require-ready:*` | `*` | `queued` |
-| `required-queue-completion` | `check_queue` | `1.6.0` | `required_queue` | `require-complete` | `*` | `queue-exhausted` |
-| `maintenance-completion` | `check_queue` | `1.6.0` | `required_queue` | `require-maintenance-complete` | `*` | `queue-exhausted` |
+| `required-queue-consistency` | `check_queue` | `1.7.0` | `required_queue` | `consistency` | `*` | `not-batch-scoped` |
+| `required-queue-admission` | `check_queue` | `1.7.0` | `required_queue` | `require-ready:*` | `*` | `queued` |
+| `required-queue-completion` | `check_queue` | `1.7.0` | `required_queue` | `require-complete` | `*` | `queue-exhausted` |
+| `maintenance-completion` | `check_queue` | `1.7.0` | `required_queue` | `require-maintenance-complete` | `*` | `queue-exhausted` |
 | `batch-review` | `manual-attestation` | `1.0.0` | `batch_gate` | `*` | `none` | `open` |
 | `batch-close` | `check_batch_close` | `1.3.0` | `batch_close_gate` | `*` | `*` | `merge-ready` |
-| `corpus-plan-structure` | `check_corpus_plan` | `1.5.0` | `corpus_plan` | `*` | `*` | `not-batch-scoped` |
+| `structure-registry` | `check_structure` | `1.0.0` | `structure-registry-summary` | `*` | `*` | `not-batch-scoped` |
+| `corpus-plan-structure` | `check_corpus_plan` | `1.6.0` | `corpus_plan` | `*` | `*` | `not-batch-scoped` |
 | `corpus-plan-semantic-acceptance` | `record_corpus_acceptance` | `1.0.0` | `corpus_plan_semantic_acceptance` | `*` | `*` | `not-batch-scoped` |
 | `content-correctness` | `manual-attestation` | `1.0.0` | `content-correctness` | `*` | `content_and_depth`, `formula_and_numeric`, `rendering`, `source_and_currentness`, `structure_and_links` | `not-batch-scoped` |
 | `source-promotion` | `manual-attestation` | `1.0.0` | `source-promotion` | `*` | `coverage_and_integration`, `source_and_currentness` | `not-batch-scoped` |
 | `expression-layer-acceptance` | `manual-attestation` | `1.0.0` | `expression-layer-acceptance` | `*` | `content_and_depth`, `coverage_and_integration`, `guidance_and_contract`, `source_and_currentness`, `structure_and_links` | `not-batch-scoped` |
 | `coverage-reconciliation` | `manual-attestation` | `1.0.0` | `coverage-reconciliation` | `*` | `coverage_and_integration` | `not-batch-scoped` |
 | `standards-adoption` | `adopt_standards` | `1.2.0` | `standards_adoption` | `*` | `*` | `not-batch-scoped` |
-| `standards-revalidation` | `check_queue` | `1.6.0` | `required_queue` | `require-revalidation:*` | `*` | `queued`, `open` |
+| `standards-revalidation` | `check_queue` | `1.7.0` | `required_queue` | `require-revalidation:*` | `*` | `queued`, `open` |
 | `guidance-disposition` | `manual-attestation` | `1.0.0` | `guidance-disposition` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `receipt-validity` | `manual-attestation` | `1.0.0` | `receipt-validity` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `rendering` | `manual-attestation` | `1.0.0` | `rendering` | `*` | `rendering`, `structure_and_links` | `not-batch-scoped` |

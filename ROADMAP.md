@@ -14,7 +14,7 @@ bypass R09 adoption.
 
 | Area | Current state |
 |---|---|
-| Profile setup | Copy the 12-file `_template`, fill it manually, and run `check_profile.py` |
+| Profile setup | Copy the 13-file `_template`, fill it manually, and run `check_profile.py` |
 | Execution | The kernel defines sequential work, concurrent disjoint batches, independent review contexts, and serial integration |
 | Persistent work state | `.cambium/` separates object-level Coverage, the canonical Required Queue, task-level Progress, and hash-bound restricted-YAML complex-batch Work Specs; standard-library tools initialize, compile, validate, transition, apply Amendment-bound cross-Ledger changes, recover interrupted-write evidence, and render Queue state |
 | Active-task Standards adoption | One restricted-YAML plan binds approved governance bytes, deterministic Kernel/Profile snapshots, old/new Contract/Standards/Profile/load set, changed predicates, dimension/boundary-specific invalidated evidence, immediate Queue consistency, and deferred gates; after required pre-rollbacks/holds, `adopt_standards.py` synchronizes all three runtime identities without changing lifecycle/holds, while append-only receipts preserve producer-era history, filter invalidated-evidence receipt IDs from current use, recover interruption, and avoid a prose duplicate |
@@ -37,7 +37,7 @@ The assistant should:
    and Corpus Planning applicability/bindings; language, priority, and
    sources; roles and expression artifacts; optional scans, routes, and gates.
 3. Support both an existing corpus and a corpus that will be built from zero.
-4. Project confirmed answers into the existing 12 canonical profile files.
+4. Project confirmed answers into the existing 13 canonical profile files.
 5. Show the resulting diff and unresolved decisions before writing.
 6. Run `check_profile.py` and report structural failures in user-facing terms.
 
