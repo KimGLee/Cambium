@@ -1,0 +1,48 @@
+# Agent Atlas metadata-contract slot: the configured branch.
+# Interface: profiles/README.md#Metadata-Contract-Slot
+# Kernel defaults stay in kernel/K08 Metadata and Status/applicability-base.yaml
+# and relationship-base.yaml; only Atlas differences and extensions appear
+# here. The two Interview fields are the profile's Expression Layer bindings
+# (K08/07: `interview_card` needs a resolvable reciprocal binding once the
+# page is mapped; readiness itself is granted by the Expression gate, never
+# inferred). `canonical_bindings` is the expression-to-canonical relation and
+# never enters `evidence_sources`.
+
+schema_version: 1
+
+applicability:
+  state: configured
+
+applicability_differences:
+  - field: last_verified
+    mode: conditional
+    condition:
+      all:
+        - field: volatility
+          in:
+            - fast
+    note: "Fast-decaying pages must carry their last external verification date; kernel default is optional."
+
+extension_fields:
+  - field: interview_status
+    mode: optional
+    shape: nonempty-string
+    owner: "profiles/agent-atlas/expression-layer.md"
+  - field: interview_card
+    mode: conditional
+    shape: path
+    condition:
+      all:
+        - field: interview_status
+          in:
+            - mapped
+            - interview-ready
+    owner: "profiles/agent-atlas/expression-layer.md"
+
+relationship_extensions:
+  - field: canonical_bindings
+    mode: optional
+    direction: expression-to-canonical
+    target: page
+    shape: list-of-paths
+    owner: "profiles/agent-atlas/expression-layer.md"

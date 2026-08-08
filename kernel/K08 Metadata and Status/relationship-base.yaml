@@ -1,0 +1,44 @@
+# Cambium kernel relationship metadata base.
+# Semantic owner: "kernel/K08 Metadata and Status/08 Relationship Metadata Contract.md"
+# Merged with applicability-base.yaml by Tools/compose_page_contract.py.
+# Each relationship has one name, one direction, one target contract, and one
+# value shape. An unregistered relationship-like field falls to the K08/06
+# unknown-field closure; profiles register extensions (with an explicit
+# direction, target, and shape) through the Metadata Contract slot, never as
+# spelling variants of a kernel field.
+
+schema_version: 1
+
+relationships:
+  source_url:
+    mode: conditional
+    condition:
+      all:
+        - field: type
+          in:
+            - source-note
+    direction: page-to-external
+    target: external-original
+    shape: url
+  evidence_sources:
+    mode: optional
+    direction: evidence-input
+    target:
+      - source-note
+      - research-synthesis
+    shape: list-of-paths
+  supersedes:
+    mode: optional
+    direction: version-evolution
+    target: page
+    shape: path
+  superseded_by:
+    mode: optional
+    direction: version-evolution
+    target: page
+    shape: path
+  source_valid_until:
+    mode: optional
+    direction: none
+    target: none
+    shape: date

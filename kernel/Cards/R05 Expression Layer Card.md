@@ -15,6 +15,7 @@ source_files:
   - kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes.md
   - kernel/K03 Note Types and Ownership/03 Split and Duplication Policy.md
   - kernel/K08 Metadata and Status/03 Status Axes.md
+  - kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority.md
   - kernel/K09 Wiki Link and Navigation/01 Link Semantics and Body Links.md
   - kernel/K09 Wiki Link and Navigation/02 Structural and Bidirectional Links.md
   - kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns.md
@@ -24,7 +25,7 @@ source_files:
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
-source_hash: '56e9108ec507'
+source_hash: '3ab13f131431'
 ---
 # R05 Expression Layer Card
 
@@ -56,6 +57,7 @@ Stop rather than inventing one or treating an unconfigured artifact as loaded.
   for definitions, claims, or mechanisms.
 - Preserve source provenance and evidence qualification when content is
   condensed, reordered, or transformed.
+- A readiness value is written only by the profile's registered expression gate or receipt, and a mapped-class binding keeps a resolvable reciprocal link; file existence, link resolvability, or another status axis never upgrades readiness (K08/07).
 - Keep expression readiness independent from canonical authoring and evidence
   status; one axis never implies another.
 - Maintain resolvable links from expression to knowledge and from knowledge to

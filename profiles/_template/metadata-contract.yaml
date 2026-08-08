@@ -1,0 +1,31 @@
+# Metadata Contract — the profile's page-contract differences.
+# Interface: profiles/README.md#metadata-contract-slot
+# Semantic owners: kernel/K08 Metadata and Status/06 Frontmatter
+# Applicability Contract.md and 08 Relationship Metadata Contract.md; writer
+# authority: 07 Frontmatter Writer and Projection Authority.md.
+# Kernel defaults live in kernel/K08 Metadata and Status/applicability-base.yaml
+# and relationship-base.yaml; declare only differences here — never restate a
+# kernel default, and a difference may only tighten (optional -> required,
+# optional -> conditional, conditional -> required).
+#
+# applicability.state: configured | kernel-defaults
+#   kernel-defaults -> all three lists empty.
+#   configured      -> at least one entry across the three lists.
+#
+# applicability_differences: [{field, mode, condition?, note?}]
+# extension_fields:          [{field, mode, shape, condition?, owner}]
+# relationship_extensions:   [{field, mode, direction, target, shape, owner}]
+# Conditions: {all|any: [{field, in: [...]} | {field, absent: true}]}.
+# Shapes: nonempty-string | date | url | path | list-of-strings | list-of-paths.
+# Compose with: python3 Tools/compose_page_contract.py
+
+schema_version: 1
+
+applicability:
+  state: TODO(profile)
+
+applicability_differences: []
+
+extension_fields: []
+
+relationship_extensions: []

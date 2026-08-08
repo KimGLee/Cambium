@@ -116,6 +116,7 @@ CORPUS_AUTHORITY_FIELDS = {"role_id", "decision_scope_id"}
 CORPUS_DECISION_SCOPE = "corpus-plan-semantic-acceptance"
 
 STRUCTURE_REGISTRY_SLOT = "Structure Registry"
+METADATA_CONTRACT_SLOT = "Metadata Contract"
 
 AUDIT_DIMENSION_SLOT = "Audit Dimension Registry"
 AUDIT_DIMENSION_SECTION = "Extension Dimensions"
@@ -816,6 +817,24 @@ def main():
                     else:
                         for check, label, details in \
                                 kblib.validate_structure_registry_shape(
+                                    document, target):
+                            add(check, label, "fail", details)
+            elif slot == METADATA_CONTRACT_SLOT:
+                target = os.path.relpath(
+                    detail, root).replace(os.sep, "/")
+                if not target.lower().endswith(".yaml"):
+                    add("metadata-contract-binding", target, "fail",
+                        "Metadata Contract must bind a restricted-YAML "
+                        ".yaml file")
+                else:
+                    try:
+                        document = kblib.parse_yaml_subset(read_text(detail))
+                    except (OSError, kblib.YamlSubsetError) as exc:
+                        add("metadata-contract-yaml", target, "fail",
+                            "cannot parse restricted YAML: %s" % exc)
+                    else:
+                        for check, label, details in \
+                                kblib.validate_metadata_contract_shape(
                                     document, target):
                             add(check, label, "fail", details)
             elif slot == AUDIT_DIMENSION_SLOT:

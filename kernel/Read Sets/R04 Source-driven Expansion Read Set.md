@@ -21,6 +21,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - [[kernel/K07 Sources and Accuracy/02 Claims Sources and Classification|Claims Sources and Classification]]
 - [[kernel/K07 Sources and Accuracy/03 Official and Cross-source Verification|Official and Cross-source Verification]]
 - [[kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]]
+- [[kernel/K08 Metadata and Status/08 Relationship Metadata Contract|Relationship Metadata Contract]]
 - [[kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
 - The `Language Contract` registered by the selected profile, used to distinguish original source identity text from claim paraphrases written in the body language declared by the selected profile, and serving as a mandatory `Start` module of this Read Set.
 

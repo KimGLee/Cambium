@@ -11,6 +11,7 @@ Interface and usage: [Profile interface](../README.md)
 - `Profile Scope`: `scope-and-architecture.md`
 - `Corpus Planning`: `corpus-planning.yaml`
 - `Structure Registry`: `structure-registry.yaml`
+- `Metadata Contract`: `metadata-contract.yaml`
 - `Priority Rubric`: `priority-rubric.md`
 - `Vocabulary Extensions`: `vocabulary-extensions.yaml`
 - `Language Contract`: `language-contract.md`

@@ -14,6 +14,7 @@ source_files:
   - kernel/K01 Scope and Architecture/06 Support Layer Structural Interfaces.md
   - kernel/K03 Note Types and Ownership/03 Split and Duplication Policy.md
   - kernel/K08 Metadata and Status/05 Review Source and Migration Metadata.md
+  - kernel/K08 Metadata and Status/08 Relationship Metadata Contract.md
   - kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links.md
   - kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns.md
   - kernel/K10 Writing and Formatting/01 Naming Language and Prose.md
@@ -23,7 +24,7 @@ source_files:
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'f59b86bca5a6'
+source_hash: 'eda1d85b1f46'
 ---
 # R06 Migration and Refactor Card
 
@@ -40,6 +41,7 @@ Move, rename, split, merge, retire, or restructure files or directories. Load [[
 - [ ] Establish an explicit old-content-block → new-owner mapping; every original block has exactly one destination.
 - [ ] Confirm that target ownership, naming, aliases, metadata, and profile language rules are valid before moving content.
 - [ ] When the migration changes registered structure — unit roots, support-layer layouts, or a grouped taxonomy — freeze the target Structure Registry bindings and classification predicate before any file moves, and map every old path to its new class and directory in the manifest.
+- [ ] When legacy relationship fields (`sources`, `source_note`, `source_notes`, `source_set`, `review_due`) are migrated, judge semantic equivalence per page and freeze an old-field to new-field manifest; names are never merged mechanically.
 - [ ] Isolate the migration batch from concurrent content batches.
 
 ## During

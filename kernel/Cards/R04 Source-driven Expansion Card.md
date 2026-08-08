@@ -17,9 +17,10 @@ source_files:
   - kernel/K07 Sources and Accuracy/03 Official and Cross-source Verification.md
   - kernel/K07 Sources and Accuracy/06 Source Maintenance and Acceptance.md
   - kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata.md
+  - kernel/K08 Metadata and Status/08 Relationship Metadata Contract.md
   - kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes.md
   - kernel/K12 Quality Assurance/04 Guidance and Source Review.md
-source_hash: '64d57896a1e7'
+source_hash: '18d6058b4b8d'
 ---
 # R04 Source-driven Expansion Card
 
@@ -44,6 +45,7 @@ Run the pipeline in order: Environmental Scanning → Source Capture → Claim E
 - State applicability, source-specific conditions, disagreement, comparability limits, and uncertainty.
 - Express a gap as a missing question, mechanism, boundary, or owner, not merely as a missing article.
 - Update evidence maturity, provenance, relationships, affected notes, and source dates as the evidence warrants.
+- Record internal evidence inputs only as list-shaped `evidence_sources` resolving to Source Notes (or Research Synthesis where the contract admits it); `source_url` points a Source Note at its external original and never at an internal page; version evolution uses `supersedes`/`superseded_by`; legacy spellings are migrated, not extended.
 - Do not promote a source summary directly into stable canonical knowledge.
 - Pass R11 before large-scale source work, add R07 for multi-batch execution, use R12 for a targeted or specialized source audit, and reserve R08 for a whole-task completion candidate.
 

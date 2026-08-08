@@ -64,7 +64,6 @@ STRUCTURE_SLOT = "Structure Registry"
 CORPUS_SLOT = "Corpus Planning"
 SCOPE_SLOT = "Profile Scope"
 COVERAGE_LEDGER_PATH = ".cambium/state/coverage_ledger.yaml"
-LOGICAL_ARCHITECTURE_HEADING = "Logical Architecture"
 
 
 class Findings:
@@ -192,30 +191,6 @@ def page_field_value(path, field):
         return None
     value = fields.get(field) if isinstance(fields, dict) else None
     return str(value) if value is not None else None
-
-
-def profile_scope_layers(scope_text):
-    """Return {layer_id: [directories]} from the Logical Architecture table."""
-    layers = {}
-    in_section = False
-    for line in scope_text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            in_section = stripped[3:].strip() == LOGICAL_ARCHITECTURE_HEADING
-            continue
-        if not in_section or not stripped.startswith("|"):
-            continue
-        cells = [c.strip() for c in stripped.strip("|").split("|")]
-        if len(cells) < 2 or all(
-                c and set(c) <= set(":-") for c in cells if c):
-            continue
-        layer = cells[0].strip("`").strip()
-        if not layer or layer.lower().startswith("stable layer id"):
-            continue
-        directories = [d.strip().strip("`").strip()
-                       for d in cells[1].split(";")]
-        layers[layer] = [d for d in directories if d]
-    return layers
 
 
 def check_role(root, findings, label, role):
@@ -375,7 +350,7 @@ def run(root, profile_override, receipts_path):
         scope_path = slot_path(root, profile_dir, manifest_text, SCOPE_SLOT,
                                findings)
         if scope_path is not None:
-            scope_layers = profile_scope_layers(read_text(scope_path))
+            scope_layers = kblib.profile_scope_layers(read_text(scope_path))
             if not scope_layers:
                 findings.add(
                     "structure-scope", SCOPE_SLOT, "fail",

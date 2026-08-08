@@ -1,0 +1,114 @@
+# Cambium kernel frontmatter applicability base.
+# Semantic owner: "kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract.md"
+# Writer/projection authority: "kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority.md"
+# Composed with the selected profile's Metadata Contract differences by
+# Tools/compose_page_contract.py into Tools/page_contract.yaml (generated,
+# never a rule owner). Modes: required | conditional | optional | derived |
+# projection | user-owned | forbidden. Conditions test only same-page
+# frontmatter: {all: [...]} / {any: [...]} of {field, in: [...]} or
+# {field, absent: true}. Shapes: nonempty-string | date | url | path |
+# list-of-strings | list-of-paths. Controlled-value legality stays with the
+# frontmatter-vocabulary gate; relationship fields live in
+# relationship-base.yaml and are merged by the composer.
+
+schema_version: 1
+
+fields:
+  type:
+    mode: required
+    shape: nonempty-string
+  domain:
+    mode: required
+    shape: nonempty-string
+  scope:
+    mode: required
+    shape: nonempty-string
+  level:
+    mode: required
+    shape: nonempty-string
+  depth:
+    mode: required
+    shape: nonempty-string
+  priority:
+    mode: required
+    shape: nonempty-string
+  authoring_status:
+    mode: required
+    shape: nonempty-string
+  learning_status:
+    mode: user-owned
+    shape: nonempty-string
+  coverage_disposition:
+    mode: projection
+    shape: nonempty-string
+  deferred_reason:
+    mode: conditional
+    shape: nonempty-string
+    condition:
+      all:
+        - field: coverage_disposition
+          in:
+            - deferred
+  next_batch:
+    mode: projection
+    shape: nonempty-string
+  aliases:
+    mode: optional
+    shape: list-of-strings
+  prerequisites:
+    mode: optional
+    shape: list-of-strings
+  evidence_maturity:
+    mode: conditional
+    shape: nonempty-string
+    condition:
+      any:
+        - field: type
+          in:
+            - source-note
+            - research-synthesis
+            - case-study
+  first_seen:
+    mode: optional
+    shape: date
+  last_reviewed:
+    mode: conditional
+    shape: date
+    condition:
+      all:
+        - field: authoring_status
+          in:
+            - reviewed
+  last_verified:
+    mode: optional
+    shape: date
+  volatility:
+    mode: optional
+    shape: nonempty-string
+  review_by:
+    mode: derived
+    shape: date
+    persisted: false
+  lifecycle:
+    mode: optional
+    shape: nonempty-string
+  source_type:
+    mode: conditional
+    shape: nonempty-string
+    condition:
+      all:
+        - field: type
+          in:
+            - source-note
+  source_organization:
+    mode: optional
+    shape: nonempty-string
+  source_date:
+    mode: optional
+    shape: date
+  evidence_roles:
+    mode: optional
+    shape: list-of-strings
+  claim_scope:
+    mode: optional
+    shape: nonempty-string

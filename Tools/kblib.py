@@ -1116,6 +1116,225 @@ def validate_structure_registry_shape(document, target="structure-registry"):
     return errors
 
 
+PROFILE_SCOPE_ARCHITECTURE_HEADING = "Logical Architecture"
+
+
+def profile_scope_layers(scope_text):
+    """Return {layer_id: [directories]} from a Profile Scope's Logical
+    Architecture table (Profile Scope is the sole Layer ID owner)."""
+    layers = {}
+    in_section = False
+    for line in scope_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            in_section = (stripped[3:].strip() ==
+                          PROFILE_SCOPE_ARCHITECTURE_HEADING)
+            continue
+        if not in_section or not stripped.startswith("|"):
+            continue
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if len(cells) < 2 or all(
+                c and set(c) <= set(":-") for c in cells if c):
+            continue
+        layer = cells[0].strip("`").strip()
+        if not layer or layer.lower().startswith("stable layer id"):
+            continue
+        directories = [d.strip().strip("`").strip()
+                       for d in cells[1].split(";")]
+        layers[layer] = [d for d in directories if d]
+    return layers
+
+
+# ---------------------------------------------------------------------------
+# Metadata Contract shape contract (owner: K08/06 + K08/08; slot shape:
+# profiles/_template/metadata-contract.yaml).  Shared by check_profile.py
+# (profile shape gate) and compose_page_contract.py (composition) so the two
+# cannot drift into parallel validators.
+# ---------------------------------------------------------------------------
+
+METADATA_CONTRACT_TOP_FIELDS = frozenset((
+    "schema_version", "applicability", "applicability_differences",
+    "extension_fields", "relationship_extensions",
+))
+METADATA_APPLICABILITY_FIELDS = frozenset(("state",))
+METADATA_MODES = frozenset((
+    "required", "conditional", "optional", "derived", "projection",
+    "user-owned", "forbidden",
+))
+METADATA_SHAPES = frozenset((
+    "nonempty-string", "date", "url", "path", "list-of-strings",
+    "list-of-paths",
+))
+METADATA_DIFFERENCE_FIELDS = frozenset(("field", "mode", "condition", "note"))
+METADATA_EXTENSION_FIELDS = frozenset((
+    "field", "mode", "shape", "condition", "owner",
+))
+METADATA_RELATIONSHIP_FIELDS = frozenset((
+    "field", "mode", "direction", "target", "shape", "owner",
+))
+# The only mode transitions a profile difference may declare (K08/06:
+# a profile only tightens).
+METADATA_TIGHTENING = frozenset((
+    ("optional", "required"), ("optional", "conditional"),
+    ("conditional", "required"),
+))
+
+
+def validate_condition_shape(condition, label, errors):
+    """Validate one K08/06 condition: {all|any: [{field, in|absent}]}."""
+    if not isinstance(condition, dict) or \
+            set(condition) - {"all", "any"} or not condition:
+        errors.append(("metadata-contract-condition", label,
+                       "condition must be a mapping with `all` and/or `any` "
+                       "clause lists"))
+        return
+    for group in ("all", "any"):
+        if group not in condition:
+            continue
+        clauses = condition[group]
+        if not isinstance(clauses, list) or not clauses:
+            errors.append(("metadata-contract-condition",
+                           "%s:%s" % (label, group),
+                           "must be a nonempty list of clauses"))
+            continue
+        for index, clause in enumerate(clauses):
+            c_label = "%s:%s[%d]" % (label, group, index)
+            if not isinstance(clause, dict) or \
+                    set(clause) - {"field", "in", "absent"} or \
+                    not _structure_nonempty(clause.get("field")):
+                errors.append(("metadata-contract-condition", c_label,
+                               "clause must carry a nonempty `field` plus "
+                               "`in` or `absent`"))
+                continue
+            has_in = "in" in clause
+            has_absent = "absent" in clause
+            if has_in == has_absent:
+                errors.append(("metadata-contract-condition", c_label,
+                               "exactly one of `in` / `absent` is required"))
+            elif has_in and (not isinstance(clause["in"], list)
+                             or not clause["in"]):
+                errors.append(("metadata-contract-condition", c_label,
+                               "`in` must be a nonempty value list"))
+            elif has_absent and clause["absent"] is not True:
+                errors.append(("metadata-contract-condition", c_label,
+                               "`absent` carries only the literal true"))
+
+
+def validate_metadata_contract_shape(document, target="metadata-contract"):
+    """Return [(check_id, label, details)] shape errors for one contract.
+
+    Pure byte-level: closed fields, the configured / kernel-defaults branch,
+    mode and shape vocabularies, and per-entry conditional coherence.
+    Whether a difference is a legal tightening of the kernel base belongs to
+    Tools/compose_page_contract.py, which owns the composition."""
+    errors = []
+    document = _structure_closed(
+        errors, document, METADATA_CONTRACT_TOP_FIELDS, target)
+    if type(document.get("schema_version")) is not int or \
+            document.get("schema_version") != 1:
+        errors.append(("metadata-contract-schema", target,
+                       "schema_version must be integer 1"))
+    applicability = _structure_closed(
+        errors, document.get("applicability"),
+        METADATA_APPLICABILITY_FIELDS, target + ":applicability")
+    state = applicability.get("state")
+    lists = {}
+    for name in ("applicability_differences", "extension_fields",
+                 "relationship_extensions"):
+        value = document.get(name)
+        if not isinstance(value, list):
+            errors.append(("metadata-contract-schema",
+                           "%s:%s" % (target, name), "must be a list"))
+            value = []
+        lists[name] = value
+    total = sum(len(v) for v in lists.values())
+    if state == "kernel-defaults":
+        if total:
+            errors.append(("metadata-contract-applicability", target,
+                           "kernel-defaults requires all three lists empty"))
+    elif state == "configured":
+        if not total:
+            errors.append((
+                "metadata-contract-applicability", target,
+                "configured requires at least one difference, extension "
+                "field, or relationship extension; a profile with none "
+                "declares kernel-defaults instead"))
+    else:
+        errors.append(("metadata-contract-applicability", target,
+                       "state must be configured or kernel-defaults; "
+                       "found %r" % (state,)))
+
+    seen = set()
+
+    def check_entry(entry, allowed, label, requires_shape):
+        entry = _structure_closed(errors, entry, frozenset(("field", "mode")),
+                                  label, allowed - {"field", "mode"})
+        field = entry.get("field")
+        if not _structure_nonempty(field):
+            errors.append(("metadata-contract-entry", label + ":field",
+                           "must be a nonempty field name"))
+        elif field in seen:
+            errors.append(("metadata-contract-entry", label + ":field",
+                           "field %r is declared more than once across the "
+                           "contract" % field))
+        else:
+            seen.add(field)
+        mode = entry.get("mode")
+        if mode not in METADATA_MODES:
+            errors.append(("metadata-contract-entry", label + ":mode",
+                           "mode must be one of %s; found %r"
+                           % (", ".join(sorted(METADATA_MODES)), mode)))
+        condition = entry.get("condition")
+        if mode == "conditional" and condition is None:
+            errors.append(("metadata-contract-entry", label,
+                           "conditional mode requires a condition"))
+        if condition is not None:
+            if "condition" not in allowed:
+                errors.append(("metadata-contract-entry", label,
+                               "this entry kind carries no condition"))
+            else:
+                validate_condition_shape(condition, label + ":condition",
+                                         errors)
+        if requires_shape and entry.get("shape") not in METADATA_SHAPES:
+            errors.append(("metadata-contract-entry", label + ":shape",
+                           "shape must be one of %s; found %r"
+                           % (", ".join(sorted(METADATA_SHAPES)),
+                              entry.get("shape"))))
+        if "owner" in allowed and not _structure_nonempty(
+                entry.get("owner")):
+            errors.append(("metadata-contract-entry", label + ":owner",
+                           "must name a nonempty prose owner"))
+        return entry
+
+    for index, entry in enumerate(lists["applicability_differences"]):
+        label = "%s:applicability_differences[%d]" % (target, index)
+        entry = check_entry(entry, METADATA_DIFFERENCE_FIELDS, label, False)
+        mode = entry.get("mode")
+        if mode is not None and mode in METADATA_MODES and \
+                mode not in ("required", "conditional"):
+            errors.append((
+                "metadata-contract-entry", label + ":mode",
+                "a difference only tightens: the declared mode must be "
+                "required or conditional"))
+    for index, entry in enumerate(lists["extension_fields"]):
+        label = "%s:extension_fields[%d]" % (target, index)
+        check_entry(entry, METADATA_EXTENSION_FIELDS, label, True)
+    for index, entry in enumerate(lists["relationship_extensions"]):
+        label = "%s:relationship_extensions[%d]" % (target, index)
+        entry = check_entry(entry, METADATA_RELATIONSHIP_FIELDS, label, True)
+        if not _structure_nonempty(entry.get("direction")):
+            errors.append(("metadata-contract-entry", label + ":direction",
+                           "must be a nonempty direction word"))
+        t = entry.get("target")
+        target_ok = _structure_nonempty(t) or (
+            isinstance(t, list) and t and
+            all(_structure_nonempty(item) for item in t))
+        if not target_ok:
+            errors.append(("metadata-contract-entry", label + ":target",
+                           "must be a nonempty target type or type list"))
+    return errors
+
+
 # ---------------------------------------------------------------------------
 # Receipt helpers (field definitions in Tools/schemas/receipt.template.jsonl)
 # ---------------------------------------------------------------------------

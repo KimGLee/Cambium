@@ -1,0 +1,15 @@
+# Minimal Notes metadata-contract slot: the kernel-defaults branch.
+# Interface: profiles/README.md#Metadata-Contract-Slot
+# The kernel applicability and relationship bases apply unchanged; a profile
+# with no differences declares that explicitly instead of restating defaults.
+
+schema_version: 1
+
+applicability:
+  state: kernel-defaults
+
+applicability_differences: []
+
+extension_fields: []
+
+relationship_extensions: []

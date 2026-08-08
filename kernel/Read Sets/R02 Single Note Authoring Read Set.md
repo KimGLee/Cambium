@@ -19,6 +19,8 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - [[kernel/K08 Metadata and Status/02 Scope Level Depth and Priority|Scope Level Depth and Priority]]
 - [[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota|Effort Tiering and Priority Quota]]
 - [[kernel/K08 Metadata and Status/03 Status Axes|Status Axes]]
+- [[kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract|Frontmatter Applicability Contract]]
+- [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority|Frontmatter Writer and Projection Authority]]
 - [[kernel/K09 Wiki Link and Navigation/01 Link Semantics and Body Links|Link Semantics and Body Links]]
 - [[kernel/K10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]
 - The `Language Contract` registered by the selected profile, as a mandatory `Start` module of this Read Set.
@@ -34,6 +36,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - Mathematics, tables, or code: read [[kernel/K10 Writing and Formatting/02 Mathematics Tables and Code|Mathematics Tables and Code]].
 - Diagrams, images, or visualizations: read [[kernel/K10 Writing and Formatting/03 Diagrams and Assets|Diagrams and Assets]].
 - Deep-dive cases, failure modes, or debugging needed: read [[kernel/K04 Content Depth/06 Examples Deep Dives and Failure Analysis|Examples Deep Dives and Failure Analysis]].
+- The page carries `evidence_sources`, `source_url`, `supersedes`, version-evolution, or any relationship-shaped frontmatter: read [[kernel/K08 Metadata and Status/08 Relationship Metadata Contract|Relationship Metadata Contract]].
 - Mechanism sections of an existing page (Definition, Mechanism, formulas, core conclusions) are substantively modified: read [[kernel/K12 Quality Assurance/11 Content-level Propagation|Content-level Propagation]] and mark the direct downstream notes.
 
 ## Gate

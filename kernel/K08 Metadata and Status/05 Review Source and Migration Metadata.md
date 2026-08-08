@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/K08 Metadata and Status Standard|K08 Metadata and Status Standard]].
 - Previous: [[kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata|Evidence and Relationship Metadata]].
+- Next: [[kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract|Frontmatter Applicability Contract]].
 
 ## Review Dates
 
@@ -42,14 +43,14 @@ evidence_roles:
 claim_scope:
 supersedes:
 superseded_by:
-review_due:
+source_valid_until:
 ```
 
 - `source_type` uses a controlled vocabulary, distinguishing paper, official article, documentation, benchmark, postmortem, community discussion, and independent reproduction.
 - `evidence_roles` describes the evidence role the source plays, rather than simply repeating the source's authority level.
 - `claim_scope` states which component, execution / control setup, task, organization, or time range the conclusion applies to.
 - `supersedes` / `superseded_by` preserve the evolution relationship between conclusions.
-- `review_due` is for fast-changing content; stable foundational knowledge is not required to be re-reviewed frequently.
+- `source_valid_until` records a real external validity boundary (a legal, contract, standard, or version expiry), per the split owned by [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority|Frontmatter Writer and Projection Authority]]; ordinary freshness stays derived from `last_verified` and `volatility`, and the legacy `review_due` field migrates under [[kernel/K08 Metadata and Status/08 Relationship Metadata Contract|Relationship Metadata Contract]] — a value synonymous with derived freshness is dropped, a genuine external validity date moves here. Stable foundational knowledge is not required to be re-reviewed frequently.
 
 ## Migration Rules
 
