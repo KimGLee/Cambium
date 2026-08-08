@@ -15,12 +15,15 @@ source_files:
   - kernel/K08 Metadata and Status/01 Frontmatter and Core Vocabularies.md
   - kernel/K08 Metadata and Status/02 Scope Level Depth and Priority.md
   - kernel/K08 Metadata and Status/03 Status Axes.md
+  - kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract.md
+  - kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority.md
+  - kernel/K08 Metadata and Status/08 Relationship Metadata Contract.md
   - kernel/K09 Wiki Link and Navigation/01 Link Semantics and Body Links.md
   - kernel/K10 Writing and Formatting/01 Naming Language and Prose.md
   - kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
-source_hash: '3448317cdbc1'
+source_hash: 'c0251fdd90df'
 ---
 # R02 Single Note Authoring Card
 
@@ -37,6 +40,7 @@ Create, rewrite, or target one canonical note. Load [[kernel/Cards/R01 Core Boot
 - [ ] Choose the applicable concept, process, system, or source/evaluation structure.
 - [ ] Resolve prerequisite, parent, key dependency, source, and terminology needs.
 - [ ] Apply the `Language Contract` values and any `Vocabulary Extensions` field the selected profile registers, without weakening kernel ownership or quality rules.
+- [ ] Fill frontmatter by the compiled applicability contract: required and met-conditional fields nonempty, no empty placeholders, no unregistered fields, and relationship fields only under their K08/08 name, direction, and shape. Never hand-fill a derived or projection value, and never write `learning_status` or another user-owned field to silence a check.
 
 ## During
 
@@ -50,6 +54,7 @@ Create, rewrite, or target one canonical note. Load [[kernel/Cards/R01 Core Boot
 ## M-tier Gate
 
 - [ ] Type, owner, scope, depth, priority, tier, and applicable statuses are explicit and consistent.
+- [ ] Frontmatter satisfies the compiled page contract for this note type, and a Core/System page carries exactly one sources-role section under a registered display title — or, for a derived expression page adding no factual claim, an explicit evidence or canonical binding. A `page-contract` advisory candidate on this page is either fixed or carries a recorded migration disposition.
 - [ ] The opening states the problem or position; the body explains the mechanism or causal chain, an important boundary, and an appropriate example.
 - [ ] Applicable failure behavior identifies trigger, symptom, cause, detection, and mitigation, or explicitly states why it is not applicable.
 - [ ] Key, time-sensitive, and quantitative claims have role-clear evidence; claim, inference, synthesis, and recommendation are not conflated.

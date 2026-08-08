@@ -992,6 +992,95 @@ class CompileQueueTests(unittest.TestCase):
             (self.root / check_queue.COVERAGE_PATH).read_text(encoding="utf-8"),
         )
 
+    def test_replan_preflight_stages_read_sets_and_adoption_evidence(self):
+        """Regression: the proposed-state preflight must stage the evidence
+        the runtime contract resolves outside `.cambium/state` — the Read Set
+        load closure and recorded Standards-adoption plans — or every replan
+        on an instance that ever adopted a Standards revision fails closed
+        (found by replanning the real Agent Systems Atlas runtime)."""
+        read_set_relative = "kernel/Read Sets/R99 Fixture Read Set.md"
+        read_set_path = self.root / read_set_relative
+        read_set_path.parent.mkdir(parents=True, exist_ok=True)
+        read_set_path.write_text(
+            "---\ntype: read-set\nroute_id: R99\n---\n\n## Purpose\n\n"
+            "Fixture route.\n\n## Related\n\nNone.\n", encoding="utf-8")
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = kblib.load_yaml_file(progress_path)
+        progress["contract"]["selected_read_sets"] = [read_set_relative]
+        progress_path.write_text(kblib.canonical_yaml(progress),
+                                 encoding="utf-8")
+        # Re-anchor the initial Queue receipt to the edited fixture contract;
+        # the anchor chain is byte-bound and this test is not about it.
+        new_anchor = check_queue._contract_sha256(progress)
+        for receipts_path in sorted(
+                (self.root / ".cambium/receipts").rglob("*.jsonl")):
+            rows = []
+            for line in receipts_path.read_text(
+                    encoding="utf-8").splitlines():
+                row = json.loads(line)
+                if row.get("contract_sha256"):
+                    row["contract_sha256"] = new_anchor
+                rows.append(json.dumps(row, ensure_ascii=False))
+            receipts_path.write_text("\n".join(rows) + "\n",
+                                     encoding="utf-8")
+        baseline = check_queue.validate_runtime(self.root)
+        self.assertEqual([], baseline["errors"])
+
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        self.batch_spec(coverage, "B2")["execution_mode"] = \
+            "serial-integrator"
+        proposal_relative = self.write_proposal(coverage)
+        self.add_amendment(proposal_relative)
+        completed = self.apply_replan(proposal_relative)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual(
+            "serial-integrator",
+            result["items_by_id"]["B2"]["execution_mode"])
+
+        # The queue-replan bumped the live queue_revision without an anchor
+        # event; a later contract-anchor event must continue from the same
+        # contract identity across that gap instead of failing the chain.
+        catalog = check_queue.historical_receipt_catalog(result)
+        progress = result["progress"]
+        chain, chain_errors = check_queue._contract_anchor_chain(
+            progress, catalog)
+        self.assertEqual([], chain_errors)
+        head = chain[-1]
+        live_revision = result["queue"]["queue_revision"]
+        self.assertGreater(live_revision, head["queue_revision"])
+        synthetic_id = "audit-adopt_standards-synthetic-0001"
+        synthetic = dict(catalog[head["receipt_id"]][1])
+        synthetic.update({
+            "receipt_id": synthetic_id,
+            "before_contract_sha256": head["contract_sha256"],
+            "after_contract_sha256": head["contract_sha256"],
+            "before_contract_version": head["contract_version"],
+            "after_contract_version": head["contract_version"],
+            "before_contract_scope_version": head["scope_version"],
+            "after_contract_scope_version": head["scope_version"],
+            "queue_revision_before": live_revision,
+            "queue_revision_after": live_revision + 1,
+        })
+        catalog = dict(catalog)
+        catalog[synthetic_id] = ("synthetic", synthetic)
+        progress = copy.deepcopy(progress)
+        progress.setdefault("standards_adoptions", []).append({
+            "id": "SA-SYNTH-1",
+            "verification_receipt": synthetic_id,
+            "queue_revision_before": live_revision,
+            "queue_revision_after": live_revision + 1,
+            "contract_version_before": head["contract_version"],
+            "contract_version_after": head["contract_version"],
+        })
+        progress["queue_revision"] = live_revision + 1
+        chain2, chain2_errors = check_queue._contract_anchor_chain(
+            progress, catalog)
+        self.assertEqual([], chain2_errors)
+        self.assertEqual(live_revision + 1, chain2[-1]["queue_revision"])
+
     def test_replan_requires_exact_pending_amendment(self):
         coverage_path = self.root / check_queue.COVERAGE_PATH
         coverage = kblib.load_yaml_file(coverage_path)

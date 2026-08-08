@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.7.0"
+TOOL_VERSION = "1.9.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -142,6 +142,10 @@ EXPRESSION_LAYER_SLOT = "Expression Layer Entry"
 HUB_DEPENDENCY_MAP_LABEL = "existing canonical dependency-map"
 HUB_EXIT_HINT = ("K13/10 admits a hub-editing batch only through an exclusive "
                  "or serial-integrator execution mode")
+# Sentinel for _require_receipt: accept any nonempty producer-era version
+# on a sealed historical receipt (K12/10 producer-era identity).
+ANY_PRODUCER_ERA_VERSION = object()
+
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 BATCH_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\Z")
 
@@ -1196,11 +1200,19 @@ def _contract_anchor_chain(progress, catalog):
 
     remaining = list(events)
     while remaining:
+        # A queue-replan bumps the live queue_revision without touching the
+        # Task Contract, so it is deliberately not an anchor event; the next
+        # anchor event therefore continues from the same contract identity at
+        # a strictly later revision. The contract bytes, version, and scope
+        # remain the chain; revisions only need to stay monotonic and agree
+        # with each event's own sealed before/after pair.
         candidates = [event for event in remaining
                       if event["before_sha"] == anchor and
                       event["before_version"] == version and
                       event["before_scope"] == scope and
-                      event["revision_before"] == revision]
+                      isinstance(event["revision_before"], int) and
+                      not isinstance(event["revision_before"], bool) and
+                      event["revision_before"] >= revision]
         if not candidates:
             errors.extend("%s does not continue the prior contract anchor" %
                           event["label"] for event in remaining)
@@ -1215,7 +1227,7 @@ def _contract_anchor_chain(progress, catalog):
         next_revision = event["revision_after"]
         if (not isinstance(next_revision, int) or
                 isinstance(next_revision, bool) or
-                next_revision != revision + 1):
+                next_revision != event["revision_before"] + 1):
             errors.append("%s must increment queue_revision exactly once" %
                           event["label"])
             break
@@ -1764,10 +1776,19 @@ def _consumed_standards_revalidation_keys(item, catalog):
         receipt_entry = catalog.get(receipt_id) if _nonempty_string(
             receipt_id) else None
         receipt = receipt_entry[1] if receipt_entry is not None else None
+        # Producer-era rule: a consumed aggregate is a historical fact a Queue
+        # transition already validated at its own producer era.  The writer
+        # that consumes a NEW aggregate still requires the current producer
+        # (standards_revalidation_receipt_errors); the replay here accepts the
+        # recorded era's version, because pinning it to the running
+        # TOOL_VERSION orphaned every consumed aggregate at the next
+        # registered producer bump and left the runtime permanently
+        # inconsistent with no sanctioned repair path.  An adoption that
+        # really retracts one still names it in `invalidated_evidence`.
         if not isinstance(receipt, dict) or receipt.get("result") != "pass" or \
                 receipt.get("invalidated_by") is not None or \
                 receipt.get("tool") != TOOL or \
-                receipt.get("tool_version") != TOOL_VERSION or \
+                not _nonempty_string(receipt.get("tool_version")) or \
                 receipt.get("check") != "required_queue" or \
                 receipt.get("queue_check_mode") != \
                 "require-revalidation:%s" % item.get("id") or \
@@ -1788,8 +1809,11 @@ def outstanding_standards_revalidation(result, batch_id):
     raw = standards_revalidation_requirements(
         result.get("root"), result.get("progress") or {}).get(batch_id, [])
     item = (result.get("items_by_id") or {}).get(batch_id) or {}
+    # Consumption is replayed from the immutable historical catalog: the
+    # era-filtered current catalog drops receipts whose producer version was
+    # since bumped, and a recorded consumption must not disappear with them.
     consumed = _consumed_standards_revalidation_keys(
-        item, current_receipt_catalog(result))
+        item, historical_receipt_catalog(result))
     return [binding for binding in raw if (
         binding.get("adoption_id"), binding.get("boundary_id"),
         binding.get("required_gate_id")) not in consumed]
@@ -3537,6 +3561,13 @@ def _require_receipt(catalog, receipt_id, label, errors, expected=None):
     if expected:
         common.update(expected)
     for field, value in common.items():
+        if value is ANY_PRODUCER_ERA_VERSION:
+            # K12/10 producer-era identity: a sealed historical receipt is
+            # never re-judged against the current producer constant.
+            if not _nonempty_string(receipt.get(field)):
+                errors.append("%s receipt %s has empty %s" %
+                              (label, receipt_id, field))
+            continue
         if receipt.get(field) != value:
             errors.append("%s receipt %s has %s=%r, expected %r" %
                           (label, receipt_id, field, receipt.get(field), value))
@@ -6131,7 +6162,7 @@ def _queue_replan_amendment_errors(
             historical_catalog, receipt_id, "%s queue-replan" % label, errors,
             expected={
                 "tool": "compile_queue",
-                "tool_version": "1.3.0",
+                "tool_version": ANY_PRODUCER_ERA_VERSION,
                 "check": "queue_replan",
                 "target": QUEUE_PATH,
                 "task_id": queue.get("task_id"),
@@ -6232,7 +6263,7 @@ def _initial_queue_receipt_errors(progress, catalog, queue, queue_sha,
         catalog, receipt_id, "Progress initial Queue", errors,
         expected={
             "tool": "compile_queue",
-            "tool_version": "1.3.0",
+            "tool_version": ANY_PRODUCER_ERA_VERSION,
             "check": "queue_structure",
             "target": QUEUE_PATH,
             "task_id": queue.get("task_id"),

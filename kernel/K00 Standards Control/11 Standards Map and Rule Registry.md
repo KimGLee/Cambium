@@ -16,7 +16,7 @@
 - `K05` [[kernel/K05 Terminology Standard|Terminology Standard]]: proper-noun extraction, aliases, reuse, and emerging terminology.
 - `K06` [[kernel/K06 Knowledge Intake and Evolution Standard|Knowledge Intake and Evolution Standard]]: user hypotheses / source leads, the source-to-knowledge pipeline, synthesis, graph impact, and promotion.
 - `K07` [[kernel/K07 Sources and Accuracy Standard|Sources and Accuracy Standard]]: source roles, claims, formulas, metrics, and freshness verification.
-- `K08` [[kernel/K08 Metadata and Status Standard|Metadata and Status Standard]]: type, domain, priority, authoring / expression / learning status, coverage disposition, and evidence maturity.
+- `K08` [[kernel/K08 Metadata and Status Standard|Metadata and Status Standard]]: type, domain, priority, authoring / expression / learning status, coverage disposition, evidence maturity, field applicability modes, writer and projection authority, and relationship metadata with their `Metadata Contract` binding.
 - `K09` [[kernel/K09 Wiki Link and Navigation Standard|Wiki Link and Navigation Standard]]: body links, structural navigation, path, alias, and verification.
 - `K10` [[kernel/K10 Writing and Formatting Standard|Writing and Formatting Standard]]: naming, formulas, tables, diagrams, rendering workflow, and the reader-facing language binding provided by `Language Contract`.
 - `K11` [[kernel/K11 Expression Layer Standard|Expression Layer Standard]]: expression artifacts, coverage, readiness, evidence binding, and migration audit; concrete artifact bindings are registered by the `Expression Layer Entry`.
@@ -73,6 +73,9 @@ This registry governs rule text. The three conditions do not authorize a view of
 | authoring / expression / learning status vocabularies | [[kernel/K08 Metadata and Status/03 Status Axes\|Status Axes]] + `Expression Status Axis` role |
 | `coverage_disposition` vocabulary and its scope semantics | [[kernel/K08 Metadata and Status/03 Status Axes#Coverage Disposition\|Coverage Disposition]] |
 | `evidence_maturity` definition | [[kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata\|Evidence and Relationship Metadata]] |
+| Frontmatter applicability modes, two-layer composition, and the unknown-field closure | [[kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract\|Frontmatter Applicability Contract]] |
+| Frontmatter writer, projection, and derived-persistence authority | [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority\|Frontmatter Writer and Projection Authority]] |
+| Page relationship field names, directions, targets, and value shapes | [[kernel/K08 Metadata and Status/08 Relationship Metadata Contract\|Relationship Metadata Contract]] |
 | Evidence roles | [[kernel/K06 Knowledge Intake and Evolution/03 Source-to-Knowledge Pipeline\|Source-to-Knowledge Pipeline]] |
 | Source Note / Research Synthesis templates | [[kernel/K06 Knowledge Intake and Evolution/04 Intake Note Types and Source Roles\|Intake Note Types and Source Roles]] |
 | Evaluation provenance element list | [[kernel/K07 Sources and Accuracy/04 Evaluation and Source Quality\|Evaluation and Source Quality]] |

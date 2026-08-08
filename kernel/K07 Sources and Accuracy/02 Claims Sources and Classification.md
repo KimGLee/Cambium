@@ -22,9 +22,11 @@ Common-sense connective sentences do not require per-sentence citation, but "com
 
 ## Source Placement
 
-Every Core / System page contains at least `## Sources`.
+Every Core / System page satisfies the `sources` section role: a section whose responsibility is aggregating the page's evidence entries. The kernel owns the role, not an English string: the default display title is `Sources`, and the selected profile's `Language Contract` binds the reader-facing display title and MAY register bounded migration-period aliases; checkers verify the role through those registered titles and MUST NOT hardcode one language's heading. One page carries at most one sources-role section — near-synonym duplicate headings are a defect.
 
-Recommended format:
+A derived expression page that adds no factual claim of its own MAY satisfy the role through an explicit canonical or evidence binding (a nonempty `evidence_sources` list or a profile-registered expression-to-canonical relation) instead of a heading; the moment it adds a fact, number, or empirical conclusion it keeps its own direct evidence.
+
+Recommended format under the registered display title:
 
 ```markdown
 
@@ -33,6 +35,8 @@ Recommended format:
 - [Descriptive source title](https://example.com)
 - Paper title, authors, year.
 ```
+
+Whether the role's section exists, resolves, and matches a registered title is deterministic and belongs to the `page-contract` gate of [[kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract|K08/06]]; whether the cited sources genuinely support the claims stays with this standard's substantive review and [[kernel/K12 Quality Assurance/05 Automated and Manual Checks|K12/05]]. No second sources checker is created.
 
 Conclusions that are time-sensitive, easily misunderstood, or directly cite official behavior SHOULD have links placed near the relevant paragraph, while also being aggregated in Sources.
 

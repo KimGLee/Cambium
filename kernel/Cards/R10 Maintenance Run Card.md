@@ -11,6 +11,7 @@ source_files:
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
   - kernel/K03 Note Types and Ownership/03 Split and Duplication Policy.md
   - kernel/K08 Metadata and Status/05 Review Source and Migration Metadata.md
+  - kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority.md
   - kernel/K06 Knowledge Intake and Evolution/07 Environmental Scanning and Watermark.md
   - kernel/K02 Knowledge Work Construction/09 Knowledge Batch Production.md
   - kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries.md
@@ -20,7 +21,7 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-source_hash: '5d34de24dbb2'
+source_hash: 'f20cd2191028'
 ---
 # R10 Maintenance Run Card
 
@@ -53,6 +54,7 @@ Perform periodic freshness, re-verification, watermark, `needs_rereview`, or can
 
 - Adjudicate candidates caused by the current batch inside that batch; existing-object candidates enter the pool and do not become automatic gate failures.
 - Reverify whether each selected object's priority, evidence, owner, content, links, and freshness still hold.
+- Compute `review_by` in tool output, reports, and receipts only; do not persist the derived date onto pages, and record a real external validity boundary as `source_valid_until`, never as derived freshness (K08/07).
 - Run source updates through `R04`; retire or merge only after canonical ownership and incoming links are reconciled.
 - Use R13 only when maintenance changes a corpus-wide map entry, capability judgment, or semantic-gap handoff; page freshness alone does not rewrite corpus planning.
 - For persistent work, move each selected batch through the Required Queue;

@@ -16,7 +16,7 @@ The directory contains 14 published files:
 
 | Role | Count | Meaning |
 |---|---:|---|
-| Filled profile skeleton | 13 | [profile.md](profile.md) plus the twelve bound slot files corresponding to `_template/` |
+| Filled profile skeleton | 14 | [profile.md](profile.md) plus the thirteen bound slot files corresponding to `_template/` |
 | Example orientation | 1 | This README; it is not loaded as profile policy |
 | Registered-scan parameters | 1 | [scan-configs/interview-residuals.yaml](scan-configs/interview-residuals.yaml), consumed by one scan registration |
 

@@ -19,6 +19,7 @@ First load [[kernel/Read Sets/R01 Core Bootstrap Read Set|R01 Core Bootstrap]], 
 - [[kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes|Ownership and Canonical Notes]]
 - [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]
 - [[kernel/K08 Metadata and Status/03 Status Axes|Status Axes]]
+- [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority|Frontmatter Writer and Projection Authority]]
 - [[kernel/K09 Wiki Link and Navigation/01 Link Semantics and Body Links|Link Semantics and Body Links]]
 - [[kernel/K09 Wiki Link and Navigation/02 Structural and Bidirectional Links|Structural and Bidirectional Links]]
 - [[kernel/K10 Writing and Formatting/01 Naming Language and Prose|Naming Language and Prose]]

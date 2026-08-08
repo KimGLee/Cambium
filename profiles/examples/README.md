@@ -37,7 +37,7 @@ Every example README carries a `## Validation Provenance` table: for each valida
 
 The three examples together are not a complete tour of the interface, and this section names what is still missing so that an absent form is not read as a forbidden one.
 
-Between them the examples now show both sides of every optional and conditional switch in `profiles/_template/`: Atlas configures fifteen of the sixteen, Minimal Notes leaves all sixteen inactive, and each package states the reason for its own choice.
+Between them the examples now show both sides of every optional and conditional switch in `profiles/_template/`: Atlas configures sixteen of the seventeen, Minimal Notes leaves all seventeen inactive, and each package states the reason for its own choice.
 
 Documented forms that still have **no** worked example anywhere in this repository:
 
