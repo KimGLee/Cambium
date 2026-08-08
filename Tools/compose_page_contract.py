@@ -24,7 +24,10 @@ Merge policy (K08/06 two-layer composition):
   - a profile difference must name an existing kernel field and only
     tighten it (optional -> required, optional -> conditional,
     conditional -> required); anything else is a conflict and exits 1;
-  - a profile extension must not collide with a kernel field name.
+  - a profile extension must not collide with a kernel field name;
+  - the K08/09 boundary projection display labels compose as kernel
+    defaults overlaid by the profile's `boundary_projection.labels`
+    (display text only, never schema).
 
 Modes:
   default  recompute and write --output with a provenance header.
@@ -47,7 +50,7 @@ sys.path.insert(0, TOOLS_DIR)
 import kblib  # noqa: E402
 
 TOOL = "compose_page_contract"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 
 DEFAULT_BASE = "kernel/K08 Metadata and Status/applicability-base.yaml"
 DEFAULT_RELATIONSHIPS = (
@@ -270,6 +273,17 @@ def compose(root, base_path, rel_path, sources_role_path, profile_dir):
         roles[role]["origin"] = roles[role].get("origin", "kernel") + \
             "+profile"
 
+    # K08/09 boundary projection labels: kernel defaults overlaid by the
+    # profile's boundary_projection.labels (validated by the shared shape
+    # contract above; display text only).
+    boundary_labels = dict(kblib.BOUNDARY_PROJECTION_LABELS)
+    profile_projection = contract.get("boundary_projection")
+    if isinstance(profile_projection, dict):
+        for key, value in (profile_projection.get("labels") or {}).items():
+            if key in boundary_labels and isinstance(value, str) and \
+                    value.strip():
+                boundary_labels[key] = value
+
     provenance = []
     for label, path in (("applicability-base", base_path),
                         ("relationship-base", rel_path),
@@ -281,7 +295,9 @@ def compose(root, base_path, rel_path, sources_role_path, profile_dir):
         rel = os.path.relpath(path, root).replace(os.sep, "/")
         provenance.append((label, rel, digest))
     ordered = {name: index[name] for name in fields}
-    return {"fields": ordered, "section_roles": roles}, provenance, []
+    return {"fields": ordered, "section_roles": roles,
+            "boundary_projection": {"labels": boundary_labels}}, \
+        provenance, []
 
 
 def render(contract, provenance):
@@ -295,7 +311,8 @@ def render(contract, provenance):
         lines.append("# input %s: %s sha256=%s" % (label, rel, digest))
     body = kblib.canonical_yaml(
         {"schema_version": 1, "fields": contract["fields"],
-         "section_roles": contract["section_roles"]})
+         "section_roles": contract["section_roles"],
+         "boundary_projection": contract["boundary_projection"]})
     return "\n".join(lines) + "\n" + body
 
 

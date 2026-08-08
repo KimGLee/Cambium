@@ -52,6 +52,10 @@ fields:
     mode: derived
     shape: date
     persisted: false
+  boundary:
+    mode: optional
+    shape: delegated
+    delegate: boundary-contract
 """
 
 SOURCES_ROLE_BASE = """schema_version: 1
@@ -274,6 +278,20 @@ class PageContractTests(unittest.TestCase):
         result = self.check(root)
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("deferred_reason", result.stdout)
+
+    def test_delegated_boundary_block_is_known_and_not_shape_checked(self):
+        # K08/09: presence and mode stay here; the block's internal
+        # structure belongs to the boundary-contract gate, so even a
+        # block that gate would reject passes page-contract.
+        files = base_files()
+        files["Domain/Page.md"] = (
+            "---\ntype: concept\nauthoring_status: drafted\n"
+            "boundary:\n  owns:\n    - Not_A_Slug\n---\n# P\n")
+        root = self.build(files)
+        self.compose(root)
+        result = self.check(root)
+        self.assertEqual(result.returncode, 0,
+                         result.stdout + result.stderr)
 
     def test_present_but_empty_value_is_placeholder_noise(self):
         files = base_files()

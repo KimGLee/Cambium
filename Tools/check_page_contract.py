@@ -29,7 +29,11 @@ Per page, against the compiled contract:
   values resolve inside the vault (with or without the .md suffix);
   relationship targets resolve to pages of the declared target type;
 - unknown fields: neither the compiled contract nor the composed vocabulary
-  registers them (the legacy `status` alias is reported for migration).
+  registers them (the legacy `status` alias is reported for migration);
+- a `delegated`-shaped field (the K08/09 `boundary` block): presence, mode,
+  and the unknown-field closure stay here; its internal structure is owned
+  by the gate its `delegate` key names (`boundary-contract`,
+  Tools/check_boundary_contract.py) and is never re-checked here.
 
 Controlled-value legality stays with the `frontmatter-vocabulary` gate;
 whether a source supports a claim stays with K07/K12 substantive review.
@@ -55,7 +59,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_page_contract"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 GATE_ID = "page-contract"
 # The `Check` cell K00/12 registers for this Gate.
 GATE_CHECK = "page-contract-summary"
@@ -259,6 +263,10 @@ def check_shape(root, rel, name, spec, value, report):
                     report("page-contract-target", "%s:%s" % (rel, name),
                            "target %r has type %r, expected one of %s"
                            % (item, actual, ", ".join(target_types)))
+    elif shape == "delegated":
+        # Internal structure is owned by the gate the field's `delegate`
+        # key names (K08/09); only presence and mode are checked here.
+        pass
     # nonempty-string and unknown shapes: presence checks already cover them.
 
 
