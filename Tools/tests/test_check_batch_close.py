@@ -430,6 +430,21 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertEqual("closed", self.queue()["required_queue"][0]["state"])
         self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
 
+    def test_profile_example_vocabulary_is_outside_the_vocab_member(self):
+        """A shipped example instance's own vocabulary values must not fail
+        the adopter's close: profiles/ is control plane, so the vocab member
+        excludes it like kernel/Cards (the defect only appeared on a real
+        adopter's first close)."""
+        foreign = self.root / "profiles/examples/foreign/corpus/Case.md"
+        foreign.parent.mkdir(parents=True, exist_ok=True)
+        foreign.write_text(
+            "---\ntype: service-case\npriority: P9\n---\n# Foreign Case\n",
+            encoding="utf-8")
+        completed = self.batch_close(
+            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertNotIn("service-case", completed.stdout)
+
     def test_complex_work_spec_stability_guard_detects_byte_change(self):
         relative = ".cambium/work_specs/B1.yaml"
         path = self.root / relative

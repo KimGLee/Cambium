@@ -49,7 +49,7 @@ import kblib
 
 
 TOOL = "check_batch_close"
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.4.0"
 GATE_ID = "batch-close"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -1148,9 +1148,16 @@ def main(argv=None):
                     root, "Tools/vocab.yaml", must_exist=True,
                     reject_symlink=True)
                 vocab = _run_receipting_command(
+                    # `profiles/` is excluded like `kernel/Cards`: profile
+                    # directories are governance control plane, and shipped
+                    # example instances under profiles/examples/ carry their
+                    # own vocabularies, so judging them against the selected
+                    # profile's composed vocab.yaml fails every adopter's
+                    # first close on foreign example values.
                     [sys.executable, str(SCRIPT_DIR / "check_vocab.py"), root,
                      "--vocab", vocab_path,
                      "--exclude", "kernel/Cards",
+                     "--exclude", "profiles",
                      "--quota-p0", str(p0), "--quota-p1", str(p1)],
                     root, "check_vocab")
                 checks["controlled_vocabulary"] = _tool_member_run(
