@@ -20,6 +20,7 @@ This page is the stable entry point for the Metadata and Status standard. The de
 | [[kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract\|Frontmatter Applicability Contract]] + `Metadata Contract` | `Frontmatter Applicability Contract`, `Two-layer Composition`, `Enablement` |
 | [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority\|Frontmatter Writer and Projection Authority]] | `Frontmatter Writer and Projection Authority`, `Writer Rules` |
 | [[kernel/K08 Metadata and Status/08 Relationship Metadata Contract\|Relationship Metadata Contract]] + `Metadata Contract` | `Relationship Metadata Contract`, `Closure And Extension` |
+| [[kernel/K08 Metadata and Status/09 Page Boundary Contract\|Page Boundary Contract]] + `Metadata Contract` | `Page Boundary Contract`, `Cross-page Rules`, `Projection`, `Enablement` |
 
 Machine-readable base values are registered in `kernel/K08 Metadata and Status/vocabulary-base.yaml`; the selected profile appends values only through `Vocabulary Extensions`. Field applicability and relationship bases are registered in `applicability-base.yaml` and `relationship-base.yaml` of the same directory; the selected profile declares only differences through its `Metadata Contract` slot. Markdown prose remains the single canonical owner of field semantics and behavior rules; machine registries do not duplicate upgrade gates.
 

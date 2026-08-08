@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/K08 Metadata and Status Standard|K08 Metadata and Status Standard]].
 - Previous: [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority|Frontmatter Writer and Projection Authority]].
+- Next: [[kernel/K08 Metadata and Status/09 Page Boundary Contract|Page Boundary Contract]].
 
 ## Relationship Metadata Contract
 

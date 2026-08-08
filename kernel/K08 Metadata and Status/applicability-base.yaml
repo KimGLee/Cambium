@@ -7,7 +7,9 @@
 # projection | user-owned | forbidden. Conditions test only same-page
 # frontmatter: {all: [...]} / {any: [...]} of {field, in: [...]} or
 # {field, absent: true}. Shapes: nonempty-string | date | url | path |
-# list-of-strings | list-of-paths. Controlled-value legality stays with the
+# list-of-strings | list-of-paths | delegated (internal structure owned by
+# the gate the `delegate` key names; here the K08/09 `boundary` block).
+# Controlled-value legality stays with the
 # frontmatter-vocabulary gate; relationship fields live in
 # relationship-base.yaml and are merged by the composer.
 
@@ -112,3 +114,7 @@ fields:
   claim_scope:
     mode: optional
     shape: nonempty-string
+  boundary:
+    mode: optional
+    shape: delegated
+    delegate: boundary-contract
