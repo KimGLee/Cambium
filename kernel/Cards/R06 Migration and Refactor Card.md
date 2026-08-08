@@ -10,6 +10,8 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
   - kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover.md
   - kernel/K01 Scope and Architecture/04 Folder and Shared Ownership.md
+  - kernel/K01 Scope and Architecture/05 Structural Unit Interface.md
+  - kernel/K01 Scope and Architecture/06 Support Layer Structural Interfaces.md
   - kernel/K03 Note Types and Ownership/03 Split and Duplication Policy.md
   - kernel/K08 Metadata and Status/05 Review Source and Migration Metadata.md
   - kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links.md
@@ -21,7 +23,7 @@ source_files:
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '3bc2b5ec7d1b'
+source_hash: 'f59b86bca5a6'
 ---
 # R06 Migration and Refactor Card
 
@@ -37,6 +39,7 @@ Move, rename, split, merge, retire, or restructure files or directories. Load [[
 - [ ] Reconcile the manifest with the file system and Coverage Ledger.
 - [ ] Establish an explicit old-content-block → new-owner mapping; every original block has exactly one destination.
 - [ ] Confirm that target ownership, naming, aliases, metadata, and profile language rules are valid before moving content.
+- [ ] When the migration changes registered structure — unit roots, support-layer layouts, or a grouped taxonomy — freeze the target Structure Registry bindings and classification predicate before any file moves, and map every old path to its new class and directory in the manifest.
 - [ ] Isolate the migration batch from concurrent content batches.
 
 ## During
@@ -56,6 +59,7 @@ Use the safe order: create and verify the target → update references and headi
 - [ ] Missing, ambiguous, path, alias, and heading links are resolved.
 - [ ] Module/Coverage Review, Batch Review, applicable deterministic checks, and the Batch-close Closed List pass on the merged snapshot.
 - [ ] The Coverage projection, Required Queue manifest, rollback record, and final file system agree.
+- [ ] When the migration changed registered structure, close consumes a current `structure-registry` receipt from `python3 Tools/check_structure.py .` against the migrated snapshot.
 - [ ] Coverage reconciliation does not read a sequence position, checkbox, file existence, resolvable link, or `Related` reference as authoring completion.
 
 ## Read Back When

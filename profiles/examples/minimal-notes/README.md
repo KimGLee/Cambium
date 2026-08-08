@@ -6,7 +6,7 @@ This directory is a non-normative, filled example of the Cambium profile interfa
 
 The normative interface is [profiles/README.md](../../README.md), and cross-domain rules remain in the kernel. A real adopter copies [profiles/\_template/](../../_template/profile.md) to `profiles/<profile-id>/`, fills and validates that copy, and selects it through governance. Because this directory lives under `profiles/examples/`, its manifest is intentionally not selectable in place.
 
-Read this example first, then [Agent Systems Atlas](../agent-atlas/README.md). Atlas answers the same eleven slots for a large bilingual corpus with an expression layer; the difference between the two packages is domain need, not compliance.
+Read this example first, then [Agent Systems Atlas](../agent-atlas/README.md). Atlas answers the same twelve slots for a large bilingual corpus with an expression layer; the difference between the two packages is domain need, not compliance.
 
 ## Directory Structure
 
@@ -14,7 +14,7 @@ The directory contains 14 published files:
 
 | Role | Count | Meaning |
 |---|---:|---|
-| Filled profile skeleton | 12 | [profile.md](profile.md) plus the eleven bound slot files corresponding to `_template/` |
+| Filled profile skeleton | 13 | [profile.md](profile.md) plus the twelve bound slot files corresponding to `_template/` |
 | Example orientation | 1 | This README; it is not loaded as profile policy |
 | Registered-scan parameters | 1 | [scan-configs/residual-scan.yaml](scan-configs/residual-scan.yaml), consumed by the one scan registration |
 
@@ -22,7 +22,7 @@ The vault this profile describes — `Notes/` and `Notes/Daily Log/` — is the 
 
 ## What It Demonstrates
 
-Every optional and conditional switch in `profiles/_template/` is in its **inactive** form here. That is the point of the package: the Atlas example configures fourteen of the fifteen switches, so before this package existed the repository showed almost no worked "off" state.
+Every optional and conditional switch in `profiles/_template/` is in its **inactive** form here. That is the point of the package: the Atlas example configures fifteen of the sixteen switches, so before this package existed the repository showed almost no worked "off" state.
 
 | Answer shape | Where |
 |---|---|
@@ -62,8 +62,8 @@ The public Cambium distribution is intentionally uninstantiated: `kernel/K00 Sta
 
 | Validator | Tool version | Command | Expected result |
 |---|---|---|---|
-| `check_profile` | `1.7.0` | `python3 Tools/check_profile.py profiles/examples/minimal-notes` | exit 0 |
-| `check_corpus_plan` | `1.5.0` | `python3 Tools/check_corpus_plan.py . --profile profiles/examples/minimal-notes/profile.md` | exit 0 |
+| `check_profile` | `1.8.0` | `python3 Tools/check_profile.py profiles/examples/minimal-notes` | exit 0 |
+| `check_corpus_plan` | `1.6.0` | `python3 Tools/check_corpus_plan.py . --profile profiles/examples/minimal-notes/profile.md` | exit 0 |
 
 The registered residual scan is not in that table: it runs against a live vault root, which this repository does not contain.
 

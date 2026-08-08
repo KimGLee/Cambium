@@ -35,6 +35,7 @@ defined by K02/03 through K02/07 and authorizes no artifact invention.
 - Moving or renaming a bound planning artifact or mapped canonical owner: combine [[kernel/Read Sets/R06 Migration and Refactor Read Set|R06 Migration and Refactor]].
 - Building or revising the knowledge objects that close a gap: combine R02, R03, or the other route for the actual content work.
 - Using the explicit map, capability, and gap relations to select an audit scope: combine [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set|R12 Targeted and Specialized Audit]]. R12 owns the audit predicate, evidence, expansion, and result.
+- The selected profile's Structure Registry is `configured` and the operation touches a registered entry or its Global Map binding: read [[kernel/K01 Scope and Architecture/05 Structural Unit Interface|Structural Unit Interface]] and reconcile the registry against the Global Map with `Tools/check_structure.py`. R13 reconciles the bindings; it does not own structure rules or take over the structural work route.
 
 ## Gate
 

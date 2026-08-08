@@ -778,6 +778,345 @@ def profile_identity(manifest_text, directory_name, reserved_ids=()):
 
 
 # ---------------------------------------------------------------------------
+# Structure Registry shape contract (owner: K01/05 + K01/06; slot shape:
+# profiles/_template/structure-registry.yaml).  Shared by check_profile.py
+# (profile shape gate) and check_structure.py (vault resolution gate) so the
+# two cannot drift into parallel validators.
+# ---------------------------------------------------------------------------
+
+STRUCTURE_REGISTRY_TOP_FIELDS = frozenset((
+    "schema_version", "applicability", "units", "support_layers",
+))
+STRUCTURE_APPLICABILITY_FIELDS = frozenset(("state", "reason"))
+STRUCTURE_UNIT_FIELDS = frozenset((
+    "id", "kind", "parent", "root", "entry", "global_map_entry", "roles",
+))
+STRUCTURE_ENTRY_FIELDS = frozenset(("path", "expected_type"))
+STRUCTURE_UNIT_ROLES = ("sequence", "coverage", "quick_reference",
+                        "expression")
+STRUCTURE_ROLE_MODE_FIELDS = {
+    "embedded": (frozenset(("mode", "path", "heading")), frozenset()),
+    "standalone": (frozenset(("mode", "path")), frozenset()),
+    "derived": (frozenset(("mode", "generator", "inputs_owner")),
+                frozenset(("path", "heading"))),
+    "not-applicable": (frozenset(("mode", "reason")), frozenset()),
+}
+STRUCTURE_LAYER_FIELDS = frozenset((
+    "layer_id", "role", "root", "entry", "layout", "taxonomy", "coverage",
+    "global_map_entry", "bindings",
+))
+STRUCTURE_LAYER_ROLES = ("cases", "sources", "synthesis", "expression")
+STRUCTURE_TAXONOMY_FIELDS = frozenset(("axis", "page_field", "classes"))
+STRUCTURE_TAXONOMY_CLASS_FIELDS = frozenset(("class", "directory"))
+STRUCTURE_LAYER_BINDING_FIELDS = {
+    "cases": frozenset(("evidence_binding_owner",)),
+    "sources": frozenset(("authority_taxonomy_ref", "intake_policy_ref",
+                          "freshness_policy_ref", "index_mode")),
+    "synthesis": frozenset(("question_identity_field",
+                            "promotion_policy_ref")),
+    "expression": frozenset(("artifact_registry_ref",
+                             "preparation_route_ref",
+                             "readiness_projection")),
+}
+STRUCTURE_SOURCE_INDEX_MODES = frozenset(("derived", "none"))
+
+
+def _structure_nonempty(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _structure_closed(errors, value, required, label, optional=frozenset()):
+    """Closed-mapping check; returns the mapping (or {}) for further reads."""
+    if not isinstance(value, dict):
+        errors.append(("structure-registry-schema", label,
+                       "must be a mapping"))
+        return {}
+    missing = sorted(required - set(value))
+    extra = sorted(set(value) - required - optional)
+    if missing:
+        errors.append(("structure-registry-schema", label,
+                       "missing field(s): %s" % ", ".join(missing)))
+    if extra:
+        errors.append(("structure-registry-schema", label,
+                       "unsupported field(s): %s" % ", ".join(extra)))
+    return value
+
+
+def _structure_role_mapping(errors, value, label):
+    """Validate one role declaration; returns the mapping (or {})."""
+    if not isinstance(value, dict):
+        errors.append(("structure-registry-role", label,
+                       "role must be a mapping declaring exactly one mode"))
+        return {}
+    mode = value.get("mode")
+    if mode not in STRUCTURE_ROLE_MODE_FIELDS:
+        errors.append((
+            "structure-registry-role", label,
+            "mode must be one of embedded, standalone, derived, "
+            "not-applicable; found %r — absence of a declaration must not "
+            "express not-applicable" % (mode,)))
+        return value
+    required, optional = STRUCTURE_ROLE_MODE_FIELDS[mode]
+    value = _structure_closed(errors, value, required, label, optional)
+    for field in sorted((required | optional) & set(value)):
+        if field == "mode":
+            continue
+        if not _structure_nonempty(value.get(field)):
+            errors.append(("structure-registry-role", "%s:%s" % (label, field),
+                           "must be a nonempty string"))
+    if value.get("heading") is not None and mode == "derived" and \
+            value.get("path") is None:
+        errors.append(("structure-registry-role", label,
+                       "a derived rendering heading requires its path"))
+    return value
+
+
+def validate_structure_registry_shape(document, target="structure-registry"):
+    """Return [(check_id, label, details)] shape errors for one registry.
+
+    Pure byte-level contract: closed fields, applicability branches, per-mode
+    role declarations, ID uniqueness, and an existing acyclic parent graph.
+    Vault resolution (paths, headings, Profile Scope layers, Global Map and
+    Coverage references) belongs to check_structure.py.
+    """
+    errors = []
+    document = _structure_closed(
+        errors, document, STRUCTURE_REGISTRY_TOP_FIELDS, target)
+    if type(document.get("schema_version")) is not int or \
+            document.get("schema_version") != 1:
+        errors.append(("structure-registry-schema", target,
+                       "schema_version must be integer 1"))
+    applicability = _structure_closed(
+        errors, document.get("applicability"),
+        STRUCTURE_APPLICABILITY_FIELDS, target + ":applicability")
+    units = document.get("units")
+    layers = document.get("support_layers")
+    if not isinstance(units, list):
+        errors.append(("structure-registry-schema", target + ":units",
+                       "must be a list"))
+        units = []
+    if not isinstance(layers, list):
+        errors.append(("structure-registry-schema",
+                       target + ":support_layers", "must be a list"))
+        layers = []
+
+    state = applicability.get("state")
+    reason = applicability.get("reason")
+    if state == "configured":
+        if reason is not None:
+            errors.append(("structure-registry-applicability", target,
+                           "configured requires null reason"))
+        if not units:
+            errors.append((
+                "structure-registry-applicability", target,
+                "configured requires at least one unit; a corpus with no "
+                "registrable unit selects not-applicable instead"))
+    elif state == "not-applicable":
+        if not _structure_nonempty(reason):
+            errors.append(("structure-registry-applicability", target,
+                           "not-applicable requires a nonempty reason"))
+        if units or layers:
+            errors.append((
+                "structure-registry-applicability", target,
+                "not-applicable requires empty units and support_layers"))
+    else:
+        errors.append(("structure-registry-applicability", target,
+                       "state must be configured or not-applicable; found %r"
+                       % (state,)))
+
+    seen_ids = {}
+    parents = {}
+    kinds = {}
+    for index, unit in enumerate(units):
+        label = "%s:units[%d]" % (target, index)
+        unit = _structure_closed(errors, unit, STRUCTURE_UNIT_FIELDS, label)
+        unit_id = unit.get("id")
+        if not _structure_nonempty(unit_id):
+            errors.append(("structure-registry-unit", label + ":id",
+                           "must be a nonempty string"))
+        elif unit_id in seen_ids:
+            errors.append(("structure-registry-unit", label + ":id",
+                           "duplicate unit id %r; unit IDs are unique"
+                           % unit_id))
+        else:
+            seen_ids[unit_id] = index
+            parents[unit_id] = unit.get("parent")
+            kinds[unit_id] = unit.get("kind")
+        kind = unit.get("kind")
+        parent = unit.get("parent")
+        if kind not in ("domain", "module"):
+            errors.append(("structure-registry-unit", label + ":kind",
+                           "kind must be domain or module; found %r"
+                           % (kind,)))
+        elif kind == "domain" and parent is not None:
+            errors.append(("structure-registry-unit", label + ":parent",
+                           "a domain has no parent; found %r" % (parent,)))
+        elif kind == "module" and not _structure_nonempty(parent):
+            errors.append(("structure-registry-unit", label + ":parent",
+                           "a module requires exactly one existing parent "
+                           "unit id"))
+        root = unit.get("root")
+        if not _structure_nonempty(root):
+            errors.append(("structure-registry-unit", label + ":root",
+                           "must be a nonempty repository-relative directory"))
+        elif root.endswith("/"):
+            errors.append(("structure-registry-unit", label + ":root",
+                           "no trailing slash"))
+        entry = _structure_closed(errors, unit.get("entry"),
+                                  STRUCTURE_ENTRY_FIELDS, label + ":entry")
+        if not _structure_nonempty(entry.get("path")) or \
+                not str(entry.get("path", "")).lower().endswith(".md"):
+            errors.append(("structure-registry-unit", label + ":entry",
+                           "entry.path must be a nonempty .md path"))
+        expected = entry.get("expected_type")
+        if expected is not None and not _structure_nonempty(expected):
+            errors.append(("structure-registry-unit",
+                           label + ":entry:expected_type",
+                           "must be null or a nonempty type value"))
+        gm_entry = unit.get("global_map_entry")
+        if gm_entry is not None and not _structure_nonempty(gm_entry):
+            errors.append(("structure-registry-unit",
+                           label + ":global_map_entry",
+                           "must be null or a nonempty entry id"))
+        roles = _structure_closed(errors, unit.get("roles"),
+                                  frozenset(STRUCTURE_UNIT_ROLES),
+                                  label + ":roles")
+        for role in STRUCTURE_UNIT_ROLES:
+            if role in roles:
+                _structure_role_mapping(errors, roles.get(role),
+                                        "%s:roles:%s" % (label, role))
+
+    for unit_id, parent in parents.items():
+        if parent is None or not _structure_nonempty(parent):
+            continue
+        if parent not in parents:
+            errors.append(("structure-registry-parent",
+                           "%s:%s" % (target, unit_id),
+                           "parent %r is not a registered unit id" % parent))
+    for unit_id in parents:
+        seen = set()
+        current = unit_id
+        while current is not None and current in parents:
+            if current in seen:
+                errors.append(("structure-registry-parent",
+                               "%s:%s" % (target, unit_id),
+                               "parent graph contains a cycle through %r"
+                               % current))
+                break
+            seen.add(current)
+            current = parents.get(current) \
+                if _structure_nonempty(parents.get(current)) else None
+
+    seen_layers = set()
+    for index, layer in enumerate(layers):
+        label = "%s:support_layers[%d]" % (target, index)
+        layer = _structure_closed(errors, layer, STRUCTURE_LAYER_FIELDS,
+                                  label)
+        layer_id = layer.get("layer_id")
+        if not _structure_nonempty(layer_id):
+            errors.append(("structure-registry-layer", label + ":layer_id",
+                           "must be a nonempty Profile Scope Layer ID"))
+        elif layer_id in seen_layers:
+            errors.append(("structure-registry-layer", label + ":layer_id",
+                           "duplicate support layer %r" % layer_id))
+        else:
+            seen_layers.add(layer_id)
+        role = layer.get("role")
+        if role not in STRUCTURE_LAYER_ROLES:
+            errors.append(("structure-registry-layer", label + ":role",
+                           "role must be one of %s; found %r"
+                           % (", ".join(STRUCTURE_LAYER_ROLES), role)))
+        root = layer.get("root")
+        if not _structure_nonempty(root) or str(root).endswith("/"):
+            errors.append(("structure-registry-layer", label + ":root",
+                           "must be a nonempty directory with no trailing "
+                           "slash"))
+        entry = _structure_closed(errors, layer.get("entry"),
+                                  STRUCTURE_ENTRY_FIELDS, label + ":entry")
+        if not _structure_nonempty(entry.get("path")) or \
+                not str(entry.get("path", "")).lower().endswith(".md"):
+            errors.append(("structure-registry-layer", label + ":entry",
+                           "entry.path must be a nonempty .md path"))
+        layout = layer.get("layout")
+        taxonomy = layer.get("taxonomy")
+        if layout == "flat":
+            if taxonomy is not None:
+                errors.append(("structure-registry-layout", label,
+                               "flat layout requires null taxonomy"))
+        elif layout == "grouped":
+            taxonomy = _structure_closed(errors, taxonomy,
+                                         STRUCTURE_TAXONOMY_FIELDS,
+                                         label + ":taxonomy")
+            for field in ("axis", "page_field"):
+                if not _structure_nonempty(taxonomy.get(field)):
+                    errors.append(("structure-registry-layout",
+                                   "%s:taxonomy:%s" % (label, field),
+                                   "must be a nonempty string"))
+            classes = taxonomy.get("classes")
+            if not isinstance(classes, list) or not classes:
+                errors.append(("structure-registry-layout",
+                               label + ":taxonomy:classes",
+                               "grouped layout requires at least one class"))
+                classes = []
+            names = []
+            directories = []
+            for c_index, entry_row in enumerate(classes):
+                c_label = "%s:taxonomy:classes[%d]" % (label, c_index)
+                entry_row = _structure_closed(
+                    errors, entry_row, STRUCTURE_TAXONOMY_CLASS_FIELDS,
+                    c_label)
+                for field, bucket in (("class", names),
+                                      ("directory", directories)):
+                    value = entry_row.get(field)
+                    if not _structure_nonempty(value):
+                        errors.append(("structure-registry-layout",
+                                       "%s:%s" % (c_label, field),
+                                       "must be a nonempty string"))
+                    else:
+                        bucket.append(value)
+            for bucket, what in ((names, "class"), (directories,
+                                                    "directory")):
+                if len(set(bucket)) != len(bucket):
+                    errors.append((
+                        "structure-registry-layout",
+                        label + ":taxonomy:classes",
+                        "%s values must be unique; the class-to-directory "
+                        "mapping is one-to-one" % what))
+        else:
+            errors.append(("structure-registry-layout", label + ":layout",
+                           "layout must be flat or grouped; found %r"
+                           % (layout,)))
+        _structure_role_mapping(errors, layer.get("coverage"),
+                                label + ":coverage")
+        gm_entry = layer.get("global_map_entry")
+        if gm_entry is not None and not _structure_nonempty(gm_entry):
+            errors.append(("structure-registry-layer",
+                           label + ":global_map_entry",
+                           "must be null or a nonempty entry id"))
+        binding_fields = STRUCTURE_LAYER_BINDING_FIELDS.get(role)
+        if binding_fields is not None:
+            bindings = _structure_closed(errors, layer.get("bindings"),
+                                         binding_fields, label + ":bindings")
+            for field in sorted(binding_fields & set(bindings)):
+                value = bindings.get(field)
+                if field == "index_mode":
+                    if value not in STRUCTURE_SOURCE_INDEX_MODES:
+                        errors.append((
+                            "structure-registry-layer",
+                            "%s:bindings:index_mode" % label,
+                            "must be derived or none; a hand-maintained "
+                            "member index is not a registrable mode"))
+                elif field == "readiness_projection":
+                    _structure_role_mapping(
+                        errors, value, "%s:bindings:%s" % (label, field))
+                elif not _structure_nonempty(value):
+                    errors.append(("structure-registry-layer",
+                                   "%s:bindings:%s" % (label, field),
+                                   "must be a nonempty string"))
+    return errors
+
+
+# ---------------------------------------------------------------------------
 # Receipt helpers (field definitions in Tools/schemas/receipt.template.jsonl)
 # ---------------------------------------------------------------------------
 

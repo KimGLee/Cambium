@@ -9,6 +9,8 @@ source_files:
   - kernel/K01 Scope and Architecture/02 Logical Architecture and Knowledge Spine.md
   - kernel/K01 Scope and Architecture/03 Foundation Preservation.md
   - kernel/K01 Scope and Architecture/04 Folder and Shared Ownership.md
+  - kernel/K01 Scope and Architecture/05 Structural Unit Interface.md
+  - kernel/K01 Scope and Architecture/06 Support Layer Structural Interfaces.md
   - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
   - kernel/K02 Knowledge Work Construction/02 Coverage Reconciliation.md
   - kernel/K02 Knowledge Work Construction/08 Architecture Samples and Dependency Planning.md
@@ -24,7 +26,7 @@ source_files:
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
-source_hash: '35ef411ea1d3'
+source_hash: 'bf3319e29e07'
 ---
 # R03 Module Build Card
 
@@ -37,6 +39,7 @@ Build or systematically expand a complete module. Load [[kernel/Cards/R01 Core B
 ## Before Start
 
 - [ ] Freeze module scope, exclusions, logical architecture, knowledge spine, foundation boundary, and shared ownership.
+- [ ] When the selected profile's Structure Registry is `configured`, resolve the module's registered unit — kind, parent, root, canonical entry, and explicit role modes. A directory that fails the K01/05 admission test stays covered by its parent's entry and is not silently promoted to a module; a support-layer module also loads the K01/06 layer interface.
 - [ ] Inventory files and required knowledge objects; assign one canonical owner and one Coverage Ledger record to each in-scope object.
 - [ ] Record missing prerequisites, gaps, incoming links, and existing user modifications. For a multi-batch module, project explicit Coverage manifests and dependencies into the Required Queue and validate it; a bounded single-batch module does not create an empty Queue.
 - [ ] Choose representative samples for the relevant note types and validate them before bulk application.
@@ -58,6 +61,7 @@ Build or systematically expand a complete module. Load [[kernel/Cards/R01 Core B
 - [ ] Batch in-scope checks, manual review, rendering evidence, AuditPlan, receipts, and delta are complete before `merge-ready`.
 - [ ] For multi-batch work, activation and batch close consume a current `Tools/check_queue.py` receipt.
 - [ ] The integrator applies each delta serially; after apply passes, no other Queue/Coverage write occurs before the same batch runs its global checks and closes with that receipt.
+- [ ] When the Structure Registry is `configured`, module close consumes a current `structure-registry` receipt from `python3 Tools/check_structure.py .`.
 - [ ] Module review finds no unexplained prerequisite gap, duplicate owner, orphan, or false Overview claim.
 - [ ] Coverage reconciliation does not read a sequence position, checkbox, file existence, resolvable link, or `Related` reference as authoring completion.
 

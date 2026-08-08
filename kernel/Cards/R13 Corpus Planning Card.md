@@ -11,9 +11,10 @@ source_files:
   - kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract.md
   - kernel/K02 Knowledge Work Construction/07 Gap Register Contract.md
   - kernel/K01 Scope and Architecture/02 Logical Architecture and Knowledge Spine.md
+  - kernel/K01 Scope and Architecture/05 Structural Unit Interface.md
   - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
   - kernel/K02 Knowledge Work Construction/02 Coverage Reconciliation.md
-source_hash: 'e5a0302b69fa'
+source_hash: 'a2224db9f146'
 ---
 # R13 Corpus Planning Card
 
@@ -43,6 +44,7 @@ owns that work.
 - Keep the Gap Register to semantic candidates and their admission handoff. Do not copy mutable Coverage, Queue, Progress, or receipt state.
 - Promote only an accepted gap with a stable owner, path, and disposition. Create or amend its canonical Coverage record; Queue projection happens later under R07 and the actual work route.
 - Preserve stable IDs across path renames and update every explicit Profile, Map, Matrix, Gap, Coverage, Queue, and Work Spec reference in one controlled migration.
+- When the selected profile's Structure Registry is `configured` and the operation touches a registered entry or its Global Map binding, reconcile the registry with `python3 Tools/check_structure.py .`; R13 reconciles bindings and never owns structure rules or takes over the structural work route.
 
 ## Gate
 

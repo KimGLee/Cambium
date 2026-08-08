@@ -15,12 +15,14 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - [[kernel/K02 Knowledge Work Construction/10 Existing Changes and Migration Safety|Existing Changes and Migration Safety]]
 - [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]]
 - [[kernel/K01 Scope and Architecture/04 Folder and Shared Ownership|Folder and Shared Ownership]]
+- [[kernel/K01 Scope and Architecture/05 Structural Unit Interface|Structural Unit Interface]]
+- When the migration touches a registered support layer or its taxonomy: [[kernel/K01 Scope and Architecture/06 Support Layer Structural Interfaces|Support Layer Structural Interfaces]]
 - [[kernel/K03 Note Types and Ownership/03 Split and Duplication Policy|Split and Duplication Policy]]
 - [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|Review Source and Migration Metadata]]
 - [[kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - [[kernel/K09 Wiki Link and Navigation/05 Verification and Anti-patterns|Verification and Anti-patterns]]
 
-Before migration, a manifest of source paths, target paths, incoming links, heading anchors, content owners, and the rollback boundary MUST be established. Migration batches MUST run in exclusive execution, not concurrently with other batches ([[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|K13/10]] Concurrent Batches).
+Before migration, a manifest of source paths, target paths, incoming links, heading anchors, content owners, and the rollback boundary MUST be established. When the migration changes registered structure — unit roots, support-layer layouts, or a grouped taxonomy — the target Structure Registry bindings and classification predicate MUST be frozen before any file moves, and the manifest maps every old path to its new class and directory. Migration batches MUST run in exclusive execution, not concurrently with other batches ([[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|K13/10]] Concurrent Batches).
 
 ## Triggered
 
@@ -39,6 +41,7 @@ Before migration, a manifest of source paths, target paths, incoming links, head
 - [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]]
 - [[kernel/K12 Quality Assurance/05 Automated and Manual Checks|Automated and Manual Checks]]
 - [[kernel/K12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]], run by the integrator on the batch in which the migration closes
+- When the migration changed registered structure, close consumes a current `structure-registry` receipt from `Tools/check_structure.py` against the migrated snapshot
 - [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting|Completion Gate and Reporting]]
 
 ## Related

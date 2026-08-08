@@ -79,7 +79,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_profile"
-TOOL_VERSION = "1.7.0"
+TOOL_VERSION = "1.8.0"
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -114,6 +114,8 @@ CORPUS_ARTIFACT_FIELDS = {
 CORPUS_SCALE_FIELDS = {"rank", "value", "predicate", "target_eligible"}
 CORPUS_AUTHORITY_FIELDS = {"role_id", "decision_scope_id"}
 CORPUS_DECISION_SCOPE = "corpus-plan-semantic-acceptance"
+
+STRUCTURE_REGISTRY_SLOT = "Structure Registry"
 
 AUDIT_DIMENSION_SLOT = "Audit Dimension Registry"
 AUDIT_DIMENSION_SECTION = "Extension Dimensions"
@@ -798,6 +800,24 @@ def main():
                         "Corpus Planning must bind a restricted-YAML .yaml file")
                 else:
                     validate_corpus_planning_slot(detail, target, add)
+            elif slot == STRUCTURE_REGISTRY_SLOT:
+                target = os.path.relpath(
+                    detail, root).replace(os.sep, "/")
+                if not target.lower().endswith(".yaml"):
+                    add("structure-registry-binding", target, "fail",
+                        "Structure Registry must bind a restricted-YAML "
+                        ".yaml file")
+                else:
+                    try:
+                        document = kblib.parse_yaml_subset(read_text(detail))
+                    except (OSError, kblib.YamlSubsetError) as exc:
+                        add("structure-registry-yaml", target, "fail",
+                            "cannot parse restricted YAML: %s" % exc)
+                    else:
+                        for check, label, details in \
+                                kblib.validate_structure_registry_shape(
+                                    document, target):
+                            add(check, label, "fail", details)
             elif slot == AUDIT_DIMENSION_SLOT:
                 target = (os.path.relpath(detail, root).replace(os.sep, "/") +
                           "#" + AUDIT_DIMENSION_SECTION)

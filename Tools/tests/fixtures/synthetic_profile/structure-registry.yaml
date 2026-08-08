@@ -1,0 +1,12 @@
+# Synthetic fixture Structure Registry: the inactive branch.
+# Interface: profiles/README.md#Structure-Registry-Slot
+
+schema_version: 1
+
+applicability:
+  state: not-applicable
+  reason: "Synthetic single-page fixture corpus; nothing passes the K01/05 module admission test."
+
+units: []
+
+support_layers: []
