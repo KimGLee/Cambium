@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.8.0"
+TOOL_VERSION = "1.9.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -1200,11 +1200,19 @@ def _contract_anchor_chain(progress, catalog):
 
     remaining = list(events)
     while remaining:
+        # A queue-replan bumps the live queue_revision without touching the
+        # Task Contract, so it is deliberately not an anchor event; the next
+        # anchor event therefore continues from the same contract identity at
+        # a strictly later revision. The contract bytes, version, and scope
+        # remain the chain; revisions only need to stay monotonic and agree
+        # with each event's own sealed before/after pair.
         candidates = [event for event in remaining
                       if event["before_sha"] == anchor and
                       event["before_version"] == version and
                       event["before_scope"] == scope and
-                      event["revision_before"] == revision]
+                      isinstance(event["revision_before"], int) and
+                      not isinstance(event["revision_before"], bool) and
+                      event["revision_before"] >= revision]
         if not candidates:
             errors.extend("%s does not continue the prior contract anchor" %
                           event["label"] for event in remaining)
@@ -1219,7 +1227,7 @@ def _contract_anchor_chain(progress, catalog):
         next_revision = event["revision_after"]
         if (not isinstance(next_revision, int) or
                 isinstance(next_revision, bool) or
-                next_revision != revision + 1):
+                next_revision != event["revision_before"] + 1):
             errors.append("%s must increment queue_revision exactly once" %
                           event["label"])
             break

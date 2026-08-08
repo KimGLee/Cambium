@@ -1040,6 +1040,47 @@ class CompileQueueTests(unittest.TestCase):
             "serial-integrator",
             result["items_by_id"]["B2"]["execution_mode"])
 
+        # The queue-replan bumped the live queue_revision without an anchor
+        # event; a later contract-anchor event must continue from the same
+        # contract identity across that gap instead of failing the chain.
+        catalog = check_queue.historical_receipt_catalog(result)
+        progress = result["progress"]
+        chain, chain_errors = check_queue._contract_anchor_chain(
+            progress, catalog)
+        self.assertEqual([], chain_errors)
+        head = chain[-1]
+        live_revision = result["queue"]["queue_revision"]
+        self.assertGreater(live_revision, head["queue_revision"])
+        synthetic_id = "audit-adopt_standards-synthetic-0001"
+        synthetic = dict(catalog[head["receipt_id"]][1])
+        synthetic.update({
+            "receipt_id": synthetic_id,
+            "before_contract_sha256": head["contract_sha256"],
+            "after_contract_sha256": head["contract_sha256"],
+            "before_contract_version": head["contract_version"],
+            "after_contract_version": head["contract_version"],
+            "before_contract_scope_version": head["scope_version"],
+            "after_contract_scope_version": head["scope_version"],
+            "queue_revision_before": live_revision,
+            "queue_revision_after": live_revision + 1,
+        })
+        catalog = dict(catalog)
+        catalog[synthetic_id] = ("synthetic", synthetic)
+        progress = copy.deepcopy(progress)
+        progress.setdefault("standards_adoptions", []).append({
+            "id": "SA-SYNTH-1",
+            "verification_receipt": synthetic_id,
+            "queue_revision_before": live_revision,
+            "queue_revision_after": live_revision + 1,
+            "contract_version_before": head["contract_version"],
+            "contract_version_after": head["contract_version"],
+        })
+        progress["queue_revision"] = live_revision + 1
+        chain2, chain2_errors = check_queue._contract_anchor_chain(
+            progress, catalog)
+        self.assertEqual([], chain2_errors)
+        self.assertEqual(live_revision + 1, chain2[-1]["queue_revision"])
+
     def test_replan_requires_exact_pending_amendment(self):
         coverage_path = self.root / check_queue.COVERAGE_PATH
         coverage = kblib.load_yaml_file(coverage_path)
