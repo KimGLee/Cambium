@@ -1154,7 +1154,7 @@ def profile_scope_layers(scope_text):
 
 METADATA_CONTRACT_TOP_FIELDS = frozenset((
     "schema_version", "applicability", "applicability_differences",
-    "extension_fields", "relationship_extensions",
+    "extension_fields", "relationship_extensions", "section_roles",
 ))
 METADATA_APPLICABILITY_FIELDS = frozenset(("state",))
 METADATA_MODES = frozenset((
@@ -1172,6 +1172,10 @@ METADATA_EXTENSION_FIELDS = frozenset((
 METADATA_RELATIONSHIP_FIELDS = frozenset((
     "field", "mode", "direction", "target", "shape", "owner",
 ))
+METADATA_SECTION_ROLE_FIELDS = frozenset((
+    "role", "titles", "aliases", "owner",
+))
+METADATA_SECTION_ROLES = frozenset(("sources", "related"))
 # The only mode transitions a profile difference may declare (K08/06:
 # a profile only tightens).
 METADATA_TIGHTENING = frozenset((
@@ -1240,7 +1244,7 @@ def validate_metadata_contract_shape(document, target="metadata-contract"):
     state = applicability.get("state")
     lists = {}
     for name in ("applicability_differences", "extension_fields",
-                 "relationship_extensions"):
+                 "relationship_extensions", "section_roles"):
         value = document.get(name)
         if not isinstance(value, list):
             errors.append(("metadata-contract-schema",
@@ -1319,6 +1323,44 @@ def validate_metadata_contract_shape(document, target="metadata-contract"):
     for index, entry in enumerate(lists["extension_fields"]):
         label = "%s:extension_fields[%d]" % (target, index)
         check_entry(entry, METADATA_EXTENSION_FIELDS, label, True)
+
+    seen_roles = set()
+    for index, entry in enumerate(lists["section_roles"]):
+        label = "%s:section_roles[%d]" % (target, index)
+        entry = _structure_closed(errors, entry,
+                                  frozenset(("role", "titles", "owner")),
+                                  label, frozenset(("aliases",)))
+        role = entry.get("role")
+        if role not in METADATA_SECTION_ROLES:
+            errors.append(("metadata-contract-section-role",
+                           label + ":role",
+                           "role must be sources or related; found %r"
+                           % (role,)))
+        elif role in seen_roles:
+            errors.append(("metadata-contract-section-role",
+                           label + ":role",
+                           "role %r is bound more than once" % role))
+        else:
+            seen_roles.add(role)
+        titles = entry.get("titles")
+        if not isinstance(titles, list) or not titles or \
+                not all(_structure_nonempty(v) for v in titles):
+            errors.append(("metadata-contract-section-role",
+                           label + ":titles",
+                           "must be a nonempty list of nonempty display "
+                           "titles"))
+        aliases = entry.get("aliases")
+        if aliases is not None and (
+                not isinstance(aliases, list) or
+                not all(_structure_nonempty(v) for v in aliases)):
+            errors.append(("metadata-contract-section-role",
+                           label + ":aliases",
+                           "must be a list of nonempty migration aliases"))
+        if not _structure_nonempty(entry.get("owner")):
+            errors.append(("metadata-contract-section-role",
+                           label + ":owner",
+                           "must point at the Language Contract owner"))
+
     for index, entry in enumerate(lists["relationship_extensions"]):
         label = "%s:relationship_extensions[%d]" % (target, index)
         entry = check_entry(entry, METADATA_RELATIONSHIP_FIELDS, label, True)

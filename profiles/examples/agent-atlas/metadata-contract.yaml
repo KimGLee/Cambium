@@ -46,3 +46,19 @@ relationship_extensions:
     target: page
     shape: list-of-paths
     owner: "profiles/agent-atlas/expression-layer.md"
+
+section_roles:
+  - role: sources
+    titles:
+      - "Sources（来源）"
+      - "来源"
+    aliases:
+      - "Sources"
+    owner: "profiles/agent-atlas/language-contract.md"
+  - role: related
+    titles:
+      - "Related（相关）"
+      - "相关"
+    aliases:
+      - "Related"
+    owner: "profiles/agent-atlas/language-contract.md"

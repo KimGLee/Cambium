@@ -23,7 +23,7 @@ source_files:
   - kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
-source_hash: 'd1602e372cc0'
+source_hash: 'c0251fdd90df'
 ---
 # R02 Single Note Authoring Card
 
@@ -54,7 +54,7 @@ Create, rewrite, or target one canonical note. Load [[kernel/Cards/R01 Core Boot
 ## M-tier Gate
 
 - [ ] Type, owner, scope, depth, priority, tier, and applicable statuses are explicit and consistent.
-- [ ] Frontmatter satisfies the compiled page contract for this note type; a `page-contract` advisory candidate on this page is either fixed or carries a recorded migration disposition.
+- [ ] Frontmatter satisfies the compiled page contract for this note type, and a Core/System page carries exactly one sources-role section under a registered display title — or, for a derived expression page adding no factual claim, an explicit evidence or canonical binding. A `page-contract` advisory candidate on this page is either fixed or carries a recorded migration disposition.
 - [ ] The opening states the problem or position; the body explains the mechanism or causal chain, an important boundary, and an appropriate example.
 - [ ] Applicable failure behavior identifies trigger, symptom, cause, detection, and mitigation, or explicitly states why it is not applicable.
 - [ ] Key, time-sensitive, and quantitative claims have role-clear evidence; claim, inference, synthesis, and recommendation are not conflated.

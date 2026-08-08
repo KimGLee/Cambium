@@ -154,15 +154,17 @@ def load_contract(path, findings):
         findings.add("page-contract-input", path, "fail",
                      "cannot parse the compiled contract: %s — compose it "
                      "with Tools/compose_page_contract.py" % exc)
-        return None
+        return None, None
     fields = data.get("fields") if isinstance(data, dict) else None
     if not isinstance(fields, dict) or not fields:
         findings.add("page-contract-input", path, "fail",
                      "the compiled contract carries no fields mapping; an "
                      "empty contract would turn this gate into an "
                      "unconditional pass")
-        return None
-    return fields
+        return None, None
+    roles = data.get("section_roles") \
+        if isinstance(data.get("section_roles"), dict) else {}
+    return fields, roles
 
 
 def condition_holds(condition, fields):
@@ -260,6 +262,42 @@ def check_shape(root, rel, name, spec, value, report):
     # nonempty-string and unknown shapes: presence checks already cover them.
 
 
+def check_sources_role(root, rel, text, fields, contract, roles, report):
+    """Deterministic sources-role check (K07/02 Source Placement)."""
+    sources = roles.get("sources") if isinstance(roles, dict) else None
+    if not isinstance(sources, dict):
+        return
+    titles = {str(v).strip() for v in sources.get("titles") or []}
+    if not titles:
+        return
+    body = kblib.strip_code(text)
+    headings = [h.strip() for _l, _lv, h in kblib.headings_of(body)]
+    matches = [h for h in headings if h in titles]
+    if len(matches) > 1:
+        report("page-contract-sources-role", rel,
+               "more than one sources-role heading (%s); one page carries "
+               "at most one" % ", ".join(sorted(set(matches))))
+        return
+    condition = (sources.get("applicability") or {}).get("condition")
+    if condition is not None and not condition_holds(condition, fields):
+        return
+    if matches:
+        return
+    binding = sources.get("binding_satisfies") or {}
+    for name in binding.get("fields") or []:
+        if fields.get(name) not in (None, "", []):
+            return
+    directions = set(binding.get("directions") or [])
+    if directions:
+        for name, spec in contract.items():
+            if spec.get("direction") in directions and \
+                    fields.get(name) not in (None, "", []):
+                return
+    report("page-contract-sources-role", rel,
+           "page owes the sources role (K07/02) but carries no registered "
+           "sources-role heading and no satisfying evidence binding")
+
+
 def run(root, profile_override, contract_path, scope, excludes, strict,
         receipts_path):
     findings = Findings()
@@ -267,7 +305,7 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
 
     contract_abs = contract_path if os.path.isabs(contract_path) \
         else os.path.join(root, contract_path)
-    contract = load_contract(contract_abs, findings)
+    contract, section_roles = load_contract(contract_abs, findings)
 
     scan_roots = []
     ledger_dispositions = {}
@@ -388,6 +426,9 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                 continue
             if present and not empty:
                 check_shape(root, rel, name, spec, value, report)
+
+        check_sources_role(root, rel, read_text(path), fields, contract,
+                           section_roles, report)
 
         for name in sorted(fields):
             if name in contract:

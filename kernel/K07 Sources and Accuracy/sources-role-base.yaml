@@ -1,0 +1,32 @@
+# Cambium kernel sources-role base.
+# Semantic owner: "kernel/K07 Sources and Accuracy/02 Claims Sources and Classification.md#Source Placement"
+# Merged into Tools/page_contract.yaml by Tools/compose_page_contract.py.
+# The deterministic half of the sources role: which pages owe the section
+# (same-page frontmatter condition only — the conditional atomic-claim rule
+# stays a manual disposition), the kernel default display title, and which
+# explicit bindings let a derived expression page satisfy the evidence
+# interface without a heading. The selected profile's Language Contract binds
+# reader-facing display titles and bounded migration aliases through the
+# Metadata Contract `section_roles` block; checkers never hardcode one
+# language's heading.
+
+schema_version: 1
+
+role: sources
+
+default_titles:
+  - Sources
+
+applicability:
+  condition:
+    any:
+      - field: depth
+        in:
+          - core
+          - system
+
+binding_satisfies:
+  fields:
+    - evidence_sources
+  directions:
+    - expression-to-canonical

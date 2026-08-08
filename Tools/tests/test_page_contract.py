@@ -22,6 +22,9 @@ fields:
   type:
     mode: required
     shape: nonempty-string
+  depth:
+    mode: optional
+    shape: nonempty-string
   authoring_status:
     mode: required
     shape: nonempty-string
@@ -49,6 +52,24 @@ fields:
     mode: derived
     shape: date
     persisted: false
+"""
+
+SOURCES_ROLE_BASE = """schema_version: 1
+role: sources
+default_titles:
+  - Sources
+applicability:
+  condition:
+    any:
+      - field: depth
+        in:
+          - core
+          - system
+binding_satisfies:
+  fields:
+    - evidence_sources
+  directions:
+    - expression-to-canonical
 """
 
 RELATIONSHIP_BASE = """schema_version: 1
@@ -100,6 +121,7 @@ applicability:
 applicability_differences: []
 extension_fields: []
 relationship_extensions: []
+section_roles: []
 """
 
 CONTRACT_CONFIGURED = """schema_version: 1
@@ -114,6 +136,7 @@ extension_fields:
     shape: path
     owner: "scope.md"
 relationship_extensions: []
+section_roles: []
 """
 
 GOOD_PAGE = """---
@@ -128,6 +151,7 @@ def base_files(contract=CONTRACT_DEFAULTS):
     return {
         "kernel/applicability-base.yaml": APPLICABILITY_BASE,
         "kernel/relationship-base.yaml": RELATIONSHIP_BASE,
+        "kernel/sources-role-base.yaml": SOURCES_ROLE_BASE,
         "profile/profile.md": MANIFEST,
         "profile/scope.md": SCOPE,
         "profile/vocabulary-extensions.yaml": VOCAB,
@@ -152,6 +176,7 @@ class PageContractTests(unittest.TestCase):
             [sys.executable, str(COMPOSER), "--root", str(root),
              "--base", str(root / "kernel/applicability-base.yaml"),
              "--relationships", str(root / "kernel/relationship-base.yaml"),
+             "--sources-role", str(root / "kernel/sources-role-base.yaml"),
              "--profile", "profile",
              "--output", str(root / "page_contract.yaml")],
             text=True, capture_output=True, check=False)
@@ -185,6 +210,7 @@ class PageContractTests(unittest.TestCase):
             [sys.executable, str(COMPOSER), "--root", str(root),
              "--base", str(root / "kernel/applicability-base.yaml"),
              "--relationships", str(root / "kernel/relationship-base.yaml"),
+             "--sources-role", str(root / "kernel/sources-role-base.yaml"),
              "--profile", "profile",
              "--output", str(root / "page_contract.yaml"), "--check"],
             text=True, capture_output=True, check=False)
@@ -390,6 +416,65 @@ class PageContractTests(unittest.TestCase):
         result = self.check(root)
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("disagrees with the Coverage Ledger", result.stdout)
+
+    # ---- section roles (K07/02, K09/04) ----
+
+    def sources_files(self, page_body, contract=CONTRACT_DEFAULTS):
+        files = base_files(contract)
+        files["Domain/Deep.md"] = page_body
+        return files
+
+    DEEP_HEADER = ("---\ntype: concept\nauthoring_status: drafted\n"
+                   "depth: core\n---\n# Deep\n\n")
+
+    def test_core_page_without_sources_role_is_reported(self):
+        root = self.build(self.sources_files(self.DEEP_HEADER + "Body.\n"))
+        self.compose(root)
+        result = self.check(root)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("owes the sources role", result.stdout)
+
+    def test_sources_heading_satisfies_the_role(self):
+        root = self.build(self.sources_files(
+            self.DEEP_HEADER + "## Sources\n\n- [Doc](https://e.org)\n"))
+        self.compose(root)
+        result = self.check(root)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_evidence_binding_satisfies_the_role(self):
+        files = self.sources_files(
+            "---\ntype: concept\nauthoring_status: drafted\ndepth: core\n"
+            "evidence_sources:\n  - \"Domain/Source\"\n---\n# Deep\n")
+        files["Domain/Source.md"] = (
+            "---\ntype: source-note\nauthoring_status: drafted\n"
+            "source_url: \"https://example.org/doc\"\n---\n# S\n"
+            "\n## Sources\n\n- x\n")
+        root = self.build(files)
+        self.compose(root)
+        result = self.check(root)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_duplicate_sources_role_headings_are_reported(self):
+        root = self.build(self.sources_files(
+            self.DEEP_HEADER + "## Sources\n\n- a\n\n## Sources\n\n- b\n"))
+        self.compose(root)
+        result = self.check(root)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("more than one sources-role heading", result.stdout)
+
+    def test_missing_related_is_never_reported(self):
+        root = self.build(self.sources_files(
+            self.DEEP_HEADER + "## Sources\n\n- a\n"))
+        self.compose(root)
+        result = self.check(root)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn("Related", result.stdout)
+
+    def test_shallow_page_owes_no_sources_role(self):
+        root = self.build(base_files())  # Domain/Page.md has no depth field
+        self.compose(root)
+        result = self.check(root)
+        self.assertEqual(result.returncode, 0, result.stdout)
 
     # ---- fail-closed scope ----
 
