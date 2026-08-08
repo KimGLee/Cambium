@@ -18,12 +18,13 @@ source_files:
   - kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract.md
   - kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority.md
   - kernel/K08 Metadata and Status/08 Relationship Metadata Contract.md
+  - kernel/K08 Metadata and Status/09 Page Boundary Contract.md
   - kernel/K09 Wiki Link and Navigation/01 Link Semantics and Body Links.md
   - kernel/K10 Writing and Formatting/01 Naming Language and Prose.md
   - kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
-source_hash: 'c0251fdd90df'
+source_hash: '4f71177bf3cb'
 ---
 # R02 Single Note Authoring Card
 
@@ -40,7 +41,7 @@ Create, rewrite, or target one canonical note. Load [[kernel/Cards/R01 Core Boot
 - [ ] Choose the applicable concept, process, system, or source/evaluation structure.
 - [ ] Resolve prerequisite, parent, key dependency, source, and terminology needs.
 - [ ] Apply the `Language Contract` values and any `Vocabulary Extensions` field the selected profile registers, without weakening kernel ownership or quality rules.
-- [ ] Fill frontmatter by the compiled applicability contract: required and met-conditional fields nonempty, no empty placeholders, no unregistered fields, and relationship fields only under their K08/08 name, direction, and shape. Never hand-fill a derived or projection value, and never write `learning_status` or another user-owned field to silence a check.
+- [ ] Fill frontmatter by the compiled applicability contract: required and met-conditional fields nonempty, no empty placeholders, no unregistered fields, and relationship fields only under their K08/08 name, direction, and shape, and any `boundary` block under its K08/09 schema with the marker-delimited projection left to `Tools/render_boundary_projection.py`. Never hand-fill a derived or projection value, and never write `learning_status` or another user-owned field to silence a check.
 
 ## During
 

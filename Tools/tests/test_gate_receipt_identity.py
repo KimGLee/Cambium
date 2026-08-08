@@ -13,6 +13,7 @@ sys.path.insert(0, str(TOOLS_DIR))
 
 import check_links
 import check_batch_close
+import check_boundary_contract
 import check_corpus_plan
 import check_proof
 import check_queue
@@ -1055,7 +1056,8 @@ class RuntimeReceiptIdentityTests(unittest.TestCase):
             {check_links.TOOL, check_vocab.TOOL, check_residual_content.TOOL,
              check_batch_close.TOOL, check_corpus_plan.TOOL,
              record_corpus_acceptance.TOOL, adopt_standards.TOOL,
-             check_structure.TOOL, check_page_contract.TOOL},
+             check_structure.TOOL, check_page_contract.TOOL,
+             check_boundary_contract.TOOL},
             set(producers) - {check_queue.MANUAL_ATTESTATION_TOOL,
                               check_queue.TOOL, check_proof.TOOL})
         self.assertEqual(

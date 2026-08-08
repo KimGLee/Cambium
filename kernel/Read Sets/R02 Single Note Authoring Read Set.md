@@ -37,6 +37,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - Diagrams, images, or visualizations: read [[kernel/K10 Writing and Formatting/03 Diagrams and Assets|Diagrams and Assets]].
 - Deep-dive cases, failure modes, or debugging needed: read [[kernel/K04 Content Depth/06 Examples Deep Dives and Failure Analysis|Examples Deep Dives and Failure Analysis]].
 - The page carries `evidence_sources`, `source_url`, `supersedes`, version-evolution, or any relationship-shaped frontmatter: read [[kernel/K08 Metadata and Status/08 Relationship Metadata Contract|Relationship Metadata Contract]].
+- The page carries or gains a `boundary` frontmatter block, or its body carries the boundary projection markers: read [[kernel/K08 Metadata and Status/09 Page Boundary Contract|Page Boundary Contract]].
 - Mechanism sections of an existing page (Definition, Mechanism, formulas, core conclusions) are substantively modified: read [[kernel/K12 Quality Assurance/11 Content-level Propagation|Content-level Propagation]] and mark the direct downstream notes.
 
 ## Gate
