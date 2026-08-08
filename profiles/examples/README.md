@@ -37,7 +37,7 @@ Every example README carries a `## Validation Provenance` table: for each valida
 
 The three examples together are not a complete tour of the interface, and this section names what is still missing so that an absent form is not read as a forbidden one.
 
-Between them the examples now show both sides of every optional and conditional switch in `profiles/_template/`: Atlas configures sixteen of the seventeen, Minimal Notes leaves all seventeen inactive, and each package states the reason for its own choice.
+Between them the examples now show both sides of every optional and conditional switch in `profiles/_template/` that existed when they were written: Atlas configures sixteen of the seventeen, Minimal Notes leaves all seventeen inactive, and each package states the reason for its own choice. The optional K08/09 `boundary_projection` key added later is left in its inactive kernel-default form by every example (see the table below).
 
 Documented forms that still have **no** worked example anywhere in this repository:
 
@@ -47,5 +47,6 @@ Documented forms that still have **no** worked example anywhere in this reposito
 | Gap Register statuses `promoted` and `resolved` | Both require a real Coverage object and initialized `.cambium/` runtime state, which this repository deliberately does not carry. |
 | A non-generic deterministic residual verifier, and additional optional candidate scans | Every example is served by the generic `Tools/check_residual_content.py` matcher with one registered scan. |
 | A profile-owned extension audit dimension beyond the one Atlas registers | Not needed by the other two domains. |
+| A `boundary_projection` display-label override, or a profile-closed `boundary` concern vocabulary | The K08/09 kernel display labels and the open (shape-checked only) concern-slug state are the intended defaults during a corpus's boundary migration; closing the vocabulary is a later governance decision no example has reached. |
 
 An adopter who needs one of these writes it from the interface text and the kernel owner, not from an example.

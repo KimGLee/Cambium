@@ -1,7 +1,8 @@
 # Metadata Contract — the profile's page-contract differences.
 # Interface: profiles/README.md#metadata-contract-slot
 # Semantic owners: kernel/K08 Metadata and Status/06 Frontmatter
-# Applicability Contract.md and 08 Relationship Metadata Contract.md; writer
+# Applicability Contract.md, 08 Relationship Metadata Contract.md, and
+# 09 Page Boundary Contract.md; writer
 # authority: 07 Frontmatter Writer and Projection Authority.md.
 # Kernel defaults live in kernel/K08 Metadata and Status/applicability-base.yaml
 # and relationship-base.yaml; declare only differences here — never restate a
@@ -19,7 +20,15 @@
 #                              aliases?: [...], owner}] — display titles the
 #   Language Contract binds for the K07 sources / K09 related section roles.
 # Conditions: {all|any: [{field, in: [...]} | {field, absent: true}]}.
-# Shapes: nonempty-string | date | url | path | list-of-strings | list-of-paths.
+# Shapes: nonempty-string | date | url | path | list-of-strings |
+#   list-of-paths | delegated (internal structure owned by the gate the
+#   base entry's `delegate` key names; kernel-only — a profile extension
+#   does not declare it).
+#
+# Optional top-level key (omit it entirely to keep kernel defaults):
+# boundary_projection:            K08/09 boundary-projection display labels;
+#   labels:                       display text only, never schema/semantics.
+#     preamble|owns|excludes|owner|goals|non_goals: "display string"
 # Compose with: python3 Tools/compose_page_contract.py
 
 schema_version: 1
