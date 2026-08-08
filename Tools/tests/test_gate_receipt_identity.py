@@ -586,7 +586,7 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
 
     def test_tool_version_drift_from_the_producer_is_reported(self):
         errors = self.drifted("batch-close", tool_version="9.9.9")
-        self.assertTrue(any("but check_batch_close stamps 1.3.0" in error
+        self.assertTrue(any("but check_batch_close stamps 1.4.0" in error
                             for error in errors), errors)
 
     def test_check_drift_from_the_producer_is_reported(self):

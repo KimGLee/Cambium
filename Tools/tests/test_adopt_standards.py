@@ -51,9 +51,9 @@ class AdoptStandardsTests(unittest.TestCase):
             "| Gate ID | Tool | Tool version | Check | Mode | Dimension "
             "| Lifecycle |\n"
             "|---|---|---|---|---|---|---|\n"
-            "| required-queue-consistency | check_queue | 1.9.0 | required_queue | consistency | * | not-batch-scoped |\n"
-            "| required-queue-admission | check_queue | 1.9.0 | required_queue | require-ready:* | * | queued |\n"
-            "| batch-close | check_batch_close | 1.3.0 | batch_close_gate | * | * | merge-ready |\n",
+            "| required-queue-consistency | check_queue | 1.10.0 | required_queue | consistency | * | not-batch-scoped |\n"
+            "| required-queue-admission | check_queue | 1.10.0 | required_queue | require-ready:* | * | queued |\n"
+            "| batch-close | check_batch_close | 1.4.0 | batch_close_gate | * | * | merge-ready |\n",
             encoding="utf-8")
 
     def tearDown(self):
@@ -757,7 +757,7 @@ class AdoptStandardsTests(unittest.TestCase):
                     "kernel/K00 Standards Control/12 Control Registry.md")
         registry.write_text(
             registry.read_text(encoding="utf-8") +
-            "| required-queue-completion | check_queue | 1.9.0 "
+            "| required-queue-completion | check_queue | 1.10.0 "
             "| required_queue | require-complete | * | queue-exhausted |\n",
             encoding="utf-8")
         invalidated_gate = self.open_b1_and_hold_for_revalidation()

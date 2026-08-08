@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.9.0"
+TOOL_VERSION = "1.10.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -186,7 +186,7 @@ GENERIC_WRITER_TOOLS = frozenset((
     "check_batch_close", "adopt_standards", "register_amendment",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.3.0"
+BATCH_CLOSE_TOOL_VERSION = "1.4.0"
 # A supported-versions catalog exists for the one predicate that is still
 # shared between current-action and historical callers.  No such catalog is
 # kept for the Queue gate or the Terminal Proof: enumerating accepted producer
