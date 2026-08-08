@@ -183,8 +183,13 @@ GENERIC_WRITER_TOOLS = frozenset((
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
 BATCH_CLOSE_TOOL_VERSION = "1.3.0"
+# A supported-versions catalog exists for the one predicate that is still
+# shared between current-action and historical callers.  No such catalog is
+# kept for the Queue gate or the Terminal Proof: enumerating accepted producer
+# versions grows without bound, and it still admits a receipt that merely
+# claims an old version, so it buys nothing.  Historical receipts are judged
+# by :func:`accounted_standards_versions` instead.
 SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((BATCH_CLOSE_TOOL_VERSION,))
-SUPPORTED_QUEUE_GATE_TOOL_VERSIONS = frozenset((TOOL_VERSION,))
 CORPUS_PLAN_TOOL = "check_corpus_plan"
 CORPUS_PLAN_TOOL_VERSION = "1.5.0"
 MANUAL_ATTESTATION_TOOL = "manual-attestation"
@@ -217,9 +222,6 @@ BATCH_REVIEW_GATE_ID = "batch-review"
 BATCH_REVIEW_CHECK = "batch_gate"
 TERMINAL_PROOF_TOOL = "check_proof"
 TERMINAL_PROOF_TOOL_VERSION = "1.15.0"
-SUPPORTED_TERMINAL_PROOF_TOOL_VERSIONS = frozenset((
-    TERMINAL_PROOF_TOOL_VERSION,
-))
 CORPUS_PLAN_TRIGGERS = frozenset(("R13", "manifest"))
 CORPUS_PLAN_PATH_SHA_FIELDS = (
     ("selected_profile_manifest", "selected_profile_manifest_sha256"),
@@ -2176,15 +2178,36 @@ def _read_set_load_closure(root, selected_paths,
     return read_sets, modules, invalid_selected, sorted(set(closure_errors))
 
 
-def _live_read_set_load_errors(root, contract):
-    """Validate the derived Read Set closure of the current Task Contract."""
+def _live_read_set_load_findings(root, contract):
+    """Return structural errors and closure gaps of the live Task Contract.
+
+    The two findings are separated because only one of them can be repaired
+    from where the checker stands.  A selected Read Set that is unsafe,
+    unreadable, or unusable as a traversal root leaves the load declaration
+    unresolvable, and no reading of history makes broken bytes resolvable, so
+    it stays an error; ``invalid_selected`` is that same class, a path that
+    cannot serve as a traversal root, and is reported with it.  A *completeness*
+    gap -- a Read Set or a non-Read-Set target the resolved closure names and
+    the declaration omits -- is returned separately and is never a runtime
+    error.
+
+    The reason is the one the plan-side twin states at ``validate_current``:
+    the live contract's five load fields were written by a Standards adoption
+    whose plan bytes are sealed into append-only receipts, and
+    ``Tools/adopt_standards.py`` -- the only writer that can re-declare them
+    for a running task -- refuses to start while ``validate_runtime`` reports
+    an error.  Making the gap an error would therefore lock the instance out of
+    the one transaction that repairs it, exactly as refusing a sealed
+    historical plan would.  K00/15 puts the judgment where a declaration is
+    still writable: a plan being admitted.
+    """
     if not isinstance(contract, dict):
-        return []
+        return [], []
     selected_values = contract.get("selected_read_sets")
     loaded_values = contract.get("loaded_module_paths")
     if not isinstance(selected_values, list) or not isinstance(
             loaded_values, list):
-        return []
+        return [], []
     selected = set(value for value in selected_values
                    if _nonempty_string(value))
     loaded = set(value for value in loaded_values
@@ -2203,17 +2226,18 @@ def _live_read_set_load_errors(root, contract):
                 "Progress contract.selected_read_sets path %s cannot be used "
                 "as a Read Set traversal root, per %s" %
                 (target, READ_SET_BOUNDARY_OWNER_PATH))
+    gaps = []
     for target in sorted(read_sets - selected):
-        errors.append(
+        gaps.append(
             "Progress contract.selected_read_sets omits %s, which a loading "
             "boundary of its transitive Read Set closure selects, per %s" %
             (target, READ_SET_BOUNDARY_OWNER_PATH))
     for target in sorted(modules - loaded):
-        errors.append(
+        gaps.append(
             "Progress contract.loaded_module_paths omits %s, which a loading "
             "boundary in the transitive Read Set closure names, per %s" %
             (target, READ_SET_BOUNDARY_OWNER_PATH))
-    return errors
+    return errors, gaps
 
 
 def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
@@ -2742,6 +2766,7 @@ def _standards_adoption_errors(root, progress, catalog, queue):
         return []
     errors = []
     previous = None
+    accounted = accounted_standards_versions(progress, queue)
     for index, record in enumerate(records):
         if not isinstance(record, dict):
             continue
@@ -2814,11 +2839,13 @@ def _standards_adoption_errors(root, progress, catalog, queue):
             if record.get(field) != expected:
                 errors.append("%s %s does not match its plan" % (label, field))
         receipt_id = record.get("verification_receipt")
+        # Historical: a committed adoption's own commit receipt.  Its producer
+        # version is whatever `adopt_standards` was when the transaction ran,
+        # so the era it claims is checked instead of today's constant.
         receipt = _require_receipt(
             catalog, receipt_id, "%s commit" % label, errors,
             expected={
                 "tool": STANDARDS_ADOPTION_TOOL,
-                "tool_version": STANDARDS_ADOPTION_TOOL_VERSION,
                 "gate_id": "standards-adoption",
                 "check": "standards_adoption",
                 "target": record.get("id"),
@@ -2832,6 +2859,8 @@ def _standards_adoption_errors(root, progress, catalog, queue):
                 "transaction_id": record.get("transaction_id"),
             },
         )
+        errors.extend(_producer_era_errors(
+            receipt, receipt_id, "%s commit" % label, accounted))
         if receipt is not None:
             receipt_bindings = {
                 "checked_at": "adopted_at",
@@ -2879,11 +2908,15 @@ def _standards_adoption_errors(root, progress, catalog, queue):
                 errors.append("%s must bind exactly one immediate gate receipt" %
                               label)
             else:
+                # Historical: the gate this committed transaction already
+                # consumed.  No `tool_version` comparison, and none is needed
+                # -- `standards_version` below binds the record's own
+                # `standards_version_after` exactly, which states the producer
+                # era more tightly than the accounted-version set could.
                 _require_receipt(
                     catalog, immediate_ids[0], "%s immediate Queue gate" % label,
                     errors, expected={
                         "tool": TOOL,
-                        "tool_version": TOOL_VERSION,
                         "gate_id": "required-queue-consistency",
                         "check": "required_queue",
                         "target": QUEUE_PATH,
@@ -3417,6 +3450,77 @@ def _bind_generic_lock_receipts(root, writer_locks, catalog):
         evidence["status"] = "matching"
         evidence["matching_receipt"] = True
         evidence["result"] = receipt.get("result")
+
+
+def accounted_standards_versions(progress, queue=None):
+    """Return the Standards versions this instance's own history accounts for.
+
+    A receipt sealed into append-only history carries the producer identity of
+    the Standards revision that emitted it.  K00/03 requires a producer's
+    ``Tool version`` cell to move in the revision that changes its accept or
+    reject set, so honouring that checklist retires the constant every past
+    receipt was stamped with -- and no sanctioned transaction may rewrite a
+    historical receipt to carry the new one.  Comparing a historical
+    ``tool_version`` against today's constant therefore invalidates history for
+    having been produced under an older Standards identity, which is precisely
+    what K12/10 forbids.
+
+    What is checkable without today's constants is internal consistency: the
+    era a receipt claims must be an era this instance actually passed through.
+    Each adoption record contributes both ends of the step it recorded, and the
+    live Queue/contract identity covers the instance that has adopted nothing
+    yet.  ``standards_version`` is the right field to carry this: it is already
+    the field that demotes a receipt from current authorization the moment an
+    adoption moves it, so it is also the field that states which Standards
+    identity produced it.
+    """
+    versions = set()
+    if isinstance(queue, dict) and _nonempty_string(
+            queue.get("standards_version")):
+        versions.add(queue["standards_version"])
+    if not isinstance(progress, dict):
+        return versions
+    contract = progress.get("contract")
+    if isinstance(contract, dict) and _nonempty_string(
+            contract.get("standards_version")):
+        versions.add(contract["standards_version"])
+    records = progress.get("standards_adoptions")
+    for record in records if isinstance(records, list) else []:
+        if not isinstance(record, dict):
+            continue
+        for field in ("standards_version_before", "standards_version_after"):
+            if _nonempty_string(record.get(field)):
+                versions.add(record[field])
+    return versions
+
+
+def _producer_era_errors(receipt, receipt_id, label, accounted):
+    """Return errors when a historical receipt claims an unaccounted era.
+
+    This is what replaces a historical receipt's ``tool_version`` comparison
+    against the current producer constant.  A receipt claiming a Standards
+    version no adoption record and no live identity accounts for is one this
+    instance never produced, so the replacement has teeth without freezing
+    today's producer versions into the definition of valid history.  A
+    current-action predicate keeps comparing the producer tuple exactly; see
+    :func:`receipt_matches_gate_id`.
+
+    A receipt that carries no ``standards_version`` claims no era, and absence
+    is not an error here.  Demanding the field would repeat the very mistake
+    this function removes: it would invalidate every receipt written before the
+    identity fields existed, for a reason its producer could not have
+    anticipated and no sanctioned transaction can repair.  Per ``kblib``, an
+    omitted identity field already behaves as ``null`` against every consumer
+    that compares it, so such a receipt is judged by its remaining bindings.
+    """
+    if not isinstance(receipt, dict):
+        return []
+    version = receipt.get("standards_version")
+    if not _nonempty_string(version) or version in accounted:
+        return []
+    return ["%s receipt %s claims standards_version=%r, which no Standards "
+            "adoption record or live identity of this instance accounts for" %
+            (label, receipt_id, version)]
 
 
 def _require_receipt(catalog, receipt_id, label, errors, expected=None):
@@ -4919,7 +5023,10 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
     task_state = progress.get("task_state")
     contract = progress.get("contract") if isinstance(
         progress.get("contract"), dict) else {}
-    errors.extend(_live_read_set_load_errors(root, contract))
+    contract_load_errors, contract_load_set_gaps = \
+        _live_read_set_load_findings(root, contract)
+    errors.extend(contract_load_errors)
+    accounted_versions = accounted_standards_versions(progress, queue)
     completion_semantics = contract.get("completion_semantics")
     live_contract_sha = _contract_sha256(progress)
     contract_chain, _ = _contract_anchor_chain(progress, catalog)
@@ -5148,14 +5255,17 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                 "remaining_required_work_units": 0,
             },
         )
+        # Historical: the gate that admitted the state the task is already in.
+        # A completion-candidate task cannot adopt, so it cannot re-produce
+        # this receipt under a newer producer identity either.
+        errors.extend(_producer_era_errors(
+            completion_receipt, completion_id,
+            "completion-candidate Queue gate", accounted_versions))
         if isinstance(completion_receipt, dict):
             completion_version = completion_receipt.get("tool_version")
-            if completion_version not in SUPPORTED_QUEUE_GATE_TOOL_VERSIONS:
-                errors.append("completion-candidate Queue gate has unsupported "
-                              "tool_version=%r" % completion_version)
-            elif (completion_version == TOOL_VERSION and
-                  completion_receipt.get("gate_id") !=
-                  "required-queue-completion"):
+            if (completion_version == TOOL_VERSION and
+                    completion_receipt.get("gate_id") !=
+                    "required-queue-completion"):
                 errors.append("current completion-candidate Queue gate must "
                               "bind gate_id=required-queue-completion")
     if task_state == "complete" and completion_semantics == "build":
@@ -5176,13 +5286,14 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                 "remaining_required_work_units": 0,
             },
         )
+        # Historical: the proof a completed task already consumed.  A complete
+        # task cannot adopt, so nothing can restamp this receipt.
+        errors.extend(_producer_era_errors(
+            proof, proof_id, "complete Terminal Proof", accounted_versions))
         if isinstance(proof, dict):
             proof_version = proof.get("tool_version")
-            if proof_version not in SUPPORTED_TERMINAL_PROOF_TOOL_VERSIONS:
-                errors.append("complete Terminal Proof has unsupported "
-                              "tool_version=%r" % proof_version)
-            elif (proof_version == TERMINAL_PROOF_TOOL_VERSION and
-                  proof.get("gate_id") != "terminal-proof"):
+            if (proof_version == TERMINAL_PROOF_TOOL_VERSION and
+                    proof.get("gate_id") != "terminal-proof"):
                 errors.append("current Terminal Proof receipt must bind "
                               "gate_id=terminal-proof")
         if transitions and proof is not None:
@@ -5247,13 +5358,14 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                 "remaining_required_work_units": 0,
             },
         )
+        # Historical: the gate a completed maintenance run already consumed.
+        # No `tool_version` comparison, and none is needed -- the expected
+        # mapping above binds `standards_version` to the live contract exactly,
+        # which states the producer era without naming a producer constant.
         if isinstance(gate, dict):
             gate_version = gate.get("tool_version")
-            if gate_version not in SUPPORTED_QUEUE_GATE_TOOL_VERSIONS:
-                errors.append("maintenance completion gate has unsupported "
-                              "tool_version=%r" % gate_version)
-            elif (gate_version == TOOL_VERSION and
-                  gate.get("gate_id") != "maintenance-completion"):
+            if (gate_version == TOOL_VERSION and
+                    gate.get("gate_id") != "maintenance-completion"):
                 errors.append("current maintenance completion gate must bind "
                               "gate_id=maintenance-completion")
         if transitions and gate is not None:
@@ -5364,6 +5476,10 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         "pending_guidance": pending_guidance,
         "pending_amendments": pending_amendments,
         "last_reconciled_guidance_id": _last_reconciled_guidance_id(progress),
+        # Reported, never an error: the live contract's completeness gaps are
+        # repaired by the next admitted adoption plan, not by refusing the
+        # runtime that holds them.  Nothing in the error set reads this key.
+        "contract_load_set_gaps": contract_load_set_gaps,
     }
 
 
@@ -7019,7 +7135,8 @@ def _closed_delta_apply_errors(item, transition, catalog, queue):
     return errors
 
 
-def _closed_gate_errors(item, transition, catalog, queue):
+def _closed_gate_errors(item, transition, catalog, queue,
+                        accounted_versions=frozenset()):
     """Revalidate the two independent pre-close gates from frozen history."""
     errors = []
     item_id = item.get("id", "<unknown>")
@@ -7049,15 +7166,11 @@ def _closed_gate_errors(item, transition, catalog, queue):
         catalog, consistency_id, "%s Queue consistency gate" % item_id,
         errors, expected=consistency_expected,
     )
-    if (isinstance(consistency_receipt, dict) and
-            consistency_receipt.get("tool_version") not in
-            SUPPORTED_QUEUE_GATE_TOOL_VERSIONS):
-        errors.append(
-            "%s Queue consistency gate receipt %s has unsupported "
-            "tool_version=%r" %
-            (item_id, consistency_id,
-             consistency_receipt.get("tool_version"))
-        )
+    # Historical: a closed batch's pre-close Queue consistency gate, bound to
+    # the frozen before-bytes of a transition that already happened.
+    errors.extend(_producer_era_errors(
+        consistency_receipt, consistency_id,
+        "%s Queue consistency gate" % item_id, accounted_versions))
     if transition is None:
         # Transition-history validation reports the missing edge.  Avoid
         # inventing live-state bindings for an unanchored historical gate.
@@ -7319,6 +7432,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
     state = item.get("state")
     hold = item.get("hold_state")
     current_delta_gate_receipts = []
+    accounted_versions = accounted_standards_versions(progress, queue)
 
     transition = None
     transition_history = []
@@ -7492,14 +7606,12 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             "%s activation" % item_id, errors,
             expected=activation_expected,
         )
-        if (isinstance(activation_receipt, dict) and
-                activation_receipt.get("tool_version") not in
-                SUPPORTED_QUEUE_GATE_TOOL_VERSIONS):
-            errors.append(
-                "%s activation receipt %s has unsupported tool_version=%r" %
-                (item_id, item.get("activation_receipt"),
-                 activation_receipt.get("tool_version"))
-            )
+        # Historical: the admission gate that authorized the already-recorded
+        # `queued -> open` edge.  The batch cannot be readmitted, so no later
+        # producer version can restamp it.
+        errors.extend(_producer_era_errors(
+            activation_receipt, item.get("activation_receipt"),
+            "%s activation" % item_id, accounted_versions))
         if item.get("confirmation_required"):
             _require_receipt(
                 catalog, item.get("confirmation_receipt"),
@@ -7616,7 +7728,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             errors.append("%s closed state requires a timezone-aware closed_at" %
                           item_id)
         errors.extend(_closed_gate_errors(
-            item, transition, catalog, queue,
+            item, transition, catalog, queue, accounted_versions,
         ))
         errors.extend(_closed_delta_apply_errors(
             item, transition, catalog, queue,
@@ -9484,6 +9596,11 @@ def _print_resume_status(result, errors):
           (",".join(task_runtime.get("pending_guidance") or []) or "none"))
     print("  pending_amendments=%s" %
           (",".join(task_runtime.get("pending_amendments") or []) or "none"))
+    # Reported, never blocking: the next admitted adoption plan is where the
+    # live contract's load-set declaration is re-judged, so a gap here is work
+    # to schedule rather than a reason to refuse the runtime.
+    for gap in task_runtime.get("contract_load_set_gaps") or []:
+        print("  contract_load_set_gap=%s" % gap)
     print("  terminal_audit.state=%s" % terminal_audit.get("state"))
     print("  terminal_audit.proof_path=%s" %
           terminal_audit.get("terminal_proof_path"))

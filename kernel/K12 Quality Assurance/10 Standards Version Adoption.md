@@ -133,6 +133,16 @@ delta/readiness/completion/recovery reuse.
 Historical transitions/closed proof use the full catalog and producer-era
 identity. Unaffected evidence remains reusable under K12/07.
 
+Producer-era identity means no historical receipt is re-judged against a
+current producer constant. A revision that moves a producer's `Tool version`
+retires the value earlier receipts carry, and nothing may restamp sealed
+evidence. A historical validator MUST instead accept only a
+`standards_version` this instance's own chain accounts for — an adoption
+record's before or after version, or the live identity where no adoption
+occurred — and MUST NOT compare `tool_version` against the current constant.
+Current authorization is unaffected: it still requires the registered producer
+tuple exactly, per K12/17.
+
 ## Acceptance And Resume
 
 Only `Tools/adopt_standards.py` applies the plan. Commit proves:

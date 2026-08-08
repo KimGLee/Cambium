@@ -1585,5 +1585,169 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertEqual(1, attempted.returncode, attempted.stdout)
         self.assertIn("requires task_state=active", attempted.stdout)
 
+    UNDER_DECLARING_READ_SET = "kernel/Read Sets/R97 Live Contract Fixture.md"
+    UNDER_DECLARED_LEAF = "kernel/K97 Fixture Family/01 Boundary Leaf.md"
+
+    def under_declare_live_contract(self):
+        """Leave the live contract declaring a Read Set but not its leaf.
+
+        This reproduces the state a past adoption can seal in: the contract's
+        five load fields are written only by this tool, so an instance whose
+        earlier adoption wrote an incomplete declaration cannot repair it
+        anywhere else.
+        """
+        read_set = self.root / self.UNDER_DECLARING_READ_SET
+        read_set.parent.mkdir(parents=True, exist_ok=True)
+        read_set.write_text(
+            "---\ntype: read-set\nroute_id: R97\n---\n\n"
+            "## Start\n\n- [[%s|Boundary Leaf]]\n" %
+            self.UNDER_DECLARED_LEAF[:-3], encoding="utf-8")
+        leaf = self.root / self.UNDER_DECLARED_LEAF
+        leaf.parent.mkdir(parents=True, exist_ok=True)
+        leaf.write_text("## Purpose\n\nFixture leaf.\n", encoding="utf-8")
+        progress = self.load(check_queue.PROGRESS_PATH)
+        progress["contract"]["selected_read_sets"] = [
+            self.UNDER_DECLARING_READ_SET]
+        progress["contract"]["loaded_module_paths"] = []
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress_path.write_text(kblib.canonical_yaml(progress),
+                                 encoding="utf-8")
+        receipt_path = self.root / ".cambium/receipts/task-transitions.jsonl"
+        rows = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for row in rows:
+            if row.get("receipt_id") == "audit-fixture-initial-queue":
+                row["contract_sha256"] = kblib.sha256_bytes(
+                    kblib.canonical_yaml(progress["contract"]))
+                row["after_progress_sha256"] = kblib.sha256_file(progress_path)
+        receipt_path.write_text(
+            "".join(json.dumps(row, separators=(",", ":")) + "\n"
+                    for row in rows), encoding="utf-8")
+
+    def test_an_under_declared_live_contract_does_not_block_the_sole_writer(
+            self):
+        """The writer that alone can re-declare the load set may still run.
+
+        `_prepare_result` refuses to start while `validate_runtime` reports an
+        error, so making the live contract's closure gap an error would leave
+        the instance with an under-declaration it has no legal way to repair.
+        The gap is reported instead, and the adoption that repairs it applies.
+        """
+        self.under_declare_live_contract()
+        self.pause()
+        runtime = check_queue.validate_runtime(self.root)
+        self.assertEqual([], runtime["errors"])
+        self.assertTrue(any(
+            self.UNDER_DECLARED_LEAF in gap for gap in
+            runtime["task_runtime"]["contract_load_set_gaps"]),
+            runtime["task_runtime"]["contract_load_set_gaps"])
+
+        # Admission still judges the declaration the plan writes: the plan
+        # that omits the leaf is refused at plan validation, not at the
+        # runtime precheck.
+        self.plan(overrides={
+            "selected_read_sets_after": [self.UNDER_DECLARING_READ_SET],
+            "loaded_module_paths_after": [],
+        })
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(1, code, output)
+        self.assertNotIn("current runtime is inconsistent", output)
+        self.assertIn("invalid Standards adoption plan", output)
+        self.assertIn("loaded_module_paths_after omits %s" %
+                      self.UNDER_DECLARED_LEAF, output)
+
+        # And the complete declaration applies, so the sole writer really is
+        # the repair path for the field only it can write.
+        self.plan(overrides={
+            "contract_version_after": "c2",
+            "selected_read_sets_after": [self.UNDER_DECLARING_READ_SET],
+            "loaded_module_paths_after": [self.UNDER_DECLARED_LEAF],
+        })
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+        repaired = check_queue.validate_runtime(self.root)
+        self.assertEqual([], repaired["errors"])
+        self.assertEqual(
+            [], repaired["task_runtime"]["contract_load_set_gaps"])
+        self.assertEqual(
+            [self.UNDER_DECLARED_LEAF],
+            repaired["progress"]["contract"]["loaded_module_paths"])
+
+    def rewrite_adoption_receipts(self, **field_overrides):
+        """Restamp the persisted adoption receipts and return the errors.
+
+        Receipts are append-only evidence, so an instance cannot rewrite them
+        to satisfy a constant that moved after they were written; the fixture
+        edits them only to stand in for bytes a past producer left behind.
+        """
+        receipt_path = self.root / self.RECEIPTS
+        rows = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for row in rows:
+            for field, by_tool in field_overrides.items():
+                if row.get("tool") in by_tool:
+                    row[field] = by_tool[row["tool"]]
+        receipt_path.write_text(
+            "".join(json.dumps(row, separators=(",", ":")) + "\n"
+                    for row in rows), encoding="utf-8")
+        return check_queue.validate_runtime(self.root)["errors"]
+
+    def commit_one_adoption(self):
+        self.pause()
+        self.plan()
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+
+    def test_superseded_producer_versions_do_not_invalidate_adoption_history(
+            self):
+        """A producer version bump cannot void the transactions it recorded.
+
+        K00/03 requires a producer's `Tool version` cell to move in the
+        revision that changes its accept or reject set, so every past receipt
+        was stamped with a constant that revision retires.  The commit receipt
+        and the immediate Queue gate it consumed are sealed history, and this
+        instance passed through the era they claim.
+        """
+        self.commit_one_adoption()
+        errors = self.rewrite_adoption_receipts(tool_version={
+            adopt_standards.TOOL: "1.1.0",
+            check_queue.TOOL: "1.5.0",
+        })
+        self.assertEqual([], errors)
+
+    def test_an_adoption_receipt_era_nothing_accounts_for_is_refused(self):
+        """The replacement check has teeth without today's constants.
+
+        The chain accounts for the version before and the version after every
+        adoption this instance recorded, plus the live identity.  A commit
+        receipt claiming anything else describes a transaction that never
+        happened here.
+        """
+        self.commit_one_adoption()
+        errors = self.rewrite_adoption_receipts(
+            tool_version={adopt_standards.TOOL: "1.1.0"},
+            standards_version={adopt_standards.TOOL: "9.9.9"})
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn("commit receipt", errors[0])
+        self.assertIn("claims standards_version='9.9.9'", errors[0])
+        self.assertIn("no Standards adoption record or live identity",
+                      errors[0])
+
+    def test_the_accounted_era_set_is_the_instance_own_adoption_chain(self):
+        """Both ends of every recorded step, plus the live identity."""
+        self.commit_one_adoption()
+        runtime = check_queue.validate_runtime(self.root)
+        self.assertEqual(
+            {"3.0.0", "3.1.0"},
+            check_queue.accounted_standards_versions(
+                runtime["progress"], runtime["queue"]))
+        self.assertEqual(
+            {"3.0.0"},
+            check_queue.accounted_standards_versions(
+                {"contract": {"standards_version": "3.0.0"},
+                 "standards_adoptions": []}))
+
+
 if __name__ == "__main__":
     unittest.main()
