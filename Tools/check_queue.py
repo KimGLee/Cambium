@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.7.0"
+TOOL_VERSION = "1.8.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -1764,10 +1764,19 @@ def _consumed_standards_revalidation_keys(item, catalog):
         receipt_entry = catalog.get(receipt_id) if _nonempty_string(
             receipt_id) else None
         receipt = receipt_entry[1] if receipt_entry is not None else None
+        # Producer-era rule: a consumed aggregate is a historical fact a Queue
+        # transition already validated at its own producer era.  The writer
+        # that consumes a NEW aggregate still requires the current producer
+        # (standards_revalidation_receipt_errors); the replay here accepts the
+        # recorded era's version, because pinning it to the running
+        # TOOL_VERSION orphaned every consumed aggregate at the next
+        # registered producer bump and left the runtime permanently
+        # inconsistent with no sanctioned repair path.  An adoption that
+        # really retracts one still names it in `invalidated_evidence`.
         if not isinstance(receipt, dict) or receipt.get("result") != "pass" or \
                 receipt.get("invalidated_by") is not None or \
                 receipt.get("tool") != TOOL or \
-                receipt.get("tool_version") != TOOL_VERSION or \
+                not _nonempty_string(receipt.get("tool_version")) or \
                 receipt.get("check") != "required_queue" or \
                 receipt.get("queue_check_mode") != \
                 "require-revalidation:%s" % item.get("id") or \
@@ -1788,8 +1797,11 @@ def outstanding_standards_revalidation(result, batch_id):
     raw = standards_revalidation_requirements(
         result.get("root"), result.get("progress") or {}).get(batch_id, [])
     item = (result.get("items_by_id") or {}).get(batch_id) or {}
+    # Consumption is replayed from the immutable historical catalog: the
+    # era-filtered current catalog drops receipts whose producer version was
+    # since bumped, and a recorded consumption must not disappear with them.
     consumed = _consumed_standards_revalidation_keys(
-        item, current_receipt_catalog(result))
+        item, historical_receipt_catalog(result))
     return [binding for binding in raw if (
         binding.get("adoption_id"), binding.get("boundary_id"),
         binding.get("required_gate_id")) not in consumed]

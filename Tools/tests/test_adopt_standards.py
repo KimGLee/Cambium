@@ -51,8 +51,8 @@ class AdoptStandardsTests(unittest.TestCase):
             "| Gate ID | Tool | Tool version | Check | Mode | Dimension "
             "| Lifecycle |\n"
             "|---|---|---|---|---|---|---|\n"
-            "| required-queue-consistency | check_queue | 1.7.0 | required_queue | consistency | * | not-batch-scoped |\n"
-            "| required-queue-admission | check_queue | 1.7.0 | required_queue | require-ready:* | * | queued |\n"
+            "| required-queue-consistency | check_queue | 1.8.0 | required_queue | consistency | * | not-batch-scoped |\n"
+            "| required-queue-admission | check_queue | 1.8.0 | required_queue | require-ready:* | * | queued |\n"
             "| batch-close | check_batch_close | 1.3.0 | batch_close_gate | * | * | merge-ready |\n",
             encoding="utf-8")
 
@@ -410,6 +410,29 @@ class AdoptStandardsTests(unittest.TestCase):
                       check_queue.current_attempt_evidence_barrier(
                           poisoned, "B1"))
 
+        # Producer-era regression: a registered producer bump after the
+        # aggregate was consumed must not orphan the recorded consumption.
+        # Rewriting the consumed aggregate's stored tool_version to an older
+        # era simulates exactly the state a later `check_queue` bump leaves
+        # behind; the replay honors the recorded era, so the boundary stays
+        # discharged and the runtime stays consistent.
+        revalidation_path = self.root / ".cambium/receipts/revalidation.jsonl"
+        aged_rows = []
+        for line in revalidation_path.read_text(
+                encoding="utf-8").splitlines():
+            row = json.loads(line)
+            if row.get("receipt_id") == aggregate["receipt_id"]:
+                row["tool_version"] = "0.9.0"
+            aged_rows.append(json.dumps(row, ensure_ascii=False))
+        revalidation_path.write_text("\n".join(aged_rows) + "\n",
+                                     encoding="utf-8")
+        aged = check_queue.validate_runtime(self.root)
+        self.assertEqual([], aged["errors"])
+        self.assertEqual([], check_queue.outstanding_standards_revalidation(
+            aged, "B1"))
+        self.assertIsNone(
+            check_queue.current_attempt_evidence_barrier(aged, "B1"))
+
     # --- Boundary gates against the target batch's lifecycle position ------
     #
     # `required-queue-admission` is producible only while a batch is `queued`
@@ -734,7 +757,7 @@ class AdoptStandardsTests(unittest.TestCase):
                     "kernel/K00 Standards Control/12 Control Registry.md")
         registry.write_text(
             registry.read_text(encoding="utf-8") +
-            "| required-queue-completion | check_queue | 1.7.0 "
+            "| required-queue-completion | check_queue | 1.8.0 "
             "| required_queue | require-complete | * | queue-exhausted |\n",
             encoding="utf-8")
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
