@@ -142,6 +142,10 @@ EXPRESSION_LAYER_SLOT = "Expression Layer Entry"
 HUB_DEPENDENCY_MAP_LABEL = "existing canonical dependency-map"
 HUB_EXIT_HINT = ("K13/10 admits a hub-editing batch only through an exclusive "
                  "or serial-integrator execution mode")
+# Sentinel for _require_receipt: accept any nonempty producer-era version
+# on a sealed historical receipt (K12/10 producer-era identity).
+ANY_PRODUCER_ERA_VERSION = object()
+
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 BATCH_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\Z")
 
@@ -3549,6 +3553,13 @@ def _require_receipt(catalog, receipt_id, label, errors, expected=None):
     if expected:
         common.update(expected)
     for field, value in common.items():
+        if value is ANY_PRODUCER_ERA_VERSION:
+            # K12/10 producer-era identity: a sealed historical receipt is
+            # never re-judged against the current producer constant.
+            if not _nonempty_string(receipt.get(field)):
+                errors.append("%s receipt %s has empty %s" %
+                              (label, receipt_id, field))
+            continue
         if receipt.get(field) != value:
             errors.append("%s receipt %s has %s=%r, expected %r" %
                           (label, receipt_id, field, receipt.get(field), value))
@@ -6143,7 +6154,7 @@ def _queue_replan_amendment_errors(
             historical_catalog, receipt_id, "%s queue-replan" % label, errors,
             expected={
                 "tool": "compile_queue",
-                "tool_version": "1.3.0",
+                "tool_version": ANY_PRODUCER_ERA_VERSION,
                 "check": "queue_replan",
                 "target": QUEUE_PATH,
                 "task_id": queue.get("task_id"),
@@ -6244,7 +6255,7 @@ def _initial_queue_receipt_errors(progress, catalog, queue, queue_sha,
         catalog, receipt_id, "Progress initial Queue", errors,
         expected={
             "tool": "compile_queue",
-            "tool_version": "1.3.0",
+            "tool_version": ANY_PRODUCER_ERA_VERSION,
             "check": "queue_structure",
             "target": QUEUE_PATH,
             "task_id": queue.get("task_id"),

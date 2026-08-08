@@ -992,6 +992,54 @@ class CompileQueueTests(unittest.TestCase):
             (self.root / check_queue.COVERAGE_PATH).read_text(encoding="utf-8"),
         )
 
+    def test_replan_preflight_stages_read_sets_and_adoption_evidence(self):
+        """Regression: the proposed-state preflight must stage the evidence
+        the runtime contract resolves outside `.cambium/state` — the Read Set
+        load closure and recorded Standards-adoption plans — or every replan
+        on an instance that ever adopted a Standards revision fails closed
+        (found by replanning the real Agent Systems Atlas runtime)."""
+        read_set_relative = "kernel/Read Sets/R99 Fixture Read Set.md"
+        read_set_path = self.root / read_set_relative
+        read_set_path.parent.mkdir(parents=True, exist_ok=True)
+        read_set_path.write_text(
+            "---\ntype: read-set\nroute_id: R99\n---\n\n## Purpose\n\n"
+            "Fixture route.\n\n## Related\n\nNone.\n", encoding="utf-8")
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = kblib.load_yaml_file(progress_path)
+        progress["contract"]["selected_read_sets"] = [read_set_relative]
+        progress_path.write_text(kblib.canonical_yaml(progress),
+                                 encoding="utf-8")
+        # Re-anchor the initial Queue receipt to the edited fixture contract;
+        # the anchor chain is byte-bound and this test is not about it.
+        new_anchor = check_queue._contract_sha256(progress)
+        for receipts_path in sorted(
+                (self.root / ".cambium/receipts").rglob("*.jsonl")):
+            rows = []
+            for line in receipts_path.read_text(
+                    encoding="utf-8").splitlines():
+                row = json.loads(line)
+                if row.get("contract_sha256"):
+                    row["contract_sha256"] = new_anchor
+                rows.append(json.dumps(row, ensure_ascii=False))
+            receipts_path.write_text("\n".join(rows) + "\n",
+                                     encoding="utf-8")
+        baseline = check_queue.validate_runtime(self.root)
+        self.assertEqual([], baseline["errors"])
+
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        self.batch_spec(coverage, "B2")["execution_mode"] = \
+            "serial-integrator"
+        proposal_relative = self.write_proposal(coverage)
+        self.add_amendment(proposal_relative)
+        completed = self.apply_replan(proposal_relative)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual(
+            "serial-integrator",
+            result["items_by_id"]["B2"]["execution_mode"])
+
     def test_replan_requires_exact_pending_amendment(self):
         coverage_path = self.root / check_queue.COVERAGE_PATH
         coverage = kblib.load_yaml_file(coverage_path)

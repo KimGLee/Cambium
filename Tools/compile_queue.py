@@ -24,7 +24,7 @@ QUEUE_PATH = ".cambium/state/required_queue.yaml"
 COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
 PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
 REPLAN_PROPOSAL_PREFIX = ".cambium/deltas/replans"
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.4.0"
 PRIORITY = {"P0": 0, "P1": 1, "P2": 2}
 STRUCTURAL_FIELDS = (
     "family", "order", "record_count", "manifest", "source_route",
@@ -749,14 +749,45 @@ def _build_replanned_queue(queue, proposal, diff):
 
 
 def _copy_result_evidence(root, temporary_root, queue, progress):
-    """Copy only files check_queue needs for a proposed-state preflight."""
+    """Copy the files check_queue needs for a proposed-state preflight.
+
+    The preflight replays the full runtime contract against the staged
+    proposal, and that contract long outgrew the original short list: the
+    Task Contract's Read Set load closure resolves the `kernel/` tree and
+    the tools/profile files the load set names, and every recorded
+    Standards-adoption plan under `.cambium/deltas/` must remain a safe
+    readable path. Staging only the manifest and Work Specs made
+    `--apply-replan` fail closed on any instance that had ever recorded an
+    adoption — the sanctioned replan path was unusable exactly where it is
+    needed (found by replanning the real Agent Systems Atlas runtime). The
+    canonical `.cambium/state` files are written from the proposal by the
+    caller and are deliberately not copied here.
+    """
     profile = queue.get("selected_profile_manifest")
+    profile_directory = None
     if isinstance(profile, str) and profile:
         source = kblib.repository_path(
             root, profile, must_exist=True, reject_symlink=True)
+        profile_directory = os.path.dirname(profile)
         target = os.path.join(temporary_root, *profile.split("/"))
         os.makedirs(os.path.dirname(target), exist_ok=True)
         shutil.copy2(source, target)
+
+    def stage_tree(relative):
+        source = os.path.join(root, *relative.split("/"))
+        if not os.path.isdir(source):
+            return
+        target = os.path.join(temporary_root, *relative.split("/"))
+        shutil.copytree(source, target, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+
+    stage_tree("kernel")
+    stage_tree("Tools")
+    if profile_directory:
+        stage_tree(profile_directory)
+    stage_tree(".cambium/deltas")
+    stage_tree(".cambium/receipts")
+    stage_tree(".cambium/work_specs")
 
     artifacts = {}
 
