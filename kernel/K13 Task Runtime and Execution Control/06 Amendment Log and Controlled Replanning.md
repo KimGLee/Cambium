@@ -82,6 +82,17 @@ Only the integrator may apply registration, and only one operational Amendment
 may be pending at a time. Directly inserting or editing an executable pending
 row is forbidden.
 
+A pending registration whose execution can no longer validate — its planned
+final state fails the deterministic checks, or the approval is rescinded — is
+retired through the same writer's withdrawal action, never by editing the row:
+the integrator supplies a nonempty reason, the writer publishes an append-only
+withdrawal receipt naming the registration receipt, and the row's status
+becomes `withdrawn` with write-back still false. A withdrawn registration
+authorizes nothing; its bound plan and proposal bytes remain verified
+immutable evidence, and its amendment ID is never reused. Without this action
+the one-pending rule would let a single mis-registered Amendment wedge every
+future operational Amendment forever.
+
 Registration is a controlled writer transaction, not a second Gate ID. The
 existing `required-queue-consistency` control owns deterministic validation of
 the pending authorization and its cross-state bindings; each downstream writer
