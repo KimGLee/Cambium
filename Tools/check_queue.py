@@ -3659,9 +3659,12 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     """
     errors = []
     label = "%s batch-close gate" % item_id
+    # The producer version is validated separately against the supported
+    # catalog below (K12/10 producer-era identity): pinning the current
+    # constant here would retroactively invalidate every sealed bundle on a
+    # checker upgrade — the defect-#7 class, one receipt over.
     expected = {
         "tool": BATCH_CLOSE_TOOL,
-        "tool_version": BATCH_CLOSE_TOOL_VERSION,
         "check": "batch_close_gate",
         "target": item_id,
         "batch_id": item_id,
