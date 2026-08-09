@@ -430,6 +430,31 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertEqual("closed", self.queue()["required_queue"][0]["state"])
         self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
 
+    def test_closed_bundle_snapshot_survives_a_checker_version_bump(self):
+        """K12/10 producer-era identity: a sealed close bundle's Queue
+        consistency snapshot is not re-judged against the current
+        check_queue constant after an upgrade."""
+        completed = self.batch_close(
+            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        consistency = self.output_value(
+            completed.stdout, "queue_consistency_receipt")
+        self.transition(
+            "closed", "--gate-receipt", consistency,
+            "--close-gate-receipt",
+            self.output_value(completed.stdout, "close_gate_receipt"),
+            "--delta-apply-receipt",
+            self.output_value(completed.stdout, "delta_apply_receipt"))
+        receipts = self.root / ".cambium/receipts/batch-close.jsonl"
+        text = receipts.read_text(encoding="utf-8")
+        needle = '"tool_version": "%s"' % check_queue.TOOL_VERSION
+        self.assertIn(needle, text)
+        receipts.write_text(
+            text.replace(needle, '"tool_version": "0.9.0"'),
+            encoding="utf-8")
+        self.assertEqual(
+            [], check_queue.validate_runtime(str(self.root))["errors"])
+
     def test_profile_example_vocabulary_is_outside_the_vocab_member(self):
         """A shipped example instance's own vocabulary values must not fail
         the adopter's close: profiles/ is control plane, so the vocab member

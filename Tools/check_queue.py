@@ -3846,7 +3846,11 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
         "%s Queue consistency snapshot" % item_id, errors,
         expected={
             "tool": TOOL,
-            "tool_version": TOOL_VERSION,
+            # K12/10 producer-era identity: a close bundle sealed under an
+            # accounted era keeps the consistency snapshot its own runtime
+            # produced; it is never re-judged against this checker's
+            # current constant after an upgrade.
+            "tool_version": ANY_PRODUCER_ERA_VERSION,
             "check": "required_queue",
             "queue_check_mode": "consistency",
             "repository_snapshot_sha256": merged_snapshot_sha256,
