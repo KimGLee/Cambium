@@ -22,6 +22,29 @@ Use these declarations consistently:
 - Write these declaration words bare, exactly as `_template` shows them (`- Registration: Configured`). The backticks above are this page's own code formatting; `check_profile.py` compares the literal cell text, so `` `Configured` `` with backticks is a different string and is rejected as `declaration-invalid`. The same applies to `None` and to the em dash in `Not applicable — <reason>`.
 - References between slots use IDs, paths, or owner pointers. Do not copy the referenced rule into the referring slot.
 
+## Template Depths
+
+`profiles/_template/` and `profiles/_template-minimal/` are two depths of the
+same 13-slot interface, and both produce fully conformant profiles: the
+difference is how many answers ship pre-closed or pre-filled, never
+compliance. The minimal depth pre-closes every slot switch that has a legal
+exit state, pre-fills generalized operational answers for confirmation, and
+leaves open only the decisions no template can make. Its `README.md`,
+`interview.yaml`, and `answer-patterns.md` are orientation files an assisting
+agent can use to conduct the fill; they are deleted from the copied profile
+and are never profile policy. Identity is unfilled in both depths, so neither
+template is runnable or selectable in place, and a profile started at the
+minimal depth deepens later through ordinary Standards adoption — nothing
+about the minimal depth weakens a gate or bypasses R09.
+
+```text
+cp -R profiles/_template-minimal profiles/my-profile
+rm profiles/my-profile/README.md profiles/my-profile/interview.yaml \
+   profiles/my-profile/answer-patterns.md
+# Answer the open decisions (the template README lists them), then:
+python3 Tools/check_profile.py profiles/my-profile
+```
+
 ## Profile Loading Contract
 
 The effective standard is `kernel + one selected profile`. The exact manifest path recorded as `selected_profile_manifest` in the active Standards state is the sole selection; a directory's existence, its `profile_id`, a generated vocabulary header, or discovery order does not select it. Multiple filled profiles may coexist, but exactly one is active. After filling and checking a copied profile, adopt it through R09 governance before content work; changing the active selection is a Standards revision and bumps `standards_version`. The kernel references stable slot names, and that manifest binds them to concrete files. A task that needs an unresolved slot must stop rather than claim the composed standard is loaded.

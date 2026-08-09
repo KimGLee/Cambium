@@ -26,25 +26,73 @@ bypass R09 adoption.
 | Tools | Deterministic checks, schemas, receipts, vocabulary/Card compilation, Corpus Planning validation/semantic acceptance/on-demand Agent projection, Required Queue and Work Spec control, guarded Amendment and active-task Standards-adoption transactions, and single-delta application |
 | Page-level contract family | The composed frontmatter page contract (K08/06-08; `compose_page_contract.py` + advisory `page-contract` gate), Structure Registry resolution (K01/05-06; `structure-registry` gate) with marker-block coverage projections, and the page boundary contract (K08/09; advisory `boundary-contract` gate) with its tool-owned boundary projection — all deterministic, with advisory gates awaiting per-adopter promotion decisions under K12/10 |
 
-## Profile Onboarding Assistant
+## Profile Adoption Reform And Onboarding
 
-Provide a simpler path from operator decisions to a candidate profile without
-creating a second profile interface.
+Reduce profile adoption cost without shrinking the interface. The 13-slot
+interface stays; the reform ships two depths of the same interface, both fully
+conformant, differing only in how many kernel defaults and degenerate states
+the adopter accepts. Taking a default is full conformance, never a lower
+conformance tier. Acceptance target for the minimal depth: a real small corpus
+reaches a checked candidate profile with at most 15 operator decisions in at
+most 30 minutes.
 
-The assistant should:
+### Minimal Template
 
-1. Create a validated `profiles/<profile-id>/` skeleton.
-2. Collect answers in stages: identity and corpus goal; scope, architecture,
-   and Corpus Planning applicability/bindings; language, priority, and
-   sources; roles and expression artifacts; optional scans, routes, and gates.
-3. Support both an existing corpus and a corpus that will be built from zero.
-4. Project confirmed answers into the existing 14 canonical profile files.
-5. Show the resulting diff and unresolved decisions before writing.
-6. Run `check_profile.py` and report structural failures in user-facing terms.
+A pre-closed template variant in which every slot with a legal exit state
+(`None`, `Not applicable`, `kernel-defaults`, empty override table) ships
+already closed with scenario-accurate reasons. Identity remains unfilled, so
+the variant is no more selectable than the full template. The full template
+remains the canonical form for adopters who answer everything explicitly.
 
-The assistant must produce only a candidate. It must not infer unconfirmed
-domain policy, copy example answers as defaults, write the active K00 state,
-approve the profile, or bypass R09.
+### Pre-filled Defaults, Answer Patterns, And Kernel Absorption
+
+Operational answers — process and host role bindings, audit starter judgment
+items, no-grants priority, language display/naming/length defaults, and a
+generic volatility domain — ship pre-filled in the minimal template with
+generalized wording and are confirmed or replaced during the interview; the
+kernel is not changed for them. Once real adoptions show a pre-filled answer
+is stable, it is harvested into a kernel-owned default-declaration state
+through ordinary standards work, so later improvements propagate instead of
+freezing in copied text.
+
+Required slots without a legal exit state — Knowledge Spine, Terminology
+Structure, Foundation Depth Requirements, and Source Authority — are answered
+through lightweight answer patterns rather than new degenerate kernel states:
+the interview proposes a shape (one line per pattern — for example, an
+own-observation source class recorded with a retrieval date), and the adopter
+instantiates it with their own content. Patterns are shapes, never copied
+answers, and none reads as an exemption from kernel behavior: a profile with
+a minimal source table remains fully bound by K07. Residual-scan
+configuration is deliberately excluded from static defaults: non-inert
+positive controls require corpus-real matchers, so scan parameters are
+derived from corpus inspection and confirmed by the operator instead.
+
+One kernel absorption is already decided: `last_verified` becomes conditional
+on `volatility: fast` in the K08 applicability base, promoting a field-proven
+adopter tightening into the kernel default. The originating profile removes
+its now-redundant difference row when adopting the revised standard.
+
+### Interview Contract
+
+Each decision that remains open in the minimal template carries
+machine-readable question metadata — question, answer shape, validation,
+target slot and field, and trigger — embedded alongside the placeholder. Any
+agent can conduct the interview, project confirmed answers into the canonical
+profile files, and validate with `check_profile.py`. Questions are layered: a
+core pack collected at adoption, whose membership is chosen by change cost
+(decisions that are migration-grade to reverse — body language, layer
+directories, identity — are always asked and never defaulted), and per-slot
+expansion packs opened either electively or when a fail-closed gate names the
+slot a task needs. Deepening a profile later flows through ordinary Standards
+adoption and does not interrupt an active task.
+
+An onboarding assistant, where provided, is one execution mode of the
+interview contract, not a second profile interface. Whatever conducts the
+interview must produce only a candidate: it must not infer unconfirmed domain
+policy, copy example answers as defaults, write the active K00 state, approve
+the profile, or bypass R09. It should support both an existing corpus and a
+corpus built from zero, show the resulting diff and unresolved decisions
+before writing, and report structural failures in user-facing terms.
 
 ## Reference Execution Runtime
 
@@ -220,9 +268,10 @@ claim.
 
 The initial interaction surface should remain small:
 
-- `adopt`: inspect the repository, collect operator-confirmed decisions,
-  produce a candidate Profile and diff, and run structural validation without
-  selecting or approving the Profile;
+- `adopt`: inspect the repository, execute the interview contract's question
+  packs to collect operator-confirmed decisions, produce a candidate Profile
+  and diff, and run structural validation without selecting or approving the
+  Profile;
 - `operate`: inspect or resume existing state, explain the deterministic next
   action, and route any later write through a controlled Core transaction;
 - `audit`: inspect receipts, invalidations, batch-close evidence, and Terminal
@@ -610,7 +659,10 @@ rolls into a preserved successor task rather than mutating live Contract bytes.
 ## Implementation Order
 
 Profile onboarding and typed dependency compilation can progress independently
-of agent orchestration. The persistent Required Queue is already the execution
+of agent orchestration. Within the onboarding line, the minimal template and
+the kernel-default/degenerate-state work precede the interview contract, which
+in turn precedes the Plugin `adopt` operation that consumes its question
+packs. The persistent Required Queue is already the execution
 interface; the future reference runtime consumes it rather than redefining it.
 The dependency runtime consumes accepted corpus state and emits plans; the
 reference execution runtime may later schedule those plans without owning their

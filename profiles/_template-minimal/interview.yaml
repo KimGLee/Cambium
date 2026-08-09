@@ -1,0 +1,177 @@
+# Interview contract for the minimal-depth template.
+# Any agent can conduct this interview: ask, collect a confirmed answer,
+# project it into the named file/anchor, then validate with
+# `python3 Tools/check_profile.py profiles/<profile-id>`.
+# Conduct rules:
+#   - Every answer is the operator's; propose shapes (see answer-patterns.md),
+#     never invent domain content, never skip a confirm item.
+#   - Pre-filled template text becomes the profile's own answer only after the
+#     operator confirms it (confirm, don't skip).
+#   - This file and the other orientation files (README.md,
+#     answer-patterns.md) are deleted from the copied profile after filling.
+#   - Filling and checking never select the profile; selection is R09 adoption.
+
+interview_contract_version: 1
+target_template: profiles/_template-minimal
+
+core_pack:
+  - id: Q0
+    question: "What is the profile ID? (equals the directory name)"
+    answer_shape: "slug matching [a-z0-9][a-z0-9_-]*"
+    validation: "check_profile rejects profile-id-invalid; directory must match"
+    change_cost: migration
+    maps_to:
+      - {file: profile.md, anchor: "## Profile Identity"}
+    derives:
+      - "judgment item IDs (<profile-id>-foundation-depth, <profile-id>-residual-disposition)"
+      - "every self-path cell (see self_path_rewrites)"
+
+  - id: Q1
+    question: "In one sentence: what must this corpus let its readers do, and who are they?"
+    answer_shape: "one goal sentence + reader role(s)"
+    change_cost: adoption
+    maps_to:
+      - {file: scope-and-architecture.md, anchor: "## Goal"}
+
+  - id: Q2
+    question: "What is the body language? Is there a secondary language?"
+    answer_shape: "language tag; secondary defaults to 'None — monolingual'"
+    change_cost: migration
+    maps_to:
+      - {file: language-contract.md, anchor: "## Language Routing"}
+    derives:
+      - "Content Length Unit: characters for CJK body languages, words otherwise"
+
+  - id: Q3
+    question: "Is anything inside the tree explicitly out of scope? (pre-filled: no exclusions)"
+    answer_shape: "confirm pre-fill, or rows of {excluded content, destination}"
+    change_cost: adoption
+    maps_to:
+      - {file: scope-and-architecture.md, anchor: "## Excluded Scope"}
+
+  - id: Q4
+    question: "Is the corpus flat or layered? Name each layer's ID, directories, and single responsibility."
+    answer_shape: "one row for a flat corpus (one layer owning the whole tree); more rows when layered"
+    validation: "exact repository-relative paths, no trailing slash; root binding '.' is structurally legal"
+    change_cost: migration
+    maps_to:
+      - {file: scope-and-architecture.md, anchor: "## Logical Architecture"}
+    derives:
+      - "Placement Layer Registrations fallback IDs (all rows)"
+      - "New Page Placement Rule target IDs"
+      - "Terminology Structure target ID"
+      - "scan allowed_roots candidates (C1)"
+
+  - id: Q5
+    question: "What makes a note high priority in this corpus? (one substantive factor is enough; a catch-all row is pre-filled)"
+    answer_shape: "ranked factor list, >=1 substantive row"
+    change_cost: adoption
+    maps_to:
+      - {file: scope-and-architecture.md, anchor: "## Content Priority Factors"}
+
+  - id: Q6
+    question: "Which recurring names deserve their own term note, and when is one included?"
+    answer_shape: "one bounded class + inclusion/exclusion boundary"
+    change_cost: adoption
+    maps_to:
+      - {file: scope-and-architecture.md, anchor: "## Terminology Structure"}
+
+  - id: Q7
+    question: "Where do this corpus's claims actually come from? Rank the source authorities (own observation with a retrieval date is registrable), then name how each claim class is verified and what makes it stale."
+    answer_shape: "authority rows + verification rows + staleness rows"
+    change_cost: adoption
+    maps_to:
+      - {file: source-policy.md, anchor: "## Source Authority"}
+      - {file: source-policy.md, anchor: "## Verification Entry Points"}
+      - {file: source-policy.md, anchor: "## Staleness Triggers"}
+
+  - id: Q8
+    question: "Do any pages need P0/P1 priority above the uniform P2 fallback? (pre-filled: no grants)"
+    answer_shape: "confirm 'No grants', or grant predicates + protected capability"
+    change_cost: adoption
+    maps_to:
+      - {file: priority-rubric.md, anchor: "## Profile-owned Grant Criteria"}
+
+  - id: Q9
+    question: "What is the one-line organizing logic connecting pages, and which field or statement locates a page on it?"
+    answer_shape: "one spine sentence + one locator"
+    change_cost: adoption
+    maps_to:
+      - {file: scope-and-architecture.md, anchor: "## Knowledge Spine"}
+
+  - id: Q10
+    question: "Which page class must be deep enough to act on, and what four things must such a page name? (pattern: the thing, its version, where its backup/definition lives, the one check that verifies it)"
+    answer_shape: "one page class + one testable predicate"
+    change_cost: adoption
+    maps_to:
+      - {file: scope-and-architecture.md, anchor: "## Foundation Depth Requirements"}
+      - {file: registries/audit-dimensions.md, anchor: "## Judgment Items"}
+
+  - id: C1
+    kind: derived-confirm
+    question: "Confirm the derived residual scan: which structured-content class belongs only under one root?"
+    procedure:
+      - "Identify the structure class and its accepted root (dated scratch entries, derived cards, generated digests; candidates from Q4 layers)"
+      - "Scan real pages under that root; collect the frontmatter value and exact headings they actually use"
+      - "Propose allowed_roots / frontmatter_match / heading_match / mandated_headings from those real strings only"
+      - "Warn: a matcher matching nothing real fails the non-inert positive control by design"
+      - "Operator confirms; write scan-configs/residual-scan.yaml and the registry row; fill the second judgment item and the Residual Disposition prose"
+    change_cost: adoption
+    maps_to:
+      - {file: registries/registered-scans.md, anchor: "## Scan Registrations"}
+      - {file: scan-configs/residual-scan.yaml}
+      - {file: registries/audit-dimensions.md, anchor: "## Residual Disposition"}
+
+  - id: C2
+    kind: prefill-confirm
+    question: "Confirm the pre-filled operational defaults: role bindings; naming/display/length rows; the 'general: slow' volatility domain (rename or split it into real domains)."
+    note: "For an existing corpus, 'as found' naming beats a renaming campaign; changed naming rows are migration-grade."
+    change_cost: "cheap (naming rows: migration)"
+    maps_to:
+      - {file: registries/roles.md}
+      - {file: language-contract.md, anchor: "## Canonical Naming"}
+      - {file: language-contract.md, anchor: "## Terminology And Display"}
+      - {file: language-contract.md, anchor: "## Content Length Unit"}
+      - {file: vocabulary-extensions.yaml, anchor: "volatility_defaults"}
+
+self_path_rewrites:
+  - {file: registries/registered-scans.md, cell: "verifier command --config path"}
+  - {file: registries/audit-dimensions.md, cell: "foundation item predicate owner"}
+  - {file: registries/audit-dimensions.md, cell: "residual item predicate owner"}
+
+# Expansion packs open a closed slot later, through ordinary Standards
+# adoption (R09 + adopt_standards). Never opened silently: either the
+# operator asks, or a fail-closed gate names the slot.
+expansion_packs:
+  - slot: corpus-planning
+    trigger: {gates: [corpus-plan-structure], routes: [R11, R13], elective: true}
+    opens: "large-scale construction, migration, or persistent multi-batch work"
+    asks: "Global Map / Capability Matrix / Gap Register bindings; capability scale (the 0-4 pattern in answer-patterns.md); pass authority"
+  - slot: structure-registry
+    trigger: {gates: [structure-registry], routes: [R03, R06], elective: true}
+    opens: "a directory first carries an independently built, maintained, or audited responsibility"
+    asks: "units (id/kind/parent/root/entry/roles); support layers with bindings"
+  - slot: priority-rubric
+    trigger: {elective: true}
+    opens: "pages start protecting capabilities or deadlines the P2 fallback does not"
+    asks: "P0/P1 grant predicates + protected capability or horizon"
+  - slot: expression-layer
+    trigger: {routes: [R05], elective: true}
+    opens: "a derived reader-facing artifact first appears"
+    asks: "artifact registration; readiness axis + reviewer role + readiness gate (three-piece pattern in answer-patterns.md)"
+  - slot: metadata-contract
+    trigger: {elective: true}
+    opens: "a tightened mode, extension field, or relationship extension is needed"
+    asks: "differences (tighten only) / extension fields / relationship extensions / section roles"
+  - slot: language-registrations
+    trigger: {elective: true}
+    opens: "domain-scoped anti-patterns or migration invalidations (bilingual corpora: the term-band pattern)"
+    asks: "K10/04 extension rows"
+  - slot: source-registrations
+    trigger: {elective: true}
+    opens: "comparison rules or provenance extensions (metric-reporting corpora: the evaluation-provenance pattern)"
+    asks: "the two optional Source Policy registrations; Metric Traceability role bindings"
+  - slot: routing-and-gates
+    trigger: {elective: true}
+    opens: "supplemental routes, L-tier triggers, specialized audit invariants, extension gates"
+    asks: "the four registry subsections"
