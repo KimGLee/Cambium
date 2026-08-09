@@ -51,8 +51,8 @@ class AdoptStandardsTests(unittest.TestCase):
             "| Gate ID | Tool | Tool version | Check | Mode | Dimension "
             "| Lifecycle |\n"
             "|---|---|---|---|---|---|---|\n"
-            "| required-queue-consistency | check_queue | 1.10.0 | required_queue | consistency | * | not-batch-scoped |\n"
-            "| required-queue-admission | check_queue | 1.10.0 | required_queue | require-ready:* | * | queued |\n"
+            "| required-queue-consistency | check_queue | 1.11.0 | required_queue | consistency | * | not-batch-scoped |\n"
+            "| required-queue-admission | check_queue | 1.11.0 | required_queue | require-ready:* | * | queued |\n"
             "| batch-close | check_batch_close | 1.4.0 | batch_close_gate | * | * | merge-ready |\n",
             encoding="utf-8")
 
@@ -757,7 +757,7 @@ class AdoptStandardsTests(unittest.TestCase):
                     "kernel/K00 Standards Control/12 Control Registry.md")
         registry.write_text(
             registry.read_text(encoding="utf-8") +
-            "| required-queue-completion | check_queue | 1.10.0 "
+            "| required-queue-completion | check_queue | 1.11.0 "
             "| required_queue | require-complete | * | queue-exhausted |\n",
             encoding="utf-8")
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
@@ -1033,7 +1033,9 @@ class AdoptStandardsTests(unittest.TestCase):
                 "dimension": dimension,
                 "target": "B1", "result": "pass", "invalidated_by": None,
                 "details": "re-reviewed after adoption",
-                "checked_at": "2026-08-09T00:00:00Z",
+                "checked_at": (datetime.now(timezone.utc) +
+                               timedelta(hours=1)).strftime(
+                                   "%Y-%m-%dT%H:%M:%SZ"),
                 "task_id": queue["task_id"],
                 "standards_version": queue["standards_version"],
                 "selected_profile_manifest":

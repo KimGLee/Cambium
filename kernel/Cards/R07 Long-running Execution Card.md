@@ -33,7 +33,7 @@ source_files:
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'e787dc5490c5'
+source_hash: '50e873fa759b'
 ---
 # R07 Long-running Execution Card
 

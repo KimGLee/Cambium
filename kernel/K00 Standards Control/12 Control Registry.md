@@ -89,14 +89,14 @@ moves its own cell.
 | Gate ID | Tool | Tool version | Check | Mode | Dimension | Lifecycle |
 |---|---|---|---|---|---|---|
 | `runtime-card-synchronization` | `manual-attestation` | `1.0.0` | `runtime-card-synchronization` | `*` | `guidance_and_contract` | `not-batch-scoped` |
-| `runtime-startup-recovery` | `check_queue` | `1.10.0` | `required_queue` | `resume-status` | `*` | `not-batch-scoped` |
+| `runtime-startup-recovery` | `check_queue` | `1.11.0` | `required_queue` | `resume-status` | `*` | `not-batch-scoped` |
 | `large-scale-execution-admission` | `manual-attestation` | `1.0.0` | `large-scale-execution-admission` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `wiki-link-integrity` | `check_links` | `1.5.0` | `link-check-summary` | `*` | `*` | `not-batch-scoped` |
 | `frontmatter-vocabulary` | `check_vocab` | `1.4.0` | `vocab-check-summary` | `*` | `*` | `not-batch-scoped` |
-| `required-queue-consistency` | `check_queue` | `1.10.0` | `required_queue` | `consistency` | `*` | `not-batch-scoped` |
-| `required-queue-admission` | `check_queue` | `1.10.0` | `required_queue` | `require-ready:*` | `*` | `queued` |
-| `required-queue-completion` | `check_queue` | `1.10.0` | `required_queue` | `require-complete` | `*` | `queue-exhausted` |
-| `maintenance-completion` | `check_queue` | `1.10.0` | `required_queue` | `require-maintenance-complete` | `*` | `queue-exhausted` |
+| `required-queue-consistency` | `check_queue` | `1.11.0` | `required_queue` | `consistency` | `*` | `not-batch-scoped` |
+| `required-queue-admission` | `check_queue` | `1.11.0` | `required_queue` | `require-ready:*` | `*` | `queued` |
+| `required-queue-completion` | `check_queue` | `1.11.0` | `required_queue` | `require-complete` | `*` | `queue-exhausted` |
+| `maintenance-completion` | `check_queue` | `1.11.0` | `required_queue` | `require-maintenance-complete` | `*` | `queue-exhausted` |
 | `batch-review` | `manual-attestation` | `1.0.0` | `batch_gate` | `*` | `none` | `open` |
 | `batch-close` | `check_batch_close` | `1.4.0` | `batch_close_gate` | `*` | `*` | `merge-ready` |
 | `structure-registry` | `check_structure` | `1.0.0` | `structure-registry-summary` | `*` | `*` | `not-batch-scoped` |
@@ -109,7 +109,7 @@ moves its own cell.
 | `expression-layer-acceptance` | `manual-attestation` | `1.0.0` | `expression-layer-acceptance` | `*` | `content_and_depth`, `coverage_and_integration`, `guidance_and_contract`, `source_and_currentness`, `structure_and_links` | `not-batch-scoped` |
 | `coverage-reconciliation` | `manual-attestation` | `1.0.0` | `coverage-reconciliation` | `*` | `coverage_and_integration` | `not-batch-scoped` |
 | `standards-adoption` | `adopt_standards` | `1.2.0` | `standards_adoption` | `*` | `*` | `not-batch-scoped` |
-| `standards-revalidation` | `check_queue` | `1.10.0` | `required_queue` | `require-revalidation:*` | `*` | `queued`, `open` |
+| `standards-revalidation` | `check_queue` | `1.11.0` | `required_queue` | `require-revalidation:*` | `*` | `queued`, `open` |
 | `guidance-disposition` | `manual-attestation` | `1.0.0` | `guidance-disposition` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `receipt-validity` | `manual-attestation` | `1.0.0` | `receipt-validity` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `rendering` | `manual-attestation` | `1.0.0` | `rendering` | `*` | `rendering`, `structure_and_links` | `not-batch-scoped` |

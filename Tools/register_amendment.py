@@ -25,7 +25,7 @@ import kblib
 
 
 TOOL = "register_amendment"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 RECEIPT_PATH = ".cambium/receipts/amendments.jsonl"
 OPERATIONS = ("scope-replan", "cancel-batch", "queue-replan")
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
@@ -443,6 +443,110 @@ def _prepare(root, args, expected):
     }
 
 
+def _prepare_withdrawal(root, args, expected):
+    """Retire one pending registration through the writer (K13/06).
+
+    A pending operational Amendment whose planned execution can no longer
+    validate — or whose approval is rescinded — would otherwise wedge the
+    one-pending rule forever, and directly editing the row is forbidden.
+    Withdrawal keeps the row and its bound plan/proposal bytes as immutable
+    evidence, publishes an append-only withdrawal receipt naming the
+    registration receipt, and sets the row's status to ``withdrawn`` with
+    write-back still false.  The amendment ID is never reused.
+    """
+    root = os.path.realpath(os.path.abspath(root))
+    runtime = check_queue.validate_runtime(root)
+    if runtime["errors"]:
+        raise ValueError("current runtime is inconsistent: %s" %
+                         "; ".join(runtime["errors"]))
+    if runtime.get("writer_locks"):
+        raise ValueError("runtime has an active or interrupted writer lock")
+    if not _nonempty(args.reason):
+        raise ValueError("--withdraw requires a nonempty --reason")
+    barrier = check_queue.delta_apply_write_barrier(
+        runtime, TOOL, "withdraw-amendment")
+    if barrier:
+        raise ValueError(barrier)
+    _require_current_schema(runtime)
+    _check_control_identity(runtime)
+    paths = _state_paths(root, runtime)
+    before_raw, before_sha = _read_state(paths)
+    for name in ("coverage", "progress", "queue"):
+        if expected[name] != before_sha[name]:
+            raise ValueError("expected %s SHA does not match current bytes" % name)
+
+    progress = runtime["progress"]
+    row = None
+    for entry in progress.get("amendments") or []:
+        if isinstance(entry, dict) and entry.get("id") == args.withdraw:
+            row = entry
+            break
+    if row is None:
+        raise ValueError("Progress has no Amendment %s" % args.withdraw)
+    if not (row.get("status") == "approved" and
+            row.get("writeback_done") is False):
+        raise ValueError(
+            "Amendment %s is not pending (status=%r, writeback_done=%r); "
+            "only a pending registration can be withdrawn" %
+            (args.withdraw, row.get("status"), row.get("writeback_done"))
+        )
+
+    receipt = kblib.make_receipt(
+        TOOL, TOOL_VERSION, "amendment_withdrawal", row["id"], "pass",
+        "withdrew pending %s Amendment: %s" %
+        (row.get("operation"), args.reason), 1,
+    )
+    progress_new = copy.deepcopy(progress)
+    for entry in progress_new["amendments"]:
+        if entry.get("id") == row["id"]:
+            entry["status"] = "withdrawn"
+            entry["withdrawal_reason"] = args.reason
+            entry["withdrawal_receipt"] = receipt["receipt_id"]
+            record = entry
+            break
+    progress_text = kblib.canonical_yaml(progress_new)
+    after_sha = dict(before_sha)
+    after_sha["progress"] = kblib.sha256_bytes(progress_text)
+    receipt.update({
+        "task_id": runtime["queue"].get("task_id"),
+        "actor_role": "integrator",
+        "amendment_id": row["id"],
+        "operation": row.get("operation"),
+        "registration_receipt": row.get("registration_receipt"),
+        "withdrawal_reason": args.reason,
+        "contract_sha256": check_queue._contract_sha256(progress),
+        "before_coverage_sha256": before_sha["coverage"],
+        "after_coverage_sha256": after_sha["coverage"],
+        "before_required_queue_sha256": before_sha["queue"],
+        "after_required_queue_sha256": after_sha["queue"],
+        "before_progress_sha256": before_sha["progress"],
+        "after_progress_sha256": after_sha["progress"],
+    })
+
+    planned = check_queue.validate_runtime(
+        root,
+        state_overrides={
+            check_queue.PROGRESS_PATH: (progress_text, progress_new),
+        },
+        extra_receipts=[receipt],
+    )
+    if planned["errors"]:
+        raise ValueError("planned withdrawal fails check_queue: %s" %
+                         "; ".join(planned["errors"]))
+    return {
+        "runtime": runtime,
+        "paths": paths,
+        "before_raw": before_raw,
+        "before_sha": before_sha,
+        "after_sha": after_sha,
+        "progress_text": progress_text,
+        "record": record,
+        "receipt": receipt,
+        "artifacts": [],
+        "action": "withdraw",
+    }
+
+
 def _restore_progress(prepared):
     path = prepared["paths"]["progress"]
     try:
@@ -462,7 +566,7 @@ def _apply(root, prepared, receipt_path):
     receipt_relative = os.path.relpath(receipt_path, root).replace(os.sep, "/")
     operation = {
         "tool": TOOL,
-        "action": "register",
+        "action": prepared.get("action", "register"),
         "task_id": prepared["runtime"]["queue"].get("task_id"),
         "target": prepared["record"]["id"],
         "amendment_id": prepared["record"]["id"],
@@ -532,15 +636,22 @@ def main(argv=None):
         description="Register one approved current-protocol Amendment"
     )
     parser.add_argument("root")
-    parser.add_argument("--operation", required=True, choices=OPERATIONS)
+    parser.add_argument("--operation", choices=OPERATIONS)
     parser.add_argument("--plan",
                         help=".cambium/deltas/amendments/*.yaml plan")
     parser.add_argument("--amendment-id")
     parser.add_argument("--coverage-proposal",
                         help=".cambium/deltas/replans/*.coverage.yaml proposal")
-    parser.add_argument("--date", required=True)
-    parser.add_argument("--summary", required=True)
-    parser.add_argument("--approval-reference", required=True)
+    parser.add_argument("--withdraw", metavar="AMENDMENT_ID",
+                        help="retire the named pending registration instead "
+                             "of registering one (K13/06 withdrawal); "
+                             "requires --reason")
+    parser.add_argument("--reason",
+                        help="nonempty withdrawal reason recorded on the row "
+                             "and its receipt")
+    parser.add_argument("--date")
+    parser.add_argument("--summary")
+    parser.add_argument("--approval-reference")
     parser.add_argument("--expected-coverage-sha256", required=True)
     parser.add_argument("--expected-progress-sha256", required=True)
     parser.add_argument("--expected-queue-sha256", required=True)
@@ -550,14 +661,40 @@ def main(argv=None):
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
 
-    if not DATE_RE.fullmatch(args.date):
-        print("[FAIL] --date must use YYYY-MM-DD")
-        return 1
-    for label, value in (("summary", args.summary),
-                         ("approval-reference", args.approval_reference)):
-        if not _nonempty(value):
-            print("[FAIL] --%s must be a non-empty string" % label)
+    if args.withdraw:
+        conflicting = [name for name, value in (
+            ("--operation", args.operation), ("--plan", args.plan),
+            ("--amendment-id", args.amendment_id),
+            ("--coverage-proposal", args.coverage_proposal),
+            ("--date", args.date), ("--summary", args.summary),
+            ("--approval-reference", args.approval_reference),
+        ) if value]
+        if conflicting:
+            print("[FAIL] --withdraw takes no registration argument(s): %s" %
+                  ", ".join(conflicting))
             return 1
+        if not _nonempty(args.reason):
+            print("[FAIL] --withdraw requires a nonempty --reason")
+            return 1
+    else:
+        if args.reason:
+            print("[FAIL] --reason belongs to --withdraw")
+            return 1
+        for label, value in (("operation", args.operation),
+                             ("date", args.date),
+                             ("summary", args.summary),
+                             ("approval-reference", args.approval_reference)):
+            if not value:
+                print("[FAIL] registration requires --%s" % label)
+                return 1
+        if not DATE_RE.fullmatch(args.date):
+            print("[FAIL] --date must use YYYY-MM-DD")
+            return 1
+        for label, value in (("summary", args.summary),
+                             ("approval-reference", args.approval_reference)):
+            if not _nonempty(value):
+                print("[FAIL] --%s must be a non-empty string" % label)
+                return 1
     expected = {
         "coverage": args.expected_coverage_sha256,
         "progress": args.expected_progress_sha256,
@@ -574,14 +711,17 @@ def main(argv=None):
             root, args.receipts, ".cambium/receipts",
             suffixes=(".jsonl",), must_exist=False,
         )
-        prepared = _prepare(root, args, expected)
+        prepared = (_prepare_withdrawal(root, args, expected)
+                    if args.withdraw else _prepare(root, args, expected))
     except (OSError, UnicodeError, ValueError, TypeError,
             kblib.YamlSubsetError) as exc:
         print("[FAIL] %s" % exc)
         return 1
 
-    print("Amendment registration: %s operation=%s" %
-          (prepared["record"]["id"], args.operation))
+    print("Amendment %s: %s operation=%s" %
+          ("withdrawal" if args.withdraw else "registration",
+           prepared["record"]["id"],
+           prepared["record"].get("operation") or args.operation))
     for name in ("coverage", "queue", "progress"):
         print("%s_sha256=%s -> %s" %
               (name, prepared["before_sha"][name],
@@ -590,16 +730,19 @@ def main(argv=None):
         print("dry run; add --apply --actor-role integrator with the same expected SHAs")
         return 0
     if args.actor_role != "integrator":
-        print("[FAIL] only actor-role integrator may register an Amendment")
+        print("[FAIL] only actor-role integrator may register or withdraw "
+              "an Amendment")
         return 1
     try:
         _apply(root, prepared, receipt_path)
     except (OSError, UnicodeError, ValueError, TypeError,
             kblib.YamlSubsetError) as exc:
-        print("[FAIL] Amendment registration: %s" % exc)
+        print("[FAIL] Amendment %s: %s" %
+              ("withdrawal" if args.withdraw else "registration", exc))
         return 1
-    print("[PASS] Amendment %s registered; receipt=%s" %
+    print("[PASS] Amendment %s %s; receipt=%s" %
           (prepared["record"]["id"],
+           "withdrawn" if args.withdraw else "registered",
            prepared["receipt"]["receipt_id"]))
     return 0
 

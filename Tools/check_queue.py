@@ -35,12 +35,12 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.10.0"
+TOOL_VERSION = "1.11.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
 REGISTER_AMENDMENT_TOOL = "register_amendment"
-REGISTER_AMENDMENT_TOOL_VERSION = "1.0.0"
+REGISTER_AMENDMENT_TOOL_VERSION = "1.1.0"
 OPERATIONAL_AMENDMENT_OPERATIONS = frozenset((
     "queue-replan", "scope-replan", "cancel-batch",
 ))
@@ -866,6 +866,9 @@ TASK_LIFECYCLE_EDGES = frozenset((
 ))
 FINAL_CONTROL_STATUSES = frozenset((
     "verified", "deferred", "superseded", "not-applicable",
+    # K13/06: a withdrawn operational Amendment is final — it authorizes
+    # nothing and is never resumed, so it raises no reconcile obligation.
+    "withdrawn",
 ))
 
 
@@ -3436,7 +3439,9 @@ def _bind_generic_lock_receipts(root, writer_locks, catalog):
         if operation.get("tool") == REGISTER_AMENDMENT_TOOL:
             for field, expected_value in (
                     ("tool_version", REGISTER_AMENDMENT_TOOL_VERSION),
-                    ("check", "amendment_registration"),
+                    ("check", "amendment_withdrawal"
+                     if operation.get("action") == "withdraw"
+                     else "amendment_registration"),
                     ("result", "pass"),
                     ("invalidated_by", None),
                     ("actor_role", "integrator"),
@@ -3844,7 +3849,11 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
         "%s Queue consistency snapshot" % item_id, errors,
         expected={
             "tool": TOOL,
-            "tool_version": TOOL_VERSION,
+            # K12/10 producer-era identity: a close bundle sealed under an
+            # accounted era keeps the consistency snapshot its own runtime
+            # produced; it is never re-judged against this checker's
+            # current constant after an upgrade.
+            "tool_version": ANY_PRODUCER_ERA_VERSION,
             "check": "required_queue",
             "queue_check_mode": "consistency",
             "repository_snapshot_sha256": merged_snapshot_sha256,
@@ -5543,7 +5552,12 @@ def _operational_amendment_registration_errors(
                     else "state_revision")
     expected = {
         "tool": REGISTER_AMENDMENT_TOOL,
-        "tool_version": REGISTER_AMENDMENT_TOOL_VERSION,
+        # K12/10 producer-era identity: a registration sealed under an
+        # accounted Standards era is never re-judged against the current
+        # writer constant — the payload contract below stays exact, and a
+        # protocol the current runtime cannot execute fails at execution or
+        # is withdrawn, never by version drift here.
+        "tool_version": ANY_PRODUCER_ERA_VERSION,
         "check": "amendment_registration",
         "target": amendment.get("id"),
         "task_id": queue.get("task_id"),
@@ -5605,6 +5619,27 @@ def _operational_amendment_registration_errors(
                     "%s current registration receipt has %s=%r, expected %r" %
                     (label, field, receipt.get(field), value)
                 )
+    elif status == "withdrawn" and writeback is False:
+        # K13/06 withdrawal: a pending registration whose execution can no
+        # longer validate is retired through the registering writer, never by
+        # editing the row.  The withdrawal receipt is immutable history; the
+        # bound plan/proposal bytes above stay verified forever.
+        if not _nonempty_string(amendment.get("withdrawal_reason")):
+            errors.append("%s withdrawn row must record a nonempty "
+                          "withdrawal_reason" % label)
+        _require_receipt(
+            historical_catalog, amendment.get("withdrawal_receipt"),
+            "%s withdrawal" % label, errors,
+            expected={
+                "tool": REGISTER_AMENDMENT_TOOL,
+                "tool_version": ANY_PRODUCER_ERA_VERSION,
+                "check": "amendment_withdrawal",
+                "target": amendment.get("id"),
+                "amendment_id": amendment.get("id"),
+                "registration_receipt": receipt_id,
+            },
+        )
+        return errors
     elif not verified:
         # The operation-specific validators report the illegal lifecycle pair;
         # registration is meaningful only at either end of that pair.
@@ -5805,9 +5840,20 @@ def _cross_ledger_amendment_errors(
             pending_count += 1
             pending_seen = True
             continue
+        if status == "withdrawn" and writeback is False:
+            # K13/06 withdrawal: the row stays as immutable evidence and
+            # authorizes nothing; the withdrawal receipt is validated with
+            # the registration binding above.
+            for field in ("transaction_id", "verification_receipt",
+                          "transaction_sequence",
+                          "previous_transaction_commit_receipt"):
+                if amendment.get(field) is not None:
+                    errors.append("%s withdrawn Amendment must not claim %s" %
+                                  (label, field))
+            continue
         if status != "verified" or writeback is not True:
-            errors.append("%s cross-Ledger state must be approved/pending or "
-                          "verified/written-back" % label)
+            errors.append("%s cross-Ledger state must be approved/pending, "
+                          "withdrawn, or verified/written-back" % label)
             continue
         if pending_seen:
             errors.append("%s verified transaction appears after a pending "
@@ -6132,9 +6178,12 @@ def _queue_replan_amendment_errors(
                               "receipt/SHA evidence" % label)
             continue
 
+        if status == "withdrawn" and writeback is False:
+            # K13/06 withdrawal keeps the row as evidence; it never executes.
+            continue
         if status != "verified" or writeback is not True:
-            errors.append("%s queue-replan state must be approved/pending or "
-                          "verified/written-back" % label)
+            errors.append("%s queue-replan state must be approved/pending, "
+                          "withdrawn, or verified/written-back" % label)
             continue
 
         if (revisions_valid and valid_revision(current_queue_revision, 1) and

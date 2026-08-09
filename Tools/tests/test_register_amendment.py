@@ -181,7 +181,7 @@ class RegisterAmendmentTests(unittest.TestCase):
         receipt = self.receipt()
         self.assertEqual(record["registration_receipt"], receipt["receipt_id"])
         self.assertEqual("register_amendment", receipt["tool"])
-        self.assertEqual("1.0.0", receipt["tool_version"])
+        self.assertEqual(register_amendment.TOOL_VERSION, receipt["tool_version"])
         self.assertEqual("amendment_registration", receipt["check"])
         self.assertEqual(before["coverage"],
                          receipt["before_coverage_sha256"])
@@ -314,6 +314,110 @@ class RegisterAmendmentTests(unittest.TestCase):
         )
         self.assertEqual(1, rejected.returncode, rejected.stdout)
         self.assertIn("already has pending Amendment A-SCOPE", rejected.stdout)
+
+    def withdraw(self, amendment_id, *extra, apply=False, shas=None,
+                 actor_role="integrator",
+                 reason="planned final state can no longer validate"):
+        shas = shas or self.shas()
+        args = [
+            sys.executable, str(TOOLS / "register_amendment.py"),
+            str(self.root), "--withdraw", amendment_id,
+            "--reason", reason,
+            "--expected-coverage-sha256", shas["coverage"],
+            "--expected-progress-sha256", shas["progress"],
+            "--expected-queue-sha256", shas["queue"],
+            "--actor-role", actor_role,
+            *extra,
+        ]
+        if apply:
+            args.append("--apply")
+        return subprocess.run(
+            args, text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, check=False,
+        )
+
+    def test_withdrawal_unwedges_the_one_pending_rule(self):
+        """K13/06: withdraw a pending registration, then register anew."""
+        first_plan, _, _ = self.cross_plan("scope-replan")
+        completed = self.command(
+            "scope-replan", "--plan", first_plan,
+            apply=True, actor_role="integrator",
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        withdrawn = self.withdraw("A-SCOPE", apply=True)
+        self.assertEqual(0, withdrawn.returncode, withdrawn.stdout)
+        self.assertIn("withdrawn", withdrawn.stdout)
+        progress = self.load(check_queue.PROGRESS_PATH)
+        row = next(r for r in progress["amendments"]
+                   if r.get("id") == "A-SCOPE")
+        self.assertEqual("withdrawn", row["status"])
+        self.assertFalse(row["writeback_done"])
+        self.assertTrue(row["withdrawal_receipt"])
+        self.assertEqual("planned final state can no longer validate",
+                         row["withdrawal_reason"])
+        self.assertEqual([], check_queue.validate_runtime(
+            str(self.root))["errors"])
+        # A withdrawn row is final: it raises no resume/terminal
+        # reconcile obligation.
+        _, pending = check_queue._pending_control_ids(
+            self.load(check_queue.PROGRESS_PATH))
+        self.assertEqual([], pending)
+        # The one-pending rule is unwedged; the burned ID stays refused.
+        proposal = self.queue_proposal()
+        second = self.command(
+            "queue-replan", "--amendment-id", "A-QUEUE",
+            "--coverage-proposal", proposal,
+            apply=True, actor_role="integrator",
+        )
+        self.assertEqual(0, second.returncode, second.stdout)
+        reused = self.command(
+            "queue-replan", "--amendment-id", "A-SCOPE",
+            "--coverage-proposal", self.queue_proposal(),
+        )
+        self.assertEqual(1, reused.returncode, reused.stdout)
+        self.assertIn("already contains Amendment A-SCOPE", reused.stdout)
+
+    def test_withdrawal_is_dry_run_first_and_integrator_only(self):
+        first_plan, _, _ = self.cross_plan("scope-replan")
+        self.command("scope-replan", "--plan", first_plan,
+                     apply=True, actor_role="integrator")
+        before = self.shas()
+        dry = self.withdraw("A-SCOPE")
+        self.assertEqual(0, dry.returncode, dry.stdout)
+        self.assertIn("dry run", dry.stdout)
+        self.assertEqual(before, self.shas())
+        worker = self.withdraw("A-SCOPE", apply=True, actor_role="worker")
+        self.assertEqual(1, worker.returncode, worker.stdout)
+
+    def test_withdrawal_requires_a_pending_row_and_a_reason(self):
+        missing = self.withdraw("A-ABSENT", apply=True)
+        self.assertEqual(1, missing.returncode, missing.stdout)
+        self.assertIn("no Amendment A-ABSENT", missing.stdout)
+        first_plan, _, _ = self.cross_plan("scope-replan")
+        self.command("scope-replan", "--plan", first_plan,
+                     apply=True, actor_role="integrator")
+        empty = self.withdraw("A-SCOPE", reason="  ", apply=True)
+        self.assertEqual(1, empty.returncode, empty.stdout)
+        withdrawn = self.withdraw("A-SCOPE", apply=True)
+        self.assertEqual(0, withdrawn.returncode, withdrawn.stdout)
+        again = self.withdraw("A-SCOPE", apply=True)
+        self.assertEqual(1, again.returncode, again.stdout)
+        self.assertIn("not pending", again.stdout)
+
+    def test_historical_registration_survives_a_writer_version_bump(self):
+        """K12/10 producer-era identity for registration receipts: a sealed
+        row is not re-judged against the current writer constant."""
+        first_plan, _, _ = self.cross_plan("scope-replan")
+        self.command("scope-replan", "--plan", first_plan,
+                     apply=True, actor_role="integrator")
+        self.withdraw("A-SCOPE", apply=True)
+        receipts_path = self.root / register_amendment.RECEIPT_PATH
+        text = receipts_path.read_text(encoding="utf-8").replace(
+            '"tool_version": "%s"' % register_amendment.TOOL_VERSION,
+            '"tool_version": "0.9.0"')
+        receipts_path.write_text(text, encoding="utf-8")
+        self.assertEqual([], check_queue.validate_runtime(
+            str(self.root))["errors"])
 
     def test_rejects_unknown_schema_instead_of_legacy_guessing(self):
         plan_relative, _, _ = self.cross_plan("scope-replan")
