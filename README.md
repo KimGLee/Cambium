@@ -1,5 +1,7 @@
 # Cambium
 
+English | [简体中文](README.zh-CN.md)
+
 Cambium is a governance standard and reference toolset for knowledge corpora
 maintained with LLM agents. It defines how an agent loads rules, scopes work,
 preserves canonical ownership, incorporates sources, manages long-running
