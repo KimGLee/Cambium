@@ -218,6 +218,12 @@ template in place and do not copy an example as the starting point.
 cp -R profiles/_template profiles/my-profile
 ```
 
+`profiles/_template-minimal/` is the pre-closed minimal depth of the same
+interface: every slot switch with a legal exit state ships closed, operational
+answers ship pre-filled for confirmation, and only the decisions no template
+can make remain open. Both depths produce fully conformant profiles; the depth
+contract is in [`profiles/README.md`](profiles/README.md).
+
 1. Replace every `TODO(profile)` in `profiles/my-profile/`. Keep `profile_id`
    equal to the directory name and use
    [`profiles/README.md`](profiles/README.md) as the interface authority.

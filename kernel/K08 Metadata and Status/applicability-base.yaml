@@ -82,8 +82,13 @@ fields:
           in:
             - reviewed
   last_verified:
-    mode: optional
+    mode: conditional
     shape: date
+    condition:
+      all:
+        - field: volatility
+          in:
+            - fast
   volatility:
     mode: optional
     shape: nonempty-string
