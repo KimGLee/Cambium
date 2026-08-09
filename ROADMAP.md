@@ -65,6 +65,14 @@ Track the mapping between durable work and temporary execution contexts:
 Batch identity must survive an agent interruption or reassignment. Agent and
 subagent topology remains runtime metadata rather than profile configuration.
 
+Where the host allows, a role's permitted write scope is enforced
+structurally rather than only recorded: each role receives an operation
+surface containing only its permitted operations, so a worker's surface has
+no integrator transition and a clean-context reviewer's surface exposes only
+review inputs and verdict submission. Interface scoping is defence in depth
+against misoperation, not authentication; the evidence trust boundary is
+unchanged.
+
 ### Integrator Loop
 
 Implement the single-writer control path before automating parallel workers:
@@ -97,6 +105,34 @@ host part of the kernel. An adapter may provide agent creation, workspace
 isolation, cancellation, event delivery, and context identifiers. It must
 declare unsupported capabilities and fall back safely rather than simulating
 evidence it cannot produce.
+
+## Operation Capability Registry
+
+Make the kernel's implicit "which controlled operations are permitted in
+which runtime state" knowledge an explicit kernel asset. Today that mapping
+exists only as the `next_action` derivation inside
+`check_queue.py --resume-status` and as prose distributed across the
+standards; no single artifact owns it.
+
+- A restricted-YAML registry maps each task and batch state to the permitted
+  controlled operations, the writer tool that owns each operation, its
+  required parameters, and the receipt or gate evidence it consumes.
+- The registry follows the existing compose/check idiom (vocabulary, page
+  contract, Card stamping): a deterministic checker verifies that the
+  registry, each tool's declared CLI contract, and the kernel's transition
+  rules agree, and fails closed on drift.
+- The registry is the single generation source for any adapter's closed
+  operation surface, including the MCP surface below and capability
+  discovery responses. An adapter must not maintain an independent
+  hand-written operation list.
+- `--resume-status` `next_action` output must agree with the registry; the
+  registry makes that vocabulary canonical rather than replacing the
+  derivation.
+
+This is standards-layer work and precedes the adapter surfaces generated
+from it. The kernel leaf that owns the registry passes the normal admission,
+size-budget, and Read Set registration requirements, and reaches an active
+task only through Standards adoption.
 
 ## OpenAI Plugin Host Adapter
 
@@ -194,8 +230,10 @@ The initial interaction surface should remain small:
   candidate findings, and unavailable evidence.
 
 The first MCP adapter is local and read-only. Candidate operations include
-workspace inspection, Profile validation, resume status, Queue validation,
-receipt inspection, audit preview, and Terminal Proof verification. UI, remote
+capability discovery (the state-dependent permitted-operation set generated
+from the Operation Capability Registry), workspace inspection, Profile
+validation, resume status, Queue validation, receipt inspection, audit
+preview, and Terminal Proof verification. UI, remote
 repository access, automatic agent dispatch, and public-directory distribution
 remain deferred.
 
@@ -204,6 +242,12 @@ remain deferred.
 Prepare Cambium for adapter use without changing kernel or Profile semantics:
 
 - extract a stable, typed Core API from repository-layout-dependent scripts;
+- ship per-tool `--json` output as the first increment of that Core API:
+  each tool derives its human-readable text and its JSON from one internal
+  result object, replaces overloaded exit-code meanings with enumerated
+  error codes, and declares an output schema covered by tests; a second
+  rendering path is a defect, and receipts remain the evidence of record
+  while `--json` remains a projection;
 - normalize filesystem roots and path aliases across supported platforms;
 - separate Plugin resources, target workspace, and canonical state;
 - define Plugin, protocol, receipt, and minimum-Core compatibility;
@@ -235,7 +279,10 @@ unchanged.
 
 Add writes only through Core transactions:
 
-- expose explicit dry-run and apply operations;
+- expose explicit dry-run and apply operations; a dry-run response returns
+  the complete apply envelope, including the exact expected revisions and
+  SHAs it read, so a caller replays it rather than re-transcribing
+  parameters;
 - require exact workspace roots, expected revisions, locks, receipts, and
   interruption recovery;
 - support candidate Profile onboarding and the bounded
@@ -577,8 +624,11 @@ protects the shared control plane while still making multi-context execution
 the intended scaling path.
 
 Core stabilization precedes every state-writing Plugin capability. The
-read-only Plugin alpha may progress alongside Profile onboarding and typed
-dependency work because it does not own canonical state. Guarded writers follow
+Operation Capability Registry is standards-layer work that precedes the
+read-only alpha's operation surface, which is generated from the registry
+rather than hand-listed. The read-only Plugin alpha may progress alongside
+Profile onboarding and typed dependency work because it does not own
+canonical state. Guarded writers follow
 the stable Core API, while the full Codex execution adapter follows the
 single-writer integrator loop. Workspace and public distribution are downstream
 delivery choices and do not define completion of the host-neutral Cambium
