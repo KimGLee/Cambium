@@ -14,7 +14,7 @@ bypass R09 adoption.
 
 | Area | Current state |
 |---|---|
-| Profile setup | Copy the 14-file `_template`, fill it manually, and run `check_profile.py` |
+| Profile setup | Copy the 15-file `_template` (13 bound slot files, the manifest, and one scan-config parameter file), fill it manually, and run `check_profile.py` |
 | Execution | The kernel defines sequential work, concurrent disjoint batches, independent review contexts, and serial integration |
 | Persistent work state | `.cambium/` separates object-level Coverage, the canonical Required Queue, task-level Progress, and hash-bound restricted-YAML complex-batch Work Specs; standard-library tools initialize, compile, validate, transition, apply Amendment-bound cross-Ledger changes, recover interrupted-write evidence, and render Queue state |
 | Active-task Standards adoption | One restricted-YAML plan binds approved governance bytes, deterministic Kernel/Profile snapshots, old/new Contract/Standards/Profile/load set, changed predicates, dimension/boundary-specific invalidated evidence, immediate Queue consistency, and deferred gates; after required pre-rollbacks/holds, `adopt_standards.py` synchronizes all three runtime identities without changing lifecycle/holds, while append-only receipts preserve producer-era history, filter invalidated-evidence receipt IDs from current use, recover interruption, and avoid a prose duplicate |
@@ -24,6 +24,7 @@ bypass R09 adoption.
 | Automatic dependency propagation | The kernel defines semantic dependency invalidation and downstream `needs_rereview`, but no bundled compiler or change detector yet calculates an affected set from the explicit planning inputs |
 | Independent completeness and consistency evaluation | Current gates prove integrity within the declared Coverage, Queue, Delta, receipt, and snapshot boundaries. No bundled independent pass yet re-derives the expected corpus or impact set without trusting those declarations, or evaluates paraphrased cross-document contradictions as a general capability |
 | Tools | Deterministic checks, schemas, receipts, vocabulary/Card compilation, Corpus Planning validation/semantic acceptance/on-demand Agent projection, Required Queue and Work Spec control, guarded Amendment and active-task Standards-adoption transactions, and single-delta application |
+| Page-level contract family | The composed frontmatter page contract (K08/06-08; `compose_page_contract.py` + advisory `page-contract` gate), Structure Registry resolution (K01/05-06; `structure-registry` gate) with marker-block coverage projections, and the page boundary contract (K08/09; advisory `boundary-contract` gate) with its tool-owned boundary projection — all deterministic, with advisory gates awaiting per-adopter promotion decisions under K12/10 |
 
 ## Profile Onboarding Assistant
 

@@ -75,7 +75,7 @@ Cambium separates durable work units from execution contexts.
   context, whose input is only the note body and its Sources. An ordinary child
   context that inherits the author's context does not satisfy it.
 - A logical **integrator** exclusively controls the shared state named in
-  [`K13/10 Concurrent Batches and Merge`](<kernel/K13 Task Runtime and Execution Control/10 Concurrent Batches and Merge.md>):
+  [`K13/10 Batch Admission Transitions and Serial Integration`](<kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md>):
   guidance disposition, Queue structural revision, Queue state transition,
   contract changes, Standards adoption, batch activation, and merging. That
   module states the enumeration; this list is a reader's summary of it.
@@ -158,7 +158,12 @@ optional hash-bound complex-batch Work Specs, explicit Global Map / Capability
 Matrix / Gap Register validation, and deterministic initialization,
 compilation, validation, task/batch transitions, active-task Standards/Profile
 adoption, interruption recovery, build Terminal closure, bounded maintenance
-closure, and derived report generation.
+closure, and derived report generation. The page-level contract family is also
+deterministic: the composed frontmatter page contract (K08/06-08, advisory
+`page-contract` gate), the Structure Registry resolution (K01/05-06,
+`structure-registry` gate) with its marker-block coverage projections, and the
+page boundary contract (K08/09, advisory `boundary-contract` gate) with its
+tool-owned boundary projection blocks.
 They do not dispatch agents. Worker dispatch, workspace isolation, event
 delivery, and the integrator loop must still be supplied by the adopting
 runtime or a human operator.
@@ -226,10 +231,12 @@ cp -R profiles/_template profiles/my-profile
    and exact `profiles/my-profile/profile.md` path in K00/03. Directory presence,
    profile discovery, an example, or a generated file never selects a profile.
 4. With those candidate state fields in place, compose the profile vocabulary
-   and regenerate the Runtime Cards for the adopted Standards version:
+   and the frontmatter page contract, and regenerate the Runtime Cards for the
+   adopted Standards version:
 
    ```text
    python3 Tools/compose_vocab.py
+   python3 Tools/compose_page_contract.py
    python3 Tools/stamp_cards.py . --set-version YOUR_VERSION
    python3 Tools/stamp_cards.py . --check
    ```
