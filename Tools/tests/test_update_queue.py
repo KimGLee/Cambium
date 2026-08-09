@@ -1357,6 +1357,68 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertEqual("B1", page["batch"])
         self.assertEqual("B3", page["next_batch"])
 
+    def test_closing_a_successor_batch_transfers_coverage_ownership(self):
+        # Defect #9 regression: a compiled successor over already-closed
+        # pages could never close, because the projection kept the
+        # predecessor's `batch` while the assignment check demanded the
+        # closing id.  Close now transfers ownership (K12/03: Coverage
+        # names the most recent closed owner).
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        queue = self.load(check_queue.QUEUE_PATH)
+        queue["required_queue"][0]["state"] = "closed"
+        queue["required_queue"].append({
+            "id": "B3", "family": "Core", "order": 3,
+            "record_count": 1, "manifest": ["Topics/A.md"],
+            "source_route": "R03", "execution_mode": "concurrent-worker",
+            "depends_on": ["B1"], "confirmation_required": False,
+            "work_spec_path": None, "work_spec_sha256": None,
+            "state": "merge-ready", "hold_state": "none",
+            "successor_of": "B1",
+        })
+        page = coverage["pages"][0]
+        page["batch"] = "B1"
+        page["next_batch"] = "B3"
+        projected = update_queue._project_closed_coverage(
+            coverage, queue, "B3")
+        projected_page = projected["pages"][0]
+        self.assertEqual("B3", projected_page["batch"])
+        self.assertIsNone(projected_page["next_batch"])
+
+    def test_closed_predecessor_manifest_resolves_through_successor_chain(self):
+        # After a successor close moved ownership forward, the predecessor's
+        # immutable manifest must not be reported as unassigned: the checker
+        # walks the `successor_of` chain back to it.
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        queue = self.load(check_queue.QUEUE_PATH)
+        item = queue["required_queue"][0]
+        item["state"] = "closed"
+        chain_error = "is not assigned to that batch in Coverage"
+        page = coverage["pages"][0]
+        page["batch"] = "B3"
+        page["next_batch"] = None
+        # Without the successor edge the predecessor's manifest is orphaned.
+        queue["required_queue"].append({
+            "id": "B3", "family": "Core", "order": 3,
+            "record_count": 1, "manifest": ["Topics/A.md"],
+            "source_route": "R03", "execution_mode": "concurrent-worker",
+            "depends_on": ["B1"], "confirmation_required": False,
+            "work_spec_path": None, "work_spec_sha256": None,
+            "state": "closed", "hold_state": "none",
+        })
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        self.write_queue(queue)
+        errors = check_queue.validate_runtime(str(self.root))["errors"]
+        self.assertTrue(any(chain_error in error for error in errors),
+                        errors)
+        # With `successor_of` the chain resolves and the report clears.
+        queue["required_queue"][-1]["successor_of"] = "B1"
+        self.write_queue(queue)
+        errors = check_queue.validate_runtime(str(self.root))["errors"]
+        self.assertFalse(any(chain_error in error for error in errors),
+                         errors)
+
     def test_close_rejects_multiple_queued_successors(self):
         coverage = self.load(check_queue.COVERAGE_PATH)
         queue = self.load(check_queue.QUEUE_PATH)

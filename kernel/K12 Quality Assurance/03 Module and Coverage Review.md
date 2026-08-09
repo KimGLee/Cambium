@@ -30,12 +30,12 @@ Before a module or long task completes, the Coverage Ledger MUST be reconciled a
 - Every Required knowledge object not yet created still has an explicit record.
 - Excluded directories are not counted as deliverables or accidentally modified.
 - No P0 / P1 core, process-flow, system, or risk/control page is `unassessed`.
-- Every Required item that has not reached its target state appears in exactly one non-terminal current Queue manifest and has a consistent Coverage `next_batch` projection; the same object may remain in an immutable closed predecessor manifest identified by Coverage `batch`.
+- Every Required item that has not reached its target state appears in exactly one non-terminal current Queue manifest and has a consistent Coverage `next_batch` projection. Coverage `batch` names the object's most recent closed owner: closing a batch transfers ownership to the closing id, so a successor close moves it forward. The object may remain in an immutable closed predecessor manifest; that historical membership is resolved through the Queue's `successor_of` chain, not through a live Coverage assignment the predecessor no longer holds.
 - `deferred` has a reason, a re-entry condition, and an owner; `excluded` has a scope basis.
 - Sequence or progress checkboxes, file existence, resolvable wiki links, and `Related` references are not treated as authoring completion; for status separation see [[kernel/K11 Expression Layer/06 Sequence and Progress Semantics|Sequence And Progress Semantics]].
 - Core pages are not visibly thinner than newly created peripheral or frontier pages.
 - Coverage Ledger summary counts match the automated scan counts.
-- For each Queue item, its explicit manifest equals the set projected to that batch by Coverage and its `record_count` equals the manifest size; no Coverage object names an unknown batch, no Queue manifest names an unknown object, and no `closed` item remains a Coverage `next_batch`.
+- For each non-terminal Queue item, its explicit manifest equals the set projected to that batch by Coverage and its `record_count` equals the manifest size; a `closed` item's manifest stays byte-identical while its pages' live assignment may sit with a closed successor. No Coverage object names an unknown batch, no Queue manifest names an unknown object, and no `closed` item remains a Coverage `next_batch`.
 
 Within the local receipt trust boundary, the current `Tools/check_queue.py` receipt records that these cross-ledger conditions matched the checked bytes and state. Module Review consumes that receipt and reviews the semantic coverage around it; it does not implement a second Queue validator.
 

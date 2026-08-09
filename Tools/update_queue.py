@@ -21,7 +21,7 @@ import kblib
 import update_task
 import apply_delta
 
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.3.0"
 # The lifecycle map moved to `kblib` so `check_queue` can read it without
 # importing this writer, which imports it.  The name stays here because it is
 # this tool's transition guard and every existing reference reads it here.
@@ -243,16 +243,23 @@ def _write_state(coverage_path, coverage_text, queue_path, queue_text,
 
 
 def _project_closed_coverage(coverage, queue, closing_id):
-    """Return the deterministic future-route projection for one close.
+    """Return the deterministic ownership-and-route projection for one close.
 
-    Historical ``batch`` ownership is intentionally untouched.  A valid
-    canonical pre-state already materializes a queued successor in
-    ``next_batch``; that route is preserved.  If this pure projection helper
-    sees the closing id instead, it can only advance to one explicit queued
-    ``successor_of`` as a defensive rule.  The CLI's strict pre-validation
-    still rejects a successor whose Coverage assignment was never declared.
-    Any other route or ambiguous successor set is a structural conflict, not
-    something this lifecycle command may guess through.
+    Closing transfers ``batch`` ownership: every manifest page leaves the
+    close with ``batch`` naming the closing batch, so Coverage always reads
+    as the most recent closed owner (K12/03).  For an ordinary batch this is
+    a no-op; for a successor batch it moves ownership forward.  The complete
+    ownership history is not lost by the move — every closed Queue item's
+    manifest is immutable, and the consistency checker resolves a closed
+    predecessor's manifest through the ``successor_of`` chain.
+
+    Routing is projected as before: a valid canonical pre-state already
+    materializes a queued successor in ``next_batch``; that route is
+    preserved.  If this pure projection helper sees the closing id instead,
+    it can only advance to one explicit queued ``successor_of`` as a
+    defensive rule.  Any other route or ambiguous successor set is a
+    structural conflict, not something this lifecycle command may guess
+    through.
     """
     result = copy.deepcopy(coverage)
     items = {
@@ -286,6 +293,7 @@ def _project_closed_coverage(coverage, queue, closing_id):
                 (object_path, closing_id, ", ".join(successors))
             )
         successor = successors[0] if successors else None
+        page["batch"] = closing_id
         current_route = page.get("next_batch")
         if current_route == closing_id:
             page["next_batch"] = successor

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Produce the canonical merged-snapshot evidence needed to close one batch.
 
-The command is the production counterpart of K12/09.  It runs the seven-item
+The command is the production counterpart of K12/09.  It runs the full
 Closed List on the real repository, records an explicit declared-reviewer
 attestation, obtains a canonical ``check_queue`` consistency receipt, and
 publishes one batch-close aggregator that ``update_queue.py`` can consume.
@@ -49,7 +49,7 @@ import kblib
 
 
 TOOL = "check_batch_close"
-TOOL_VERSION = "1.4.0"
+TOOL_VERSION = "1.5.0"
 GATE_ID = "batch-close"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -753,6 +753,50 @@ def _priority_quotas(root, runtime):
     return p0, p1
 
 
+def _manifest_page_contract_member(run, manifest_paths, member):
+    """Build the K12/09 item 8 member: page-contract debt on manifest pages.
+
+    The full-corpus advisory backlog stays advisory — legacy candidates on
+    pages this batch never touched do not block anyone.  But a page in this
+    batch's manifest left the batch reviewed, so any page-contract candidate
+    it still carries is unfinished batch work: it surfaces here as a stable
+    candidate the integrator must either fix or explicitly accept with a
+    recorded disposition, and a strict-mode fail on a manifest page is a
+    member error outright.
+    """
+    manifest = {str(path) for path in manifest_paths if path}
+
+    def _on_manifest(target):
+        target = str(target or "")
+        page = target.split(" @ ", 1)[0]
+        for path in manifest:
+            if page == path or page.startswith(path + ":"):
+                return True
+        return False
+
+    candidates = [_stable_candidate(receipt, member)
+                  for receipt in run.get("candidates") or []
+                  if _on_manifest(receipt.get("target"))]
+    errors = list(run.get("errors") or [])
+    for receipt in run.get("receipts") or []:
+        if (receipt.get("result") == "fail" and
+                _on_manifest(receipt.get("target"))):
+            errors.append(
+                "manifest page fails the compiled page contract: %s (%s)" %
+                (receipt.get("target"), receipt.get("details")))
+    total = len(run.get("candidates") or [])
+    details = ("%s exit=%s receipts=%d manifest_candidates=%d "
+               "corpus_candidates=%d" % (
+                   run.get("label"), run.get("returncode"),
+                   len(run.get("receipts") or []), len(candidates), total))
+    return {
+        "errors": errors,
+        "candidates": candidates,
+        "details": details,
+        "source_command": run.get("command"),
+    }
+
+
 def _tool_member_run(run, member):
     candidates = [_stable_candidate(receipt, member)
                   for receipt in run.get("candidates") or []]
@@ -1162,6 +1206,31 @@ def main(argv=None):
                     root, "check_vocab")
                 checks["controlled_vocabulary"] = _tool_member_run(
                     vocab, "controlled_vocabulary")
+                contract_artifact = os.path.join(
+                    root, "Tools", "page_contract.yaml")
+                if os.path.isfile(contract_artifact):
+                    page_contract = _run_receipting_command(
+                        [sys.executable,
+                         str(SCRIPT_DIR / "check_page_contract.py"), root],
+                        root, "check_page_contract")
+                    checks["manifest_page_contract"] = \
+                        _manifest_page_contract_member(
+                            page_contract, item.get("manifest") or [],
+                            "manifest_page_contract")
+                else:
+                    # Like the composed vocabulary, the compiled page
+                    # contract exists only where an instance composed it
+                    # (K08/06).  Without the artifact the member is
+                    # vacuously clean and says so; composing the contract
+                    # is what arms it.
+                    checks["manifest_page_contract"] = {
+                        "errors": [],
+                        "candidates": [],
+                        "details": ("no composed page contract "
+                                    "(Tools/page_contract.yaml absent); "
+                                    "member vacuously clean — "
+                                    "compose_page_contract.py arms it"),
+                    }
             except (OSError, UnicodeError, ValueError,
                     subprocess.SubprocessError) as exc:
                 _assert_authoritative_state_unchanged(root, state_anchor)
@@ -1239,7 +1308,8 @@ def main(argv=None):
 
             attestation = _make_receipt(
                 TOOL, TOOL_VERSION, "batch_global_review_attestation",
-                args.batch, "pass", args.review_attestation.strip(), 8,
+                args.batch, "pass", args.review_attestation.strip(),
+                len(check_queue.CLOSED_LIST_EVIDENCE_FIELDS) + 1,
                 root=root)
             attestation.update({
                 "task_id": runtime["queue"].get("task_id"),
@@ -1257,8 +1327,8 @@ def main(argv=None):
 
             global_review = _make_receipt(
                 TOOL, TOOL_VERSION, "batch_global_review", args.batch,
-                "pass", "declared reviewer attestation recorded for the seven-member merged-snapshot review",
-                9, root=root)
+                "pass", "declared reviewer attestation recorded for the Closed List merged-snapshot review",
+                len(check_queue.CLOSED_LIST_EVIDENCE_FIELDS) + 2, root=root)
             global_review.update({
                 "task_id": runtime["queue"].get("task_id"),
                 "batch_id": args.batch,
@@ -1287,7 +1357,7 @@ def main(argv=None):
 
             aggregator = _make_receipt(
                 TOOL, TOOL_VERSION, GATE_CHECK, args.batch, "pass",
-                "seven Closed List checks passed and declared review attestation was recorded",
+                "Closed List checks passed and declared review attestation was recorded",
                 11, root=root)
             aggregator["receipt_id"] = attempt_id
             aggregator.update({
