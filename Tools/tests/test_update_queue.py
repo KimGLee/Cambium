@@ -1357,6 +1357,59 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertEqual("B1", page["batch"])
         self.assertEqual("B3", page["next_batch"])
 
+    def test_merge_ready_requires_substantive_review_for_l_tier_pages(self):
+        # K12/12: mandatory for L-tier, produced by a context other than the
+        # author.  Until this guard, nothing counted the receipts and the
+        # obligation could be skipped silently.
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage["pages"][0]["tier"] = "L"
+        coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        self.refresh_initial_origin()
+        self.open_b1()
+        self.append_receipt("audit-page-1", target="Topics/A.md")
+        self.append_receipt("audit-batch-1", check="batch_gate")
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-1\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8",
+        )
+        revision, fingerprint = self.expected()
+        merge_args = (
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T02:00:00Z",
+            "--apply",
+        )
+        refused = self.command(*merge_args)
+        self.assertEqual(1, refused.returncode, refused.stdout)
+        self.assertIn("substantive", refused.stdout)
+        self.assertIn("Topics/A.md", refused.stdout)
+        # The arrived review unblocks the same transition.
+        self.append_receipt(
+            "audit-review-1", check="substantive_review",
+            target="Topics/A.md")
+        revision, fingerprint = self.expected()
+        accepted = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T02:00:00Z",
+            "--apply",
+        )
+        self.assertEqual(0, accepted.returncode, accepted.stdout)
+
     def test_closing_a_successor_batch_transfers_coverage_ownership(self):
         # Defect #9 regression: a compiled successor over already-closed
         # pages could never close, because the projection kept the

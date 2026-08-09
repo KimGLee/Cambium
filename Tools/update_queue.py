@@ -21,7 +21,7 @@ import kblib
 import update_task
 import apply_delta
 
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.4.0"
 # The lifecycle map moved to `kblib` so `check_queue` can read it without
 # importing this writer, which imports it.  The name stays here because it is
 # this tool's transition guard and every existing reference reads it here.
@@ -459,6 +459,19 @@ def _transition_item(item, args, result):
         if replayed:
             raise ValueError("open -> merge-ready reuses invalidated receipt(s): %s" %
                              ", ".join(replayed))
+        # K12/12: substantive correctness review is mandatory for L-tier
+        # pages and MUST be produced by a context other than the author.
+        # The obligation existed only as prose until here — nothing counted
+        # the receipts, and a batch could reach merge-ready with the review
+        # skipped (the distillation-erosion class).  A write-time guard on
+        # the transition, not a runtime-wide validation: sealed history
+        # closed before this guard shipped is never re-judged by it.
+        review_errors = check_queue.substantive_review_errors(
+            result, item)
+        if review_errors:
+            raise ValueError(
+                "open -> merge-ready requires the K12/12 substantive "
+                "review evidence: %s" % "; ".join(review_errors))
         item["state"] = "merge-ready"
         item["merge_ready_at"] = now
         item["delta_path"] = args.delta_path
