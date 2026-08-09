@@ -59,7 +59,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_page_contract"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 GATE_ID = "page-contract"
 # The `Check` cell K00/12 registers for this Gate.
 GATE_CHECK = "page-contract-summary"
@@ -476,8 +476,12 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
         receipts = []
         seq = 1
         for row in findings.rows:
+            # Each finding receipt carries its own finding type as ``check``
+            # (e.g. ``page-contract-sources-role``), so a consumer that
+            # dispositions candidates can select the exact obligation rather
+            # than the whole gate.  The gate summary below keeps GATE_CHECK.
             receipt = kblib.make_receipt(
-                TOOL, TOOL_VERSION, "page-contract", row["target"],
+                TOOL, TOOL_VERSION, row["check"], row["target"],
                 row["result"], row["details"], seq, root=root)
             receipt["gate_id"] = GATE_ID
             receipts.append(receipt)

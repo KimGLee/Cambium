@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.11.0"
+TOOL_VERSION = "1.12.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -160,7 +160,15 @@ CLOSED_LIST_EVIDENCE_FIELDS = (
     "guidance_and_contract_continuity",
     "registered_residual_content",
     "controlled_vocabulary",
+    "manifest_page_contract",
 )
+# Sealed close bundles are validated against the Closed List their producer
+# era actually ran (K12/10 producer-era identity): a bundle produced before
+# ``manifest_page_contract`` joined the list carries seven members forever,
+# and re-judging it against the current list would retroactively invalidate
+# every prior close on a checker upgrade.
+LEGACY_CLOSED_LIST_VERSIONS = frozenset(("1.4.0",))
+LEGACY_CLOSED_LIST_EVIDENCE_FIELDS = CLOSED_LIST_EVIDENCE_FIELDS[:-1]
 
 LOCK_STATE_FINGERPRINTS = {
     "coverage": {
@@ -186,14 +194,14 @@ GENERIC_WRITER_TOOLS = frozenset((
     "check_batch_close", "adopt_standards", "register_amendment",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.4.0"
+BATCH_CLOSE_TOOL_VERSION = "1.5.0"
 # A supported-versions catalog exists for the one predicate that is still
 # shared between current-action and historical callers.  No such catalog is
 # kept for the Queue gate or the Terminal Proof: enumerating accepted producer
 # versions grows without bound, and it still admits a receipt that merely
 # claims an old version, so it buys nothing.  Historical receipts are judged
 # by :func:`accounted_standards_versions` instead.
-SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((BATCH_CLOSE_TOOL_VERSION,))
+SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((BATCH_CLOSE_TOOL_VERSION, "1.4.0"))
 CORPUS_PLAN_TOOL = "check_corpus_plan"
 CORPUS_PLAN_TOOL_VERSION = "1.6.0"
 MANUAL_ATTESTATION_TOOL = "manual-attestation"
@@ -3980,7 +3988,13 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                           (item_id, attestation_id))
 
     evidence = receipt.get("closed_list_evidence")
-    expected_fields = set(CLOSED_LIST_EVIDENCE_FIELDS)
+    # The Closed List a bundle answers to is the one its producer era ran:
+    # a pre-1.5.0 bundle carries seven members forever (K12/10 producer-era
+    # identity), a current bundle carries the full list.
+    era_fields = (LEGACY_CLOSED_LIST_EVIDENCE_FIELDS
+                  if receipt_version in LEGACY_CLOSED_LIST_VERSIONS
+                  else CLOSED_LIST_EVIDENCE_FIELDS)
+    expected_fields = set(era_fields)
     if not isinstance(evidence, dict):
         errors.append("%s receipt %s closed_list_evidence must be a mapping" %
                       (label, receipt_id))
@@ -3995,7 +4009,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                       "member(s): %s" %
                       (label, receipt_id, ", ".join(extra)))
     evidence_ids = []
-    for field in CLOSED_LIST_EVIDENCE_FIELDS:
+    for field in era_fields:
         evidence_id = evidence.get(field)
         if not _nonempty_string(evidence_id):
             errors.append("%s receipt %s closed_list_evidence.%s must identify "
@@ -4018,19 +4032,20 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
             },
         )
     if len(evidence_ids) != len(set(evidence_ids)):
-        errors.append("%s receipt %s closed_list_evidence must use seven "
-                      "distinct receipt IDs" % (label, receipt_id))
+        errors.append("%s receipt %s closed_list_evidence must use one "
+                      "distinct receipt ID per Closed List member" %
+                      (label, receipt_id))
     if receipt_id in evidence_ids:
         errors.append("%s receipt %s cannot cite itself as Closed List "
                       "evidence" % (label, receipt_id))
     if global_review_id in evidence_ids or global_review_id == receipt_id:
         errors.append("%s receipt %s global_review_receipt must be a distinct "
-                      "record from the aggregator and seven Closed List members" %
+                      "record from the aggregator and the Closed List members" %
                       (label, receipt_id))
     if attestation_id in evidence_ids or attestation_id in (
             global_review_id, receipt_id):
         errors.append("%s receipt %s reviewer attestation must be a distinct "
-                      "record from the aggregator, global review, and seven Closed "
+                      "record from the aggregator, global review, and the Closed "
                       "List members" % (label, receipt_id))
     if (isinstance(global_review, dict) and
             global_review.get("closed_list_evidence") != evidence):
@@ -8533,6 +8548,27 @@ def validate_runtime(root, allowed_open_delta=None,
     records, assignments = _coverage_records(root, coverage, errors)
     context = {"root": root}
 
+    # Closing a successor batch transfers Coverage ``batch`` ownership
+    # forward (K12/03: Coverage names the most recent closed owner), so a
+    # closed predecessor's immutable manifest is resolved through the
+    # ``successor_of`` chain instead of demanding the live assignment it no
+    # longer holds.  The chain walk is bounded by the Queue size.
+    successor_parent = {
+        entry.get("id"): entry.get("successor_of")
+        for entry in items
+        if isinstance(entry, dict) and _nonempty_string(entry.get("id"))
+    }
+
+    def _assigned_through_successors(item_id, assigned_ids):
+        for assigned in assigned_ids:
+            current, seen = assigned, set()
+            while current is not None and current not in seen:
+                if current == item_id:
+                    return True
+                seen.add(current)
+                current = successor_parent.get(current)
+        return False
+
     for index, item in enumerate(items):
         label = "required_queue[%d]" % index
         if not isinstance(item, dict):
@@ -8619,8 +8655,12 @@ def validate_runtime(root, allowed_open_delta=None,
                     errors.append("%s manifest path %s has non-Required Coverage "
                                   "disposition %r" %
                                   (item_id, object_path, disposition))
+                assigned_ids = assignments.get(object_path, [])
                 if (not allow_structural_drift and
-                        item_id not in assignments.get(object_path, [])):
+                        item_id not in assigned_ids and
+                        not (item.get("state") == "closed" and
+                             _assigned_through_successors(
+                                 item_id, assigned_ids))):
                     errors.append("%s manifest path %s is not assigned to that batch in Coverage" %
                                   (item_id, object_path))
             manifest_owners.setdefault(object_path, []).append(item_id)

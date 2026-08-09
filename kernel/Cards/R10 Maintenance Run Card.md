@@ -21,7 +21,7 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-source_hash: 'f20cd2191028'
+source_hash: '9c5a892065a7'
 ---
 # R10 Maintenance Run Card
 

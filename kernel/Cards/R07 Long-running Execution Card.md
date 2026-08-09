@@ -33,7 +33,7 @@ source_files:
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '50e873fa759b'
+source_hash: '04e4e0b50268'
 ---
 # R07 Long-running Execution Card
 
@@ -59,6 +59,7 @@ Run a multi-batch task, sustain checkpoints, resume after interruption, maintain
 Each batch follows the fixed loop: version/Guidance self-check → `check_queue.py --require-ready` → integrator records `queued -> open` → execute the frozen manifest → build one AuditPlan, finish in-batch QA, and write the delta → integrator records `open -> merge-ready` → serially applies the delta and global gates → reconciles Coverage/Queue/Progress → records `merge-ready -> closed`.
 
 - Concurrent batches have disjoint manifests and merged prerequisites; only the integrator writes shared control state and hub pages.
+- In-batch QA is not satisfied by producing the close evidence set alone: each M-tier manifest page passes, page by page, the M-tier Gate Checklist surfaced by the kernel Single Note Authoring Card (K12/14 folds note-level acceptance into Batch Review), including the sources-role and page-contract items; the per-page conclusion is recorded in that page's attestation, not asserted once in the batch wrapper.
 - After one canonical delta apply passes, perform checks and close that batch before any other Queue/Coverage write; the apply receipt opens a strict serial critical section.
 - Treat meaningful user changes to objective, scope, acceptance, priority, or content judgment as Guidance: classify, disposition, record, switch safely, and verify closure.
 - For a same-scope Queue replan, scope replan, or cancellation, prepare its exact proposal or plan and use `register_amendment.py` as the sole approved-row writer before `compile_queue.py` or `apply_amendment.py` consumes it. The pending registration receipt must remain current and bind live state; after verified write-back it proves history only and cannot authorize another action.
