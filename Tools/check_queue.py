@@ -3587,6 +3587,48 @@ def _require_receipt(catalog, receipt_id, label, errors, expected=None):
     return receipt
 
 
+def substantive_review_errors(result, item):
+    """Return the K12/12 evidence gaps for one batch's L-tier manifest pages.
+
+    Substantive correctness review is mandatory for L-tier pages and is
+    produced by a procedurally separate context; batch integration requires
+    that those receipts have all arrived.  This helper counts them for the
+    merge-ready write guard: for every manifest page whose Coverage tier is
+    ``L``, the current (adoption-filtered) catalog must hold at least one
+    passing, non-invalidated receipt with ``check: substantive_review``
+    targeting exactly that page.  S/M tiers are covered by batch spot checks
+    and are not counted here.  This is a transition-time guard, not a
+    runtime-wide validation: history closed before the guard shipped is not
+    re-judged by it.
+    """
+    errors = []
+    coverage = result.get("coverage") or {}
+    tiers = {
+        page.get("path"): page.get("tier")
+        for page in coverage.get("pages") or []
+        if isinstance(page, dict) and _nonempty_string(page.get("path"))
+    }
+    reviewed_targets = set()
+    for entry in current_receipt_catalog(result).values():
+        receipt = entry[1] if isinstance(entry, tuple) else entry
+        if not isinstance(receipt, dict):
+            continue
+        if (receipt.get("check") == "substantive_review" and
+                receipt.get("result") == "pass" and
+                receipt.get("invalidated_by") is None and
+                _nonempty_string(receipt.get("target"))):
+            reviewed_targets.add(receipt.get("target"))
+    for object_path in item.get("manifest") or []:
+        if tiers.get(object_path) != "L":
+            continue
+        if object_path not in reviewed_targets:
+            errors.append(
+                "L-tier manifest page %s has no current passing "
+                "substantive_review receipt (K12/12: mandatory for L-tier, "
+                "produced by a context other than the author)" % object_path)
+    return errors
+
+
 def batch_review_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                                 delta_page_receipt_ids):
     """Validate the current batch-level authorization around page evidence.
