@@ -866,6 +866,9 @@ TASK_LIFECYCLE_EDGES = frozenset((
 ))
 FINAL_CONTROL_STATUSES = frozenset((
     "verified", "deferred", "superseded", "not-applicable",
+    # K13/06: a withdrawn operational Amendment is final — it authorizes
+    # nothing and is never resumed, so it raises no reconcile obligation.
+    "withdrawn",
 ))
 
 

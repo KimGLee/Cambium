@@ -357,6 +357,11 @@ class RegisterAmendmentTests(unittest.TestCase):
                          row["withdrawal_reason"])
         self.assertEqual([], check_queue.validate_runtime(
             str(self.root))["errors"])
+        # A withdrawn row is final: it raises no resume/terminal
+        # reconcile obligation.
+        _, pending = check_queue._pending_control_ids(
+            self.load(check_queue.PROGRESS_PATH))
+        self.assertEqual([], pending)
         # The one-pending rule is unwedged; the burned ID stays refused.
         proposal = self.queue_proposal()
         second = self.command(
