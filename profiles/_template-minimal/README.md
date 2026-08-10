@@ -42,8 +42,11 @@ becomes your profile's own answer.
 
 The open placeholder markers are exactly the decisions no template can make.
 [interview.yaml](interview.yaml) carries them as a machine-readable interview
-an assisting agent can conduct; [answer-patterns.md](answer-patterns.md)
-carries the shapes to propose. In table form:
+an assisting agent can conduct — including a setup step (S0: corpus location,
+created if absent) before the first question and a closing review (C3: closed
+switches, derived fills, and remaining needs) after the last;
+[answer-patterns.md](answer-patterns.md) carries the shapes to propose. In
+table form:
 
 | # | Decision | File | Notes |
 |---|---|---|---|

@@ -7,12 +7,29 @@
 #     never invent domain content, never skip a confirm item.
 #   - Pre-filled template text becomes the profile's own answer only after the
 #     operator confirms it (confirm, don't skip).
+#   - Profile prose is written in the interface language (English) regardless
+#     of the corpus body language; corpus-real literals — scan matchers,
+#     mandated headings, display forms, aliases — keep the language of the
+#     content they match and are marked as literals, never translated.
 #   - This file and the other orientation files (README.md,
 #     answer-patterns.md) are deleted from the copied profile after filling.
 #   - Filling and checking never select the profile; selection is R09 adoption.
 
-interview_contract_version: 1
+interview_contract_version: 2
 target_template: profiles/_template-minimal
+
+setup:
+  - id: S0
+    question: "Where does the corpus live? Name a path, or accept a proposed default (for example ~/Documents/<corpus-name>)."
+    answer_shape: "absolute path, or acceptance of the proposed default"
+    change_cost: migration
+    procedure:
+      - "Propose a default location derived from the corpus name; the operator names another path or accepts"
+      - "If the directory does not exist, create it; if it exists, attach it and inspect its current contents before Q4"
+      - "Create the layer directories immediately after Q4 is answered"
+    notes:
+      - "A locally running agent creates directories itself"
+      - "A sandboxed or bridged runtime asks the operator to connect or grant the folder; connection time is setup, never interview time"
 
 core_pack:
   - id: Q0
@@ -133,6 +150,16 @@ core_pack:
       - {file: language-contract.md, anchor: "## Terminology And Display"}
       - {file: language-contract.md, anchor: "## Content Length Unit"}
       - {file: vocabulary-extensions.yaml, anchor: "volatility_defaults"}
+
+  - id: C3
+    kind: closing-review
+    question: "Closing review: anything to open now, and anything the interview did not cover?"
+    procedure:
+      - "Enumerate every switch shipped closed (Corpus Planning, Structure Registry, priority grants, Expression Layer, metadata extensions, optional Language/Source registrations, supplemental routes and gates) with a one-line meaning each"
+      - "Show the derived fills (placement rows, fallbacks, the scan registration) for a final confirmation"
+      - "Open any requested expansion pack now; otherwise record the explicit choice to stay minimal"
+      - "Ask for any remaining need the interview did not cover; route it or record it"
+    change_cost: adoption
 
 self_path_rewrites:
   - {file: registries/registered-scans.md, cell: "verifier command --config path"}
