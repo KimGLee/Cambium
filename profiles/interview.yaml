@@ -1,6 +1,9 @@
-# Interview contract for the minimal-depth template.
-# Any agent can conduct this interview: ask, collect a confirmed answer,
-# project it into the named file/anchor, then validate with
+# Adoption interview contract — template-independent.
+# Applies to BOTH template depths: at minimal depth, conduct setup, the core
+# pack, and the closing review; at full depth, additionally walk every
+# expansion pack as an in-interview question pack instead of leaving it
+# closed. Any agent can conduct it: ask, collect a confirmed answer, project
+# it into the named file/anchor, then validate with
 # `python3 Tools/check_profile.py profiles/<profile-id>`.
 # Conduct rules:
 #   - Every answer is the operator's; propose shapes (see answer-patterns.md),
@@ -11,12 +14,12 @@
 #     of the corpus body language; corpus-real literals — scan matchers,
 #     mandated headings, display forms, aliases — keep the language of the
 #     content they match and are marked as literals, never translated.
-#   - This file and the other orientation files (README.md,
-#     answer-patterns.md) are deleted from the copied profile after filling.
 #   - Filling and checking never select the profile; selection is R09 adoption.
 
-interview_contract_version: 2
-target_template: profiles/_template-minimal
+interview_contract_version: 3
+target_templates:
+  - profiles/_template-minimal   # core pack + closing; packs open later on trigger
+  - profiles/_template           # core pack + walk every expansion pack now
 
 setup:
   - id: S0
@@ -166,9 +169,10 @@ self_path_rewrites:
   - {file: registries/audit-dimensions.md, cell: "foundation item predicate owner"}
   - {file: registries/audit-dimensions.md, cell: "residual item predicate owner"}
 
-# Expansion packs open a closed slot later, through ordinary Standards
-# adoption (R09 + adopt_standards). Never opened silently: either the
-# operator asks, or a fail-closed gate names the slot.
+# Expansion packs. At minimal depth they open a closed slot later, through
+# ordinary Standards adoption — never silently: the operator asks, or a
+# fail-closed gate names the slot. At full depth the interview walks every
+# pack now, before C3, and the answers land in the same slot files.
 expansion_packs:
   - slot: corpus-planning
     trigger: {gates: [corpus-plan-structure], routes: [R11, R13], elective: true}

@@ -28,7 +28,8 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[2]
 TEMPLATE = REPOSITORY / "profiles" / "_template-minimal"
 CHECK_PROFILE = REPOSITORY / "Tools" / "check_profile.py"
-ORIENTATION = ("README.md", "interview.yaml", "answer-patterns.md")
+ORIENTATION = ("README.md",)
+SHARED = ("interview.yaml", "answer-patterns.md")  # profiles/-level, template-independent
 SENTINEL = "TODO(profile)"
 
 # Interface files check_profile resolves relative to its working directory.
@@ -195,6 +196,14 @@ class MinimalTemplateShape(unittest.TestCase):
         self.assertTrue((TEMPLATE / "profile.md").is_file())
         for name in ORIENTATION:
             self.assertTrue((TEMPLATE / name).is_file(), name)
+        for name in SHARED:
+            self.assertTrue(
+                (REPOSITORY / "profiles" / name).is_file(),
+                "shared adoption file missing at profiles/ level: %s" % name)
+            self.assertFalse(
+                (TEMPLATE / name).is_file(),
+                "%s must live at profiles/ level, not inside the template"
+                % name)
 
     def test_unfilled_failures_are_exactly_the_open_decisions(self):
         result = run_check("profiles/_template-minimal", REPOSITORY)
