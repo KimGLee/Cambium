@@ -39,11 +39,39 @@ about the minimal depth weakens a gate or bypasses R09.
 
 ```text
 cp -R profiles/_template-minimal profiles/my-profile
-rm profiles/my-profile/README.md profiles/my-profile/interview.yaml \
-   profiles/my-profile/answer-patterns.md
+rm profiles/my-profile/README.md   # template orientation, never profile policy
 # Answer the open decisions (the template README lists them), then:
 python3 Tools/check_profile.py profiles/my-profile
 ```
+
+## Adoption Flow
+
+The flow below is template-independent; both depths follow it, and
+[interview.yaml](interview.yaml) carries it in machine-readable form for an
+assisting agent (at full depth the interview also walks every expansion pack
+instead of leaving it closed). A solo fill follows the same steps by hand.
+
+1. **Locate the corpus first.** Name the corpus directory, or accept a
+   proposed default; create it when it does not exist. A profile describes a
+   corpus, so no other answer is meaningful before this one. Environment
+   setup time (creating, connecting, or granting the directory) is setup, not
+   filling effort.
+2. **Fill** — by interview or by hand — and validate with
+   `check_profile.py`.
+3. **Close with a review.** Before calling the fill done, enumerate every
+   switch left in its exit state and every derived fill, confirm each still
+   holds, open anything the operator wants opened now, and ask for any need
+   the fill did not cover. A closed switch whose reason no longer holds is an
+   unconfirmed answer, not a default.
+4. **Adopt through R09.** Filling and checking never select the profile.
+
+**Profile prose language.** Slot prose is written in this interface's
+language (English) regardless of the corpus body language, so any agent or
+reviewer can load any profile. Corpus-real literals — scan matchers, mandated
+headings, display forms, aliases — keep the language of the content they
+match and are marked as literals, never translated. This is an authoring and
+review convention, not a checked gate; existing profiles align through
+ordinary revision rather than a migration campaign.
 
 ## Profile Loading Contract
 

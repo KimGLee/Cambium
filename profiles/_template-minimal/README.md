@@ -41,9 +41,13 @@ becomes your profile's own answer.
 ## What Remains To Answer
 
 The open placeholder markers are exactly the decisions no template can make.
-[interview.yaml](interview.yaml) carries them as a machine-readable interview
-an assisting agent can conduct; [answer-patterns.md](answer-patterns.md)
-carries the shapes to propose. In table form:
+The shared [adoption interview contract](../interview.yaml) carries them as a
+machine-readable interview an assisting agent can conduct — including a setup
+step (S0: corpus location, created if absent) before the first question and a
+closing review (C3: closed switches, derived fills, and remaining needs)
+after the last; the shared [answer patterns](../answer-patterns.md) carry the
+shapes to propose. The same contract serves the full template at full depth.
+In table form:
 
 | # | Decision | File | Notes |
 |---|---|---|---|
@@ -77,8 +81,7 @@ must name **your** profile's path:
 
 ```text
 cp -R profiles/_template-minimal profiles/<profile-id>
-rm profiles/<profile-id>/{README.md,interview.yaml,answer-patterns.md}
-# orientation files, consumed during filling; never profile policy
+rm profiles/<profile-id>/README.md   # template orientation, never profile policy
 # answer the twelve decisions above, then:
 python3 Tools/check_profile.py profiles/<profile-id>
 ```
