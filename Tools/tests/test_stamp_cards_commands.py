@@ -96,6 +96,19 @@ class CommandSpanFailureTests(unittest.TestCase):
 
         self.assertEqual(self.scan(body), [])
 
+    def test_a_noncanonical_root_is_normalized_before_containment_check(self):
+        (self.root / "alias-segment").mkdir()
+        body = "- [ ] Run `python3 Tools/demo.py . --plan <plan> --json`.\n"
+
+        failures = stamp_cards.command_span_failures(
+            "kernel/Cards/Demo Card.md",
+            body,
+            self.root / "alias-segment" / "..",
+            {},
+        )
+
+        self.assertEqual(failures, [])
+
     def test_missing_root_positional_is_reported_with_a_locatable_line(self):
         body = (
             "## Gate\n"

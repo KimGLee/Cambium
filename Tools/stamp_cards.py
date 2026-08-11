@@ -174,6 +174,7 @@ def as_repo_path(root, value, label, failures):
         failures.append("%s must be a repository-relative path: %s" % (label, raw))
         return None
     try:
+        root = Path(root).resolve()
         resolved = (root / candidate).resolve()
     except (OSError, RuntimeError, ValueError) as exc:
         failures.append("%s cannot be resolved: %s (%s)" % (label, raw, exc))
@@ -474,6 +475,7 @@ def leaf_coverage_failures(root, read_set_records):
     sections are boundaries and what a boundary names are resolved by
     `kblib.read_set_boundary_targets`, the single parser this rule has.
     """
+    root = Path(root).resolve()
     kernel_dir = (root / "kernel").resolve()
     if not kernel_dir.is_dir():
         return ["kernel directory is missing; leaf coverage cannot be resolved"]
@@ -696,6 +698,7 @@ def size_budget_findings(root, budget, entries, outside, declared):
     for a re-measure, and neither sentence is a MUST.
     """
     _target, soft_cap, _factor = budget
+    root = Path(root).resolve()
     kernel_dir = (root / "kernel").resolve()
     if not kernel_dir.is_dir():
         return ["kernel directory is missing; leaf sizes cannot be measured"], []
