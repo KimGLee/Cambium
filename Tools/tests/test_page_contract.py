@@ -26,7 +26,7 @@ fields:
     mode: optional
     shape: nonempty-string
   authoring_status:
-    mode: required
+    mode: projection
     shape: nonempty-string
   learning_status:
     mode: user-owned
@@ -252,17 +252,17 @@ class PageContractTests(unittest.TestCase):
 
     def test_missing_required_field_is_a_candidate_in_advisory(self):
         files = base_files()
-        files["Domain/Page.md"] = "---\ntype: concept\n---\n# P\n"
+        files["Domain/Page.md"] = "---\nauthoring_status: drafted\n---\n# P\n"
         root = self.build(files)
         self.compose(root)
         result = self.check(root)
         self.assertEqual(result.returncode, 2, result.stdout)
-        self.assertIn("authoring_status", result.stdout)
+        self.assertIn("type", result.stdout)
         self.assertIn("advisory candidates", result.stdout)
 
     def test_strict_mode_turns_violations_into_failures(self):
         files = base_files()
-        files["Domain/Page.md"] = "---\ntype: concept\n---\n# P\n"
+        files["Domain/Page.md"] = "---\nauthoring_status: drafted\n---\n# P\n"
         root = self.build(files)
         self.compose(root)
         result = self.check(root, "--strict")
@@ -434,6 +434,43 @@ class PageContractTests(unittest.TestCase):
         result = self.check(root)
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("disagrees with the Coverage Ledger", result.stdout)
+
+    def test_authoring_status_projection_reconciles_like_any_other(self):
+        # K08/07: authoring_status is Ledger-earned; a page copy still
+        # showing the pre-close value after the Ledger moved is a defect.
+        files = base_files()
+        files["Domain/Page.md"] = (
+            "---\ntype: concept\nauthoring_status: drafted\n---\n# P\n")
+        files[".cambium/state/coverage_ledger.yaml"] = (
+            "schema_version: 1\npages:\n"
+            "  - path: \"Domain/Page.md\"\n"
+            "    coverage_disposition: required\n"
+            "    authoring_status: reviewed\n")
+        root = self.build(files)
+        self.compose(root)
+        result = self.check(root)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("disagrees with the Coverage Ledger", result.stdout)
+
+    def test_stale_projection_with_empty_owner_is_reported(self):
+        # The classic dangling reference: the batch closed, the Ledger
+        # projected next_batch onward to empty, the page copy still names
+        # the closed batch.  (Modeled here on coverage_disposition, the
+        # projection field the shared fixture carries.)
+        files = base_files()
+        files["Domain/Page.md"] = (
+            "---\ntype: concept\nauthoring_status: drafted\n"
+            "coverage_disposition: required\n---\n# P\n")
+        files[".cambium/state/coverage_ledger.yaml"] = (
+            "schema_version: 1\npages:\n"
+            "  - path: \"Domain/Page.md\"\n"
+            "    coverage_disposition:\n"
+            "    authoring_status: drafted\n")
+        root = self.build(files)
+        self.compose(root)
+        result = self.check(root)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("is stale", result.stdout)
 
     # ---- section roles (K07/02, K09/04) ----
 

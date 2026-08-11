@@ -100,7 +100,7 @@ moves its own cell.
 | `batch-review` | `manual-attestation` | `1.0.0` | `batch_gate` | `*` | `none` | `open` |
 | `batch-close` | `check_batch_close` | `1.5.0` | `batch_close_gate` | `*` | `*` | `merge-ready` |
 | `structure-registry` | `check_structure` | `1.0.0` | `structure-registry-summary` | `*` | `*` | `not-batch-scoped` |
-| `page-contract` | `check_page_contract` | `1.2.0` | `page-contract-summary` | `*` | `*` | `not-batch-scoped` |
+| `page-contract` | `check_page_contract` | `1.3.0` | `page-contract-summary` | `*` | `*` | `not-batch-scoped` |
 | `boundary-contract` | `check_boundary_contract` | `1.0.0` | `boundary-contract-summary` | `*` | `*` | `not-batch-scoped` |
 | `corpus-plan-structure` | `check_corpus_plan` | `1.6.0` | `corpus_plan` | `*` | `*` | `not-batch-scoped` |
 | `corpus-plan-semantic-acceptance` | `record_corpus_acceptance` | `1.0.0` | `corpus_plan_semantic_acceptance` | `*` | `*` | `not-batch-scoped` |

@@ -59,7 +59,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_page_contract"
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.3.0"
 GATE_ID = "page-contract"
 # The `Check` cell K00/12 registers for this Gate.
 GATE_CHECK = "page-contract-summary"
@@ -333,8 +333,7 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                 ledger = None
             for page in (ledger or {}).get("pages") or []:
                 if isinstance(page, dict) and page.get("path"):
-                    ledger_dispositions[str(page["path"])] = \
-                        page.get("coverage_disposition")
+                    ledger_dispositions[str(page["path"])] = page
 
     pages = []
     for scan_root in scan_roots:
@@ -417,16 +416,27 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                            "receipts")
                 continue
             elif mode == "projection":
-                if name == "coverage_disposition" and present and \
-                        not empty and rel in ledger_dispositions:
-                    owner_value = ledger_dispositions[rel]
-                    if owner_value is not None and \
-                            str(owner_value) != str(value):
-                        report("page-contract-projection",
-                               "%s:%s" % (rel, name),
-                               "page projection %r disagrees with the "
-                               "Coverage Ledger owner value %r"
-                               % (value, owner_value))
+                # K08/07: the ledger/queue own every projection-mode field.
+                # A page copy is optional, but when present it must equal the
+                # owner value, and a value whose owner is empty is stale --
+                # the classic dangling reference a closed batch leaves behind.
+                if present and not empty and rel in ledger_dispositions:
+                    owner_row = ledger_dispositions[rel]
+                    if isinstance(owner_row, dict) and name in owner_row:
+                        owner_value = owner_row.get(name)
+                        if owner_value is None:
+                            report("page-contract-projection",
+                                   "%s:%s" % (rel, name),
+                                   "page projection %r is stale: the "
+                                   "Coverage Ledger owner value is empty "
+                                   "(K08/07 requires a projector to "
+                                   "invalidate it)" % (value,))
+                        elif str(owner_value) != str(value):
+                            report("page-contract-projection",
+                                   "%s:%s" % (rel, name),
+                                   "page projection %r disagrees with the "
+                                   "Coverage Ledger owner value %r"
+                                   % (value, owner_value))
             if present and empty:
                 report("page-contract-empty", "%s:%s" % (rel, name),
                        "present but empty; empty placeholders are noise "
