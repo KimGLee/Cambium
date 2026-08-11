@@ -21,7 +21,7 @@ import kblib
 import update_task
 import apply_delta
 
-TOOL_VERSION = "1.4.0"
+TOOL_VERSION = "1.5.0"
 # The lifecycle map moved to `kblib` so `check_queue` can read it without
 # importing this writer, which imports it.  The name stays here because it is
 # this tool's transition guard and every existing reference reads it here.
@@ -556,6 +556,12 @@ def _transition_item(item, args, result):
             current_repository_snapshot_sha256=
                 repository_snapshot_sha256,
         )
+        settlement_errors = check_queue.batch_reference_settlement_errors(
+            result, item)
+        if settlement_errors:
+            raise ValueError(
+                "merge-ready -> closed refused by the K13/08 Batch Reference "
+                "Settlement: %s" % "; ".join(settlement_errors))
         if close_gate_errors:
             raise ValueError("invalid batch-close gate: %s" %
                              "; ".join(close_gate_errors))

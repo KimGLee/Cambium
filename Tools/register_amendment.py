@@ -266,6 +266,18 @@ def _validate_queue_replan(root, runtime, amendment_id, proposal_relative):
         queue, compiled, kblib.sha256_file(runtime["queue_path"])
     )
     if not diff.get("has_structural_changes"):
+        stale = diff.get("stale_terminal_spec_ids") or []
+        if stale:
+            # K13/08: a terminal batch keeps its history and loses its live
+            # references.  The proposal edits a sealed item's spec row, which
+            # can never take effect -- say so rather than reporting an empty
+            # diff and leaving the author to guess.
+            raise ValueError(
+                "queue-replan proposal has no structural changes; it only "
+                "edits the batch_specs row(s) of terminal batch(es) %s, whose "
+                "Queue structure is sealed (K13/08 Batch Reference "
+                "Settlement) — retire the row instead of editing it" %
+                ", ".join(stale))
         raise ValueError("queue-replan proposal has no structural changes")
     if diff.get("remove_candidates") or diff.get("conflicts"):
         raise ValueError("queue-replan proposal is not safely applicable: %s" %

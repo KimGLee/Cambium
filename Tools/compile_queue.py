@@ -519,6 +519,7 @@ def replan_diff(queue, proposal, base_sha):
     reorders = []
     removes = []
     conflicts = []
+    stale_terminal_specs = []
     for item_id in sorted(proposed_items):
         proposed = proposed_items[item_id]
         current = current_items.get(item_id)
@@ -530,6 +531,11 @@ def replan_diff(queue, proposal, base_sha):
             adds.append(candidate)
             continue
         changed_fields = _changed_structural_fields(current, proposed)
+        if changed_fields and current.get("state") in check_queue.TERMINAL_STATES:
+            # Sealed item: the difference is between history and a stale spec
+            # row, not a change anyone can apply.  Recorded, never proposed.
+            stale_terminal_specs.append(item_id)
+            continue
         if changed_fields:
             updates.append({
                 "id": item_id,
@@ -549,6 +555,18 @@ def replan_diff(queue, proposal, base_sha):
                     "update_queue transition to hold_state="
                     "revalidation-required" % item_id
                 )
+            elif current.get("state") in check_queue.TERMINAL_STATES:
+                # K13/08 Batch Reference Settlement: a terminal batch keeps
+                # its history and loses its live references.  Its Queue item
+                # is sealed and its structure can never change again, so a
+                # surviving batch_specs row is stale history, not a proposal
+                # -- and recompiling it can produce a structure the sealed
+                # item will never match (the 3.6.4 ownership transfer did
+                # exactly that), wedging every later replan behind a conflict
+                # no Amendment can resolve.  Absence of a terminal row is
+                # already expected below; presence is now equally harmless
+                # and reported for retirement instead of blocking.
+                stale_terminal_specs.append(item_id)
             elif (current.get("state") != "queued" and
                   not open_spec_replan):
                 conflicts.append(
@@ -611,6 +629,7 @@ def replan_diff(queue, proposal, base_sha):
         "preserved_closed_ids": preserved_closed,
         "preserved_cancelled_ids": preserved_cancelled,
         "preserved_inflight_ids": preserved_inflight,
+        "stale_terminal_spec_ids": sorted(stale_terminal_specs),
         "conflicts": conflicts,
     }
 
@@ -702,8 +721,14 @@ def _build_replanned_queue(queue, proposal, diff):
             item.get("state") == "open" and work_spec_only and
             item.get("hold_state") == "revalidation-required"
         )
-        if (changed and item.get("state") != "queued" and
-                not open_spec_replan):
+        if changed and item.get("state") in check_queue.TERMINAL_STATES:
+            # K13/08: sealed structure. The stale spec row is history, not a
+            # proposal -- it is ignored here (and reported by replan_diff)
+            # rather than raising, so one stale terminal row cannot wedge an
+            # otherwise legitimate replan.
+            changed = []
+        elif (changed and item.get("state") != "queued" and
+              not open_spec_replan):
             raise ValueError("cannot change structure of %s item %s" %
                              (item.get("state"), item_id))
         merged = copy.deepcopy(item)

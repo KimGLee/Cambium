@@ -1232,6 +1232,13 @@ class CompileQueueTests(unittest.TestCase):
         self.assertEqual(2, queue["required_queue"][1]["order"])
 
     def test_registration_rejects_nonqueued_structure_change(self):
+        # K13/08 Batch Reference Settlement: a sealed item's structure can
+        # never change again, so the edit is history-versus-stale-row rather
+        # than a proposal.  It is refused and named, and the Queue is
+        # untouched -- but it does not become a conflict, because a conflict
+        # on a terminal row wedges every later replan behind something no
+        # Amendment can resolve (the 3.6.4 ownership transfer did exactly
+        # that to a real adopter).
         self.close_b1()
         coverage_path = self.root / check_queue.COVERAGE_PATH
         coverage = kblib.load_yaml_file(coverage_path)
@@ -1241,8 +1248,21 @@ class CompileQueueTests(unittest.TestCase):
         completed = self.add_amendment(
             proposal_relative, expect_success=False)
         self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("state=closed", completed.stdout)
+        self.assertIn("terminal batch(es) B1", completed.stdout)
+        self.assertIn("K13/08", completed.stdout)
         self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_terminal_spec_row_does_not_block_an_unrelated_replan(self):
+        # The incident this settles: a stale spec row on a closed batch made
+        # every later scope replan fail with an unresolvable conflict.
+        self.close_b1()
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        self.batch_spec(coverage, "B1")["family"] = "Changed after close"
+        self.batch_spec(coverage, "B2")["family"] = "Legitimate change"
+        proposal_relative = self.write_proposal(coverage)
+        completed = self.add_amendment(proposal_relative)
+        self.assertEqual(0, completed.returncode, completed.stdout)
 
     def test_registration_rejects_remove_candidate(self):
         coverage_path = self.root / check_queue.COVERAGE_PATH
