@@ -251,6 +251,17 @@ class BudgetFindingTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(candidates, [])
 
+    def test_a_noncanonical_root_is_normalized_before_relativizing(self):
+        leaf(self.root, "01 Big.md", 100)
+        (self.root / "alias-segment").mkdir()
+
+        errors, candidates = stamp_cards.size_budget_findings(
+            self.root / "alias-segment" / "..", self.budget, {}, {}, 0
+        )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(candidates, [])
+
     def test_over_a_registered_growth_cap_is_an_error(self):
         leaf(self.root, "01 Big.md", 7 * 1024 + 1)
 

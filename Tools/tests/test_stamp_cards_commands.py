@@ -96,6 +96,49 @@ class CommandSpanFailureTests(unittest.TestCase):
 
         self.assertEqual(self.scan(body), [])
 
+    def test_a_noncanonical_root_is_normalized_before_containment_check(self):
+        (self.root / "alias-segment").mkdir()
+        body = "- [ ] Run `python3 Tools/demo.py . --plan <plan> --json`.\n"
+
+        failures = stamp_cards.command_span_failures(
+            "kernel/Cards/Demo Card.md",
+            body,
+            self.root / "alias-segment" / "..",
+            {},
+        )
+
+        self.assertEqual(failures, [])
+
+    def test_noncanonical_root_still_rejects_symlink_escape(self):
+        outside_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(outside_tmp.cleanup)
+
+        outside_tool = Path(outside_tmp.name) / "external.py"
+        outside_tool.write_text(DEMO_TOOL, encoding="utf-8")
+
+        link = self.root / "Tools" / "external.py"
+        try:
+            link.symlink_to(outside_tool)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest("symlinks unavailable: %s" % exc)
+
+        (self.root / "alias-segment").mkdir()
+        noncanonical_root = self.root / "alias-segment" / ".."
+        body = (
+            "- [ ] Run "
+            "`python3 Tools/external.py . --plan <plan> --json`.\n"
+        )
+
+        failures = stamp_cards.command_span_failures(
+            "kernel/Cards/Demo Card.md",
+            body,
+            noncanonical_root,
+            {},
+        )
+
+        self.assertEqual(len(failures), 1, failures)
+        self.assertIn("escapes the repository root", failures[0])
+
     def test_missing_root_positional_is_reported_with_a_locatable_line(self):
         body = (
             "## Gate\n"

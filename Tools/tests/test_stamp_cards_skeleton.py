@@ -229,6 +229,20 @@ class LeafCoverageTests(unittest.TestCase):
             stamp_cards.leaf_coverage_failures(self.root, self.records(text)), []
         )
 
+    def test_a_noncanonical_root_is_normalized_before_relativizing(self):
+        (self.root / "alias-segment").mkdir()
+        text = (
+            "## Start\n\n"
+            "- [[kernel/K02 Demo Family/01 Covered Leaf|Covered Leaf]]\n"
+            "- [[kernel/K02 Demo Family/02 Other Leaf|Other Leaf]]\n"
+        )
+
+        failures = stamp_cards.leaf_coverage_failures(
+            self.root / "alias-segment" / "..", self.records(text)
+        )
+
+        self.assertEqual(failures, [])
+
     def test_a_leaf_no_boundary_names_is_reported_by_path(self):
         text = "## Start\n\n- [[kernel/K02 Demo Family/01 Covered Leaf|Covered Leaf]]\n"
 
