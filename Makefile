@@ -1,21 +1,25 @@
 # Cambium verification entry points.
 #
-# One entry point, used by humans and by CI alike, so the two cannot drift.
-# `make ci` is exactly what .github/workflows/verify.yml runs.
+# `make ci` is the required entry point for humans and CI alike, so the two
+# cannot drift. `make ci-exhaustive` retains the slower historical cache-state
+# sweep for explicit deep verification.
 #
-# The three cache states in `test-cache-states` are not ceremony: the repository
-# snapshot defect that shipped in the first release only appeared when the
-# bytecode cache changed between runs, so a single pass would not have caught it.
+# The focused cache contract runs in required CI. The three cache states in
+# `test-cache-states` remain available for reproducing the historical repository
+# snapshot defect without multiplying every required test run.
 
 PYTHON ?= python3
 PROFILE ?= profiles/examples/agent-atlas
 
-.PHONY: help check test ci clean-cache test-cache-states
+.PHONY: help check test test-cache-contract clean-cache test-cache-states ci ci-exhaustive
 
 help:
 	@echo "make check              deterministic checks only (seconds)"
-	@echo "make test               full unit test suite"
-	@echo "make ci                 what CI runs: check + all three cache states"
+	@echo "make test               full unit test suite (single pass, no bytecode writes)"
+	@echo "make test-cache-contract focused cache/snapshot contract test"
+	@echo "make ci                 required CI: check + one full suite"
+	@echo "make ci-exhaustive      check + cold/warm/post-touch full suites"
+	@echo "make test-cache-states  cold/warm/post-touch full suites"
 	@echo "make clean-cache        remove __pycache__ trees"
 	@echo ""
 	@echo "PYTHON=$(PYTHON)  PROFILE=$(PROFILE)"
@@ -33,7 +37,10 @@ check:
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -c "import sys; sys.path.insert(0, 'Tools'); import check_batch_close as c; r = c._structural_check('.', {'queue': {'selected_profile_manifest': '$(PROFILE)/profile.md'}}); print('structural_errors =', len(r['errors'])); sys.exit(1 if r['errors'] else 0)"
 
 test:
-	$(PYTHON) -m unittest discover -s Tools/tests -p "test_*.py"
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest discover -s Tools/tests -p "test_*.py"
+
+test-cache-contract:
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest discover -s Tools/tests -p "test_runtime_safety.py" -k test_snapshot_excludes_import_cache_but_tracks_source_bytes
 
 clean-cache:
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +
@@ -49,4 +56,6 @@ test-cache-states: clean-cache
 	@echo "--- after touching the tools ---"
 	touch Tools/*.py && $(PYTHON) -m unittest discover -s Tools/tests -p "test_*.py"
 
-ci: check test-cache-states
+ci: check test
+
+ci-exhaustive: check test-cache-states

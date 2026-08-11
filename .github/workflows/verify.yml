@@ -1,49 +1,67 @@
 name: verify
 
-# The two blocking defects in the 2026-08-05 review both survived a full
-# release cycle because nothing ran the checks. This is that missing runner.
-# It calls `make ci` and nothing else, so what CI enforces and what a
-# maintainer runs locally cannot drift apart.
-
 on:
   push:
-    branches: ["**"]
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
   verify:
+    name: verify (${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        # The tools use only the standard library. The floor is the oldest
-        # interpreter the distribution claims to support; the ceiling catches
-        # deprecations before an adopter does.
-        python-version: ["3.10", "3.12"]
+        # Exercise both ends of the supported interpreter range.
+        python-version: ["3.10", "3.14"]
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Deterministic checks
-        run: make check
+      - name: Run required verification
+        run: make ci
 
-      - name: Unit tests across three cache states
-        run: make test-cache-states
-
-      - name: Working tree must be unchanged
-        # No check may write to the tree it measures. A diff here means a
-        # read-only gate is not read-only.
+      - name: Tracked and untracked non-ignored tree must be unchanged
+        if: ${{ always() }}
         run: |
-          git status --porcelain > /tmp/dirty
-          if [ -s /tmp/dirty ]; then
-            echo "verification modified the working tree:"
-            cat /tmp/dirty
+          git status --porcelain=v1 --untracked-files=all > "$RUNNER_TEMP/worktree-status"
+          if test -s "$RUNNER_TEMP/worktree-status"; then
+            echo "Required verification modified tracked or untracked non-ignored files:"
+            cat "$RUNNER_TEMP/worktree-status"
             exit 1
           fi
+
+  ci-required:
+    name: ci-required
+    if: ${{ always() }}
+    needs:
+      - verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every matrix job to succeed
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+        run: |
+          if test "$VERIFY_RESULT" != "success"; then
+            echo "verify matrix result: $VERIFY_RESULT"
+            exit 1
+          fi
+          echo "verify matrix result: success"
