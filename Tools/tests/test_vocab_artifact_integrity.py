@@ -32,6 +32,7 @@ REPOSITORY = TOOLS.parent
 
 sys.path.insert(0, str(TOOLS))
 import kblib  # noqa: E402
+from Tools.tests.profile_fixture import install_loadable_profile
 
 ACTIVE_STATE = "kernel/K00 Standards Control/03 Standards Governance.md"
 VOCABULARY_BASE = "kernel/K08 Metadata and Status/vocabulary-base.yaml"
@@ -47,13 +48,19 @@ def build_composable_tree(destination):
     """
     tools = destination / "Tools"
     tools.mkdir(parents=True)
-    for name in ("compose_vocab.py", "kblib.py", "check_vocab.py"):
+    for name in (
+            "compose_vocab.py", "kblib.py", "check_vocab.py",
+            "check_freshness.py",
+            "profile_admission.py", "check_profile.py",
+            "profile_contract.py"):
         shutil.copy2(TOOLS / name, tools / name)
+
+    install_loadable_profile(destination)
 
     (destination / VOCABULARY_BASE).parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(REPOSITORY / VOCABULARY_BASE, destination / VOCABULARY_BASE)
     shutil.copytree(REPOSITORY / "profiles" / "examples" / PROFILE_ID,
-                    destination / "profiles" / PROFILE_ID)
+                    destination / "profiles" / "examples" / PROFILE_ID)
 
     state = destination / ACTIVE_STATE
     state.parent.mkdir(parents=True, exist_ok=True)
@@ -63,7 +70,7 @@ def build_composable_tree(destination):
             ("{{ standards_status }}", "approved"),
             ("{{ standards_effective_date }}", "2026-01-01"),
             ("{{ selected_profile_manifest }}",
-             "profiles/%s/profile.md" % PROFILE_ID)):
+             "profiles/examples/%s/profile.md" % PROFILE_ID)):
         text = text.replace(placeholder, value)
     state.write_text(text, encoding="utf-8")
     return destination
@@ -194,6 +201,99 @@ class ProducerPublishesAtomically(unittest.TestCase):
         self.assertEqual(0, compose(self.tree).returncode)
         self.assertEqual(first, self.artifact.read_bytes())
 
+    def test_kernel_base_byte_change_makes_vocabulary_stale(self):
+        self.assertEqual(0, compose(self.tree).returncode)
+        base = self.tree / VOCABULARY_BASE
+        base.write_text(
+            base.read_text(encoding="utf-8") + "\n# revision B\n",
+            encoding="utf-8")
+
+        completed = compose(self.tree, "--check")
+
+        self.assertEqual(2, completed.returncode, completed.stdout)
+        self.assertIn("MISMATCH", completed.stdout)
+
+    def test_unrelated_unloadable_slot_blocks_vocabulary_publication(self):
+        manifest = self.tree / "profiles" / "examples" / PROFILE_ID / \
+            "profile.md"
+        manifest_text = manifest.read_text(encoding="utf-8")
+        bindings = kblib.profile_slot_bindings(manifest_text)
+        kind, priority_path = kblib.resolve_profile_binding(
+            bindings["Priority Rubric"], self.tree.resolve(),
+            manifest.parent.resolve())
+        self.assertEqual("path", kind)
+        Path(priority_path).write_text("TODO(profile)\n", encoding="utf-8")
+        completed = compose(self.tree)
+        self.assertEqual(1, completed.returncode,
+                         completed.stdout + completed.stderr)
+        self.assertIn("profile-load", completed.stdout)
+        self.assertFalse(self.artifact.exists())
+
+    def test_consumer_rejects_artifact_from_previous_profile_revision(self):
+        """A valid Profile B must not be checked with Profile A vocabulary."""
+        self.assertEqual(0, compose(self.tree).returncode)
+        corpus = self.tree / "corpus"
+        corpus.mkdir()
+        (corpus / "page.md").write_text(
+            "---\ntype: interview-card\n---\n\n# Interview card\n",
+            encoding="utf-8")
+        extension = self.tree / "profiles/examples" / PROFILE_ID / \
+            "vocabulary-extensions.yaml"
+        extension.write_text(
+            extension.read_text(encoding="utf-8").replace(
+                "      - interview-card\n", ""),
+            encoding="utf-8")
+
+        completed = subprocess.run(
+            [sys.executable, str(self.tree / "Tools/check_vocab.py"),
+             str(self.tree), "--scope", "corpus"],
+            cwd=str(self.tree), capture_output=True, text=True, check=False)
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("composed vocabulary is not current", completed.stdout)
+        self.assertIn("does not match the selected Profile", completed.stdout)
+
+    def test_freshness_rejects_canonical_defaults_from_previous_profile(self):
+        self.assertEqual(0, compose(self.tree).returncode)
+        corpus = self.tree / "corpus"
+        corpus.mkdir()
+        (corpus / "page.md").write_text(
+            "---\ndomain: interview\nlast_verified: 2026-01-01\n---\n# Page\n",
+            encoding="utf-8")
+        extension = self.tree / "profiles/examples" / PROFILE_ID / \
+            "vocabulary-extensions.yaml"
+        extension.write_text(
+            extension.read_text(encoding="utf-8").replace(
+                "  interview: slow\n", "  interview: fast\n"),
+            encoding="utf-8")
+
+        completed = subprocess.run(
+            [sys.executable, str(self.tree / "Tools/check_freshness.py"),
+             str(self.tree), "--scope", "corpus", "--as-of", "2026-08-01",
+             "--defaults", str(self.artifact)],
+            cwd=str(self.tree), capture_output=True, text=True, check=False)
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("canonical Tools/vocab.yaml is not current",
+                      completed.stdout)
+
+    def test_freshness_consumes_current_canonical_defaults(self):
+        self.assertEqual(0, compose(self.tree).returncode)
+        corpus = self.tree / "corpus"
+        corpus.mkdir()
+        (corpus / "page.md").write_text(
+            "---\ndomain: interview\nlast_verified: 2026-01-01\n---\n# Page\n",
+            encoding="utf-8")
+
+        completed = subprocess.run(
+            [sys.executable, str(self.tree / "Tools/check_freshness.py"),
+             str(self.tree), "--scope", "corpus", "--as-of", "2026-08-01",
+             "--defaults", str(self.artifact)],
+            cwd=str(self.tree), capture_output=True, text=True, check=False)
+
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertIn("fresh=1", completed.stdout)
+
     def test_check_mode_never_writes(self):
         self.assertEqual(0, compose(self.tree).returncode)
         before = (self.artifact.read_bytes(),
@@ -259,7 +359,7 @@ class UnselectedProfileStaysLegal(unittest.TestCase):
             state = tree / ACTIVE_STATE
             state.write_text(
                 state.read_text(encoding="utf-8").replace(
-                    "`profiles/%s/profile.md`" % PROFILE_ID,
+                    "`profiles/examples/%s/profile.md`" % PROFILE_ID,
                     "`{{ selected_profile_manifest }}`"),
                 encoding="utf-8")
             completed = compose(tree)

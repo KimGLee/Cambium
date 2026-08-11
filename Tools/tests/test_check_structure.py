@@ -13,6 +13,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from Tools.tests.profile_fixture import install_loadable_profile
+
 SCRIPT = Path(__file__).resolve().parents[1] / "check_structure.py"
 
 
@@ -44,7 +46,11 @@ artifact_bindings:
   global_map: "planning/global_map.yaml"
   capability_matrix: "planning/capability_matrix.yaml"
   gap_register: "planning/gap_register.yaml"
-capability_scale: []
+capability_scale:
+  - rank: 0
+    value: "0 Absent"
+    predicate: "No explicit evidence is present."
+    target_eligible: true
 pass_authority:
   role_id: lead
   decision_scope_id: corpus-plan-semantic-acceptance
@@ -252,13 +258,45 @@ class CheckStructureTests(unittest.TestCase):
     def run_check(self, files, *args):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            has_profile = any(rel.startswith("profile/") for rel in files)
+            if has_profile:
+                profile = install_loadable_profile(root)
+                manifest = profile / "profile.md"
+                manifest_text = manifest.read_text(encoding="utf-8")
+                manifest_text = manifest_text.replace(
+                    "- `Profile Scope`: `slots.md`",
+                    "- `Profile Scope`: `scope.md`",
+                )
+                custom_manifest = files.get("profile/profile.md", MANIFEST)
+                for line in custom_manifest.splitlines():
+                    if not line.startswith("- `") or "`: `" not in line:
+                        continue
+                    slot = line.split("`", 2)[1]
+                    existing = next(
+                        (candidate for candidate in manifest_text.splitlines()
+                         if candidate.startswith("- `%s`:" % slot)),
+                        None,
+                    )
+                    if existing is not None:
+                        manifest_text = manifest_text.replace(existing, line)
+                if "`Structure Registry`" not in custom_manifest:
+                    manifest_text = manifest_text.replace(
+                        "- `Structure Registry`: `structure-registry.yaml`\n",
+                        "",
+                    )
+                manifest.write_text(manifest_text, encoding="utf-8")
             for rel, text in files.items():
+                if rel == "profile/profile.md":
+                    continue
+                if rel.startswith("profile/"):
+                    rel = "profiles/test-profile/" + rel[len("profile/"):]
                 path = root / rel
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text, encoding="utf-8")
             return subprocess.run(
                 [sys.executable, str(SCRIPT), str(root),
-                 "--profile", "profile", *args],
+                 "--profile", ("profiles/test-profile"
+                               if has_profile else "profile"), *args],
                 text=True, capture_output=True, check=False)
 
     def assert_fail(self, result, needle):
@@ -274,6 +312,15 @@ class CheckStructureTests(unittest.TestCase):
                          result.stdout + result.stderr)
         self.assertIn("units=2 modules=1 support_layers=2", result.stdout)
         self.assertIn("errors=0", result.stdout)
+
+    def test_unrelated_unloadable_slot_blocks_structure_pass(self):
+        files = base_files()
+        files["profile/priority-rubric.md"] = "TODO(profile)\n"
+        files["profile/profile.md"] = MANIFEST + \
+            "- `Priority Rubric`: `priority-rubric.md`\n"
+        result = self.run_check(files)
+        self.assert_fail(result, "profile-load")
+        self.assertIn("TODO(profile)", result.stdout)
 
     def test_not_applicable_registry_passes_with_empty_sets(self):
         files = base_files()
@@ -297,13 +344,13 @@ class CheckStructureTests(unittest.TestCase):
         files["profile/profile.md"] = MANIFEST.replace(
             "- `Structure Registry`: `structure-registry.yaml`\n", "")
         result = self.run_check(files)
-        self.assert_fail(result, "does not bind the `Structure Registry`")
+        self.assert_fail(result, "interface slot `Structure Registry` is not bound")
 
     def test_unparseable_registry_fails_closed(self):
         files = base_files()
         files["profile/structure-registry.yaml"] = "::not yaml::\n"
         result = self.run_check(files)
-        self.assert_fail(result, "cannot parse the registry")
+        self.assert_fail(result, "cannot parse restricted YAML")
 
     def test_missing_profile_directory_fails_closed(self):
         result = self.run_check({"README.md": "x\n"})

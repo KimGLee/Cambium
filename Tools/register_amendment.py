@@ -344,6 +344,9 @@ def _prepare(root, args, expected):
     if runtime["errors"]:
         raise ValueError("current runtime is inconsistent: %s" %
                          "; ".join(runtime["errors"]))
+    authority = check_queue.runtime_authority_context(runtime)
+    authority_kwargs = check_queue.runtime_authority_validation_kwargs(
+        authority)
     if runtime.get("writer_locks"):
         raise ValueError("runtime has an active or interrupted writer lock")
     task_state = (runtime.get("progress") or {}).get("task_state")
@@ -438,6 +441,7 @@ def _prepare(root, args, expected):
             check_queue.PROGRESS_PATH: (progress_text, progress_new),
         },
         extra_receipts=[receipt],
+        **authority_kwargs,
     )
     if planned["errors"]:
         raise ValueError("planned registration fails check_queue: %s" %
@@ -452,6 +456,7 @@ def _prepare(root, args, expected):
         "record": record,
         "receipt": receipt,
         "artifacts": artifacts,
+        "authority": authority,
     }
 
 
@@ -471,6 +476,9 @@ def _prepare_withdrawal(root, args, expected):
     if runtime["errors"]:
         raise ValueError("current runtime is inconsistent: %s" %
                          "; ".join(runtime["errors"]))
+    authority = check_queue.runtime_authority_context(runtime)
+    authority_kwargs = check_queue.runtime_authority_validation_kwargs(
+        authority)
     if runtime.get("writer_locks"):
         raise ValueError("runtime has an active or interrupted writer lock")
     if not _nonempty(args.reason):
@@ -541,6 +549,7 @@ def _prepare_withdrawal(root, args, expected):
             check_queue.PROGRESS_PATH: (progress_text, progress_new),
         },
         extra_receipts=[receipt],
+        **authority_kwargs,
     )
     if planned["errors"]:
         raise ValueError("planned withdrawal fails check_queue: %s" %
@@ -556,6 +565,7 @@ def _prepare_withdrawal(root, args, expected):
         "receipt": receipt,
         "artifacts": [],
         "action": "withdraw",
+        "authority": authority,
     }
 
 
@@ -576,6 +586,9 @@ def _apply(root, prepared, receipt_path):
     root = os.path.realpath(os.path.abspath(root))
     receipt_path = os.path.realpath(os.path.abspath(receipt_path))
     receipt_relative = os.path.relpath(receipt_path, root).replace(os.sep, "/")
+    authority = prepared["authority"]
+    authority_kwargs = check_queue.runtime_authority_validation_kwargs(
+        authority)
     operation = {
         "tool": TOOL,
         "action": prepared.get("action", "register"),
@@ -594,16 +607,20 @@ def _apply(root, prepared, receipt_path):
     operation["before_required_queue_sha256"] = prepared["before_sha"]["queue"]
     operation["planned_after_required_queue_sha256"] = \
         prepared["after_sha"]["queue"]
+    operation.update(check_queue.runtime_authority_lock_fields(authority))
 
     with kblib.runtime_write_lock(root, owner_metadata=operation) as lease:
         with kblib.no_authoritative_write_guard(lease):
             _, locked_sha = _read_state(prepared["paths"])
             if locked_sha != prepared["before_sha"]:
                 raise ValueError("canonical state changed after registration planning")
-            locked = check_queue.validate_runtime(root)
+            locked = check_queue.validate_runtime(
+                root, **authority_kwargs)
             if locked["errors"]:
                 raise ValueError("runtime changed before write: %s" %
                                  "; ".join(locked["errors"]))
+            check_queue.require_runtime_authority_current(
+                root, authority, "runtime authority changed under lock")
             _require_current_schema(locked)
             _revalidate_artifacts(root, prepared["artifacts"])
 
@@ -611,6 +628,9 @@ def _apply(root, prepared, receipt_path):
             receipt_path, [prepared["receipt"]]
         )
         try:
+            check_queue.require_runtime_authority_current(
+                root, authority,
+                "runtime authority changed before Amendment receipt")
             outcome, error, _ = kblib.write_receipts_observed(
                 receipt_path, [prepared["receipt"]], before=receipt_before,
             )
@@ -618,13 +638,22 @@ def _apply(root, prepared, receipt_path):
                 raise error or OSError(
                     "registration receipt append outcome was %s" % outcome
                 )
+            check_queue.require_runtime_authority_current(
+                root, authority,
+                "runtime authority changed during Amendment receipt")
             # The receipt is published first.  By itself it is an unreferenced
             # historical record and cannot authorize execution; authority
             # exists only after the pending Progress row names this exact ID.
+            check_queue.require_runtime_authority_current(
+                root, authority,
+                "runtime authority changed before Progress write")
             kblib.atomic_write_text(
                 prepared["paths"]["progress"], prepared["progress_text"],
                 validator=kblib.parse_yaml_subset,
             )
+            check_queue.require_runtime_authority_current(
+                root, authority,
+                "runtime authority changed during Progress write")
         except Exception:
             restored = _restore_progress(prepared)
             receipt_outcome = kblib.receipt_outcome_from(
@@ -637,7 +666,8 @@ def _apply(root, prepared, receipt_path):
         _, committed_sha = _read_state(prepared["paths"])
         if committed_sha != prepared["after_sha"]:
             raise ValueError("registered state differs from planned fingerprints")
-        persisted = check_queue.validate_runtime(root)
+        persisted = check_queue.validate_runtime(
+            root, **authority_kwargs)
         if persisted["errors"]:
             raise ValueError("persisted registration fails check_queue: %s" %
                              "; ".join(persisted["errors"]))

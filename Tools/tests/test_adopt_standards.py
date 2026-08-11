@@ -14,12 +14,16 @@ from unittest import mock
 
 TOOLS = Path(__file__).resolve().parents[1]
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import adopt_standards
+import check_batch_close
+import check_profile
 import check_queue
 import kblib
 import update_queue
+from profile_fixture import install_loadable_profile
 
 
 class AdoptStandardsTests(unittest.TestCase):
@@ -31,13 +35,14 @@ class AdoptStandardsTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name) / "repo"
         shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root)
         governance = self.root / self.GOVERNANCE
-        governance.parent.mkdir(parents=True)
+        governance.parent.mkdir(parents=True, exist_ok=True)
         governance.write_text(
             "## Standards Control\n\n"
             "| Field | Value |\n"
             "|---|---|\n"
-            "| Standards version | `3.1.0` |\n"
+            "| Standards version | `3.0.0` |\n"
             "| Status | `approved` |\n"
             "| Effective date | `2026-08-05` |\n"
             "| Selected profile manifest | "
@@ -51,9 +56,15 @@ class AdoptStandardsTests(unittest.TestCase):
             "| Gate ID | Tool | Tool version | Check | Mode | Dimension "
             "| Lifecycle |\n"
             "|---|---|---|---|---|---|---|\n"
-            "| required-queue-consistency | check_queue | 1.13.0 | required_queue | consistency | * | not-batch-scoped |\n"
-            "| required-queue-admission | check_queue | 1.13.0 | required_queue | require-ready:* | * | queued |\n"
-            "| batch-close | check_batch_close | 1.5.0 | batch_close_gate | * | * | merge-ready |\n",
+            "| profile-load | check_profile | %s | profile-check-summary | * | guidance_and_contract | not-batch-scoped |\n"
+            "| required-queue-consistency | check_queue | %s | required_queue | consistency | * | not-batch-scoped |\n"
+            "| required-queue-admission | check_queue | %s | required_queue | require-ready:* | * | queued |\n"
+            "| batch-close | check_batch_close | %s | batch_close_gate | * | * | merge-ready |\n" % (
+                check_profile.TOOL_VERSION,
+                check_queue.TOOL_VERSION,
+                check_queue.TOOL_VERSION,
+                check_batch_close.TOOL_VERSION,
+            ),
             encoding="utf-8")
 
     def tearDown(self):
@@ -113,10 +124,23 @@ class AdoptStandardsTests(unittest.TestCase):
         return gate["receipt_id"]
 
     def plan(self, *, invalidated_receipt=None, overrides=None):
+        # The live runtime starts aligned to approved 3.0. Publish the approved
+        # 3.1 governance after-image only when preparing its adoption; the
+        # writer's explicit mismatch escape is the sole bridge between them.
+        governance = self.root / self.GOVERNANCE
+        governance.write_text(
+            governance.read_text(encoding="utf-8").replace(
+                "| Standards version | `3.0.0` |",
+                "| Standards version | `3.1.0` |"),
+            encoding="utf-8",
+        )
         queue = self.load(check_queue.QUEUE_PATH)
         progress = self.load(check_queue.PROGRESS_PATH)
         contract = progress["contract"]
         semantic = invalidated_receipt is not None
+        profile_evidence, profile_errors = check_queue.profile_load_evidence(
+            self.root, queue["selected_profile_manifest"])
+        self.assertEqual([], profile_errors)
         plan = {
             "schema_version": 1,
             "adoption_id": "SA-001",
@@ -137,8 +161,11 @@ class AdoptStandardsTests(unittest.TestCase):
             "standards_snapshot_sha256_after":
                 kblib.repository_tree_sha256(self.root, "kernel"),
             "profile_snapshot_sha256_after":
-                kblib.repository_tree_sha256(
-                    self.root, "profiles/test-profile"),
+                profile_evidence["profile_snapshot_sha256"],
+            "profile_contract_fingerprint_after":
+                profile_evidence["profile_contract_fingerprint"],
+            "profile_load_inputs_sha256_after":
+                profile_evidence["profile_load_inputs_sha256"],
             "selected_route_ids_after": copy.deepcopy(
                 contract["selected_route_ids"]),
             "selected_card_paths_after": copy.deepcopy(
@@ -207,7 +234,7 @@ class AdoptStandardsTests(unittest.TestCase):
 
     def test_noop_dry_run_and_missing_register_apply(self):
         self.pause()
-        self.plan()
+        plan = self.plan()
         state_paths = [self.root / path for path in (
             check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
             check_queue.PROGRESS_PATH)]
@@ -226,6 +253,12 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertEqual(0, result["queue"]["state_revision"])
         record = result["progress"]["standards_adoptions"][0]
         self.assertNotIn("after_progress_sha256", record)
+        self.assertEqual(
+            plan["profile_contract_fingerprint_after"],
+            record["profile_contract_fingerprint_after"])
+        self.assertEqual(
+            plan["profile_load_inputs_sha256_after"],
+            record["profile_load_inputs_sha256_after"])
         lines = [json.loads(line) for line in (self.root / self.RECEIPTS)
                  .read_text(encoding="utf-8").splitlines()]
         self.assertEqual(3, len(lines))
@@ -234,6 +267,19 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertEqual("commit", lines[2]["transaction_phase"])
         adoption_rows = [row for row in lines
                          if row.get("tool") == adopt_standards.TOOL]
+        # Candidate Profile evaluation is in-memory transaction evidence.  It
+        # must not publish a receipt whose selected after-image is combined
+        # with the current Queue identity that exists before commit.
+        self.assertFalse(any(
+            row.get("tool") == check_profile.TOOL for row in lines))
+        self.assertEqual(
+            {plan["profile_contract_fingerprint_after"]},
+            {row.get("profile_contract_fingerprint_after")
+             for row in adoption_rows})
+        self.assertEqual(
+            {plan["profile_load_inputs_sha256_after"]},
+            {row.get("profile_load_inputs_sha256_after")
+             for row in adoption_rows})
         self.assertEqual(
             {adopt_standards.TOOL_VERSION},
             {row.get("tool_version") for row in adoption_rows})
@@ -287,7 +333,243 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertEqual(
             {adopt_standards.GATE_ID},
             {row.get("gate_id") for row in rows})
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        ordinary_errors = check_queue.validate_runtime(self.root)["errors"]
+        self.assertTrue(any("differs from active K00/03" in error
+                            for error in ordinary_errors), ordinary_errors)
+        recovered = check_queue.validate_runtime(
+            self.root,
+            allow_invalid_current_profile_for_corrective_adoption=True,
+            allow_active_standards_mismatch_for_adoption=True)
+        self.assertEqual([], recovered["errors"])
+
+    def poison_selected_profile_closure(self):
+        slots = self.root / "profiles/test-profile/slots.md"
+        owned = "profiles/test-profile/slots.md#Synthetic Predicate"
+        foreign = "profiles/foreign-profile/slots.md#Synthetic Predicate"
+        text = slots.read_text(encoding="utf-8")
+        self.assertIn(owned, text)
+        slots.write_text(text.replace(owned, foreign, 1), encoding="utf-8")
+
+    def revise_profile_load_inputs(self):
+        interface = self.root / "profiles/README.md"
+        interface.write_text(
+            interface.read_text(encoding="utf-8") +
+            "\nCanonical interface revision B.\n",
+            encoding="utf-8",
+        )
+
+    def test_locked_prewrite_profile_cas_rejects_post_admission_drift(self):
+        self.pause()
+        self.plan()
+        prepared = adopt_standards._prepare_result(self.root, self.PLAN)
+        state_paths = [self.root / path for path in (
+            check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+            check_queue.PROGRESS_PATH)]
+        before = [path.read_bytes() for path in state_paths]
+        self.poison_selected_profile_closure()
+        receipt_path = self.root / self.RECEIPTS
+
+        with self.assertRaisesRegex(
+                ValueError, "locked pre-write candidate Profile failed"):
+            adopt_standards._commit_transaction(prepared, receipt_path)
+
+        self.assertEqual(before, [path.read_bytes() for path in state_paths])
+        self.assertFalse(receipt_path.exists())
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+
+    def test_locked_prewrite_cas_compares_the_typed_contract_fingerprint(self):
+        self.pause()
+        self.plan()
+        prepared = adopt_standards._prepare_result(self.root, self.PLAN)
+        prepared["profile_evidence"]["profile_contract_fingerprint"] = \
+            "sha256:" + "0" * 64
+
+        with self.assertRaisesRegex(
+                ValueError, "profile_contract_fingerprint changed"):
+            adopt_standards._commit_transaction(
+                prepared, self.root / self.RECEIPTS)
+
+        self.assertFalse((self.root / self.RECEIPTS).exists())
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+
+    def test_locked_prewrite_cas_compares_profile_load_inputs(self):
+        self.pause()
+        self.plan()
+        prepared = adopt_standards._prepare_result(self.root, self.PLAN)
+        prepared["profile_evidence"]["profile_load_inputs_sha256"] = \
+            "sha256:" + "0" * 64
+
+        with self.assertRaisesRegex(
+                ValueError, "profile_load_inputs_sha256 changed"):
+            adopt_standards._commit_transaction(
+                prepared, self.root / self.RECEIPTS)
+
+        self.assertFalse((self.root / self.RECEIPTS).exists())
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+
+    def test_postwrite_profile_drift_rolls_back_state_and_records_abort(self):
+        self.pause()
+        self.plan()
+        state_paths = [self.root / path for path in (
+            check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+            check_queue.PROGRESS_PATH)]
+        before = [path.read_bytes() for path in state_paths]
+        original = kblib.atomic_write_text
+        state_writes = {"count": 0}
+
+        def poison_after_third_state_write(path, text, validator=None):
+            result = original(path, text, validator=validator)
+            if ".cambium/state" in str(path):
+                state_writes["count"] += 1
+                if state_writes["count"] == 3:
+                    self.poison_selected_profile_closure()
+            return result
+
+        with mock.patch.object(
+                adopt_standards.kblib, "atomic_write_text",
+                side_effect=poison_after_third_state_write):
+            code, output = self.command(apply=True, actor="integrator")
+
+        self.assertEqual(1, code, output)
+        self.assertIn("post-write candidate Profile failed", output)
+        self.assertEqual(before, [path.read_bytes() for path in state_paths])
+        rows = [json.loads(line) for line in (
+            self.root / self.RECEIPTS).read_text(
+                encoding="utf-8").splitlines()]
+        self.assertEqual(
+            ["prepare", "abort"],
+            [row["transaction_phase"] for row in rows])
+        self.assertFalse(any(
+            row.get("tool") == check_profile.TOOL for row in rows))
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+
+    def test_postwrite_profile_load_input_drift_rolls_back_and_aborts(self):
+        self.pause()
+        self.plan()
+        state_paths = [self.root / path for path in (
+            check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+            check_queue.PROGRESS_PATH)]
+        before = [path.read_bytes() for path in state_paths]
+        original = kblib.atomic_write_text
+        state_writes = 0
+
+        def revise_after_third_state_write(path, text, validator=None):
+            nonlocal state_writes
+            result = original(path, text, validator=validator)
+            if ".cambium/state" in str(path):
+                state_writes += 1
+                if state_writes == 3:
+                    self.revise_profile_load_inputs()
+            return result
+
+        with mock.patch.object(
+                adopt_standards.kblib, "atomic_write_text",
+                side_effect=revise_after_third_state_write):
+            code, output = self.command(apply=True, actor="integrator")
+
+        self.assertEqual(1, code, output)
+        self.assertIn("post-write candidate Profile load inputs differ",
+                      output)
+        self.assertEqual(before, [path.read_bytes() for path in state_paths])
+        rows = [json.loads(line) for line in (
+            self.root / self.RECEIPTS).read_text(
+                encoding="utf-8").splitlines()]
+        self.assertEqual(
+            ["prepare", "abort"],
+            [row["transaction_phase"] for row in rows])
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+
+    def test_profile_drift_during_final_append_restores_state_and_keeps_lock(
+            self):
+        """A durable commit plus later failed CAS needs reconciliation."""
+        self.pause()
+        self.plan()
+        state_paths = [self.root / path for path in (
+            check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+            check_queue.PROGRESS_PATH)]
+        before = [path.read_bytes() for path in state_paths]
+        original = kblib.write_receipts_observed
+        poisoned = {"value": False}
+
+        def poison_after_commit_append(path, receipts, before=None):
+            outcome = original(path, receipts, before=before)
+            if (not poisoned["value"] and any(
+                    row.get("transaction_phase") == "commit"
+                    for row in receipts)):
+                poisoned["value"] = True
+                self.poison_selected_profile_closure()
+            return outcome
+
+        with mock.patch.object(
+                adopt_standards.kblib, "write_receipts_observed",
+                side_effect=poison_after_commit_append):
+            code, output = self.command(apply=True, actor="integrator")
+
+        self.assertEqual(1, code, output)
+        self.assertIn("post-final-receipt candidate Profile failed", output)
+        self.assertIn("recovery is incomplete", output)
+        self.assertEqual(before, [path.read_bytes() for path in state_paths])
+        rows = [json.loads(line) for line in (
+            self.root / self.RECEIPTS).read_text(
+                encoding="utf-8").splitlines()]
+        self.assertEqual(
+            ["prepare", None, "commit", "abort"],
+            [row.get("transaction_phase") for row in rows])
+        lock = self.root / ".cambium/tmp/state-writer.lock"
+        self.assertTrue(lock.is_dir())
+        owner = json.loads((lock / "owner.json").read_text(encoding="utf-8"))
+        prepared_fingerprint = owner["operation"].get(
+            "profile_contract_fingerprint_after")
+        self.assertRegex(prepared_fingerprint, r"^sha256:[0-9a-f]{64}$")
+        prepared_inputs = owner["operation"].get(
+            "profile_load_inputs_sha256_after")
+        self.assertRegex(prepared_inputs, r"^sha256:[0-9a-f]{64}$")
+
+    def test_profile_load_input_drift_during_final_append_keeps_lock(self):
+        self.pause()
+        self.plan()
+        state_paths = [self.root / path for path in (
+            check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+            check_queue.PROGRESS_PATH)]
+        before = [path.read_bytes() for path in state_paths]
+        original = kblib.write_receipts_observed
+        revised = False
+
+        def revise_after_commit_append(path, receipts, before=None):
+            nonlocal revised
+            outcome = original(path, receipts, before=before)
+            if (not revised and any(
+                    row.get("transaction_phase") == "commit"
+                    for row in receipts)):
+                revised = True
+                self.revise_profile_load_inputs()
+            return outcome
+
+        with mock.patch.object(
+                adopt_standards.kblib, "write_receipts_observed",
+                side_effect=revise_after_commit_append):
+            code, output = self.command(apply=True, actor="integrator")
+
+        self.assertTrue(revised)
+        self.assertEqual(1, code, output)
+        self.assertIn(
+            "post-final-receipt candidate Profile load inputs differ",
+            output)
+        self.assertIn("recovery is incomplete", output)
+        self.assertEqual(before, [path.read_bytes() for path in state_paths])
+        rows = [json.loads(line) for line in (
+            self.root / self.RECEIPTS).read_text(
+                encoding="utf-8").splitlines()]
+        self.assertEqual(
+            ["prepare", None, "commit", "abort"],
+            [row.get("transaction_phase") for row in rows])
+        self.assertTrue(
+            (self.root / ".cambium/tmp/state-writer.lock").is_dir())
 
     def test_closed_schema_stale_hash_and_contract_bump_fail_closed(self):
         self.pause()
@@ -299,6 +581,12 @@ class AdoptStandardsTests(unittest.TestCase):
              "unsupported field"),
             (dict(base, coverage_sha256_before="sha256:" + "0" * 64),
              "SHA does not match current bytes"),
+            (dict(base, profile_contract_fingerprint_after=
+                  "sha256:" + "0" * 64),
+             "profile_contract_fingerprint_after is stale"),
+            (dict(base, profile_load_inputs_sha256_after=
+                  "sha256:" + "0" * 64),
+             "profile_load_inputs_sha256_after is stale"),
             (dict(base, selected_route_ids_after=["R01"]),
              "requires a new contract_version"),
         )
@@ -402,7 +690,14 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertEqual("none", final["items_by_id"]["B1"]["hold_state"])
         self.assertEqual([], check_queue.outstanding_standards_revalidation(
             final, "B1"))
-        poisoned = copy.deepcopy(final)
+        # Runtime authorization views are deliberately in-process immutable
+        # objects (their keys are private); this barrier test mutates only the
+        # public Queue projection, so copy that serializable surface rather
+        # than pretending the authority context is durable state.
+        poisoned = copy.deepcopy({
+            key: value for key, value in final.items()
+            if not key.startswith("_")
+        })
         poisoned_item = poisoned["items_by_id"]["B1"]
         poisoned_item["state"] = "merge-ready"
         poisoned_item["batch_receipts"] = [invalidated_gate]
@@ -757,8 +1052,9 @@ class AdoptStandardsTests(unittest.TestCase):
                     "kernel/K00 Standards Control/12 Control Registry.md")
         registry.write_text(
             registry.read_text(encoding="utf-8") +
-            "| required-queue-completion | check_queue | 1.13.0 "
-            "| required_queue | require-complete | * | queue-exhausted |\n",
+            "| required-queue-completion | check_queue | %s "
+            "| required_queue | require-complete | * | queue-exhausted |\n"
+            % check_queue.TOOL_VERSION,
             encoding="utf-8")
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         gates = ["required-queue-completion", "wiki-link-integrity"]
@@ -1169,6 +1465,252 @@ class AdoptStandardsTests(unittest.TestCase):
             self.root, plan, catalog=runtime["receipt_catalog"],
             queue=runtime["queue"], progress=runtime["progress"],
             validate_current=True)
+
+    def profile_admission_plan(self, downstream_gate_ids=()):
+        """Build the admission-only boundary for a candidate Profile.
+
+        The initial Queue materialization receipt is deliberately used as the
+        invalidated evidence: unlike a batch-admission receipt, it has no Queue
+        consumer that would independently require a batch revalidation scope.
+        This lets the fixture isolate the profile-load boundary itself.
+        """
+        plan = self.plan(
+            invalidated_receipt="audit-fixture-initial-queue")
+        runtime_gate_ids = sorted(downstream_gate_ids)
+        required_gate_ids = sorted(("profile-load", *runtime_gate_ids))
+        plan["changed_predicates"][0]["affected_gate_ids"] = \
+            required_gate_ids
+        plan["invalidation_boundaries"][0].update({
+            "target_kind": "profile-load",
+            "target_ids": [plan["selected_profile_manifest_after"]],
+            "required_gate_ids": required_gate_ids,
+        })
+        plan["invalidated_evidence"][0]["revalidation_scope_ids"] = []
+        # profile-load ran against the writable after-image above.  Only Gate
+        # IDs consumed later in the Queue belong in this runtime rerun union.
+        plan["boundary_gate_reruns"] = runtime_gate_ids
+        return plan
+
+    def test_profile_load_boundary_targets_exactly_the_after_manifest(self):
+        self.pause()
+        plan = self.profile_admission_plan()
+        plan["invalidation_boundaries"][0]["target_ids"] = [
+            "profiles/test-profile/slots.md"]
+
+        errors = self.plan_errors(plan)
+
+        self.assertIn(
+            "invalidation_boundaries[0] profile-load target_ids must contain "
+            "only selected_profile_manifest_after", errors)
+
+    def test_profile_load_boundary_must_name_its_admission_gate(self):
+        self.pause()
+        plan = self.profile_admission_plan()
+        plan["invalidation_boundaries"][0]["required_gate_ids"] = []
+
+        errors = self.plan_errors(plan)
+
+        self.assertIn(
+            "invalidation_boundaries[0] profile-load boundary must require "
+            "the profile-load Gate at after-image admission", errors)
+
+    def test_profile_selection_change_cannot_use_noop_adoption_branch(self):
+        self.pause()
+        install_loadable_profile(self.root, profile_id="next-profile")
+        next_manifest = "profiles/next-profile/profile.md"
+        governance = self.root / self.GOVERNANCE
+        governance.write_text(
+            governance.read_text(encoding="utf-8").replace(
+                "profiles/test-profile/profile.md", next_manifest),
+            encoding="utf-8")
+        next_evidence, next_errors = check_queue.profile_load_evidence(
+            self.root, next_manifest)
+        self.assertEqual([], next_errors)
+        plan = self.plan()
+        plan.update({
+            "contract_version_after": "c2",
+            "selected_profile_manifest_after": next_manifest,
+            "governance_revision_sha256": kblib.sha256_file(governance),
+            "profile_snapshot_sha256_after":
+                next_evidence["profile_snapshot_sha256"],
+            "profile_contract_fingerprint_after":
+                next_evidence["profile_contract_fingerprint"],
+        })
+
+        errors = self.plan_errors(plan)
+
+        self.assertIn(
+            "selected Profile change must declare a changed predicate whose "
+            "affected_gate_ids include profile-load", errors)
+        self.assertIn(
+            "Profile authority change requires exactly one profile-load "
+            "after-image invalidation boundary; found 0", errors)
+
+    def test_profile_load_affected_predicate_requires_after_image_boundary(self):
+        self.pause()
+        plan = self.plan()
+        plan.update({
+            "contract_version_after": "c2",
+            "changed_predicates": [{
+                "predicate_id": "PRED-PROFILE-AUTHORITY",
+                "owner_path": self.GOVERNANCE,
+                "change_kind": "modified",
+                "affected_gate_ids": ["profile-load"],
+            }],
+        })
+
+        errors = self.plan_errors(plan)
+
+        self.assertIn(
+            "Profile authority change requires exactly one profile-load "
+            "after-image invalidation boundary; found 0", errors)
+
+    def test_profile_load_boundary_covers_every_affected_predicate(self):
+        self.pause()
+        plan = self.profile_admission_plan()
+        plan["changed_predicates"].insert(0, {
+            "predicate_id": "PRED-PROFILE-SECOND",
+            "owner_path": self.GOVERNANCE,
+            "change_kind": "modified",
+            "affected_gate_ids": ["profile-load"],
+        })
+
+        errors = self.plan_errors(plan)
+
+        self.assertIn(
+            "invalidation_boundaries[0] profile-load boundary must reference "
+            "every changed predicate whose affected_gate_ids include "
+            "profile-load; omitted: PRED-PROFILE-SECOND", errors)
+
+    def test_admission_only_profile_load_needs_no_batch_reach_or_rerun(self):
+        self.pause()
+        plan = self.profile_admission_plan()
+
+        self.assertEqual(
+            [], plan["invalidated_evidence"][0]["revalidation_scope_ids"])
+        self.assertEqual([], plan["boundary_gate_reruns"])
+        self.assertEqual([], self.plan_errors(plan))
+
+    def test_profile_load_with_a_downstream_gate_still_needs_batch_reach(self):
+        self.pause()
+        self.register_link_gate()
+        plan = self.profile_admission_plan(("wiki-link-integrity",))
+
+        errors = self.plan_errors(plan)
+        reach_errors = [
+            error for error in errors
+            if "boundary INV-B1-READY has target_kind 'profile-load' and no "
+            "invalidated evidence scoping it to a Queue batch" in error
+        ]
+        self.assertEqual(1, len(reach_errors), errors)
+        self.assertEqual(["wiki-link-integrity"],
+                         plan["boundary_gate_reruns"])
+
+        plan["invalidated_evidence"][0]["revalidation_scope_ids"] = ["B2"]
+        self.assertEqual([], [
+            error for error in self.plan_errors(plan)
+            if "no gate rerun would ever be required" in error
+        ])
+
+    def test_plan_checks_the_after_profile_without_wedging_on_bad_current(self):
+        """A bad selected Profile can migrate, but a bad candidate cannot.
+
+        Ordinary validation and writers reject the broken current closure.
+        Only the corrective adoption's current/before reads use the explicit
+        smaller identity/sentinel escape; its after-image and post-write state
+        still run canonical full profile-load.
+        """
+        self.pause()
+        next_profile = install_loadable_profile(
+            self.root, profile_id="next-profile")
+        next_manifest = "profiles/next-profile/profile.md"
+        governance = self.root / self.GOVERNANCE
+        governance.write_text(
+            governance.read_text(encoding="utf-8").replace(
+                "profiles/test-profile/profile.md", next_manifest),
+            encoding="utf-8")
+        admitted_next_evidence, admitted_next_errors = \
+            check_queue.profile_load_evidence(self.root, next_manifest)
+        self.assertEqual([], admitted_next_errors)
+
+        next_slots = next_profile / "slots.md"
+        next_owned = "profiles/next-profile/slots.md#Synthetic Predicate"
+        current_owned = "profiles/test-profile/slots.md#Synthetic Predicate"
+        next_slots.write_text(
+            next_slots.read_text(encoding="utf-8").replace(
+                next_owned, current_owned, 1), encoding="utf-8")
+
+        plan = self.profile_admission_plan()
+        plan.update({
+            "selected_profile_manifest_after": next_manifest,
+            "governance_revision_sha256": kblib.sha256_file(governance),
+            "profile_snapshot_sha256_after": kblib.repository_tree_sha256(
+                self.root, "profiles/next-profile"),
+            "profile_contract_fingerprint_after":
+                admitted_next_evidence["profile_contract_fingerprint"],
+        })
+        plan["invalidation_boundaries"][0]["target_ids"] = [next_manifest]
+        candidate_errors = self.plan_errors(plan)
+        self.assertTrue(any(
+            "selected Profile failed profile-load" in error and
+            "predicate-owner-path-outside-profile" in error
+            for error in candidate_errors), candidate_errors)
+
+        # Repair the after-image, then make the current selected package carry
+        # the same cross-Profile edge.  The live runtime remains operable and
+        # the Standards plan is judged against the now-valid after-image.
+        next_slots.write_text(
+            next_slots.read_text(encoding="utf-8").replace(
+                current_owned, next_owned, 1), encoding="utf-8")
+        current_slots = self.root / "profiles/test-profile/slots.md"
+        current_slots.write_text(
+            current_slots.read_text(encoding="utf-8").replace(
+                current_owned, next_owned, 1), encoding="utf-8")
+        plan["profile_snapshot_sha256_after"] = \
+            kblib.repository_tree_sha256(
+                self.root, "profiles/next-profile")
+        repaired_next_evidence, repaired_next_errors = \
+            check_queue.profile_load_evidence(self.root, next_manifest)
+        self.assertEqual([], repaired_next_errors)
+        plan["profile_contract_fingerprint_after"] = \
+            repaired_next_evidence["profile_contract_fingerprint"]
+
+        current_errors = check_queue.profile_load_errors(
+            self.root, "profiles/test-profile/profile.md")
+        self.assertTrue(any(
+            "predicate-owner-path-outside-profile" in error
+            for error in current_errors), current_errors)
+        ordinary_errors = check_queue.validate_runtime(self.root)["errors"]
+        self.assertTrue(any(
+            "predicate-owner-path-outside-profile" in error
+            for error in ordinary_errors), ordinary_errors)
+        corrective_current = check_queue.validate_runtime(
+            self.root,
+            allow_invalid_current_profile_for_corrective_adoption=True,
+            allow_active_standards_mismatch_for_adoption=True)
+        self.assertEqual([], corrective_current["errors"])
+        with self.assertRaisesRegex(
+                ValueError, "only to persisted current state"):
+            check_queue.validate_runtime(
+                self.root, state_overrides={},
+                allow_invalid_current_profile_for_corrective_adoption=True)
+
+        ordinary_writer = self.run_tool(
+            "update_task.py", "--transition", "active",
+            "--at", "2026-08-05T00:04:00Z")
+        self.assertEqual(1, ordinary_writer.returncode, ordinary_writer.stdout)
+        self.assertIn(
+            "predicate-owner-path-outside-profile", ordinary_writer.stdout)
+        self.assertEqual([], self.plan_errors(plan))
+
+        (self.root / self.PLAN).write_text(
+            kblib.canonical_yaml(plan), encoding="utf-8")
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+        repaired = check_queue.validate_runtime(self.root)
+        self.assertEqual([], repaired["errors"])
+        self.assertEqual(next_manifest,
+                         repaired["queue"]["selected_profile_manifest"])
 
     def test_boundary_without_any_enforcement_path_is_refused(self):
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
@@ -1740,6 +2282,213 @@ class AdoptStandardsTests(unittest.TestCase):
             check_queue.TOOL: "1.5.0",
         })
         self.assertEqual([], errors)
+
+    def test_pre_1_3_profile_change_replays_without_new_profile_bindings(self):
+        """A sealed 1.2 transaction keeps the contract its producer promised.
+
+        Version 1.2 neither persisted the typed Profile fingerprint nor
+        required a Profile selection change to carry the 1.3 after-image
+        profile-load boundary.  The fixture first uses the current writer to
+        produce a structurally complete transition, then rewrites only the
+        sealed artifacts to the exact older producer shape.  Runtime replay
+        must accept it without loading old plan semantics through today's
+        boundary contract; the same bytes remain invalid for new admission.
+        """
+        self.pause()
+        install_loadable_profile(self.root, profile_id="next-profile")
+        next_manifest = "profiles/next-profile/profile.md"
+        governance = self.root / self.GOVERNANCE
+        governance.write_text(
+            governance.read_text(encoding="utf-8").replace(
+                "profiles/test-profile/profile.md", next_manifest),
+            encoding="utf-8")
+        next_evidence, next_errors = check_queue.profile_load_evidence(
+            self.root, next_manifest)
+        self.assertEqual([], next_errors)
+
+        plan = self.profile_admission_plan()
+        plan.update({
+            "selected_profile_manifest_after": next_manifest,
+            "governance_revision_sha256": kblib.sha256_file(governance),
+            "profile_snapshot_sha256_after":
+                next_evidence["profile_snapshot_sha256"],
+            "profile_contract_fingerprint_after":
+                next_evidence["profile_contract_fingerprint"],
+        })
+        plan["invalidation_boundaries"][0]["target_ids"] = [next_manifest]
+        (self.root / self.PLAN).write_text(
+            kblib.canonical_yaml(plan), encoding="utf-8")
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+
+        # Project the sealed plan/record/receipts back to the 1.2 producer
+        # contract.  The state transition and selected after Profile stay the
+        # same; only fields and boundary declarations 1.2 never promised are
+        # absent.
+        legacy_plan = self.load(self.PLAN)
+        legacy_plan.pop("profile_contract_fingerprint_after")
+        legacy_plan.pop("profile_load_inputs_sha256_after")
+        legacy_plan["changed_predicates"] = []
+        legacy_plan["invalidated_evidence"] = []
+        legacy_plan["invalidation_boundaries"] = []
+        legacy_plan["boundary_gate_reruns"] = []
+        (self.root / self.PLAN).write_text(
+            kblib.canonical_yaml(legacy_plan), encoding="utf-8")
+        legacy_plan_sha = kblib.sha256_file(self.root / self.PLAN)
+
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = self.load(check_queue.PROGRESS_PATH)
+        record = progress["standards_adoptions"][0]
+        record.pop("profile_contract_fingerprint_after")
+        record.pop("profile_load_inputs_sha256_after")
+        record["plan_sha256"] = legacy_plan_sha
+        record["changed_predicate_ids"] = []
+        record["invalidated_evidence_receipt_ids"] = []
+        record["invalidation_boundary_ids"] = []
+        record["boundary_gate_reruns"] = []
+        progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+        legacy_progress_sha = kblib.sha256_file(progress_path)
+
+        receipt_path = self.root / self.RECEIPTS
+        receipts = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for receipt in receipts:
+            if receipt.get("tool") == adopt_standards.TOOL:
+                receipt["tool_version"] = "1.2.0"
+                receipt["plan_sha256"] = legacy_plan_sha
+                receipt["after_progress_sha256"] = legacy_progress_sha
+                receipt["changed_predicate_ids"] = []
+                receipt["invalidated_evidence_receipt_ids"] = []
+                receipt["invalidation_boundary_ids"] = []
+                receipt["boundary_gate_reruns"] = []
+                receipt.pop("profile_contract_fingerprint_after")
+                receipt.pop("profile_load_inputs_sha256_after")
+            if receipt.get("receipt_id") in record["immediate_gate_receipts"]:
+                receipt["progress_ledger_sha256"] = legacy_progress_sha
+        receipt_path.write_text(
+            "".join(json.dumps(receipt, separators=(",", ":")) + "\n"
+                    for receipt in receipts), encoding="utf-8")
+
+        replay = check_queue.validate_runtime(self.root)
+        self.assertEqual([], replay["errors"])
+        self.assertNotIn(
+            "profile_contract_fingerprint_after",
+            replay["progress"]["standards_adoptions"][0])
+        self.assertNotIn(
+            "profile_load_inputs_sha256_after",
+            replay["progress"]["standards_adoptions"][0])
+
+        current_errors = check_queue.standards_adoption_plan_errors(
+            self.root, legacy_plan, catalog=replay["receipt_catalog"],
+            queue=replay["queue"], progress=replay["progress"],
+            validate_current=True, producer_tool_version="1.2.0")
+        self.assertTrue(any(
+            "misses explicit field(s): profile_contract_fingerprint_after" in
+            error for error in current_errors), current_errors)
+        self.assertTrue(any(
+            "Profile authority change requires exactly one profile-load" in
+            error for error in current_errors), current_errors)
+
+    def test_pre_1_4_history_replays_without_profile_load_input_binding(self):
+        """A sealed 1.3 adoption retains its two-Profile-digest contract."""
+        self.commit_one_adoption()
+
+        plan_path = self.root / self.PLAN
+        legacy_plan = self.load(self.PLAN)
+        legacy_plan.pop("profile_load_inputs_sha256_after")
+        plan_path.write_text(
+            kblib.canonical_yaml(legacy_plan), encoding="utf-8")
+        legacy_plan_sha = kblib.sha256_file(plan_path)
+
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = self.load(check_queue.PROGRESS_PATH)
+        record = progress["standards_adoptions"][0]
+        record.pop("profile_load_inputs_sha256_after")
+        record["plan_sha256"] = legacy_plan_sha
+        progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+        legacy_progress_sha = kblib.sha256_file(progress_path)
+
+        receipt_path = self.root / self.RECEIPTS
+        receipts = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for receipt in receipts:
+            if receipt.get("tool") == adopt_standards.TOOL:
+                receipt["tool_version"] = "1.3.0"
+                receipt["plan_sha256"] = legacy_plan_sha
+                receipt["after_progress_sha256"] = legacy_progress_sha
+                receipt.pop("profile_load_inputs_sha256_after")
+            if receipt.get("receipt_id") in record["immediate_gate_receipts"]:
+                receipt["progress_ledger_sha256"] = legacy_progress_sha
+        receipt_path.write_text(
+            "".join(json.dumps(receipt, separators=(",", ":")) + "\n"
+                    for receipt in receipts), encoding="utf-8")
+
+        replay = check_queue.validate_runtime(self.root)
+        self.assertEqual([], replay["errors"])
+        sealed = replay["progress"]["standards_adoptions"][0]
+        self.assertNotIn("profile_load_inputs_sha256_after", sealed)
+        self.assertRegex(
+            sealed["profile_contract_fingerprint_after"],
+            r"^sha256:[0-9a-f]{64}$")
+
+        current_errors = check_queue.standards_adoption_plan_errors(
+            self.root, legacy_plan, catalog=replay["receipt_catalog"],
+            queue=replay["queue"], progress=replay["progress"],
+            validate_current=True, producer_tool_version="1.3.0")
+        self.assertTrue(any(
+            "misses explicit field(s): profile_load_inputs_sha256_after" in
+            error for error in current_errors), current_errors)
+
+    def test_historical_fingerprint_replay_is_sealed_not_reinterpreted(self):
+        self.commit_one_adoption()
+        runtime = check_queue.validate_runtime(self.root)
+        recorded = runtime["progress"]["standards_adoptions"][0]
+        self.assertRegex(
+            recorded["profile_contract_fingerprint_after"],
+            r"^sha256:[0-9a-f]{64}$")
+
+        self.poison_selected_profile_closure()
+        self.assertTrue(any(
+            "predicate-owner-path-outside-profile" in error for error in
+            check_queue.validate_runtime(self.root)["errors"]))
+        self.assertEqual(
+            [], check_queue._standards_adoption_errors(
+                self.root, runtime["progress"],
+                runtime["receipt_catalog"], runtime["queue"]))
+
+    def test_legacy_present_fingerprint_must_still_be_canonical(self):
+        self.pause()
+        plan = self.plan()
+        plan["profile_contract_fingerprint_after"] = "SHA256:NOT-CANONICAL"
+        errors = check_queue.standards_adoption_plan_errors(
+            self.root, plan, validate_current=False,
+            producer_tool_version="1.2.0")
+        self.assertIn(
+            "Standards adoption plan profile_contract_fingerprint_after is "
+            "not a SHA-256", errors)
+
+    def test_legacy_present_fingerprint_stays_sealed_across_the_chain(self):
+        self.commit_one_adoption()
+        runtime = check_queue.validate_runtime(self.root)
+        progress = copy.deepcopy(runtime["progress"])
+        catalog = copy.deepcopy(runtime["receipt_catalog"])
+        record = progress["standards_adoptions"][0]
+        receipt_id = record["verification_receipt"]
+        catalog[receipt_id][1]["tool_version"] = "1.2.0"
+        record["profile_contract_fingerprint_after"] = \
+            "sha256:" + "0" * 64
+
+        errors = check_queue._standards_adoption_errors(
+            self.root, progress, catalog, runtime["queue"])
+
+        self.assertTrue(any(
+            "profile_contract_fingerprint_after does not match its plan" in
+            error for error in errors), errors)
+        self.assertTrue(any(
+            "receipt profile_contract_fingerprint_after does not match record" in
+            error for error in errors), errors)
 
     def test_an_adoption_receipt_era_nothing_accounts_for_is_refused(self):
         """The replacement check has teeth without today's constants.

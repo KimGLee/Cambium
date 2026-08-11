@@ -141,6 +141,24 @@ Propagation goes only to the dimensions that genuinely depend on the change:
 
 The dependency graph is not required to treat every backlink as a semantic dependency. Prerequisites in the body, claim evidence, canonical ownership, profile-registered expression mapping, MOC membership, and contract mapping are the primary invalidation edges.
 
+A `profile-load` receipt is reusable only for its exact manifest, Profile
+directory snapshot, and typed Profile-contract fingerprint. A change to the
+manifest, a bound slot, a registered command, a Profile-owned configuration,
+a predicate-owner path or heading, or the `check_profile` contract invalidates
+that pass. The closure cannot be transferred to another Profile even when the
+foreign target has identical bytes. Because a passing closure contains every
+Profile-owned target inside one directory, the Profile snapshot covers the
+target bytes; the contract fingerprint separately covers the edge kind,
+owner identity, canonical target, and optional heading.
+
+Downstream invalidation follows the edge's meaning. A residual-scan
+registration, configuration, verifier contract, or residual predicate change
+invalidates the applicable `registered-residual-content` evidence and its
+dependent dispositions; a predicate-owner change invalidates receipts whose
+acceptance predicate it owns. Re-establishing `profile-load` proves authority
+and resolvability only. It never refreshes the downstream content or judgment
+receipt automatically.
+
 Queue receipts bind bytes/revisions. A structural or fingerprint change invalidates structure, readiness, and completion receipts; `state_revision` changes invalidate lifecycle/hold predicates. A Terminal Proof pass binds exact Coverage, Progress, Queue, and Proof bytes, so any byte change invalidates it. The controlled `completion-candidate -> complete` transition may consume that pass once and records Progress before/after fingerprints; reuse on the new bytes requires a new pass. Other reuse requires the same canonical paths, revisions, fingerprints, mode, and checker.
 
 Corpus Planning receipts are direct byte-bound evidence. A change to the

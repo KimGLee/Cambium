@@ -18,6 +18,8 @@ Read in order:
 5. [[kernel/K00 Standards Control/04 Control State and Scope|Control State and Scope]]
 6. [[kernel/K00 Standards Control/05 Core Principles|Core Principles]]
 7. [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract|Completion Precedence and Task Contract]]
+8. [[kernel/K00 Standards Control/15 Read Set Loading Boundaries|Read Set Loading Boundaries]]
+9. [[kernel/K00 Standards Control/17 Profile Dependency Closure|Profile Dependency Closure]]
 
 Then select the task-specific Read Set from the [[kernel/Read Sets/Read Sets Index|Read Sets Index]].
 
@@ -32,8 +34,8 @@ Then select the task-specific Read Set from the [[kernel/Read Sets/Read Sets Ind
 - Confirm whether the current task is authorized to modify `Knowledge Base Standards` or protected directories.
 - Confirm that canonical ownership, factual correctness, and protection of user modifications still take precedence.
 - Distinguish task completion, authoring status, the registered `Expression Status Axis`, evidence maturity, and learning status.
-- Confirm that the active Standards state is instantiated and its one `selected_profile_manifest` resolves to a filled profile that passed `check_profile.py`. While any placeholder remains, a content task cannot freeze its contract and MUST stop before execution.
-- Record the current Standards version, exact selected profile manifest path, and actual loaded set: selected Rxx route IDs and Runtime Card paths, any combined namespaced profile route, and every Read Set or leaf path actually read back.
+- Confirm that the active Standards state is instantiated and its one `selected_profile_manifest` has a current passing `profile-load` result. That Gate resolves the manifest, slots, and typed single-Profile dependency closure; a slot-only or placeholder-only check is insufficient. While any placeholder or unresolved Profile-owned edge remains, an ordinary content task cannot freeze its contract and MUST stop before execution. R09 governance may continue only to validate and adopt a passing after Profile, so an invalid current Profile cannot deadlock corrective adoption.
+- Record the current Standards version, exact selected profile manifest path, and actual loaded set: selected Rxx route IDs and Runtime Card paths, any combined namespaced profile route, and every Read Set or leaf path actually read back. Keep the derived Profile dependency closure in its `profile-load` result; do not copy its members into `loaded_module_paths`.
 
 ## Not Sufficient For
 

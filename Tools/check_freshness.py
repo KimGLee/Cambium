@@ -50,9 +50,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import compose_vocab
+import profile_admission
 
 TOOL = "check_freshness"
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.3.0"
 
 # Re-verification interval (days) per volatility tier.
 INTERVAL_DAYS = {"fast": 120, "slow": 365, "stable": None}
@@ -89,7 +91,7 @@ def load_frontmatter(path):
     return fm, False
 
 
-def load_defaults(path):
+def load_defaults(path, text=None):
     """Load a domain -> volatility mapping (restricted YAML subset).
 
     Accepts either a flat `domain: volatility` file, or a composed vocabulary
@@ -100,7 +102,8 @@ def load_defaults(path):
     Returns a dict; raises ValueError on a malformed file or on a volatility
     value outside fast / slow / stable.
     """
-    text = open(path, encoding="utf-8", errors="replace").read()
+    if text is None:
+        text = open(path, encoding="utf-8", errors="replace").read()
     try:
         mapping = kblib.parse_yaml_subset(text)
     except kblib.YamlSubsetError as exc:
@@ -140,6 +143,9 @@ def main():
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
     args = ap.parse_args()
 
+    root_argument = os.path.abspath(args.vault_root)
+    root = os.path.realpath(root_argument)
+
     as_of = parse_date(args.as_of) if args.as_of else datetime.date.today()
     if as_of is None:
         print("check_freshness: cannot parse --as-of (expected YYYY-MM-DD): %r"
@@ -147,9 +153,35 @@ def main():
         return 1
 
     defaults_map = None
+    defaults_admission = None
+    defaults_snapshot = None
     if args.defaults:
         try:
-            defaults_map = load_defaults(args.defaults)
+            defaults_absolute = os.path.abspath(args.defaults)
+            canonical_spellings = {
+                os.path.abspath(os.path.join(
+                    root_argument, compose_vocab.DEFAULT_OUTPUT)),
+                os.path.abspath(os.path.join(
+                    root, compose_vocab.DEFAULT_OUTPUT)),
+            }
+            if defaults_absolute in canonical_spellings:
+                defaults_admission, admission_errors = \
+                    profile_admission.admit_profile(root)
+                if defaults_admission is None:
+                    raise ValueError(
+                        "canonical Tools/vocab.yaml requires selected Profile "
+                        "admission: %s" % "; ".join(admission_errors))
+                defaults_snapshot, artifact_errors = \
+                    compose_vocab.admitted_artifact(
+                        root, args.defaults, defaults_admission)
+                if artifact_errors or defaults_snapshot is None:
+                    raise ValueError(
+                        "canonical Tools/vocab.yaml is not current: %s" %
+                        "; ".join(artifact_errors))
+                defaults_map = load_defaults(
+                    args.defaults, defaults_snapshot.read_text())
+            else:
+                defaults_map = load_defaults(args.defaults)
         except (OSError, ValueError) as exc:
             print("check_freshness: cannot load --defaults file: %s" % exc)
             return 1
@@ -161,7 +193,7 @@ def main():
               "fresh": 0, "overdue": 0, "pending_first_verification": 0}
     candidates = []  # (prio_rank, -overdue_days, rel, details)
 
-    for full, rel in kblib.iter_md_files(args.vault_root, args.scope):
+    for full, rel in kblib.iter_md_files(root, args.scope):
         rel_disp = rel.replace(os.sep, "/")
 
         # ---- path-component exclusion (--exclude) ----
@@ -273,6 +305,27 @@ def main():
                 (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
                 "as_of=%s no overdue or pending-first-verification pages"
                 % as_of.isoformat(), seq))
+
+    if defaults_admission is not None:
+        currency_errors = compose_vocab.artifact_currency_errors(
+            root, args.defaults, defaults_admission)
+        if currency_errors:
+            print("check_freshness: canonical --defaults changed during "
+                  "validation: %s" % "; ".join(currency_errors))
+            return 1
+        evidence = {
+            "selected_profile_manifest":
+                defaults_admission.manifest_repo_path,
+            "profile_snapshot_sha256":
+                defaults_admission.evaluation.profile_snapshot_sha256,
+            "profile_contract_fingerprint":
+                defaults_admission.evaluation.profile_contract_fingerprint,
+            "profile_load_inputs_sha256":
+                defaults_admission.evaluation.profile_load_inputs_sha256,
+            "compiled_vocab_sha256": defaults_snapshot.sha256,
+        }
+        for receipt in receipts:
+            receipt.update(evidence)
 
     print("check_freshness: as_of=%s checked %d files (plus %d excluded, "
           "%d retired/merged)" % (as_of.isoformat(), counts["files"],

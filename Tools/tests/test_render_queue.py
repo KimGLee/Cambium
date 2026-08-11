@@ -7,6 +7,9 @@ import unittest
 
 TOOLS = Path(__file__).resolve().parents[1]
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
+sys.path.insert(0, str(TOOLS / "tests"))
+
+from profile_fixture import install_loadable_profile
 
 
 class RenderQueueTests(unittest.TestCase):
@@ -14,6 +17,7 @@ class RenderQueueTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name) / "repo"
         shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root, profile_id="test-profile")
 
     def tearDown(self):
         self.tmp.cleanup()

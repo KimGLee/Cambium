@@ -18,6 +18,7 @@ import check_corpus_plan
 import check_proof
 import check_queue
 import check_page_contract
+import check_profile
 import check_residual_content
 import check_structure
 import check_vocab
@@ -48,6 +49,14 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
         registry, errors = check_queue.standards_gate_registry(repository_root)
         self.assertEqual([], errors)
         expected = {
+            check_profile.GATE_ID: {
+                "tool": check_profile.TOOL,
+                "tool_version": check_profile.TOOL_VERSION,
+                "check": check_profile.GATE_CHECK,
+                "mode": "*",
+                "dimensions": (check_profile.GATE_DIMENSION,),
+                "lifecycle_states": (NOT_BATCH_SCOPED,),
+            },
             check_links.GATE_ID: {
                 "tool": check_links.TOOL,
                 "tool_version": check_links.TOOL_VERSION,
@@ -586,8 +595,9 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
 
     def test_tool_version_drift_from_the_producer_is_reported(self):
         errors = self.drifted("batch-close", tool_version="9.9.9")
-        self.assertTrue(any("but check_batch_close stamps 1.5.0" in error
-                            for error in errors), errors)
+        self.assertTrue(any(
+            "but check_batch_close stamps %s" % check_batch_close.TOOL_VERSION
+            in error for error in errors), errors)
 
     def test_check_drift_from_the_producer_is_reported(self):
         errors = self.drifted("frontmatter-vocabulary", check="vocab-summary")
@@ -642,9 +652,15 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
             self.assertEqual(
                 set(), set(dimensions) - check_queue.BASE_RECEIPT_DIMENSIONS,
                 gate_id)
-            self.assertEqual(
-                check_queue.MANUAL_ATTESTATION_TOOL, predicate["tool"],
-                "%s narrows Dimension but is not hand-recorded" % gate_id)
+            if predicate["tool"] != check_queue.MANUAL_ATTESTATION_TOOL:
+                producer = check_queue.producer_module(predicate["tool"])
+                self.assertIsNotNone(producer, gate_id)
+                self.assertEqual(
+                    dimensions,
+                    (getattr(producer, "GATE_DIMENSION", None),),
+                    "%s narrows Dimension without a matching producer field"
+                    % gate_id,
+                )
 
     def test_the_two_dimension_projections_agree(self):
         """`check_queue` and `check_proof` project the same closed K12/07 set."""
@@ -664,7 +680,7 @@ class StableGateRegistryProducerTableTests(unittest.TestCase):
 
     def test_a_hand_recorded_row_may_not_carry_the_unnarrowed_marker(self):
         errors = self.drifted("depth-balance", dimensions=("*",))
-        self.assertTrue(any("only a named producer" in error
+        self.assertTrue(any("manually dimensioned" in error
                             for error in errors), errors)
 
     def test_a_row_may_not_mix_the_markers_with_named_dimensions(self):
@@ -1053,7 +1069,8 @@ class RuntimeReceiptIdentityTests(unittest.TestCase):
         for gate_id, predicate in registry.items():
             producers.setdefault(predicate["tool"], set()).add(gate_id)
         self.assertEqual(
-            {check_links.TOOL, check_vocab.TOOL, check_residual_content.TOOL,
+            {check_profile.TOOL, check_links.TOOL, check_vocab.TOOL,
+             check_residual_content.TOOL,
              check_batch_close.TOOL, check_corpus_plan.TOOL,
              record_corpus_acceptance.TOOL, adopt_standards.TOOL,
              check_structure.TOOL, check_page_contract.TOOL,

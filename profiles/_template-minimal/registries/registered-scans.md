@@ -11,7 +11,10 @@ control fails a configuration whose matchers match nothing real, so a generic
 static default is impossible by design. Fill
 [the profile-owned scan configuration](../scan-configs/residual-scan.yaml)
 and bind `Tools/check_residual_content.py` below with the same Stable Scan ID
-passed through `--scan-id`.
+passed through `--scan-id`. Materialize the command's `--config` argument with
+this Profile's repository-relative path. The executable remains under
+`Tools/`; the configuration is a `profile-load` dependency and cannot point at
+the template, another Profile, or a repository-root fallback.
 
 ## Scan Registrations
 

@@ -1,5 +1,7 @@
 from pathlib import Path
+from contextlib import redirect_stdout
 import copy
+import io
 import json
 import shutil
 import subprocess
@@ -11,12 +13,14 @@ from unittest import mock
 
 TOOLS = Path(__file__).resolve().parents[1]
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import apply_amendment
 import check_queue
 import kblib
 import register_amendment
+from profile_fixture import install_loadable_profile
 
 
 class ApplyAmendmentTests(unittest.TestCase):
@@ -24,6 +28,7 @@ class ApplyAmendmentTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name) / "repo"
         shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root)
         self.amendment_dir = self.root / ".cambium/deltas/amendments"
         self.amendment_dir.mkdir(parents=True)
 
@@ -316,6 +321,51 @@ class ApplyAmendmentTests(unittest.TestCase):
                       "coverage_proposal_path",
                       "coverage_proposal_sha256"):
             self.assertEqual(amendment[field], commit[field])
+
+    def test_register_amendment_runs_profile_load_producer_once(self):
+        plan_rel, plan = self.make_plan(
+            "scope-replan", self.scope_proposal(),
+            ["Topics/C.md"], ["B3"])
+        before = self.shas()
+        producer = check_queue.check_profile.evaluate_profile_load
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                wraps=producer) as evaluate:
+            with redirect_stdout(io.StringIO()):
+                code = register_amendment.main([
+                    str(self.root), "--operation", plan["operation"],
+                    "--plan", plan_rel, "--date",
+                    time.strftime("%Y-%m-%d", time.gmtime()),
+                    "--summary", "approved cross-Ledger Amendment",
+                    "--approval-reference", "user:fixture-approval",
+                    "--expected-coverage-sha256", before["coverage"],
+                    "--expected-progress-sha256", before["progress"],
+                    "--expected-queue-sha256", before["queue"],
+                    "--actor-role", "integrator", "--apply",
+                ])
+        self.assertEqual(0, code)
+        self.assertEqual(1, evaluate.call_count)
+
+    def test_apply_amendment_runs_profile_load_producer_once(self):
+        plan_rel, plan = self.make_plan(
+            "scope-replan", self.scope_proposal(),
+            ["Topics/C.md"], ["B3"])
+        self.add_progress_amendment(plan)
+        before = self.shas()
+        producer = check_queue.check_profile.evaluate_profile_load
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                wraps=producer) as evaluate:
+            with redirect_stdout(io.StringIO()):
+                code = apply_amendment.main([
+                    str(self.root), "--plan", plan_rel,
+                    "--expected-coverage-sha256", before["coverage"],
+                    "--expected-progress-sha256", before["progress"],
+                    "--expected-queue-sha256", before["queue"],
+                    "--actor-role", "integrator", "--apply",
+                ])
+        self.assertEqual(0, code)
+        self.assertEqual(1, evaluate.call_count)
 
     def test_verified_amendment_receipt_revision_must_match_plan(self):
         plan_rel, plan = self.make_plan(

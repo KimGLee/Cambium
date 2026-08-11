@@ -33,6 +33,7 @@ import re
 import stat
 import tempfile
 import time
+from types import MappingProxyType
 import uuid
 
 LIB_VERSION = "1.6.0"
@@ -264,24 +265,191 @@ def extract_frontmatter(text):
     return None
 
 
+MARKDOWN_HTML_BLOCK_TAGS = frozenset((
+    "address", "article", "aside", "base", "basefont", "blockquote",
+    "body", "caption", "center", "col", "colgroup", "dd", "details",
+    "dialog", "dir", "div", "dl", "dt", "fieldset", "figcaption",
+    "figure", "footer", "form", "frame", "frameset", "h1", "h2", "h3",
+    "h4", "h5", "h6", "head", "header", "hr", "html", "iframe",
+    "legend", "li", "link", "main", "menu", "menuitem", "nav",
+    "noframes", "ol", "optgroup", "option", "p", "param", "search",
+    "section", "summary", "table", "tbody", "td", "tfoot", "th",
+    "thead", "title", "tr", "track", "ul",
+))
+
+
+def markdown_authority_lines(text):
+    """Return visible Markdown lines for a machine-authority parser.
+
+    Fenced code and HTML comments are not declarations.  Lines remain paired
+    with their original one-based numbers, and non-comment text on a line is
+    preserved (including inline code, which Profile manifests use for field
+    names and values).
+
+    Fence closing follows the CommonMark envelope that matters for authority:
+    the marker character must match, its run must be at least as long as the
+    opener, and only whitespace may follow it.  A string such as
+    `````not-a-closing-fence`` therefore remains fenced content instead of
+    exposing the prose below it as machine state.
+    """
+    result = []
+    fence_character = None
+    fence_length = 0
+    in_comment = False
+    html_end = None
+    html_until_blank = False
+
+    def visible_without_comments(line, inside):
+        visible = []
+        cursor = 0
+        while cursor < len(line):
+            if inside:
+                end = line.find("-->", cursor)
+                if end < 0:
+                    return "".join(visible), True
+                visible.append(" ")
+                cursor = end + 3
+                inside = False
+                continue
+            start = line.find("<!--", cursor)
+            if start < 0:
+                visible.append(line[cursor:])
+                break
+            visible.append(line[cursor:start])
+            # Removing a comment must not concatenate tokens on its two sides
+            # into a declaration that never existed in the source Markdown.
+            visible.append(" ")
+            cursor = start + 4
+            inside = True
+        return "".join(visible), inside
+
+    def raw_html_block_state(line):
+        """Return ``(starts, end_regex, until_blank)`` for one raw line."""
+        stripped = line.lstrip(" ")
+        indentation = len(line) - len(stripped)
+        if indentation > 3:
+            return False, None, False
+        if stripped.startswith("<!--"):
+            return (True,
+                    None if "-->" in stripped[4:] else r"-->",
+                    False)
+        special = re.match(
+            r"<(?P<tag>script|pre|style|textarea)(?:\s|>|$)",
+            stripped, re.IGNORECASE)
+        if special:
+            tag = special.group("tag")
+            closing = r"</%s\s*>" % re.escape(tag)
+            return (True,
+                    None if re.search(closing, stripped, re.IGNORECASE)
+                    else closing,
+                    False)
+        if stripped.startswith("<?"):
+            return True, (None if "?>" in stripped[2:] else r"\?>"), False
+        if stripped.startswith("<![CDATA["):
+            return (True,
+                    None if "]]>" in stripped[9:] else r"\]\]>",
+                    False)
+        if re.match(r"<![A-Z]", stripped):
+            return True, (None if ">" in stripped[2:] else r">"), False
+        block_tag = re.match(
+            r"</?([A-Za-z][A-Za-z0-9-]*)(?:\s|/?>)", stripped)
+        if (block_tag and
+                block_tag.group(1).lower() in MARKDOWN_HTML_BLOCK_TAGS):
+            return True, None, True
+        # CommonMark type-7 HTML blocks also begin with a complete generic
+        # open or closing tag on a line by itself.  Custom elements are not
+        # in the type-6 allowlist above, but Markdown inside their block is
+        # still raw HTML rather than declaration authority.
+        attribute_name = r"[^\s\"'=<>`]+"
+        attribute_value = (
+            r"(?:[^\s\"'=<>`]+|'[^']*'|\"[^\"]*\")")
+        complete_tag = (
+            r"</?[A-Za-z][A-Za-z0-9-]*"
+            r"(?:\s+%s(?:\s*=\s*%s)?)*\s*/?>[ \t]*$" %
+            (attribute_name, attribute_value))
+        if re.match(complete_tag, stripped):
+            return True, None, True
+        return False, None, False
+
+    for line_number, raw_line in enumerate((text or "").splitlines(), 1):
+        if fence_character is not None:
+            closing = re.match(
+                r"^ {0,3}%s{%d,}[ \t]*$" %
+                (re.escape(fence_character), fence_length), raw_line)
+            if closing:
+                fence_character = None
+                fence_length = 0
+            result.append((line_number, ""))
+            continue
+
+        if html_end is not None:
+            if re.search(html_end, raw_line, re.IGNORECASE):
+                html_end = None
+            result.append((line_number, ""))
+            continue
+        if html_until_blank:
+            if not raw_line.strip():
+                html_until_blank = False
+            result.append((line_number, ""))
+            continue
+
+        # Once an HTML comment block has begun, block constructs inside it are
+        # comment text.  The closing line is blanked in full so its two sides
+        # cannot synthesize a declaration.
+        if in_comment:
+            if "-->" in raw_line:
+                in_comment = False
+            result.append((line_number, ""))
+            continue
+
+        # Top-level machine declarations cannot be supplied by an indented
+        # code block.  Profile authority syntax is deliberately top-level, so
+        # a tab or four leading spaces is code, never a permissive indentation
+        # alias for an identity bullet, slot binding, heading, or table row.
+        if re.match(r"^(?: {0,3}\t| {4})", raw_line):
+            result.append((line_number, ""))
+            continue
+
+        # A valid fence opener owns its complete info string.  Parse it before
+        # HTML comment markers so `<!--` inside the info cannot leak comment
+        # state past the fence's real closing marker.
+        opening = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", raw_line)
+        if opening:
+            marker = opening.group(1)
+            info = opening.group(2)
+            # A backtick occurs nowhere in a valid backtick-fence info string.
+            if marker[0] != "`" or "`" not in info:
+                fence_character = marker[0]
+                fence_length = len(marker)
+                result.append((line_number, ""))
+                continue
+
+        # Raw HTML blocks are rendered as HTML, not reparsed as Markdown.  A
+        # heading-shaped line inside one cannot satisfy a machine pointer.
+        starts_html, next_html_end, until_blank = raw_html_block_state(raw_line)
+        if starts_html:
+            html_end = next_html_end
+            html_until_blank = until_blank
+            result.append((line_number, ""))
+            continue
+
+        visible, in_comment = visible_without_comments(raw_line, False)
+        result.append((line_number, visible))
+    return tuple(result)
+
+
+def blank_markdown_authority(text):
+    """Blank non-authoritative Markdown while preserving the line count."""
+    return "\n".join(line for _line_number, line in
+                     markdown_authority_lines(text))
+
+
 def strip_code(text):
-    """Strip fenced code blocks and inline code, preserving the line count (so line numbers stay reportable)."""
-    out = []
-    fence = None
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        m = re.match(r"^(```+|~~~+)", stripped)
-        if fence is None and m:
-            fence = m.group(1)[0] * 3
-            out.append("")
-            continue
-        if fence is not None:
-            if m and stripped.startswith(fence):
-                fence = None
-            out.append("")
-            continue
-        out.append(re.sub(r"`[^`]*`", "", line))
-    return "\n".join(out)
+    """Strip non-authoritative blocks and inline code, preserving line count."""
+    return "\n".join(
+        re.sub(r"`[^`]*`", "", line)
+        for _line_number, line in markdown_authority_lines(text)
+    )
 
 
 def iter_md_files(vault_root, scope=None):
@@ -308,13 +476,31 @@ def iter_md_files(vault_root, scope=None):
     return result
 
 
+def markdown_atx_heading(line):
+    """Return ``(level, title)`` for one CommonMark ATX heading line.
+
+    Up to three leading spaces are permitted.  A closing hash run is removed
+    only when separated from content by whitespace; ``## Title#`` therefore
+    names ``Title#`` rather than the different heading ``Title``.
+    """
+    match = re.match(r"^ {0,3}(#{1,6})(?:[ \t]+|$)(.*)$", line)
+    if not match:
+        return None
+    content = match.group(2)
+    if re.fullmatch(r"#+[ \t]*", content):
+        content = ""
+    else:
+        content = re.sub(r"[ \t]+#+[ \t]*$", "", content)
+    return len(match.group(1)), content.strip(" \t")
+
+
 def headings_of(text):
-    """Return [(lineno, level, heading text)]; the input should have gone through strip_code first."""
+    """Return ``(line, level, title)`` for real CommonMark ATX headings."""
     result = []
     for lineno, line in enumerate(text.splitlines(), 1):
-        m = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
-        if m:
-            result.append((lineno, len(m.group(1)), m.group(2).strip()))
+        heading = markdown_atx_heading(line)
+        if heading is not None:
+            result.append((lineno, heading[0], heading[1]))
     return result
 
 
@@ -419,31 +605,10 @@ def read_set_boundary_targets(text):
     """
     targets = set()
     section = ""
-    fence_character = None
-    fence_length = 0
-    for line in (text or "").splitlines():
-        if fence_character is None:
-            fence = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
-            if fence:
-                marker = fence.group(1)
-                info = fence.group(2)
-                if marker[0] == "`" and "`" in info:
-                    fence = None
-            if fence:
-                fence_character = marker[0]
-                fence_length = len(marker)
-                continue
-        else:
-            closing = re.match(
-                r"^ {0,3}%s{%d,}[ \t]*$" %
-                (re.escape(fence_character), fence_length), line)
-            if closing:
-                fence_character = None
-                fence_length = 0
-            continue
-        heading = re.match(r"^ {0,3}##[ \t]+(.+?)\s*#*\s*$", line)
-        if heading:
-            section = heading.group(1).strip()
+    for _line_number, line in markdown_authority_lines(text):
+        heading = markdown_atx_heading(line)
+        if heading is not None and heading[0] == 2:
+            section = heading[1]
             continue
         if not section or section in READ_SET_NON_BOUNDARY_SECTIONS:
             continue
@@ -486,22 +651,12 @@ def active_standards_state(text):
     errors = []
     inside = False
     section_count = 0
-    fence = None
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        fence_match = re.match(r"^(```+|~~~+)", stripped)
-        if fence is None and fence_match:
-            fence = fence_match.group(1)[0] * 3
-            continue
-        if fence is not None:
-            if fence_match and stripped.startswith(fence):
-                fence = None
-            continue
-        heading = re.match(r"^(#{1,2})\s+(.*?)\s*#*\s*$", line)
-        if heading:
+    for _line_number, line in markdown_authority_lines(text):
+        heading = markdown_atx_heading(line)
+        if heading is not None and heading[0] <= 2:
             is_control = (
-                len(heading.group(1)) == 2
-                and heading.group(2).strip() == "Standards Control"
+                heading[0] == 2
+                and heading[1] == "Standards Control"
             )
             if is_control:
                 section_count += 1
@@ -540,22 +695,12 @@ def profile_slot_bindings(manifest_text, include_duplicates=False):
     bindings = {}
     duplicates = []
     inside = False
-    fence = None
-    for line in manifest_text.splitlines():
-        stripped = line.lstrip()
-        fence_match = re.match(r"^(```+|~~~+)", stripped)
-        if fence is None and fence_match:
-            fence = fence_match.group(1)[0] * 3
-            continue
-        if fence is not None:
-            if fence_match and stripped.startswith(fence):
-                fence = None
-            continue
-        heading = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
-        if heading and len(heading.group(1)) <= 2:
+    for _line_number, line in markdown_authority_lines(manifest_text):
+        heading = markdown_atx_heading(line)
+        if heading is not None and heading[0] <= 2:
             inside = (
-                len(heading.group(1)) == 2
-                and heading.group(2).strip() == "Implemented Slots"
+                heading[0] == 2
+                and heading[1] == "Implemented Slots"
             )
             continue
         if inside:
@@ -600,23 +745,13 @@ def profile_execution_default_overrides(manifest_text):
     """
     rows = []
     inside = False
-    fence = None
-    for line in manifest_text.splitlines():
-        stripped = line.lstrip()
-        fence_match = re.match(r"^(```+|~~~+)", stripped)
-        if fence is None and fence_match:
-            fence = fence_match.group(1)[0] * 3
-            continue
-        if fence is not None:
-            if fence_match and stripped.startswith(fence):
-                fence = None
-            continue
-        heading = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
-        if heading:
-            if inside and len(heading.group(1)) <= 2:
+    for _line_number, line in markdown_authority_lines(manifest_text):
+        heading = markdown_atx_heading(line)
+        if heading is not None:
+            if inside and heading[0] <= 2:
                 break
-            inside = (len(heading.group(1)) == 2 and
-                      heading.group(2).strip() == PROFILE_OVERRIDES_SECTION)
+            inside = (heading[0] == 2 and
+                      heading[1] == PROFILE_OVERRIDES_SECTION)
             continue
         if not inside:
             continue
@@ -653,58 +788,71 @@ def _profile_binding_looks_like_path(value):
     return "/" in value or value.lower().endswith((".md", ".yaml", ".yml"))
 
 
-def _profile_binding_candidate_paths(target, root, profile_dir):
-    target = target.strip().lstrip("./")
-    if not target:
-        return []
-    variants = [target]
-    if not target.lower().endswith((".md", ".yaml", ".yml")):
-        variants.append(target + ".md")
-    paths = []
-    for variant in variants:
-        paths.append(os.path.join(profile_dir, variant))
-        paths.append(os.path.join(root, variant))
-    return paths
-
-
 def resolve_profile_binding(binding, root, profile_dir):
     """Resolve one manifest slot binding with check_profile semantics.
 
     Returns ``(kind, detail)`` where kind is path, outside-profile,
-    unresolved, inline, or unrecognized. Path resolution accepts either a
-    profile-relative or repository-relative spelling, but the resolved file
-    must stay inside the selected profile directory so one manifest cannot
-    silently compose another profile's slots.
+    unresolved, invalid, inline, or unrecognized.  A file-bound slot uses one
+    exact profile-relative path.  There is no ``./``/``../`` normalization,
+    extension guessing, case alias, or repository-root fallback: those would
+    make a copied package's first-hop dependency graph platform-dependent.
     """
+    value = binding.strip()
     target = None
-    match = PROFILE_WIKI_BINDING_RE.search(binding)
+    match = PROFILE_WIKI_BINDING_RE.fullmatch(value)
     if match:
-        target = re.split(r"\\\||\|", match.group(1), maxsplit=1)[0].strip()
+        target = re.split(r"\\\||\|", match.group(1), maxsplit=1)[0]
     if target is None:
-        match = PROFILE_MARKDOWN_BINDING_RE.search(binding)
+        match = PROFILE_MARKDOWN_BINDING_RE.fullmatch(value)
         if match:
-            target = match.group(1).strip()
-    if target is None and PROFILE_INLINE_BINDING_RE.search(binding):
+            target = match.group(1)
+    if target is None and (
+            PROFILE_INLINE_BINDING_RE.fullmatch(value) or
+            (len(value) >= 2 and value[0] == value[-1] == "`" and
+             PROFILE_INLINE_BINDING_RE.fullmatch(value[1:-1]))):
         return "inline", None
     if target is None:
-        for code in PROFILE_CODE_BINDING_RE.findall(binding):
-            if _profile_binding_looks_like_path(code):
-                target = code.strip()
-                break
+        match = PROFILE_CODE_BINDING_RE.fullmatch(value)
+        if match:
+            target = match.group(1)
     if target is None:
+        if (PROFILE_WIKI_BINDING_RE.search(value) or
+                PROFILE_MARKDOWN_BINDING_RE.search(value) or
+                PROFILE_CODE_BINDING_RE.search(value) or
+                PROFILE_INLINE_BINDING_RE.search(value)):
+            return "invalid", (
+                "slot value must be exactly one path binding; mixed, "
+                "multiple, or annotated binding constructs are ambiguous: "
+                "%r" % binding)
         return "unrecognized", None
-    for path in _profile_binding_candidate_paths(target, root, profile_dir):
-        if os.path.isfile(path):
-            profile_real = os.path.realpath(profile_dir)
-            path_real = os.path.realpath(path)
-            try:
-                inside = os.path.commonpath((profile_real, path_real)) == profile_real
-            except ValueError:
-                inside = False
-            if inside:
-                return "path", path
-            return "outside-profile", path
-    return "unresolved", target
+    if target != target.strip():
+        return "invalid", "path has leading or trailing whitespace: %r" % target
+    if not target or "\x00" in target or "\\" in target or os.path.isabs(target):
+        return "invalid", "path is not a canonical profile-relative spelling: %r" % target
+    parts = target.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        return "invalid", "path contains an empty, `.` or `..` segment: %r" % target
+
+    root_real = os.path.realpath(os.path.abspath(root))
+    profile_absolute = os.path.abspath(profile_dir)
+    profile_real = os.path.realpath(profile_absolute)
+    try:
+        if os.path.commonpath((root_real, profile_real)) != root_real:
+            return "outside-profile", profile_dir
+    except ValueError:
+        return "outside-profile", profile_dir
+    profile_relative = os.path.relpath(
+        profile_absolute, root_real).replace(os.sep, "/")
+    repository_relative = profile_relative + "/" + target
+    candidate = os.path.join(root_real, *repository_relative.split("/"))
+    if not os.path.exists(candidate):
+        return "unresolved", target
+    try:
+        canonical_repository_file(
+            root_real, repository_relative, singly_linked=True)
+    except (OSError, ValueError) as exc:
+        return "invalid", "%s: %s" % (target, exc)
+    return "path", candidate
 
 
 def profile_identity(manifest_text, directory_name, reserved_ids=()):
@@ -718,23 +866,12 @@ def profile_identity(manifest_text, directory_name, reserved_ids=()):
     """
     profile_ids = []
     inside_identity = False
-    fence = None
-    for line in manifest_text.splitlines():
-        stripped = line.lstrip()
-        fence_match = re.match(r"^(```+|~~~+)", stripped)
-        if fence is None and fence_match:
-            fence = fence_match.group(1)[0] * 3
-            continue
-        if fence is not None:
-            if fence_match and stripped.startswith(fence):
-                fence = None
-            continue
-
-        heading = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
-        if heading and len(heading.group(1)) <= 2:
+    for _line_number, line in markdown_authority_lines(manifest_text):
+        heading = markdown_atx_heading(line)
+        if heading is not None and heading[0] <= 2:
             inside_identity = (
-                len(heading.group(1)) == 2
-                and heading.group(2).strip() == "Profile Identity"
+                heading[0] == 2
+                and heading[1] == "Profile Identity"
             )
             continue
         if inside_identity:
@@ -2023,7 +2160,9 @@ def repository_path(root, relative_path, must_exist=False, reject_symlink=False)
         raise ValueError("path must not contain NUL")
     if os.path.isabs(relative_path):
         raise ValueError("path must be repository-relative")
-    parts = relative_path.replace("\\", "/").split("/")
+    if "\\" in relative_path:
+        raise ValueError("path must use canonical '/' separators")
+    parts = relative_path.split("/")
     if any(part in ("", ".", "..") for part in parts):
         raise ValueError("path must not contain empty, '.' or '..' segments")
 
@@ -2040,6 +2179,41 @@ def repository_path(root, relative_path, must_exist=False, reject_symlink=False)
         raise ValueError("canonical state path must not be a symlink")
     if must_exist and not os.path.exists(candidate):
         raise ValueError("path does not exist: %s" % relative_path)
+    return candidate
+
+
+def canonical_repository_file(root, relative_path, singly_linked=False):
+    """Resolve an exact-spelling, non-symlinked repository regular file.
+
+    ``repository_path`` establishes the lexical/root-containment envelope.
+    This stronger Profile-authority primitive additionally compares every
+    declared segment with the directory entry stored on disk (so case and
+    Unicode aliases fail consistently across filesystems), rejects every
+    symlink component, and optionally requires a single hard link.
+    """
+    candidate = repository_path(root, relative_path)
+    root_real = os.path.realpath(os.path.abspath(root))
+    current = root_real
+    for part in relative_path.split("/"):
+        try:
+            entries = os.listdir(current)
+        except OSError as exc:
+            raise ValueError("cannot inspect repository path: %s" % exc)
+        if part not in entries:
+            raise ValueError(
+                "path spelling does not exactly match repository directory "
+                "entries")
+        current = os.path.join(current, part)
+        if os.path.islink(current):
+            raise ValueError("path must not contain a symlink component")
+    try:
+        descriptor = os.lstat(candidate)
+    except FileNotFoundError:
+        raise ValueError("path does not exist: %s" % relative_path)
+    if not stat.S_ISREG(descriptor.st_mode):
+        raise ValueError("path must name a regular file")
+    if singly_linked and descriptor.st_nlink != 1:
+        raise ValueError("path must name a singly-linked regular file")
     return candidate
 
 
@@ -2359,13 +2533,99 @@ def sha256_file(path):
     return "sha256:" + digest.hexdigest()
 
 
-def repository_tree_sha256(root, relative_directory):
-    """Hash one repository-contained regular-file tree deterministically.
+class RepositoryFileSnapshot:
+    """Immutable bytes and digest from one stable canonical file descriptor."""
+
+    __slots__ = ("path", "repository_path", "sha256", "data")
+
+    def __init__(self, path, repository_path, data):
+        self.path = path
+        self.repository_path = repository_path
+        self.data = data
+        self.sha256 = sha256_bytes(data)
+
+    def read_text(self):
+        return self.data.decode("utf-8")
+
+
+def repository_file_snapshot(root, relative_path, singly_linked=True):
+    """Read one canonical repository file through a stable no-follow fd."""
+    absolute = canonical_repository_file(
+        root, relative_path, singly_linked=singly_linked)
+    listed = os.lstat(absolute)
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError(errno.ENOTSUP, "file snapshot requires O_NOFOLLOW",
+                      absolute)
+    fd = os.open(absolute, os.O_RDONLY | nofollow |
+                 getattr(os, "O_CLOEXEC", 0))
+    try:
+        before = os.fstat(fd)
+        if (not stat.S_ISREG(before.st_mode) or
+                (singly_linked and before.st_nlink != 1) or
+                (listed.st_dev, listed.st_ino) !=
+                (before.st_dev, before.st_ino)):
+            raise OSError(errno.EAGAIN,
+                          "repository file identity changed before read",
+                          relative_path)
+        chunks = []
+        while True:
+            chunk = os.read(fd, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(fd)
+        before_identity = (
+            before.st_dev, before.st_ino, before.st_size,
+            getattr(before, "st_mtime_ns", int(before.st_mtime * 1e9)),
+            getattr(before, "st_ctime_ns", int(before.st_ctime * 1e9)),
+        )
+        after_identity = (
+            after.st_dev, after.st_ino, after.st_size,
+            getattr(after, "st_mtime_ns", int(after.st_mtime * 1e9)),
+            getattr(after, "st_ctime_ns", int(after.st_ctime * 1e9)),
+        )
+        if before_identity != after_identity:
+            raise OSError(errno.EAGAIN,
+                          "repository file changed while reading",
+                          relative_path)
+    finally:
+        os.close(fd)
+    return RepositoryFileSnapshot(
+        absolute, relative_path, b"".join(chunks))
+
+
+class RepositoryTreeSnapshot:
+    """One immutable regular-file tree read from stable file descriptors."""
+
+    __slots__ = ("root", "relative_directory", "sha256", "files")
+
+    def __init__(self, root, relative_directory, sha256, files):
+        self.root = root
+        self.relative_directory = relative_directory
+        self.sha256 = sha256
+        self.files = MappingProxyType(dict(files))
+
+    def read_bytes(self, repository_relative_path):
+        try:
+            return self.files[repository_relative_path]
+        except KeyError as exc:
+            raise FileNotFoundError(
+                errno.ENOENT, "path is not present in bound tree snapshot",
+                repository_relative_path) from exc
+
+    def read_text(self, repository_relative_path):
+        return self.read_bytes(repository_relative_path).decode("utf-8")
+
+
+def repository_tree_snapshot(root, relative_directory):
+    """Read and hash one repository-contained regular-file tree.
 
     The digest binds repository-relative paths and bytes.  Symlinks, hard
     links, special files, path escape, and a non-directory root fail closed.
-    It is used for Standards/Profile adoption snapshots where hashing the
-    adopter's entire knowledge corpus would broaden the governance boundary.
+    Returned bytes are immutable and come from the same descriptor reads that
+    produced the digest.  Profile parsers use this object so an A-to-B-to-A
+    file swap cannot combine a digest of A with declarations parsed from B.
     """
     directory = repository_path(
         root, relative_directory, must_exist=True, reject_symlink=True)
@@ -2375,6 +2635,7 @@ def repository_tree_sha256(root, relative_directory):
     root_real = os.path.realpath(os.path.abspath(root))
     digest = hashlib.sha256()
     digest.update(b"cambium-repository-tree-snapshot-v1\0")
+    contents = {}
     entries = []
     for current, directories, files in os.walk(directory, topdown=True,
                                                followlinks=False):
@@ -2401,12 +2662,21 @@ def repository_tree_sha256(root, relative_directory):
                      getattr(os, "O_CLOEXEC", 0))
         try:
             before = os.fstat(fd)
+            if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or
+                    (listed.st_dev, listed.st_ino) !=
+                    (before.st_dev, before.st_ino)):
+                raise OSError(
+                    errno.EAGAIN,
+                    "repository file identity changed before snapshot read",
+                    relative)
             file_digest = hashlib.sha256()
+            chunks = []
             while True:
                 chunk = os.read(fd, 1024 * 1024)
                 if not chunk:
                     break
                 file_digest.update(chunk)
+                chunks.append(chunk)
             after = os.fstat(fd)
             identity_before = (
                 before.st_dev, before.st_ino, before.st_size,
@@ -2429,7 +2699,15 @@ def repository_tree_sha256(root, relative_directory):
         digest.update(encoded)
         digest.update(before.st_size.to_bytes(8, "big"))
         digest.update(file_digest.digest())
-    return "sha256:" + digest.hexdigest()
+        contents[relative] = b"".join(chunks)
+    return RepositoryTreeSnapshot(
+        root_real, relative_directory,
+        "sha256:" + digest.hexdigest(), contents)
+
+
+def repository_tree_sha256(root, relative_directory):
+    """Return only the digest from :func:`repository_tree_snapshot`."""
+    return repository_tree_snapshot(root, relative_directory).sha256
 
 
 def repository_snapshot_sha256(root):

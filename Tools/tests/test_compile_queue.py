@@ -1,5 +1,7 @@
 from pathlib import Path
+from contextlib import redirect_stdout
 import copy
+import io
 import json
 import shutil
 import subprocess
@@ -11,12 +13,14 @@ from unittest import mock
 
 TOOLS = Path(__file__).resolve().parents[1]
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import check_queue
 import compile_queue
 import kblib
 import register_amendment
+from profile_fixture import install_loadable_profile
 
 
 class CompileQueueTests(unittest.TestCase):
@@ -24,6 +28,7 @@ class CompileQueueTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name) / "repo"
         shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root)
         coverage_path = self.root / check_queue.COVERAGE_PATH
         coverage = kblib.load_yaml_file(coverage_path)
         coverage["batch_specs"] = [
@@ -822,6 +827,23 @@ class CompileQueueTests(unittest.TestCase):
         self.assertEqual(result["coverage_sha256"],
                          receipt["after_coverage_sha256"])
 
+    def test_initial_compile_runs_profile_load_producer_once(self):
+        self.empty_queue()
+        before = self.load(check_queue.QUEUE_PATH)
+        fingerprint = kblib.sha256_file(self.root / check_queue.QUEUE_PATH)
+        producer = check_queue.check_profile.evaluate_profile_load
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                wraps=producer) as evaluate:
+            with redirect_stdout(io.StringIO()):
+                code = compile_queue.main([
+                    str(self.root), "--apply", "--expected-queue-revision",
+                    str(before["queue_revision"]), "--expected-sha256",
+                    fingerprint, "--actor-role", "integrator",
+                ])
+        self.assertEqual(0, code)
+        self.assertEqual(1, evaluate.call_count)
+
     def test_initial_compile_materializes_complex_work_spec_binding(self):
         self.empty_queue()
         relative, path = self.write_work_spec()
@@ -992,12 +1014,12 @@ class CompileQueueTests(unittest.TestCase):
             (self.root / check_queue.COVERAGE_PATH).read_text(encoding="utf-8"),
         )
 
-    def test_replan_preflight_stages_read_sets_and_adoption_evidence(self):
-        """Regression: the proposed-state preflight must stage the evidence
-        the runtime contract resolves outside `.cambium/state` — the Read Set
-        load closure and recorded Standards-adoption plans — or every replan
-        on an instance that ever adopted a Standards revision fails closed
-        (found by replanning the real Agent Systems Atlas runtime)."""
+    def test_replan_preflight_reuses_real_root_evidence_with_state_overrides(self):
+        """The proposed-state preflight must resolve the real-root Read Set
+        closure and recorded Standards-adoption plans while overriding only
+        the three proposed state documents.  Copying those inputs into a temp
+        root would create a second Profile/K00 admission and split the
+        transaction across revisions."""
         read_set_relative = "kernel/Read Sets/R99 Fixture Read Set.md"
         read_set_path = self.root / read_set_relative
         read_set_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1429,10 +1451,14 @@ class CompileQueueTests(unittest.TestCase):
             "abort_receipt_id": "audit-abort",
             "receipt_path": ".cambium/receipts/queue-structure.jsonl",
         }
-        return paths, before, after, receipt, operation
+        validation = check_queue.validate_runtime(str(self.root))
+        self.assertEqual([], validation["errors"])
+        authority = check_queue.runtime_authority_context(validation)
+        return paths, before, after, receipt, operation, authority
 
     def test_full_rollback_clears_lock_and_restores_all_state(self):
-        paths, before, after, receipt, operation = self._transaction_fixture()
+        paths, before, after, receipt, operation, authority = \
+            self._transaction_fixture()
         original = kblib.atomic_write_text
         failed = {"progress": False}
 
@@ -1450,14 +1476,15 @@ class CompileQueueTests(unittest.TestCase):
                     ("coverage", "queue", "progress"),
                     self.root / ".cambium/receipts/queue-structure.jsonl",
                     {"receipt_id": "audit-prepare"}, receipt,
-                    {"receipt_id": "audit-abort"}, operation,
+                    {"receipt_id": "audit-abort"}, operation, authority,
                 )
         for name, path in paths.items():
             self.assertEqual(before[name], Path(path).read_text(encoding="utf-8"))
         self.assertFalse((self.root / ".cambium/tmp/state-writer.lock").exists())
 
     def test_locked_prevalidation_rejection_clears_false_lock(self):
-        paths, before, after, receipt, operation = self._transaction_fixture()
+        paths, before, after, receipt, operation, authority = \
+            self._transaction_fixture()
         with mock.patch.object(
                 compile_queue.check_queue, "validate_runtime",
                 return_value={"errors": ["injected concurrent drift"]}):
@@ -1467,7 +1494,7 @@ class CompileQueueTests(unittest.TestCase):
                     ("coverage", "queue", "progress"),
                     self.root / ".cambium/receipts/queue-structure.jsonl",
                     {"receipt_id": "audit-prepare"}, receipt,
-                    {"receipt_id": "audit-abort"}, operation,
+                    {"receipt_id": "audit-abort"}, operation, authority,
                 )
         for name, path in paths.items():
             self.assertEqual(
@@ -1478,7 +1505,8 @@ class CompileQueueTests(unittest.TestCase):
             (self.root / ".cambium/receipts/queue-structure.jsonl").exists())
 
     def test_incomplete_rollback_retains_lock_for_restart_reconciliation(self):
-        paths, before, after, receipt, operation = self._transaction_fixture()
+        paths, before, after, receipt, operation, authority = \
+            self._transaction_fixture()
         original = kblib.atomic_write_text
         failed = {"progress": False}
 
@@ -1499,7 +1527,7 @@ class CompileQueueTests(unittest.TestCase):
                     ("coverage", "queue", "progress"),
                     self.root / ".cambium/receipts/queue-structure.jsonl",
                     {"receipt_id": "audit-prepare"}, receipt,
-                    {"receipt_id": "audit-abort"}, operation,
+                    {"receipt_id": "audit-abort"}, operation, authority,
                 )
         lock = self.root / ".cambium/tmp/state-writer.lock/owner.json"
         self.assertTrue(lock.is_file())
@@ -1518,7 +1546,8 @@ class CompileQueueTests(unittest.TestCase):
         self.assertIn("operation_receipt", resume.stdout)
 
     def test_durable_orphan_commit_receipt_retains_recovery_lock(self):
-        paths, before, after, receipt, operation = self._transaction_fixture()
+        paths, before, after, receipt, operation, authority = \
+            self._transaction_fixture()
         receipt_path = (
             self.root / ".cambium/receipts/queue-structure.jsonl"
         )
@@ -1541,7 +1570,7 @@ class CompileQueueTests(unittest.TestCase):
                     str(self.root), paths, before, after,
                     ("coverage", "queue", "progress"), receipt_path,
                     {"receipt_id": "audit-prepare"}, receipt,
-                    {"receipt_id": "audit-abort"}, operation,
+                    {"receipt_id": "audit-abort"}, operation, authority,
                 )
 
         for name, path in paths.items():
@@ -1566,7 +1595,8 @@ class CompileQueueTests(unittest.TestCase):
         self.assertIn("state.progress phase=before", resume.stdout)
 
     def test_partial_commit_receipt_retains_lock_and_corruption_evidence(self):
-        paths, before, after, receipt, operation = self._transaction_fixture()
+        paths, before, after, receipt, operation, authority = \
+            self._transaction_fixture()
         receipt_path = (
             self.root / ".cambium/receipts/queue-structure.jsonl"
         )
@@ -1590,7 +1620,7 @@ class CompileQueueTests(unittest.TestCase):
                     str(self.root), paths, before, after,
                     ("coverage", "queue", "progress"), receipt_path,
                     {"receipt_id": "audit-prepare"}, receipt,
-                    {"receipt_id": "audit-abort"}, operation,
+                    {"receipt_id": "audit-abort"}, operation, authority,
                 )
 
         for name, path in paths.items():
@@ -1608,7 +1638,8 @@ class CompileQueueTests(unittest.TestCase):
         self.assertIn("lock=.cambium/tmp/state-writer.lock", resume.stdout)
 
     def test_prepare_proven_absent_allows_clean_failure_unlock(self):
-        paths, before, after, receipt, operation = self._transaction_fixture()
+        paths, before, after, receipt, operation, authority = \
+            self._transaction_fixture()
         receipt_path = (
             self.root / ".cambium/receipts/queue-structure.jsonl"
         )
@@ -1629,7 +1660,7 @@ class CompileQueueTests(unittest.TestCase):
                     str(self.root), paths, before, after,
                     ("coverage", "queue", "progress"), receipt_path,
                     {"receipt_id": "audit-prepare"}, receipt,
-                    {"receipt_id": "audit-abort"}, operation,
+                    {"receipt_id": "audit-abort"}, operation, authority,
                 )
 
         for name, path in paths.items():
@@ -1640,7 +1671,8 @@ class CompileQueueTests(unittest.TestCase):
         )
 
     def test_prepare_present_but_abort_absent_retains_lock(self):
-        paths, before, after, receipt, operation = self._transaction_fixture()
+        paths, before, after, receipt, operation, authority = \
+            self._transaction_fixture()
         receipt_path = (
             self.root / ".cambium/receipts/queue-structure.jsonl"
         )
@@ -1670,7 +1702,7 @@ class CompileQueueTests(unittest.TestCase):
                     str(self.root), paths, before, after,
                     ("coverage", "queue", "progress"), receipt_path,
                     {"receipt_id": "audit-prepare"}, receipt,
-                    {"receipt_id": "audit-abort"}, operation,
+                    {"receipt_id": "audit-abort"}, operation, authority,
                 )
 
         for name, path in paths.items():

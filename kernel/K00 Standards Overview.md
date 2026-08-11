@@ -89,6 +89,7 @@ Detailed task combinations are located in [[kernel/K00 Standards Control/02 Task
 | [[kernel/K00 Standards Control/14 Card And Read Set Skeleton\|Card And Read Set Skeleton]] | the registered H2 sequence of every Runtime Card and kernel Read Set |
 | [[kernel/K00 Standards Control/15 Read Set Loading Boundaries\|Read Set Loading Boundaries]] | the current Read Sets and leaf coverage of the loading boundaries |
 | [[kernel/K00 Standards Control/16 Leaf Module Size Register\|Leaf Module Size Register]] | the register of approved leaf module size exceptions |
+| [[kernel/K00 Standards Control/17 Profile Dependency Closure\|Profile Dependency Closure]] | the typed single-Profile closure resolved by `profile-load` |
 
 ## Standard Module Index
 
@@ -117,7 +118,7 @@ Detailed task combinations are located in [[kernel/K00 Standards Control/02 Task
 - `Read Set`: maps task phases to leaf modules and is the first source read-back boundary.
 - `Triggered module`: loaded only when conditions such as guidance, source, diagram, or migration arise.
 - `Gate module`: loaded before a note, batch, module, or task closes.
-- `selected profile manifest`: the single profile chosen by the active Standards state; the manifest path is frozen in the Task Contract and is not inferred from directories, generated artifacts, or profile IDs.
+- `selected profile manifest`: the single profile chosen by the active Standards state; the manifest path is frozen in the Task Contract and is not inferred from directories, generated artifacts, or profile IDs. Its derived dependency closure is owned by [[kernel/K00 Standards Control/17 Profile Dependency Closure|K00/17]] and is not part of the loaded set.
 - `loaded set`: the selected Rxx route IDs and Runtime Card paths, any namespaced profile route explicitly combined with them, and every Read Set or leaf path actually read back, recorded in the Task Contract; a broad K-module identifier alone MUST NOT be written as proof of loading.
 
 Module splitting does not change rule precedence. Conflicts are still resolved per [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract#Standard Precedence|Standard Precedence]].

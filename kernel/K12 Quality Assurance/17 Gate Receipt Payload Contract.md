@@ -25,11 +25,44 @@ A receipt offered as current authorization for a Gate ID MUST carry all of the f
 | `details` | the concrete evidence statement; a bare "QA passed" is not one |
 | `checked_at` | the UTC verification time, not earlier than the obligation the receipt answers |
 | `invalidated_by` | null while the receipt is valid |
-| `task_id`, `standards_version`, `selected_profile_manifest` | equal to the live Required Queue values |
+| `task_id`, `standards_version` | equal to the live Required Queue values when that Queue exists |
+| `selected_profile_manifest` | equal to the live Required Queue value when that Queue exists; `profile-load` additionally requires the exact manifest it verified before a Queue exists |
 
-The last three are the identity of the run that produced the evidence. A boundary consumes the receipt only while all three still equal the live Queue values, so a receipt written before an adoption changed any of them is history rather than authorization. A producer running where no canonical Queue exists omits the three fields rather than writing null: an omitted field claims nothing, while an explicit null asserts an identity nobody observed.
+These identity fields state the run that produced the evidence. A boundary consumes the receipt only while the applicable values still equal the live Queue values, so a receipt written before an adoption changed any of them is history rather than authorization. A producer running where no canonical Queue exists omits all three rather than writing null: an omitted field claims nothing, while an explicit null asserts an identity nobody observed. The one exception is `profile-load`, whose receipt still carries `selected_profile_manifest` because that manifest is the Gate's target even during pre-Task candidate validation.
+
+The same candidate spelling applies when a Queue already exists but R09 checks
+a different after Profile: that receipt carries only the candidate manifest
+identity and MUST NOT combine the live before Task/Standards identity with the
+after manifest. A current-use receipt for the already-selected Profile carries
+all three live identity fields normally.
 
 A Gate whose owner requires more binds more, and that owner states the addition: the `batch-review` wrapper additionally binds the batch and the exact Delta page receipt IDs per [[kernel/K12 Quality Assurance/14 Batch Review#Batch Review|Batch Review]], and the close bundle binds the merged-snapshot digest and member chain per [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]].
+
+A `profile-load` receipt additionally carries `profile_snapshot_sha256`,
+`profile_contract_fingerprint`, and `profile_load_inputs_sha256`. The first is
+the path-sensitive digest of the complete candidate or selected Profile
+directory; the second deterministically binds the typed closure derived from the manifest:
+dependency edge kinds, their owner and target identities, canonical paths, and
+optional heading fragments; the third binds the canonical root-owned Profile
+interface and execution-default inputs that governed the derivation. Its
+`target` and `selected_profile_manifest` are the same canonical manifest path.
+Changing any digest, or resolving the same target bytes through a different
+Profile, makes the receipt inapplicable rather than transferable.
+
+A Gate that consumes a Profile-derived compiled artifact additionally carries
+that artifact's canonical SHA-256 and the same three Profile-load fingerprints.
+The consumer MUST establish byte equality with the deterministic composition
+from its one admitted Profile view; a provenance comment or matching path does
+not substitute for that equality.
+
+A current `terminal-proof` 1.17 receipt additionally carries
+`repository_snapshot_sha256`: the path-sensitive digest of every regular
+repository file outside the root `.git/` and `.cambium/` namespaces observed by
+the Terminal run. The completion writer MUST compare that digest with current
+bytes before authorizing `complete` and at both sides of its Progress and
+receipt publications. Historical replay checks that a sealed 1.17 receipt kept
+a canonical digest; it does not reinterpret that completed decision against
+today's repository.
 
 ## Recording Authority
 

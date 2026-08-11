@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.13.0"
+TOOL_VERSION = "1.14.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -48,6 +48,8 @@ OPERATIONAL_AMENDMENT_OPERATIONS = frozenset((
 QUEUE_PATH = ".cambium/state/required_queue.yaml"
 COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
 PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
+ACTIVE_STANDARDS_PATH = (
+    "kernel/K00 Standards Control/03 Standards Governance.md")
 WORK_SPEC_PREFIX = ".cambium/work_specs"
 WORK_SPEC_FIELDS = frozenset(("work_spec_path", "work_spec_sha256"))
 WORK_SPEC_TOP_LEVEL_FIELDS = frozenset((
@@ -194,16 +196,26 @@ GENERIC_WRITER_TOOLS = frozenset((
     "check_batch_close", "adopt_standards", "register_amendment",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.5.0"
-# A supported-versions catalog exists for the one predicate that is still
-# shared between current-action and historical callers.  No such catalog is
-# kept for the Queue gate or the Terminal Proof: enumerating accepted producer
-# versions grows without bound, and it still admits a receipt that merely
-# claims an old version, so it buys nothing.  Historical receipts are judged
-# by :func:`accounted_standards_versions` instead.
-SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((BATCH_CLOSE_TOOL_VERSION, "1.4.0"))
+BATCH_CLOSE_TOOL_VERSION = "1.7.0"
+# Batch-close has a finite historical protocol catalog because its 1.4 era
+# sealed a different Closed List shape.  A current action still accepts only
+# BATCH_CLOSE_TOOL_VERSION; this set is used only while replaying an already
+# recorded closed edge.  Other historical receipts are judged through
+# :func:`accounted_standards_versions` instead of an unbounded version list.
+SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((
+    BATCH_CLOSE_TOOL_VERSION, "1.6.0", "1.5.0",
+    *LEGACY_CLOSED_LIST_VERSIONS,
+))
 CORPUS_PLAN_TOOL = "check_corpus_plan"
-CORPUS_PLAN_TOOL_VERSION = "1.6.0"
+CORPUS_PLAN_TOOL_VERSION = "1.7.0"
+# A sealed close bundle keeps the child producer its batch-close era ran.
+# Batch-close 1.7 is the first protocol that consumes corpus-plan 1.7; older
+# supported bundles retain their 1.6 child identity during historical replay.
+HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
+    "1.6.0": "1.6.0",
+    "1.5.0": "1.6.0",
+    "1.4.0": "1.6.0",
+}
 MANUAL_ATTESTATION_TOOL = "manual-attestation"
 MANUAL_ATTESTATION_TOOL_VERSION = "1.0.0"
 # K12/07 fixes these seven base receipt dimensions and K12/08 / K12/18 file
@@ -233,7 +245,14 @@ UNSCOPED_GATE_POSITIONS = frozenset((NOT_BATCH_SCOPED_GATE,
 BATCH_REVIEW_GATE_ID = "batch-review"
 BATCH_REVIEW_CHECK = "batch_gate"
 TERMINAL_PROOF_TOOL = "check_proof"
-TERMINAL_PROOF_TOOL_VERSION = "1.15.0"
+TERMINAL_PROOF_TOOL_VERSION = "1.17.0"
+# ``check_proof`` 1.16 first bound the authorized Profile snapshot and typed
+# closure. Version 1.17 additionally binds the three root-owned profile-load
+# inputs and the complete repository snapshot. Historical replay applies each
+# producer era's promised shape only.
+PROFILE_BOUND_TERMINAL_PROOF_MIN_VERSION = (1, 16, 0)
+PROFILE_INPUT_BOUND_TERMINAL_PROOF_MIN_VERSION = (1, 17, 0)
+REPOSITORY_BOUND_TERMINAL_PROOF_MIN_VERSION = (1, 17, 0)
 CORPUS_PLAN_TRIGGERS = frozenset(("R13", "manifest"))
 CORPUS_PLAN_PATH_SHA_FIELDS = (
     ("selected_profile_manifest", "selected_profile_manifest_sha256"),
@@ -316,7 +335,9 @@ AMENDMENT_COMMON_FIELDS = frozenset((
     "id", "date", "summary", "status", "writeback_done",
 ))
 STANDARDS_ADOPTION_TOOL = "adopt_standards"
-STANDARDS_ADOPTION_TOOL_VERSION = "1.2.0"
+STANDARDS_ADOPTION_TOOL_VERSION = "1.4.0"
+STANDARDS_ADOPTION_PROFILE_CONTRACT_MIN_VERSION = (1, 3, 0)
+STANDARDS_ADOPTION_PROFILE_INPUT_MIN_VERSION = (1, 4, 0)
 STANDARDS_ADOPTION_PLAN_PREFIX = ".cambium/deltas/standards-adoptions"
 STANDARDS_GATE_REGISTRY_PATH = \
     "kernel/K00 Standards Control/12 Control Registry.md"
@@ -337,6 +358,7 @@ READ_SET_PATH_PREFIX = "kernel/Read Sets/"
 # so a drift is caught exactly where it would reject the receipt.  A module
 # that later exports `GATE_CHECK` wins, and the two are required to agree.
 CONSUMED_GATE_CHECKS = {
+    "profile-load": "profile-check-summary",
     "terminal-proof": "proof-check-summary",
     "registered-residual-content": "residual-content-summary",
 }
@@ -344,6 +366,7 @@ CONSUMED_GATE_CHECKS = {
 # constants.  A registry row that disagrees with one of these would register a
 # producer whose receipts this consumer rejects.
 CONSUMED_PRODUCER_IDENTITY = {
+    "profile-load": (check_profile.TOOL, check_profile.TOOL_VERSION),
     "batch-close": (BATCH_CLOSE_TOOL, BATCH_CLOSE_TOOL_VERSION),
     "corpus-plan-structure": (CORPUS_PLAN_TOOL, CORPUS_PLAN_TOOL_VERSION),
     "terminal-proof": (TERMINAL_PROOF_TOOL, TERMINAL_PROOF_TOOL_VERSION),
@@ -361,6 +384,8 @@ STANDARDS_ADOPTION_PLAN_FIELDS = frozenset((
     "selected_profile_manifest_before", "selected_profile_manifest_after",
     "governance_revision_ref", "governance_revision_sha256",
     "standards_snapshot_sha256_after", "profile_snapshot_sha256_after",
+    "profile_contract_fingerprint_after",
+    "profile_load_inputs_sha256_after",
     "selected_route_ids_after", "selected_card_paths_after",
     "selected_profile_route_ids_after", "selected_read_sets_after",
     "loaded_module_paths_after", "queue_revision_before",
@@ -389,6 +414,8 @@ STANDARDS_ADOPTION_RECORD_FIELDS = frozenset((
     "selected_profile_manifest_before", "selected_profile_manifest_after",
     "governance_revision_ref", "governance_revision_sha256",
     "standards_snapshot_sha256_after", "profile_snapshot_sha256_after",
+    "profile_contract_fingerprint_after",
+    "profile_load_inputs_sha256_after",
     "selected_route_ids_after", "selected_card_paths_after",
     "selected_profile_route_ids_after", "selected_read_sets_after",
     "loaded_module_paths_after", "queue_revision_before",
@@ -569,12 +596,11 @@ def gate_registry_producer_errors(registry):
       writes.  A ``check_queue`` row therefore carries a mode that
       :func:`queue_gate_id_for_mode` maps back to the same Gate ID, and every
       other row carries ``*``: a narrower mode elsewhere could never match.
-    * ``Dimension`` narrows on ``dimension``, a field only a hand-recorded
-      receipt carries.  Its tokens are the base receipt dimensions K12/07
-      fixes, so a typo or an invented dimension is caught here rather than
-      silently matching nothing; a row whose producer is a named tool carries
-      ``*`` because that producer writes no ``dimension`` at all, and a row
-      that carries ``none`` says the Gate's own receipt has none.
+    * ``Dimension`` narrows on ``dimension``.  A named producer that exports
+      ``GATE_DIMENSION`` must register that exact base dimension; other named
+      producers carry ``*`` because they do not write the field.  A manual
+      attestation may select one or more base dimensions, and ``none`` says
+      the Gate's own receipt has no dimension.
 
     The five cells together are the receipt selector, so two Gate IDs may not
     share one tuple either.  This is a judgment, not an adjudication: the
@@ -587,6 +613,9 @@ def gate_registry_producer_errors(registry):
         tool = predicate["tool"]
         mode = predicate["mode"]
         dimensions = predicate.get("dimensions") or ()
+        module = (None if tool == MANUAL_ATTESTATION_TOOL
+                  else producer_module(tool))
+        declared_dimension = getattr(module, "GATE_DIMENSION", None)
         selector = (tool, predicate["tool_version"], predicate["check"], mode,
                     ",".join(dimensions))
         selectors.setdefault(selector, []).append(gate_id)
@@ -597,13 +626,23 @@ def gate_registry_producer_errors(registry):
                     "Gate ID %s registers Dimension %s, which mixes %r with "
                     "named dimensions" % (
                         gate_id, "/".join(dimensions), dimensions[0]))
-            elif (dimensions[0] == UNNARROWED_GATE_DIMENSION) != (
-                    tool != MANUAL_ATTESTATION_TOOL):
+            elif dimensions[0] == UNNARROWED_GATE_DIMENSION:
+                if (tool == MANUAL_ATTESTATION_TOOL or
+                        declared_dimension is not None):
+                    errors.append(
+                        "Gate ID %s registers Dimension %s against Tool %s, "
+                        "but that producer %s" % (
+                            gate_id, dimensions[0], tool,
+                            "declares %s" % declared_dimension
+                            if declared_dimension is not None else
+                            "is manually dimensioned"))
+            elif tool != MANUAL_ATTESTATION_TOOL:
                 errors.append(
-                    "Gate ID %s registers Dimension %s against Tool %s; only a "
-                    "named producer, which writes no dimension field, carries "
-                    "%s" % (gate_id, dimensions[0], tool,
-                            UNNARROWED_GATE_DIMENSION))
+                    "Gate ID %s registers Dimension none against named "
+                    "producer %s%s" % (
+                        gate_id, tool,
+                        ", which declares %s" % declared_dimension
+                        if declared_dimension is not None else ""))
         else:
             unknown = sorted(set(dimensions) - BASE_RECEIPT_DIMENSIONS)
             if unknown:
@@ -612,10 +651,17 @@ def gate_registry_producer_errors(registry):
                     "fix as a base receipt dimension" % (
                         gate_id, ", ".join(unknown)))
             if tool != MANUAL_ATTESTATION_TOOL:
-                errors.append(
-                    "Gate ID %s narrows Dimension to %s, but its producer %s "
-                    "writes no dimension field" % (
-                        gate_id, ", ".join(dimensions), tool))
+                if declared_dimension is None:
+                    errors.append(
+                        "Gate ID %s narrows Dimension to %s, but its producer "
+                        "%s writes no dimension field" % (
+                            gate_id, ", ".join(dimensions), tool))
+                elif dimensions != (declared_dimension,):
+                    errors.append(
+                        "Gate ID %s registers Dimension %s but producer %s "
+                        "emits %s" % (
+                            gate_id, ", ".join(dimensions), tool,
+                            declared_dimension))
         consumed = CONSUMED_PRODUCER_IDENTITY.get(gate_id)
         if consumed is not None and consumed != (tool,
                                                  predicate["tool_version"]):
@@ -641,7 +687,6 @@ def gate_registry_producer_errors(registry):
                         gate_id, predicate["tool_version"],
                         MANUAL_ATTESTATION_TOOL_VERSION))
             continue
-        module = producer_module(tool)
         if module is None or getattr(module, "TOOL", None) != tool:
             errors.append(
                 "Gate ID %s registers Tool %s, which is not an installed "
@@ -953,12 +998,12 @@ def _valid_timestamp(value):
     return _timestamp_value(value) is not None
 
 
-def _closed_mapping_errors(value, label, fields):
+def _closed_mapping_errors(value, label, fields, optional_fields=()):
     """Require one explicit mapping with exactly the declared field set."""
     if not isinstance(value, dict):
         return ["%s must be a mapping" % label]
     errors = []
-    missing = sorted(set(fields) - set(value))
+    missing = sorted(set(fields) - set(optional_fields) - set(value))
     extra = sorted(set(value) - set(fields))
     if missing:
         errors.append("%s misses explicit field(s): %s" %
@@ -992,8 +1037,17 @@ def _standards_adoption_shape_errors(progress):
     seen_receipts = set()
     for index, record in enumerate(records):
         label = "Progress standards_adoptions[%d]" % index
+        # The typed Profile contract became durable in adopt_standards 1.3,
+        # and the root-owned profile-load inputs in 1.4.
+        # Shape validation runs before the receipt catalog is available, so it
+        # permits those two legacy omissions here. Historical replay below uses
+        # the commit receipt's producer version to require each field from its
+        # introduction onward and bind any legacy-present value across the
+        # plan/record/receipt chain.
         errors.extend(_closed_mapping_errors(
-            record, label, STANDARDS_ADOPTION_RECORD_FIELDS))
+            record, label, STANDARDS_ADOPTION_RECORD_FIELDS,
+            optional_fields=("profile_contract_fingerprint_after",
+                             "profile_load_inputs_sha256_after")))
         if not isinstance(record, dict):
             continue
         for field in (
@@ -2275,11 +2329,64 @@ def _live_read_set_load_findings(root, contract):
     return errors, gaps
 
 
-def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
-                                    progress=None, validate_current=True):
-    """Return closed-schema and referential errors for one adoption plan."""
+def _standards_adoption_profile_contract_required(producer_tool_version):
+    """Return whether this producer era promised a durable typed contract.
+
+    Only an exact semantic version below 1.3 selects the legacy contract.  An
+    absent or malformed producer identity fails closed onto the current shape
+    instead of becoming a way to erase the new binding.
+    """
+    match = re.fullmatch(
+        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
+        str(producer_tool_version),
+    )
+    if match is None:
+        return True
+    return tuple(int(part) for part in match.groups()) >= \
+        STANDARDS_ADOPTION_PROFILE_CONTRACT_MIN_VERSION
+
+
+def _standards_adoption_profile_inputs_required(producer_tool_version):
+    """Return whether this producer era promised root input binding.
+
+    Only an exact semantic version below 1.4 selects the legacy contract. An
+    absent or malformed producer identity fails closed onto the current shape.
+    """
+    match = re.fullmatch(
+        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
+        str(producer_tool_version),
+    )
+    if match is None:
+        return True
+    return tuple(int(part) for part in match.groups()) >= \
+        STANDARDS_ADOPTION_PROFILE_INPUT_MIN_VERSION
+
+
+def standards_adoption_plan_errors(
+        root, plan, catalog=None, queue=None, progress=None,
+        validate_current=True,
+        producer_tool_version=STANDARDS_ADOPTION_TOOL_VERSION):
+    """Return closed-schema and referential errors for one adoption plan.
+
+    New admission defaults to the current producer contract. Historical replay
+    supplies the sealed commit receipt's ``tool_version`` so pre-1.3 and
+    pre-1.4 plans are not reinterpreted under fields their producers did not
+    promise.
+    """
+    # A plan being admitted is always judged by the running 1.4 producer;
+    # ``producer_tool_version`` is an era selector only for sealed replay.
+    profile_contract_required = validate_current or \
+        _standards_adoption_profile_contract_required(producer_tool_version)
+    profile_inputs_required = validate_current or \
+        _standards_adoption_profile_inputs_required(producer_tool_version)
+    optional_fields = []
+    if not profile_contract_required:
+        optional_fields.append("profile_contract_fingerprint_after")
+    if not profile_inputs_required:
+        optional_fields.append("profile_load_inputs_sha256_after")
     errors = _closed_mapping_errors(
-        plan, "Standards adoption plan", STANDARDS_ADOPTION_PLAN_FIELDS)
+        plan, "Standards adoption plan", STANDARDS_ADOPTION_PLAN_FIELDS,
+        optional_fields=tuple(optional_fields))
     if not isinstance(plan, dict):
         return errors
     if plan.get("schema_version") != 1:
@@ -2312,10 +2419,18 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
             plan["queue_revision_before"] + 1):
         errors.append("Standards adoption queue_revision_after must increment "
                       "queue_revision_before exactly once")
-    for field in (
+    digest_fields = [
             "governance_revision_sha256", "standards_snapshot_sha256_after",
             "profile_snapshot_sha256_after", "coverage_sha256_before",
-            "required_queue_sha256_before", "progress_sha256_before"):
+            "required_queue_sha256_before", "progress_sha256_before",
+    ]
+    if (profile_contract_required or
+            "profile_contract_fingerprint_after" in plan):
+        digest_fields.append("profile_contract_fingerprint_after")
+    if (profile_inputs_required or
+            "profile_load_inputs_sha256_after" in plan):
+        digest_fields.append("profile_load_inputs_sha256_after")
+    for field in digest_fields:
         if not SHA256_RE.fullmatch(str(plan.get(field, ""))):
             errors.append("Standards adoption plan %s is not a SHA-256" % field)
 
@@ -2367,14 +2482,23 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
                               exc)
         after_profile = plan.get("selected_profile_manifest_after")
         if _nonempty_string(after_profile):
-            errors.extend(selected_profile_manifest_errors(root, after_profile))
-            try:
-                profile_dir = os.path.dirname(after_profile)
-                actual = kblib.repository_tree_sha256(root, profile_dir)
-                if actual != plan.get("profile_snapshot_sha256_after"):
+            profile_evidence, profile_errors = profile_load_evidence(
+                root, after_profile)
+            errors.extend(profile_errors)
+            if profile_evidence is not None:
+                if (profile_evidence.get("profile_snapshot_sha256") !=
+                        plan.get("profile_snapshot_sha256_after")):
                     errors.append("profile_snapshot_sha256_after is stale")
-            except (OSError, ValueError) as exc:
-                errors.append("cannot snapshot selected Profile: %s" % exc)
+                if (profile_evidence.get(
+                        "profile_contract_fingerprint") != plan.get(
+                            "profile_contract_fingerprint_after")):
+                    errors.append(
+                        "profile_contract_fingerprint_after is stale")
+                if (profile_evidence.get(
+                        "profile_load_inputs_sha256") != plan.get(
+                            "profile_load_inputs_sha256_after")):
+                    errors.append(
+                        "profile_load_inputs_sha256_after is stale")
         try:
             actual = kblib.repository_tree_sha256(root, "kernel")
             if actual != plan.get("standards_snapshot_sha256_after"):
@@ -2393,6 +2517,7 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
     predicates = plan.get("changed_predicates")
     predicate_ids = []
     boundary_gate_ids = set()
+    registered_gate_ids = set()
     if not isinstance(predicates, list):
         errors.append("Standards adoption changed_predicates must be an explicit list")
         predicates = []
@@ -2426,8 +2551,13 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
                 errors.append("%s affected_gate_ids must be non-empty" % label)
             if affected != sorted(affected):
                 errors.append("%s affected_gate_ids must be sorted" % label)
-            boundary_gate_ids.update(value for value in affected
-                                     if _nonempty_string(value))
+            registered_gate_ids.update(value for value in affected
+                                       if _nonempty_string(value))
+            boundary_gate_ids.update(
+                value for value in affected
+                if (_nonempty_string(value) and
+                    (not profile_contract_required or
+                     value != "profile-load")))
     if len(predicate_ids) != len(set(predicate_ids)):
         errors.append("Standards adoption repeats predicate_id")
     if predicate_ids != sorted(predicate_ids):
@@ -2438,6 +2568,7 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
     boundaries = plan.get("invalidation_boundaries")
     boundary_ids = []
     boundary_batch_targets = {}
+    boundary_runtime_gate_ids = {}
     covered_predicates = set()
     affected_batches = set()
     if not isinstance(boundaries, list):
@@ -2473,9 +2604,18 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
         if not referenced.issubset(predicate_set):
             errors.append("%s references an unknown changed predicate" % label)
         covered_predicates.update(referenced)
-        boundary_gate_ids.update(
+        required_gate_ids = [
             value for value in (boundary.get("required_gate_ids") or [])
-            if _nonempty_string(value))
+            if _nonempty_string(value)
+        ]
+        registered_gate_ids.update(required_gate_ids)
+        runtime_gate_ids = [
+            value for value in required_gate_ids
+            if not profile_contract_required or value != "profile-load"
+        ]
+        if _nonempty_string(boundary_id):
+            boundary_runtime_gate_ids[boundary_id] = runtime_gate_ids
+        boundary_gate_ids.update(runtime_gate_ids)
         targets = boundary.get("target_ids") or []
         if boundary.get("target_kind") == "batch":
             affected_batches.update(targets)
@@ -2495,12 +2635,114 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
                               (label, ", ".join(unknown)))
         if boundary.get("target_kind") == "task" and targets != [plan.get("task_id")]:
             errors.append("%s task target_ids must contain only task_id" % label)
+        if (profile_contract_required and
+                boundary.get("target_kind") == "profile-load"):
+            expected_target = [plan.get("selected_profile_manifest_after")]
+            if targets != expected_target:
+                errors.append(
+                    "%s profile-load target_ids must contain only "
+                    "selected_profile_manifest_after" % label)
+            if "profile-load" not in required_gate_ids:
+                errors.append(
+                    "%s profile-load boundary must require the profile-load "
+                    "Gate at after-image admission" % label)
     if len(boundary_ids) != len(set(boundary_ids)):
         errors.append("Standards adoption repeats invalidation boundary_id")
     if boundary_ids != sorted(boundary_ids):
         errors.append("Standards adoption invalidation_boundaries must be sorted "
                       "by boundary_id")
     boundary_set = set(boundary_ids)
+
+    # A Profile selection change is never an identity-only no-op.  Even when
+    # two packages currently contain equivalent prose, profile-load authority
+    # is deliberately path-bound and its receipt cannot transfer to another
+    # manifest.  Require that edge to be declared as a changed predicate and
+    # discharged by exactly one after-image admission boundary.  The same
+    # rule applies when governance explicitly says any changed predicate
+    # affects profile-load while keeping the manifest spelling unchanged.
+    if profile_contract_required:
+        profile_gate_predicates = {
+            predicate.get("predicate_id")
+            for predicate in predicates
+            if (isinstance(predicate, dict) and
+                _nonempty_string(predicate.get("predicate_id")) and
+                isinstance(predicate.get("affected_gate_ids"), list) and
+                "profile-load" in (predicate.get("affected_gate_ids") or []))
+        }
+        profile_boundaries = [
+            (index, boundary) for index, boundary in enumerate(boundaries)
+            if (isinstance(boundary, dict) and
+                boundary.get("target_kind") == "profile-load")
+        ]
+        profile_selection_changed = (
+            plan.get("selected_profile_manifest_before") !=
+            plan.get("selected_profile_manifest_after")
+        )
+        if profile_selection_changed and not profile_gate_predicates:
+            errors.append(
+                "selected Profile change must declare a changed predicate whose "
+                "affected_gate_ids include profile-load")
+        if profile_gate_predicates or profile_selection_changed:
+            if len(profile_boundaries) != 1:
+                errors.append(
+                    "Profile authority change requires exactly one profile-load "
+                    "after-image invalidation boundary; found %d" %
+                    len(profile_boundaries))
+            else:
+                index, boundary = profile_boundaries[0]
+                referenced = set(boundary.get("predicate_ids") or [])
+                omitted_profile_predicates = sorted(
+                    profile_gate_predicates - referenced)
+                if omitted_profile_predicates:
+                    errors.append(
+                        "invalidation_boundaries[%d] profile-load boundary must "
+                        "reference every changed predicate whose "
+                        "affected_gate_ids include profile-load; omitted: %s" %
+                        (index, ", ".join(omitted_profile_predicates)))
+        elif profile_boundaries:
+            errors.append(
+                "profile-load invalidation boundary requires a changed predicate "
+                "whose affected_gate_ids include profile-load")
+
+    # ``boundary_gate_reruns`` is only a projection; an entry there creates no
+    # runtime obligation by itself.  Every Gate a predicate says it affects
+    # must therefore occur on at least one concrete boundary that references
+    # that same predicate.  Otherwise a plan can look complete in its union
+    # while silently dropping the Gate from every enforcement edge.
+    if profile_contract_required:
+        predicate_affected_gates = {
+            predicate.get("predicate_id"): {
+                gate_id for gate_id in predicate.get("affected_gate_ids", [])
+                if _nonempty_string(gate_id)
+            }
+            for predicate in predicates
+            if (isinstance(predicate, dict) and
+                _nonempty_string(predicate.get("predicate_id")) and
+                isinstance(predicate.get("affected_gate_ids"), list))
+        }
+        boundary_gates_by_predicate = {
+            predicate_id: set() for predicate_id in predicate_affected_gates
+        }
+        for boundary in boundaries:
+            if not isinstance(boundary, dict):
+                continue
+            gates = {
+                gate_id for gate_id in boundary.get("required_gate_ids", [])
+                if _nonempty_string(gate_id)
+            } if isinstance(boundary.get("required_gate_ids"), list) else set()
+            for predicate_id in boundary.get("predicate_ids", []) \
+                    if isinstance(boundary.get("predicate_ids"), list) else ():
+                if predicate_id in boundary_gates_by_predicate:
+                    boundary_gates_by_predicate[predicate_id].update(gates)
+        for predicate_id in sorted(predicate_affected_gates):
+            missing_gates = sorted(
+                predicate_affected_gates[predicate_id] -
+                boundary_gates_by_predicate[predicate_id])
+            if missing_gates:
+                errors.append(
+                    "changed predicate %s affected_gate_ids lack an enforcing "
+                    "invalidation boundary for: %s" %
+                    (predicate_id, ", ".join(missing_gates)))
 
     invalidated = plan.get("invalidated_evidence")
     invalidated_ids = []
@@ -2599,6 +2841,12 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
             boundary_id = boundary.get("boundary_id")
             if not _nonempty_string(boundary_id) or boundary_id in enforced:
                 continue
+            if (boundary.get("target_kind") == "profile-load" and
+                    not boundary_runtime_gate_ids.get(boundary_id)):
+                # The canonical producer is invoked against the writable
+                # after-image above.  Only additional downstream Gate IDs need
+                # a Queue batch through which their revalidation is claimed.
+                continue
             errors.append(
                 "invalidation_boundaries[%d] boundary %s has target_kind %r "
                 "and no invalidated evidence scoping it to a Queue batch, so "
@@ -2672,7 +2920,7 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
     if validate_current and root is not None:
         registry, registry_errors = standards_gate_registry(root)
         errors.extend(registry_errors)
-        unknown_gates = sorted(boundary_gate_ids - set(registry))
+        unknown_gates = sorted(registered_gate_ids - set(registry))
         if unknown_gates:
             errors.append("Standards adoption names unregistered Gate ID(s): %s" %
                           ", ".join(unknown_gates))
@@ -2703,9 +2951,7 @@ def standards_adoption_plan_errors(root, plan, catalog=None, queue=None,
                 if not isinstance(boundary, dict):
                     continue
                 boundary_id = boundary.get("boundary_id")
-                gate_ids = [value for value
-                            in boundary.get("required_gate_ids") or []
-                            if _nonempty_string(value)]
+                gate_ids = boundary_runtime_gate_ids.get(boundary_id, [])
                 reached = sorted(
                     boundary_reached_batches.get(boundary_id, set()) &
                     set(states))
@@ -2817,10 +3063,53 @@ def _standards_adoption_errors(root, progress, catalog, queue):
             continue
         if plan_sha != record.get("plan_sha256"):
             errors.append("%s plan_sha256 does not match current plan bytes" % label)
+        receipt_id = record.get("verification_receipt")
+        # Resolve the sealed producer identity before interpreting its plan.
+        # Current 1.4 fields cannot be projected backward onto earlier history,
+        # while an absent/malformed version must not downgrade the contract.
+        receipt = _require_receipt(
+            catalog, receipt_id, "%s commit" % label, errors,
+            expected={
+                "tool": STANDARDS_ADOPTION_TOOL,
+                "tool_version": ANY_PRODUCER_ERA_VERSION,
+                "gate_id": "standards-adoption",
+                "check": "standards_adoption",
+                "target": record.get("id"),
+                "result": "pass",
+                "invalidated_by": None,
+                "transaction_phase": "commit",
+                "task_id": queue.get("task_id"),
+                "actor_role": "integrator",
+                "plan_path": record.get("plan_path"),
+                "plan_sha256": record.get("plan_sha256"),
+                "transaction_id": record.get("transaction_id"),
+            },
+        )
+        producer_tool_version = (
+            receipt.get("tool_version") if isinstance(receipt, dict) else
+            STANDARDS_ADOPTION_TOOL_VERSION
+        )
+        profile_contract_required = \
+            _standards_adoption_profile_contract_required(
+                producer_tool_version)
+        profile_inputs_required = \
+            _standards_adoption_profile_inputs_required(
+                producer_tool_version)
+        if (profile_contract_required and
+                "profile_contract_fingerprint_after" not in record):
+            errors.append(
+                "%s misses profile_contract_fingerprint_after required by "
+                "adopt_standards %s" % (label, producer_tool_version))
+        if (profile_inputs_required and
+                "profile_load_inputs_sha256_after" not in record):
+            errors.append(
+                "%s misses profile_load_inputs_sha256_after required by "
+                "adopt_standards %s" % (label, producer_tool_version))
         errors.extend("%s %s" % (label, error)
                       for error in standards_adoption_plan_errors(
                           root, plan, catalog=catalog, queue=queue,
-                          progress=progress, validate_current=False))
+                          progress=progress, validate_current=False,
+                          producer_tool_version=producer_tool_version))
         changed_ids = sorted(
             row.get("predicate_id") for row in plan.get("changed_predicates", [])
             if isinstance(row, dict) and _nonempty_string(row.get("predicate_id")))
@@ -2848,6 +3137,10 @@ def _standards_adoption_errors(root, progress, catalog, queue):
                 "standards_snapshot_sha256_after",
             "profile_snapshot_sha256_after":
                 "profile_snapshot_sha256_after",
+            "profile_contract_fingerprint_after":
+                "profile_contract_fingerprint_after",
+            "profile_load_inputs_sha256_after":
+                "profile_load_inputs_sha256_after",
             "selected_route_ids_after": "selected_route_ids_after",
             "selected_card_paths_after": "selected_card_paths_after",
             "selected_profile_route_ids_after":
@@ -2873,27 +3166,9 @@ def _standards_adoption_errors(root, progress, catalog, queue):
                 ("invalidation_boundary_ids", boundary_ids)):
             if record.get(field) != expected:
                 errors.append("%s %s does not match its plan" % (label, field))
-        receipt_id = record.get("verification_receipt")
         # Historical: a committed adoption's own commit receipt.  Its producer
         # version is whatever `adopt_standards` was when the transaction ran,
         # so the era it claims is checked instead of today's constant.
-        receipt = _require_receipt(
-            catalog, receipt_id, "%s commit" % label, errors,
-            expected={
-                "tool": STANDARDS_ADOPTION_TOOL,
-                "gate_id": "standards-adoption",
-                "check": "standards_adoption",
-                "target": record.get("id"),
-                "result": "pass",
-                "invalidated_by": None,
-                "transaction_phase": "commit",
-                "task_id": queue.get("task_id"),
-                "actor_role": "integrator",
-                "plan_path": record.get("plan_path"),
-                "plan_sha256": record.get("plan_sha256"),
-                "transaction_id": record.get("transaction_id"),
-            },
-        )
         errors.extend(_producer_era_errors(
             receipt, receipt_id, "%s commit" % label, accounted))
         if receipt is not None:
@@ -2922,6 +3197,10 @@ def _standards_adoption_errors(root, progress, catalog, queue):
                     "standards_snapshot_sha256_after",
                 "profile_snapshot_sha256_after":
                     "profile_snapshot_sha256_after",
+                "profile_contract_fingerprint_after":
+                    "profile_contract_fingerprint_after",
+                "profile_load_inputs_sha256_after":
+                    "profile_load_inputs_sha256_after",
                 "changed_predicate_ids": "changed_predicate_ids",
                 "invalidated_evidence_receipt_ids":
                     "invalidated_evidence_receipt_ids",
@@ -3560,6 +3839,46 @@ def _producer_era_errors(receipt, receipt_id, label, accounted):
             (label, receipt_id, version)]
 
 
+def _terminal_proof_profile_binding_errors(receipt, receipt_id):
+    """Validate each current-use binding promised by its proof producer era.
+
+    This is historical replay, not a new authorization decision.  It therefore
+    checks only that a receipt retained the canonical fields its own producer
+    promised: 1.16 introduced Profile snapshot/typed-contract bindings, and
+    1.17 added the root-owned profile-load input and whole-repository snapshot
+    bindings. It deliberately does not load today's selected Profile or
+    reinterpret an already-consumed proof against changed bytes. The current
+    completion transition performs those comparisons in :mod:`update_task`
+    before history is sealed.
+    """
+    if not isinstance(receipt, dict):
+        return []
+    version = receipt.get("tool_version")
+    match = re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\."
+                         r"(0|[1-9][0-9]*)", str(version))
+    if match is None:
+        return []
+    version_tuple = tuple(int(part) for part in match.groups())
+    if version_tuple < PROFILE_BOUND_TERMINAL_PROOF_MIN_VERSION:
+        return []
+    fields = [
+        "profile_snapshot_sha256", "profile_contract_fingerprint",
+    ]
+    if version_tuple >= PROFILE_INPUT_BOUND_TERMINAL_PROOF_MIN_VERSION:
+        fields.append("profile_load_inputs_sha256")
+    if version_tuple >= REPOSITORY_BOUND_TERMINAL_PROOF_MIN_VERSION:
+        fields.append("repository_snapshot_sha256")
+    errors = []
+    for field in fields:
+        if not SHA256_RE.fullmatch(str(receipt.get(field))):
+            errors.append(
+                "complete Terminal Proof receipt %s lacks canonical %s "
+                "required by check_proof %s" %
+                (receipt_id, field, version)
+            )
+    return errors
+
+
 def _require_receipt(catalog, receipt_id, label, errors, expected=None):
     """Resolve one receipt and verify common pass/invalidation bindings."""
     if not _nonempty_string(receipt_id):
@@ -3760,21 +4079,21 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                               corpus_plan_required=None,
                               corpus_plan_triggers=None,
                               corpus_plan_expected_binding=None,
-                              current_repository_snapshot_sha256=None):
+                              current_repository_snapshot_sha256=None,
+                              historical=False):
     """Validate the independent merged-snapshot gate consumed by close.
 
     The gate is deliberately distinct from both the in-batch ``batch_gate``
     receipts and the K13/08 Queue consistency receipt.  It binds the exact
     post-apply/pre-close runtime bytes and the independently recomputed
-    repository-content snapshot, then closes the seven-member K12/09 set with
-    independently persisted evidence IDs.
+    repository-content snapshot, then closes its producer era's K12/09 set
+    with independently persisted evidence IDs.
     """
     errors = []
     label = "%s batch-close gate" % item_id
-    # The producer version is validated separately against the supported
-    # catalog below (K12/10 producer-era identity): pinning the current
-    # constant here would retroactively invalidate every sealed bundle on a
-    # checker upgrade — the defect-#7 class, one receipt over.
+    # The producer version is validated separately below: a new close action
+    # must use the current producer, while replay of a closed edge keeps the
+    # finite protocol era whose shape its sealed bundle records.
     expected = {
         "tool": BATCH_CLOSE_TOOL,
         "check": "batch_close_gate",
@@ -3797,10 +4116,17 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     if receipt is None:
         return errors
     receipt_version = receipt.get("tool_version")
-    if receipt_version not in SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS:
+    allowed_versions = (SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS
+                        if historical else
+                        frozenset((BATCH_CLOSE_TOOL_VERSION,)))
+    if receipt_version not in allowed_versions:
+        protocol = ("historical producer era" if historical else
+                    "current close action")
         errors.append(
-            "%s receipt %s has unsupported tool_version=%r" %
-            (label, receipt_id, receipt_version)
+            "%s receipt %s has unsupported tool_version=%r for %s; "
+            "expected one of %s" % (
+                label, receipt_id, receipt_version, protocol,
+                sorted(allowed_versions))
         )
     for field, value in (
             ("work_spec_path", work_spec_path),
@@ -3887,9 +4213,18 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
             errors.append(
                 "%s receipt %s required corpus plan has no trigger" %
                 (label, receipt_id))
+        corpus_tool_version = CORPUS_PLAN_TOOL_VERSION
+        if historical and receipt_version != BATCH_CLOSE_TOOL_VERSION:
+            corpus_tool_version = \
+                HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS.get(receipt_version)
+            if corpus_tool_version is None:
+                errors.append(
+                    "%s receipt %s has no registered historical Corpus "
+                    "Planning child protocol for batch-close %r" %
+                    (label, receipt_id, receipt_version))
         corpus_expected = {
             "tool": CORPUS_PLAN_TOOL,
-            "tool_version": CORPUS_PLAN_TOOL_VERSION,
+            "tool_version": corpus_tool_version,
             "check": "corpus_plan",
             "result": "pass",
             "task_id": task_id,
@@ -5461,6 +5796,8 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         errors.extend(_producer_era_errors(
             proof, proof_id, "complete Terminal Proof", accounted_versions))
         if isinstance(proof, dict):
+            errors.extend(_terminal_proof_profile_binding_errors(
+                proof, proof_id))
             proof_version = proof.get("tool_version")
             if (proof_version == TERMINAL_PROOF_TOOL_VERSION and
                     proof.get("gate_id") != "terminal-proof"):
@@ -6861,6 +7198,23 @@ def _work_spec_errors(root, item):
     return errors
 
 
+def _selected_profile_manifest_envelope_errors(profile):
+    """Reject a selected-Profile reference outside the runtime envelope.
+
+    This check is deliberately lexical: ordinary runtime admission must not
+    read Profile bytes before the one authoritative ``profile-load`` producer
+    binds them.  The smaller corrective-adoption guard below adds its own
+    identity/sentinel reads because that explicit escape must remain usable
+    when the current transitive closure is already invalid.
+    """
+    if not _nonempty_string(profile):
+        return ["selected_profile_manifest must be instantiated"]
+    parts = Path(profile).parts
+    if len(parts) != 3 or parts[0] != "profiles" or parts[2] != "profile.md":
+        return ["selected_profile_manifest must be profiles/<id>/profile.md"]
+    return []
+
+
 def selected_profile_manifest_errors(root, profile):
     """Reject template/example/unfilled manifests as runtime identities.
 
@@ -6869,12 +7223,10 @@ def selected_profile_manifest_errors(root, profile):
     forget: the selected package is an adopter-owned profile ID, not a shipped
     form/example, and its identity/sentinel state is instantiated.
     """
-    errors = []
-    if not _nonempty_string(profile):
-        return ["selected_profile_manifest must be instantiated"]
+    errors = _selected_profile_manifest_envelope_errors(profile)
+    if errors:
+        return errors
     parts = Path(profile).parts
-    if len(parts) != 3 or parts[0] != "profiles" or parts[2] != "profile.md":
-        return ["selected_profile_manifest must be profiles/<id>/profile.md"]
     profile_id = parts[1]
     reserved = {
         "_template", "template", "example", "examples", "REPLACE-ME",
@@ -6898,20 +7250,10 @@ def selected_profile_manifest_errors(root, profile):
         errors.append("selected_profile_manifest uses reserved/non-runnable "
                       "profile id %r" % profile_id)
     try:
-        manifest_path = kblib.repository_path(
-            root, profile, must_exist=True, reject_symlink=True)
-        if not os.path.isfile(manifest_path):
-            raise ValueError("path is not a regular file")
-        profile_dir = os.path.dirname(manifest_path)
-        root_real = os.path.realpath(os.path.abspath(root))
-        current = root_real
-        for component in parts[:-1]:
-            current = os.path.join(current, component)
-            if os.path.lexists(current) and os.path.islink(current):
-                raise ValueError("profile path must not traverse a symlink")
-        with open(manifest_path, encoding="utf-8", errors="replace") as fh:
-            manifest_text = fh.read()
-    except (OSError, ValueError) as exc:
+        profile_snapshot = kblib.repository_tree_snapshot(
+            root, os.path.dirname(profile))
+        manifest_text = profile_snapshot.read_text(profile)
+    except (OSError, UnicodeError, ValueError) as exc:
         errors.append("selected_profile_manifest is unsafe or missing: %s" % exc)
         return errors
     _, identity_errors = kblib.profile_identity(
@@ -6919,8 +7261,8 @@ def selected_profile_manifest_errors(root, profile):
     for _, details in identity_errors:
         errors.append("selected profile identity: %s" % details)
     try:
-        hits, _, _ = check_profile.scan_sentinel(profile_dir, sentinel)
-    except OSError as exc:
+        hits, _, _ = check_profile.scan_sentinel(profile_snapshot, sentinel)
+    except (OSError, UnicodeError) as exc:
         errors.append("selected profile cannot be scanned for unfilled "
                       "sentinels: %s" % exc)
     else:
@@ -6928,6 +7270,236 @@ def selected_profile_manifest_errors(root, profile):
             sample = ", ".join("%s:%d" % hit for hit in hits[:3])
             errors.append("selected profile is not runnable; unfilled sentinel "
                           "%r remains at %s" % (sentinel, sample))
+    return errors
+
+
+def profile_load_authorized_view(root, profile):
+    """Run ``profile-load`` once and retain its snapshot-bound consumer view.
+
+    The public evidence fields bind the selected manifest, complete Profile
+    tree, and typed dependency graph.  ``_manifest_slot_paths`` is an internal
+    projection of that *same* authorized contract; it lets runtime consumers
+    locate a slot without reparsing the manifest under a later revision.
+
+    ``evaluate_profile_load`` returns the contract, snapshot, fingerprint, and
+    summary from one producer invocation.  Consumers must not reconstruct the
+    contract in a second parse: doing so could pair the verdict for revision A
+    with revision B's dependency graph.
+    """
+    errors = _selected_profile_manifest_envelope_errors(profile)
+    if errors or not _nonempty_string(profile):
+        return None, errors
+
+    root = os.path.realpath(os.path.abspath(os.fspath(root)))
+    profile_dir = os.path.join(
+        root, os.path.dirname(profile).replace("/", os.sep))
+    try:
+        evaluation = check_profile.evaluate_profile_load(
+            profile_dir, root=root, receipt_identity=None)
+    except (OSError, SystemExit, TypeError, UnicodeError, ValueError) as exc:
+        errors.append("profile-load producer could not run: %s" % exc)
+        return None, errors
+
+    if not evaluation.authorized:
+        findings = [
+            "[%s %s] %s — %s" % (
+                str(receipt.get("result", "fail")).upper(),
+                receipt.get("check", "profile-load"),
+                receipt.get("target", profile),
+                receipt.get("details", "profile-load was not authorized"),
+            )
+            for receipt in evaluation.findings[:5]
+        ]
+        detail = "; ".join(findings) if findings else \
+            "check_profile exited %d without an authorized contract" % \
+            evaluation.exit_code
+        errors.append("selected Profile failed profile-load: %s" % detail)
+        return None, errors
+
+    contract = evaluation.contract
+    summary = evaluation.summary_receipt
+    if (not isinstance(contract,
+                       check_profile.profile_contract.ProfileContract) or
+            not contract.authorized):
+        return None, ["profile-load pass exposed no authorized typed contract"]
+    if not isinstance(summary, dict):
+        return None, ["profile-load pass exposed no summary receipt"]
+    if contract.manifest_repo_path != profile:
+        errors.append(
+            "profile-load selected manifest %r, expected %r" %
+            (contract.manifest_repo_path, profile))
+    if summary.get("selected_profile_manifest") != profile:
+        errors.append(
+            "profile-load summary selected manifest %r, expected %r" %
+            (summary.get("selected_profile_manifest"), profile))
+
+    if errors:
+        return None, errors
+    snapshot = evaluation.profile_snapshot_sha256
+    if (not isinstance(snapshot, str) or
+            not SHA256_RE.fullmatch(snapshot)):
+        return None, ["profile-load did not authorize a canonical Profile "
+                      "snapshot fingerprint"]
+    bound_snapshot = evaluation.profile_snapshot
+    if (not isinstance(bound_snapshot, kblib.RepositoryTreeSnapshot) or
+            bound_snapshot.sha256 != snapshot or
+            os.path.realpath(bound_snapshot.root) != root or
+            bound_snapshot.relative_directory != contract.profile_repo_dir):
+        return None, ["profile-load did not expose the immutable Profile "
+                      "snapshot that authorized its typed contract"]
+    fingerprint = evaluation.profile_contract_fingerprint
+    if (not isinstance(fingerprint, str) or
+            not SHA256_RE.fullmatch(fingerprint)):
+        return None, ["profile-load did not authorize a typed contract "
+                      "fingerprint"]
+    inputs_fingerprint = evaluation.profile_load_inputs_sha256
+    if (not isinstance(inputs_fingerprint, str) or
+            not SHA256_RE.fullmatch(inputs_fingerprint)):
+        return None, ["profile-load did not bind its canonical normative "
+                      "input bytes"]
+    for field, expected in (
+            ("profile_snapshot_sha256", snapshot),
+            ("profile_contract_fingerprint", fingerprint),
+            ("profile_load_inputs_sha256", inputs_fingerprint)):
+        if summary.get(field) != expected:
+            return None, ["profile-load summary %s differs from the "
+                          "authorized evaluation" % field]
+
+    slot_paths = {}
+    for edge in contract.dependency_edges:
+        if edge.kind != "manifest-slot":
+            continue
+        if (not _nonempty_string(edge.owner_id) or
+                not _nonempty_string(edge.path)):
+            return None, ["profile-load authorized a malformed manifest-slot "
+                          "dependency edge"]
+        if edge.owner_id in slot_paths:
+            return None, ["profile-load authorized duplicate manifest-slot "
+                          "dependency edges for %r" % edge.owner_id]
+        slot_paths[edge.owner_id] = edge.path
+    if EXPRESSION_LAYER_SLOT not in slot_paths:
+        return None, ["profile-load authorized no manifest-slot dependency "
+                      "edge for %s" % EXPRESSION_LAYER_SLOT]
+
+    return {
+        "selected_profile_manifest": profile,
+        "profile_snapshot_sha256": snapshot,
+        "profile_contract_fingerprint": fingerprint,
+        "profile_load_inputs_sha256": inputs_fingerprint,
+        "_manifest_slot_paths": tuple(sorted(slot_paths.items())),
+        "_contract": contract,
+        "_profile_snapshot": bound_snapshot,
+        "_evaluation": evaluation,
+    }, []
+
+
+def _public_profile_load_evidence(authorized_view):
+    """Project an internal authorized view into durable evidence fields."""
+    return {
+        field: authorized_view[field]
+        for field in (
+            "selected_profile_manifest", "profile_snapshot_sha256",
+            "profile_contract_fingerprint", "profile_load_inputs_sha256",
+        )
+    }
+
+
+def active_standards_authorized_view(root, standards_version,
+                                     selected_profile_manifest):
+    """Return one immutable approved K00/03 identity view and its errors."""
+    root = os.path.realpath(os.path.abspath(os.fspath(root)))
+    try:
+        snapshot = kblib.repository_file_snapshot(
+            root, ACTIVE_STANDARDS_PATH, singly_linked=True)
+        state, parse_errors = kblib.active_standards_state(
+            snapshot.read_text())
+    except (OSError, UnicodeError, ValueError) as exc:
+        return None, [
+            "active Standards Control is unsafe or unreadable: %s" % exc]
+    errors = [
+        "active Standards Control: %s" % error for error in parse_errors]
+    if state.get("standards_status") != "approved":
+        errors.append(
+            "active Standards Control Status must be approved; found %r" %
+            state.get("standards_status"))
+    if state.get("standards_version") != standards_version:
+        errors.append(
+            "runtime standards_version %r differs from active K00/03 %r" %
+            (standards_version, state.get("standards_version")))
+    if (state.get("selected_profile_manifest") !=
+            selected_profile_manifest):
+        errors.append(
+            "runtime selected_profile_manifest %r differs from active "
+            "K00/03 %r" %
+            (selected_profile_manifest,
+             state.get("selected_profile_manifest")))
+    if errors:
+        return None, errors
+    return {
+        "active_standards_path": ACTIVE_STANDARDS_PATH,
+        "active_standards_sha256": snapshot.sha256,
+        "standards_version": state.get("standards_version"),
+        "selected_profile_manifest": state.get(
+            "selected_profile_manifest"),
+    }, []
+
+
+def active_standards_alignment_errors(root, standards_version,
+                                      selected_profile_manifest):
+    """Compare runtime identity to the one approved K00/03 authority."""
+    _view, errors = active_standards_authorized_view(
+        root, standards_version, selected_profile_manifest)
+    return errors
+
+
+def active_standards_view_currency_errors(root, authorized_view):
+    """Fail when K00/03 bytes no longer equal one authorized identity view."""
+    if not isinstance(authorized_view, dict):
+        return ["active Standards authorized view must be a mapping"]
+    expected = authorized_view.get("active_standards_sha256")
+    view, errors = active_standards_authorized_view(
+        root, authorized_view.get("standards_version"),
+        authorized_view.get("selected_profile_manifest"))
+    if errors:
+        return errors
+    if view.get("active_standards_sha256") != expected:
+        return [
+            "active Standards Control changed after identity admission; "
+            "rerun against one stable K00/03 revision"
+        ]
+    return []
+
+
+def profile_load_evidence(root, profile):
+    """Run ``profile-load`` and return one stable, receipt-free identity.
+
+    The returned mapping is deliberately an in-memory value, not a Gate
+    receipt.  Standards adoption judges a candidate *after* Profile while the
+    Required Queue still names the current Profile; publishing that candidate
+    receipt into the current receipt catalog would therefore combine two
+    different task identities.  The eventual selected task must produce its
+    own ``profile-load`` receipt after the adoption commits.
+
+    Slot consumers inside this module use the authorized-view API so
+    their source paths come from the same producer invocation.  External
+    callers receive only the three durable identity fields.
+    """
+    authorized_view, errors = profile_load_authorized_view(root, profile)
+    if authorized_view is None:
+        return None, errors
+    return _public_profile_load_evidence(authorized_view), errors
+
+
+def profile_load_errors(root, profile):
+    """Return the canonical ``profile-load`` admission failures.
+
+    Default runtime consistency and every candidate after-image use this full
+    producer.  :func:`selected_profile_manifest_errors` remains only as the
+    smaller identity/sentinel check behind the explicit corrective-adoption
+    escape, so a broken current closure can be replaced without weakening any
+    ordinary reader, writer, or proposed state.
+    """
+    _authorized_view, errors = profile_load_authorized_view(root, profile)
     return errors
 
 
@@ -6942,17 +7514,13 @@ def _normalized_repository_path(value):
     return value or None
 
 
-def profile_hub_paths(root, profile_manifest):
-    """Return the hub pages the selected profile already registers.
+def _unadmitted_profile_hub_paths(root, profile_manifest):
+    """Derive hub pages for the explicit corrective-adoption escape only.
 
-    K13/10 binds pages registered by the ``Expression Layer Entry`` into the
-    hub set.  That slot already records one canonical dependency-map cell per
-    registered artifact, so this reads the existing registration rather than
-    adding a profile slot.  Returns ``(paths, errors)``; a cell holding an
-    opaque ID, ``None``, or an unfilled sentinel carries no machine judgment
-    and is skipped.  Profile quality stays owned by ``check_profile.py``: an
-    error here is raised only when a declared slot cannot be read at all, so
-    the admission gate cannot silently conclude "no hub page".
+    Ordinary runtime consumers must use :func:`profile_hub_paths`, whose slot
+    path comes from one authorized typed contract.  This raw manifest reader
+    survives only so ``adopt_standards`` can inspect and replace an invalid
+    current Profile without requiring that broken closure to authorize itself.
     """
     paths = set()
     if not _nonempty_string(profile_manifest):
@@ -7001,6 +7569,337 @@ def profile_hub_paths(root, profile_manifest):
             if "TODO(" in candidate or "/" not in candidate:
                 # An unfilled sentinel or an opaque artifact ID is not a
                 # decidable repository path; check_profile owns that verdict.
+                continue
+            if _path_error(root, candidate, must_exist=False) is None:
+                paths.add(candidate)
+    return paths, []
+
+
+def _profile_view_snapshot_error(root, authorized_view, phase):
+    """Return a fail-closed error if an authorized view is no longer current."""
+    manifest = authorized_view.get("selected_profile_manifest")
+    expected = authorized_view.get("profile_snapshot_sha256")
+    if (not _nonempty_string(manifest) or not isinstance(expected, str) or
+            not SHA256_RE.fullmatch(expected)):
+        return "authorized Profile view has malformed snapshot identity"
+    profile_dir = os.path.dirname(manifest).replace("/", os.sep)
+    try:
+        actual = kblib.repository_tree_sha256(root, profile_dir)
+    except (OSError, ValueError) as exc:
+        return ("selected Profile cannot be rebound %s Expression hub "
+                "derivation: %s" % (phase, exc))
+    if actual != expected:
+        return ("selected Profile changed after profile-load authorization; "
+                "snapshot mismatch %s Expression hub derivation" % phase)
+    expected_inputs = authorized_view.get("profile_load_inputs_sha256")
+    try:
+        _snapshots, actual_inputs = \
+            check_profile.canonical_profile_load_inputs(root)
+    except (OSError, ValueError) as exc:
+        return ("canonical profile-load inputs cannot be rebound %s "
+                "Expression hub derivation: %s" % (phase, exc))
+    if actual_inputs != expected_inputs:
+        return ("canonical profile-load inputs changed after profile-load "
+                "authorization; input mismatch %s Expression hub "
+                "derivation" % phase)
+    return None
+
+
+def _authorized_profile_view_errors(root, profile_manifest, authorized_view):
+    """Validate one in-process view without rerunning ``profile-load``."""
+    if not isinstance(authorized_view, dict):
+        return ["authorized Profile view must be a mapping returned by "
+                "profile_load_authorized_view"]
+    errors = []
+    if authorized_view.get("selected_profile_manifest") != profile_manifest:
+        errors.append("authorized Profile view selects %r, not %r" % (
+            authorized_view.get("selected_profile_manifest"),
+            profile_manifest))
+    snapshot = authorized_view.get("profile_snapshot_sha256")
+    if not isinstance(snapshot, str) or not SHA256_RE.fullmatch(snapshot):
+        errors.append("authorized Profile view has malformed snapshot identity")
+    fingerprint = authorized_view.get("profile_contract_fingerprint")
+    if (not isinstance(fingerprint, str) or
+            not SHA256_RE.fullmatch(fingerprint)):
+        errors.append("authorized Profile view has malformed typed-contract "
+                      "fingerprint")
+    inputs_fingerprint = authorized_view.get("profile_load_inputs_sha256")
+    if (not isinstance(inputs_fingerprint, str) or
+            not SHA256_RE.fullmatch(inputs_fingerprint)):
+        errors.append("authorized Profile view has malformed canonical-input "
+                      "fingerprint")
+
+    contract = authorized_view.get("_contract")
+    contract_type = check_profile.profile_contract.ProfileContract
+    if not isinstance(contract, contract_type) or not contract.authorized:
+        errors.append("authorized Profile view has no authorized typed "
+                      "contract object")
+        contract = None
+    elif os.path.realpath(contract.root) != \
+            os.path.realpath(os.path.abspath(os.fspath(root))):
+        errors.append("authorized Profile view belongs to a different "
+                      "repository root")
+    else:
+        if contract.manifest_repo_path != profile_manifest:
+            errors.append("authorized Profile contract selects %r, not %r" % (
+                contract.manifest_repo_path, profile_manifest))
+        if contract.profile_contract_fingerprint != fingerprint:
+            errors.append("authorized Profile view fingerprint differs from "
+                          "its typed contract")
+
+    bound_snapshot = authorized_view.get("_profile_snapshot")
+    if not isinstance(bound_snapshot, kblib.RepositoryTreeSnapshot):
+        errors.append("authorized Profile view has no immutable Profile "
+                      "snapshot object")
+    else:
+        expected_directory = os.path.dirname(profile_manifest)
+        if (bound_snapshot.sha256 != snapshot or
+                os.path.realpath(bound_snapshot.root) !=
+                os.path.realpath(os.path.abspath(os.fspath(root))) or
+                bound_snapshot.relative_directory != expected_directory):
+            errors.append("authorized Profile immutable snapshot identity "
+                          "differs from its public binding")
+
+    evaluation = authorized_view.get("_evaluation")
+    if (not isinstance(evaluation, check_profile.ProfileLoadEvaluation) or
+            not evaluation.authorized):
+        errors.append("authorized Profile view has no authorized evaluation "
+                      "object")
+    else:
+        if (evaluation.contract is not contract or
+                evaluation.profile_snapshot is not bound_snapshot):
+            errors.append("authorized Profile evaluation objects differ from "
+                          "its typed contract or immutable snapshot")
+        for field in (
+                "profile_snapshot_sha256",
+                "profile_contract_fingerprint",
+                "profile_load_inputs_sha256"):
+            if getattr(evaluation, field) != authorized_view.get(field):
+                errors.append("authorized Profile evaluation %s differs "
+                              "from its public binding" % field)
+
+    projected_pairs = ()
+    try:
+        projected_pairs = tuple(authorized_view["_manifest_slot_paths"])
+        projected = dict(projected_pairs)
+        if (len(projected) != len(projected_pairs) or
+                any(not _nonempty_string(key) or
+                    not _nonempty_string(value)
+                    for key, value in projected_pairs)):
+            raise ValueError("malformed or duplicate manifest-slot edge")
+    except (KeyError, TypeError, ValueError):
+        errors.append("authorized Profile view has no immutable manifest-slot "
+                      "projection")
+        projected = {}
+
+    if contract is not None:
+        contract_pairs = tuple(sorted(
+            (edge.owner_id, edge.path)
+            for edge in contract.dependency_edges
+            if edge.kind == "manifest-slot"
+        ))
+        if projected_pairs != contract_pairs:
+            errors.append("authorized Profile manifest-slot projection differs "
+                          "from its typed contract")
+    if not _nonempty_string(projected.get(EXPRESSION_LAYER_SLOT)):
+        errors.append("authorized Profile view has no %s path" %
+                      EXPRESSION_LAYER_SLOT)
+
+    if not errors:
+        snapshot_error = _profile_view_snapshot_error(
+            root, authorized_view, "before")
+        if snapshot_error:
+            errors.append(snapshot_error)
+    return errors
+
+
+def profile_load_authorized_view_currency_errors(root, authorized_view):
+    """Rebind a previously authorized Profile view without rerunning producer."""
+    manifest = authorized_view.get("selected_profile_manifest") \
+        if isinstance(authorized_view, dict) else None
+    if not _nonempty_string(manifest):
+        return ["authorized Profile view has no selected manifest identity"]
+    return _authorized_profile_view_errors(root, manifest, authorized_view)
+
+
+def runtime_authority_context(result):
+    """Freeze one successful runtime admission for a complete transaction.
+
+    Ordinary writers call :func:`validate_runtime` once without injected
+    views, then carry this opaque context through every proposed, locked, and
+    post-write validation.  The Profile and K00/03 views are deliberately kept
+    together: accepting a view from one admission and an active-Standards
+    binding from another would recreate the split-revision window this API is
+    intended to close.
+    """
+    if not isinstance(result, dict):
+        raise TypeError("runtime validation result must be a mapping")
+    if result.get("errors"):
+        raise ValueError(
+            "runtime authority context requires a successful validation")
+    root = result.get("root")
+    queue = result.get("queue")
+    profile_view = result.get("_profile_authorized_view")
+    active_view = result.get("_active_standards_authorized_view")
+    if not _nonempty_string(root) or not isinstance(queue, dict):
+        raise ValueError("runtime validation result has no canonical root or Queue")
+    if not isinstance(profile_view, dict):
+        raise ValueError("runtime validation result has no authorized Profile view")
+    if not isinstance(active_view, dict):
+        raise ValueError(
+            "runtime validation result has no authorized active Standards view")
+    expected_profile = queue.get("selected_profile_manifest")
+    expected_standards = queue.get("standards_version")
+    if (profile_view.get("selected_profile_manifest") != expected_profile or
+            active_view.get("selected_profile_manifest") != expected_profile):
+        raise ValueError(
+            "runtime authority views do not select the validated Queue Profile")
+    if active_view.get("standards_version") != expected_standards:
+        raise ValueError(
+            "runtime active Standards view does not select the validated "
+            "Queue version")
+    return {
+        "root": os.path.realpath(os.path.abspath(root)),
+        "profile_view": profile_view,
+        "active_standards_view": active_view,
+    }
+
+
+def runtime_authority_validation_kwargs(context):
+    """Return the indivisible view pair for a later runtime validation."""
+    if not isinstance(context, dict):
+        raise TypeError("runtime authority context must be a mapping")
+    profile_view = context.get("profile_view")
+    active_view = context.get("active_standards_view")
+    if not isinstance(profile_view, dict) or not isinstance(active_view, dict):
+        raise ValueError(
+            "runtime authority context must contain both authorized views")
+    return {
+        "authorized_profile_view": profile_view,
+        "authorized_active_standards_view": active_view,
+    }
+
+
+def runtime_authority_currency_errors(root, context):
+    """Return CAS failures for every root authority bound by ``context``."""
+    if not isinstance(context, dict):
+        return ["runtime authority context must be a mapping"]
+    canonical_root = os.path.realpath(os.path.abspath(os.fspath(root)))
+    if context.get("root") != canonical_root:
+        return ["runtime authority context belongs to a different repository root"]
+    try:
+        kwargs = runtime_authority_validation_kwargs(context)
+    except (TypeError, ValueError) as exc:
+        return [str(exc)]
+    errors = []
+    for detail in active_standards_view_currency_errors(
+            canonical_root, kwargs["authorized_active_standards_view"]):
+        errors.append("active Standards authority: %s" % detail)
+    for detail in profile_load_authorized_view_currency_errors(
+            canonical_root, kwargs["authorized_profile_view"]):
+        errors.append("Profile-load authority: %s" % detail)
+    return errors
+
+
+def require_runtime_authority_current(root, context, phase):
+    """Raise when a transaction no longer sees its admitted authority bytes."""
+    errors = runtime_authority_currency_errors(root, context)
+    if errors:
+        raise ValueError("%s: %s" % (phase, "; ".join(errors)))
+
+
+def runtime_authority_lock_fields(context):
+    """Project one transaction authority binding into writer-lock metadata."""
+    kwargs = runtime_authority_validation_kwargs(context)
+    profile_view = kwargs["authorized_profile_view"]
+    active_view = kwargs["authorized_active_standards_view"]
+    return {
+        "standards_version": active_view.get("standards_version"),
+        "active_standards_sha256": active_view.get(
+            "active_standards_sha256"),
+        "selected_profile_manifest": profile_view.get(
+            "selected_profile_manifest"),
+        "profile_snapshot_sha256": profile_view.get(
+            "profile_snapshot_sha256"),
+        "profile_contract_fingerprint": profile_view.get(
+            "profile_contract_fingerprint"),
+        "profile_load_inputs_sha256": profile_view.get(
+            "profile_load_inputs_sha256"),
+    }
+
+
+def profile_hub_paths(root, profile_manifest, *, authorized_view=None,
+                      evaluate_if_missing=True,
+                      allow_unadmitted_profile=False):
+    """Return Expression hubs from one snapshot-bound Profile view.
+
+    K13/10 binds pages registered by the ``Expression Layer Entry`` into the
+    hub set.  The slot path is taken from the typed dependency edges produced
+    by the same ``profile-load`` invocation as ``authorized_view``; the
+    manifest is never reparsed.  The complete Profile tree is CAS-checked
+    before and after reading the slot, so a verdict for revision A cannot be
+    combined with Expression rows from revision B.
+
+    Direct callers may omit ``authorized_view`` and this function will create
+    exactly one.  ``validate_runtime`` passes its already-created view and sets
+    ``evaluate_if_missing=False`` so a failed producer is not run twice.  The
+    unadmitted path is reserved for the explicit corrective-adoption escape.
+    """
+    if type(evaluate_if_missing) is not bool:
+        raise TypeError("evaluate_if_missing must be boolean")
+    if type(allow_unadmitted_profile) is not bool:
+        raise TypeError("allow_unadmitted_profile must be boolean")
+    if allow_unadmitted_profile:
+        if authorized_view is not None:
+            raise ValueError("corrective Profile hub derivation cannot accept "
+                             "an authorized view")
+        return _unadmitted_profile_hub_paths(root, profile_manifest)
+
+    if not _nonempty_string(profile_manifest):
+        return set(), []
+    if authorized_view is None:
+        if not evaluate_if_missing:
+            # The caller already records the producer failure.  Do not create
+            # a second observation window or duplicate its detailed
+            # diagnostics.  Hub admission still fails closed: otherwise a
+            # queued concurrent batch could be reported ready merely because
+            # its selected Profile never produced an authorized view.
+            return set(), ["selected Profile has no authorized view, so the "
+                           "K13/10 hub set cannot be derived"]
+        authorized_view, errors = profile_load_authorized_view(
+            root, profile_manifest)
+        if authorized_view is None:
+            return set(), errors
+
+    view_errors = _authorized_profile_view_errors(
+        root, profile_manifest, authorized_view)
+    if view_errors:
+        return set(), view_errors
+    slot_paths = dict(authorized_view["_manifest_slot_paths"])
+    expression_path = slot_paths.get(EXPRESSION_LAYER_SLOT)
+    try:
+        text = authorized_view["_profile_snapshot"].read_text(
+            expression_path)
+    except (KeyError, OSError, UnicodeError, ValueError) as exc:
+        return set(), ["authorized selected profile %s is unreadable, so the "
+                       "K13/10 hub set cannot be derived: %s" % (
+                           EXPRESSION_LAYER_SLOT, exc)]
+    after_error = _profile_view_snapshot_error(root, authorized_view, "after")
+    if after_error:
+        return set(), [after_error]
+
+    paths = set()
+    for cells in check_profile.table_rows(text.splitlines()):
+        if len(cells) != 2:
+            continue
+        label = check_profile.unbacktick(cells[0]).strip().lower()
+        if not label.startswith(HUB_DEPENDENCY_MAP_LABEL):
+            continue
+        for declared in cells[1].split(";"):
+            candidate = _normalized_repository_path(declared)
+            if candidate is None or candidate.lower() == "none":
+                continue
+            if "TODO(" in candidate or "/" not in candidate:
                 continue
             if _path_error(root, candidate, must_exist=False) is None:
                 paths.add(candidate)
@@ -7414,6 +8313,7 @@ def _closed_gate_errors(item, transition, catalog, queue,
         # closed edge using the live Profile.
         selected_profile_manifest=close_gate_identity.get(
             "selected_profile_manifest"),
+        historical=True,
     ))
     return errors
 
@@ -8465,8 +9365,63 @@ def validate_runtime(root, allowed_open_delta=None,
                      extra_receipts=None, allow_unmaterialized_queue=False,
                      allow_structural_drift=False,
                      allow_pending_replan_receipts=False,
-                     allow_standards_rollback_batch=None):
-    """Return a validation result dict without writing any state."""
+                     allow_standards_rollback_batch=None,
+                     allow_invalid_current_profile_for_corrective_adoption=
+                     False,
+                     allow_active_standards_mismatch_for_adoption=False,
+                     authorized_profile_view=None,
+                     authorized_active_standards_view=None):
+    """Return a validation result dict without writing any state.
+
+    Full ``profile-load`` is part of the default runtime invariant, so every
+    ordinary reader/writer gets the same closure admission as the public CLI.
+    The sole escape hatch exists for ``adopt_standards`` to read and replace
+    an already-selected invalid Profile.  It is intentionally inapplicable to
+    proposed/overridden state: the adoption after-image must always pass the
+    full invariant.  A caller that already ran
+    :func:`profile_load_authorized_view` may inject that exact in-process view;
+    its identity, typed contract, and current tree snapshot are rechecked, but
+    the expensive producer is not run again.
+    """
+    if type(allow_invalid_current_profile_for_corrective_adoption) is not bool:
+        raise TypeError(
+            "allow_invalid_current_profile_for_corrective_adoption must be "
+            "boolean")
+    if type(allow_active_standards_mismatch_for_adoption) is not bool:
+        raise TypeError(
+            "allow_active_standards_mismatch_for_adoption must be boolean")
+    if (allow_active_standards_mismatch_for_adoption and
+            not allow_invalid_current_profile_for_corrective_adoption):
+        raise ValueError(
+            "active Standards mismatch escape is restricted to the same "
+            "persisted before-image path as corrective Standards adoption")
+    if (allow_invalid_current_profile_for_corrective_adoption and
+            (state_overrides is not None or extra_receipts is not None)):
+        raise ValueError(
+            "corrective Profile escape applies only to persisted current "
+            "state, never proposed state or pending receipts")
+    if (authorized_profile_view is not None and
+            not isinstance(authorized_profile_view, dict)):
+        raise TypeError(
+            "authorized_profile_view must be a mapping returned by "
+            "profile_load_authorized_view")
+    if (authorized_active_standards_view is not None and
+            not isinstance(authorized_active_standards_view, dict)):
+        raise TypeError(
+            "authorized_active_standards_view must be a mapping returned by "
+            "active_standards_authorized_view")
+    if (allow_invalid_current_profile_for_corrective_adoption and
+            authorized_profile_view is not None):
+        raise ValueError(
+            "corrective Profile escape cannot consume an authorized Profile "
+            "view")
+    if (allow_active_standards_mismatch_for_adoption and
+            (state_overrides is not None or extra_receipts is not None or
+             authorized_profile_view is not None or
+             authorized_active_standards_view is not None)):
+        raise ValueError(
+            "active Standards mismatch escape cannot validate proposed state, "
+            "pending receipts, or an injected after-image Profile view")
     root = os.path.realpath(os.path.abspath(root))
     errors = []
     writer_locks = _writer_locks(root, errors)
@@ -8574,9 +9529,48 @@ def validate_runtime(root, allowed_open_delta=None,
             errors.append("%s differs across Queue/Coverage/Progress: %r / %r / %r" %
                           (key, qvalue, cvalue, pvalue))
 
+    active_standards_view = None
+    if not allow_active_standards_mismatch_for_adoption:
+        if authorized_active_standards_view is None:
+            active_standards_view, active_errors = \
+                active_standards_authorized_view(
+                    root, queue.get("standards_version"),
+                    queue.get("selected_profile_manifest"))
+        else:
+            active_standards_view = authorized_active_standards_view
+            active_errors = []
+            for field, expected in (
+                    ("standards_version", queue.get("standards_version")),
+                    ("selected_profile_manifest",
+                     queue.get("selected_profile_manifest"))):
+                if active_standards_view.get(field) != expected:
+                    active_errors.append(
+                        "authorized active Standards view %s=%r, expected "
+                        "runtime %r" % (
+                            field, active_standards_view.get(field), expected))
+            if not active_errors:
+                active_errors.extend(active_standards_view_currency_errors(
+                    root, active_standards_view))
+        errors.extend(active_errors)
+
     profile = queue.get("selected_profile_manifest")
+    profile_view = None
     if _nonempty_string(profile):
-        errors.extend(selected_profile_manifest_errors(root, profile))
+        if allow_invalid_current_profile_for_corrective_adoption:
+            errors.extend(selected_profile_manifest_errors(root, profile))
+        elif authorized_profile_view is not None:
+            profile_errors = _authorized_profile_view_errors(
+                root, profile, authorized_profile_view)
+            errors.extend(profile_errors)
+            if not profile_errors:
+                profile_view = authorized_profile_view
+        else:
+            profile_view, profile_errors = profile_load_authorized_view(
+                root, profile)
+            errors.extend(profile_errors)
+    elif authorized_profile_view is not None:
+        errors.append("authorized Profile view cannot be injected when Queue "
+                      "selected_profile_manifest is uninstantiated")
 
     for key in ("queue_revision", "state_revision"):
         value = queue.get(key)
@@ -9051,7 +10045,18 @@ def validate_runtime(root, allowed_open_delta=None,
     # K13/10 admission condition 2.  Derived once per run and only for the
     # queued items whose activation the condition governs.
     registered_hub_paths, hub_derivation_errors = profile_hub_paths(
-        root, queue.get("selected_profile_manifest"))
+        root, queue.get("selected_profile_manifest"),
+        authorized_view=profile_view, evaluate_if_missing=False,
+        allow_unadmitted_profile=
+            allow_invalid_current_profile_for_corrective_adoption)
+    if profile_view is not None and hub_derivation_errors:
+        # A successfully authorized view becoming unreadable or stale is a
+        # runtime invariant failure even when no queued concurrent batch needs
+        # hub classification today.  Readiness reasons below remain useful to
+        # the operator, but they cannot be the only place this A/B-revision
+        # violation is visible.
+        errors.extend("selected Profile authorized view: %s" % error
+                      for error in hub_derivation_errors)
     hub_page_cache = {}
     hub_admission = {}
     structural_admission_defects = []
@@ -9213,6 +10218,15 @@ def validate_runtime(root, allowed_open_delta=None,
         "current": current_applied,
         "stale": stale_delta_apply_receipts,
     }
+    if profile_view is not None:
+        final_profile_error = _profile_view_snapshot_error(
+            root, profile_view, "after runtime validation")
+        if final_profile_error:
+            errors.append("selected Profile authorized view: %s" %
+                          final_profile_error)
+    if active_standards_view is not None:
+        errors.extend(active_standards_view_currency_errors(
+            root, active_standards_view))
     return {
         "root": root, "errors": errors, "ready": ready, "blocked": blocked,
         "hub_page_admission": hub_admission,
@@ -9237,6 +10251,8 @@ def validate_runtime(root, allowed_open_delta=None,
             _pending_cross_ledger_amendments(progress),
         "maintenance_candidate_context": maintenance_candidate_context,
         "task_runtime": task_runtime,
+        "_active_standards_authorized_view": active_standards_view,
+        "_profile_authorized_view": profile_view,
     }
 
 
@@ -10054,6 +11070,48 @@ def _print_resume_status(result, errors):
     print("recommended_action=%s" % _resume_recommendation(result, errors))
 
 
+def required_queue_completion_errors(result):
+    """Return the canonical build-completion errors for one runtime view.
+
+    ``result`` must be the already-authorized result of ``validate_runtime``.
+    This predicate deliberately performs no filesystem reads and never
+    re-runs Profile admission, so callers such as Terminal Proof can consume
+    exactly the same runtime observation as the surrounding transaction.
+    """
+    errors = list(result.get("errors") or [])
+    if errors:
+        return errors
+
+    writer_locks = result.get("writer_locks") or []
+    if writer_locks:
+        lock_paths = ", ".join(
+            lock.get("path", "<unknown>")
+            for lock in writer_locks
+            if isinstance(lock, dict)
+        )
+        errors.append(
+            "runtime state has active or interrupted writer lock(s): %s" %
+            (lock_paths or "<unknown>")
+        )
+        return errors
+
+    contract = result.get("progress", {}).get("contract") or {}
+    if contract.get("completion_semantics") != "build":
+        errors.append(
+            "--require-complete is the build completion gate; maintenance "
+            "tasks must use --require-maintenance-complete"
+        )
+        return errors
+
+    queue_items = result.get("queue", {}).get("required_queue") or []
+    if not queue_items:
+        errors.append("an empty Queue cannot prove completion")
+    elif result.get("remaining") != 0:
+        errors.append("remaining_required_work_units=%s, expected 0" %
+                      result.get("remaining"))
+    return errors
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Validate canonical Required Queue state")
     parser.add_argument("root", help="adopting repository root")
@@ -10110,10 +11168,19 @@ def main(argv=None):
                                for lock in writer_locks)
         message = ("runtime state has active or interrupted writer lock(s): %s" %
                    lock_paths)
-        if args.require_complete or args.require_maintenance_complete:
+        if args.require_complete:
+            # The shared build-completion predicate below owns this error so
+            # in-process consumers and the CLI make the same decision.
+            pass
+        elif args.require_maintenance_complete:
             errors.append(message)
         else:
             candidates.append(message)
+
+    if args.require_complete:
+        for completion_error in required_queue_completion_errors(result):
+            if completion_error not in errors:
+                errors.append(completion_error)
 
     if args.resume_status:
         close_recovery = _batch_close_recovery_inventory(result)
@@ -10191,19 +11258,6 @@ def main(argv=None):
             if reasons and not errors:
                 candidates.append("%s is not executable: %s" %
                                   (args.require_ready, "; ".join(reasons)))
-    elif not errors and args.require_complete:
-        contract = result.get("progress", {}).get("contract") or {}
-        if contract.get("completion_semantics") != "build":
-            errors.append(
-                "--require-complete is the build completion gate; maintenance "
-                "tasks must use --require-maintenance-complete"
-            )
-        queue_items = result.get("queue", {}).get("required_queue") or []
-        if not errors and not queue_items:
-            errors.append("an empty Queue cannot prove completion")
-        elif not errors and result["remaining"] != 0:
-            errors.append("remaining_required_work_units=%d, expected 0" %
-                          result["remaining"])
     elif not errors and args.require_maintenance_complete:
         maintenance_errors, maintenance_context = \
             _maintenance_completion_gate_errors(

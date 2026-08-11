@@ -10,9 +10,10 @@ cp -R profiles/_template profiles/my-profile
 python3 Tools/check_profile.py profiles/my-profile
 ```
 
-Profile setup is currently manual and file-based. `check_profile.py` validates
-a filled copy but does not ask questions, generate domain decisions, author the
-profile, approve it, or select it for use.
+Profile setup is currently manual and file-based. `check_profile.py` is the
+canonical producer of the `profile-load` Gate: it validates a filled copy and
+derives its Profile dependency closure, but does not ask questions, generate
+domain decisions, author the profile, approve it, or select it for use.
 
 Use these declarations consistently:
 
@@ -77,6 +78,32 @@ ordinary revision rather than a migration campaign.
 
 The effective standard is `kernel + one selected profile`. The exact manifest path recorded as `selected_profile_manifest` in the active Standards state is the sole selection; a directory's existence, its `profile_id`, a generated vocabulary header, or discovery order does not select it. Multiple filled profiles may coexist, but exactly one is active. After filling and checking a copied profile, adopt it through R09 governance before content work; changing the active selection is a Standards revision and bumps `standards_version`. The kernel references stable slot names, and that manifest binds them to concrete files. A task that needs an unresolved slot must stop rather than claim the composed standard is loaded.
 
+Loadability is a transitive package property, not only a manifest check. The
+`profile-load` Gate derives one typed dependency closure from the exact
+manifest: the manifest and thirteen file-bound slots, every predicate-owner path
+and optional heading in `Audit Dimension Registry`, and every explicit
+`--config` target in the required K12/09 residual-scan command. Every
+manifest slot uses one exact canonical Profile-relative path; its typed edge
+is normalized to the canonical repository-relative path. Transitive
+Profile-owned references use canonical repository-relative spelling. Every
+edge resolves as a safe, singly-linked, non-symlinked strict-UTF-8 file inside
+that same Profile directory, and no closure member may retain the unfilled
+sentinel regardless of filename suffix. `inline`, `./`, `..`, backslashes,
+case or Unicode aliases, extension guessing, another Profile, a repository-root
+fallback, or an absolute path is not part of the package and fails loading
+even when the target bytes exist. A predicate-owner fragment must identify
+exactly one Markdown heading.
+
+The closure is derived in memory and has no second authored manifest. A
+persistent verifier under `Tools/` is governed executable code, not a
+Profile-owned dependency; corpus pages and the externally bound Corpus
+Planning artifacts keep their own resolution contracts. Profile dependency
+members likewise do not enter a task's `selected_read_sets` or
+`loaded_module_paths`. Batch close consumes the same resolved Profile contract
+before executing its residual scan: `profile-load` proves package authority
+and resolvability, while `registered-residual-content` proves what the admitted
+scan found in corpus bytes. Neither result substitutes for the other.
+
 The interface below defines **13 file-bound slots** — each an H2 heading ending in ` Slot`, each bound to one file by the manifest — plus one manifest-resident `Execution Default Overrides Contract`, which is a declaration table inside `profile.md` and never a bound file. A filled profile therefore has 14 manifest sections but only 13 slot bindings; `check_profile.py` reports `slots=13` and checks the overrides table separately.
 
 Kernel Runtime Cards belong to `kernel/`. Profiles share the kernel route registry; they do not mirror kernel routes as profile slots, and each task loads only the applicable routes. R11 reads the existing `Profile Scope` together with task-time contract and ledger state. R12 reads existing judgment items, scans, and gates; an ordinary targeted audit needs no profile registration. A profile may only add namespaced supplemental routes or gates through `Routing And Gate Registry`; it cannot replace, shadow, or disable a kernel route or Card.
@@ -131,7 +158,7 @@ Capability Scale rows carry an explicit integer `Rank`, contiguous from `0` and 
 
 ## Audit Dimension Registry Slot
 
-**Required file.** Register every profile-owned predicate consumed by audit as one judgment item with an item ID, receipt dimension, audit layer, audit object, evidence role, and single predicate owner. Start with Foundation Depth and every acceptance item referenced by a configured scan, specialized audit invariant, or gate. One item is one condition that can independently pass or fail; conditions that always share one verdict and owner remain one item. Point to the predicate owner rather than copying its rule. Descriptive policy, dispatch maps, and staleness triggers are not judgment items unless a gate or receipt consumes their own verdict. An extension dimension supplies only an ID, its target list(s), and its meaning; pass/fail logic remains in judgment items. Registrations append to kernel dimensions and cannot redefine them or duplicate another predicate owner.
+**Required file.** Register every profile-owned predicate consumed by audit as one judgment item with an item ID, receipt dimension, audit layer, audit object, evidence role, and single predicate owner. Start with Foundation Depth and every acceptance item referenced by a configured scan, specialized audit invariant, or gate. One item is one condition that can independently pass or fail; conditions that always share one verdict and owner remain one item. Point to the predicate owner rather than copying its rule. Every owner path is a Profile dependency and therefore remains inside this Profile; an optional `#heading` must resolve exactly once in the named Markdown file. Descriptive policy, dispatch maps, and staleness triggers are not judgment items unless a gate or receipt consumes their own verdict. An extension dimension supplies only an ID, its target list(s), and its meaning; pass/fail logic remains in judgment items. Registrations append to kernel dimensions and cannot redefine them or duplicate another predicate owner.
 
 The `Extension Dimensions` block is machine-enumerable even when no extension exists. It contains exactly one bare `- Registration: None` or `- Registration: Configured` declaration and exactly one table headed `Dimension ID`, `Target list(s): review, receipt, or review + receipt`, and `Meaning`. `None` carries no data row; `Configured` carries at least one complete row. A Dimension ID is unique `lower_snake_case`, begins with a letter, and cannot collide with a kernel base dimension. The target list is exactly `review`, `receipt`, or `review + receipt`. Profile validation rejects an absent, duplicated, contradictory, or unreadable block; Terminal Proof consumes the same registration and accounts for every dimension whose target list includes `receipt`.
 
@@ -139,7 +166,7 @@ The evidence role is exactly one of `emits`, `consumes`, or `triggers`, and the 
 
 ## Registered Scan Registry Slot
 
-**Required.** Bind a deterministic residual-content verifier to `K12/09 item 6`, including its scope, verifier, candidate boundary, and an Acceptance Judgment Item ID from Audit Dimension Registry. It must satisfy the kernel single-vault-wide-run and ≤60-second limit. The registration also supplies executable positive controls for every required structure form the verifier claims to detect, and the verifier must prove that each control classifies as a candidate through its production classifier. The command MUST implement the shared `--positive-controls-only` invocation without changing its other arguments: batch close runs that mode first and the registered production command second, then requires their final summaries to match on the K12/09 binding fields. The control-input representation remains verifier-specific and need not use headings. The profile owns the registration, machine configuration, predicate, positive-control declaration, and judgment binding; a persistent executable shipped by Cambium belongs to `Tools/`, not inside the profile. When exact frontmatter and heading matching is sufficient, use `Tools/check_residual_content.py` with a profile-owned copy of [the residual scan config template](../Tools/schemas/residual_scan_config.template.yaml); its `mandated_headings` field is that verifier's concrete positive-control list. Additional profile candidate scans are optional. Review judges candidates but cannot replace execution of the required scan.
+**Required.** Bind a deterministic residual-content verifier to `K12/09 item 6`, including its scope, verifier, candidate boundary, and an Acceptance Judgment Item ID from Audit Dimension Registry. It must satisfy the kernel single-vault-wide-run and ≤60-second limit. The registration also supplies executable positive controls for every required structure form the verifier claims to detect, and the verifier must prove that each control classifies as a candidate through its production classifier. The command MUST implement the shared `--positive-controls-only` invocation without changing its other arguments: batch close runs that mode first and the registered production command second, then requires their final summaries to match on the K12/09 binding fields. The control-input representation remains verifier-specific and need not use headings. The profile owns the registration, machine configuration, predicate, positive-control declaration, and judgment binding; an explicit `--config` target is therefore a Profile dependency and must resolve inside this Profile. A persistent executable shipped by Cambium belongs to `Tools/`, not inside the profile. When exact frontmatter and heading matching is sufficient, use `Tools/check_residual_content.py` with a profile-owned copy of [the residual scan config template](../Tools/schemas/residual_scan_config.template.yaml); its `mandated_headings` field is that verifier's concrete positive-control list. A custom verifier that declares no `--config` remains legal; the checker does not guess that arbitrary flags such as `--rules` name Profile dependencies. Additional profile candidate scans are optional. Review judges candidates but cannot replace execution of the required scan.
 
 ## Routing And Gate Registry Slot
 

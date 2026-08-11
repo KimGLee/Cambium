@@ -1,4 +1,6 @@
 import json
+from contextlib import redirect_stdout
+import io
 import os
 from pathlib import Path
 import subprocess
@@ -10,10 +12,12 @@ from unittest import mock
 
 
 TOOLS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import init_state
 import kblib
+from profile_fixture import install_loadable_profile
 
 
 class ReceiptSafetyTests(unittest.TestCase):
@@ -362,11 +366,7 @@ class InitPublicationTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name) / "repo"
-        (self.root / "profiles/sample").mkdir(parents=True)
-        (self.root / "profiles/sample/profile.md").write_text(
-            "# Profile\n\n## Profile Identity\n\n"
-            "- `profile_id`: `sample`\n", encoding="utf-8"
-        )
+        install_loadable_profile(self.root, profile_id="sample")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -383,14 +383,47 @@ class InitPublicationTests(unittest.TestCase):
             "--apply",
         ]
 
+    def run_main(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = init_state.main(self.command()[2:])
+        return code, output.getvalue()
+
+    def poison_profile_closure(self):
+        slots = self.root / "profiles/sample/slots.md"
+        owned = "profiles/sample/slots.md#Synthetic Predicate"
+        foreign = "profiles/foreign/slots.md#Synthetic Predicate"
+        text = slots.read_text(encoding="utf-8")
+        self.assertIn(owned, text)
+        slots.write_text(text.replace(owned, foreign, 1), encoding="utf-8")
+
     def write_overrides(self, rows):
         manifest = self.root / "profiles/sample/profile.md"
+        text = manifest.read_text(encoding="utf-8")
+        head, marker, _tail = text.partition(
+            "## Execution Default Overrides\n")
+        self.assertTrue(marker)
         manifest.write_text(
-            "# Profile\n\n## Profile Identity\n\n"
-            "- `profile_id`: `sample`\n\n"
-            "## Execution Default Overrides\n\n"
+            head + marker + "\n"
             "| Override item ID from the registry | Non-default profile value |\n"
             "|---|---|\n" + rows, encoding="utf-8")
+
+    def test_requested_runtime_identity_must_match_active_standards(self):
+        cases = (
+            ("--standards-version", "9.9.9", "standards_version"),
+            ("--profile-manifest", "profiles/other/profile.md",
+             "selected_profile_manifest"),
+        )
+        for option, replacement, expected in cases:
+            with self.subTest(option=option):
+                command = self.command()
+                command[command.index(option) + 1] = replacement
+                completed = subprocess.run(
+                    command, text=True, stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT, check=False)
+                self.assertEqual(1, completed.returncode, completed.stdout)
+                self.assertIn(expected, completed.stdout)
+                self.assertFalse((self.root / ".cambium").exists())
 
     def test_a_manifest_override_row_is_read_and_frozen(self):
         self.write_overrides("| `concurrency_cap` | `8` |\n")
@@ -400,20 +433,44 @@ class InitPublicationTests(unittest.TestCase):
             init_state.resolve_concurrency_cap(
                 str(self.root), "profiles/sample/profile.md", None))
 
+    def test_profile_configuration_uses_one_snapshot_bound_override(self):
+        self.write_overrides("| `concurrency_cap` | `8` |\n")
+        manifest = "profiles/sample/profile.md"
+        view, errors = init_state.check_queue.profile_load_authorized_view(
+            self.root, manifest)
+        self.assertEqual([], errors)
+        self.write_overrides("| `concurrency_cap` | `9` |\n")
+
+        # Model A -> B -> A around live currency observations.  The cap must
+        # still come from evaluation A, never a second manifest open at B.
+        with mock.patch.object(
+                init_state.check_queue, "profile_load_authorized_view",
+                return_value=(view, [])), mock.patch.object(
+                    init_state.check_queue.kblib,
+                    "repository_tree_sha256",
+                    return_value=view["profile_snapshot_sha256"]):
+            evidence, cap, source = init_state._profile_configuration(
+                self.root, manifest, None, phase="test")
+
+        self.assertEqual(8, cap)
+        self.assertEqual("profile-manifest", source)
+        self.assertEqual(view["profile_load_inputs_sha256"],
+                         evidence["profile_load_inputs_sha256"])
+
     def test_a_malformed_override_row_never_resolves_to_the_kernel_default(self):
         """A dropped row would freeze 3 while the manifest declares 8."""
         self.write_overrides(
             "| `concurrency_cap` | `8` | governance note |\n")
 
-        with self.assertRaises(kblib.ProfileOverrideRowError) as caught:
+        with self.assertRaises(ValueError) as caught:
             init_state.resolve_concurrency_cap(
                 str(self.root), "profiles/sample/profile.md", None)
-        self.assertIn("3 cell(s)", str(caught.exception))
+        self.assertIn("found 3", str(caught.exception))
 
     def test_an_itemless_override_row_fails_closed(self):
         self.write_overrides("| | `8` |\n")
 
-        with self.assertRaises(kblib.ProfileOverrideRowError):
+        with self.assertRaisesRegex(ValueError, "override-item-unknown"):
             init_state.resolve_concurrency_cap(
                 str(self.root), "profiles/sample/profile.md", None)
 
@@ -426,7 +483,8 @@ class InitPublicationTests(unittest.TestCase):
             stderr=subprocess.STDOUT, check=False)
 
         self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("cannot resolve concurrency_cap", completed.stdout)
+        self.assertIn("selected Profile failed profile-load", completed.stdout)
+        self.assertIn("override-row-shape", completed.stdout)
         self.assertNotIn("concurrency_cap=3", completed.stdout)
         self.assertFalse((self.root / ".cambium").exists())
 
@@ -457,6 +515,105 @@ class InitPublicationTests(unittest.TestCase):
         coverage = kblib.load_yaml_file(runtime / "state/coverage_ledger.yaml")
         self.assertEqual([], coverage["batch_specs"])
         self.assertEqual([], list(self.root.glob(".cambium-init-*")))
+
+    def test_profile_drift_before_publication_leaves_no_runtime(self):
+        real_publish = init_state.publish_runtime
+
+        def poison_before_publish(*args, **kwargs):
+            self.poison_profile_closure()
+            return real_publish(*args, **kwargs)
+
+        with mock.patch.object(
+                init_state, "publish_runtime",
+                side_effect=poison_before_publish):
+            code, output = self.run_main()
+
+        self.assertEqual(1, code, output)
+        self.assertIn("pre-publication selected Profile failed", output)
+        self.assertFalse((self.root / ".cambium").exists())
+        self.assertEqual([], list(self.root.glob(".cambium-init-*")))
+
+    def test_profile_drift_after_publication_is_atomically_rolled_back(self):
+        real_rename = init_state._rename_noreplace
+        calls = {"count": 0}
+
+        def poison_after_publication(source, destination):
+            real_rename(source, destination)
+            calls["count"] += 1
+            if calls["count"] == 1:
+                self.poison_profile_closure()
+
+        with mock.patch.object(
+                init_state, "_rename_noreplace",
+                side_effect=poison_after_publication):
+            code, output = self.run_main()
+
+        self.assertEqual(1, code, output)
+        self.assertEqual(2, calls["count"])
+        self.assertIn("post-publication selected Profile failed", output)
+        self.assertFalse((self.root / ".cambium").exists())
+        self.assertEqual([], list(self.root.glob(".cambium-init-*")))
+
+    def test_failed_postpublication_rollback_leaves_recovery_lock(self):
+        real_rename = init_state._rename_noreplace
+        calls = {"count": 0}
+
+        def fail_rollback_after_profile_drift(source, destination):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                real_rename(source, destination)
+                self.poison_profile_closure()
+                return
+            raise OSError("injected rollback rename failure")
+
+        with mock.patch.object(
+                init_state, "_rename_noreplace",
+                side_effect=fail_rollback_after_profile_drift):
+            code, output = self.run_main()
+
+        self.assertEqual(1, code, output)
+        self.assertIn("rollback is incomplete", output)
+        lock = self.root / ".cambium/tmp/state-writer.lock"
+        self.assertTrue(lock.is_dir())
+        owner = json.loads((lock / "owner.json").read_text(encoding="utf-8"))
+        self.assertEqual("init_state", owner["operation"]["tool"])
+        self.assertEqual("initialize-runtime", owner["operation"]["action"])
+        self.assertEqual([], list(self.root.glob(".cambium-init-*")))
+
+    def test_changed_initialization_lock_owner_is_never_released(self):
+        documents = {
+            "coverage_ledger.yaml": "schema_version: 1\n",
+            "required_queue.yaml": "schema_version: 1\n",
+            "progress_ledger.yaml": "schema_version: 1\n",
+        }
+        operation = {
+            "tool": init_state.TOOL,
+            "tool_version": init_state.TOOL_VERSION,
+            "action": "initialize-runtime",
+            "task_id": "new-task",
+        }
+
+        def replace_owner_operation():
+            owner_path = (
+                self.root / ".cambium/tmp/state-writer.lock/owner.json")
+            owner = json.loads(owner_path.read_text(encoding="utf-8"))
+            owner["operation"]["task_id"] = "different-task"
+            owner_path.write_text(
+                json.dumps(owner, sort_keys=True) + "\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(
+                ValueError, "lock ownership changed"):
+            init_state.publish_runtime(
+                str(self.root), documents,
+                pre_publish_validator=lambda: None,
+                post_publish_validator=replace_owner_operation,
+                lock_operation=operation)
+
+        lock = self.root / ".cambium/tmp/state-writer.lock"
+        self.assertTrue(lock.is_dir())
+        persisted = json.loads(
+            (lock / "owner.json").read_text(encoding="utf-8"))
+        self.assertEqual("different-task", persisted["operation"]["task_id"])
 
     def test_staging_write_failure_leaves_no_runtime_or_staging_tree(self):
         arguments = SimpleNamespace(

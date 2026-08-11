@@ -438,6 +438,13 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
         for error in current["errors"]:
             print("[FAIL] current runtime state: %s" % error)
         return 1
+    try:
+        authority = check_queue.runtime_authority_context(current)
+        authority_kwargs = \
+            check_queue.runtime_authority_validation_kwargs(authority)
+    except (TypeError, ValueError) as exc:
+        print("[FAIL] current runtime authority: %s" % exc)
+        return 1
     if args.apply:
         barrier = check_queue.delta_apply_write_barrier(
             current, TOOL, "apply", batch)
@@ -562,6 +569,7 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
         "receipt_id": receipt["receipt_id"],
         "receipt_path": receipt_relative,
     }
+    lock_operation.update(check_queue.runtime_authority_lock_fields(authority))
     try:
         with kblib.runtime_write_lock(root, owner_metadata=lock_operation) as lock:
             with kblib.no_authoritative_write_guard(lock):
@@ -569,10 +577,13 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
                 # but does not treat it as a state error; fingerprints provide
                 # CAS.  Any rejection in this region is a proven no-write
                 # outcome and must not manufacture an interrupted-write lock.
-                locked = check_queue.validate_runtime(root)
+                locked = check_queue.validate_runtime(
+                    root, **authority_kwargs)
                 if locked["errors"]:
                     raise ValueError("runtime changed before write: %s" %
                                      "; ".join(locked["errors"]))
+                check_queue.require_runtime_authority_current(
+                    root, authority, "runtime authority changed under lock")
                 barrier = check_queue.delta_apply_write_barrier(
                     locked, TOOL, "apply", batch)
                 if barrier:
@@ -629,18 +640,30 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
             wrote_archive = False
             try:
                 if not archive_exists:
+                    check_queue.require_runtime_authority_current(
+                        root, authority,
+                        "runtime authority changed before Coverage archive")
                     os.makedirs(os.path.dirname(archive_path), exist_ok=True)
                     kblib.atomic_write_text(
                         archive_path, old_text,
                         validator=kblib.parse_yaml_subset,
                     )
                     wrote_archive = True
+                    check_queue.require_runtime_authority_current(
+                        root, authority,
+                        "runtime authority changed during Coverage archive")
+                check_queue.require_runtime_authority_current(
+                    root, authority,
+                    "runtime authority changed before Coverage write")
                 kblib.atomic_write_text(
                     ledger_path, new_text, validator=kblib.parse_yaml_subset
                 )
                 wrote_coverage = True
+                check_queue.require_runtime_authority_current(
+                    root, authority,
+                    "runtime authority changed during Coverage write")
                 post = check_queue.validate_runtime(
-                    root, extra_receipts=[receipt]
+                    root, extra_receipts=[receipt], **authority_kwargs,
                 )
                 if post["errors"]:
                     raise ValueError("post-write Queue reconciliation failed: %s" %
@@ -651,10 +674,21 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
                     raise ValueError("Progress Ledger changed during Coverage write")
                 if kblib.sha256_file(delta_path) != planned_delta_sha:
                     raise ValueError("delta changed during Coverage write")
+                check_queue.require_runtime_authority_current(
+                    root, authority,
+                    "runtime authority changed before delta receipt")
                 receipt_attempted = True
                 kblib.write_receipts(
                     receipt_path, [receipt], exclusive=True
                 )
+                check_queue.require_runtime_authority_current(
+                    root, authority,
+                    "runtime authority changed during delta receipt")
+                persisted = check_queue.validate_runtime(
+                    root, **authority_kwargs)
+                if persisted["errors"]:
+                    raise ValueError("persisted runtime state: %s" %
+                                     "; ".join(persisted["errors"]))
             except Exception as write_error:
                 rollback_failures = []
                 if receipt_attempted:
@@ -820,18 +854,6 @@ def main(argv=None):
             print("[FAIL] %s" % error)
         print("apply_delta: entire operation rejected; no files were written")
         return 1
-
-    if args.root is not None and args.apply:
-        preflight = check_queue.validate_runtime(args.root)
-        if preflight["errors"]:
-            for error in preflight["errors"]:
-                print("[FAIL] current runtime state: %s" % error)
-            return 1
-        barrier = check_queue.delta_apply_write_barrier(
-            preflight, TOOL, "apply", batch)
-        if barrier:
-            print("[FAIL] %s" % barrier)
-            return 1
 
     new_text, planned, rejected, unknown_keys = _build_plan(
         lines, delta, force=args.force

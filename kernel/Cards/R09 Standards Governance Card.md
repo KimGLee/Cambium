@@ -9,6 +9,7 @@ source_files:
   - kernel/K00 Standards Control/03 Standards Governance.md
   - kernel/K00 Standards Control/11 Standards Map and Rule Registry.md
   - kernel/K00 Standards Control/12 Control Registry.md
+  - kernel/K00 Standards Control/17 Profile Dependency Closure.md
   - kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis.md
   - kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching.md
   - kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning.md
@@ -21,7 +22,7 @@ source_files:
   - kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'bff81f97cb7e'
+source_hash: 'fe7cf26c88c8'
 ---
 # R09 Standards Governance Card
 
@@ -35,16 +36,17 @@ Modify kernel rules, Read Sets, Cards, versions, directories, ownership, tooling
 
 - [ ] Obtain explicit user authorization for the governance change.
 - [ ] Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]], then read [[kernel/Read Sets/R09 Standards Governance Read Set|R09 Read Set]] and its Start list in full.
-- [ ] Choose the branch: for initial adoption, freeze the four K00/03 placeholders and upstream provenance, then load the checked candidate profile; for a later revision, freeze the active Standards version and selected profile manifest. In both branches freeze affected modules, incoming links, changed predicates, active-task impact, and rollback/conservation boundary.
+- [ ] Choose the branch: for initial adoption, freeze the four K00/03 placeholders and upstream provenance, then admit the candidate through `profile-load`; for a later revision, freeze the active Standards version and selected profile manifest, and separately admit the after Profile through the same Gate. A broken current Profile is impact evidence, not a prerequisite that can deadlock correction. In both branches freeze affected modules, incoming links, changed predicates, active-task impact, and rollback/conservation boundary.
 - [ ] Identify the single canonical owner for every rule being changed and the existing control that is superseded.
 
 ## During
 
-- Record the affected Standards and reason, update version/state, routing, Change Summary, and changed predicates. Initial adoption instantiates K00/03; later changes record old/new manifests. Both recompose vocabulary and stamp Cards. For each affected task, declare the Contract-version edge, ensure Work Specs are compatible, and bind its K12/10 YAML to approved K00/03 bytes plus deterministic Kernel/Profile snapshots; never write its Ledgers or create a second revision/prose copy.
+- Record the affected Standards and reason, update version/state, routing, Change Summary, and changed predicates. Initial adoption instantiates K00/03; later changes record old/new manifests. Both recompose vocabulary and stamp Cards. For each affected task, declare the Contract-version edge, ensure Work Specs are compatible, and bind its K12/10 YAML to approved K00/03 bytes plus deterministic Kernel/Profile snapshots and the after Profile's typed-contract fingerprint. Keep that derived closure outside Read Set load lists; never write task Ledgers or create a second revision/prose copy.
 - For a structural migration, map every original H2 block to exactly one new owner. Never use splitting as reduction, summary, or silent deletion.
 - Keep the Overview, Standard Module MOCs, Read Sets, rule registry, control registry, links, and module paths synchronized.
 - For a new or re-scoped check, register its receipt dimension, audit layer, object, evidence role, and acceptance owner before closure.
 - Freeze the inputs needed for affected tasks to re-resolve their load set. K12/10 decides targeted invalidated evidence and gate reruns; R07/K13/15 executes the runtime transaction. R09 does not copy or reimplement either contract.
+- Use the registered `profile-load` producer as the sole linker for manifest, slot, scan-config, verifier, and predicate-owner authority. Do not replace it with a copy-time rewrite checklist or a consumer-specific Markdown parser.
 - Preserve the boundary between current authorization and historical verification: a Standards change may invalidate a Receipt for new execution without erasing the completed event it historically proves, and history must never be used as a fallback authorization source.
 - Regenerate affected kernel Cards from their source owners, then stamp hashes/version. Do not edit only a Card.
 
@@ -55,6 +57,7 @@ Modify kernel rules, Read Sets, Cards, versions, directories, ownership, tooling
 - [ ] The Revision Write-back Checklist is complete for every affected snapshot location.
 - [ ] `python3 Tools/stamp_cards.py . --check` exits 0; missing or stale Cards, an exceeded registered growth cap, and a K00/12 Stable Gate ID Registry row its producer contradicts each block governance close.
 - [ ] Every affected existing task has one validated agent-readable adoption plan or an explicit blocker; no persistent prose adoption report or direct Ledger edit was created.
+- [ ] Every candidate/after Profile has a passing `profile-load` snapshot and contract fingerprint, and the adoption writer revalidates that exact after-image inside its transaction.
 - [ ] Applicable rendering evidence and the governance Completion Gate pass.
 
 ## Read Back When

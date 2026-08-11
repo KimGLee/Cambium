@@ -22,11 +22,11 @@ Method:
   slot -- it is a declaration table, checked separately below.
 - Manifest: `<profile_dir>/profile.md`. Its `## Implemented Slots` section must
   bind every interface slot, as `- `Slot Name`: <binding>`.
-- A binding is resolved in this order: `[[vault/relative/path|alias]]` wiki
-  link -> markdown link `[text](path)` -> a binding whose text says the slot is
-  declared `inline` (then profile.md must carry an H2 section whose heading
-  starts with the slot name) -> a single inline-code span that looks like a
-  path. Anything else is unrecognized.
+- Each of the 13 slots is file-bound. A binding may spell its exact
+  profile-relative path in a wiki link, Markdown link, or one inline-code span;
+  it has no extension guessing, path normalization, case alias,
+  repository-root fallback, or inline-manifest alternative. Execution Default
+  Overrides is the sole manifest-resident contract.
 - Execution Default Overrides: the table contains only explicit overrides;
   sparse-default semantics are owned by the profile interface. Duplicate,
   unknown, default-restating, and constitutional rows fail, and so does a row
@@ -38,6 +38,12 @@ Method:
   applicability, three artifact bindings, ordered capability scale, and pass
   authority are validated directly; Markdown declaration heuristics do not
   define this slot.
+- Profile dependency closure: the Audit Dimension and Registered Scan
+  registries are compiled through ``profile_contract`` into one typed,
+  fail-closed graph.  Predicate owners and every explicit verifier
+  ``--config`` stay inside the selected Profile; optional owner headings must
+  resolve exactly once.  The passing Gate receipt binds both the complete
+  Profile tree and the typed edge graph.
 - Optional/conditional declarations: `Configured` must be backed by complete
   table rows; `None` and `Not applicable — <reason>` must not retain active
   rows. This makes one declaration control one block instead of relying on
@@ -48,9 +54,10 @@ Two independent incompleteness blocks, either of which fails the profile:
    profile directory;
 2. a `profile_id` that is missing or still one of the reserved placeholder
    values.
-Each block is cleared only by editing the file, so clearing both is the
-mechanical definition of "this profile has been filled in". None of them is
-evidence that the answers are *good*; content quality stays a human call.
+Each block is cleared only by editing the file.  Clearing them is necessary
+but no longer sufficient: the manifest, all slots, and the transitive Profile
+dependency closure must also resolve. None of these checks is evidence that
+the answers are *good*; content quality stays a human call.
 
 Result semantics: unbound slots, unresolved bindings, invalid override rows,
 and both incompleteness blocks are result=fail. A manifest binding
@@ -71,15 +78,67 @@ Usage: python3 check_profile.py <profile_dir> [--root VAULT_ROOT]
 """
 
 import argparse
+from collections.abc import Mapping
+import contextlib
+from dataclasses import dataclass
+import io
 import os
 import re
 import sys
+from typing import Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import profile_contract
 
 TOOL = "check_profile"
-TOOL_VERSION = "1.8.0"
+TOOL_VERSION = "1.9.0"
+GATE_ID = "profile-load"
+GATE_CHECK = "profile-check-summary"
+GATE_DIMENSION = "guidance_and_contract"
+
+# ``None`` has a public meaning for :func:`evaluate_profile_load`: omit Queue
+# identity from the in-memory receipts.  The CLI still needs its historical
+# behaviour of reading live identity from ``--root``, so an internal sentinel
+# distinguishes that default from an explicit identity-free evaluation.
+_LIVE_RUNTIME_RECEIPT_IDENTITY = object()
+
+
+@dataclass(frozen=True)
+class ProfileLoadEvaluation:
+    """One complete, in-memory evaluation of the ``profile-load`` Gate.
+
+    ``contract`` is exposed only when the same invocation emitted the passing
+    Gate summary.  Consumers therefore cannot accidentally authorize a partial
+    typed IR returned alongside fail/candidate findings.  ``findings`` contains
+    only non-pass receipts; the authoritative pass receipt, when present, is
+    available separately as ``summary_receipt``.
+    """
+
+    exit_code: int
+    findings: Tuple[dict, ...]
+    contract: Optional[profile_contract.ProfileContract]
+    profile_id: Optional[str]
+    profile_snapshot_sha256: Optional[str]
+    profile_contract_fingerprint: Optional[str]
+    execution_default_overrides: Tuple[Tuple[str, str], ...]
+    profile_snapshot: Optional[object]
+    profile_load_inputs_sha256: Optional[str]
+    summary_receipt: Optional[dict]
+    output: str
+
+    @property
+    def authorized(self):
+        return (
+            self.exit_code == 0 and
+            self.contract is not None and
+            self.profile_id is not None and
+            self.summary_receipt is not None and
+            self.profile_snapshot_sha256 is not None and
+            self.profile_contract_fingerprint is not None and
+            self.profile_load_inputs_sha256 is not None
+        )
+
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -119,28 +178,21 @@ STRUCTURE_REGISTRY_SLOT = "Structure Registry"
 METADATA_CONTRACT_SLOT = "Metadata Contract"
 
 AUDIT_DIMENSION_SLOT = "Audit Dimension Registry"
-AUDIT_DIMENSION_SECTION = "Extension Dimensions"
-AUDIT_DIMENSION_TABLE_HEADER = (
-    "Dimension ID",
-    "Target list(s): `review`, `receipt`, or `review + receipt`",
-    "Meaning",
-)
-AUDIT_DIMENSION_REGISTRATIONS = frozenset(("None", "Configured"))
-AUDIT_DIMENSION_TARGETS = {
-    "review": frozenset(("review",)),
-    "receipt": frozenset(("receipt",)),
-    "review + receipt": frozenset(("review", "receipt")),
-}
-AUDIT_DIMENSION_ID_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
-BASE_RECEIPT_DIMENSIONS = (
-    "structure_and_links",
-    "content_and_depth",
-    "formula_and_numeric",
-    "source_and_currentness",
-    "coverage_and_integration",
-    "rendering",
-    "guidance_and_contract",
-)
+
+
+def canonical_profile_load_inputs(root):
+    """Return immutable canonical producer inputs and their aggregate hash."""
+    snapshots = {}
+    for relative in (
+            DEFAULT_INTERFACE, DEFAULT_DEFAULTS,
+            DEFAULT_EXECUTION_DEFAULTS):
+        snapshots[relative] = kblib.repository_file_snapshot(
+            root, relative, singly_linked=True)
+    fingerprint = kblib.sha256_bytes(
+        "\0".join(
+            "%s\0%s" % (relative, snapshots[relative].sha256)
+            for relative in sorted(snapshots)))
+    return snapshots, fingerprint
 
 
 def _positive_integer_domain(value):
@@ -177,27 +229,8 @@ VALUE_DOMAINS = {
 
 
 def blank_fenced(text):
-    """Blank out fenced code blocks, keeping inline code and the line count.
-
-    kblib.strip_code also removes inline code, which this script must keep:
-    slot names and bindings live inside backticks.
-    """
-    out = []
-    fence = None
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        m = re.match(r"^(```+|~~~+)", stripped)
-        if fence is None and m:
-            fence = m.group(1)[0] * 3
-            out.append("")
-            continue
-        if fence is not None:
-            if m and stripped.startswith(fence):
-                fence = None
-            out.append("")
-            continue
-        out.append(line)
-    return "\n".join(out)
+    """Blank non-authoritative Markdown, retaining inline code and line count."""
+    return kblib.blank_markdown_authority(text)
 
 
 def h2_headings(text):
@@ -211,11 +244,11 @@ def section_lines(text, heading):
     out = []
     inside = False
     for line in lines:
-        m = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
-        if m:
-            if inside and len(m.group(1)) <= 2:
+        parsed = kblib.markdown_atx_heading(line)
+        if parsed is not None:
+            if inside and parsed[0] <= 2:
                 break
-            inside = (len(m.group(1)) == 2 and m.group(2).strip() == heading)
+            inside = (parsed[0] == 2 and parsed[1] == heading)
             continue
         if inside:
             out.append(line)
@@ -228,11 +261,11 @@ def h2_sections(text):
     current = None
     body = []
     for line in blank_fenced(text).splitlines():
-        m = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
-        if m and len(m.group(1)) <= 2:
+        parsed = kblib.markdown_atx_heading(line)
+        if parsed is not None and parsed[0] <= 2:
             if current is not None:
                 sections.append((current, body))
-            current = m.group(2).strip() if len(m.group(1)) == 2 else None
+            current = parsed[1] if parsed[0] == 2 else None
             body = []
             continue
         if current is not None:
@@ -243,7 +276,7 @@ def h2_sections(text):
 
 
 def read_text(path):
-    with open(path, encoding="utf-8", errors="replace") as handle:
+    with open(path, encoding="utf-8", errors="strict") as handle:
         return handle.read()
 
 
@@ -299,28 +332,27 @@ def markdown_table_data(lines):
     return tables
 
 
-def profile_declarations(profile_dir):
-    """Yield explicit Registration/Applicability declarations in Markdown."""
-    for dirpath, dirnames, filenames in os.walk(profile_dir):
-        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
-        for name in sorted(filenames):
-            if name.startswith(".") or not name.lower().endswith(".md"):
-                continue
-            full = os.path.join(dirpath, name)
-            rel = os.path.relpath(full, profile_dir).replace(os.sep, "/")
-            sections = h2_sections(read_text(full))
-            for heading, lines in sections:
-                for line in lines:
-                    match = DECLARATION_RE.match(line)
-                    if match:
-                        tables = markdown_table_data(lines)
-                        yield (
-                            rel,
-                            heading,
-                            match.group(1),
-                            match.group(2).strip(),
-                            tables,
-                        )
+def profile_declarations(profile_snapshot):
+    """Yield declarations from the same immutable bytes as profile-load."""
+    prefix = profile_snapshot.relative_directory.rstrip("/") + "/"
+    for repository_path, data in sorted(profile_snapshot.files.items()):
+        if (not repository_path.startswith(prefix) or
+                not repository_path.lower().endswith(".md")):
+            continue
+        rel = repository_path[len(prefix):]
+        sections = h2_sections(data.decode("utf-8"))
+        for heading, lines in sections:
+            for line in lines:
+                match = DECLARATION_RE.match(line)
+                if match:
+                    tables = markdown_table_data(lines)
+                    yield (
+                        rel,
+                        heading,
+                        match.group(1),
+                        match.group(2).strip(),
+                        tables,
+                    )
 
 
 def unbacktick(value):
@@ -329,154 +361,36 @@ def unbacktick(value):
     return m.group(1).strip() if m else value
 
 
-def parse_audit_dimension_registry(text):
-    """Parse the closed ``Extension Dimensions`` profile registration.
+def scan_sentinel(profile_snapshot, sentinel):
+    """Return marker locations from every regular Profile file.
 
-    Returns ``(registration, rows, errors)``. ``rows`` contains dictionaries
-    with ``id``, normalized ``targets``, and ``meaning``. ``errors`` contains
-    ``(check, details)`` pairs. Callers MUST treat any error as making the
-    complete registry unreadable; valid-looking rows from a partial parse are
-    diagnostic data, not authorization to consume a subset.
-
-    This is the one parser shared by profile admission and Terminal Proof. It
-    intentionally decides only the machine-readable envelope. Whether a
-    dimension is useful, or whether its meaning is true, remains review work.
+    The sentinel is ASCII text, so scanning bytes covers uncommon suffixes
+    and binary assets without pretending those assets are UTF-8 documents.
+    Known text suffixes are still decoded strictly; typed authority files with
+    other suffixes receive their strict-UTF-8 check from ``profile_contract``.
     """
-    errors = []
-    matching = [lines for heading, lines in h2_sections(text)
-                if heading == AUDIT_DIMENSION_SECTION]
-    if len(matching) != 1:
-        errors.append((
-            "audit-dimension-section-count",
-            "expected exactly one `## %s` section; found %d" %
-            (AUDIT_DIMENSION_SECTION, len(matching)),
-        ))
-        return None, (), tuple(errors)
-
-    lines = matching[0]
-    declarations = [match.group(2).strip()
-                    for match in (DECLARATION_RE.match(line)
-                                  for line in lines)
-                    if match and match.group(1) == "Registration"]
-    registration = declarations[0] if len(declarations) == 1 else None
-    if (len(declarations) != 1 or
-            registration not in AUDIT_DIMENSION_REGISTRATIONS):
-        errors.append((
-            "audit-dimension-registration",
-            "expected exactly one `- Registration:` declaration whose value "
-            "is `None` or `Configured`; found %r" % declarations,
-        ))
-
-    tables = markdown_table_data(lines)
-    if len(tables) != 1:
-        errors.append((
-            "audit-dimension-table-count",
-            "expected exactly one Markdown registration table; found %d" %
-            len(tables),
-        ))
-        return registration, (), tuple(errors)
-
-    header, data_rows = tables[0]
-    if tuple(header) != AUDIT_DIMENSION_TABLE_HEADER:
-        errors.append((
-            "audit-dimension-table-shape",
-            "registration table header must be exactly `%s`; found `%s`" %
-            (" | ".join(AUDIT_DIMENSION_TABLE_HEADER),
-             " | ".join(header)),
-        ))
-
-    if registration == "Configured" and not data_rows:
-        errors.append((
-            "audit-dimension-configured-empty",
-            "`Registration: Configured` requires at least one extension "
-            "dimension row",
-        ))
-    if registration == "None" and data_rows:
-        errors.append((
-            "audit-dimension-none-with-rows",
-            "`Registration: None` requires an empty registration table; "
-            "found %d row(s)" % len(data_rows),
-        ))
-
-    parsed = []
-    seen = set()
-    for row_number, cells in enumerate(data_rows, 1):
-        label = "registration row %d" % row_number
-        if len(cells) != len(AUDIT_DIMENSION_TABLE_HEADER) or any(
-                not cell.strip() for cell in cells):
-            errors.append((
-                "audit-dimension-row-shape",
-                "%s must have exactly three non-empty cells; found %d" %
-                (label, len(cells)),
-            ))
-            continue
-
-        dimension_id = unbacktick(cells[0])
-        if not AUDIT_DIMENSION_ID_RE.fullmatch(dimension_id):
-            errors.append((
-                "audit-dimension-id-invalid",
-                "%s has invalid Dimension ID %r; use lower_snake_case "
-                "starting with a letter" % (label, dimension_id),
-            ))
-        if dimension_id in seen:
-            errors.append((
-                "audit-dimension-id-duplicate",
-                "%s repeats Dimension ID %r; each extension dimension has "
-                "one registration" % (label, dimension_id),
-            ))
-        else:
-            seen.add(dimension_id)
-        if dimension_id in BASE_RECEIPT_DIMENSIONS:
-            errors.append((
-                "audit-dimension-base-collision",
-                "%s registers %r, one of the seven base receipt dimensions; "
-                "profile registrations may append dimensions but cannot "
-                "redefine a base dimension" % (label, dimension_id),
-            ))
-
-        target_literal = unbacktick(cells[1])
-        targets = AUDIT_DIMENSION_TARGETS.get(target_literal)
-        if targets is None:
-            errors.append((
-                "audit-dimension-target-invalid",
-                "%s has target %r; use exactly `review`, `receipt`, or "
-                "`review + receipt`" % (label, target_literal),
-            ))
-            targets = frozenset()
-
-        parsed.append({
-            "id": dimension_id,
-            "targets": targets,
-            "meaning": cells[2].strip(),
-        })
-
-    return registration, tuple(parsed), tuple(errors)
-
-
-def scan_sentinel(profile_dir, sentinel):
-    """Return ([(relpath, lineno)], files_read, files_skipped)."""
     hits, read_n, skipped_n = [], 0, 0
-    for dirpath, dirnames, filenames in os.walk(profile_dir):
-        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
-        for name in sorted(filenames):
-            if name.startswith("."):
-                continue
-            full = os.path.join(dirpath, name)
-            if not name.lower().endswith(TEXT_SUFFIXES):
-                skipped_n += 1
-                continue
-            read_n += 1
-            rel = os.path.relpath(full, profile_dir).replace(os.sep, "/")
-            for lineno, line in enumerate(read_text(full).splitlines(), 1):
-                if sentinel in line:
-                    hits.append((rel, lineno))
+    needle = sentinel.encode("utf-8")
+    prefix = profile_snapshot.relative_directory.rstrip("/") + "/"
+    for repository_path, data in sorted(profile_snapshot.files.items()):
+        if not repository_path.startswith(prefix):
+            skipped_n += 1
+            continue
+        read_n += 1
+        rel = repository_path[len(prefix):]
+        if repository_path.lower().endswith(TEXT_SUFFIXES):
+            data.decode("utf-8")
+        for lineno, line in enumerate(data.splitlines(), 1):
+            if needle in line:
+                hits.append((rel, lineno))
     return hits, read_n, skipped_n
 
 
-def validate_corpus_planning_slot(path, target, add):
+def validate_corpus_planning_slot(path, target, add, text=None):
     """Validate the Profile slot's closed restricted-YAML envelope."""
     try:
-        document = kblib.parse_yaml_subset(read_text(path))
+        document = kblib.parse_yaml_subset(
+            read_text(path) if text is None else text)
     except (OSError, kblib.YamlSubsetError) as exc:
         add("corpus-planning-yaml", target, "fail",
             "cannot parse restricted YAML: %s" % exc)
@@ -592,7 +506,9 @@ def validate_corpus_planning_slot(path, target, add):
             "state must be exactly configured or not-applicable")
 
 
-def main():
+def main(argv=None, *, _evaluation_out=None,
+         _receipt_identity=_LIVE_RUNTIME_RECEIPT_IDENTITY,
+         _write_receipts=True):
     ap = argparse.ArgumentParser(
         description="Profile manifest completeness and unfilled-template check")
     ap.add_argument("profile_dir", help="the profile directory to check "
@@ -611,24 +527,160 @@ def main():
                          "(default: %s under --root)"
                          % DEFAULT_EXECUTION_DEFAULTS)
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
-    root = os.path.abspath(args.root)
-    profile_dir = os.path.abspath(args.profile_dir)
+    # Canonicalize both endpoints before relativizing.  macOS exposes the
+    # same temporary tree as both /var and /private/var; mixing those aliases
+    # must not make a contained Profile appear to escape its repository.
+    root = os.path.realpath(os.path.abspath(args.root))
+    profile_dir = os.path.realpath(os.path.abspath(args.profile_dir))
     profile_disp = os.path.relpath(profile_dir, root).replace(os.sep, "/")
     interface_path = args.interface or os.path.join(root, DEFAULT_INTERFACE)
     defaults_path = args.defaults or os.path.join(root, DEFAULT_DEFAULTS)
     execution_defaults_path = (args.execution_defaults or
                                os.path.join(root, DEFAULT_EXECUTION_DEFAULTS))
 
+    checked_manifest_identity = (
+        MANIFEST_NAME if profile_disp == "." else
+        "%s/%s" % (profile_disp, MANIFEST_NAME)
+    )
+    if _receipt_identity is _LIVE_RUNTIME_RECEIPT_IDENTITY:
+        live_identity = kblib.runtime_receipt_identity(root)
+        if (live_identity.get("selected_profile_manifest") and
+                live_identity.get("selected_profile_manifest") !=
+                checked_manifest_identity):
+            # Candidate Profile evaluation while a different Profile is live
+            # must not combine the live Task/Standards identity with the
+            # candidate manifest.  K12/17 permits a pre-Task profile-load
+            # receipt to claim only the exact manifest it actually checked.
+            effective_receipt_identity = {
+                "selected_profile_manifest": checked_manifest_identity,
+            }
+        else:
+            effective_receipt_identity = dict(live_identity)
+    else:
+        effective_receipt_identity = dict(_receipt_identity or {})
+
     receipts = []
     seq = 0
+    contract = None
+    profile_id = None
+    profile_snapshot_sha256 = None
+    profile_snapshot = None
+    profile_load_inputs_sha256 = None
+    resolved_overrides = ()
+    summary = None
 
     def add(check, target, result, details):
         nonlocal seq
         seq += 1
-        receipts.append(kblib.make_receipt(
-            TOOL, TOOL_VERSION, check, target, result, details, seq))
+        receipt = kblib.make_receipt(
+            TOOL, TOOL_VERSION, check, target, result, details, seq,
+            identity=effective_receipt_identity)
+        receipt["gate_id"] = GATE_ID
+        receipt["dimension"] = GATE_DIMENSION
+        receipts.append(receipt)
+
+    def finish(*, write_receipts=True):
+        """Close one invocation and optionally expose its exact in-memory IR."""
+        exit_code = kblib.exit_code(receipts)
+        if write_receipts and _write_receipts:
+            kblib.write_receipts(args.receipts, receipts)
+        if _evaluation_out is not None:
+            authorized_contract = (
+                contract
+                if (exit_code == 0 and contract is not None and
+                    contract.authorized and summary is not None)
+                else None
+            )
+            _evaluation_out.update({
+                "exit_code": exit_code,
+                "receipts": tuple(receipts),
+                "contract": authorized_contract,
+                "profile_id": (
+                    profile_id if authorized_contract is not None else None
+                ),
+                "profile_snapshot_sha256": profile_snapshot_sha256,
+                "profile_contract_fingerprint": (
+                    authorized_contract.fingerprint
+                    if authorized_contract is not None else None
+                ),
+                "execution_default_overrides": (
+                    resolved_overrides
+                    if authorized_contract is not None else ()
+                ),
+                "profile_snapshot": (
+                    profile_snapshot
+                    if authorized_contract is not None else None
+                ),
+                "profile_load_inputs_sha256": (
+                    profile_load_inputs_sha256
+                    if authorized_contract is not None else None
+                ),
+                "summary_receipt": summary,
+            })
+        return exit_code
+
+    if args.receipts:
+        receipt_spellings = (
+            os.path.abspath(os.fspath(args.receipts)),
+            os.path.realpath(os.path.abspath(os.fspath(args.receipts))),
+        )
+        inside_profile = False
+        for spelling in receipt_spellings:
+            try:
+                inside_profile = (
+                    os.path.commonpath((profile_dir, spelling)) == profile_dir)
+            except ValueError:
+                inside_profile = False
+            if inside_profile:
+                break
+        if inside_profile:
+            add("profile-receipt-path-inside-profile", profile_disp, "fail",
+                "--receipts must stay outside the Profile directory so "
+                "validation cannot mutate the package whose snapshot it "
+                "binds")
+            print("check_profile: FAIL — receipt output cannot be written "
+                  "inside the selected Profile")
+            return finish(write_receipts=False)
+
+    # ``profile-load`` is one registered Gate, not a caller-defined lint.
+    # Its three normative inputs are fixed under the checked repository root;
+    # allowing an invocation to substitute a smaller interface, a different
+    # sentinel registry, or a broader override registry would produce an
+    # indistinguishable but weaker pass receipt.
+    normative_inputs = (
+        ("interface", args.interface, DEFAULT_INTERFACE),
+        ("defaults", args.defaults, DEFAULT_DEFAULTS),
+        ("execution-defaults", args.execution_defaults,
+         DEFAULT_EXECUTION_DEFAULTS),
+    )
+    for label, supplied, expected_relative in normative_inputs:
+        if supplied is None:
+            continue
+        expected_absolute = os.path.join(
+            root, *expected_relative.split("/"))
+        supplied_absolute = os.path.abspath(os.fspath(supplied))
+        if supplied_absolute != expected_absolute:
+            add("profile-load-noncanonical-input", supplied_absolute, "fail",
+                "--%s cannot replace the registered profile-load input `%s`; "
+                "custom inputs may be inspected separately but cannot "
+                "authorize this Gate" % (label, expected_relative))
+    interface_path = os.path.join(root, *DEFAULT_INTERFACE.split("/"))
+    defaults_path = os.path.join(root, *DEFAULT_DEFAULTS.split("/"))
+    execution_defaults_path = os.path.join(
+        root, *DEFAULT_EXECUTION_DEFAULTS.split("/"))
+
+    normative_snapshots = {}
+    try:
+        normative_snapshots, profile_load_inputs_sha256 = \
+            canonical_profile_load_inputs(root)
+    except (OSError, ValueError) as exc:
+        add("profile-load-input-unreadable", root, "fail",
+            "cannot bind canonical profile-load inputs: %s" % exc)
+        print("check_profile: FAIL — canonical profile-load input is not a "
+              "stable singly-linked file: %s" % exc)
+        return finish()
 
     # ---- inputs must be readable before anything can be judged ----
     if not os.path.isdir(profile_dir):
@@ -636,8 +688,7 @@ def main():
             "profile directory does not exist; a scan with nothing to check "
             "is an invocation error, never a pass")
         print("check_profile: FAIL — no such profile directory: %s" % args.profile_dir)
-        kblib.write_receipts(args.receipts, receipts)
-        return kblib.exit_code(receipts)
+        return finish()
 
     manifest_path = os.path.join(profile_dir, MANIFEST_NAME)
     if not os.path.isfile(manifest_path):
@@ -646,37 +697,53 @@ def main():
             "declared there, so nothing about this profile can be verified"
             % MANIFEST_NAME)
         print("check_profile: FAIL — %s has no %s" % (profile_disp, MANIFEST_NAME))
-        kblib.write_receipts(args.receipts, receipts)
-        return kblib.exit_code(receipts)
+        return finish()
+
+    # Bind the exact Profile bytes before reading any of its declarations.
+    # A second digest below must match before a pass receipt can describe this
+    # snapshot; otherwise the run combined observations from two revisions.
+    try:
+        profile_snapshot = kblib.repository_tree_snapshot(
+            root, profile_disp)
+    except (OSError, ValueError) as exc:
+        add("profile-snapshot-invalid", profile_disp, "fail",
+            "cannot bind the selected Profile directory snapshot: %s" % exc)
+        print("check_profile: FAIL — cannot bind one immutable Profile "
+              "snapshot: %s" % exc)
+        return finish()
+    profile_snapshot_before = profile_snapshot.sha256
+
+    def profile_snapshot_text(path):
+        relative = os.path.relpath(
+            os.path.abspath(path), root).replace(os.sep, "/")
+        return profile_snapshot.read_text(relative)
 
     try:
-        interface_text = read_text(interface_path)
-    except OSError as exc:
+        interface_text = normative_snapshots[DEFAULT_INTERFACE].read_text()
+    except (OSError, UnicodeError) as exc:
         add("interface-unreadable", DEFAULT_INTERFACE, "fail",
             "cannot read the normative slot interface: %s" % exc)
         print("check_profile: FAIL — cannot read interface %s: %s" % (interface_path, exc))
-        kblib.write_receipts(args.receipts, receipts)
-        return kblib.exit_code(receipts)
+        return finish()
 
     try:
-        defaults = kblib.parse_yaml_subset(read_text(defaults_path))
-    except (OSError, kblib.YamlSubsetError) as exc:
+        defaults = kblib.parse_yaml_subset(
+            normative_snapshots[DEFAULT_DEFAULTS].read_text())
+    except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
         add("defaults-unreadable", DEFAULT_DEFAULTS, "fail",
             "cannot read/parse the profile-form placeholder registry: %s" % exc)
         print("check_profile: FAIL — cannot read defaults %s: %s" % (defaults_path, exc))
-        kblib.write_receipts(args.receipts, receipts)
-        return kblib.exit_code(receipts)
+        return finish()
 
     try:
         execution_defaults = kblib.parse_yaml_subset(
-            read_text(execution_defaults_path))
-    except (OSError, kblib.YamlSubsetError) as exc:
+            normative_snapshots[DEFAULT_EXECUTION_DEFAULTS].read_text())
+    except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
         add("execution-defaults-unreadable", DEFAULT_EXECUTION_DEFAULTS, "fail",
             "cannot read/parse the kernel execution-default registry: %s" % exc)
         print("check_profile: FAIL — cannot read execution defaults %s: %s"
               % (execution_defaults_path, exc))
-        kblib.write_receipts(args.receipts, receipts)
-        return kblib.exit_code(receipts)
+        return finish()
 
     sentinel = str(defaults.get("unfilled_sentinel") or "TODO(profile)")
     reserved_ids = {str(v) for v in (defaults.get("reserved_profile_ids") or [])}
@@ -687,7 +754,16 @@ def main():
                       for e in (execution_defaults.get("constitutional") or [])
                       if isinstance(e, dict) and e.get("item")}
 
-    manifest_text = read_text(manifest_path)
+    try:
+        hits, files_read, files_skipped = scan_sentinel(
+            profile_snapshot, sentinel)
+        manifest_text = profile_snapshot_text(manifest_path)
+    except (OSError, UnicodeError) as exc:
+        add("profile-text-unreadable", profile_disp, "fail",
+            "Profile text files must be readable strict UTF-8: %s" % exc)
+        print("check_profile: FAIL — Profile text is not strict UTF-8: %s" %
+              exc)
+        return finish()
     manifest_disp = "%s/%s" % (profile_disp, MANIFEST_NAME)
 
     manifest_h2s = h2_headings(manifest_text)
@@ -704,9 +780,13 @@ def main():
         add("interface-no-slots", DEFAULT_INTERFACE, "fail",
             "the interface file declares no '<name>%s' H2 heading; with no "
             "slot list there is nothing to check against" % SLOT_SUFFIX)
+    if tuple(slots) != profile_contract.PROFILE_FILE_SLOTS:
+        add("profile-interface-slot-registry-mismatch", DEFAULT_INTERFACE,
+            "fail", "canonical Profile interface slots must equal the typed "
+            "linker's closed ordered registry; interface=%r linker=%r" %
+            (tuple(slots), profile_contract.PROFILE_FILE_SLOTS))
 
     # ---- block 1: unfilled sentinel anywhere under the profile directory ----
-    hits, files_read, files_skipped = scan_sentinel(profile_dir, sentinel)
     for rel, lineno in hits:
         add("unfilled-placeholder", "%s/%s:%d" % (profile_disp, rel, lineno), "fail",
             "line still carries the unfilled sentinel %r; a profile with any "
@@ -725,7 +805,8 @@ def main():
 
     # ---- explicit optional/conditional block declarations ----
     declaration_count = 0
-    for rel, heading, kind, value, tables in profile_declarations(profile_dir):
+    for rel, heading, kind, value, tables in profile_declarations(
+            profile_snapshot):
         declaration_count += 1
         target = "%s/%s#%s" % (profile_disp, rel, heading)
         if sentinel in value:
@@ -800,7 +881,9 @@ def main():
                     add("corpus-planning-binding", target, "fail",
                         "Corpus Planning must bind a restricted-YAML .yaml file")
                 else:
-                    validate_corpus_planning_slot(detail, target, add)
+                    validate_corpus_planning_slot(
+                        detail, target, add,
+                        text=profile_snapshot_text(detail))
             elif slot == STRUCTURE_REGISTRY_SLOT:
                 target = os.path.relpath(
                     detail, root).replace(os.sep, "/")
@@ -810,7 +893,8 @@ def main():
                         ".yaml file")
                 else:
                     try:
-                        document = kblib.parse_yaml_subset(read_text(detail))
+                        document = kblib.parse_yaml_subset(
+                            profile_snapshot_text(detail))
                     except (OSError, kblib.YamlSubsetError) as exc:
                         add("structure-registry-yaml", target, "fail",
                             "cannot parse restricted YAML: %s" % exc)
@@ -828,7 +912,8 @@ def main():
                         ".yaml file")
                 else:
                     try:
-                        document = kblib.parse_yaml_subset(read_text(detail))
+                        document = kblib.parse_yaml_subset(
+                            profile_snapshot_text(detail))
                     except (OSError, kblib.YamlSubsetError) as exc:
                         add("metadata-contract-yaml", target, "fail",
                             "cannot parse restricted YAML: %s" % exc)
@@ -837,39 +922,18 @@ def main():
                                 kblib.validate_metadata_contract_shape(
                                     document, target):
                             add(check, label, "fail", details)
-            elif slot == AUDIT_DIMENSION_SLOT:
-                target = (os.path.relpath(detail, root).replace(os.sep, "/") +
-                          "#" + AUDIT_DIMENSION_SECTION)
-                try:
-                    with open(detail, encoding="utf-8") as handle:
-                        registry_text = handle.read()
-                except (OSError, UnicodeError) as exc:
-                    add("audit-dimension-registry-unreadable", target, "fail",
-                        "cannot read the bound registry: %s" % exc)
-                else:
-                    _registration, _rows, registry_errors = (
-                        parse_audit_dimension_registry(registry_text))
-                    for check, details in registry_errors:
-                        add(check, target, "fail", details)
         elif kind == "inline":
-            if slot == AUDIT_DIMENSION_SLOT:
-                add("audit-dimension-binding", "%s#%s" %
-                    (manifest_disp, slot), "fail",
-                    "Audit Dimension Registry is a required file-bound slot; "
-                    "an inline declaration cannot supply its canonical "
-                    "Extension Dimensions table")
-            elif any(h == slot or h.startswith(slot + " ")
-                   for h in h2_headings(manifest_text)):
-                bound_ok += 1
-            else:
-                add("slot-inline-unbacked", "%s#%s" % (manifest_disp, slot), "fail",
-                    "slot `%s` is declared inline, but the manifest has no H2 "
-                    "section starting with that slot name to carry the "
-                    "declaration" % slot)
+            add("slot-binding-inline", "%s#%s" % (manifest_disp, slot),
+                "fail", "slot `%s` is file-bound; Execution Default Overrides "
+                "is the only manifest-resident Profile contract" % slot)
+        elif kind == "invalid":
+            add("slot-binding-invalid", "%s#%s" % (manifest_disp, slot),
+                "fail", "slot `%s` has a non-canonical binding: %s" %
+                (slot, detail))
         elif kind == "unresolved":
             add("slot-binding-unresolved", "%s#%s" % (manifest_disp, slot), "fail",
                 "slot `%s` binds to %r, which does not exist under the profile "
-                "directory or the vault root" % (slot, detail))
+                "directory" % (slot, detail))
         elif kind == "outside-profile":
             add("slot-binding-outside-profile", "%s#%s" %
                 (manifest_disp, slot), "fail",
@@ -878,8 +942,8 @@ def main():
                 % (slot, detail))
         else:
             add("slot-binding-unrecognized", "%s#%s" % (manifest_disp, slot), "fail",
-                "slot `%s` binding %r is neither a profile-contained path nor an "
-                "inline declaration" % (slot, binding))
+                "slot `%s` binding %r is not one canonical profile-relative "
+                "file path" % (slot, binding))
 
     for name in sorted(bindings):
         if name not in slots:
@@ -887,6 +951,31 @@ def main():
                 "`%s` is bound in %s but is not a slot the interface defines; "
                 "whether this extension binding is reasonable is a human call"
                 % (name, SLOTS_SECTION))
+
+    # ---- typed Profile dependency closure ----
+    # The manifest-to-slot pass above proves the first hop.  Runtime-active
+    # registry cells are linked separately so a copied/renamed Profile cannot
+    # keep executing another Profile's config or citing its predicate owner.
+    contract = profile_contract.load_profile_contract(
+        root, manifest_path, sentinel=sentinel,
+        profile_snapshot=profile_snapshot)
+    sentinel_targets = {
+        "%s:%d" % (("%s/%s" % (profile_disp, rel))
+                    if profile_disp != "." else rel, lineno)
+        for rel, lineno in hits
+    }
+    for diagnostic in contract.diagnostics:
+        # scan_sentinel above already owns the user-facing incompleteness
+        # finding for known text suffixes.  The linker also scans every file
+        # in the typed closure, including uncommon suffixes; surface only the
+        # markers the broad scan did not already report.
+        if diagnostic.check == "profile-contract-sentinel":
+            if diagnostic.target not in sentinel_targets:
+                add("unfilled-placeholder", diagnostic.target, "fail",
+                    diagnostic.details + "; a Profile dependency with any "
+                    "TODO left cannot authorize profile-load")
+            continue
+        add(diagnostic.check, diagnostic.target, "fail", diagnostic.details)
 
     # ---- Execution Default Overrides sparse table ----
     override_lines = section_lines(manifest_text, OVERRIDES_SECTION)
@@ -952,16 +1041,55 @@ def main():
                         "value domain %r (owner: %s): %s"
                         % (value, item, domain,
                            entry.get("owner", "kernel"), reason))
+    resolved_overrides = tuple(sorted(registered))
+
+    if profile_snapshot_before is not None:
+        try:
+            profile_snapshot_after = kblib.repository_tree_sha256(
+                root, contract.profile_repo_dir or profile_disp)
+        except (OSError, ValueError) as exc:
+            add("profile-snapshot-invalid", profile_disp, "fail",
+                "cannot re-bind the selected Profile directory snapshot: %s" %
+                exc)
+        else:
+            if profile_snapshot_after != profile_snapshot_before:
+                add("profile-snapshot-changed-during-check", profile_disp,
+                    "fail", "selected Profile bytes changed while "
+                    "profile-load was deriving its contract; rerun against "
+                    "one stable snapshot")
+            else:
+                profile_snapshot_sha256 = profile_snapshot_after
+
+    for relative, expected in sorted(normative_snapshots.items()):
+        try:
+            observed = kblib.repository_file_snapshot(
+                root, relative, singly_linked=True)
+        except (OSError, ValueError) as exc:
+            add("profile-load-input-changed", relative, "fail",
+                "canonical input became unreadable during profile-load: %s" %
+                exc)
+            continue
+        if observed.sha256 != expected.sha256:
+            add("profile-load-input-changed", relative, "fail",
+                "canonical input bytes changed while profile-load was "
+                "deriving its contract")
 
     fails = [r for r in receipts if r["result"] == "fail"]
-    if not fails:
-        add("profile-check-summary", profile_disp, "pass",
+    candidates = [r for r in receipts if r["result"] == "candidate"]
+    if not fails and not candidates:
+        add(GATE_CHECK, contract.manifest_repo_path, "pass",
             "profile_id=%s; %d/%d interface slot(s) bound and resolved; %d "
             "explicit override(s) registered; %d optional/conditional "
-            "declaration(s) structurally consistent; no unfilled sentinel, "
-            "placeholder profile id, or unresolved binding remains"
+            "declaration(s) structurally consistent; %d typed dependency "
+            "edge(s) authorized; no unfilled sentinel, placeholder profile "
+            "id, unresolved binding, or cross-Profile reference remains"
             % (profile_id, bound_ok, len(slots), len(registered),
-               declaration_count))
+               declaration_count, len(contract.dependency_edges)))
+        summary = receipts[-1]
+        summary["selected_profile_manifest"] = contract.manifest_repo_path
+        summary["profile_snapshot_sha256"] = profile_snapshot_sha256
+        summary["profile_contract_fingerprint"] = contract.fingerprint
+        summary["profile_load_inputs_sha256"] = profile_load_inputs_sha256
 
     # ---- human-readable summary ----
     print("check_profile: %s (profile_id=%s)"
@@ -980,13 +1108,70 @@ def main():
         print("  Conclusion: NOT LOADABLE — %d failure(s). This profile is "
               "incomplete; the composed standard must not be judged fully "
               "loaded." % len(fails))
+    elif candidates:
+        print("  Conclusion: REVIEW REQUIRED — %d candidate finding(s); no "
+              "profile-load pass receipt was emitted." % len(candidates))
     else:
-        print("  Conclusion: profile manifest complete; every interface slot "
-              "resolves and no unfilled-template marker remains. This checks "
-              "structure, not whether the answers are good.")
+        print("  Conclusion: Profile load authorized; every interface slot and "
+              "machine-active Profile dependency resolves inside the selected "
+              "Profile. This checks authority and structure, not whether the "
+              "answers are good.")
 
-    kblib.write_receipts(args.receipts, receipts)
-    return kblib.exit_code(receipts)
+    return finish()
+
+
+def evaluate_profile_load(profile_dir, *, root, interface=None, defaults=None,
+                          execution_defaults=None, receipt_identity=None):
+    """Evaluate ``profile-load`` once and return its exact contract snapshot.
+
+    This is the shared producer API for Terminal Proof, batch close, and other
+    Gate consumers.  It executes the same code path as the CLI but never writes
+    receipts.  ``receipt_identity=None`` deliberately disables Queue identity
+    injection; callers evaluating a planned/candidate state may instead pass an
+    explicit mapping whose values describe that state.
+    """
+    if receipt_identity is not None and not isinstance(receipt_identity, Mapping):
+        raise TypeError("receipt_identity must be a mapping or None")
+
+    argv = [os.fspath(profile_dir), "--root", os.fspath(root)]
+    for option, value in (
+            ("--interface", interface),
+            ("--defaults", defaults),
+            ("--execution-defaults", execution_defaults)):
+        if value is not None:
+            argv.extend((option, os.fspath(value)))
+
+    captured = io.StringIO()
+    evaluation = {}
+    with contextlib.redirect_stdout(captured):
+        exit_code = main(
+            argv,
+            _evaluation_out=evaluation,
+            _receipt_identity=(
+                {} if receipt_identity is None else dict(receipt_identity)
+            ),
+            _write_receipts=False,
+        )
+    receipts = evaluation.get("receipts", ())
+    return ProfileLoadEvaluation(
+        exit_code=exit_code,
+        findings=tuple(
+            receipt for receipt in receipts
+            if receipt.get("result") != "pass"
+        ),
+        contract=evaluation.get("contract"),
+        profile_id=evaluation.get("profile_id"),
+        profile_snapshot_sha256=evaluation.get("profile_snapshot_sha256"),
+        profile_contract_fingerprint=evaluation.get(
+            "profile_contract_fingerprint"),
+        execution_default_overrides=tuple(
+            evaluation.get("execution_default_overrides", ())),
+        profile_snapshot=evaluation.get("profile_snapshot"),
+        profile_load_inputs_sha256=evaluation.get(
+            "profile_load_inputs_sha256"),
+        summary_receipt=evaluation.get("summary_receipt"),
+        output=captured.getvalue(),
+    )
 
 
 if __name__ == "__main__":

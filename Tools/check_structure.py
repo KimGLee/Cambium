@@ -51,9 +51,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import profile_admission
 
 TOOL = "check_structure"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 GATE_ID = "structure-registry"
 # The `Check` cell K00/12 registers for this Gate; every receipt this tool
 # offers as gate evidence carries it verbatim.
@@ -81,61 +82,6 @@ class Findings:
 def read_text(path):
     with open(path, encoding="utf-8", errors="replace") as handle:
         return handle.read()
-
-
-def resolve_profile_dir(root, override, findings):
-    """Return the selected profile directory, or None (fail recorded)."""
-    if override:
-        profile_dir = os.path.join(root, override) \
-            if not os.path.isabs(override) else override
-        if not os.path.isdir(profile_dir):
-            findings.add("structure-profile", override, "fail",
-                         "--profile does not name an existing directory")
-            return None
-        return profile_dir
-    state_path = os.path.join(root, ACTIVE_STATE_PATH)
-    try:
-        state_text = read_text(state_path)
-    except OSError as exc:
-        findings.add("structure-profile", ACTIVE_STATE_PATH, "fail",
-                     "cannot read the active Standards state: %s" % exc)
-        return None
-    state, errors = kblib.active_standards_state(state_text)
-    for error in errors:
-        findings.add("structure-profile", ACTIVE_STATE_PATH, "fail", error)
-    manifest = state.get("selected_profile_manifest") or ""
-    if "{{" in manifest or not manifest.strip():
-        findings.add(
-            "structure-profile", ACTIVE_STATE_PATH, "fail",
-            "no instantiated selected_profile_manifest; pass --profile to "
-            "check an unselected profile directory")
-        return None
-    manifest_path = os.path.join(root, manifest)
-    if not os.path.isfile(manifest_path):
-        findings.add("structure-profile", manifest, "fail",
-                     "selected profile manifest does not exist")
-        return None
-    return os.path.dirname(manifest_path)
-
-
-def slot_path(root, profile_dir, manifest_text, slot, findings,
-              required=True):
-    """Resolve one slot binding to an absolute path, or None."""
-    bindings = kblib.profile_slot_bindings(manifest_text)
-    binding = bindings.get(slot)
-    if binding is None:
-        if required:
-            findings.add("structure-slot", slot, "fail",
-                         "the selected manifest does not bind the `%s` slot"
-                         % slot)
-        return None
-    kind, detail = kblib.resolve_profile_binding(binding, root, profile_dir)
-    if kind != "path":
-        findings.add("structure-slot", slot, "fail",
-                     "slot `%s` binding %r does not resolve to a profile "
-                     "file" % (slot, binding))
-        return None
-    return detail
 
 
 def vault_path(root, relative, findings, check, label, kind="file"):
@@ -254,9 +200,10 @@ def under(root, child_rel, parent_rel):
         return False
 
 
-def global_map_entry_ids(path):
+def global_map_entry_ids(path, text=None):
     try:
-        data = kblib.parse_yaml_subset(read_text(path))
+        data = kblib.parse_yaml_subset(
+            read_text(path) if text is None else text)
     except (OSError, kblib.YamlSubsetError):
         return None
     entries = data.get("entries") if isinstance(data, dict) else None
@@ -294,23 +241,25 @@ def md_files_under(path):
 
 
 def run(root, profile_override, receipts_path):
+    root = os.path.abspath(root)
     findings = Findings()
     summary = {"units": 0, "modules": 0, "support_layers": 0}
+    input_snapshots = []
+    global_map_snapshot = None
+    coverage_snapshot = None
 
-    profile_dir = resolve_profile_dir(root, profile_override, findings)
+    admission, admission_errors = profile_admission.admit_profile(
+        root, profile_override, active_state_path=ACTIVE_STATE_PATH)
+    for error in admission_errors:
+        findings.add("structure-profile-load", ACTIVE_STATE_PATH, "fail",
+                     error)
     registry = None
-    manifest_text = None
-    if profile_dir is not None:
-        manifest_path = os.path.join(profile_dir, "profile.md")
-        try:
-            manifest_text = read_text(manifest_path)
-        except OSError as exc:
-            findings.add("structure-profile", manifest_path, "fail",
-                         "cannot read the profile manifest: %s" % exc)
     registry_path = None
-    if manifest_text is not None:
-        registry_path = slot_path(root, profile_dir, manifest_text,
-                                  STRUCTURE_SLOT, findings)
+    if admission is not None:
+        registry_path, error = profile_admission.require_slot(
+            admission, STRUCTURE_SLOT)
+        if error:
+            findings.add("structure-slot", STRUCTURE_SLOT, "fail", error)
     if registry_path is not None:
         if not registry_path.lower().endswith(".yaml"):
             findings.add("structure-slot", STRUCTURE_SLOT, "fail",
@@ -318,8 +267,9 @@ def run(root, profile_override, receipts_path):
                          ".yaml file")
         else:
             try:
-                registry = kblib.parse_yaml_subset(read_text(registry_path))
-            except (OSError, kblib.YamlSubsetError) as exc:
+                registry = kblib.parse_yaml_subset(
+                    admission.slot_text(STRUCTURE_SLOT))
+            except (UnicodeError, kblib.YamlSubsetError) as exc:
                 findings.add("structure-registry", STRUCTURE_SLOT, "fail",
                              "cannot parse the registry: %s" % exc)
 
@@ -347,10 +297,13 @@ def run(root, profile_override, receipts_path):
 
         # Profile Scope layer directories.
         scope_layers = {}
-        scope_path = slot_path(root, profile_dir, manifest_text, SCOPE_SLOT,
-                               findings)
+        scope_path, error = profile_admission.require_slot(
+            admission, SCOPE_SLOT)
+        if error:
+            findings.add("structure-slot", SCOPE_SLOT, "fail", error)
         if scope_path is not None:
-            scope_layers = kblib.profile_scope_layers(read_text(scope_path))
+            scope_layers = kblib.profile_scope_layers(
+                admission.slot_text(SCOPE_SLOT))
             if not scope_layers:
                 findings.add(
                     "structure-scope", SCOPE_SLOT, "fail",
@@ -360,16 +313,42 @@ def run(root, profile_override, receipts_path):
 
         # Corpus Planning / Global Map context.
         cp_state, gm_ids = None, None
-        cp_path = slot_path(root, profile_dir, manifest_text, CORPUS_SLOT,
-                            findings, required=False)
+        cp_path, error = profile_admission.require_slot(
+            admission, CORPUS_SLOT)
+        if error:
+            findings.add("structure-slot", CORPUS_SLOT, "fail", error)
         if cp_path is not None:
-            cp_state, gm_rel = corpus_planning_state(cp_path)
+            try:
+                cp_data = kblib.parse_yaml_subset(
+                    admission.slot_text(CORPUS_SLOT))
+            except (UnicodeError, kblib.YamlSubsetError):
+                cp_data = None
+            applicability = cp_data.get("applicability") \
+                if isinstance(cp_data, dict) else None
+            cp_state = applicability.get("state") \
+                if isinstance(applicability, dict) else None
+            bindings = cp_data.get("artifact_bindings") \
+                if isinstance(cp_data, dict) else None
+            gm_rel = bindings.get("global_map") \
+                if isinstance(bindings, dict) else None
             if cp_state == "configured" and gm_rel:
                 gm_path = vault_path(root, gm_rel, findings,
                                      "structure-global-map",
                                      CORPUS_SLOT + ":global_map")
                 if gm_path is not None:
-                    gm_ids = global_map_entry_ids(gm_path)
+                    try:
+                        gm_snapshot = kblib.repository_file_snapshot(
+                            root, gm_rel, singly_linked=True)
+                        gm_ids = global_map_entry_ids(
+                            gm_path, gm_snapshot.read_text())
+                    except (OSError, UnicodeError, ValueError) as exc:
+                        findings.add(
+                            "structure-global-map", gm_rel, "fail",
+                            "cannot bind Global Map to one immutable input: %s"
+                            % exc)
+                    else:
+                        input_snapshots.append(gm_snapshot)
+                        global_map_snapshot = gm_snapshot
                     if gm_ids is None:
                         findings.add("structure-global-map", gm_rel, "fail",
                                      "cannot read Global Map entries")
@@ -565,9 +544,19 @@ def run(root, profile_override, receipts_path):
         ledger_path = os.path.join(root, COVERAGE_LEDGER_PATH)
         if os.path.isfile(ledger_path):
             try:
-                ledger = kblib.parse_yaml_subset(read_text(ledger_path))
-            except kblib.YamlSubsetError:
+                ledger_snapshot = kblib.repository_file_snapshot(
+                    root, COVERAGE_LEDGER_PATH, singly_linked=True)
+                ledger = kblib.parse_yaml_subset(ledger_snapshot.read_text())
+            except (OSError, UnicodeError, ValueError,
+                    kblib.YamlSubsetError) as exc:
                 ledger = None
+                findings.add(
+                    "structure-coverage", COVERAGE_LEDGER_PATH, "fail",
+                    "cannot bind Coverage Ledger to one immutable input: %s" %
+                    exc)
+            else:
+                input_snapshots.append(ledger_snapshot)
+                coverage_snapshot = ledger_snapshot
             pages = ledger.get("pages") if isinstance(ledger, dict) else None
             registered_ids = set(unit_roots)
             registered_ids.update(
@@ -584,6 +573,23 @@ def run(root, profile_override, receipts_path):
                         "Coverage records structural_unit %r, which is not "
                         "a registered unit or support layer id" % ref)
 
+    if admission is not None:
+        for error in profile_admission.currency_errors(admission):
+            findings.add("structure-profile-currency",
+                         admission.manifest_repo_path, "fail", error)
+    for snapshot in input_snapshots:
+        try:
+            current = kblib.repository_file_snapshot(
+                root, snapshot.repository_path, singly_linked=True)
+        except (OSError, ValueError) as exc:
+            findings.add(
+                "structure-input-currency", snapshot.repository_path,
+                "fail", "cannot re-bind admitted input: %s" % exc)
+            continue
+        if current.sha256 != snapshot.sha256:
+            findings.add(
+                "structure-input-currency", snapshot.repository_path,
+                "fail", "input changed during Structure Registry validation")
     fails = findings.fails()
     print("check_structure: units=%d modules=%d support_layers=%d state=%s"
           % (summary["units"], summary["modules"], summary["support_layers"],
@@ -622,6 +628,24 @@ def run(root, profile_override, receipts_path):
                summary["support_layers"], len(fails), state or "unresolved"),
             seq, root=root)
         summary_receipt["gate_id"] = GATE_ID
+        if admission is not None:
+            summary_receipt.update({
+                "selected_profile_manifest": admission.manifest_repo_path,
+                "profile_snapshot_sha256":
+                    admission.evaluation.profile_snapshot_sha256,
+                "profile_contract_fingerprint":
+                    admission.evaluation.profile_contract_fingerprint,
+                "profile_load_inputs_sha256":
+                    admission.evaluation.profile_load_inputs_sha256,
+            })
+        if global_map_snapshot is not None:
+            summary_receipt["global_map_path"] = \
+                global_map_snapshot.repository_path
+            summary_receipt["global_map_sha256"] = \
+                global_map_snapshot.sha256
+        if coverage_snapshot is not None:
+            summary_receipt["coverage_ledger_sha256"] = \
+                coverage_snapshot.sha256
         receipts.append(summary_receipt)
         kblib.write_receipts(receipts_path, receipts)
 

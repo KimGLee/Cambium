@@ -8,14 +8,17 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 TOOLS = Path(__file__).resolve().parents[1]
 REPO = TOOLS.parent
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import check_queue
 import kblib
+from profile_fixture import install_loadable_profile
 
 
 class QueueFixture(unittest.TestCase):
@@ -23,6 +26,7 @@ class QueueFixture(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name) / "repo"
         shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root, profile_id="test-profile")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -41,6 +45,22 @@ class QueueFixture(unittest.TestCase):
 
     def queue(self):
         return kblib.load_yaml_file(self.queue_path)
+
+    def test_runtime_identity_must_match_approved_active_standards(self):
+        baseline = check_queue.validate_runtime(self.root)
+        self.assertEqual([], baseline["errors"])
+        active = (
+            self.root /
+            "kernel/K00 Standards Control/03 Standards Governance.md")
+        text = active.read_text(encoding="utf-8")
+        active.write_text(
+            text.replace("`3.0.0`", "`9.9.9`", 1), encoding="utf-8")
+
+        result = check_queue.validate_runtime(self.root)
+
+        self.assertTrue(any(
+            "runtime standards_version" in error and "9.9.9" in error
+            for error in result["errors"]), result["errors"])
 
     def write_queue(self, queue, sync_progress=True):
         text = kblib.canonical_yaml(queue)
@@ -294,10 +314,12 @@ class QueueFixture(unittest.TestCase):
     def register_expression_layer(self, rows, binding="`expression-layer.md`"):
         """Register dependency-map rows in the fixture profile's slot."""
         manifest = self.root / "profiles/test-profile/profile.md"
+        text = manifest.read_text(encoding="utf-8")
+        original = "- `Expression Layer Entry`: `slots.md`"
+        self.assertIn(original, text)
         manifest.write_text(
-            manifest.read_text(encoding="utf-8") +
-            "\n## Implemented Slots\n\n- `Expression Layer Entry`: %s\n" %
-            binding,
+            text.replace(
+                original, "- `Expression Layer Entry`: %s" % binding, 1),
             encoding="utf-8",
         )
         if rows is None:
@@ -467,6 +489,229 @@ class HubPageAdmissionTests(QueueFixture):
         self.assertIn("Topics/A.md (Expression Layer Entry)",
                       "; ".join(reasons))
 
+    def test_runtime_reuses_one_profile_load_view_for_hub_derivation(self):
+        self.register_expression_layer([
+            ("Existing canonical dependency-map path", "`Topics/A.md`"),
+        ])
+        producer = check_queue.check_profile.evaluate_profile_load
+        calls = []
+
+        def counted(*args, **kwargs):
+            calls.append((args, kwargs))
+            return producer(*args, **kwargs)
+
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                side_effect=counted):
+            result = check_queue.validate_runtime(self.root)
+
+        self.assertEqual([], result["errors"])
+        self.assertEqual(1, len(calls))
+        self.assertNotIn("B1", result["ready"])
+        self.assertIn(
+            "Topics/A.md (Expression Layer Entry)",
+            "; ".join(dict(result["blocked"])["B1"]),
+        )
+
+    def test_runtime_accepts_one_previously_authorized_profile_view(self):
+        authorized_view, view_errors = \
+            check_queue.profile_load_authorized_view(
+                self.root, "profiles/test-profile/profile.md")
+        self.assertEqual([], view_errors)
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                side_effect=AssertionError(
+                    "injected view must suppress a second profile-load")) \
+                as load:
+            result = check_queue.validate_runtime(
+                self.root, authorized_profile_view=authorized_view)
+
+        load.assert_not_called()
+        self.assertEqual([], result["errors"])
+        self.assertIn("B1", result["ready"])
+
+    def test_runtime_authority_context_reuses_the_indivisible_view_pair(self):
+        initial = check_queue.validate_runtime(self.root)
+        self.assertEqual([], initial["errors"])
+        authority = check_queue.runtime_authority_context(initial)
+        kwargs = check_queue.runtime_authority_validation_kwargs(authority)
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                side_effect=AssertionError(
+                    "transaction context must suppress another profile-load")):
+            rebound = check_queue.validate_runtime(self.root, **kwargs)
+
+        self.assertEqual([], rebound["errors"])
+        self.assertIs(initial["_profile_authorized_view"],
+                      rebound["_profile_authorized_view"])
+        self.assertIs(initial["_active_standards_authorized_view"],
+                      rebound["_active_standards_authorized_view"])
+        lock_fields = check_queue.runtime_authority_lock_fields(authority)
+        self.assertEqual("profiles/test-profile/profile.md",
+                         lock_fields["selected_profile_manifest"])
+        for field in (
+                "active_standards_sha256", "profile_snapshot_sha256",
+                "profile_contract_fingerprint", "profile_load_inputs_sha256"):
+            self.assertRegex(lock_fields[field], r"^sha256:[0-9a-f]{64}$")
+
+    def test_runtime_rejects_stale_injected_active_standards_view(self):
+        initial = check_queue.validate_runtime(self.root)
+        self.assertEqual([], initial["errors"])
+        authority = check_queue.runtime_authority_context(initial)
+        active = self.root / check_queue.ACTIVE_STANDARDS_PATH
+        active.write_text(
+            active.read_text(encoding="utf-8") +
+            "\n<!-- active Standards revision B -->\n",
+            encoding="utf-8")
+
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                side_effect=AssertionError(
+                    "stale transaction authority must fail, not rerun")) \
+                as load:
+            rebound = check_queue.validate_runtime(
+                self.root,
+                **check_queue.runtime_authority_validation_kwargs(authority))
+
+        load.assert_not_called()
+        self.assertIn(
+            "active Standards Control changed after identity admission",
+            "; ".join(rebound["errors"]))
+
+    def test_runtime_rejects_stale_injected_profile_view_without_rerun(self):
+        authorized_view, view_errors = \
+            check_queue.profile_load_authorized_view(
+                self.root, "profiles/test-profile/profile.md")
+        self.assertEqual([], view_errors)
+        expression = self.root / dict(
+            authorized_view["_manifest_slot_paths"])[
+                check_queue.EXPRESSION_LAYER_SLOT]
+        expression.write_text(
+            expression.read_text(encoding="utf-8") +
+            "\n<!-- revision B before runtime validation -->\n",
+            encoding="utf-8",
+        )
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                side_effect=AssertionError(
+                    "stale injected view must fail, not silently rerun")) \
+                as load:
+            result = check_queue.validate_runtime(
+                self.root, authorized_profile_view=authorized_view)
+
+        load.assert_not_called()
+        self.assertIn(
+            "changed after profile-load authorization",
+            "; ".join(result["errors"]),
+        )
+        self.assertNotIn("B1", result["ready"])
+
+    def test_runtime_rejects_view_after_canonical_profile_input_changes(self):
+        authorized_view, view_errors = \
+            check_queue.profile_load_authorized_view(
+                self.root, "profiles/test-profile/profile.md")
+        self.assertEqual([], view_errors)
+        interface = self.root / "profiles/README.md"
+        interface.write_text(
+            interface.read_text(encoding="utf-8") +
+            "\n<!-- canonical input revision B -->\n",
+            encoding="utf-8",
+        )
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                side_effect=AssertionError(
+                    "stale injected view must fail, not silently rerun")) \
+                as load:
+            result = check_queue.validate_runtime(
+                self.root, authorized_profile_view=authorized_view)
+
+        load.assert_not_called()
+        self.assertIn(
+            "canonical profile-load inputs changed",
+            "; ".join(result["errors"]),
+        )
+        self.assertNotIn("B1", result["ready"])
+
+    def test_hub_derivation_reads_authorized_snapshot_not_transient_live_bytes(self):
+        self.register_expression_layer([
+            ("Existing canonical dependency-map path", "`Topics/A.md`"),
+        ])
+        authorized_view, view_errors = \
+            check_queue.profile_load_authorized_view(
+                self.root, "profiles/test-profile/profile.md")
+        self.assertEqual([], view_errors)
+        expression = self.root / dict(
+            authorized_view["_manifest_slot_paths"])[
+                check_queue.EXPRESSION_LAYER_SLOT]
+        expression.write_text(
+            expression.read_text(encoding="utf-8").replace(
+                "`Topics/A.md`", "`Topics/B.md`"),
+            encoding="utf-8",
+        )
+
+        # Model A -> B -> A around both live-tree CAS observations.  A live
+        # slot read would accept B; the immutable producer snapshot must still
+        # supply A.
+        with mock.patch.object(
+                check_queue.kblib, "repository_tree_sha256",
+                return_value=authorized_view[
+                    "profile_snapshot_sha256"]):
+            paths, errors = check_queue.profile_hub_paths(
+                self.root, "profiles/test-profile/profile.md",
+                authorized_view=authorized_view,
+                evaluate_if_missing=False)
+        self.assertEqual([], errors)
+        self.assertIn("Topics/A.md", paths)
+        self.assertNotIn("Topics/B.md", paths)
+
+    def test_hub_derivation_rejects_revision_after_profile_load(self):
+        producer = check_queue.profile_load_authorized_view
+        calls = []
+
+        def admit_then_mutate(*args, **kwargs):
+            authorized_view, errors = producer(*args, **kwargs)
+            calls.append(authorized_view)
+            if len(calls) == 1 and authorized_view is not None:
+                slot_paths = dict(
+                    authorized_view["_manifest_slot_paths"])
+                expression = self.root / slot_paths[
+                    check_queue.EXPRESSION_LAYER_SLOT]
+                expression.write_text(
+                    expression.read_text(encoding="utf-8") +
+                    "\n<!-- revision B after authorization -->\n",
+                    encoding="utf-8",
+                )
+            return authorized_view, errors
+
+        with mock.patch.object(
+                check_queue, "profile_load_authorized_view",
+                side_effect=admit_then_mutate):
+            result = check_queue.validate_runtime(self.root)
+
+        self.assertEqual(1, len(calls))
+        self.assertNotIn("B1", result["ready"])
+        self.assertIn(
+            "changed after profile-load authorization",
+            "; ".join(result["errors"]),
+        )
+        reasons = "; ".join(dict(result["blocked"])["B1"])
+        self.assertIn("changed after profile-load authorization", reasons)
+        self.assertIn("snapshot mismatch before Expression hub", reasons)
+
+    def test_corrective_profile_escape_does_not_run_profile_load(self):
+        self.register_expression_layer(None)
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                side_effect=AssertionError(
+                    "corrective escape must not run profile-load")) as load:
+            result = check_queue.validate_runtime(
+                self.root,
+                allow_invalid_current_profile_for_corrective_adoption=True,
+            )
+
+        load.assert_not_called()
+        self.assertEqual([], result["errors"])
+
     def test_registered_dependency_map_not_yet_created_is_a_candidate(self):
         (self.root / "Topics/A.md").unlink()
         self.register_expression_layer([
@@ -477,9 +722,8 @@ class HubPageAdmissionTests(QueueFixture):
         self.assertEqual(["Topics/A.md (Expression Layer Entry)"],
                          result["hub_page_admission"]["B1"]["candidates"])
 
-    def test_unfilled_or_opaque_dependency_map_cells_are_skipped(self):
+    def test_opaque_dependency_map_cells_are_skipped(self):
         self.register_expression_layer([
-            ("Existing canonical dependency-map ID/path", "TODO(profile)"),
             ("Existing canonical dependency-map path", "`None`"),
             ("Existing canonical dependency-map ID", "`atlas-map-01`"),
         ])
@@ -487,6 +731,15 @@ class HubPageAdmissionTests(QueueFixture):
             str(self.root), "profiles/test-profile/profile.md")
         self.assertEqual(set(), paths)
         self.assertEqual([], errors)
+
+    def test_unfilled_dependency_map_is_rejected_by_profile_load(self):
+        self.register_expression_layer([
+            ("Existing canonical dependency-map ID/path", "TODO(profile)"),
+        ])
+        paths, errors = check_queue.profile_hub_paths(
+            str(self.root), "profiles/test-profile/profile.md")
+        self.assertEqual(set(), paths)
+        self.assertIn("unfilled sentinel", "; ".join(errors))
 
     def test_profile_without_expression_layer_slot_still_classifies(self):
         paths, errors = check_queue.profile_hub_paths(
@@ -499,11 +752,11 @@ class HubPageAdmissionTests(QueueFixture):
 
     def test_declared_expression_layer_slot_that_cannot_be_read_fails_closed(self):
         self.register_expression_layer(None)
-        result, reasons = self.blocked_reasons("B1")
+        result = check_queue.validate_runtime(self.root)
         self.assertNotIn("B1", result["ready"])
-        joined = "; ".join(reasons)
-        self.assertIn("hub set cannot be derived", joined)
-        self.assertIn("serial-integrator", joined)
+        joined = "; ".join(result["errors"])
+        self.assertIn("slot-binding-unresolved", joined)
+        self.assertIn("Expression Layer Entry", joined)
 
     def test_unclassifiable_manifest_page_is_not_silently_admitted(self):
         for body in ("---\ntype: overview\n\n# A\n",
@@ -517,7 +770,9 @@ class HubPageAdmissionTests(QueueFixture):
                               "; ".join(reasons))
 
     def test_shipped_example_profile_registration_is_parsed(self):
-        paths, errors = check_queue.profile_hub_paths(
+        # A shipped example is intentionally not a selectable runtime Profile;
+        # exercise only the raw parser retained for corrective diagnostics.
+        paths, errors = check_queue._unadmitted_profile_hub_paths(
             str(REPO), "profiles/examples/agent-atlas/profile.md")
         self.assertEqual([], errors)
         self.assertEqual({"Interview Preparation/Interview Overview.md"},
@@ -525,6 +780,135 @@ class HubPageAdmissionTests(QueueFixture):
 
 
 class CheckQueueTests(QueueFixture):
+    def test_required_completion_predicate_consumes_only_runtime_result(self):
+        result = {
+            "errors": [],
+            "writer_locks": [],
+            "progress": {"contract": {"completion_semantics": "build"}},
+            "queue": {"required_queue": [{"id": "B1"}]},
+            "remaining": 0,
+        }
+        self.assertEqual(
+            [], check_queue.required_queue_completion_errors(result))
+        result["remaining"] = 1
+        self.assertEqual(
+            ["remaining_required_work_units=1, expected 0"],
+            check_queue.required_queue_completion_errors(result))
+        result["errors"] = ["authorized Profile snapshot mismatch"]
+        self.assertEqual(
+            ["authorized Profile snapshot mismatch"],
+            check_queue.required_queue_completion_errors(result))
+
+    def test_terminal_proof_116_history_requires_profile_binding_shape(self):
+        receipt_id = "audit-proof-profile-binding"
+        canonical = "sha256:" + "a" * 64
+        base = {
+            "tool_version": "1.16.0",
+            "profile_snapshot_sha256": canonical,
+            "profile_contract_fingerprint": canonical,
+        }
+        self.assertEqual(
+            [], check_queue._terminal_proof_profile_binding_errors(
+                base, receipt_id))
+        for version in ("1.16.0", "1.16.1", "2.0.0"):
+            for field in ("profile_snapshot_sha256",
+                          "profile_contract_fingerprint"):
+                with self.subTest(version=version, field=field):
+                    receipt = dict(base, tool_version=version)
+                    if version == "2.0.0":
+                        receipt["profile_load_inputs_sha256"] = canonical
+                        receipt["repository_snapshot_sha256"] = canonical
+                    receipt.pop(field)
+                    errors = \
+                        check_queue._terminal_proof_profile_binding_errors(
+                            receipt, receipt_id)
+                    self.assertEqual(1, len(errors), errors)
+                    self.assertIn("lacks canonical %s" % field, errors[0])
+
+    def test_terminal_proof_117_history_requires_current_use_bindings(self):
+        receipt_id = "audit-proof-profile-input-binding"
+        canonical = "sha256:" + "a" * 64
+        base = {
+            "profile_snapshot_sha256": canonical,
+            "profile_contract_fingerprint": canonical,
+        }
+        # Sealed 1.16 receipts predate this producer promise and remain valid.
+        self.assertEqual(
+            [], check_queue._terminal_proof_profile_binding_errors(
+                dict(base, tool_version="1.16.0"), receipt_id))
+        for version in ("1.17.0", "1.17.1", "2.0.0"):
+            with self.subTest(version=version):
+                errors = check_queue._terminal_proof_profile_binding_errors(
+                    dict(base, tool_version=version), receipt_id)
+                self.assertEqual(2, len(errors), errors)
+                self.assertIn(
+                    "profile_load_inputs_sha256", "; ".join(errors))
+                self.assertIn(
+                    "repository_snapshot_sha256", "; ".join(errors))
+                self.assertEqual(
+                    [], check_queue._terminal_proof_profile_binding_errors(
+                        dict(base, tool_version=version,
+                             profile_load_inputs_sha256=canonical,
+                             repository_snapshot_sha256=canonical),
+                        receipt_id))
+
+    def test_terminal_proof_116_history_rejects_noncanonical_binding(self):
+        receipt = {
+            "tool_version": "1.16.0",
+            "profile_snapshot_sha256": "sha256:" + "a" * 63,
+            "profile_contract_fingerprint": "SHA256:" + "b" * 64,
+        }
+        errors = check_queue._terminal_proof_profile_binding_errors(
+            receipt, "audit-proof-profile-binding")
+        self.assertEqual(2, len(errors), errors)
+        self.assertTrue(all("lacks canonical" in error for error in errors))
+
+    def test_terminal_proof_117_history_rejects_noncanonical_input_binding(self):
+        canonical = "sha256:" + "a" * 64
+        receipt = {
+            "tool_version": "1.17.0",
+            "profile_snapshot_sha256": canonical,
+            "profile_contract_fingerprint": canonical,
+            "profile_load_inputs_sha256": "SHA256:" + "b" * 64,
+            "repository_snapshot_sha256": canonical,
+        }
+        errors = check_queue._terminal_proof_profile_binding_errors(
+            receipt, "audit-proof-profile-input-binding")
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn("profile_load_inputs_sha256", errors[0])
+
+    def test_terminal_proof_117_history_rejects_noncanonical_repository(self):
+        canonical = "sha256:" + "a" * 64
+        receipt = {
+            "tool_version": "1.17.0",
+            "profile_snapshot_sha256": canonical,
+            "profile_contract_fingerprint": canonical,
+            "profile_load_inputs_sha256": canonical,
+            "repository_snapshot_sha256": "SHA256:" + "b" * 64,
+        }
+        errors = check_queue._terminal_proof_profile_binding_errors(
+            receipt, "audit-proof-repository-binding")
+        self.assertEqual(1, len(errors), errors)
+        self.assertIn("repository_snapshot_sha256", errors[0])
+
+    def test_terminal_proof_115_history_stays_compatible_without_binding(self):
+        self.assertEqual(
+            [], check_queue._terminal_proof_profile_binding_errors(
+                {"tool_version": "1.15.0"}, "audit-proof-legacy"))
+
+    def test_terminal_proof_history_does_not_reinterpret_canonical_digests(self):
+        # Historical replay preserves the proof's producer-era statement.  A
+        # canonical digest is shape-checked here; only the current completion
+        # consumer compares it with live Profile evidence.
+        receipt = {
+            "tool_version": "1.16.0",
+            "profile_snapshot_sha256": "sha256:" + "0" * 64,
+            "profile_contract_fingerprint": "sha256:" + "f" * 64,
+        }
+        self.assertEqual(
+            [], check_queue._terminal_proof_profile_binding_errors(
+                receipt, "audit-proof-sealed"))
+
     def test_live_task_contract_closure_gap_is_reported_not_refused(self):
         """An under-declared live load set is a finding, never a runtime error.
 
@@ -2524,13 +2908,8 @@ class CheckQueueTests(QueueFixture):
     def init_profile_repo(self, override_rows=""):
         fresh = Path(self.tmp.name) / ("cap-%d" % len(
             list(Path(self.tmp.name).glob("cap-*"))))
-        (fresh / "profiles" / "sample").mkdir(parents=True)
-        (fresh / "profiles" / "sample" / "profile.md").write_text(
-            "# Profile\n\n## Profile Identity\n\n"
-            "- `profile_id`: `sample`\n\n"
-            "## Execution Default Overrides\n\n"
-            "| Override item ID from the registry | Non-default profile value |\n"
-            "|---|---|\n" + override_rows, encoding="utf-8")
+        install_loadable_profile(
+            fresh, profile_id="sample", override_rows=override_rows)
         return fresh
 
     def run_init(self, root, *extra):
@@ -2583,16 +2962,15 @@ class CheckQueueTests(QueueFixture):
                     "| `concurrency_cap` | `%s` |\n" % value)
                 completed = self.run_init(fresh)
                 self.assertEqual(1, completed.returncode, completed.stdout)
-                self.assertIn("K13/10 requires a positive integer",
+                self.assertIn("selected Profile failed profile-load",
                               completed.stdout)
+                self.assertIn("override-value-domain", completed.stdout)
+                self.assertIn("expected a positive integer", completed.stdout)
                 self.assertFalse((fresh / ".cambium").exists())
 
     def test_init_creates_empty_state_without_fake_work_and_refuses_overwrite(self):
         fresh = Path(self.tmp.name) / "fresh"
-        (fresh / "profiles" / "sample").mkdir(parents=True)
-        (fresh / "profiles" / "sample" / "profile.md").write_text(
-            "# Profile\n\n## Profile Identity\n\n"
-            "- `profile_id`: `sample`\n", encoding="utf-8")
+        install_loadable_profile(fresh, profile_id="sample")
         command = [
             sys.executable, str(TOOLS / "init_state.py"), str(fresh),
             "--task-id", "new-task", "--objective",
@@ -2653,10 +3031,7 @@ class CheckQueueTests(QueueFixture):
 
     def test_init_requires_and_materializes_one_completion_semantics(self):
         fresh = Path(self.tmp.name) / "maintenance-init"
-        (fresh / "profiles" / "sample").mkdir(parents=True)
-        (fresh / "profiles" / "sample" / "profile.md").write_text(
-            "# Profile\n\n## Profile Identity\n\n"
-            "- `profile_id`: `sample`\n", encoding="utf-8")
+        install_loadable_profile(fresh, profile_id="sample")
         base = [
             sys.executable, str(TOOLS / "init_state.py"), str(fresh),
             "--task-id", "maintenance-task", "--objective",

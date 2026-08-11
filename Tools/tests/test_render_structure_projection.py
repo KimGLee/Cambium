@@ -12,6 +12,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from Tools.tests.profile_fixture import install_loadable_profile
+
 SCRIPT = Path(__file__).resolve().parents[1] / \
     "render_structure_projection.py"
 
@@ -89,9 +91,9 @@ class RenderProjectionTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
+        profile = install_loadable_profile(root)
         files = {
-            "profile/profile.md": MANIFEST,
-            "profile/structure-registry.yaml": REGISTRY,
+            "profiles/test-profile/structure-registry.yaml": REGISTRY,
             "Corpus Planning/capability_matrix.yaml": MATRIX,
             "Domain/Overview.md": OVERVIEW,
             "Domain/Page.md": "---\ntype: concept\n---\n# P\n",
@@ -105,7 +107,7 @@ class RenderProjectionTests(unittest.TestCase):
     def run_tool(self, root, *args):
         return subprocess.run(
             [sys.executable, str(SCRIPT), str(root),
-             "--profile", "profile", *args],
+             "--profile", "profiles/test-profile", *args],
             text=True, capture_output=True, check=False)
 
     def test_apply_inserts_block_and_preserves_prose(self):
@@ -140,6 +142,26 @@ class RenderProjectionTests(unittest.TestCase):
         self.assertEqual(2, result.returncode, result.stdout)
         self.assertIn("stale", result.stdout)
 
+    def test_renderer_uses_admitted_registry_input_owner_not_default_path(self):
+        root = self.build()
+        registry = root / "profiles/test-profile/structure-registry.yaml"
+        registry.write_text(
+            registry.read_text(encoding="utf-8").replace(
+                "Corpus Planning/capability_matrix.yaml",
+                "planning/alternate-matrix.yaml"),
+            encoding="utf-8")
+        alternate = root / "planning/alternate-matrix.yaml"
+        alternate.parent.mkdir()
+        alternate.write_text(
+            MATRIX.replace("CAP-001", "CAP-ALT"), encoding="utf-8")
+
+        result = self.run_tool(root, "--apply")
+
+        self.assertEqual(0, result.returncode, result.stdout)
+        rendered = (root / "Domain/Overview.md").read_text(encoding="utf-8")
+        self.assertIn("CAP-ALT", rendered)
+        self.assertNotIn("CAP-001", rendered)
+
     def test_missing_heading_is_reported_not_invented(self):
         root = self.build()
         (root / "Domain/Overview.md").write_text(
@@ -148,6 +170,20 @@ class RenderProjectionTests(unittest.TestCase):
         result = self.run_tool(root, "--check")
         self.assertEqual(2, result.returncode, result.stdout)
         self.assertIn("not found", result.stdout)
+
+    def test_unrelated_unloadable_slot_blocks_renderer(self):
+        root = self.build()
+        manifest = root / "profiles/test-profile/profile.md"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace(
+                "- `Priority Rubric`: `slots.md`",
+                "- `Priority Rubric`: `broken-priority.md`"),
+            encoding="utf-8")
+        (manifest.parent / "broken-priority.md").write_text(
+            "TODO(profile)\n", encoding="utf-8")
+        result = self.run_tool(root, "--check")
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("profile-load", result.stdout)
 
 
 if __name__ == "__main__":

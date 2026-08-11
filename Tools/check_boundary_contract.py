@@ -58,9 +58,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import compose_page_contract
+import profile_admission
 
 TOOL = "check_boundary_contract"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 GATE_ID = "boundary-contract"
 # The `Check` cell K00/12 registers for this Gate.
 GATE_CHECK = "boundary-contract-summary"
@@ -88,61 +90,20 @@ class Findings:
         return sum(1 for r in self.rows if r["result"] == result)
 
 
-def resolve_profile_dir(root, override, findings):
-    if override:
-        profile_dir = override if os.path.isabs(override) \
-            else os.path.join(root, override)
-        if not os.path.isdir(profile_dir):
-            findings.add("boundary-contract-profile", override, "fail",
-                         "--profile does not name an existing directory")
-            return None
-        return profile_dir
-    state_path = os.path.join(root, ACTIVE_STATE_PATH)
-    try:
-        state_text = read_text(state_path)
-    except OSError as exc:
-        findings.add("boundary-contract-profile", ACTIVE_STATE_PATH, "fail",
-                     "cannot read the active Standards state: %s" % exc)
-        return None
-    state, errors = kblib.active_standards_state(state_text)
-    for error in errors:
-        findings.add("boundary-contract-profile", ACTIVE_STATE_PATH, "fail",
-                     error)
-    manifest = state.get("selected_profile_manifest") or ""
-    if "{{" in manifest or not manifest.strip():
-        findings.add("boundary-contract-profile", ACTIVE_STATE_PATH, "fail",
-                     "no instantiated selected_profile_manifest; pass "
-                     "--profile and --scope for a validation run")
-        return None
-    manifest_path = os.path.join(root, manifest)
-    if not os.path.isfile(manifest_path):
-        findings.add("boundary-contract-profile", manifest, "fail",
-                     "selected profile manifest does not exist")
-        return None
-    return os.path.dirname(manifest_path)
-
-
-def scope_directories(root, profile_dir, findings):
+def scope_directories(admission, findings):
     """Union of the Profile Scope's registered layer directories."""
-    manifest_path = os.path.join(profile_dir, "profile.md")
+    path, error = profile_admission.require_slot(admission, SCOPE_SLOT)
+    if error:
+        findings.add("boundary-contract-profile", SCOPE_SLOT, "fail",
+                     error)
+        return []
     try:
-        manifest_text = read_text(manifest_path)
-    except OSError as exc:
-        findings.add("boundary-contract-profile", manifest_path, "fail",
-                     "cannot read the profile manifest: %s" % exc)
-        return []
-    bindings = kblib.profile_slot_bindings(manifest_text)
-    binding = bindings.get(SCOPE_SLOT)
-    if binding is None:
+        layers = kblib.profile_scope_layers(
+            admission.slot_text(SCOPE_SLOT))
+    except (OSError, UnicodeError) as exc:
         findings.add("boundary-contract-profile", SCOPE_SLOT, "fail",
-                     "the manifest does not bind the `Profile Scope` slot")
+                     "cannot read admitted Profile Scope: %s" % exc)
         return []
-    kind, detail = kblib.resolve_profile_binding(binding, root, profile_dir)
-    if kind != "path":
-        findings.add("boundary-contract-profile", SCOPE_SLOT, "fail",
-                     "Profile Scope binding %r does not resolve" % binding)
-        return []
-    layers = kblib.profile_scope_layers(read_text(detail))
     directories = sorted({d for dirs in layers.values() for d in dirs})
     if not directories:
         findings.add("boundary-contract-profile", SCOPE_SLOT, "fail",
@@ -151,11 +112,12 @@ def scope_directories(root, profile_dir, findings):
     return directories
 
 
-def load_labels(path, findings):
+def load_labels(path, findings, text=None):
     """Projection labels from the compiled contract (kernel defaults
     overlaid by its `boundary_projection.labels`, K08/09 Projection)."""
     try:
-        data = kblib.parse_yaml_subset(read_text(path))
+        data = kblib.parse_yaml_subset(
+            read_text(path) if text is None else text)
     except (OSError, kblib.YamlSubsetError) as exc:
         findings.add("boundary-contract-input", path, "fail",
                      "cannot parse the compiled contract: %s — compose it "
@@ -223,22 +185,37 @@ def marker_pair(lines):
 
 def run(root, profile_override, contract_path, scope, excludes, strict,
         receipts_path):
+    root = os.path.abspath(root)
     findings = Findings()
     violation = "fail" if strict else "candidate"
 
+    admission, admission_errors = profile_admission.admit_profile(
+        root, profile_override, active_state_path=ACTIVE_STATE_PATH)
+    for error in admission_errors:
+        findings.add("boundary-contract-profile-load", ACTIVE_STATE_PATH,
+                     "fail", error)
+
     contract_abs = contract_path if os.path.isabs(contract_path) \
         else os.path.join(root, contract_path)
-    labels = load_labels(contract_abs, findings)
+    artifact_snapshot = None
+    if admission is not None:
+        artifact_snapshot, artifact_errors = \
+            compose_page_contract.admitted_artifact(
+                root, contract_abs, admission)
+        for error in artifact_errors:
+            findings.add("boundary-contract-artifact-current", contract_abs,
+                         "fail", error)
+    labels = load_labels(
+        contract_abs, findings,
+        artifact_snapshot.read_text()
+        if artifact_snapshot is not None else None)
 
     scan_roots = []
-    if labels is not None:
+    if labels is not None and admission is not None:
         if scope:
             scan_roots = [scope]
         else:
-            profile_dir = resolve_profile_dir(root, profile_override,
-                                              findings)
-            if profile_dir is not None:
-                scan_roots = scope_directories(root, profile_dir, findings)
+            scan_roots = scope_directories(admission, findings)
 
     pages = []
     for scan_root in scan_roots:
@@ -350,6 +327,14 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                          "has at most one owner (K08/09)"
                          % (len(holders), ", ".join(sorted(holders))))
 
+    if admission is not None:
+        for error in profile_admission.currency_errors(admission):
+            findings.add("boundary-contract-profile-currency",
+                         admission.manifest_repo_path, "fail", error)
+        for error in compose_page_contract.artifact_currency_errors(
+                root, contract_abs, admission):
+            findings.add("boundary-contract-artifact-currency", contract_abs,
+                         "fail", error)
     fails = findings.count("fail")
     candidates = findings.count("candidate")
     print("check_boundary_contract: scanned %d page(s), %d with a boundary "
@@ -389,6 +374,19 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                "strict" if strict else "advisory"),
             seq, root=root)
         summary["gate_id"] = GATE_ID
+        if admission is not None:
+            summary.update({
+                "selected_profile_manifest": admission.manifest_repo_path,
+                "profile_snapshot_sha256":
+                    admission.evaluation.profile_snapshot_sha256,
+                "profile_contract_fingerprint":
+                    admission.evaluation.profile_contract_fingerprint,
+                "profile_load_inputs_sha256":
+                    admission.evaluation.profile_load_inputs_sha256,
+                "compiled_page_contract_sha256": (
+                    artifact_snapshot.sha256
+                    if artifact_snapshot is not None else None),
+            })
         receipts.append(summary)
         kblib.write_receipts(receipts_path, receipts)
 

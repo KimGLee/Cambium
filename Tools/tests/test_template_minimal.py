@@ -38,6 +38,7 @@ INTERFACE_FILES = (
     "kernel/K00 Standards Control/execution-defaults-base.yaml",
     "Tools/schemas/execution_defaults.template.yaml",
     "Tools/schemas/residual_scan_config.template.yaml",
+    "Tools/check_residual_content.py",
 )
 
 PROFILE_ID = "fill-e2e"
@@ -187,7 +188,8 @@ mandated_headings:
 
 def run_check(profile_relpath, cwd):
     return subprocess.run(
-        [sys.executable, str(CHECK_PROFILE), profile_relpath],
+        [sys.executable, str(CHECK_PROFILE), profile_relpath,
+         "--root", str(cwd)],
         cwd=str(cwd), text=True, capture_output=True, check=False)
 
 

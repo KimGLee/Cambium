@@ -47,6 +47,7 @@ the planning artifacts, and no persisted planning report is an input.
 - Closing a guidance amendment: read [[kernel/K12 Quality Assurance/04 Guidance and Source Review|Guidance and Source Review]].
 - New source-driven batch: read [[kernel/K06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy|Evidence Maturity and Batch Policy]].
 - Batch activation, resume, or completion entry finds the active Standards/Profile identity differs from the contract-frozen one: read [[kernel/K12 Quality Assurance/10 Standards Version Adoption|Standards Version Adoption]] for the already-approved plan semantics, then [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction|Standards Adoption State Transaction]] to dry-run, apply, or recover the sole controlled writer. R07 executes or resumes this handoff; it does not redefine the governance revision or changed predicates.
+- The active selected Profile fails `profile-load`: stop ordinary batch activation, content execution, close, and completion. If an approved corrective adoption exists, continue only through K12/10 and K13/15; validate the plan's after Profile with the same Gate without requiring the invalid before Profile to pass it.
 - A gate receipt is recorded by hand or offered as current authorization at a boundary: read [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract|Gate Receipt Payload Contract]] for the payload a consumer compares and the actor who may record a `manual-attestation` one.
 - A resume scan reports a `next_action` token: read [[kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary|Resume Next Action Vocabulary]] for what that exact token selects; K13/14 owns the obligation to consume the reported token rather than infer a fresh start.
 - A resumed or active task must create, change, or reconcile the Global Map, Capability Matrix, Gap Register, or a semantic-gap handoff: combine [[kernel/Read Sets/R13 Corpus Planning Read Set|Corpus Planning]]. Query the current validated plan with `check_corpus_plan.py --json`; do not restore from a copied planning report.
@@ -55,6 +56,11 @@ the planning artifacts, and no persisted planning report is an input.
 ## Gate
 
 Each batch uses [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]], and generates, reuses, or invalidates verification evidence per [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]. Every writer first passes the [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Runtime Startup Gate|Runtime Startup Gate]] loaded through R01; an existing namespace is inspected with `check_queue.py --resume-status` and never overwritten, while an absent namespace is initialized only for persistent, resumable, or multi-batch work. Activation consumes `--require-ready`; at serial merge the integrator runs [[kernel/K12 Quality Assurance/09 Batch-close Closed List|Batch-close Closed List]] and consumes a current Queue receipt before close. A build task entering `completion-candidate` MUST combine [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]]. A maintenance task never enters that state; a persistent R10 run instead consumes the bounded gate in [[kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings#Completion Gates|K13/12]].
+
+After startup discovery and before normal work, consume a current `profile-load`
+result for the selected manifest. Batch close resolves its item-6 command from
+that same Profile contract immediately before verifier launch; it neither
+reuses a stale raw command nor writes the closure into the task load-set lists.
 
 When Corpus Planning is configured, each durable checkpoint follows a current
 planning check. Resume reruns that check and may request the current JSON

@@ -50,7 +50,7 @@ A Global Map entry must name a Markdown file that really exists, and a Profile S
 
 ## Materialization Warning
 
-The verifier command in [registries/registered-scans.md](registries/registered-scans.md), the predicate-owner cells in [registries/audit-dimensions.md](registries/audit-dimensions.md), the three artifact bindings, and every path inside `planning/` contain this example's own repository path. If you copy this package, rewrite every `profiles/examples/worked-planning/...` string to your own paths first; `check_profile.py` will not notice if you do not.
+The verifier command in [registries/registered-scans.md](registries/registered-scans.md), the predicate-owner cells in [registries/audit-dimensions.md](registries/audit-dimensions.md), the three artifact bindings, and every path inside `planning/` contain this example's own repository path. If you materialize the answer shape, rewrite every `profiles/examples/worked-planning/...` string to the intended Profile or corpus path. `check_profile.py` fails closed on the Profile-owned config and predicate-owner edges through `profile-load`; `check_corpus_plan.py` remains the separate owner of the externally bound planning artifacts and their corpus paths. Neither checker guesses a replacement.
 
 ## Validation Provenance
 
@@ -58,8 +58,8 @@ The public Cambium distribution is intentionally uninstantiated: `kernel/K00 Sta
 
 | Validator | Tool version | Command | Expected result |
 |---|---|---|---|
-| `check_profile` | `1.8.0` | `python3 Tools/check_profile.py profiles/examples/worked-planning` | exit 0 |
-| `check_corpus_plan` | `1.6.0` | `python3 Tools/check_corpus_plan.py . --profile profiles/examples/worked-planning/profile.md` | exit 0 |
+| `check_profile` | `1.9.0` | `python3 Tools/check_profile.py profiles/examples/worked-planning` | exit 0 |
+| `check_corpus_plan` | `1.7.0` | `python3 Tools/check_corpus_plan.py . --profile profiles/examples/worked-planning/profile.md` | exit 0 |
 | `check_residual_content` | `1.2.0` | `python3 Tools/check_residual_content.py . --scan-id worked-planning-case-residuals --config profiles/examples/worked-planning/scan-configs/residual-scan.yaml --time-limit 55` | exit 0 |
 
 The residual scan is runnable here only because this package's micro-corpus lives inside the repository: the accepted root `corpus/Service Cases` exists, so the scan's non-triviality control finds its witness there.

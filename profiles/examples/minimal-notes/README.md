@@ -54,7 +54,7 @@ This package is deliberately silent on everything an "off" state cannot show. Do
 
 ## Materialization Warning
 
-The verifier command in [registries/registered-scans.md](registries/registered-scans.md) and the predicate-owner cells in [registries/audit-dimensions.md](registries/audit-dimensions.md) contain this example's own repository path. If you copy this package into your own repository, rewrite every `profiles/examples/minimal-notes/...` string to your profile's path first; nothing in `check_profile.py` will notice if you do not, and the batch-close scan would then run this example's configuration instead of yours.
+The verifier command in [registries/registered-scans.md](registries/registered-scans.md) and the predicate-owner cells in [registries/audit-dimensions.md](registries/audit-dimensions.md) contain this example's own repository path. If you materialize the answer shape in your own Profile, rewrite every `profiles/examples/minimal-notes/...` string to that Profile's path. The step is fail-closed rather than optional: `check_profile.py` rejects a stale foreign-Profile config or predicate owner through `profile-load`, before selection or batch close can use it. The checker reports the stale value and never guesses the replacement.
 
 ## Validation Provenance
 
@@ -62,8 +62,8 @@ The public Cambium distribution is intentionally uninstantiated: `kernel/K00 Sta
 
 | Validator | Tool version | Command | Expected result |
 |---|---|---|---|
-| `check_profile` | `1.8.0` | `python3 Tools/check_profile.py profiles/examples/minimal-notes` | exit 0 |
-| `check_corpus_plan` | `1.6.0` | `python3 Tools/check_corpus_plan.py . --profile profiles/examples/minimal-notes/profile.md` | exit 0 |
+| `check_profile` | `1.9.0` | `python3 Tools/check_profile.py profiles/examples/minimal-notes` | exit 0 |
+| `check_corpus_plan` | `1.7.0` | `python3 Tools/check_corpus_plan.py . --profile profiles/examples/minimal-notes/profile.md` | exit 0 |
 
 The registered residual scan is not in that table: it runs against a live vault root, which this repository does not contain.
 

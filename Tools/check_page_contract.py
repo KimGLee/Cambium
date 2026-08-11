@@ -57,9 +57,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import compose_page_contract
+import profile_admission
 
 TOOL = "check_page_contract"
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.4.0"
 GATE_ID = "page-contract"
 # The `Check` cell K00/12 registers for this Gate.
 GATE_CHECK = "page-contract-summary"
@@ -88,61 +90,20 @@ class Findings:
         return sum(1 for r in self.rows if r["result"] == result)
 
 
-def resolve_profile_dir(root, override, findings):
-    if override:
-        profile_dir = override if os.path.isabs(override) \
-            else os.path.join(root, override)
-        if not os.path.isdir(profile_dir):
-            findings.add("page-contract-profile", override, "fail",
-                         "--profile does not name an existing directory")
-            return None
-        return profile_dir
-    state_path = os.path.join(root, ACTIVE_STATE_PATH)
-    try:
-        state_text = read_text(state_path)
-    except OSError as exc:
-        findings.add("page-contract-profile", ACTIVE_STATE_PATH, "fail",
-                     "cannot read the active Standards state: %s" % exc)
-        return None
-    state, errors = kblib.active_standards_state(state_text)
-    for error in errors:
-        findings.add("page-contract-profile", ACTIVE_STATE_PATH, "fail",
-                     error)
-    manifest = state.get("selected_profile_manifest") or ""
-    if "{{" in manifest or not manifest.strip():
-        findings.add("page-contract-profile", ACTIVE_STATE_PATH, "fail",
-                     "no instantiated selected_profile_manifest; pass "
-                     "--profile and --scope for a validation run")
-        return None
-    manifest_path = os.path.join(root, manifest)
-    if not os.path.isfile(manifest_path):
-        findings.add("page-contract-profile", manifest, "fail",
-                     "selected profile manifest does not exist")
-        return None
-    return os.path.dirname(manifest_path)
-
-
-def scope_directories(root, profile_dir, findings):
+def scope_directories(admission, findings):
     """Union of the Profile Scope's registered layer directories."""
-    manifest_path = os.path.join(profile_dir, "profile.md")
+    path, error = profile_admission.require_slot(admission, SCOPE_SLOT)
+    if error:
+        findings.add("page-contract-profile", SCOPE_SLOT, "fail",
+                     error)
+        return []
     try:
-        manifest_text = read_text(manifest_path)
-    except OSError as exc:
-        findings.add("page-contract-profile", manifest_path, "fail",
-                     "cannot read the profile manifest: %s" % exc)
-        return []
-    bindings = kblib.profile_slot_bindings(manifest_text)
-    binding = bindings.get(SCOPE_SLOT)
-    if binding is None:
+        layers = kblib.profile_scope_layers(
+            admission.slot_text(SCOPE_SLOT))
+    except (OSError, UnicodeError) as exc:
         findings.add("page-contract-profile", SCOPE_SLOT, "fail",
-                     "the manifest does not bind the `Profile Scope` slot")
+                     "cannot read admitted Profile Scope: %s" % exc)
         return []
-    kind, detail = kblib.resolve_profile_binding(binding, root, profile_dir)
-    if kind != "path":
-        findings.add("page-contract-profile", SCOPE_SLOT, "fail",
-                     "Profile Scope binding %r does not resolve" % binding)
-        return []
-    layers = kblib.profile_scope_layers(read_text(detail))
     directories = sorted({d for dirs in layers.values() for d in dirs})
     if not directories:
         findings.add("page-contract-profile", SCOPE_SLOT, "fail",
@@ -151,9 +112,10 @@ def scope_directories(root, profile_dir, findings):
     return directories
 
 
-def load_contract(path, findings):
+def load_contract(path, findings, text=None):
     try:
-        data = kblib.parse_yaml_subset(read_text(path))
+        data = kblib.parse_yaml_subset(
+            read_text(path) if text is None else text)
     except (OSError, kblib.YamlSubsetError) as exc:
         findings.add("page-contract-input", path, "fail",
                      "cannot parse the compiled contract: %s — compose it "
@@ -307,24 +269,52 @@ def check_sources_role(root, rel, text, fields, contract, roles, report):
 
 
 def run(root, profile_override, contract_path, scope, excludes, strict,
-        receipts_path):
+        receipts_path, *, authorized_admission=None):
+    root = os.path.abspath(root)
     findings = Findings()
     violation = "fail" if strict else "candidate"
 
+    if authorized_admission is None:
+        admission, admission_errors = profile_admission.admit_profile(
+            root, profile_override, active_state_path=ACTIVE_STATE_PATH)
+    else:
+        admission = authorized_admission
+        admission_errors = []
+        if os.path.realpath(admission.root) != os.path.realpath(root):
+            admission_errors.append(
+                "authorized admission belongs to another repository root")
+        if (profile_override is not None and
+                os.path.realpath(os.path.join(root, profile_override)) !=
+                os.path.realpath(os.path.join(
+                    root, admission.contract.profile_repo_dir))):
+            admission_errors.append(
+                "authorized admission does not match --profile override")
+    for error in admission_errors:
+        findings.add("page-contract-profile-load", ACTIVE_STATE_PATH,
+                     "fail", error)
+
     contract_abs = contract_path if os.path.isabs(contract_path) \
         else os.path.join(root, contract_path)
-    contract, section_roles = load_contract(contract_abs, findings)
+    artifact_snapshot = None
+    if admission is not None:
+        artifact_snapshot, artifact_errors = \
+            compose_page_contract.admitted_artifact(
+                root, contract_abs, admission)
+        for error in artifact_errors:
+            findings.add("page-contract-artifact-current", contract_abs,
+                         "fail", error)
+    contract, section_roles = load_contract(
+        contract_abs, findings,
+        artifact_snapshot.read_text()
+        if artifact_snapshot is not None else None)
 
     scan_roots = []
     ledger_dispositions = {}
-    if contract is not None:
+    if contract is not None and admission is not None:
         if scope:
             scan_roots = [scope]
         else:
-            profile_dir = resolve_profile_dir(root, profile_override,
-                                              findings)
-            if profile_dir is not None:
-                scan_roots = scope_directories(root, profile_dir, findings)
+            scan_roots = scope_directories(admission, findings)
         ledger_path = os.path.join(root, COVERAGE_LEDGER_PATH)
         if os.path.isfile(ledger_path):
             try:
@@ -461,6 +451,14 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                        "registered extension; unknown fields are not open "
                        "metadata (K08/06)")
 
+    if admission is not None:
+        for error in profile_admission.currency_errors(admission):
+            findings.add("page-contract-profile-currency",
+                         admission.manifest_repo_path, "fail", error)
+        for error in compose_page_contract.artifact_currency_errors(
+                root, contract_abs, admission):
+            findings.add("page-contract-artifact-currency", contract_abs,
+                         "fail", error)
     fails = findings.count("fail")
     candidates = findings.count("candidate")
     print("check_page_contract: scanned %d page(s), %d checked, "
@@ -504,6 +502,19 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                "strict" if strict else "advisory"),
             seq, root=root)
         summary["gate_id"] = GATE_ID
+        if admission is not None:
+            summary.update({
+                "selected_profile_manifest": admission.manifest_repo_path,
+                "profile_snapshot_sha256":
+                    admission.evaluation.profile_snapshot_sha256,
+                "profile_contract_fingerprint":
+                    admission.evaluation.profile_contract_fingerprint,
+                "profile_load_inputs_sha256":
+                    admission.evaluation.profile_load_inputs_sha256,
+                "compiled_page_contract_sha256": (
+                    artifact_snapshot.sha256
+                    if artifact_snapshot is not None else None),
+            })
         receipts.append(summary)
         kblib.write_receipts(receipts_path, receipts)
 

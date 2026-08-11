@@ -14,8 +14,10 @@ source_files:
   - kernel/K00 Standards Control/05 Core Principles.md
   - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
   - kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
+  - kernel/K00 Standards Control/15 Read Set Loading Boundaries.md
+  - kernel/K00 Standards Control/17 Profile Dependency Closure.md
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
-source_hash: '82aa946d8e71'
+source_hash: 'ba242e4ad508'
 ---
 # R01 Core Bootstrap Card
 
@@ -43,11 +45,17 @@ The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Co
   reconcile the recorded task and exact `next_action`, and do not initialize a
   replacement. If it is absent, only a selected persistent, resumable, or
   multi-batch route may initialize it.
-- [ ] Confirm the active Standards state is instantiated and its one selected profile manifest resolves to a filled, checked profile. If a placeholder remains, stop before freezing a content task.
+- [ ] Confirm the active Standards state is instantiated and its one selected
+  profile manifest has a current passing `profile-load` result. That result
+  must bind the Profile directory snapshot and typed dependency-closure
+  fingerprint; a filled manifest or a slot-only check is not load authority.
+  If a placeholder or Profile-owned edge remains unresolved, stop before
+  freezing a content task. Governance may continue only to adopt a passing
+  after Profile.
 - [ ] Confirm modification authority, especially for the Standards and other protected paths.
 - [ ] Do not roll back, overwrite, or delete user modifications whose origin cannot be confirmed. A large-scale task additionally inventories ownership, incoming links, and user modifications in the target scope under R11.
 - [ ] Resolve the task Card, triggered modules, future Gate modules, selected profile slots, and any profile extension route.
-- [ ] Record Standards version, exact `selected_profile_manifest`, selected Rxx route IDs and Runtime Card paths, and every Read Set or leaf path actually read back.
+- [ ] Record Standards version, exact `selected_profile_manifest`, selected Rxx route IDs and Runtime Card paths, and every Read Set or leaf path actually read back. Keep the derived Profile dependency closure in its `profile-load` result; do not copy those dependencies into `loaded_module_paths`.
 - [ ] Keep the prerequisite chain continuous; foundational knowledge is not deleted, compressed, or reduced to an empty shell for the application mainline. A large-scale task additionally identifies foundational dependencies under R11.
 - [ ] If the task is large-scale creation, moves, or deletion, load and pass [[kernel/Cards/R11 Large-scale Work Admission Card|R11 Large-scale Work Admission]] before execution.
 

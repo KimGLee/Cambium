@@ -106,7 +106,14 @@ def _pre_apply_coverage_restore(result, apply_receipt):
 
 def _corpus_plan_close_expectation(result, item):
     """Derive the non-bypassable current Corpus Planning close condition."""
-    plan = check_corpus_plan.validate_corpus_plan(result["root"])
+    profile_view = result.get("_profile_authorized_view")
+    plan = check_corpus_plan.validate_corpus_plan(
+        result["root"],
+        profile=result.get("queue", {}).get("selected_profile_manifest"),
+        authorized_profile_view=profile_view,
+        authorized_active_standards_view=result.get(
+            "_active_standards_authorized_view"),
+    )
     required, triggers = check_corpus_plan.close_requirement(
         result, item, plan)
     if required:
@@ -758,6 +765,13 @@ def main(argv=None):
         for error in result["errors"]:
             print("[FAIL] current runtime state: %s" % error)
         return 1
+    try:
+        authority = check_queue.runtime_authority_context(result)
+        authority_kwargs = \
+            check_queue.runtime_authority_validation_kwargs(authority)
+    except (TypeError, ValueError) as exc:
+        print("[FAIL] current runtime authority: %s" % exc)
+        return 1
     item = result.get("items_by_id", {}).get(args.id)
     if item is None:
         print("[FAIL] unknown Queue id %s" % args.id)
@@ -943,6 +957,7 @@ def main(argv=None):
             },
             extra_receipts=([receipt, task_receipt]
                             if task_receipt is not None else [receipt]),
+            **authority_kwargs,
         )
         if proposed["errors"]:
             for error in proposed["errors"]:
@@ -986,6 +1001,8 @@ def main(argv=None):
             "receipt_id": receipt.get("receipt_id"),
             "receipt_path": args.receipts,
         }
+        lock_operation.update(
+            check_queue.runtime_authority_lock_fields(authority))
         if delta_move:
             lock_operation.update({
                 "delta_archive_source": delta_move[0],
@@ -1027,10 +1044,13 @@ def main(argv=None):
                     root, allowed_open_delta=allowed_delta,
                     allow_standards_rollback_batch=(
                         args.id if args.transition == "open" else None),
+                    **authority_kwargs,
                 )
                 if current["errors"]:
                     raise ValueError("runtime changed before write: %s" %
                                      "; ".join(current["errors"]))
+                check_queue.require_runtime_authority_current(
+                    root, authority, "runtime authority changed under lock")
                 barrier = check_queue.delta_apply_write_barrier(
                     current, "update_queue", args.transition or "hold",
                     args.id)
@@ -1118,6 +1138,9 @@ def main(argv=None):
             attempted_receipts = []
             try:
                 if delta_move:
+                    check_queue.require_runtime_authority_current(
+                        root, authority,
+                        "runtime authority changed before delta archival")
                     source_delta = kblib.managed_repository_path(
                         root, delta_move[0], ".cambium/deltas",
                         suffixes=(".yaml",), must_exist=True,
@@ -1132,6 +1155,9 @@ def main(argv=None):
                     os.makedirs(os.path.dirname(archive_delta), exist_ok=True)
                     moved_delta = (source_delta, archive_delta)
                     kblib.durable_replace(source_delta, archive_delta)
+                    check_queue.require_runtime_authority_current(
+                        root, authority,
+                        "runtime authority changed during delta archival")
                     proposed = check_queue.validate_runtime(
                         root,
                         state_overrides={
@@ -1144,10 +1170,14 @@ def main(argv=None):
                         extra_receipts=([receipt, task_receipt]
                                         if task_receipt is not None
                                         else [receipt]),
+                        **authority_kwargs,
                     )
                     if proposed["errors"]:
                         raise ValueError("proposed runtime state: %s" %
                                          "; ".join(proposed["errors"]))
+                check_queue.require_runtime_authority_current(
+                    root, authority,
+                    "runtime authority changed before state write")
                 _write_state(
                     coverage_path, coverage_text,
                     queue_path, queue_text,
@@ -1155,6 +1185,18 @@ def main(argv=None):
                     old_coverage_text, old_queue_text, old_progress_text,
                     write_coverage=write_coverage,
                 )
+                check_queue.require_runtime_authority_current(
+                    root, authority,
+                    "runtime authority changed during state write")
+                post = check_queue.validate_runtime(
+                    root,
+                    extra_receipts=([receipt, task_receipt]
+                                    if task_receipt is not None else [receipt]),
+                    **authority_kwargs,
+                )
+                if post["errors"]:
+                    raise ValueError("persisted state is invalid: %s" %
+                                     "; ".join(post["errors"]))
                 if args.transition == "closed":
                     after_write_snapshot = \
                         kblib.repository_snapshot_sha256(root)
@@ -1164,10 +1206,27 @@ def main(argv=None):
                             "repository content changed while closing batch"
                         )
                 if task_receipt is not None:
+                    check_queue.require_runtime_authority_current(
+                        root, authority,
+                        "runtime authority changed before task receipt")
                     attempted_receipts.append(task_receipt_path)
                     kblib.write_receipts(task_receipt_path, [task_receipt])
+                    check_queue.require_runtime_authority_current(
+                        root, authority,
+                        "runtime authority changed during task receipt")
+                check_queue.require_runtime_authority_current(
+                    root, authority,
+                    "runtime authority changed before Queue receipt")
                 attempted_receipts.append(receipt_path)
                 kblib.write_receipts(receipt_path, [receipt])
+                check_queue.require_runtime_authority_current(
+                    root, authority,
+                    "runtime authority changed during Queue receipt")
+                persisted = check_queue.validate_runtime(
+                    root, **authority_kwargs)
+                if persisted["errors"]:
+                    raise ValueError("persisted runtime state: %s" %
+                                     "; ".join(persisted["errors"]))
             except Exception as write_error:
                 rollback_failures = []
                 try:

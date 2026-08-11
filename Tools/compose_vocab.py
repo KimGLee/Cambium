@@ -48,12 +48,13 @@ import sys
 from pathlib import Path
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO_ROOT = os.path.dirname(TOOLS_DIR)
+REPO_ROOT = os.path.realpath(os.path.dirname(TOOLS_DIR))
 sys.path.insert(0, TOOLS_DIR)
 
 import kblib  # noqa: E402
+import profile_admission  # noqa: E402
 
-TOOL_VERSION = "1.6.0"
+TOOL_VERSION = "1.7.0"
 
 DEFAULT_BASE = "kernel/K08 Metadata and Status/vocabulary-base.yaml"
 DEFAULT_OUTPUT = "Tools/vocab.yaml"
@@ -113,35 +114,18 @@ def resolve_path(path):
 
 
 def discover_profiles():
-    """Resolved Vocabulary Extensions bindings of direct child profiles."""
+    """Profile manifest candidates for diagnostics only."""
     root = resolve_path(PROFILES_DIR)
     found = []
     if not os.path.isdir(root):
         return found
-    for name in sorted(os.listdir(root)):
-        if name in NON_PROFILE_DIRS or name.startswith("."):
-            continue
-        child = os.path.join(root, name)
-        if not os.path.isdir(child):
-            continue
-        manifest = os.path.join(child, "profile.md")
-        if not os.path.isfile(manifest):
-            continue
-        try:
-            with open(manifest, "r", encoding="utf-8") as fh:
-                bindings = kblib.profile_slot_bindings(fh.read())
-        except (OSError, UnicodeError):
-            continue
-        binding = bindings.get("Vocabulary Extensions")
-        if binding is None:
-            continue
-        kind, detail = kblib.resolve_profile_binding(
-            binding, REPO_ROOT, child
-        )
-        if kind != "path":
-            continue
-        relative = os.path.relpath(os.path.abspath(detail), REPO_ROOT)
-        if relative != os.pardir and Path(relative).parts[0] != os.pardir:
+    for current, directories, files in os.walk(root):
+        directories[:] = sorted(
+            name for name in directories
+            if name not in NON_PROFILE_DIRS and not name.startswith("."))
+        if "profile.md" in files:
+            relative = os.path.relpath(
+                os.path.join(current, "profile.md"), REPO_ROOT)
             found.append(Path(relative).as_posix())
     return found
 
@@ -173,116 +157,23 @@ def _repo_relative_name(raw_path, relative_to_repo=False):
 
 
 def active_extensions_selection():
-    """Return the sole extension path/profile id selected by K00/03."""
-    errors = []
-    active_path = os.path.join(REPO_ROOT, ACTIVE_STATE_PATH)
-    try:
-        with open(active_path, "r", encoding="utf-8") as fh:
-            active_text = fh.read()
-    except (OSError, UnicodeError) as exc:
-        return None, None, ["cannot read %s: %s" % (ACTIVE_STATE_PATH, exc)]
-
-    state, parse_errors = kblib.active_standards_state(active_text)
-    errors.extend("%s: %s" % (ACTIVE_STATE_PATH, error)
-                  for error in parse_errors)
-    for label, key in kblib.ACTIVE_STANDARDS_STATE_LABELS.items():
-        if key in state and _uninstantiated(state[key]):
-            errors.append("%s %s is still uninstantiated: %r" %
-                          (ACTIVE_STATE_PATH, label, state[key]))
-    if (not _uninstantiated(state.get("standards_status")) and
-            state.get("standards_status") != "approved"):
-        errors.append("%s Status must be approved before composing a profile; "
-                      "found %r" %
-                      (ACTIVE_STATE_PATH, state.get("standards_status")))
-
-    manifest = state.get("selected_profile_manifest")
-    if not _uninstantiated(manifest):
-        manifest_rel, path_error = _repo_relative_name(
-            manifest, relative_to_repo=True
-        )
-        parts = Path(manifest_rel).parts if manifest_rel else ()
-        if path_error:
-            errors.append("Selected profile manifest is invalid: %s" % path_error)
-        elif (len(parts) != 3 or parts[0] != PROFILES_DIR or
-              parts[2] != "profile.md"):
-            errors.append("Selected profile manifest must be exactly "
-                          "profiles/<profile_id>/profile.md; found %r" %
-                          manifest)
-        else:
-            manifest_path = os.path.join(REPO_ROOT, *parts)
-            try:
-                repo_real = os.path.realpath(REPO_ROOT)
-                manifest_real = os.path.realpath(manifest_path)
-                if os.path.commonpath((repo_real, manifest_real)) != repo_real:
-                    errors.append("Selected profile manifest escapes the repository")
-                elif not os.path.isfile(manifest_path):
-                    errors.append("Selected profile manifest is not a regular file: %s"
-                                  % manifest)
-                else:
-                    with open(manifest_path, "r", encoding="utf-8") as fh:
-                        manifest_text = fh.read()
-                    profile_id, identity_errors = kblib.profile_identity(
-                        manifest_text, parts[1]
-                    )
-                    errors.extend(details for _check, details in identity_errors)
-                    if not identity_errors:
-                        bindings, duplicate_bindings = (
-                            kblib.profile_slot_bindings(
-                                manifest_text, include_duplicates=True
-                            )
-                        )
-                        errors.extend(
-                            "Selected profile manifest repeats slot binding %r"
-                            % name for name in duplicate_bindings
-                        )
-                        binding = bindings.get("Vocabulary Extensions")
-                        if binding is None:
-                            errors.append(
-                                "Selected profile manifest has no Vocabulary "
-                                "Extensions binding"
-                            )
-                        else:
-                            profile_dir = os.path.join(
-                                REPO_ROOT, PROFILES_DIR, parts[1]
-                            )
-                            kind, detail = kblib.resolve_profile_binding(
-                                binding, REPO_ROOT, profile_dir
-                            )
-                            if kind != "path":
-                                errors.append(
-                                    "Vocabulary Extensions binding %r is %s"
-                                    % (binding, kind)
-                                )
-                            else:
-                                extensions, ext_error = _repo_relative_name(
-                                    detail
-                                )
-                                ext_real = os.path.realpath(detail)
-                                if ext_error:
-                                    errors.append(
-                                        "Vocabulary Extensions binding is "
-                                        "invalid: %s" % ext_error
-                                    )
-                                elif os.path.commonpath(
-                                    (repo_real, ext_real)
-                                ) != repo_real:
-                                    errors.append(
-                                        "Vocabulary Extensions binding "
-                                        "escapes the repository"
-                                    )
-                                elif not extensions.lower().endswith(
-                                    (".yaml", ".yml")
-                                ):
-                                    errors.append(
-                                        "Vocabulary Extensions binding must "
-                                        "resolve to YAML; found %s" %
-                                        extensions
-                                    )
-                                else:
-                                    return extensions, profile_id, errors
-            except (OSError, UnicodeError, ValueError) as exc:
-                errors.append("cannot validate selected profile manifest: %s" % exc)
-    return None, None, errors
+    """Return the one fully admitted Vocabulary Extensions selection."""
+    admission, errors = profile_admission.admit_profile(
+        REPO_ROOT, active_state_path=ACTIVE_STATE_PATH,
+        require_approved=True)
+    if admission is None:
+        return None, None, errors, None
+    path, error = profile_admission.require_slot(
+        admission, "Vocabulary Extensions")
+    if error:
+        return None, None, [error], None
+    extensions = os.path.relpath(path, REPO_ROOT).replace(os.sep, "/")
+    if not extensions.lower().endswith((".yaml", ".yml")):
+        return None, None, [
+            "Vocabulary Extensions binding must resolve to YAML; found %s" %
+            extensions
+        ], None
+    return extensions, admission.profile_id, [], admission
 
 
 def report_inactive_selection(errors):
@@ -292,7 +183,7 @@ def report_inactive_selection(errors):
         print("  - %s" % error)
     candidates = discover_profiles()
     if candidates:
-        print("  Filled profile candidates found (candidates are not active "
+        print("  Profile manifest candidates found (candidates are not active "
               "until K00/03 selects one):")
         for item in candidates:
             print("    %s" % item)
@@ -308,9 +199,120 @@ def sha256_file(path):
         return hashlib.sha256(fh.read()).hexdigest()
 
 
-def load_subset(path):
+def load_subset(path, text=None):
+    if text is not None:
+        return kblib.parse_yaml_subset(text)
     with open(path, "r", encoding="utf-8") as fh:
         return kblib.parse_yaml_subset(fh.read())
+
+
+def _repository_input_snapshot(root, raw_path, label):
+    """Bind one compiler input through a canonical stable file descriptor."""
+    root = os.path.abspath(os.fspath(root))
+    candidate = os.fspath(raw_path)
+    if not os.path.isabs(candidate):
+        candidate = os.path.join(root, candidate)
+    candidate = os.path.abspath(candidate)
+
+    # Use actual ancestry so macOS's /var -> /private/var system alias does
+    # not look like a repository escape.  The repository-internal spelling is
+    # intentionally retained and is then checked by the no-follow snapshot.
+    relative_parts = []
+    current = candidate
+    while True:
+        try:
+            if os.path.samefile(current, root):
+                break
+        except OSError:
+            pass
+        parent, name = os.path.split(current)
+        if not name or parent == current:
+            relative_parts = []
+            break
+        relative_parts.append(name)
+        current = parent
+    if not relative_parts:
+        raise ValueError("%s path escapes the repository" % label)
+    relative = "/".join(reversed(relative_parts))
+    return relative, kblib.repository_file_snapshot(
+        root, relative, singly_linked=True)
+
+
+def compiled_artifact(root, admission, *, base_arg=DEFAULT_BASE,
+                      extensions_arg=None):
+    """Return canonical vocabulary bytes from one admitted input snapshot."""
+    errors = []
+    try:
+        _base_relative, base_snapshot = _repository_input_snapshot(
+            root, base_arg, "base")
+        base = load_subset(None, base_snapshot.read_text())
+        profile = load_subset(
+            None, admission.slot_text("Vocabulary Extensions"))
+    except (OSError, UnicodeError, ValueError,
+            kblib.YamlSubsetError) as exc:
+        return None, None, [
+            "input outside the canonical restricted snapshot: %s" % exc]
+    extension_path = admission.slot_path("Vocabulary Extensions")
+    if extension_path is None:
+        return None, None, [
+            "authorized Profile has no Vocabulary Extensions slot"]
+    extension_relative = os.path.relpath(
+        extension_path, os.path.realpath(os.path.abspath(root))).replace(
+            os.sep, "/")
+    extensions_arg = extensions_arg or extension_relative
+    output, conflicts = compose(
+        base, profile, base_arg, extensions_arg, admission.profile_id)
+    errors.extend(conflicts)
+    if errors:
+        return None, None, errors
+    base_sha = base_snapshot.sha256.split(":", 1)[1]
+    ext_sha = hashlib.sha256(
+        admission.slot_bytes["Vocabulary Extensions"]).hexdigest()
+    rendered = render(output, build_header(
+        base_arg, extensions_arg, base_sha, ext_sha))
+    return rendered, output, []
+
+
+def admitted_artifact(root, artifact_path, admission):
+    """Return immutable compiled bytes iff they equal the admitted IR."""
+    rendered, _output, errors = compiled_artifact(root, admission)
+    if errors:
+        return None, errors
+    try:
+        relative, artifact = _repository_input_snapshot(
+            root, artifact_path, "compiled vocabulary")
+    except (OSError, ValueError) as exc:
+        return None, [
+            "compiled vocabulary is unsafe or unreadable: %s" % exc]
+    if artifact.data != rendered.encode("utf-8"):
+        return None, [
+            "compiled vocabulary %s does not match the selected Profile and "
+            "kernel base; recompose it with Tools/compose_vocab.py" % relative
+        ]
+    currency = profile_admission.currency_errors(admission)
+    return (None, currency) if currency else (artifact, [])
+
+
+def artifact_currency_errors(root, artifact_path, admission):
+    """Require one compiled vocabulary to equal the admitted deterministic IR."""
+    _artifact, errors = admitted_artifact(root, artifact_path, admission)
+    return errors
+
+
+def compilation_currency_errors(root, admission, expected_text, *, base_arg,
+                                extensions_arg):
+    """Recompile all inputs and require the initially rendered IR to persist."""
+    current_text, _output, errors = compiled_artifact(
+        root, admission, base_arg=base_arg,
+        extensions_arg=extensions_arg)
+    if errors:
+        return errors
+    if current_text != expected_text:
+        return [
+            "kernel vocabulary base changed during composition; rerun "
+            "against one stable input revision"
+        ]
+    return profile_admission.currency_errors(admission)
 
 
 def dedup_append(target, additions):
@@ -587,7 +589,7 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
-    active_extensions, active_profile_id, selection_errors = (
+    active_extensions, active_profile_id, selection_errors, admission = (
         active_extensions_selection()
     )
     if selection_errors or not active_extensions or not active_profile_id:
@@ -617,40 +619,29 @@ def main(argv=None):
             return 1
         args.extensions = requested_extensions
 
-    base_path = resolve_path(args.base)
-    ext_path = resolve_path(args.extensions)
-    for label, path in (("base", base_path), ("extensions", ext_path)):
-        if not os.path.exists(path):
-            print("compose_vocab: %s input not found: %s" % (label, path))
-            return 1
-
-    try:
-        base = load_subset(base_path)
-        profile = load_subset(ext_path)
-    except kblib.YamlSubsetError as exc:
-        print("compose_vocab: input outside the restricted YAML subset: %s" % exc)
-        return 1
-
     profile_id = active_profile_id
     if not isinstance(profile_id, str) or not PROFILE_ID_VALUE_RE.fullmatch(profile_id):
         print("compose_vocab: invalid profile_id %r; use a lowercase path slug "
               "matching [a-z0-9][a-z0-9_-]*" % profile_id)
         return 1
 
-    output, conflicts = compose(
-        base, profile, args.base, args.extensions, profile_id
-    )
-    if conflicts:
-        print("compose_vocab: %d conflict(s); extensions must be append-only:"
-              % len(conflicts))
-        for item in conflicts:
+    rendered, output, compile_errors = compiled_artifact(
+        REPO_ROOT, admission, base_arg=args.base,
+        extensions_arg=args.extensions)
+    if compile_errors:
+        print("compose_vocab: %d conflict/input error(s); extensions must be "
+              "append-only:" % len(compile_errors))
+        for item in compile_errors:
             print("  - %s" % item)
         return 1
 
-    base_sha = sha256_file(base_path)
-    ext_sha = sha256_file(ext_path)
-    rendered = render(output, build_header(args.base, args.extensions,
-                                           base_sha, ext_sha))
+    currency = compilation_currency_errors(
+        REPO_ROOT, admission, rendered, base_arg=args.base,
+        extensions_arg=args.extensions)
+    if currency:
+        for error in currency:
+            print("compose_vocab: %s" % error)
+        return 1
 
     # Round-trip guard: the emitted document must parse back to the same
     # values through the same restricted-subset parser.
@@ -682,6 +673,13 @@ def main(argv=None):
                   "is not the artifact produced from the active inputs"
                   % args.output)
             return 2
+        currency = compilation_currency_errors(
+            REPO_ROOT, admission, rendered, base_arg=args.base,
+            extensions_arg=args.extensions)
+        if currency:
+            for error in currency:
+                print("compose_vocab --check: %s" % error)
+            return 1
         print("compose_vocab --check: OK (%s matches composed values and provenance)"
               % args.output)
         return 0
@@ -694,6 +692,13 @@ def main(argv=None):
     # predicate the consumer applies.
     kblib.atomic_write_text(output_path, rendered,
                             validator=kblib.parse_vocabulary_artifact)
+    currency = compilation_currency_errors(
+        REPO_ROOT, admission, rendered, base_arg=args.base,
+        extensions_arg=args.extensions)
+    if currency:
+        for error in currency:
+            print("compose_vocab: %s" % error)
+        return 1
     field_count = len(output.get("fields") or {})
     value_count = sum(
         len(spec.get("values") or [])

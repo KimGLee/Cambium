@@ -19,8 +19,10 @@ The interface requires these two registrations; a profile cannot opt out of
 them. The first registers Foundation Depth; the second is the acceptance item
 for the registered residual scan. Item IDs conventionally start with the
 profile ID (`<profile-id>-foundation-depth`). The predicate-owner cells point
-into this profile's own files — rewrite them to your profile's path (see the
-README's self-path checklist).
+into this Profile's own files — derive them from your profile ID before
+validation (see the README's materialization checklist). `profile-load`
+requires each path to remain inside this Profile and each optional heading to
+resolve exactly once; it reports a stale owner but never guesses a rewrite.
 
 | Stable Judgment Item ID | Base or registered receipt Dimension ID | Exact kernel audit-layer name | Bounded audit object one run proves | Evidence role: `emits`, `consumes`, or `triggers` | Predicate owner (repo-relative path; optional `#heading`) |
 |---|---|---|---|---|---|

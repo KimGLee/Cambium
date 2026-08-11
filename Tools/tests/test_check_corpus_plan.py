@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 TOOLS = Path(__file__).resolve().parents[1]
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
@@ -12,6 +13,7 @@ sys.path.insert(0, str(TOOLS))
 
 import check_corpus_plan
 import kblib
+from Tools.tests.profile_fixture import install_loadable_profile
 
 
 MANIFEST = """# Test Profile
@@ -134,9 +136,15 @@ class CorpusPlanFixture(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name) / "repo"
         shutil.copytree(FIXTURE, self.root)
-        profile = self.root / "profiles/test-profile"
-        profile.mkdir(parents=True, exist_ok=True)
-        (profile / "profile.md").write_text(MANIFEST, encoding="utf-8")
+        profile = install_loadable_profile(self.root)
+        manifest = profile / "profile.md"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8")
+            .replace("- `Profile Scope`: `slots.md`",
+                     "- `Profile Scope`: `scope-and-architecture.md`")
+            .replace("- `Role Registry`: `slots.md`",
+                     "- `Role Registry`: `roles.md`"),
+            encoding="utf-8")
         (profile / "scope-and-architecture.md").write_text(
             SCOPE, encoding="utf-8")
         (profile / "roles.md").write_text(ROLES, encoding="utf-8")
@@ -224,6 +232,66 @@ class CheckCorpusPlanPositiveTests(CorpusPlanFixture):
         self.assertEqual("profiles/test-profile/profile.md",
                          result["profile_manifest"])
 
+    def test_runtime_reuses_the_same_profile_load_evaluation(self):
+        producer = check_corpus_plan.check_queue.check_profile.\
+            evaluate_profile_load
+        with mock.patch.object(
+                check_corpus_plan.check_queue.check_profile,
+                "evaluate_profile_load", wraps=producer) as evaluate:
+            result = self.validate()
+        self.assertEqual([], result["errors"])
+        self.assertEqual(1, evaluate.call_count)
+
+    def test_slot_validation_reads_authorized_snapshot_not_transient_live_bytes(self):
+        view, view_errors = \
+            check_corpus_plan.check_queue.profile_load_authorized_view(
+                self.root, "profiles/test-profile/profile.md")
+        self.assertEqual([], view_errors)
+        self.slot.write_text(INACTIVE_SLOT, encoding="utf-8")
+
+        # Model A -> B -> A around every live-tree CAS observation.  If the
+        # validator reopened the slot it would see not-applicable B; the
+        # producer's immutable snapshot must keep the admitted configured A.
+        with mock.patch.object(
+                check_corpus_plan.check_queue,
+                "profile_load_authorized_view", return_value=(view, [])), \
+                mock.patch.object(
+                    check_corpus_plan.kblib, "repository_tree_sha256",
+                    return_value=view["profile_snapshot_sha256"]):
+            result = self.validate()
+        self.assertEqual([], result["errors"])
+        self.assertEqual("configured", result["applicability"])
+
+    def test_unrelated_unloadable_slot_blocks_corpus_plan_pass(self):
+        manifest = self.profile / "profile.md"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace(
+                "- `Priority Rubric`: `slots.md`",
+                "- `Priority Rubric`: `broken-priority.md`"),
+            encoding="utf-8")
+        (self.profile / "broken-priority.md").write_text(
+            "TODO(profile)\n", encoding="utf-8")
+        result = self.validate()
+        self.assert_error(result, "selected Profile failed profile-load")
+
+    def test_canonical_profile_input_change_invalidates_shared_view(self):
+        view, view_errors = \
+            check_corpus_plan.check_queue.profile_load_authorized_view(
+                self.root, "profiles/test-profile/profile.md")
+        self.assertEqual([], view_errors)
+        interface = self.root / "profiles/README.md"
+        interface.write_text(
+            interface.read_text(encoding="utf-8") +
+            "\n<!-- canonical input revision B -->\n",
+            encoding="utf-8",
+        )
+        with mock.patch.object(
+                check_corpus_plan.check_queue,
+                "profile_load_authorized_view", return_value=(view, [])):
+            result = self.validate()
+
+        self.assert_error(result, "canonical profile-load inputs changed")
+
     def test_not_applicable_profile_has_no_artifacts_or_runtime(self):
         self.slot.write_text(INACTIVE_SLOT, encoding="utf-8")
         shutil.rmtree(self.root / ".cambium")
@@ -292,8 +360,73 @@ class CheckCorpusPlanPositiveTests(CorpusPlanFixture):
                          receipt["capability_matrix_sha256"])
         self.assertEqual(kblib.sha256_file(self.gaps),
                          receipt["gap_register_sha256"])
+        self.assertEqual(
+            result["_authorized_profile_view"]["profile_snapshot_sha256"],
+            receipt["profile_snapshot_sha256"])
+        self.assertEqual(
+            result["_authorized_profile_view"][
+                "profile_contract_fingerprint"],
+            receipt["profile_contract_fingerprint"])
+        self.assertEqual(
+            result["_authorized_profile_view"][
+                "profile_load_inputs_sha256"],
+            receipt["profile_load_inputs_sha256"])
         self.assertEqual(kblib.repository_snapshot_sha256(self.root),
                          receipt["repository_snapshot_sha256"])
+
+    def test_stale_validated_profile_slot_cannot_be_rebound_into_pass(self):
+        result = self.validate()
+        self.assertEqual([], result["errors"])
+        self.slot.write_text("not: valid: yaml\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(
+                ValueError, "selected Profile changed after profile-load"):
+            check_corpus_plan.make_pass_receipt(
+                result,
+                repository_snapshot_sha256=
+                    kblib.repository_snapshot_sha256(self.root),
+            )
+
+    def test_stale_validated_planning_artifact_cannot_be_rebound_into_pass(self):
+        result = self.validate()
+        self.assertEqual([], result["errors"])
+        self.global_map.write_text(
+            self.global_map.read_text(encoding="utf-8") +
+            "\nunsupported: revision-b\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(
+                ValueError, "Global Map changed after"):
+            check_corpus_plan.make_pass_receipt(
+                result,
+                repository_snapshot_sha256=
+                    kblib.repository_snapshot_sha256(self.root),
+            )
+
+    def test_receipt_binding_rechecks_currency_after_assembly(self):
+        result = self.validate()
+        self.assertEqual([], result["errors"])
+        real_currency = check_corpus_plan._result_currency_errors
+        calls = []
+
+        def changes_after_first_check(candidate):
+            calls.append(None)
+            if len(calls) == 1:
+                return real_currency(candidate)
+            return ["Global Map changed during receipt assembly"]
+
+        with mock.patch.object(
+                check_corpus_plan, "_result_currency_errors",
+                side_effect=changes_after_first_check):
+            with self.assertRaisesRegex(
+                    ValueError, "changed while receipt binding was assembled"):
+                check_corpus_plan.make_pass_receipt(
+                    result,
+                    repository_snapshot_sha256=
+                        kblib.repository_snapshot_sha256(self.root),
+                )
+        self.assertEqual(2, len(calls))
 
     def test_changed_plan_or_repository_bytes_invalidate_pass_receipt(self):
         result = self.validate()
@@ -402,7 +535,7 @@ class CheckCorpusPlanSlotTests(CorpusPlanFixture):
                      "planning/global-map.md")
         (self.root / "planning/global-map.md").write_text(
             GLOBAL_MAP, encoding="utf-8")
-        self.assert_error(self.validate(), "must end with .yaml")
+        self.assert_error(self.validate(), "repository-relative .yaml path")
 
     def test_pass_authority_must_be_registered(self):
         self.replace(self.slot, "  role_id: stopper",
@@ -412,7 +545,7 @@ class CheckCorpusPlanSlotTests(CorpusPlanFixture):
     def test_configured_slot_rejects_template_sentinel(self):
         self.replace(self.slot, "Core explanation has accepted evidence.",
                      "TODO(profile)")
-        self.assert_error(self.validate(), "replace TODO(profile)")
+        self.assert_error(self.validate(), "unfilled sentinel")
 
     def test_capability_scale_rank_is_explicit_and_contiguous(self):
         self.replace(self.slot, "  - rank: 1\n    value: Core",
@@ -424,7 +557,8 @@ class CheckCorpusPlanSlotTests(CorpusPlanFixture):
             self.slot.read_text(encoding="utf-8").replace(
                 "target_eligible: true", "target_eligible: false"),
             encoding="utf-8")
-        self.assert_error(self.validate(), "at least one target-eligible item")
+        self.assert_error(self.validate(),
+                          "at least one scale item must be target eligible")
 
     def test_matrix_target_must_be_target_eligible(self):
         self.replace(self.slot, "    value: Defensible\n"
@@ -438,7 +572,8 @@ class CheckCorpusPlanSlotTests(CorpusPlanFixture):
     def test_pass_authority_scope_is_closed(self):
         self.replace(self.slot, "corpus-plan-semantic-acceptance",
                      "all-decisions")
-        self.assert_error(self.validate(), "must be exactly")
+        self.assert_error(self.validate(),
+                          "must be corpus-plan-semantic-acceptance")
 
     def test_slot_rejects_extra_top_level_and_nested_fields(self):
         self.slot.write_text(

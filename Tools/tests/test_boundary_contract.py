@@ -14,6 +14,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from Tools.tests.profile_fixture import install_loadable_profile
+
 TOOLS = Path(__file__).resolve().parents[1]
 COMPOSER = TOOLS / "compose_page_contract.py"
 CHECKER = TOOLS / "check_boundary_contract.py"
@@ -155,7 +157,27 @@ class BoundaryContractTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
         self.addCleanup(self.tmp.cleanup)
+        profile = install_loadable_profile(root)
+        manifest = profile / "profile.md"
+        manifest_text = manifest.read_text(encoding="utf-8")
+        custom_manifest = files.get("profile/profile.md", MANIFEST)
+        for line in custom_manifest.splitlines():
+            if not line.startswith("- `") or "`: `" not in line:
+                continue
+            slot = line.split("`", 2)[1]
+            existing = next(
+                (candidate for candidate in manifest_text.splitlines()
+                 if candidate.startswith("- `%s`:" % slot)),
+                None,
+            )
+            if existing is not None:
+                manifest_text = manifest_text.replace(existing, line)
+        manifest.write_text(manifest_text, encoding="utf-8")
         for rel, text in files.items():
+            if rel == "profile/profile.md":
+                continue
+            if rel.startswith("profile/"):
+                rel = "profiles/test-profile/" + rel[len("profile/"):]
             path = root / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
@@ -167,7 +189,7 @@ class BoundaryContractTests(unittest.TestCase):
              "--base", str(root / "kernel/applicability-base.yaml"),
              "--relationships", str(root / "kernel/relationship-base.yaml"),
              "--sources-role", str(root / "kernel/sources-role-base.yaml"),
-             "--profile", "profile",
+             "--profile", "profiles/test-profile",
              "--output", str(root / "page_contract.yaml")],
             text=True, capture_output=True, check=False)
         self.assertEqual(expect, result.returncode,
@@ -177,14 +199,14 @@ class BoundaryContractTests(unittest.TestCase):
     def check(self, root, *args):
         return subprocess.run(
             [sys.executable, str(CHECKER), str(root),
-             "--profile", "profile",
+             "--profile", "profiles/test-profile",
              "--contract", str(root / "page_contract.yaml"), *args],
             text=True, capture_output=True, check=False)
 
     def render(self, root, *args):
         return subprocess.run(
             [sys.executable, str(RENDERER), str(root),
-             "--profile", "profile",
+             "--profile", "profiles/test-profile",
              "--contract", str(root / "page_contract.yaml"), *args],
             text=True, capture_output=True, check=False)
 
@@ -205,6 +227,37 @@ class BoundaryContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0,
                          result.stdout + result.stderr)
         self.assertIn("2 with a boundary block", result.stdout)
+
+    def test_unrelated_unloadable_slot_blocks_checker_and_renderer(self):
+        root = self.ready()
+        manifest = root / "profiles/test-profile/profile.md"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace(
+                "- `Priority Rubric`: `slots.md`",
+                "- `Priority Rubric`: `broken-priority.md`"),
+            encoding="utf-8")
+        (manifest.parent / "broken-priority.md").write_text(
+            "TODO(profile)\n", encoding="utf-8")
+        checked = self.check(root)
+        rendered = self.render(root, "--check")
+        self.assertEqual(1, checked.returncode, checked.stdout)
+        self.assertEqual(1, rendered.returncode, rendered.stdout)
+        self.assertIn("profile-load", checked.stdout)
+        self.assertIn("profile-load", rendered.stdout)
+
+    def test_profile_change_rejects_prechange_contract_for_both_consumers(self):
+        """Boundary checks and rendering must not consume Profile A's IR."""
+        root = self.ready()
+        metadata = root / "profiles/test-profile/metadata-contract.yaml"
+        metadata.write_text(CONTRACT_LABELED, encoding="utf-8")
+
+        checked = self.check(root)
+        rendered = self.render(root, "--check")
+
+        self.assertEqual(1, checked.returncode, checked.stdout)
+        self.assertEqual(1, rendered.returncode, rendered.stdout)
+        self.assertIn("does not match the selected Profile", checked.stdout)
+        self.assertIn("does not match the selected Profile", rendered.stdout)
 
     def test_owner_reference_resolves_without_md_suffix(self):
         # ALPHA's excludes names "Domain/Beta" without .md; the healthy
