@@ -35,7 +35,7 @@ fields:
     mode: required
     shape: nonempty-string
   authoring_status:
-    mode: required
+    mode: projection
     shape: nonempty-string
   learning_status:
     mode: user-owned

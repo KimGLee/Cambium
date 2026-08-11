@@ -24,6 +24,7 @@ In-batch items (merge-ready preconditions):
 - Required expression migrations registered by the `Expression Layer Entry` are complete or have an explicit disposition and pass R05; any supplemental profile gate is also closed.
 - Automated checks (`--scope` level), manual content review, and the applicable rendering level are complete.
 - An AuditPlan has been generated from changed objects, acceptance predicates, and dependency changes; still-valid historical evidence has an explicit `reused_receipt_id`, and new checks produce dimension-specific AuditReceipts.
+- Page frontmatter projections (`authoring_status`, `next_batch`, `coverage_disposition` where persisted) of every page the batch touched agree with the post-delta Coverage Ledger, per [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority|K08/07]]; `last_reviewed` carries the review date the batch's evidence establishes, and any `last_verified` change cites the verification evidence that earned it — a close never advances `last_verified` by itself.
 - The delta has been written out; no unverified modifications are left to the next batch.
 
 Global items (verified by the integrator during serial merge):

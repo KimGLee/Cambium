@@ -26,7 +26,7 @@ source_files:
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
-source_hash: '357d4d360214'
+source_hash: '0026d4a4f7c7'
 ---
 # R03 Module Build Card
 
