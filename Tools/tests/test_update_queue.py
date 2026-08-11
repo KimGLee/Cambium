@@ -11,12 +11,14 @@ from unittest import mock
 
 TOOLS = Path(__file__).resolve().parents[1]
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import check_queue
 import check_corpus_plan
 import kblib
 import update_queue
+from profile_fixture import install_loadable_profile
 
 
 class UpdateQueueTests(unittest.TestCase):
@@ -24,6 +26,7 @@ class UpdateQueueTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name) / "repo"
         shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -137,6 +140,55 @@ class UpdateQueueTests(unittest.TestCase):
                 return
         self.fail("receipt %s was not found" % receipt_id)
 
+    def close_bundle(self, close_gate_id):
+        path = self.root / ".cambium/receipts/close-gates.jsonl"
+        return next(
+            record for record in (
+                json.loads(line) for line in path.read_text(
+                    encoding="utf-8").splitlines())
+            if record.get("receipt_id") == close_gate_id
+        )
+
+    def restamp_close_bundle_version(self, close_gate_id, version):
+        """Restamp one internally consistent current-shape producer bundle."""
+        close_gate = self.close_bundle(close_gate_id)
+        bundle_ids = [
+            close_gate_id,
+            close_gate["global_review_receipt"],
+            close_gate["reviewer_attestation_receipt"],
+            *close_gate["closed_list_evidence"].values(),
+        ]
+        for receipt_id in bundle_ids:
+            self.rewrite_receipt_for_negative_test(
+                receipt_id,
+                lambda record: record.__setitem__("tool_version", version),
+            )
+
+    def restamp_close_bundle_as_legacy_1_4(self, close_gate_id):
+        """Reproduce the sealed seven-member check_batch_close 1.4 era."""
+        close_gate = self.close_bundle(close_gate_id)
+        omitted_field = "manifest_page_contract"
+        legacy_evidence_ids = [
+            receipt_id for field, receipt_id
+            in close_gate["closed_list_evidence"].items()
+            if field != omitted_field
+        ]
+        bundle_ids = [
+            close_gate_id,
+            close_gate["global_review_receipt"],
+            close_gate["reviewer_attestation_receipt"],
+            *legacy_evidence_ids,
+        ]
+
+        def restamp(record):
+            record["tool_version"] = "1.4.0"
+            if record.get("receipt_id") in (
+                    close_gate_id, close_gate["global_review_receipt"]):
+                record["closed_list_evidence"].pop(omitted_field)
+
+        for receipt_id in bundle_ids:
+            self.rewrite_receipt_for_negative_test(receipt_id, restamp)
+
     def refresh_initial_origin(self):
         path = self.root / ".cambium/receipts/task-transitions.jsonl"
         records = [json.loads(line) for line in path.read_text(
@@ -163,7 +215,7 @@ class UpdateQueueTests(unittest.TestCase):
         return records[-1]["receipt_id"]
 
     def close_gate(self, batch_id, consistency_receipt, *, mutate=None):
-        """Persist a seven-member merged-snapshot gate for the current bytes."""
+        """Persist a current merged-snapshot Gate for the current bytes."""
         queue = self.load(check_queue.QUEUE_PATH)
         item = next(entry for entry in queue["required_queue"]
                     if entry["id"] == batch_id)
@@ -381,6 +433,79 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertEqual(fingerprint, receipt["before_required_queue_sha256"])
         self.assertEqual(result["queue_sha256"],
                          receipt["after_required_queue_sha256"])
+
+    def test_open_transaction_runs_profile_load_producer_once(self):
+        gate = self.queue_gate("--require-ready", "B1")
+        revision, fingerprint = self.expected()
+        producer = check_queue.check_profile.evaluate_profile_load
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                wraps=producer) as evaluate:
+            with redirect_stdout(io.StringIO()):
+                code = update_queue.main([
+                    str(self.root), "--id", "B1", "--transition", "open",
+                    "--gate-receipt", gate,
+                    "--expected-state-revision", revision,
+                    "--expected-sha256", fingerprint,
+                    "--actor-role", "integrator", "--apply",
+                ])
+        self.assertEqual(0, code)
+        self.assertEqual(1, evaluate.call_count)
+
+    def test_profile_a_b_a_between_state_and_receipt_is_rejected(self):
+        gate = self.queue_gate("--require-ready", "B1")
+        revision, fingerprint = self.expected()
+        tracked = {
+            path: (self.root / path).read_bytes()
+            for path in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+                         check_queue.PROGRESS_PATH)
+        }
+        profile_slot = self.root / "profiles/test-profile/slots.md"
+        revision_a = profile_slot.read_bytes()
+        revision_b = revision_a + b"\n<!-- transient revision B -->\n"
+        real_write_state = update_queue._write_state
+        real_currency = check_queue.runtime_authority_currency_errors
+        injected = {"done": False, "observed": False}
+
+        def write_then_switch_to_b(*args, **kwargs):
+            result = real_write_state(*args, **kwargs)
+            if not injected["done"]:
+                injected["done"] = True
+                profile_slot.write_bytes(revision_b)
+            return result
+
+        def observe_b_then_restore_a(root, authority):
+            errors = real_currency(root, authority)
+            if errors and profile_slot.read_bytes() == revision_b:
+                injected["observed"] = True
+                profile_slot.write_bytes(revision_a)
+            return errors
+
+        output = io.StringIO()
+        with mock.patch.object(update_queue, "_write_state",
+                               side_effect=write_then_switch_to_b), \
+                mock.patch.object(
+                    check_queue, "runtime_authority_currency_errors",
+                    side_effect=observe_b_then_restore_a), \
+                redirect_stdout(output):
+            code = update_queue.main([
+                str(self.root), "--id", "B1", "--transition", "open",
+                "--gate-receipt", gate,
+                "--expected-state-revision", revision,
+                "--expected-sha256", fingerprint,
+                "--actor-role", "integrator", "--apply",
+            ])
+
+        self.assertEqual(1, code, output.getvalue())
+        self.assertTrue(injected["observed"])
+        self.assertEqual(revision_a, profile_slot.read_bytes())
+        for path, before in tracked.items():
+            self.assertEqual(before, (self.root / path).read_bytes())
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+        self.assertFalse((
+            self.root / ".cambium/receipts/queue-transitions.jsonl"
+        ).exists())
 
     def test_worker_and_stale_revision_cannot_apply(self):
         gate = self.queue_gate("--require-ready", "B1")
@@ -611,6 +736,56 @@ class UpdateQueueTests(unittest.TestCase):
         )
         self.assertEqual(1, attempted.returncode, attempted.stdout)
         self.assertIn("batch_id='B2', expected 'B1'", attempted.stdout)
+
+    def test_current_close_action_rejects_legacy_producer_era_bundles(self):
+        self.merge_b1()
+        delta_apply_receipt = self.apply_b1()
+        consistency = self.queue_gate()
+        close_gate = self.close_gate("B1", consistency)
+        revision, fingerprint = self.expected()
+
+        def attempt_close():
+            return self.command(
+                "--id", "B1", "--transition", "closed",
+                "--gate-receipt", consistency,
+                "--close-gate-receipt", close_gate,
+                "--delta-apply-receipt", delta_apply_receipt,
+                "--expected-state-revision", revision,
+                "--expected-sha256", fingerprint,
+                "--actor-role", "integrator",
+            )
+
+        self.restamp_close_bundle_version(close_gate, "1.6.0")
+        for version in ("1.6.0", "1.5.0", "1.4.0"):
+            with self.subTest(version=version):
+                if version == "1.5.0":
+                    self.restamp_close_bundle_version(close_gate, version)
+                if version == "1.4.0":
+                    self.restamp_close_bundle_as_legacy_1_4(close_gate)
+                attempted = attempt_close()
+                self.assertEqual(1, attempted.returncode, attempted.stdout)
+                self.assertIn(
+                    "unsupported tool_version='%s' for current close action; "
+                    "expected one of ['1.7.0']" % version,
+                    attempted.stdout)
+        self.assertEqual("merge-ready", self.load(
+            check_queue.QUEUE_PATH)["required_queue"][0]["state"])
+
+    def test_closed_history_keeps_its_sealed_legacy_producer_era(self):
+        self.close_b1()
+        queue = self.load(check_queue.QUEUE_PATH)
+        close_gate = queue["required_queue"][0]["close_gate_receipt"]
+
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        self.restamp_close_bundle_version(close_gate, "1.6.0")
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        self.restamp_close_bundle_version(close_gate, "1.5.0")
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        self.restamp_close_bundle_as_legacy_1_4(close_gate)
+        result = check_queue.validate_runtime(self.root)
+
+        self.assertEqual([], result["errors"])
+        self.assertEqual("closed", result["items_by_id"]["B1"]["state"])
 
     def test_close_gate_rejects_stale_post_apply_snapshot(self):
         self.merge_b1()

@@ -62,20 +62,25 @@ In table form:
 | 9 | Foundation-depth class and predicate | `scope-and-architecture.md` | Four-element pattern in the section note |
 | 10 | Source authority, verification, staleness | `source-policy.md` | Own observation with a retrieval date is a registrable source |
 | 11 | Residual scan | `registries/registered-scans.md` + `scan-configs/residual-scan.yaml` | Derive matchers from real corpus content; archetype in the registry note |
-| 12 | The two judgment items' IDs, objects, and owner paths | `registries/audit-dimensions.md` | Fixed cells pre-filled; see the self-path checklist |
+| 12 | The two judgment items' IDs, objects, and owner paths | `registries/audit-dimensions.md` | Fixed cells pre-filled; see the materialization checklist |
 
-## Self-path Checklist (Rewrite Before Use)
+## Materialization Checklist (Rewrite Before Validation)
 
-`check_profile.py` will not notice a path that points at someone else's
-profile; the batch-close scan would then run the wrong configuration. After
-copying this template to `profiles/<profile-id>/`, every one of these cells
-must name **your** profile's path:
+After copying this template to `profiles/<profile-id>/`, derive every one of
+these cells from the new profile ID so each names **your** Profile's path.
+`check_profile.py` resolves them as part of the `profile-load` Gate and fails
+closed on a template, foreign-Profile, root-fallback, missing, aliased, or
+ambiguous target; batch close consumes that same resolved contract before it
+launches the scan.
 
 1. `registries/registered-scans.md` — the verifier command's `--config` path.
 2. `registries/audit-dimensions.md` — both predicate-owner cells (the
    foundation item points at your `scope-and-architecture.md#Foundation Depth
    Requirements`; the residual item points at your
    `registries/audit-dimensions.md#Residual Disposition`).
+
+This remains a materialization step rather than an optional cleanup: the Gate
+detects a stale path but never guesses or rewrites the intended profile ID.
 
 ## Validation
 

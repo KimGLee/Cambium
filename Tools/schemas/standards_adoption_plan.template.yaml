@@ -24,6 +24,8 @@ governance_revision_ref: "kernel/K00 Standards Control/03 Standards Governance.m
 governance_revision_sha256: "sha256:replace-with-current-governance-file-fingerprint"
 standards_snapshot_sha256_after: "sha256:replace-with-kernel-tree-fingerprint"
 profile_snapshot_sha256_after: "sha256:replace-with-selected-profile-tree-fingerprint"
+profile_contract_fingerprint_after: "sha256:replace-with-profile-contract-fingerprint"
+profile_load_inputs_sha256_after: "sha256:replace-with-root-profile-load-input-fingerprint"
 
 selected_route_ids_after: []
 selected_card_paths_after: []
@@ -81,7 +83,9 @@ immediate_gate_reruns:
   - "required-queue-consistency"
 
 # Exact sorted union of every predicate's affected_gate_ids and every
-# invalidation boundary's required_gate_ids.  These gates run only when their
-# recorded boundary is reached; historical receipts are not rewritten.
+# invalidation boundary's required_gate_ids, excluding `profile-load`.
+# profile-load is the after-image admission Gate and runs before commit; only
+# additional downstream Gates run when their recorded Queue boundary is
+# reached.  Historical receipts are not rewritten.
 boundary_gate_reruns:
   - "batch-close"

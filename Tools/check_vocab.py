@@ -49,9 +49,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import compose_vocab
+import profile_admission
 
 TOOL = "check_vocab"
-TOOL_VERSION = "1.4.0"
+TOOL_VERSION = "1.5.0"
 GATE_ID = "frontmatter-vocabulary"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -70,7 +72,7 @@ def _make_receipt(check, target, result, details, seq, root=None):
     return receipt
 
 
-def load_vocab(path):
+def load_vocab(path, text=None):
     """Load the composed artifact, refusing anything that is not a vocabulary.
 
     File existence is not validity. `parse_yaml_subset` maps empty input to
@@ -81,8 +83,10 @@ def load_vocab(path):
     profile's `Vocabulary Extensions`; `kblib.parse_vocabulary_artifact`
     is that requirement as a deterministic predicate.
     """
-    with open(path, encoding="utf-8") as handle:
-        data = kblib.parse_vocabulary_artifact(handle.read())
+    if text is None:
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    data = kblib.parse_vocabulary_artifact(text)
     fields = data.get("fields") or {}
     vocab = {}
     for name, spec in fields.items():
@@ -93,7 +97,7 @@ def load_vocab(path):
     return vocab
 
 
-def main():
+def main(argv=None, *, authorized_admission=None):
     ap = argparse.ArgumentParser(description="Frontmatter controlled-vocabulary check")
     ap.add_argument("vault_root", help="vault root directory")
     ap.add_argument("--scope", help="only scan .md files under this subpath")
@@ -112,7 +116,7 @@ def main():
                          "default; the selected profile manifest or task "
                          "contract may override)")
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     vocab_path = args.vocab or os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "vocab.yaml")
@@ -129,8 +133,43 @@ def main():
         print("    python3 Tools/compose_vocab.py")
         print("  Or point this check at an existing artifact with --vocab PATH.")
         return 1
+    root = os.path.realpath(os.path.abspath(args.vault_root))
+    artifact_snapshot = None
+    admission = authorized_admission
     try:
-        vocab = load_vocab(vocab_path)
+        canonical_vocab = (
+            os.path.commonpath((root, os.path.realpath(vocab_path))) == root and
+            os.path.relpath(os.path.realpath(vocab_path), root).replace(
+                os.sep, "/") == compose_vocab.DEFAULT_OUTPUT)
+    except ValueError:
+        canonical_vocab = False
+    if canonical_vocab:
+        if admission is None:
+            admission, admission_errors = profile_admission.admit_profile(root)
+        else:
+            admission_errors = []
+            if os.path.realpath(admission.root) != root:
+                admission_errors.append(
+                    "authorized admission belongs to another repository root")
+        if admission is not None:
+            artifact_snapshot, artifact_errors = \
+                compose_vocab.admitted_artifact(
+                    root, compose_vocab.DEFAULT_OUTPUT, admission)
+            admission_errors.extend(artifact_errors)
+        if admission_errors:
+            details = "; ".join(admission_errors)
+            receipts = [_make_receipt(
+                "vocab-artifact-stale", vocab_path, "fail", details, 1,
+                root=args.vault_root)]
+            print("check_vocab: FAIL — composed vocabulary is not current: %s"
+                  % details)
+            kblib.write_receipts(args.receipts, receipts)
+            return kblib.exit_code(receipts)
+    try:
+        vocab = load_vocab(
+            vocab_path,
+            artifact_snapshot.read_text()
+            if artifact_snapshot is not None else None)
     except (ValueError, OSError, UnicodeError) as exc:
         # An unreadable or non-composed artifact is an evidence-production
         # failure, not a clean corpus: continuing would report "no illegal
@@ -247,6 +286,15 @@ def main():
                 else:
                     counts["ok_values"] += 1
 
+    if admission is not None:
+        currency = compose_vocab.artifact_currency_errors(
+            root, vocab_path, admission)
+        for error in currency:
+            seq += 1
+            receipts.append(_make_receipt(
+                "vocab-artifact-currency", vocab_path, "fail", error, seq,
+                root=args.vault_root))
+
     if not any(r["result"] == "fail" for r in receipts):
         seq += 1
         receipts.append(_make_receipt(
@@ -254,6 +302,22 @@ def main():
             (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
             "no illegal controlled-vocabulary values found (unknown_value=0; "
             "candidates counted separately)", seq, root=args.vault_root))
+
+    if admission is not None:
+        evidence = {
+            "selected_profile_manifest": admission.manifest_repo_path,
+            "profile_snapshot_sha256":
+                admission.evaluation.profile_snapshot_sha256,
+            "profile_contract_fingerprint":
+                admission.evaluation.profile_contract_fingerprint,
+            "profile_load_inputs_sha256":
+                admission.evaluation.profile_load_inputs_sha256,
+            "compiled_vocab_sha256": (
+                artifact_snapshot.sha256
+                if artifact_snapshot is not None else None),
+        }
+        for receipt in receipts:
+            receipt.update(evidence)
 
     print("check_vocab: scanned %(files)d file(s)" % counts)
     print("  no_frontmatter=%(no_frontmatter)d unparseable=%(unparseable)d "
@@ -284,6 +348,23 @@ def main():
                 root=args.vault_root))
             print("  [CAND priority-quota] %s share %.0f%% exceeds the <=%.0f%% quota (K00/07)"
                   % (_pcls, _n * 100.0 / _ptot, _quota))
+
+    if admission is not None:
+        final_currency = compose_vocab.artifact_currency_errors(
+            root, vocab_path, admission)
+        existing_currency = {
+            receipt.get("details") for receipt in receipts
+            if receipt.get("check") == "vocab-artifact-currency"
+        }
+        for error in final_currency:
+            if error in existing_currency:
+                continue
+            seq += 1
+            receipts.append(_make_receipt(
+                "vocab-artifact-currency", vocab_path, "fail", error, seq,
+                root=args.vault_root))
+        for receipt in receipts:
+            receipt.update(evidence)
 
     kblib.write_receipts(args.receipts, receipts)
     return kblib.exit_code(receipts)

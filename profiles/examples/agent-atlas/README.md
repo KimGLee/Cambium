@@ -50,6 +50,11 @@ Interview work uses kernel route R05 directly. `Supplemental Routes` is `None`, 
 2. Read [scope-and-architecture.md](scope-and-architecture.md) and [corpus-planning.yaml](corpus-planning.yaml), then the remaining corpus-wide slot files, [expression-layer.md](expression-layer.md), and the registries for the Atlas-specific Interview contract.
 3. Inspect the scan configuration last; it contains machine parameters, not policy.
 
+The registry command and predicate-owner cells use this example package's own
+paths. A real Profile materializes those cells with its own path before
+validation. `profile-load` rejects a stale example or foreign-Profile target;
+it reports the value but never rewrites it on the adopter's behalf.
+
 Validate the filled profile structure from the Cambium repository root:
 
 ```text
@@ -80,7 +85,7 @@ The public Cambium distribution is intentionally uninstantiated: `kernel/K00 Sta
 
 | Validator | Tool version | Command | Expected result |
 |---|---|---|---|
-| `check_profile` | `1.8.0` | `python3 Tools/check_profile.py profiles/examples/agent-atlas` | exit 0 |
+| `check_profile` | `1.9.0` | `python3 Tools/check_profile.py profiles/examples/agent-atlas` | exit 0 |
 
 `check_corpus_plan.py` is deliberately absent from that table: this example's Corpus Planning slot is `configured` and binds three artifacts that a real adopter materializes, and the public example does not fabricate them. [Worked Planning](../worked-planning/README.md) is the example that carries filled planning artifacts.
 

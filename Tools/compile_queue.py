@@ -11,9 +11,7 @@ without rewriting lifecycle history.
 import argparse
 import copy
 import os
-import shutil
 import sys
-import tempfile
 import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -773,159 +771,28 @@ def _build_replanned_queue(queue, proposal, diff):
     return result
 
 
-def _copy_result_evidence(root, temporary_root, queue, progress):
-    """Copy the files check_queue needs for a proposed-state preflight.
+def _preflight_result(root, coverage, coverage_text, queue, queue_text,
+                      progress, progress_text, authority,
+                      pending_replan_receipt=None):
+    """Validate proposed state against the transaction's immutable authority.
 
-    The preflight replays the full runtime contract against the staged
-    proposal, and that contract long outgrew the original short list: the
-    Task Contract's Read Set load closure resolves the `kernel/` tree and
-    the tools/profile files the load set names, and every recorded
-    Standards-adoption plan under `.cambium/deltas/` must remain a safe
-    readable path. Staging only the manifest and Work Specs made
-    `--apply-replan` fail closed on any instance that had ever recorded an
-    adoption — the sanctioned replan path was unusable exactly where it is
-    needed (found by replanning the real Agent Systems Atlas runtime). The
-    canonical `.cambium/state` files are written from the proposal by the
-    caller and are deliberately not copied here.
+    A staged repository used to force a second Profile/K00 admission and could
+    therefore validate a different revision from the transaction entry.  The
+    runtime validator already supports byte-exact state overrides, so keep the
+    real repository root and inject the one admitted view pair instead.
     """
-    profile = queue.get("selected_profile_manifest")
-    profile_directory = None
-    if isinstance(profile, str) and profile:
-        source = kblib.repository_path(
-            root, profile, must_exist=True, reject_symlink=True)
-        profile_directory = os.path.dirname(profile)
-        target = os.path.join(temporary_root, *profile.split("/"))
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        shutil.copy2(source, target)
-
-    def stage_tree(relative):
-        source = os.path.join(root, *relative.split("/"))
-        if not os.path.isdir(source):
-            return
-        target = os.path.join(temporary_root, *relative.split("/"))
-        shutil.copytree(source, target, dirs_exist_ok=True,
-                        ignore=shutil.ignore_patterns("__pycache__"))
-
-    stage_tree("kernel")
-    stage_tree("Tools")
-    if profile_directory:
-        stage_tree(profile_directory)
-    stage_tree(".cambium/deltas")
-    stage_tree(".cambium/receipts")
-    stage_tree(".cambium/work_specs")
-
-    artifacts = {}
-
-    def register(relative, expected_sha, prefix, suffixes, label):
-        if not isinstance(relative, str) or not relative:
-            return
-        contract = (expected_sha, prefix, tuple(suffixes))
-        prior = artifacts.get(relative)
-        if prior is not None and prior[:3] != contract:
-            raise ValueError("conflicting evidence bindings for %s" % relative)
-        artifacts[relative] = contract + (label,)
-
-    for item in queue.get("required_queue", []):
-        if not isinstance(item, dict):
-            continue
-        register(
-            item.get("work_spec_path"), item.get("work_spec_sha256"),
-            check_queue.WORK_SPEC_PREFIX, (".yaml",),
-            "Queue %s Batch Work Spec" % item.get("id", "<unknown>"),
-        )
-        register(
-            item.get("delta_path"), item.get("delta_sha256"),
-            ".cambium/deltas", (".yaml", ".yml"),
-            "Queue %s current delta" % item.get("id", "<unknown>"),
-        )
-        history = item.get("invalidation_history")
-        if isinstance(history, list):
-            for index, invalidation in enumerate(history):
-                if not isinstance(invalidation, dict):
-                    continue
-                register(
-                    invalidation.get("delta_archive_path"),
-                    invalidation.get("delta_sha256"),
-                    ".cambium/receipts", (".yaml", ".yml"),
-                    "Queue %s invalidation_history[%d] delta archive" %
-                    (item.get("id", "<unknown>"), index),
-                )
-    for amendment in progress.get("amendments", []) if isinstance(
-            progress.get("amendments"), list) else []:
-        if not isinstance(amendment, dict):
-            continue
-        operation = amendment.get("operation")
-        if operation == "queue-replan":
-            proposal_prefix = REPLAN_PROPOSAL_PREFIX
-            proposal_suffixes = (".coverage.yaml",)
-        elif operation in ("scope-replan", "cancel-batch"):
-            proposal_prefix = ".cambium/deltas/amendments"
-            proposal_suffixes = (".yaml", ".yml")
-            register(
-                amendment.get("plan_path"), amendment.get("plan_sha256"),
-                ".cambium/deltas/amendments", (".yaml", ".yml"),
-                "Progress Amendment %s plan" % amendment.get("id", "<unknown>"),
-            )
-        else:
-            continue
-        register(
-            amendment.get("coverage_proposal_path"),
-            amendment.get("coverage_proposal_sha256"),
-            proposal_prefix, proposal_suffixes,
-            "Progress Amendment %s Coverage proposal" %
-            amendment.get("id", "<unknown>"),
-        )
-
-    for relative in sorted(artifacts):
-        expected_sha, prefix, suffixes, label = artifacts[relative]
-        if (not isinstance(expected_sha, str) or
-                not check_queue.SHA256_RE.fullmatch(expected_sha)):
-            raise ValueError("%s has invalid SHA binding" % label)
-        source = kblib.managed_repository_path(
-            root, relative, prefix, suffixes=suffixes, must_exist=True,
-        )
-        actual_sha = kblib.sha256_file(source)
-        if actual_sha != expected_sha:
-            raise ValueError("%s bytes differ from bound SHA" % label)
-        target = os.path.join(temporary_root, *relative.split("/"))
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        shutil.copy2(source, target)
-    receipt_root = os.path.join(root, ".cambium", "receipts")
-    if os.path.isdir(receipt_root):
-        for dirpath, dirnames, filenames in os.walk(receipt_root):
-            dirnames[:] = sorted(name for name in dirnames
-                                 if not os.path.islink(os.path.join(dirpath, name)))
-            for name in sorted(filenames):
-                if not name.endswith(".jsonl"):
-                    continue
-                source = os.path.join(dirpath, name)
-                relative = os.path.relpath(source, root)
-                target = os.path.join(temporary_root, *relative.split(os.sep))
-                os.makedirs(os.path.dirname(target), exist_ok=True)
-                shutil.copy2(source, target)
-
-
-def _preflight_result(root, coverage_text, queue, queue_text, progress,
-                      progress_text, pending_replan_receipt=None):
-    with tempfile.TemporaryDirectory(prefix="cambium-replan-") as temporary:
-        state = os.path.join(temporary, ".cambium", "state")
-        os.makedirs(state, exist_ok=True)
-        with open(os.path.join(state, "coverage_ledger.yaml"), "w",
-                  encoding="utf-8") as fh:
-            fh.write(coverage_text)
-        with open(os.path.join(state, "required_queue.yaml"), "w",
-                  encoding="utf-8") as fh:
-            fh.write(queue_text)
-        with open(os.path.join(state, "progress_ledger.yaml"), "w",
-                  encoding="utf-8") as fh:
-            fh.write(progress_text)
-        _copy_result_evidence(root, temporary, queue, progress)
-        return check_queue.validate_runtime(
-            temporary,
-            extra_receipts=([pending_replan_receipt]
-                            if pending_replan_receipt is not None else None),
-            allow_pending_replan_receipts=(pending_replan_receipt is not None),
-        )["errors"]
+    return check_queue.validate_runtime(
+        root,
+        state_overrides={
+            COVERAGE_PATH: (coverage_text, coverage),
+            QUEUE_PATH: (queue_text, queue),
+            PROGRESS_PATH: (progress_text, progress),
+        },
+        extra_receipts=([pending_replan_receipt]
+                        if pending_replan_receipt is not None else None),
+        allow_pending_replan_receipts=(pending_replan_receipt is not None),
+        **check_queue.runtime_authority_validation_kwargs(authority),
+    )["errors"]
 
 
 def _sync_progress(progress, queue, queue_text, amendment_id=None,
@@ -980,7 +847,7 @@ def _restore_state(paths, before_text, names):
 
 def _commit_state(root, paths, before_text, after_text, write_names,
                   receipt_path, prepare_receipt, commit_receipt,
-                  abort_receipt, operation):
+                  abort_receipt, operation, authority):
     """Publish one guarded state transaction and preserve crash evidence.
 
     Per-file replacement cannot be atomic across three files.  The shared
@@ -988,6 +855,10 @@ def _commit_state(root, paths, before_text, after_text, write_names,
     precedes the first replacement.  An escaping failure leaves the lock
     unless every authoritative byte has been restored and verified.
     """
+    operation = dict(operation)
+    operation.update(check_queue.runtime_authority_lock_fields(authority))
+    authority_kwargs = check_queue.runtime_authority_validation_kwargs(
+        authority)
     with kblib.runtime_write_lock(root, owner_metadata=operation) as lease:
         with kblib.no_authoritative_write_guard(lease):
             for name, path in paths.items():
@@ -998,6 +869,7 @@ def _commit_state(root, paths, before_text, after_text, write_names,
                         "%s changed after transaction planning" % name)
             locked = check_queue.validate_runtime(
                 root, allow_unmaterialized_queue=True,
+                **authority_kwargs,
             )
             if locked["errors"]:
                 raise ValueError("runtime changed before write: %s" %
@@ -1006,6 +878,8 @@ def _commit_state(root, paths, before_text, after_text, write_names,
                 locked, "compile_queue", operation.get("action"))
             if barrier:
                 raise ValueError(barrier)
+            check_queue.require_runtime_authority_current(
+                root, authority, "runtime authority changed under lock")
         outcomes = {
             "prepare": "not-attempted",
             "commit": "not-attempted",
@@ -1021,31 +895,50 @@ def _commit_state(root, paths, before_text, after_text, write_names,
             commit_before = None
         try:
             if prepare_receipt is not None:
+                check_queue.require_runtime_authority_current(
+                    root, authority,
+                    "runtime authority changed before prepare receipt")
                 outcome, append_error, _ = kblib.write_receipts_observed(
                     receipt_path, [prepare_receipt]
                 )
                 outcomes["prepare"] = outcome
                 if append_error is not None:
                     raise append_error
+                check_queue.require_runtime_authority_current(
+                    root, authority,
+                    "runtime authority changed during prepare receipt")
+            check_queue.require_runtime_authority_current(
+                root, authority, "runtime authority changed before state write")
             for name in write_names:
                 kblib.atomic_write_text(
                     paths[name], after_text[name],
                     validator=kblib.parse_yaml_subset,
                 )
+                check_queue.require_runtime_authority_current(
+                    root, authority,
+                    "runtime authority changed while writing %s" % name)
             postflight = check_queue.validate_runtime(
                 root, extra_receipts=[commit_receipt],
                 allow_pending_replan_receipts=True,
+                **authority_kwargs,
             )["errors"]
             if postflight:
                 raise ValueError("post-write check_queue failed: %s" %
                                  "; ".join(postflight))
+            check_queue.require_runtime_authority_current(
+                root, authority,
+                "runtime authority changed before commit receipt")
             outcome, append_error, _ = kblib.write_receipts_observed(
                 receipt_path, [commit_receipt], before=commit_before
             )
             outcomes["commit"] = outcome
             if append_error is not None:
                 raise append_error
-            persisted = check_queue.validate_runtime(root)["errors"]
+            check_queue.require_runtime_authority_current(
+                root, authority,
+                "runtime authority changed during commit receipt")
+            persisted = check_queue.validate_runtime(
+                root, **authority_kwargs)["errors"]
             if persisted:
                 raise ValueError("persisted transaction evidence failed "
                                  "check_queue: %s" % "; ".join(persisted))
@@ -1136,9 +1029,12 @@ def main(argv=None):
         queue_path, queue = _load(root, QUEUE_PATH)
         coverage_path, coverage = _load(root, COVERAGE_PATH)
         progress_path, progress = _load(root, PROGRESS_PATH)
-        old_queue_text = open(queue_path, encoding="utf-8").read()
-        coverage_text = open(coverage_path, encoding="utf-8").read()
-        old_progress_text = open(progress_path, encoding="utf-8").read()
+        with open(queue_path, encoding="utf-8") as fh:
+            old_queue_text = fh.read()
+        with open(coverage_path, encoding="utf-8") as fh:
+            coverage_text = fh.read()
+        with open(progress_path, encoding="utf-8") as fh:
+            old_progress_text = fh.read()
         current_sha = kblib.sha256_bytes(old_queue_text)
         current_coverage_sha = kblib.sha256_bytes(coverage_text)
         current_progress_sha = kblib.sha256_bytes(old_progress_text)
@@ -1151,6 +1047,7 @@ def main(argv=None):
         if current_validation["errors"]:
             raise ValueError("current runtime state is inconsistent: %s" %
                              "; ".join(current_validation["errors"]))
+        authority = check_queue.runtime_authority_context(current_validation)
         if args.apply or args.apply_replan:
             barrier = check_queue.delta_apply_write_barrier(
                 current_validation, "compile_queue",
@@ -1324,8 +1221,9 @@ def main(argv=None):
             })
             abort_receipt["transaction_phase"] = "abort"
             preflight_errors = _preflight_result(
-                root, final_coverage_text, replanned, replanned_text,
-                progress_new, progress_text,
+                root, proposal_coverage, final_coverage_text,
+                replanned, replanned_text, progress_new, progress_text,
+                authority,
                 pending_replan_receipt=receipt,
             )
         except (OSError, TypeError, ValueError, kblib.YamlSubsetError) as exc:
@@ -1391,7 +1289,7 @@ def main(argv=None):
                 },
                 ("coverage", "queue", "progress"),
                 receipt_path, prepare_receipt, receipt, abort_receipt,
-                operation,
+                operation, authority,
             )
         except (OSError, ValueError, kblib.YamlSubsetError,
                 kblib.RuntimeStateLockedError) as exc:
@@ -1469,7 +1367,8 @@ def main(argv=None):
         "actor_role": args.actor_role,
     })
     preflight_errors = _preflight_result(
-        root, coverage_text, proposal, proposal_text, progress_new, progress_text,
+        root, coverage, coverage_text, proposal, proposal_text,
+        progress_new, progress_text, authority,
         pending_replan_receipt=receipt,
     )
     if preflight_errors:
@@ -1521,7 +1420,7 @@ def main(argv=None):
                 "progress": progress_text,
             },
             ("queue", "progress"), receipt_path, None, receipt, None,
-            operation,
+            operation, authority,
         )
     except (OSError, ValueError, kblib.YamlSubsetError,
             kblib.RuntimeStateLockedError) as exc:

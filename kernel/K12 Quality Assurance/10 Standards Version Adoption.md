@@ -45,6 +45,7 @@ standards_version_before, standards_version_after,
 selected_profile_manifest_before, selected_profile_manifest_after,
 governance_revision_ref, governance_revision_sha256,
 standards_snapshot_sha256_after, profile_snapshot_sha256_after,
+profile_contract_fingerprint_after, profile_load_inputs_sha256_after,
 selected_route_ids_after, selected_card_paths_after,
 selected_profile_route_ids_after, selected_read_sets_after,
 loaded_module_paths_after, queue_revision_before, queue_revision_after,
@@ -62,18 +63,47 @@ Closed rows:
 - boundary: `boundary_id`, `predicate_ids`, `target_kind`, `target_ids`,
   `required_gate_ids`.
 
-Boundary `target_kind` is one of six values. Only `batch` names its enforcement
-scope by itself; the other five reach a rerun only through invalidated evidence
-whose `revalidation_scope_ids` name Queue batches, because a deferred gate is
-claimed at a batch transition. A boundary reaching no batch by either route is
+Boundary `target_kind` is one of six values. `batch` names a deferred
+enforcement scope by itself. `profile-load` names the candidate after Profile
+and is enforced during plan admission, before any state write. The other four
+reach a rerun only through invalidated evidence whose
+`revalidation_scope_ids` name Queue batches, because their deferred gates are
+claimed at a batch transition. Except for a `profile-load` boundary already
+discharged at admission, a boundary reaching no batch by either route is
 rejected, not recorded as protection nothing applies.
 
 | `target_kind` | `target_ids` resolve against | Own enforcement point |
 |---|---|---|
 | `batch` | the Required Queue | each `required_gate_ids` entry holds the transition it belongs to |
+| `profile-load` | exactly the plan's one `selected_profile_manifest_after` | after-image plan admission, before any state write |
 | `receipt` | the current receipt catalog | none |
 | `task` | exactly the plan's `task_id` | none |
-| `terminal-audit`, `maintenance-completion`, `profile-load` | unresolved | none |
+| `terminal-audit`, `maintenance-completion` | unresolved | none |
+
+A `profile-load` boundary's `target_ids` MUST be exactly the one-element list
+containing `selected_profile_manifest_after`, and its `required_gate_ids` MUST
+include `profile-load`; it MAY also name downstream gates affected by the same
+changed predicate. The canonical producer validates the after image and emits
+the gate result during admission. `profile-load` is therefore removed from the
+post-admission immediate/deferred rerun projections; the boundary's other
+required gates still need ordinary invalidated-evidence reachability to a
+Queue batch and remain enforced at their registered positions.
+
+Changing `selected_profile_manifest` is itself a Profile-authority predicate
+change even when two packages currently contain equivalent bytes: a
+path-bound `profile-load` result cannot transfer to another manifest. Such a
+plan MUST declare at least one changed predicate whose `affected_gate_ids`
+contains `profile-load`, and exactly one `profile-load` boundary MUST reference
+every predicate that names that Gate. The same unique-boundary rule applies
+when a same-path revision explicitly declares a Profile-load-affecting
+predicate. A semantically neutral same-path revision need not invent one.
+
+For a plan admitted under the current producer, every Gate named in a changed
+predicate's `affected_gate_ids` MUST occur in `required_gate_ids` on at least
+one concrete invalidation boundary that references that same predicate.
+`boundary_gate_reruns` is only the exact sorted projection of post-admission
+Gate IDs; placing a Gate in that union does not create an enforcement edge and
+cannot compensate for omitting it from all such boundaries.
 
 Each required gate is claimed at the position it belongs to, not all at hold
 discharge. Partition a boundary's gates by the position
@@ -92,14 +122,53 @@ IDs/references must resolve. Invalidated-evidence `reason_code` is
 `gate-semantics-changed`. Managed paths are repository-contained/non-symlinked.
 Before values equal current bytes; Standards version must change.
 `queue_revision_after = queue_revision_before + 1`; state revision is invariant.
-After Profile/load set resolves. Predicate, Profile-path, or load-set change
+The after Profile passes `profile-load`; the load set resolves independently
+and Profile-closure members are not added to `loaded_module_paths`. Predicate, Profile-path, or load-set change
 bumps `contract_version`; a pure identity no-op may retain it.
 
 `governance_revision_ref` is exactly
 `kernel/K00 Standards Control/03 Standards Governance.md`; its SHA binds all
 approved bytes, whose active version/Profile equal the plan after identity.
 After snapshot SHAs deterministically bind all `kernel/` and the selected
-Profile directory.
+Profile directory. The 1.3 producer persists the exact typed dependency graph
+as `profile_contract_fingerprint_after`; the 1.4 producer additionally
+persists the fingerprint of the three root-owned profile-load inputs as
+`profile_load_inputs_sha256_after`. Both values are identical across the plan,
+prepare/commit receipts, Progress record, and writer-lock intent, and are
+re-CAS before state writes, after state writes, and immediately before and
+after final receipt publication. A sealed pre-1.3 chain may omit the contract
+fingerprint, and a sealed pre-1.4 chain may omit the root-input fingerprint;
+when a legacy chain carries either field it remains canonical and identical
+across that chain. Replay selects these rules from the commit receipt's
+producer version, applies no later Profile path/boundary rule, and never
+reparses the current Profile. The
+passing Profile closure guarantees that every
+Profile-owned dependency is inside that directory; its `profile-load`
+contract fingerprint binds the typed edges that the directory digest alone
+cannot express.
+
+Corrective adoption is deliberately asymmetric. The current before Profile
+is authoritative for recording identity and impact, but it need not pass the
+new `profile-load` contract: requiring that would withhold the sole sanctioned
+transaction that can migrate away from an invalid Profile. The candidate
+after Profile MUST pass. A failing after image blocks plan admission rather
+than being written into runtime state.
+
+This asymmetry is an explicit transaction capability, not the default runtime
+rule. Ordinary readers and writers MUST require full `profile-load` from
+`validate_runtime`; only the adoption's persisted current/before read may use
+the smaller identity/sentinel guard, and that guard MUST be unavailable to a
+state override, pending receipt, candidate after image, or post-write state.
+
+Plan admission is not a lease on mutable Profile bytes. It captures the
+candidate manifest, Profile snapshot, and typed-contract fingerprint without
+publishing that candidate result into the current Queue receipt identity. On
+apply, the writer MUST rerun full `profile-load` and compare all three under
+the shared lock before the first write, after the state writes, and immediately
+before and after final receipt publication. Pre-commit drift restores the
+three before images and records abort. If commit evidence may already be
+durable, rollback still restores those state bytes and records abort, but the
+writer lock remains for explicit reconciliation.
 
 ## Adoption Branches
 
@@ -117,10 +186,11 @@ State bytes still synchronize, so Queue consistency reruns; nothing reopens.
 
 For semantic change, predicates and boundaries are nonempty. Immediate reruns
 remain exactly `[required-queue-consistency]`. Deferred reruns equal the sorted
-set union of predicate `affected_gate_ids` and boundary `required_gate_ids`;
-batch-close/Terminal gates occur only there. Scope follows explicit predicate,
-owner, Profile, receipt-dependency, and registered-gate edges, never similarity
-or backlinks.
+set union of predicate `affected_gate_ids` and boundary `required_gate_ids`
+after removing `profile-load`, which was already discharged against the after
+image at admission; batch-close/Terminal gates occur only there. Scope follows
+explicit predicate, owner, Profile, receipt-dependency, and registered-gate
+edges, never similarity or backlinks.
 
 Affected batches are the union of boundary batch targets and Queue batch IDs in
 invalidated-evidence revalidation scopes. Affected `merge-ready` batches require formal

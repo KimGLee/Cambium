@@ -24,7 +24,7 @@ source_files:
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '60c7f08e2f24'
+source_hash: 'b3152d0a4c86'
 ---
 # R06 Migration and Refactor Card
 

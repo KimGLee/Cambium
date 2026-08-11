@@ -410,7 +410,7 @@ def _cancel_queue(queue, plan, now, transition_receipt):
     return result, item
 
 
-def _prepare_result(root, plan_path, expected):
+def _prepare_result(root, plan_path, expected, admitted_runtime=None):
     root = os.path.realpath(os.path.abspath(root))
     plan_file, plan_raw, plan = _load_managed(
         root, plan_path, PLAN_PREFIX, must_exist=True)
@@ -426,10 +426,18 @@ def _prepare_result(root, plan_path, expected):
     if proposal_sha != plan["coverage_proposal_sha256"]:
         raise ValueError("Coverage proposal SHA does not match plan")
 
-    current = check_queue.validate_runtime(root)
+    current = (check_queue.validate_runtime(root)
+               if admitted_runtime is None else admitted_runtime)
+    if (not isinstance(current, dict) or
+            current.get("root") != root):
+        raise ValueError(
+            "admitted runtime belongs to a different repository root")
     if current["errors"]:
         raise ValueError("current runtime is inconsistent: %s" %
                          "; ".join(current["errors"]))
+    authority = check_queue.runtime_authority_context(current)
+    authority_kwargs = check_queue.runtime_authority_validation_kwargs(
+        authority)
     barrier = check_queue.delta_apply_write_barrier(
         current, "apply_amendment", "apply")
     if barrier:
@@ -597,7 +605,8 @@ def _prepare_result(root, plan_path, expected):
     if transition is not None:
         pending.append(transition)
     final_check = check_queue.validate_runtime(
-        root, state_overrides=overrides, extra_receipts=pending)
+        root, state_overrides=overrides, extra_receipts=pending,
+        **authority_kwargs)
     if final_check["errors"]:
         raise ValueError("planned final state fails check_queue: %s" %
                          "; ".join(final_check["errors"]))
@@ -616,6 +625,7 @@ def _prepare_result(root, plan_path, expected):
             previous_transaction_commit_receipt,
         "registration_receipt": registration_receipt,
         "task_id": queue.get("task_id"),
+        "authority": authority,
     }
 
 
@@ -641,6 +651,9 @@ def _restore(paths, before_raw):
 
 def _commit_transaction(root, prepared, receipt_path):
     plan = prepared["plan"]
+    authority = prepared["authority"]
+    authority_kwargs = check_queue.runtime_authority_validation_kwargs(
+        authority)
     abort = _new_transaction_receipt(
         "abort", "fail", plan, prepared["transaction_id"],
         prepared["plan_path"], prepared["plan_sha"],
@@ -670,6 +683,7 @@ def _commit_transaction(root, prepared, receipt_path):
             if prepared["transition"] is not None else None
         ),
     })
+    operation.update(check_queue.runtime_authority_lock_fields(authority))
     with kblib.runtime_write_lock(root, owner_metadata=operation) as lock:
         with kblib.no_authoritative_write_guard(lock):
             for name, path in prepared["paths"].items():
@@ -678,10 +692,13 @@ def _commit_transaction(root, prepared, receipt_path):
                 if kblib.sha256_bytes(live) != prepared["before_sha"][name]:
                     raise ValueError(
                         "%s changed after transaction planning" % name)
-            locked = check_queue.validate_runtime(root)
+            locked = check_queue.validate_runtime(
+                root, **authority_kwargs)
             if locked["errors"]:
                 raise ValueError("runtime changed before write: %s" %
                                  "; ".join(locked["errors"]))
+            check_queue.require_runtime_authority_current(
+                root, authority, "runtime authority changed under lock")
             barrier = check_queue.delta_apply_write_barrier(
                 locked, "apply_amendment", "apply")
             if barrier:
@@ -706,26 +723,42 @@ def _commit_transaction(root, prepared, receipt_path):
             commit_before = None
             final_before = None
         try:
+            check_queue.require_runtime_authority_current(
+                root, authority,
+                "runtime authority changed before prepare receipt")
             outcome, append_error, _ = kblib.write_receipts_observed(
                 receipt_path, [prepared["prepare"]]
             )
             outcomes["prepare"] = outcome
             if append_error is not None:
                 raise append_error
+            check_queue.require_runtime_authority_current(
+                root, authority,
+                "runtime authority changed during prepare receipt")
             for name in ("coverage", "queue", "progress"):
+                check_queue.require_runtime_authority_current(
+                    root, authority,
+                    "runtime authority changed before %s write" % name)
                 kblib.atomic_write_text(
                     prepared["paths"][name], prepared["after_text"][name],
                     validator=kblib.parse_yaml_subset,
                 )
+                check_queue.require_runtime_authority_current(
+                    root, authority,
+                    "runtime authority changed during %s write" % name)
             post = check_queue.validate_runtime(
                 root,
                 extra_receipts=(
                     [prepared["commit"], prepared["transition"]]
                     if prepared["transition"] else [prepared["commit"]]),
+                **authority_kwargs,
             )
             if post["errors"]:
                 raise ValueError("post-write check_queue failed: %s" %
                                  "; ".join(post["errors"]))
+            check_queue.require_runtime_authority_current(
+                root, authority,
+                "runtime authority changed before final receipts")
             outcome, append_error, _ = kblib.write_receipts_observed(
                 receipt_path, final_receipts, before=final_before
             )
@@ -737,6 +770,15 @@ def _commit_transaction(root, prepared, receipt_path):
             )
             if append_error is not None:
                 raise append_error
+            check_queue.require_runtime_authority_current(
+                root, authority,
+                "runtime authority changed during final receipts")
+            persisted = check_queue.validate_runtime(
+                root, **authority_kwargs)
+            if persisted["errors"]:
+                raise ValueError("persisted transaction evidence failed "
+                                 "check_queue: %s" %
+                                 "; ".join(persisted["errors"]))
         except Exception as exc:
             rollback_failures = _restore(
                 prepared["paths"], prepared["before_raw"])
@@ -818,6 +860,7 @@ def main(argv=None):
         if not check_queue.SHA256_RE.fullmatch(value):
             print("[FAIL] expected %s SHA must be sha256:<64 lowercase hex>" % name)
             return 1
+    admission = None
     if args.apply:
         admission = check_queue.validate_runtime(root)
         if admission["errors"]:
@@ -833,7 +876,8 @@ def main(argv=None):
         receipt_path = kblib.managed_repository_path(
             root, args.receipts, ".cambium/receipts",
             suffixes=(".jsonl",), must_exist=False)
-        prepared = _prepare_result(root, args.plan, expected)
+        prepared = _prepare_result(
+            root, args.plan, expected, admitted_runtime=admission)
     except (OSError, UnicodeError, ValueError, TypeError,
             kblib.YamlSubsetError) as exc:
         print("[FAIL] %s" % exc)

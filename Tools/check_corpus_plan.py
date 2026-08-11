@@ -11,16 +11,16 @@ import argparse
 import json
 import os
 import re
-import stat
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
+import profile_admission
 
 
 TOOL = "check_corpus_plan"
-TOOL_VERSION = "1.6.0"
+TOOL_VERSION = "1.7.0"
 # The Gate ID and the `Check` cell K00/12 registers for it; every receipt
 # this tool offers as gate evidence carries both verbatim.
 GATE_ID = "corpus-plan-structure"
@@ -127,6 +127,9 @@ PASS_RECEIPT_BINDING_FIELDS = (
     "queue_state_revision",
     "selected_profile_manifest",
     "selected_profile_manifest_sha256",
+    "profile_snapshot_sha256",
+    "profile_contract_fingerprint",
+    "profile_load_inputs_sha256",
     "corpus_planning_slot_path",
     "corpus_planning_slot_sha256",
     "profile_scope_path",
@@ -361,7 +364,11 @@ def _closed_mapping(value, expected, label, result):
 
 def _schema_document(binding, expected_fields, label, result):
     try:
-        document = kblib.load_yaml_file(binding["path"])
+        snapshot = binding.get("_snapshot")
+        if not isinstance(snapshot, kblib.RepositoryFileSnapshot):
+            raise ValueError(
+                "artifact has no immutable validation snapshot")
+        document = kblib.parse_yaml_subset(snapshot.read_text())
     except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
         _add_error(result, "yaml_parse", label, str(exc))
         return {}
@@ -491,35 +498,103 @@ def _resolve_manifest(root, profile, result):
     return candidate, selected_from_progress
 
 
-def _resolve_slot(manifest_text, root, manifest_path, slot_name, result):
-    bindings, duplicates = kblib.profile_slot_bindings(
-        manifest_text, include_duplicates=True)
-    if slot_name in duplicates:
-        _add_error(result, "profile_binding", _relative(root, manifest_path),
-                   "repeats %s binding" % slot_name)
-        return None
-    binding = bindings.get(slot_name)
-    if binding is None:
-        _add_error(result, "profile_binding", _relative(root, manifest_path),
-                   "has no %s binding" % slot_name)
-        return None
-    profile_dir = os.path.dirname(manifest_path)
-    kind, detail = kblib.resolve_profile_binding(binding, root, profile_dir)
-    if kind != "path":
-        _add_error(result, "profile_binding", _relative(root, manifest_path),
-                   "%s binding is %s: %s" %
-                   (slot_name, kind, detail or binding))
-        return None
-    return detail
+def _authorized_profile_view(root, profile, result,
+                             authorized_profile_view=None):
+    """Resolve selection, then run one complete typed ``profile-load``."""
+    manifest_path, selected_from_progress = _resolve_manifest(
+        root, profile, result)
+    if manifest_path is None:
+        return None, None, selected_from_progress
+    manifest_relative = _relative(root, manifest_path)
+    if authorized_profile_view is None and selected_from_progress is None:
+        admission, errors = profile_admission.admit_profile(
+            root, os.path.dirname(manifest_relative))
+        if admission is None:
+            view = None
+        else:
+            evaluation = admission.evaluation
+            view = {
+                "selected_profile_manifest": admission.manifest_repo_path,
+                "profile_snapshot_sha256":
+                    evaluation.profile_snapshot_sha256,
+                "profile_contract_fingerprint":
+                    evaluation.profile_contract_fingerprint,
+                "profile_load_inputs_sha256":
+                    evaluation.profile_load_inputs_sha256,
+                "_manifest_slot_paths": tuple(sorted(
+                    (edge.owner_id, edge.path)
+                    for edge in admission.contract.dependency_edges
+                    if edge.kind == "manifest-slot")),
+                "_contract": admission.contract,
+                "_profile_snapshot": evaluation.profile_snapshot,
+                "_evaluation": evaluation,
+            }
+    elif authorized_profile_view is None:
+        view, errors = check_queue.profile_load_authorized_view(
+            root, manifest_relative)
+    else:
+        view = authorized_profile_view
+        errors = check_queue._authorized_profile_view_errors(
+            root, manifest_relative, view)
+    for error in errors:
+        _add_error(result, "profile_load", manifest_relative, error)
+    if view is None:
+        return None, None, selected_from_progress
+    if view.get("selected_profile_manifest") != manifest_relative:
+        _add_error(
+            result, "profile_load", manifest_relative,
+            "authorized view selects %r" %
+            view.get("selected_profile_manifest"))
+        return None, None, selected_from_progress
+    return manifest_path, view, selected_from_progress
 
 
-def _role_ids(manifest_text, root, manifest_path, result):
-    role_path = _resolve_slot(
-        manifest_text, root, manifest_path, ROLE_SLOT_NAME, result)
+def _profile_view_currency_errors(root, profile_view):
+    return check_queue.profile_load_authorized_view_currency_errors(
+        root, profile_view)
+
+
+def _typed_slot_path(root, profile_view, slot_name, result):
+    paths = dict(profile_view.get("_manifest_slot_paths") or ()) \
+        if isinstance(profile_view, dict) else {}
+    relative = paths.get(slot_name)
+    if not isinstance(relative, str) or not relative:
+        _add_error(result, "profile_binding",
+                   result.get("profile_manifest") or "<unresolved>",
+                   "authorized profile-load view has no typed %s edge" %
+                   slot_name)
+        return None
+    return os.path.join(root, *relative.split("/"))
+
+
+def _typed_slot_text(profile_view, slot_name, result):
+    """Read one slot from the immutable snapshot that authorized the view."""
+    paths = dict(profile_view.get("_manifest_slot_paths") or ()) \
+        if isinstance(profile_view, dict) else {}
+    relative = paths.get(slot_name)
+    snapshot = profile_view.get("_profile_snapshot") \
+        if isinstance(profile_view, dict) else None
+    if not isinstance(snapshot, kblib.RepositoryTreeSnapshot):
+        _add_error(result, "profile_binding",
+                   result.get("profile_manifest") or "<unresolved>",
+                   "authorized profile-load view has no immutable snapshot")
+        return None
+    try:
+        return snapshot.read_text(relative)
+    except (FileNotFoundError, UnicodeError, TypeError, ValueError) as exc:
+        _add_error(result, "profile_binding", relative or slot_name,
+                   "cannot read %s from the authorized Profile snapshot: %s" %
+                   (slot_name, exc))
+        return None
+
+
+def _role_ids(root, profile_view, result):
+    role_path = _typed_slot_path(
+        root, profile_view, ROLE_SLOT_NAME, result)
     if role_path is None:
         return set()
     role_target = _relative(root, role_path)
-    text = _read_text(role_path, role_target, result)
+    text = _typed_slot_text(profile_view, ROLE_SLOT_NAME, result)
     if text is None:
         return set()
     roles = set()
@@ -548,7 +623,7 @@ def _role_ids(manifest_text, root, manifest_path, result):
     return roles
 
 
-def _validate_slot(text, target, manifest_text, root, manifest_path, result):
+def _validate_slot(text, target, profile_view, root, result):
     try:
         document = kblib.parse_yaml_subset(text)
     except kblib.YamlSubsetError as exc:
@@ -621,6 +696,14 @@ def _validate_slot(text, target, manifest_text, root, manifest_path, result):
         if resolved:
             _reject_runtime_path(
                 resolved, "%s:artifact_bindings.%s" % (target, field), result)
+            try:
+                resolved["_snapshot"] = kblib.repository_file_snapshot(
+                    root, resolved["value"], singly_linked=True)
+            except (OSError, ValueError) as exc:
+                _add_error(
+                    result, "artifact_snapshot", resolved["value"],
+                    "cannot bind %s to one immutable file revision: %s" %
+                    (role, exc))
             bindings[role] = resolved
     if len({value["value"] for value in bindings.values()}) != len(bindings):
         _add_error(result, "artifact_bindings", target,
@@ -666,7 +749,7 @@ def _validate_slot(text, target, manifest_text, root, manifest_path, result):
     decision = _string(
         authority.get("decision_scope_id"),
         target + ":pass_authority.decision_scope_id", result)
-    registry_roles = _role_ids(manifest_text, root, manifest_path, result)
+    registry_roles = _role_ids(root, profile_view, result)
     if role and role not in registry_roles:
         _add_error(result, "pass_authority",
                    target + ":pass_authority.role_id",
@@ -680,13 +763,13 @@ def _validate_slot(text, target, manifest_text, root, manifest_path, result):
             "scale": scale, "authorities": authorities}
 
 
-def _validate_profile_scope(manifest_text, root, manifest_path, result):
-    scope_path = _resolve_slot(
-        manifest_text, root, manifest_path, SCOPE_SLOT_NAME, result)
+def _validate_profile_scope(root, profile_view, result):
+    scope_path = _typed_slot_path(
+        root, profile_view, SCOPE_SLOT_NAME, result)
     if scope_path is None:
         return {"path": None, "layers": []}
     target = _relative(root, scope_path)
-    text = _read_text(scope_path, target, result)
+    text = _typed_slot_text(profile_view, SCOPE_SLOT_NAME, result)
     if text is None:
         return {"path": target, "layers": []}
     sections = _h2_sections(
@@ -1164,7 +1247,8 @@ def _reconcile_promotion(path, runtime, target, result):
     return outcome
 
 
-def _runtime(root, result):
+def _runtime(root, result, authorized_profile_view=None,
+             authorized_active_standards_view=None):
     present = [os.path.exists(os.path.join(root, path))
                for path in STATE_PATHS]
     if not any(present):
@@ -1176,7 +1260,11 @@ def _runtime(root, result):
                    "partial runtime; missing: %s" % ", ".join(missing))
         return {"errors": ["partial runtime"], "coverage": {}, "queue": {},
                 "progress": {}}
-    runtime = check_queue.validate_runtime(root)
+    runtime = check_queue.validate_runtime(
+        root,
+        authorized_profile_view=authorized_profile_view,
+        authorized_active_standards_view=
+            authorized_active_standards_view)
     for error in runtime.get("errors", []):
         _add_error(result, "runtime", ".cambium/state", error)
     return runtime
@@ -1265,16 +1353,70 @@ def close_requirement(runtime, item, result):
     return bool(triggers), triggers
 
 
-def _singly_linked_file_sha256(root, relative, label):
-    """Fingerprint one repository file without accepting aliases."""
-    absolute = kblib.repository_path(
-        root, relative, must_exist=True, reject_symlink=True)
-    descriptor = os.lstat(absolute)
-    if not stat.S_ISREG(descriptor.st_mode):
-        raise ValueError("%s must be a regular file" % label)
-    if descriptor.st_nlink != 1:
-        raise ValueError("%s must have exactly one hard link" % label)
-    return kblib.sha256_file(absolute)
+def _profile_snapshot_file_sha256(result, relative, label):
+    """Hash Profile-owned bytes from the evaluation that authorized result."""
+    view = result.get("_authorized_profile_view")
+    snapshot = view.get("_profile_snapshot") \
+        if isinstance(view, dict) else None
+    if not isinstance(snapshot, kblib.RepositoryTreeSnapshot):
+        raise ValueError("Corpus Planning result has no authorized Profile "
+                         "snapshot")
+    try:
+        return kblib.sha256_bytes(snapshot.read_bytes(relative))
+    except (FileNotFoundError, TypeError, ValueError) as exc:
+        raise ValueError("%s is absent from the authorized Profile snapshot: "
+                         "%s" % (label, exc)) from exc
+
+
+def _result_currency_errors(result):
+    """Rebind every mutable input consumed by one validation result."""
+    root = result.get("root")
+    view = result.get("_authorized_profile_view")
+    if not isinstance(root, str) or not isinstance(view, dict):
+        return ["Corpus Planning result has no authorized Profile view"]
+    errors = list(_profile_view_currency_errors(root, view))
+
+    runtime = result.get("runtime")
+    if isinstance(runtime, dict):
+        active_standards_view = runtime.get(
+            "_active_standards_authorized_view")
+        if isinstance(active_standards_view, dict):
+            errors.extend(check_queue.active_standards_view_currency_errors(
+                root, active_standards_view))
+        for relative, field in (
+                (check_queue.COVERAGE_PATH, "coverage_sha256"),
+                (check_queue.QUEUE_PATH, "queue_sha256"),
+                (check_queue.PROGRESS_PATH, "progress_sha256")):
+            expected = runtime.get(field)
+            try:
+                current = kblib.repository_file_snapshot(
+                    root, relative, singly_linked=True).sha256
+            except (OSError, ValueError) as exc:
+                errors.append("cannot re-bind %s: %s" % (relative, exc))
+                continue
+            if current != expected:
+                errors.append("%s changed after Corpus Planning validation" %
+                              relative)
+
+    bindings = ((result.get("slot") or {}).get("bindings") or {})
+    for role in ARTIFACT_ROLES:
+        artifact = bindings.get(role)
+        if not isinstance(artifact, dict):
+            continue
+        snapshot = artifact.get("_snapshot")
+        relative = artifact.get("value")
+        if not isinstance(snapshot, kblib.RepositoryFileSnapshot):
+            errors.append("%s has no immutable validation snapshot" % role)
+            continue
+        try:
+            current = kblib.repository_file_snapshot(
+                root, relative, singly_linked=True)
+        except (OSError, ValueError) as exc:
+            errors.append("cannot re-bind %s: %s" % (role, exc))
+            continue
+        if current.sha256 != snapshot.sha256:
+            errors.append("%s changed after Corpus Planning validation" % role)
+    return errors
 
 
 def receipt_binding(result, *, repository_snapshot_sha256=None,
@@ -1289,6 +1431,10 @@ def receipt_binding(result, *, repository_snapshot_sha256=None,
     """
     if result.get("errors"):
         raise ValueError("cannot bind a failed Corpus Planning validation")
+    currency = _result_currency_errors(result)
+    if currency:
+        raise ValueError("Corpus Planning validation inputs are stale: %s" %
+                         "; ".join(currency))
     root = result.get("root")
     if not isinstance(root, str) or not os.path.isdir(root):
         raise ValueError("Corpus Planning result has no repository root")
@@ -1312,11 +1458,19 @@ def receipt_binding(result, *, repository_snapshot_sha256=None,
         "queue_revision": queue.get("queue_revision") if queue else None,
         "queue_state_revision": queue.get("state_revision") if queue else None,
         "selected_profile_manifest": selected_profile,
-        "selected_profile_manifest_sha256": _singly_linked_file_sha256(
-            root, selected_profile, "selected Profile manifest"),
+        "selected_profile_manifest_sha256":
+            _profile_snapshot_file_sha256(
+                result, selected_profile, "selected Profile manifest"),
+        "profile_snapshot_sha256": result[
+            "_authorized_profile_view"]["profile_snapshot_sha256"],
+        "profile_contract_fingerprint": result[
+            "_authorized_profile_view"]["profile_contract_fingerprint"],
+        "profile_load_inputs_sha256": result[
+            "_authorized_profile_view"]["profile_load_inputs_sha256"],
         "corpus_planning_slot_path": result.get("slot_path"),
-        "corpus_planning_slot_sha256": _singly_linked_file_sha256(
-            root, result.get("slot_path"), "Corpus Planning slot"),
+        "corpus_planning_slot_sha256":
+            _profile_snapshot_file_sha256(
+                result, result.get("slot_path"), "Corpus Planning slot"),
         "profile_scope_path": None,
         "profile_scope_sha256": None,
         "global_map_path": None,
@@ -1350,8 +1504,8 @@ def receipt_binding(result, *, repository_snapshot_sha256=None,
         if not isinstance(profile_scope_path, str) or not profile_scope_path:
             raise ValueError("configured plan has no Profile Scope binding")
         binding["profile_scope_path"] = profile_scope_path
-        binding["profile_scope_sha256"] = _singly_linked_file_sha256(
-            root, profile_scope_path, "Profile Scope")
+        binding["profile_scope_sha256"] = _profile_snapshot_file_sha256(
+            result, profile_scope_path, "Profile Scope")
         slot = result.get("slot") or {}
         bindings = slot.get("bindings") or {}
         fields = {
@@ -1366,10 +1520,18 @@ def receipt_binding(result, *, repository_snapshot_sha256=None,
                 raise ValueError("configured plan has no %s binding" % role)
             path_field, sha_field = fields[role]
             binding[path_field] = artifact.get("value")
-            binding[sha_field] = _singly_linked_file_sha256(
-                root, artifact.get("value"), role)
+            snapshot = artifact.get("_snapshot")
+            if not isinstance(snapshot, kblib.RepositoryFileSnapshot):
+                raise ValueError("configured plan has no immutable %s "
+                                 "snapshot" % role)
+            binding[sha_field] = snapshot.sha256
     elif result.get("applicability") != "not-applicable":
         raise ValueError("Corpus Planning applicability is not resolved")
+    final_currency = _result_currency_errors(result)
+    if final_currency:
+        raise ValueError(
+            "Corpus Planning validation inputs changed while receipt binding "
+            "was assembled: %s" % "; ".join(final_currency))
     return binding
 
 
@@ -1407,14 +1569,19 @@ def current_freshness_binding(root, selected_profile_manifest, *, task_id,
                               coverage_ledger_sha256,
                               required_queue_sha256,
                               progress_ledger_sha256,
-                              repository_snapshot_sha256):
+                              repository_snapshot_sha256,
+                              terminal_progress_ledger_sha256=None,
+                              authorized_profile_view=None):
     """Recompute the current bytes named by a prior pass receipt.
 
     Freshness consumption does not repeat the substantive map/matrix/gap
     decision.  It re-resolves the selected Profile and slot contract, hashes
     those exact current files, and binds current runtime/snapshot bytes.  The
     persisted receipt proves that this unchanged byte set previously passed
-    the full validator.
+    the full validator. ``progress_ledger_sha256`` is always the live Progress
+    currency input. ``terminal_progress_ledger_sha256`` may separately retain
+    the receipt-bound completion-candidate before-image across the one legal
+    transition to ``complete``; it never weakens live currency checking.
     """
     root = os.path.realpath(os.path.abspath(root))
     result = {
@@ -1427,36 +1594,31 @@ def current_freshness_binding(root, selected_profile_manifest, *, task_id,
         "runtime": None,
         "errors": [],
     }
-    manifest_path, _ = _resolve_manifest(
-        root, selected_profile_manifest, result)
-    if manifest_path is None:
+    manifest_path, profile_view, _ = _authorized_profile_view(
+        root, selected_profile_manifest, result,
+        authorized_profile_view=authorized_profile_view)
+    if manifest_path is None or profile_view is None:
         raise ValueError("; ".join(
             _display_error(error) for error in result["errors"]))
+    result["_authorized_profile_view"] = profile_view
     result["profile_manifest"] = _relative(root, manifest_path)
-    manifest_text = _read_text(
-        manifest_path, result["profile_manifest"], result)
-    if manifest_text is None:
-        raise ValueError("; ".join(
-            _display_error(error) for error in result["errors"]))
-    slot_path = _resolve_slot(
-        manifest_text, root, manifest_path, SLOT_NAME, result)
+    slot_path = _typed_slot_path(root, profile_view, SLOT_NAME, result)
     if slot_path is None:
         raise ValueError("; ".join(
             _display_error(error) for error in result["errors"]))
     result["slot_path"] = _relative(root, slot_path)
-    slot_text = _read_text(slot_path, result["slot_path"], result)
+    slot_text = _typed_slot_text(profile_view, SLOT_NAME, result)
     if slot_text is None:
         raise ValueError("; ".join(
             _display_error(error) for error in result["errors"]))
     slot = _validate_slot(
-        slot_text, result["slot_path"], manifest_text, root, manifest_path,
-        result)
+        slot_text, result["slot_path"], profile_view, root, result)
     result["slot"] = slot
     if slot:
         result["applicability"] = slot["mode"]
         if slot["mode"] == "configured":
             result["profile_scope"] = _validate_profile_scope(
-                manifest_text, root, manifest_path, result)
+                root, profile_view, result)
     if result["errors"] or not slot:
         raise ValueError("; ".join(
             _display_error(error) for error in result["errors"]) or
@@ -1479,10 +1641,16 @@ def current_freshness_binding(root, selected_profile_manifest, *, task_id,
         "queue_sha256": required_queue_sha256,
         "progress_sha256": progress_ledger_sha256,
     }
+    currency = _profile_view_currency_errors(root, profile_view)
+    if currency:
+        raise ValueError("; ".join(currency))
     return receipt_binding(
         result,
         repository_snapshot_sha256=repository_snapshot_sha256,
-        progress_ledger_sha256=progress_ledger_sha256,
+        progress_ledger_sha256=(
+            terminal_progress_ledger_sha256
+            if terminal_progress_ledger_sha256 is not None
+            else progress_ledger_sha256),
     )
 
 
@@ -1847,7 +2015,8 @@ def semantic_acceptance_status(result, *, repository_snapshot_sha256=None):
     return base
 
 
-def validate_corpus_plan(root, profile=None):
+def validate_corpus_plan(root, profile=None, *, authorized_profile_view=None,
+                         authorized_active_standards_view=None):
     """Return a structured validation result without writing repository state."""
     root = os.path.realpath(os.path.abspath(root))
     result = {
@@ -1862,38 +2031,39 @@ def validate_corpus_plan(root, profile=None):
         "matrix": {"capabilities": []},
         "gap_register": {"gaps": [], "promotions": []},
         "runtime": None,
+        "_authorized_profile_view": None,
         "errors": [],
     }
     if not os.path.isdir(root):
         _add_error(result, "root", root, "repository root is not a directory")
         return result
 
-    manifest_path, _ = _resolve_manifest(root, profile, result)
-    if manifest_path is None:
+    manifest_path, profile_view, _ = _authorized_profile_view(
+        root, profile, result,
+        authorized_profile_view=authorized_profile_view)
+    if manifest_path is None or profile_view is None:
         return result
+    result["_authorized_profile_view"] = profile_view
     result["profile_manifest"] = _relative(root, manifest_path)
-    manifest_text = _read_text(
-        manifest_path, result["profile_manifest"], result)
-    if manifest_text is None:
-        return result
-    slot_path = _resolve_slot(
-        manifest_text, root, manifest_path, SLOT_NAME, result)
+    slot_path = _typed_slot_path(root, profile_view, SLOT_NAME, result)
     if slot_path is None:
         return result
     result["slot_path"] = _relative(root, slot_path)
-    slot_text = _read_text(slot_path, result["slot_path"], result)
+    slot_text = _typed_slot_text(profile_view, SLOT_NAME, result)
     if slot_text is None:
         return result
 
     slot = _validate_slot(
-        slot_text, result["slot_path"], manifest_text, root, manifest_path,
-        result)
+        slot_text, result["slot_path"], profile_view, root, result)
     result["slot"] = slot
     if slot:
         result["applicability"] = slot["mode"]
         result["applicability_reason"] = slot["reason"]
 
-    runtime = _runtime(root, result)
+    runtime = _runtime(
+        root, result, authorized_profile_view=profile_view,
+        authorized_active_standards_view=
+            authorized_active_standards_view)
     result["runtime"] = runtime
     if runtime and not runtime.get("errors"):
         selected = ((runtime.get("progress") or {}).get("contract") or {}).get(
@@ -1905,12 +2075,18 @@ def validate_corpus_plan(root, profile=None):
             )
 
     if not slot or slot["mode"] != "configured":
+        for error in _profile_view_currency_errors(root, profile_view):
+            _add_error(result, "profile_currency",
+                       result["profile_manifest"], error)
         return result
     if set(slot["bindings"]) != set(ARTIFACT_ROLES):
+        for error in _profile_view_currency_errors(root, profile_view):
+            _add_error(result, "profile_currency",
+                       result["profile_manifest"], error)
         return result
 
     profile_scope = _validate_profile_scope(
-        manifest_text, root, manifest_path, result)
+        root, profile_view, result)
     result["profile_scope"] = profile_scope
 
     global_map = _validate_global_map(
@@ -1924,6 +2100,9 @@ def validate_corpus_plan(root, profile=None):
         root, slot["bindings"]["Gap Register"], global_map, matrix,
         runtime, result)
     result["gap_register"] = gap_register
+    for error in _profile_view_currency_errors(root, profile_view):
+        _add_error(result, "profile_currency",
+                   result["profile_manifest"], error)
     return result
 
 
@@ -2083,6 +2262,9 @@ def main(argv=None):
             kblib.write_receipts(receipt_path, receipts)
         except (OSError, ValueError) as exc:
             _add_error(result, "receipt_write", args.receipts, str(exc))
+    for error in _result_currency_errors(result):
+        _add_error(result, "publication_currency",
+                   result.get("profile_manifest") or "<unresolved>", error)
     if args.json:
         print(json.dumps(normalized_projection(
             result, repository_snapshot_sha256=snapshot), sort_keys=True,

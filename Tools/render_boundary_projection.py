@@ -34,9 +34,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import compose_page_contract
+import profile_admission
 
 TOOL = "render_boundary_projection"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 
 ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
 SCOPE_SLOT = "Profile Scope"
@@ -49,58 +51,27 @@ def read_text(path):
         return handle.read()
 
 
-def resolve_profile_dir(root, override, errors):
-    if override:
-        profile_dir = override if os.path.isabs(override) \
-            else os.path.join(root, override)
-        if not os.path.isdir(profile_dir):
-            errors.append("--profile does not name an existing directory")
-            return None
-        return profile_dir
+def scope_directories(admission, errors):
+    path, error = profile_admission.require_slot(admission, SCOPE_SLOT)
+    if error:
+        errors.append(error)
+        return []
     try:
-        state_text = read_text(os.path.join(root, ACTIVE_STATE_PATH))
-    except OSError as exc:
-        errors.append("cannot read the active Standards state: %s" % exc)
-        return None
-    state, parse_errors = kblib.active_standards_state(state_text)
-    errors.extend(parse_errors)
-    manifest = state.get("selected_profile_manifest") or ""
-    if "{{" in manifest or not manifest.strip():
-        errors.append("no instantiated selected_profile_manifest; pass "
-                      "--profile and --scope for a validation run")
-        return None
-    manifest_path = os.path.join(root, manifest)
-    if not os.path.isfile(manifest_path):
-        errors.append("selected profile manifest does not exist")
-        return None
-    return os.path.dirname(manifest_path)
-
-
-def scope_directories(root, profile_dir, errors):
-    try:
-        manifest_text = read_text(os.path.join(profile_dir, "profile.md"))
-    except OSError as exc:
-        errors.append("cannot read the profile manifest: %s" % exc)
+        layers = kblib.profile_scope_layers(
+            admission.slot_text(SCOPE_SLOT))
+    except (OSError, UnicodeError) as exc:
+        errors.append("cannot read admitted Profile Scope: %s" % exc)
         return []
-    bindings = kblib.profile_slot_bindings(manifest_text)
-    binding = bindings.get(SCOPE_SLOT)
-    if binding is None:
-        errors.append("the manifest does not bind the `Profile Scope` slot")
-        return []
-    kind, detail = kblib.resolve_profile_binding(binding, root, profile_dir)
-    if kind != "path":
-        errors.append("Profile Scope binding %r does not resolve" % binding)
-        return []
-    layers = kblib.profile_scope_layers(read_text(detail))
     directories = sorted({d for dirs in layers.values() for d in dirs})
     if not directories:
         errors.append("no Logical Architecture layer table found")
     return directories
 
 
-def load_labels(path, errors):
+def load_labels(path, errors, text=None):
     try:
-        data = kblib.parse_yaml_subset(read_text(path))
+        data = kblib.parse_yaml_subset(
+            read_text(path) if text is None else text)
     except (OSError, kblib.YamlSubsetError) as exc:
         errors.append("cannot parse the compiled contract: %s — compose it "
                       "with Tools/compose_page_contract.py" % exc)
@@ -156,17 +127,27 @@ def main(argv=None):
     root = os.path.abspath(args.vault_root)
 
     errors = []
+    admission, admission_errors = profile_admission.admit_profile(
+        root, args.profile, active_state_path=ACTIVE_STATE_PATH)
+    errors.extend(admission_errors)
     contract_abs = args.contract if os.path.isabs(args.contract) \
         else os.path.join(root, args.contract)
-    labels = load_labels(contract_abs, errors)
+    artifact_snapshot = None
+    if admission is not None:
+        artifact_snapshot, artifact_errors = \
+            compose_page_contract.admitted_artifact(
+                root, contract_abs, admission)
+        errors.extend(artifact_errors)
+    labels = load_labels(
+        contract_abs, errors,
+        artifact_snapshot.read_text()
+        if artifact_snapshot is not None else None)
     scan_roots = []
-    if labels is not None:
+    if labels is not None and admission is not None:
         if args.scope:
             scan_roots = [args.scope]
         else:
-            profile_dir = resolve_profile_dir(root, args.profile, errors)
-            if profile_dir is not None:
-                scan_roots = scope_directories(root, profile_dir, errors)
+            scan_roots = scope_directories(admission, errors)
     if errors:
         for error in errors:
             print("render_boundary_projection: %s" % error)
@@ -191,6 +172,7 @@ def main(argv=None):
     written = 0
     skipped = 0
     malformed = 0
+    pending = []
     for path in sorted(set(pages)):
         rel = os.path.relpath(path, root).replace(os.sep, "/")
         text = read_text(path)
@@ -215,12 +197,29 @@ def main(argv=None):
             new_lines = lines[:begin] + expected + lines[end + 1:]
             new_text = "\n".join(new_lines) + \
                 ("\n" if text.endswith("\n") else "")
-            kblib.atomic_write_text(path, new_text)
-            written += 1
-            print("render_boundary_projection: wrote %s" % rel)
+            pending.append((path, new_text, rel))
         else:
             stale += 1
             print("render_boundary_projection: %s is stale" % rel)
+
+    currency = profile_admission.currency_errors(admission)
+    currency.extend(compose_page_contract.artifact_currency_errors(
+        root, contract_abs, admission))
+    if currency:
+        for error in currency:
+            print("render_boundary_projection: %s" % error)
+        return 1
+    for path, new_text, rel in pending:
+        kblib.atomic_write_text(path, new_text)
+        written += 1
+        print("render_boundary_projection: wrote %s" % rel)
+    currency = profile_admission.currency_errors(admission)
+    currency.extend(compose_page_contract.artifact_currency_errors(
+        root, contract_abs, admission))
+    if currency:
+        for error in currency:
+            print("render_boundary_projection: %s" % error)
+        return 1
 
     print("render_boundary_projection: stale=%d written=%d "
           "no_markers=%d malformed=%d"

@@ -13,6 +13,12 @@ attempt receipt, never a reusable subset of pass receipts.  An uncertain
 append or a post-publication verification failure deliberately preserves the
 writer lock for restart reconciliation.
 
+Under the close lock, the command acquires one full ``profile-load``
+authorized view and shares its immutable typed contract across runtime,
+Corpus Planning, compiled-artifact checks, quota overrides, and registered
+scan compilation.  A readable Audit/Scan registry cannot bypass a broken
+identity or one of the other eleven Profile slots.
+
 Exit codes:
   0  complete close-evidence bundle durably published
   1  invalid state, failed check, unreviewed candidate, or write failure
@@ -29,7 +35,9 @@ rejected so a stale attestation cannot silently authorize a different run.
 """
 
 import argparse
+import contextlib
 import hashlib
+import io
 import json
 import os
 import re
@@ -44,12 +52,17 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_links
 import check_corpus_plan
+import check_page_contract
+import check_profile
 import check_queue
+import check_vocab
 import kblib
+import profile_admission
+import profile_contract
 
 
 TOOL = "check_batch_close"
-TOOL_VERSION = "1.5.0"
+TOOL_VERSION = "1.7.0"
 GATE_ID = "batch-close"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -239,11 +252,18 @@ def _run_receipting_command(command, cwd, label):
         )
         receipts = _load_jsonl(receipt_path) if os.path.exists(
             receipt_path) else []
+    return _receipting_result(
+        list(command), label, completed.returncode, completed.stdout,
+        receipts)
+
+
+def _receipting_result(command, label, returncode, stdout, receipts):
+    """Normalize one in-process or subprocess checker result."""
     failures = [receipt for receipt in receipts
                 if receipt.get("result") == "fail"]
     candidates = [receipt for receipt in receipts
                   if receipt.get("result") == "candidate"]
-    valid_exit = completed.returncode in (0, 2)
+    valid_exit = returncode in (0, 2)
     expected_exit = 2 if candidates and not failures else (1 if failures else 0)
     errors = []
     receipt_ids = []
@@ -266,23 +286,36 @@ def _run_receipting_command(command, cwd, label):
     if not receipts:
         errors.append("checker produced no machine-readable receipts")
     if not valid_exit:
-        errors.append("checker exited %d" % completed.returncode)
+        errors.append("checker exited %d" % returncode)
     if failures:
         errors.extend("%s %s: %s" % (
             receipt.get("check"), receipt.get("target"),
             receipt.get("details")) for receipt in failures)
-    if receipts and completed.returncode != expected_exit:
+    if receipts and returncode != expected_exit:
         errors.append("checker exit %d disagrees with receipt results (expected %d)" %
-                      (completed.returncode, expected_exit))
+                      (returncode, expected_exit))
     return {
         "label": label,
         "command": list(command),
-        "returncode": completed.returncode,
-        "stdout": completed.stdout,
+        "returncode": returncode,
+        "stdout": stdout,
         "receipts": receipts,
         "candidates": candidates,
         "errors": errors,
     }
+
+
+def _run_inprocess_checker(command, cwd, label, invoke):
+    """Run one admission-aware checker without losing its in-memory view."""
+    with tempfile.TemporaryDirectory(prefix="cambium-batch-close-") as temp:
+        receipt_path = os.path.join(temp, "receipts.jsonl")
+        captured = io.StringIO()
+        with contextlib.redirect_stdout(captured):
+            returncode = invoke(receipt_path)
+        receipts = _load_jsonl(receipt_path) if os.path.exists(
+            receipt_path) else []
+    return _receipting_result(
+        command, label, returncode, captured.getvalue(), receipts)
 
 
 def _stable_candidate(receipt, member):
@@ -611,7 +644,8 @@ def _guidance_contract_check(runtime):
     return {"errors": errors, "candidates": [], "details": details}
 
 
-def _corpus_plan_close_check(root, runtime, item, snapshot):
+def _corpus_plan_close_check(root, runtime, item, snapshot, *,
+                             authorized_profile_view=None):
     """Return the conditional R13/planning-manifest close child receipt.
 
     Route selection is task-level in Progress.  A batch also becomes
@@ -620,7 +654,12 @@ def _corpus_plan_close_check(root, runtime, item, snapshot):
     validated planning relation.  Unrelated batches do not acquire a new gate
     merely because the repository contains a plan.
     """
-    result = check_corpus_plan.validate_corpus_plan(root)
+    result = check_corpus_plan.validate_corpus_plan(
+        root,
+        profile=runtime.get("queue", {}).get("selected_profile_manifest"),
+        authorized_profile_view=authorized_profile_view,
+        authorized_active_standards_view=runtime.get(
+            "_active_standards_authorized_view"))
     required, triggers = check_corpus_plan.close_requirement(
         runtime, item, result)
     if not required:
@@ -673,68 +712,61 @@ def _manifest_path(root, runtime):
                                  reject_symlink=True)
 
 
-def _profile_scan_command(root, runtime):
-    manifest_path = _manifest_path(root, runtime)
-    manifest_text = Path(manifest_path).read_text(encoding="utf-8")
-    bindings = kblib.profile_slot_bindings(manifest_text)
-    binding = bindings.get("Registered Scan Registry")
-    if not binding:
-        raise ValueError("selected profile has no Registered Scan Registry binding")
-    profile_dir = os.path.dirname(manifest_path)
-    kind, resolved = kblib.resolve_profile_binding(binding, root, profile_dir)
-    if kind != "path":
-        raise ValueError("Registered Scan Registry binding is not a profile file: %s" %
-                         kind)
-    text = Path(resolved).read_text(encoding="utf-8")
-    rows = [_split_pipe_row(line) for line in text.splitlines()
-            if line.strip().startswith("|") and line.strip().endswith("|")]
-    selected = []
-    for cells in rows:
-        if len(cells) < 6 or _table_separator(cells):
-            continue
-        if cells[0] == "Stable Scan ID":
-            continue
-        if "K12/09 item 6" in cells[1]:
-            selected.append(cells)
-    if len(selected) != 1:
-        raise ValueError("Registered Scan Registry must contain exactly one K12/09 item 6 row; found %d" %
-                         len(selected))
-    cell = selected[0][3]
-    matches = re.findall(r"`([^`]+)`", cell)
-    command_text = matches[0] if len(matches) == 1 else cell.strip()
-    tokens = shlex.split(command_text)
-    if len(tokens) < 3 or os.path.basename(tokens[0]) not in (
-            "python", "python3"):
-        raise ValueError("registered verifier must be a Python command")
-    script_relative = tokens[1]
-    if (not script_relative.startswith("Tools/") or
-            not script_relative.endswith(".py")):
-        raise ValueError("registered verifier must be a repository Tools/*.py script")
-    script = kblib.repository_path(root, script_relative, must_exist=True,
-                                   reject_symlink=True)
-    descriptor = os.lstat(script)
-    if not stat.S_ISREG(descriptor.st_mode) or descriptor.st_nlink != 1:
-        raise ValueError("registered verifier must be a singly-linked regular file")
-    if tokens[2] != ".":
-        raise ValueError("registered verifier must bind the whole repository root as '.'")
-    if "--receipts" in tokens:
-        raise ValueError("registered verifier command must leave --receipts to the gate")
-    if "--positive-controls-only" in tokens:
+def _profile_evaluation(root, runtime, *, authorized_profile_view=None):
+    root = os.path.realpath(os.path.abspath(os.fspath(root)))
+    _manifest_path(root, runtime)
+    manifest_relative = runtime.get("queue", {}).get(
+        "selected_profile_manifest")
+    if authorized_profile_view is None:
+        authorized_profile_view, errors = \
+            check_queue.profile_load_authorized_view(
+                root, manifest_relative)
+    else:
+        errors = check_queue._authorized_profile_view_errors(
+            root, manifest_relative, authorized_profile_view)
+    if errors or authorized_profile_view is None:
         raise ValueError(
-            "registered verifier command must leave --positive-controls-only "
-            "to the gate")
-    forbidden = {";", "&&", "||", "|", ">", ">>", "<"}
-    if forbidden.intersection(tokens):
-        raise ValueError("registered verifier command contains a shell operator")
-    command = [sys.executable, script, os.path.realpath(os.path.abspath(root))]
-    command.extend(tokens[3:])
-    return command
+            "selected Profile failed full profile-load before registered "
+            "scan compilation: %s" % "; ".join(
+                errors or ("no authorized evaluation",)))
+    evaluation = authorized_profile_view.get("_evaluation")
+    if not isinstance(evaluation, check_profile.ProfileLoadEvaluation):
+        raise ValueError(
+            "authorized Profile view carries no producer evaluation")
+    if not evaluation.authorized:
+        findings = "; ".join(
+            "%s [%s]: %s" % (
+                finding.get("check", "profile-load"),
+                finding.get("target", manifest_path),
+                finding.get("details", "Profile load was not authorized"),
+            )
+            for finding in evaluation.findings
+        )
+        raise ValueError(
+            "selected Profile failed full profile-load before registered "
+            "scan compilation: %s" %
+            (findings or evaluation.output.strip() or
+             "producer returned no authorized contract"))
+    return evaluation
 
 
-def _priority_quotas(root, runtime):
+def _profile_scan_command(root, evaluation):
+    scan = evaluation.contract.required_scan
+    expected = {"scan_id": scan.scan_id}
+    if scan.config_dependency is not None:
+        expected["config_fingerprint"] = kblib.sha256_bytes(
+            evaluation.profile_snapshot.read_bytes(
+                scan.config_dependency.path))
+    command = list(profile_contract.compile_registered_scan_command(
+        root, evaluation.contract, scan=scan))
+    return command, expected
+
+
+def _priority_quotas(evaluation):
     p0, p1 = 15.0, 35.0
-    overrides = kblib.profile_execution_default_overrides(
-        Path(_manifest_path(root, runtime)).read_text(encoding="utf-8"))
+    if not evaluation.authorized:
+        raise ValueError("priority quotas require one authorized profile-load")
+    overrides = dict(evaluation.execution_default_overrides)
     for item in ("priority_quota.P0", "priority_quota.P1"):
         if item not in overrides:
             continue
@@ -865,7 +897,8 @@ def _positive_control_summary_errors(run):
     return errors
 
 
-def _positive_control_binding_errors(control_run, production_run):
+def _positive_control_binding_errors(control_run, production_run,
+                                     expected_binding=None):
     """Bind an explicit control invocation to the following production run."""
     errors = []
     errors.extend("positive-control invocation: %s" % error
@@ -883,6 +916,14 @@ def _positive_control_binding_errors(control_run, production_run):
             errors.append(
                 "registered verifier positive-control and production "
                 "summaries disagree on %s" % field)
+    for field, expected in sorted((expected_binding or {}).items()):
+        for invocation, summary in (("positive-control", control),
+                                    ("production", production)):
+            if summary.get(field) != expected:
+                errors.append(
+                    "registered verifier %s summary %s=%r, expected %r from "
+                    "the admitted Profile contract" %
+                    (invocation, field, summary.get(field), expected))
     return errors
 
 
@@ -1097,13 +1138,22 @@ def main(argv=None):
         with kblib.runtime_write_lock(
                 root, owner_metadata=operation) as lease:
             with kblib.no_authoritative_write_guard(lease):
-                runtime = check_queue.validate_runtime(root)
+                locked_profile = preflight.get("queue", {}).get(
+                    "selected_profile_manifest")
+                profile_view, profile_view_errors = \
+                    check_queue.profile_load_authorized_view(
+                        root, locked_profile)
+                runtime = check_queue.validate_runtime(
+                    root,
+                    authorized_profile_view=(
+                        profile_view if profile_view is not None else {}))
                 state_anchor = _authoritative_state_anchor(runtime)
                 own_relative = os.path.relpath(os.fspath(lease), root)
                 locks = runtime.get("writer_locks") or []
                 own_locks = [lock for lock in locks
                              if lock.get("path") == own_relative]
-                runtime_errors = list(runtime.get("errors") or [])
+                runtime_errors = list(profile_view_errors)
+                runtime_errors.extend(runtime.get("errors") or [])
                 if len(locks) != 1 or len(own_locks) != 1:
                     runtime_errors.append(
                         "runtime writer-lock inventory does not contain only "
@@ -1139,8 +1189,18 @@ def main(argv=None):
                 if snapshot != pre_snapshot:
                     runtime_errors.append(
                         "repository content changed before checks started")
-                corpus_plan_check = _corpus_plan_close_check(
-                    root, runtime, item, snapshot)
+                if profile_view is None:
+                    corpus_plan_check = {
+                        "required": False,
+                        "triggers": [],
+                        "receipt": None,
+                        "binding": None,
+                        "errors": ["selected Profile has no authorized view"],
+                    }
+                else:
+                    corpus_plan_check = _corpus_plan_close_check(
+                        root, runtime, item, snapshot,
+                        authorized_profile_view=profile_view)
             _assert_authoritative_state_unchanged(root, state_anchor)
             if runtime_errors:
                 failure = _failure_receipt(
@@ -1153,7 +1213,22 @@ def main(argv=None):
                 return 1
 
             try:
-                p0, p1 = _priority_quotas(root, runtime)
+                profile_evaluation = _profile_evaluation(
+                    root, runtime, authorized_profile_view=profile_view)
+                active_standards_view = runtime.get(
+                    "_active_standards_authorized_view") or {}
+                profile_consumer_admission, admission_errors = \
+                    profile_admission.admission_from_evaluation(
+                        root, profile_evaluation,
+                        active_state_repo_path=active_standards_view.get(
+                            "active_standards_path"),
+                        active_state_sha256=active_standards_view.get(
+                            "active_standards_sha256"))
+                if admission_errors or profile_consumer_admission is None:
+                    raise ValueError(
+                        "cannot adapt shared Profile evaluation for batch "
+                        "consumers: %s" % "; ".join(admission_errors))
+                p0, p1 = _priority_quotas(profile_evaluation)
                 checks = {}
                 links = _run_receipting_command(
                     [sys.executable, str(SCRIPT_DIR / "check_links.py"), root],
@@ -1172,7 +1247,8 @@ def main(argv=None):
                     _internal_member_run(
                         _guidance_contract_check(runtime),
                         "guidance_and_contract_continuity")
-                residual_command = _profile_scan_command(root, runtime)
+                residual_command, residual_binding = _profile_scan_command(
+                    root, profile_evaluation)
                 residual_control = _run_receipting_command(
                     residual_command + ["--positive-controls-only"], root,
                     "registered residual-content positive controls")
@@ -1182,7 +1258,8 @@ def main(argv=None):
                     residual, "registered_residual_content")
                 residual_member["errors"].extend(
                     _positive_control_binding_errors(
-                        residual_control, residual))
+                        residual_control, residual,
+                        expected_binding=residual_binding))
                 if residual_control.get("errors"):
                     residual_member["errors"].extend(
                         "positive-control invocation: %s" % error
@@ -1191,28 +1268,37 @@ def main(argv=None):
                 vocab_path = kblib.repository_path(
                     root, "Tools/vocab.yaml", must_exist=True,
                     reject_symlink=True)
-                vocab = _run_receipting_command(
+                vocab_args = [
+                    root, "--vocab", vocab_path,
                     # `profiles/` is excluded like `kernel/Cards`: profile
                     # directories are governance control plane, and shipped
                     # example instances under profiles/examples/ carry their
                     # own vocabularies, so judging them against the selected
                     # profile's composed vocab.yaml fails every adopter's
                     # first close on foreign example values.
-                    [sys.executable, str(SCRIPT_DIR / "check_vocab.py"), root,
-                     "--vocab", vocab_path,
-                     "--exclude", "kernel/Cards",
-                     "--exclude", "profiles",
-                     "--quota-p0", str(p0), "--quota-p1", str(p1)],
-                    root, "check_vocab")
+                    "--exclude", "kernel/Cards", "--exclude", "profiles",
+                    "--quota-p0", str(p0), "--quota-p1", str(p1),
+                ]
+                vocab = _run_inprocess_checker(
+                    [sys.executable, str(SCRIPT_DIR / "check_vocab.py"),
+                     *vocab_args], root, "check_vocab",
+                    lambda receipt_path: check_vocab.main(
+                        [*vocab_args, "--receipts", receipt_path],
+                        authorized_admission=profile_consumer_admission))
                 checks["controlled_vocabulary"] = _tool_member_run(
                     vocab, "controlled_vocabulary")
                 contract_artifact = os.path.join(
                     root, "Tools", "page_contract.yaml")
                 if os.path.isfile(contract_artifact):
-                    page_contract = _run_receipting_command(
+                    page_contract = _run_inprocess_checker(
                         [sys.executable,
                          str(SCRIPT_DIR / "check_page_contract.py"), root],
-                        root, "check_page_contract")
+                        root, "check_page_contract",
+                        lambda receipt_path: check_page_contract.run(
+                            root, None, "Tools/page_contract.yaml", None, [],
+                            False, receipt_path,
+                            authorized_admission=
+                                profile_consumer_admission))
                     checks["manifest_page_contract"] = \
                         _manifest_page_contract_member(
                             page_contract, item.get("manifest") or [],
@@ -1436,7 +1522,10 @@ def main(argv=None):
             if after_publish != snapshot:
                 raise ReceiptPublicationUncertain(
                     "repository content changed during evidence publication")
-            persisted = check_queue.validate_runtime(root)
+            persisted = check_queue.validate_runtime(
+                root,
+                authorized_profile_view=profile_view,
+                authorized_active_standards_view=active_standards_view)
             _assert_authoritative_state_unchanged(root, state_anchor)
             persisted_errors = list(persisted.get("errors") or [])
             persisted_errors.extend(check_queue.close_gate_receipt_errors(

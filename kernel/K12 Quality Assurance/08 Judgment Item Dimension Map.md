@@ -70,7 +70,7 @@ Every base dimension has an emitting item across this map and K12/18, which are 
 
 ## Profile Registration
 
-An entry appended through the `Audit Dimension Registry` is a judgment item, not a dimension name. It MUST declare: the receipt dimension it files under (base, or an extension dimension registered in the same file), its audit layer, its audit object, its evidence role, and the single owner of its acceptance predicate. An entry omitting the receipt dimension cannot be filed; one omitting the audit object cannot be told apart from an existing item.
+An entry appended through the `Audit Dimension Registry` is a judgment item, not a dimension name. It MUST declare: the receipt dimension it files under (base, or an extension dimension registered in the same file), its audit layer, its audit object, its evidence role, and the single owner of its acceptance predicate. An entry omitting the receipt dimension cannot be filed; one omitting the audit object cannot be told apart from an existing item. `Predicate owner` is a `profile-load` dependency in this Profile; a fragment MUST name exactly one heading.
 
 ## Related
 

@@ -12,11 +12,13 @@ from unittest import mock
 
 TOOLS = Path(__file__).resolve().parents[1]
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import apply_delta
 import check_queue
 import kblib
+from profile_fixture import install_loadable_profile
 
 
 class CanonicalApplyDeltaTests(unittest.TestCase):
@@ -24,6 +26,7 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name) / "repo"
         shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root)
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -389,6 +392,17 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
                          receipt["after_coverage_sha256"])
         self.assertEqual(queue_sha, receipt["required_queue_sha256"])
         self.assertEqual(operation["delta_sha256"], receipt["delta_sha256"])
+        self.assert_no_write_debris()
+
+    def test_canonical_apply_runs_profile_load_producer_once(self):
+        self.make_merge_ready()
+        producer = check_queue.check_profile.evaluate_profile_load
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                wraps=producer) as evaluate:
+            code, output = self.invoke(self.apply_arguments())
+        self.assertEqual(0, code, output)
+        self.assertEqual(1, evaluate.call_count)
         self.assert_no_write_debris()
 
     def test_hard_exit_records_three_ledger_recovery_state(self):

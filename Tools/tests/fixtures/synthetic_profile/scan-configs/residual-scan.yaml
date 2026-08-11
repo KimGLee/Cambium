@@ -1,0 +1,24 @@
+residual_scan_config_version: 1
+
+allowed_roots:
+  - Topics
+
+excluded_roots: []
+
+frontmatter_match:
+  field: type
+  values:
+    - synthetic-residual
+
+heading_match:
+  any:
+    - Synthetic Residual
+  combination:
+    - Scratch
+    - To Sort
+  minimum_distinct: 2
+
+mandated_headings:
+  - Synthetic Residual
+  - Scratch
+  - To Sort

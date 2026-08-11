@@ -11,11 +11,13 @@ TOOLS = Path(__file__).resolve().parents[1]
 REPOSITORY = TOOLS.parent
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
 SYNTHETIC_PROFILE = TOOLS / "tests" / "fixtures" / "synthetic_profile"
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import check_queue
 import kblib
 import maintenance_candidates
+from profile_fixture import install_loadable_profile
 
 
 class RequiredQueueEndToEndTests(unittest.TestCase):
@@ -25,6 +27,7 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name) / "repo"
         shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root)
         for name in ("deltas", "receipts", "reports"):
             (self.root / ".cambium" / name).mkdir(exist_ok=True)
 
@@ -445,7 +448,8 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         return relative
 
     def install_terminal_proof_environment(self):
-        shutil.copytree(REPOSITORY / "kernel", self.root / "kernel")
+        shutil.copytree(
+            REPOSITORY / "kernel", self.root / "kernel", dirs_exist_ok=True)
         (self.root / "profiles").mkdir(exist_ok=True)
         shutil.copy2(
             REPOSITORY / "profiles/README.md",
@@ -454,8 +458,9 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         target_profile = self.root / "profiles/test-profile"
         shutil.copytree(SYNTHETIC_PROFILE, target_profile, dirs_exist_ok=True)
         tools_root = self.root / "Tools"
-        (tools_root / "schemas").mkdir(parents=True)
-        for name in ("check_profile.py", "check_queue.py", "kblib.py",
+        (tools_root / "schemas").mkdir(parents=True, exist_ok=True)
+        for name in ("check_profile.py", "profile_contract.py",
+                     "check_residual_content.py", "check_queue.py", "kblib.py",
                      "maintenance_candidates.py"):
             shutil.copy2(TOOLS / name, tools_root / name)
         shutil.copy2(

@@ -15,8 +15,10 @@
 #     mandated headings, display forms, aliases — keep the language of the
 #     content they match and are marked as literals, never translated.
 #   - Filling and checking never select the profile; selection is R09 adoption.
+#   - Self-path rewrites are derived materialization inputs. `profile-load`
+#     validates them and fails closed, but never guesses or edits a value.
 
-interview_contract_version: 3
+interview_contract_version: 4
 target_templates:
   - profiles/_template-minimal   # core pack + closing; packs open later on trigger
   - profiles/_template           # core pack + walk every expansion pack now
@@ -44,7 +46,7 @@ core_pack:
       - {file: profile.md, anchor: "## Profile Identity"}
     derives:
       - "judgment item IDs (<profile-id>-foundation-depth, <profile-id>-residual-disposition)"
-      - "every self-path cell (see self_path_rewrites)"
+      - "every Profile-owned dependency path (see self_path_rewrites; profile-load validates the result)"
 
   - id: Q1
     question: "In one sentence: what must this corpus let its readers do, and who are they?"
@@ -135,7 +137,7 @@ core_pack:
       - "Scan real pages under that root; collect the frontmatter value and exact headings they actually use"
       - "Propose allowed_roots / frontmatter_match / heading_match / mandated_headings from those real strings only"
       - "Warn: a matcher matching nothing real fails the non-inert positive control by design"
-      - "Operator confirms; write scan-configs/residual-scan.yaml and the registry row; fill the second judgment item and the Residual Disposition prose"
+      - "Operator confirms; write scan-configs/residual-scan.yaml and the registry row with this Profile's --config path; fill the second judgment item and the Residual Disposition prose"
     change_cost: adoption
     maps_to:
       - {file: registries/registered-scans.md, anchor: "## Scan Registrations"}
@@ -165,9 +167,9 @@ core_pack:
     change_cost: adoption
 
 self_path_rewrites:
-  - {file: registries/registered-scans.md, cell: "verifier command --config path"}
-  - {file: registries/audit-dimensions.md, cell: "foundation item predicate owner"}
-  - {file: registries/audit-dimensions.md, cell: "residual item predicate owner"}
+  - {file: registries/registered-scans.md, cell: "verifier command --config path", validation: "profile-load: canonical path inside this Profile"}
+  - {file: registries/audit-dimensions.md, cell: "foundation item predicate owner", validation: "profile-load: canonical path inside this Profile and exactly one heading"}
+  - {file: registries/audit-dimensions.md, cell: "residual item predicate owner", validation: "profile-load: canonical path inside this Profile and exactly one heading"}
 
 # Expansion packs. At minimal depth they open a closed slot later, through
 # ordinary Standards adoption — never silently: the operator asks, or a

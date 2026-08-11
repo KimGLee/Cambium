@@ -24,9 +24,16 @@ import kblib
 TOOL = "update_task"
 TOOL_VERSION = "1.1.0"
 TERMINAL_PROOF_TOOL = "check_proof"
-TERMINAL_PROOF_TOOL_VERSION = "1.15.0"
+TERMINAL_PROOF_TOOL_VERSION = "1.17.0"
 TERMINAL_PROOF_GATE_ID = "terminal-proof"
 RECEIPT_PATH = ".cambium/receipts/task-transitions.jsonl"
+PROFILE_BINDING_FIELDS = (
+    "selected_profile_manifest", "profile_snapshot_sha256",
+    "profile_contract_fingerprint", "profile_load_inputs_sha256",
+)
+TERMINAL_BINDING_FIELDS = PROFILE_BINDING_FIELDS + (
+    "repository_snapshot_sha256",
+)
 FINAL_CONTROL_STATUSES = frozenset((
     "verified", "deferred", "superseded", "not-applicable",
 ))
@@ -215,7 +222,136 @@ def _terminal_proof_receipt(result, receipt_id):
     if not _nonempty(queue_check):
         raise ValueError("Terminal Proof receipt lacks queue_check_receipt")
     _completion_gate_receipt(result, queue_check)
+
+    # ``check_proof`` 1.17 binds its pass verdict to one authorized Profile
+    # closure plus the root-owned inputs that define profile-load. Completion
+    # is the current-use consumer of that verdict: all three digests must match
+    # one evaluation of the exact selected manifest frozen in the Task
+    # Contract. A completed task is replayed historically by ``check_queue``;
+    # this is therefore the last boundary at which today's Profile may be used
+    # to authorize the state transition.
+    for field in ("profile_snapshot_sha256",
+                  "profile_contract_fingerprint",
+                  "profile_load_inputs_sha256"):
+        if not check_queue.SHA256_RE.fullmatch(str(receipt.get(field))):
+            raise ValueError(
+                "Terminal Proof receipt lacks canonical %s" % field
+            )
+    selected_manifest = contract.get("selected_profile_manifest")
+    profile_evidence = result.get("_profile_authorized_view")
+    if not isinstance(profile_evidence, dict):
+        raise ValueError(
+            "current runtime exposed no authorized selected Profile view"
+        )
+    profile_errors = \
+        check_queue.profile_load_authorized_view_currency_errors(
+            result["root"], profile_evidence)
+    if profile_errors:
+        raise ValueError(
+            "current selected Profile authorization is stale: %s" %
+            "; ".join(profile_errors)
+        )
+    if profile_evidence.get("selected_profile_manifest") != selected_manifest:
+        raise ValueError(
+            "profile-load evidence selected manifest %r, expected %r" %
+            (profile_evidence.get("selected_profile_manifest"),
+             selected_manifest)
+        )
+    for field in ("profile_snapshot_sha256",
+                  "profile_contract_fingerprint",
+                  "profile_load_inputs_sha256"):
+        if receipt.get(field) != profile_evidence.get(field):
+            raise ValueError(
+                "Terminal Proof receipt %s does not match the current "
+                "selected Profile" % field
+            )
+    repository_snapshot = receipt.get("repository_snapshot_sha256")
+    if not check_queue.SHA256_RE.fullmatch(str(repository_snapshot)):
+        raise ValueError(
+            "Terminal Proof receipt lacks canonical "
+            "repository_snapshot_sha256"
+        )
+    try:
+        current_repository_snapshot = kblib.repository_snapshot_sha256(
+            result["root"])
+    except (OSError, ValueError) as exc:
+        raise ValueError(
+            "current repository snapshot is unreadable: %s" % exc
+        )
+    if current_repository_snapshot != repository_snapshot:
+        raise ValueError(
+            "Terminal Proof receipt repository_snapshot_sha256 does not "
+            "match the current repository"
+        )
     return receipt
+
+
+def _terminal_binding_from_receipt(result, terminal_receipt):
+    """Freeze the exact Profile and repository view one proof binds."""
+    return {
+        "selected_profile_manifest":
+            (result["progress"].get("contract") or {}).get(
+                "selected_profile_manifest"),
+        "profile_snapshot_sha256":
+            terminal_receipt.get("profile_snapshot_sha256"),
+        "profile_contract_fingerprint":
+            terminal_receipt.get("profile_contract_fingerprint"),
+        "profile_load_inputs_sha256":
+            terminal_receipt.get("profile_load_inputs_sha256"),
+        "repository_snapshot_sha256":
+            terminal_receipt.get("repository_snapshot_sha256"),
+    }
+
+
+def _require_transaction_currency(root, authority, phase,
+                                  terminal_binding=None):
+    """CAS one transaction's authority and optional Terminal repository."""
+    check_queue.require_runtime_authority_current(root, authority, phase)
+    if terminal_binding is None:
+        return
+    try:
+        repository_snapshot = kblib.repository_snapshot_sha256(root)
+    except (OSError, ValueError) as exc:
+        raise ValueError(
+            "%s repository snapshot is unreadable: %s" % (phase, exc)
+        )
+    if repository_snapshot != terminal_binding.get(
+            "repository_snapshot_sha256"):
+        raise ValueError(
+            "%s repository_snapshot_sha256 changed after locked validation" %
+            phase
+        )
+
+
+def _task_transition_abort_receipt(result, transition_receipt):
+    """Build durable recovery evidence for an attempted task transition."""
+    progress = result["progress"]
+    history = progress.get("task_transition_receipts") or []
+    identity = {
+        "task_id": progress.get("task_id"),
+        "standards_version":
+            (progress.get("contract") or {}).get("standards_version"),
+        "selected_profile_manifest":
+            (progress.get("contract") or {}).get(
+                "selected_profile_manifest"),
+    }
+    abort = kblib.make_receipt(
+        TOOL, TOOL_VERSION, "task_transition_abort",
+        progress.get("task_id"), "fail",
+        "Task transition aborted and pre-transition Progress restored",
+        len(history) + 2, identity=identity,
+    )
+    abort.update({
+        "transaction_id": transition_receipt["receipt_id"],
+        "aborted_task_transition_receipt":
+            transition_receipt["receipt_id"],
+        "before_progress_sha256":
+            transition_receipt["before_progress_sha256"],
+        "planned_after_progress_sha256":
+            transition_receipt["after_progress_sha256"],
+        "actor_role": "integrator",
+    })
+    return abort
 
 
 def _maintenance_completion_receipt(result, receipt_id):
@@ -474,6 +610,13 @@ def build_task_transition(result, after_state, at, summary, evidence_receipt,
         "before_progress_sha256": result.get("progress_sha256"),
         "evidence_receipt": evidence_receipt,
     })
+    if (after_state == "complete" and
+            completion_semantics == "build" and
+            terminal_receipt is not None):
+        # Keep the transition's own audit record source-addressable to the
+        # Profile closure whose Terminal Proof authorized this edge.
+        receipt.update(_terminal_binding_from_receipt(
+            result, terminal_receipt))
     if before_state == "planned" and after_state == "active":
         after_item = next((
             item for item in queue.get("required_queue", [])
@@ -597,10 +740,16 @@ def main(argv=None):
 
     root = os.path.realpath(os.path.abspath(args.root))
     result = check_queue.validate_runtime(root)
-    result["root"] = root
     if result["errors"]:
         for error in result["errors"]:
             print("[FAIL] current runtime state: %s" % error)
+        return 1
+    try:
+        authority = check_queue.runtime_authority_context(result)
+        authority_kwargs = \
+            check_queue.runtime_authority_validation_kwargs(authority)
+    except (TypeError, ValueError) as exc:
+        print("[FAIL] current runtime authority: %s" % exc)
         return 1
     try:
         progress_new, progress_text, receipt = build_task_transition(
@@ -628,6 +777,7 @@ def main(argv=None):
             check_queue.PROGRESS_PATH: (progress_text, progress_new),
         },
         extra_receipts=[receipt],
+        **authority_kwargs,
     )
     if proposed["errors"]:
         for error in proposed["errors"]:
@@ -653,6 +803,13 @@ def main(argv=None):
         print("[FAIL] expected Queue fingerprint does not match current bytes")
         return 1
 
+    is_build_completion = (
+        args.transition == "complete" and
+        (result["progress"].get("contract") or {}).get(
+            "completion_semantics") == "build"
+    )
+    abort_receipt = (_task_transition_abort_receipt(result, receipt)
+                     if is_build_completion else None)
     operation = {
         "tool": TOOL,
         "action": "transition:%s" % args.transition,
@@ -671,12 +828,30 @@ def main(argv=None):
         "receipt_id": receipt["receipt_id"],
         "receipt_path": args.receipts,
     }
+    operation.update(check_queue.runtime_authority_lock_fields(authority))
+    if is_build_completion:
+        operation.update({
+            "abort_receipt_id": abort_receipt["receipt_id"],
+            "selected_profile_manifest":
+                receipt["selected_profile_manifest"],
+            "profile_snapshot_sha256":
+                receipt["profile_snapshot_sha256"],
+            "profile_contract_fingerprint":
+                receipt["profile_contract_fingerprint"],
+            "profile_load_inputs_sha256":
+                receipt["profile_load_inputs_sha256"],
+            "repository_snapshot_sha256":
+                receipt["repository_snapshot_sha256"],
+        })
     try:
         with kblib.runtime_write_lock(root, owner_metadata=operation) as lease:
+            locked_terminal_binding = None
+            receipt_before = None
             with kblib.no_authoritative_write_guard(lease):
                 with open(progress_path, encoding="utf-8") as fh:
                     old_progress_text = fh.read()
-                current = check_queue.validate_runtime(root)
+                current = check_queue.validate_runtime(
+                    root, **authority_kwargs)
                 if current["errors"]:
                     raise ValueError("runtime changed before write: %s" %
                                      "; ".join(current["errors"]))
@@ -684,32 +859,163 @@ def main(argv=None):
                         current.get("queue_sha256") != result.get("queue_sha256") or
                         current.get("progress_sha256") != result.get("progress_sha256")):
                     raise ValueError("Coverage, Queue, or Progress changed after validation")
-            receipt_attempted = False
-            try:
-                kblib.atomic_write_text(
-                    progress_path, progress_text,
-                    validator=kblib.parse_yaml_subset,
-                )
-                receipt_attempted = True
-                kblib.write_receipts(receipt_path, [receipt])
-            except Exception:
-                restored = False
+                _require_transaction_currency(
+                    root, authority, "runtime authority changed under lock")
+                if is_build_completion:
+                    # Profile bytes are outside the state-ledger CAS.  Reuse
+                    # the exact Terminal Proof consumer at the last locked
+                    # pre-write boundary so a valid Profile replacement after
+                    # prevalidation cannot authorize completion with stale
+                    # snapshot/contract bindings.
+                    locked_terminal = _terminal_proof_receipt(
+                        current, args.terminal_proof_receipt)
+                    locked_terminal_binding = _terminal_binding_from_receipt(
+                        current, locked_terminal)
+                    for field in TERMINAL_BINDING_FIELDS:
+                        if receipt.get(field) != locked_terminal_binding[field]:
+                            raise ValueError(
+                                "planned task transition %s differs from the "
+                                "locked Terminal Proof" % field)
+                    receipt_before = kblib.receipt_append_observation(
+                        receipt_path, [receipt])
+            if not is_build_completion:
+                receipt_attempted = False
                 try:
+                    _require_transaction_currency(
+                        root, authority,
+                        "runtime authority changed before Progress write")
                     kblib.atomic_write_text(
-                        progress_path, old_progress_text,
+                        progress_path, progress_text,
                         validator=kblib.parse_yaml_subset,
                     )
-                    restored = (
-                        kblib.sha256_file(progress_path) ==
-                        result.get("progress_sha256")
+                    _require_transaction_currency(
+                        root, authority,
+                        "runtime authority changed during Progress write")
+                    post = check_queue.validate_runtime(
+                        root, extra_receipts=[receipt], **authority_kwargs)
+                    if post["errors"]:
+                        raise ValueError(
+                            "persisted Progress state is invalid: %s" %
+                            "; ".join(post["errors"]))
+                    _require_transaction_currency(
+                        root, authority,
+                        "runtime authority changed before task receipt")
+                    receipt_attempted = True
+                    kblib.write_receipts(receipt_path, [receipt])
+                    _require_transaction_currency(
+                        root, authority,
+                        "runtime authority changed during task receipt")
+                    persisted = check_queue.validate_runtime(
+                        root, **authority_kwargs)
+                    if persisted["errors"]:
+                        raise ValueError(
+                            "persisted task transition is invalid: %s" %
+                            "; ".join(persisted["errors"]))
+                except Exception:
+                    restored = False
+                    try:
+                        kblib.atomic_write_text(
+                            progress_path, old_progress_text,
+                            validator=kblib.parse_yaml_subset,
+                        )
+                        restored = (
+                            kblib.sha256_file(progress_path) ==
+                            result.get("progress_sha256")
+                        )
+                    finally:
+                        # A failed append may have persisted a full or partial
+                        # receipt. Preserve the lock unless no append began.
+                        if restored and not receipt_attempted:
+                            lease.mark_reconciled()
+                        raise
+            else:
+                receipt_attempted = False
+                receipt_outcome = "not-attempted"
+                try:
+                    _require_transaction_currency(
+                        root, authority,
+                        "runtime authority changed before Progress write",
+                        locked_terminal_binding)
+                    kblib.atomic_write_text(
+                        progress_path, progress_text,
+                        validator=kblib.parse_yaml_subset,
                     )
-                finally:
-                    # A failed append may have persisted a full or partial
-                    # receipt.  Preserve the lock for operator reconciliation
-                    # unless the receipt operation was never attempted.
-                    if restored and not receipt_attempted:
+                    _require_transaction_currency(
+                        root, authority,
+                        "runtime authority changed during Progress write",
+                        locked_terminal_binding)
+                    post = check_queue.validate_runtime(
+                        root, extra_receipts=[receipt], **authority_kwargs)
+                    if post["errors"]:
+                        raise ValueError(
+                            "persisted Progress state is invalid: %s" %
+                            "; ".join(post["errors"]))
+                    _require_transaction_currency(
+                        root, authority,
+                        "runtime authority changed before task receipt",
+                        locked_terminal_binding)
+                    receipt_attempted = True
+                    receipt_outcome, receipt_error, _ = \
+                        kblib.write_receipts_observed(
+                            receipt_path, [receipt], before=receipt_before)
+                    if receipt_error is not None:
+                        raise receipt_error
+                    _require_transaction_currency(
+                        root, authority,
+                        "runtime authority changed during task receipt",
+                        locked_terminal_binding)
+                    persisted = check_queue.validate_runtime(
+                        root, **authority_kwargs)
+                    if persisted["errors"]:
+                        raise ValueError(
+                            "persisted task transition is invalid: %s" %
+                            "; ".join(persisted["errors"]))
+                except Exception as write_error:
+                    rollback_failures = []
+                    try:
+                        kblib.atomic_write_text(
+                            progress_path, old_progress_text,
+                            validator=kblib.parse_yaml_subset,
+                        )
+                    except Exception as exc:
+                        rollback_failures.append("Progress: %s" % exc)
+                    try:
+                        if (kblib.sha256_file(progress_path) !=
+                                result.get("progress_sha256")):
+                            rollback_failures.append(
+                                "Progress fingerprint not restored")
+                    except OSError as exc:
+                        rollback_failures.append(
+                            "Progress verification: %s" % exc)
+                    if receipt_attempted and receipt_outcome == \
+                            "not-attempted":
+                        receipt_outcome = kblib.receipt_outcome_from(
+                            receipt_path, [receipt], receipt_before)
+                    elif not receipt_attempted:
+                        receipt_outcome = "absent"
+
+                    abort_receipt["failure"] = str(write_error)
+                    abort_receipt["task_transition_receipt_outcome"] = \
+                        receipt_outcome
+                    abort_receipt["rollback_failures"] = rollback_failures
+                    abort_outcome, abort_error, _ = \
+                        kblib.write_receipts_observed(
+                            receipt_path, [abort_receipt])
+                    fully_reconciled = (
+                        not rollback_failures and
+                        receipt_outcome == "absent" and
+                        abort_outcome == "present"
+                    )
+                    if fully_reconciled:
                         lease.mark_reconciled()
-                    raise
+                        raise
+                    raise ValueError(
+                        "build completion failed and recovery is incomplete: "
+                        "%s; transition_receipt=%s abort=%s "
+                        "abort_error=%s rollback=%s" % (
+                            write_error, receipt_outcome, abort_outcome,
+                            abort_error,
+                            "; ".join(rollback_failures) or "none"))
     except (OSError, ValueError, kblib.YamlSubsetError,
             kblib.RuntimeStateLockedError) as exc:
         print("[FAIL] task transition write failed; restoration attempted: %s" %

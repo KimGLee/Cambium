@@ -39,9 +39,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import profile_admission
 
 TOOL = "render_structure_projection"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 
 ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
 STRUCTURE_SLOT = "Structure Registry"
@@ -55,81 +56,74 @@ def read_text(path):
         return handle.read()
 
 
-def resolve_profile_dir(root, override, errors):
-    if override:
-        profile_dir = override if os.path.isabs(override) \
-            else os.path.join(root, override)
-        if not os.path.isdir(profile_dir):
-            errors.append("--profile does not name an existing directory")
-            return None
-        return profile_dir
-    try:
-        state_text = read_text(os.path.join(root, ACTIVE_STATE_PATH))
-    except OSError as exc:
-        errors.append("cannot read the active Standards state: %s" % exc)
-        return None
-    state, parse_errors = kblib.active_standards_state(state_text)
-    errors.extend(parse_errors)
-    manifest = state.get("selected_profile_manifest") or ""
-    if "{{" in manifest or not manifest.strip():
-        errors.append("no instantiated selected_profile_manifest")
-        return None
-    manifest_path = os.path.join(root, manifest)
-    if not os.path.isfile(manifest_path):
-        errors.append("selected profile manifest does not exist")
-        return None
-    return os.path.dirname(manifest_path)
-
-
-def registry_document(root, profile_dir, errors):
-    try:
-        manifest_text = read_text(os.path.join(profile_dir, "profile.md"))
-    except OSError as exc:
-        errors.append("cannot read the profile manifest: %s" % exc)
-        return None
-    bindings = kblib.profile_slot_bindings(manifest_text)
-    binding = bindings.get(STRUCTURE_SLOT)
-    if binding is None:
-        errors.append("the manifest does not bind the Structure Registry")
-        return None
-    kind, detail = kblib.resolve_profile_binding(binding, root, profile_dir)
-    if kind != "path":
-        errors.append("Structure Registry binding does not resolve")
+def registry_document(admission, errors):
+    path, error = profile_admission.require_slot(admission, STRUCTURE_SLOT)
+    if error:
+        errors.append(error)
         return None
     try:
-        return kblib.parse_yaml_subset(read_text(detail))
-    except kblib.YamlSubsetError as exc:
+        return kblib.parse_yaml_subset(
+            admission.slot_text(STRUCTURE_SLOT))
+    except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
         errors.append("cannot parse the registry: %s" % exc)
         return None
 
 
-def load_matrix(root):
-    for candidate in ("Corpus Planning/capability_matrix.yaml",):
-        path = os.path.join(root, candidate)
-        if os.path.isfile(path):
-            try:
-                data = kblib.parse_yaml_subset(read_text(path))
-            except kblib.YamlSubsetError:
-                return []
-            return data.get("capabilities") or [] \
-                if isinstance(data, dict) else []
-    return []
+def load_matrix(root, relative, errors):
+    """Bind and parse one registry-declared Capability Matrix revision."""
+    try:
+        snapshot = kblib.repository_file_snapshot(
+            root, relative, singly_linked=True)
+        data = kblib.parse_yaml_subset(snapshot.read_text())
+    except (OSError, UnicodeError, ValueError,
+            kblib.YamlSubsetError) as exc:
+        errors.append("cannot bind derived-role inputs_owner %r: %s" %
+                      (relative, exc))
+        return [], None
+    if not isinstance(data, dict) or not isinstance(
+            data.get("capabilities"), list):
+        errors.append("derived-role inputs_owner %r has no capabilities list" %
+                      relative)
+        return [], snapshot
+    return data["capabilities"], snapshot
 
 
-def load_dispositions(root):
+def load_dispositions(root, errors):
     path = os.path.join(root, COVERAGE_LEDGER_PATH)
     if not os.path.isfile(path):
-        return {}
+        return {}, None
     try:
-        data = kblib.parse_yaml_subset(read_text(path))
-    except kblib.YamlSubsetError:
-        return {}
+        snapshot = kblib.repository_file_snapshot(
+            root, COVERAGE_LEDGER_PATH, singly_linked=True)
+        data = kblib.parse_yaml_subset(snapshot.read_text())
+    except (OSError, UnicodeError, ValueError,
+            kblib.YamlSubsetError) as exc:
+        errors.append("cannot bind Coverage Ledger projection input: %s" % exc)
+        return {}, None
     out = {}
     for page in (data or {}).get("pages") or []:
         if isinstance(page, dict) and page.get("path"):
             out[str(page["path"])] = str(
                 page.get("coverage_disposition") or "")
-    return out
+    return out, snapshot
+
+
+def input_currency_errors(root, snapshots):
+    errors = []
+    for snapshot in snapshots:
+        if snapshot is None:
+            continue
+        try:
+            current = kblib.repository_file_snapshot(
+                root, snapshot.repository_path, singly_linked=True)
+        except (OSError, ValueError) as exc:
+            errors.append("cannot re-bind projection input %s: %s" %
+                          (snapshot.repository_path, exc))
+            continue
+        if current.sha256 != snapshot.sha256:
+            errors.append("projection input %s changed during rendering" %
+                          snapshot.repository_path)
+    return errors
 
 
 def under_root(path, unit_root):
@@ -253,7 +247,8 @@ def iter_derived_targets(registry):
             if not generator.endswith("render_structure_projection.py"):
                 continue
             yield (item.get("id") or item.get("layer_id"),
-                   item.get("root"), role.get("path"), role.get("heading"))
+                   item.get("root"), role.get("inputs_owner"),
+                   role.get("path"), role.get("heading"))
 
 
 def main(argv=None):
@@ -268,21 +263,38 @@ def main(argv=None):
     root = os.path.abspath(args.vault_root)
 
     errors = []
-    profile_dir = resolve_profile_dir(root, args.profile, errors)
-    registry = registry_document(root, profile_dir, errors) \
-        if profile_dir else None
+    admission, admission_errors = profile_admission.admit_profile(
+        root, args.profile, active_state_path=ACTIVE_STATE_PATH)
+    errors.extend(admission_errors)
+    registry = registry_document(admission, errors) \
+        if admission else None
     if registry is None:
         for error in errors:
             print("render_structure_projection: %s" % error)
         return 1
 
-    matrix = load_matrix(root)
-    dispositions = load_dispositions(root)
+    targets = list(iter_derived_targets(registry))
+    matrices = {}
+    input_snapshots = []
+    for _unit_id, _unit_root, inputs_owner, _path, _heading in targets:
+        if inputs_owner in matrices:
+            continue
+        matrix, snapshot = load_matrix(root, inputs_owner, errors)
+        matrices[inputs_owner] = matrix
+        input_snapshots.append(snapshot)
+    dispositions, coverage_snapshot = load_dispositions(root, errors)
+    input_snapshots.append(coverage_snapshot)
+    if errors:
+        for error in errors:
+            print("render_structure_projection: %s" % error)
+        return 1
     stale = 0
     written = 0
     reported = 0
-    for unit_id, unit_root, path, heading in iter_derived_targets(registry):
-        block = render_block(unit_id, unit_root, matrix, dispositions)
+    pending = []
+    for unit_id, unit_root, inputs_owner, path, heading in targets:
+        block = render_block(
+            unit_id, unit_root, matrices.get(inputs_owner, []), dispositions)
         if not path or not heading:
             reported += 1
             print("render_structure_projection: %s renders on demand "
@@ -308,14 +320,29 @@ def main(argv=None):
                   % (unit_id, path))
             continue
         if args.apply:
-            kblib.atomic_write_text(target, new_text)
-            written += 1
-            print("render_structure_projection: wrote %s (%s#%s)"
-                  % (unit_id, path, heading))
+            pending.append((target, new_text, unit_id, path, heading))
         else:
             stale += 1
             print("render_structure_projection: %s is stale (%s#%s)"
                   % (unit_id, path, heading))
+
+    currency = profile_admission.currency_errors(admission)
+    currency.extend(input_currency_errors(root, input_snapshots))
+    if currency:
+        for error in currency:
+            print("render_structure_projection: %s" % error)
+        return 1
+    for target, new_text, unit_id, path, heading in pending:
+        kblib.atomic_write_text(target, new_text)
+        written += 1
+        print("render_structure_projection: wrote %s (%s#%s)"
+              % (unit_id, path, heading))
+    currency = profile_admission.currency_errors(admission)
+    currency.extend(input_currency_errors(root, input_snapshots))
+    if currency:
+        for error in currency:
+            print("render_structure_projection: %s" % error)
+        return 1
 
     print("render_structure_projection: stale=%d written=%d on_demand=%d"
           % (stale, written, reported))

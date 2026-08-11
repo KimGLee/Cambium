@@ -11,6 +11,7 @@ The [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-doma
 | Gate ID | Risk object | Canonical gate (sole) | Consumption boundary |
 |---|---|---|---|
 | `runtime-card-synchronization` | Runtime Card completeness and source synchronization, the leaf module size budget of [[kernel/K00 Standards Control/03 Standards Governance#Leaf Module Size Budget\|Leaf Module Size Budget]], and the agreement between the `Stable Gate ID Registry` below and the producers its rows name | The [[kernel/K00 Standards Control/03 Standards Governance#Revision Write-back Checklist\|Revision Write-back Checklist]] `manual-attestation` signed at Governance close, with `Tools/stamp_cards.py . --check` as its input; that run measures every leaf against the budget and its register, and a registered growth cap it reports as exceeded is a failure of this gate, as is a registry row whose producer contradicts it | Routine tasks consume stamped Cards; profile loading cannot waive or recreate the gate |
+| `profile-load` | Candidate or selected Profile identity, manifest/slot completeness, and the single-Profile dependency closure defined by [[kernel/K00 Standards Control/17 Profile Dependency Closure\|Profile Dependency Closure]] | `Tools/check_profile.py` `profile-check-summary`, which derives the typed closure and binds the Profile directory snapshot, typed contract fingerprint, and canonical root-input fingerprint | R09 candidate selection and active-task adoption validate the after image; R01 freezes only a current passing selection; batch close resolves item 6 from that same contract before invoking it; Terminal Proof root validation reruns the producer. An invalid current Profile blocks ordinary execution but never blocks a corrective R09/K13/15 adoption whose after Profile passes |
 | `runtime-startup-recovery` | Existing runtime discovery, new-task collision, and interrupted-writer recovery | The [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Runtime Startup Gate\|Runtime Startup Gate]] runs `check_queue.py --resume-status` before a state write | R01, R07, and task routes consume the machine action; none may initialize over or infer around existing state |
 | `large-scale-execution-admission` | Large-scale execution admission | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Large-scale Pre-execution Gate\|Large-scale Pre-execution Gate]] | R11 packages the gate with the actual work route but does not authorize content work |
 | `wiki-link-integrity` | Wiki link integrity | The K12/09 Closed List consumes the `check_links` summary | Note close uses only its scoped self-check; migration retargets affected links; Terminal Audit reruns the same gate on the frozen snapshot |
@@ -42,6 +43,13 @@ The [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-doma
 | `prerequisite-completeness` | Prerequisite completeness | K12/03 Module Review attestation | Link resolution remains owned by `check_links`; semantic chain continuity is not inferred from links |
 | `canonical-ownership-uniqueness` | Canonical ownership uniqueness | K12/03 Module Review attestation | Closed List basename candidates and K12/02 duplicate-heading findings remain inputs, not this verdict |
 | `terminal-proof` | Frozen build-completion proof | K12/16 `check_proof.py` summary receipt | The final task transition consumes this exact proof receipt; no report wording substitutes for it |
+
+`profile-load` replaces the former manual self-path warning as the canonical
+owner of Profile package integrity. It does not supersede
+`registered-residual-content`: the former proves which Profile dependencies
+are authorized and resolvable, while the latter executes the admitted scan
+against corpus bytes and produces candidates. Runtime consumers reuse the
+typed Profile contract; they do not add parallel path rules.
 
 ## Stable Gate ID Registry
 
@@ -89,27 +97,28 @@ moves its own cell.
 | Gate ID | Tool | Tool version | Check | Mode | Dimension | Lifecycle |
 |---|---|---|---|---|---|---|
 | `runtime-card-synchronization` | `manual-attestation` | `1.0.0` | `runtime-card-synchronization` | `*` | `guidance_and_contract` | `not-batch-scoped` |
-| `runtime-startup-recovery` | `check_queue` | `1.13.0` | `required_queue` | `resume-status` | `*` | `not-batch-scoped` |
+| `profile-load` | `check_profile` | `1.9.0` | `profile-check-summary` | `*` | `guidance_and_contract` | `not-batch-scoped` |
+| `runtime-startup-recovery` | `check_queue` | `1.14.0` | `required_queue` | `resume-status` | `*` | `not-batch-scoped` |
 | `large-scale-execution-admission` | `manual-attestation` | `1.0.0` | `large-scale-execution-admission` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `wiki-link-integrity` | `check_links` | `1.5.0` | `link-check-summary` | `*` | `*` | `not-batch-scoped` |
-| `frontmatter-vocabulary` | `check_vocab` | `1.4.0` | `vocab-check-summary` | `*` | `*` | `not-batch-scoped` |
-| `required-queue-consistency` | `check_queue` | `1.13.0` | `required_queue` | `consistency` | `*` | `not-batch-scoped` |
-| `required-queue-admission` | `check_queue` | `1.13.0` | `required_queue` | `require-ready:*` | `*` | `queued` |
-| `required-queue-completion` | `check_queue` | `1.13.0` | `required_queue` | `require-complete` | `*` | `queue-exhausted` |
-| `maintenance-completion` | `check_queue` | `1.13.0` | `required_queue` | `require-maintenance-complete` | `*` | `queue-exhausted` |
+| `frontmatter-vocabulary` | `check_vocab` | `1.5.0` | `vocab-check-summary` | `*` | `*` | `not-batch-scoped` |
+| `required-queue-consistency` | `check_queue` | `1.14.0` | `required_queue` | `consistency` | `*` | `not-batch-scoped` |
+| `required-queue-admission` | `check_queue` | `1.14.0` | `required_queue` | `require-ready:*` | `*` | `queued` |
+| `required-queue-completion` | `check_queue` | `1.14.0` | `required_queue` | `require-complete` | `*` | `queue-exhausted` |
+| `maintenance-completion` | `check_queue` | `1.14.0` | `required_queue` | `require-maintenance-complete` | `*` | `queue-exhausted` |
 | `batch-review` | `manual-attestation` | `1.0.0` | `batch_gate` | `*` | `none` | `open` |
-| `batch-close` | `check_batch_close` | `1.5.0` | `batch_close_gate` | `*` | `*` | `merge-ready` |
-| `structure-registry` | `check_structure` | `1.0.0` | `structure-registry-summary` | `*` | `*` | `not-batch-scoped` |
-| `page-contract` | `check_page_contract` | `1.3.0` | `page-contract-summary` | `*` | `*` | `not-batch-scoped` |
-| `boundary-contract` | `check_boundary_contract` | `1.0.0` | `boundary-contract-summary` | `*` | `*` | `not-batch-scoped` |
-| `corpus-plan-structure` | `check_corpus_plan` | `1.6.0` | `corpus_plan` | `*` | `*` | `not-batch-scoped` |
+| `batch-close` | `check_batch_close` | `1.7.0` | `batch_close_gate` | `*` | `*` | `merge-ready` |
+| `structure-registry` | `check_structure` | `1.1.0` | `structure-registry-summary` | `*` | `*` | `not-batch-scoped` |
+| `page-contract` | `check_page_contract` | `1.4.0` | `page-contract-summary` | `*` | `*` | `not-batch-scoped` |
+| `boundary-contract` | `check_boundary_contract` | `1.1.0` | `boundary-contract-summary` | `*` | `*` | `not-batch-scoped` |
+| `corpus-plan-structure` | `check_corpus_plan` | `1.7.0` | `corpus_plan` | `*` | `*` | `not-batch-scoped` |
 | `corpus-plan-semantic-acceptance` | `record_corpus_acceptance` | `1.0.0` | `corpus_plan_semantic_acceptance` | `*` | `*` | `not-batch-scoped` |
 | `content-correctness` | `manual-attestation` | `1.0.0` | `content-correctness` | `*` | `content_and_depth`, `formula_and_numeric`, `rendering`, `source_and_currentness`, `structure_and_links` | `not-batch-scoped` |
 | `source-promotion` | `manual-attestation` | `1.0.0` | `source-promotion` | `*` | `coverage_and_integration`, `source_and_currentness` | `not-batch-scoped` |
 | `expression-layer-acceptance` | `manual-attestation` | `1.0.0` | `expression-layer-acceptance` | `*` | `content_and_depth`, `coverage_and_integration`, `guidance_and_contract`, `source_and_currentness`, `structure_and_links` | `not-batch-scoped` |
 | `coverage-reconciliation` | `manual-attestation` | `1.0.0` | `coverage-reconciliation` | `*` | `coverage_and_integration` | `not-batch-scoped` |
-| `standards-adoption` | `adopt_standards` | `1.2.0` | `standards_adoption` | `*` | `*` | `not-batch-scoped` |
-| `standards-revalidation` | `check_queue` | `1.13.0` | `required_queue` | `require-revalidation:*` | `*` | `queued`, `open` |
+| `standards-adoption` | `adopt_standards` | `1.4.0` | `standards_adoption` | `*` | `*` | `not-batch-scoped` |
+| `standards-revalidation` | `check_queue` | `1.14.0` | `required_queue` | `require-revalidation:*` | `*` | `queued`, `open` |
 | `guidance-disposition` | `manual-attestation` | `1.0.0` | `guidance-disposition` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `receipt-validity` | `manual-attestation` | `1.0.0` | `receipt-validity` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `rendering` | `manual-attestation` | `1.0.0` | `rendering` | `*` | `rendering`, `structure_and_links` | `not-batch-scoped` |
@@ -119,4 +128,4 @@ moves its own cell.
 | `depth-balance` | `manual-attestation` | `1.0.0` | `depth-balance` | `*` | `content_and_depth` | `not-batch-scoped` |
 | `prerequisite-completeness` | `manual-attestation` | `1.0.0` | `prerequisite-completeness` | `*` | `coverage_and_integration` | `not-batch-scoped` |
 | `canonical-ownership-uniqueness` | `manual-attestation` | `1.0.0` | `canonical-ownership-uniqueness` | `*` | `structure_and_links` | `not-batch-scoped` |
-| `terminal-proof` | `check_proof` | `1.15.0` | `proof-check-summary` | `*` | `*` | `queue-exhausted` |
+| `terminal-proof` | `check_proof` | `1.17.0` | `proof-check-summary` | `*` | `*` | `queue-exhausted` |

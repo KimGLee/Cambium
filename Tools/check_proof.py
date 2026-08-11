@@ -22,9 +22,11 @@ Method:
   normative field-list owner; --template overrides the projection path);
 - a missing or empty proof field -> fail (Terminal Proof incomplete);
 - selected_profile_manifest must be one exact
-  profiles/<profile_id>/profile.md path; with --root its manifest identity is
-  validated, check_profile.py must accept the filled profile, every profile
-  path must stay within it, and every supplemental route must use its id;
+  profiles/<profile_id>/profile.md path; with --root one shared
+  ``profile-load`` evaluation must authorize the full Profile, supplies the
+  profile ID used for supplemental-route checks, and binds the Profile-tree
+  snapshot, typed-contract fingerprint, and canonical load-input fingerprint
+  into the Terminal summary;
 - selected_route_ids must be a non-empty list of unique Runtime Route IDs in
   the closed range R01-R13 and, because this is terminal evidence, must include
   R01 Core Bootstrap, R12 Targeted and Specialized Audit, and R08 Audit and
@@ -49,18 +51,14 @@ Method:
   filtered current receipt catalog; immutable history is not a fallback for a
   new Terminal Proof. Zero receipts is never read as "nothing was in scope";
 - with --root, dimension_coverage must additionally carry one entry, on those
-  same terms, for every dimension the selected profile's Audit Dimension
-  Registry registers with a `receipt` target. It must not invent an
-  unregistered dimension or cite a receipt for a `review`-only dimension. The
-  registration block is read from the manifest's `Audit Dimension Registry`
-  slot; an unbound slot, an
-  unresolvable binding, a missing or duplicated `## Extension Dimensions`
-  section, a registration that is neither `None` nor `Configured`, a table
-  without the interface columns, `Registration: None` over a non-empty table,
-  or an unreadable row or target list -> fail, because a registry that cannot
-  be enumerated is not a profile that registered nothing. A row registering one
-  of the seven base dimension names -> fail (K12/07 owns that prohibition; this
-  script only decides the collision);
+  same terms, for every dimension the selected Profile's authorized typed
+  contract registers with a `receipt` target. It must not invent an
+  unregistered dimension or cite a receipt for a `review`-only dimension.
+  Enumeration, Profile admission, identity, and the Terminal summary consume
+  the same `ProfileLoadEvaluation`; a partial registry IR or a Profile changed
+  after evaluation fails closed rather than narrowing the obligation. A row
+  registering one of the seven base dimension names also fails (K12/07 owns
+  that prohibition; this script only decides the collision);
 - a zero-condition field (required_authoring_gaps / unverified_batches /
   remaining_required_work_units / unresolved_invalidations) that is not 0 ->
   fail;
@@ -118,21 +116,16 @@ import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import check_corpus_plan
-# The selected profile is executed as a subprocess (the audited repository
-# ships its own copy), but its Audit Dimension Registry is *parsed* with this
-# distribution's own profile-registry helpers: the checker must not read a
-# registry through a parser the audited repository could replace.
 import check_profile
 import check_queue
 
 TOOL = "check_proof"
-TOOL_VERSION = "1.15.0"
+TOOL_VERSION = "1.17.0"
 GATE_ID = "terminal-proof"
 
 
@@ -189,7 +182,6 @@ TERMINAL_REQUIRED_ROUTE_IDS = frozenset(("R01", "R08", "R12"))
 REGISTRY_ID = "kernel-runtime-routes"
 CARD_INDEX_PATH = "kernel/Cards/Card Index.md"
 READ_SET_INDEX_PATH = "kernel/Read Sets/Read Sets Index.md"
-EXECUTION_DEFAULTS_PATH = "Tools/schemas/execution_defaults.template.yaml"
 ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
 UNINSTANTIATED_RE = re.compile(r"\{\{.*?\}\}")
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -206,7 +198,15 @@ NULLABLE_REQUIRED_FIELDS = frozenset((
 # the checker.  K12/07 also owns the prohibition this file enforces but does
 # not restate: the `Audit Dimension Registry` MUST NOT delete, rename, or
 # redefine a base dimension.
-BASE_RECEIPT_DIMENSIONS = check_profile.BASE_RECEIPT_DIMENSIONS
+BASE_RECEIPT_DIMENSIONS = (
+    "structure_and_links",
+    "content_and_depth",
+    "formula_and_numeric",
+    "source_and_currentness",
+    "coverage_and_integration",
+    "rendering",
+    "guidance_and_contract",
+)
 NOT_APPLICABLE_PREFIX = "not-applicable:"
 TERMINAL_TASK_STATES = frozenset(("completion-candidate", "complete"))
 FINAL_GUIDANCE_STATUSES = frozenset(
@@ -301,43 +301,6 @@ def _selected_profile_manifest_error(raw_path):
 def _uninstantiated_value(raw_value):
     return (not isinstance(raw_value, str) or not raw_value.strip() or
             UNINSTANTIATED_RE.search(raw_value) is not None)
-
-
-def _load_active_standards_state(root):
-    """Read the canonical four-field state table from K00/03."""
-    state = {}
-    path, resolve_error = _resolve_under_root(root, ACTIVE_STATE_PATH)
-    if resolve_error or not path.is_file():
-        return state, [
-            "%s is missing or unsafe: %s" %
-            (ACTIVE_STATE_PATH, resolve_error or "not a regular file")
-        ]
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
-        return state, ["cannot read %s: %s" % (ACTIVE_STATE_PATH, exc)]
-
-    state, parse_errors = kblib.active_standards_state(text)
-    errors = ["%s: %s" % (ACTIVE_STATE_PATH, error)
-              for error in parse_errors]
-    for label, key in kblib.ACTIVE_STANDARDS_STATE_LABELS.items():
-        if key in state and _uninstantiated_value(state[key]):
-            errors.append("%s %s is still uninstantiated: %r" %
-                          (ACTIVE_STATE_PATH, label, state[key]))
-    if ("standards_status" in state and
-            not _uninstantiated_value(state["standards_status"]) and
-            state["standards_status"] != "approved"):
-        errors.append("%s Status must be approved for a content task; found %r"
-                      % (ACTIVE_STATE_PATH, state["standards_status"]))
-    if ("selected_profile_manifest" in state and
-            not _uninstantiated_value(state["selected_profile_manifest"])):
-        path_error = _selected_profile_manifest_error(
-            state["selected_profile_manifest"]
-        )
-        if path_error:
-            errors.append("%s Selected profile manifest is invalid: %s" %
-                          (ACTIVE_STATE_PATH, path_error))
-    return state, errors
 
 
 def _load_index(root, relative_path, expected_type):
@@ -491,7 +454,7 @@ def _catalog_receipt(catalog, receipt_id):
 
 
 def _current_receipt_evidence(root, receipt_id, *, field, check_prefix,
-                              runtime=None):
+                              runtime):
     """Resolve a new proof decision only through the current receipt view.
 
     Standards adoption deliberately keeps the full receipt catalog available
@@ -500,12 +463,16 @@ def _current_receipt_evidence(root, receipt_id, *, field, check_prefix,
     must never fall back to the historical catalog when the filtered view is
     missing or empty.
     """
-    if runtime is None:
-        runtime = check_queue.validate_runtime(str(Path(root).resolve()))
+    target = "Terminal Proof#%s" % field
+    if not isinstance(runtime, dict):
+        return None, [_queue_linkage_failure(
+            "%s-runtime-unavailable" % check_prefix, target,
+            "the one Terminal Proof runtime view is unavailable; refusing "
+            "to create a second validation window",
+        )]
     current = check_queue.current_receipt_catalog(runtime)
     invalidated = set(
         runtime.get("invalidated_evidence_receipt_ids") or [])
-    target = "Terminal Proof#%s" % field
     if receipt_id in invalidated:
         return None, [_queue_linkage_failure(
             "%s-invalidated-evidence" % check_prefix, target,
@@ -523,7 +490,7 @@ def _current_receipt_evidence(root, receipt_id, *, field, check_prefix,
     return receipt, []
 
 
-def _reused_receipt_evidence_failures(root, proof, runtime=None):
+def _reused_receipt_evidence_failures(root, proof, runtime):
     """Require every explicitly reused receipt to remain current evidence."""
     failures = []
     reused = proof.get("reused_receipts")
@@ -563,7 +530,7 @@ def _reused_receipt_evidence_failures(root, proof, runtime=None):
     return failures
 
 
-def _registered_receipt_dimensions(root, manifest_relative):
+def _registered_receipt_dimensions(profile_evaluation):
     """Enumerate the dimensions the selected profile registers.
 
     K12/16 accounts for a registered dimension whose target list carries
@@ -584,65 +551,173 @@ def _registered_receipt_dimensions(root, manifest_relative):
     successfully. Failures are ``(check, target, details)`` triples.
     """
     failures = []
-    slot = check_profile.AUDIT_DIMENSION_SLOT
-    target = "selected_profile_manifest#%s" % slot
-
-    def refuse(details, check="proof-audit-dimension-registry-unreadable"):
-        failures.append((check, target, details))
+    if profile_evaluation is None:
+        return (), (), False, failures
+    if not profile_evaluation.authorized:
+        for finding in profile_evaluation.findings:
+            failures.append((
+                "proof-%s" % finding["check"],
+                finding["target"],
+                finding["details"],
+            ))
+        # A partial typed IR is diagnostic only. Proof must never consume the
+        # readable dimensions of a Profile whose complete closure failed.
         return (), (), False, failures
 
-    # A manifest that is missing, malformed, or unresolvable already fails with
-    # its own precise diagnosis; restating it here would only duplicate it, and
-    # the run cannot pass either way.
-    if _selected_profile_manifest_error(manifest_relative):
-        return (), (), False, failures
-    manifest_path, resolve_error = _resolve_under_root(root, manifest_relative)
-    if resolve_error or not manifest_path.is_file():
-        return (), (), False, failures
-    try:
-        manifest_text = manifest_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
-        return refuse("%s is unreadable: %s" % (manifest_relative, exc))
-
-    binding = kblib.profile_slot_bindings(manifest_text).get(
-        slot)
-    if not binding:
-        return refuse(
-            "the selected manifest binds no `%s` slot, so the receipt "
-            "dimensions this Proof must account for cannot be enumerated"
-            % slot)
-    kind, detail = kblib.resolve_profile_binding(
-        binding, str(root), str(manifest_path.parent))
-    if kind != "path":
-        return refuse(
-            "the `%s` binding %r resolves as %s, not to a file inside the "
-            "selected profile" % (slot, binding, kind))
-    try:
-        registry_text = Path(detail).read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
-        return refuse("the `%s` binding %r is unreadable: %s"
-                      % (slot, binding, exc))
-
-    _registration, rows, parser_errors = (
-        check_profile.parse_audit_dimension_registry(registry_text))
-    if parser_errors:
-        for check, details in parser_errors:
-            failures.append(("proof-%s" % check, target,
-                             "%s#%s: %s" %
-                             (binding,
-                              check_profile.AUDIT_DIMENSION_SECTION,
-                              details)))
-        # A partial parse is diagnostic only. Proof must never consume the
-        # readable subset of a registry whose complete envelope failed.
-        return (), (), False, failures
-
+    contract = profile_evaluation.contract
     return (
-        tuple(sorted(row["id"] for row in rows
-                     if "receipt" in row["targets"])),
-        tuple(sorted(row["id"] for row in rows)),
+        tuple(sorted(row.dimension_id for row in contract.extension_dimensions
+                     if "receipt" in row.targets)),
+        tuple(sorted(row.dimension_id
+                     for row in contract.extension_dimensions)),
         True,
         failures,
     )
+
+
+def _profile_load_currency_failures(root, profile_evaluation):
+    """Reject Profile or root-owned load inputs changed after evaluation."""
+    if profile_evaluation is None or not profile_evaluation.authorized:
+        return []
+    target = profile_evaluation.contract.profile_repo_dir
+    try:
+        current_snapshot = kblib.repository_tree_sha256(root, target)
+    except (OSError, ValueError) as exc:
+        return [(
+            "proof-profile-snapshot-unreadable", target,
+            "cannot re-bind the selected Profile before Terminal Proof "
+            "summary emission: %s" % exc,
+        )]
+    if current_snapshot != profile_evaluation.profile_snapshot_sha256:
+        return [(
+            "proof-profile-snapshot-stale", target,
+            "selected Profile changed after profile-load evaluated "
+            "%s; current snapshot is %s. Dimension enumeration, admission, "
+            "and Terminal Proof summary must describe one Profile snapshot"
+            % (profile_evaluation.profile_snapshot_sha256, current_snapshot),
+        )]
+    input_paths = (
+        check_profile.DEFAULT_INTERFACE,
+        check_profile.DEFAULT_DEFAULTS,
+        check_profile.DEFAULT_EXECUTION_DEFAULTS,
+    )
+    try:
+        input_snapshots = {
+            relative: kblib.repository_file_snapshot(
+                root, relative, singly_linked=True)
+            for relative in input_paths
+        }
+        current_inputs = kblib.sha256_bytes(
+            "\0".join(
+                "%s\0%s" % (relative, input_snapshots[relative].sha256)
+                for relative in sorted(input_snapshots)))
+    except (OSError, ValueError) as exc:
+        return [(
+            "proof-profile-load-inputs-unreadable", root,
+            "cannot re-bind canonical profile-load inputs before Terminal "
+            "Proof summary emission: %s" % exc,
+        )]
+    if current_inputs != profile_evaluation.profile_load_inputs_sha256:
+        return [(
+            "proof-profile-load-inputs-stale", root,
+            "canonical profile-load inputs changed after profile-load "
+            "evaluated %s; current fingerprint is %s. Admission, dimension "
+            "enumeration, and Terminal Proof summary must describe one "
+            "profile-load input snapshot" % (
+                profile_evaluation.profile_load_inputs_sha256,
+                current_inputs),
+        )]
+    return []
+
+
+def _terminal_currency_failures(root, runtime, authorized_profile_view,
+                                repository_snapshot_sha256):
+    """CAS the one Profile/runtime/repository view before publication.
+
+    The substantive checks above consume one authorized Profile object and one
+    ``validate_runtime`` result.  This boundary only re-hashes their named
+    bytes; it never reruns either producer.  A changed byte therefore makes the
+    attempted Terminal summary stale instead of opening a second A/B/A read
+    window that could combine independently valid revisions.
+    """
+    failures = []
+    root = Path(root).resolve()
+    runtime_available = isinstance(runtime, dict)
+    if not runtime_available:
+        return [(
+            "proof-runtime-view-unavailable", str(root),
+            "the one Terminal Proof runtime view is unavailable",
+        )]
+    if runtime.get("_profile_authorized_view") is not authorized_profile_view:
+        failures.append((
+            "proof-profile-view-mismatch", str(root),
+            "runtime validation did not consume the same authorized Profile "
+            "view as Terminal Proof",
+        ))
+    else:
+        for detail in check_queue.profile_load_authorized_view_currency_errors(
+                str(root), authorized_profile_view):
+            failures.append((
+                "proof-profile-view-stale",
+                str((authorized_profile_view or {}).get(
+                    "selected_profile_manifest") or root),
+                detail,
+            ))
+
+    active_view = runtime.get("_active_standards_authorized_view")
+    if not isinstance(active_view, dict):
+        failures.append((
+            "proof-active-standards-view-unavailable", ACTIVE_STATE_PATH,
+            "runtime validation exposed no authorized K00/03 identity view",
+        ))
+    else:
+        for detail in check_queue.active_standards_view_currency_errors(
+                str(root), active_view):
+            failures.append((
+                "proof-active-standards-view-stale", ACTIVE_STATE_PATH,
+                detail,
+            ))
+
+    for relative, runtime_field in (
+            (CANONICAL_QUEUE_PATH, "queue_sha256"),
+            (CANONICAL_COVERAGE_PATH, "coverage_sha256"),
+            (CANONICAL_PROGRESS_PATH, "progress_sha256")):
+        expected = runtime.get(runtime_field)
+        try:
+            actual = kblib.repository_file_snapshot(
+                str(root), relative, singly_linked=True).sha256
+        except (OSError, ValueError) as exc:
+            failures.append((
+                "proof-runtime-state-unreadable", relative,
+                "cannot re-bind the runtime state before Terminal Proof "
+                "summary emission: %s" % exc,
+            ))
+            continue
+        if actual != expected:
+            failures.append((
+                "proof-runtime-state-stale", relative,
+                "runtime state changed after the one validation view; "
+                "expected %s, current %s" % (expected, actual),
+            ))
+
+    try:
+        current_repository_snapshot = kblib.repository_snapshot_sha256(
+            str(root))
+    except (OSError, ValueError) as exc:
+        failures.append((
+            "proof-repository-snapshot-unreadable", str(root),
+            "cannot re-bind the repository before Terminal Proof summary "
+            "emission: %s" % exc,
+        ))
+    else:
+        if current_repository_snapshot != repository_snapshot_sha256:
+            failures.append((
+                "proof-repository-snapshot-stale", str(root),
+                "repository changed after the Terminal Proof read boundary; "
+                "expected %s, current %s" % (
+                    repository_snapshot_sha256, current_repository_snapshot),
+            ))
+    return failures
 
 
 def _dimension_coverage_failures(proof, registered_dimensions=(),
@@ -771,7 +846,7 @@ def _dimension_coverage_failures(proof, registered_dimensions=(),
     return failures, cited
 
 
-def _validate_dimension_coverage_evidence(root, proof, cited, runtime=None):
+def _validate_dimension_coverage_evidence(root, proof, cited, runtime):
     """Resolve cited dimensions through current evidence and the register.
 
     The append-only register remains the byte-level source for the declared
@@ -872,7 +947,7 @@ def _validate_dimension_coverage_evidence(root, proof, cited, runtime=None):
 
 def _validate_required_queue_linkage(root, proof, progress_ledger,
                                      coverage_sha256,
-                                     proof_progress_sha256):
+                                     proof_progress_sha256, *, runtime):
     """Validate the live Required Queue evidence bound into Terminal Proof.
 
     The Queue location is deliberately not caller-selectable.  ``--root``
@@ -884,52 +959,24 @@ def _validate_required_queue_linkage(root, proof, progress_ledger,
     """
     failures = []
     root = Path(root).resolve()
-    adoption_runtime = check_queue.validate_runtime(str(root))
-    queue_path, queue_path_error = _canonical_state_argument(
-        root, CANONICAL_QUEUE_PATH, CANONICAL_QUEUE_PATH
-    )
-    queue = None
-    queue_sha256 = None
-    remaining = None
-
-    if queue_path_error or not queue_path.is_file():
+    runtime_available = isinstance(runtime, dict)
+    if not runtime_available:
+        failures.append(_queue_linkage_failure(
+            "proof-required-queue-runtime-unavailable", CANONICAL_QUEUE_PATH,
+            "the one Terminal Proof runtime view is unavailable; refusing "
+            "to re-read Queue through a second validation window",
+        ))
+        runtime = {}
+    queue = runtime.get("queue")
+    queue_sha256 = runtime.get("queue_sha256")
+    remaining = runtime.get("remaining")
+    if not isinstance(queue, dict) or not queue:
         failures.append(_queue_linkage_failure(
             "proof-required-queue-unreadable", CANONICAL_QUEUE_PATH,
-            "canonical Required Queue is missing or unsafe: %s" %
-            (queue_path_error or "not a regular file"),
+            "the one Terminal Proof runtime view contains no parsed canonical "
+            "Required Queue",
         ))
-    else:
-        try:
-            queue_bytes = queue_path.read_bytes()
-            queue_text = queue_bytes.decode("utf-8")
-            queue = kblib.parse_yaml_subset(queue_text)
-        except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
-            failures.append(_queue_linkage_failure(
-                "proof-required-queue-unreadable", CANONICAL_QUEUE_PATH,
-                "cannot read/parse the canonical Required Queue: %s" % exc,
-            ))
-        else:
-            if not isinstance(queue, dict):
-                failures.append(_queue_linkage_failure(
-                    "proof-required-queue-not-mapping", CANONICAL_QUEUE_PATH,
-                    "canonical Required Queue top level must be a mapping",
-                ))
-                queue = None
-            else:
-                queue_sha256 = kblib.sha256_bytes(queue_bytes)
-                items = queue.get("required_queue")
-                if not isinstance(items, list):
-                    failures.append(_queue_linkage_failure(
-                        "proof-required-queue-items-invalid",
-                        CANONICAL_QUEUE_PATH + "#required_queue",
-                        "required_queue must be an explicit list",
-                    ))
-                else:
-                    remaining = sum(
-                        1 for item in items
-                        if (not isinstance(item, dict) or
-                            item.get("state") not in ("closed", "cancelled"))
-                    )
+        queue = None
 
     if queue is not None:
         queue_expected = {
@@ -999,48 +1046,19 @@ def _validate_required_queue_linkage(root, proof, progress_ledger,
                         "Required Queue value %r" % (field, actual, expected),
                     ))
 
-    # Completion is not inferred from the proof's counters.  Re-run the one
-    # canonical Queue gate over the current repository bytes.
+    # Completion is not inferred from the proof's counters.  Consume the same
+    # in-process runtime view through the canonical Queue completion predicate;
+    # launching the CLI would create another Profile/runtime observation.
     live_check_passed = False
-    checker_path, checker_path_error = _resolve_under_root(
-        root, "Tools/check_queue.py"
-    )
-    if checker_path_error or not checker_path.is_file():
+    completion_errors = (check_queue.required_queue_completion_errors(runtime)
+                         if runtime_available else [])
+    for detail in completion_errors:
         failures.append(_queue_linkage_failure(
-            "proof-queue-live-check-unavailable", "Tools/check_queue.py",
-            "canonical Queue checker is missing or unsafe: %s" %
-            (checker_path_error or "not a regular file"),
+            "proof-queue-live-check-failed", "Tools/check_queue.py",
+            "current Required Queue completion gate failed: %s" % detail,
         ))
-    else:
-        try:
-            completed = subprocess.run(
-                [sys.executable, str(checker_path), str(root),
-                 "--require-complete"],
-                cwd=str(root), capture_output=True, text=True, timeout=60,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            failures.append(_queue_linkage_failure(
-                "proof-queue-live-check-unavailable", "Tools/check_queue.py",
-                "cannot run the canonical Queue completion gate: %s" % exc,
-            ))
-        else:
-            if completed.returncode != 0:
-                output_lines = [
-                    line.strip()
-                    for line in (completed.stdout + "\n" +
-                                 completed.stderr).splitlines()
-                    if line.strip()
-                ]
-                detail = (" | ".join(output_lines[-3:])
-                          if output_lines else "no diagnostic output")
-                failures.append(_queue_linkage_failure(
-                    "proof-queue-live-check-failed", "Tools/check_queue.py",
-                    "check_queue.py --require-complete exited %d: %s" %
-                    (completed.returncode, detail),
-                ))
-            else:
-                live_check_passed = True
+    if runtime_available and not completion_errors:
+        live_check_passed = True
 
     # The cited receipt is immutable evidence for the exact bytes just
     # checked.  A missing, malformed, duplicated, invalidated, or stale receipt
@@ -1049,7 +1067,7 @@ def _validate_required_queue_linkage(root, proof, progress_ledger,
     receipt_id = proof.get("queue_check_receipt")
     current_receipt, membership_failures = _current_receipt_evidence(
         root, receipt_id, field="queue_check_receipt",
-        check_prefix="proof-queue-receipt", runtime=adoption_runtime,
+        check_prefix="proof-queue-receipt", runtime=runtime,
     )
     failures.extend(membership_failures)
     try:
@@ -1156,7 +1174,9 @@ def _validate_required_queue_linkage(root, proof, progress_ledger,
     return failures, live_check_passed
 
 
-def _validate_corpus_plan_linkage(root, proof, proof_progress_sha256):
+def _validate_corpus_plan_linkage(
+        root, proof, proof_progress_sha256, *, runtime,
+        authorized_profile_view, repository_snapshot_sha256):
     """Consume one current Corpus Planning receipt at Terminal Proof.
 
     The named receipt must live in the Proof's canonical audit register and
@@ -1169,11 +1189,10 @@ def _validate_corpus_plan_linkage(root, proof, proof_progress_sha256):
     root = Path(root).resolve()
     receipt_path_raw = proof.get("audit_receipt_register")
     receipt_id = proof.get("corpus_plan_check_receipt")
-    adoption_runtime = check_queue.validate_runtime(str(root))
     current_structural, membership_failures = _current_receipt_evidence(
         root, receipt_id, field="corpus_plan_check_receipt",
         check_prefix="proof-corpus-plan-receipt",
-        runtime=adoption_runtime,
+        runtime=runtime,
     )
     failures.extend(membership_failures)
     try:
@@ -1250,11 +1269,20 @@ def _validate_corpus_plan_linkage(root, proof, proof_progress_sha256):
             "the named register record differs from the same receipt_id in "
             "the current receipt catalog"))
 
-    try:
-        snapshot = kblib.repository_snapshot_sha256(str(root))
-    except (OSError, ValueError) as exc:
+    if not isinstance(authorized_profile_view, dict):
         failures.append(_queue_linkage_failure(
-            "proof-corpus-plan-snapshot-unavailable", str(root), str(exc)))
+            "proof-corpus-plan-profile-view-unavailable",
+            "Tools/check_corpus_plan.py",
+            "the one Terminal Proof Profile authorization is unavailable; "
+            "refusing to run another profile-load while resolving Corpus "
+            "Planning evidence"))
+        return failures, False
+
+    if (not isinstance(repository_snapshot_sha256, str) or
+            not SHA256_RE.fullmatch(repository_snapshot_sha256)):
+        failures.append(_queue_linkage_failure(
+            "proof-corpus-plan-snapshot-unavailable", str(root),
+            "the one Terminal Proof repository snapshot is unavailable"))
         return failures, False
     try:
         expected_binding = check_corpus_plan.current_freshness_binding(
@@ -1264,8 +1292,10 @@ def _validate_corpus_plan_linkage(root, proof, proof_progress_sha256):
             queue_state_revision=proof.get("queue_state_revision"),
             coverage_ledger_sha256=proof.get("coverage_ledger_sha256"),
             required_queue_sha256=proof.get("required_queue_sha256"),
-            progress_ledger_sha256=proof_progress_sha256,
-            repository_snapshot_sha256=snapshot,
+            progress_ledger_sha256=(runtime or {}).get("progress_sha256"),
+            terminal_progress_ledger_sha256=proof_progress_sha256,
+            repository_snapshot_sha256=repository_snapshot_sha256,
+            authorized_profile_view=authorized_profile_view,
         )
     except (OSError, TypeError, ValueError) as exc:
         failures.append(_queue_linkage_failure(
@@ -1302,7 +1332,7 @@ def _validate_corpus_plan_linkage(root, proof, proof_progress_sha256):
                     root, semantic_id,
                     field="corpus_plan_semantic_acceptance_receipt",
                     check_prefix="proof-corpus-plan-semantic-receipt",
-                    runtime=adoption_runtime,
+                    runtime=runtime,
                 )
             failures.extend(semantic_membership_failures)
             if len(semantic_matches) != 1:
@@ -1356,7 +1386,8 @@ def _validate_corpus_plan_linkage(root, proof, proof_progress_sha256):
     return failures, not failures
 
 
-def _terminal_progress_binding(root, progress_ledger, current_progress_sha256):
+def _terminal_progress_binding(root, progress_ledger, current_progress_sha256,
+                               *, runtime):
     """Return the Progress fingerprint that a durable proof must bind.
 
     A proof is created from frozen ``completion-candidate`` bytes.  The sole
@@ -1367,7 +1398,12 @@ def _terminal_progress_binding(root, progress_ledger, current_progress_sha256):
     if (not isinstance(progress_ledger, dict) or
             progress_ledger.get("task_state") != "complete"):
         return current_progress_sha256, []
-    runtime = check_queue.validate_runtime(str(root))
+    if not isinstance(runtime, dict):
+        return current_progress_sha256, [(
+            "complete-runtime-unavailable", CANONICAL_PROGRESS_PATH,
+            "the one Terminal Proof runtime view is unavailable; refusing "
+            "to validate complete history through a second observation",
+        )]
     if runtime.get("errors"):
         return current_progress_sha256, [(
             "complete-runtime-invalid", CANONICAL_PROGRESS_PATH,
@@ -1623,7 +1659,8 @@ def main():
             print("[FAIL] unsafe receipt path: %s" % exc)
             return 1
 
-    template = kblib.parse_yaml_subset(open(args.template, encoding="utf-8").read())
+    template = kblib.parse_yaml_subset(
+        Path(args.template).read_text(encoding="utf-8"))
     required_fields = list(template.keys())
 
     receipts = []
@@ -1979,19 +2016,68 @@ def main():
     registered_dimensions = ()
     all_registered_dimensions = ()
     dimension_registry_authoritative = False
-    if args.root:
-        profile_root = Path(args.root).resolve()
-        if profile_root.is_dir():
-            (registered_dimensions, all_registered_dimensions,
-             dimension_registry_authoritative, registry_failures) = (
-                _registered_receipt_dimensions(
-                    profile_root, proof.get("selected_profile_manifest")))
-            for check, target, details in registry_failures:
+    root = Path(args.root).resolve() if args.root else None
+    current_runtime = None
+    authorized_profile_view = None
+    profile_load_evaluation = None
+    profile_load_evaluation_error = None
+    repository_snapshot_sha256 = None
+    repository_snapshot_error = None
+    if root is not None and root.is_dir():
+        try:
+            repository_snapshot_sha256 = \
+                kblib.repository_snapshot_sha256(str(root))
+        except (OSError, ValueError) as exc:
+            repository_snapshot_error = str(exc)
+        manifest_relative = proof.get("selected_profile_manifest")
+        if not _selected_profile_manifest_error(manifest_relative):
+            try:
+                authorized_profile_view, profile_view_errors = \
+                    check_queue.profile_load_authorized_view(
+                        str(root), manifest_relative)
+            except (OSError, SystemExit, TypeError, UnicodeError,
+                    ValueError) as exc:
+                authorized_profile_view = None
+                profile_view_errors = [str(exc)]
+            if authorized_profile_view is None:
+                profile_load_evaluation_error = "; ".join(
+                    profile_view_errors or [
+                        "profile-load exposed no authorized view"])
+                profile_manifest_bad += 1
                 dimension_bad += 1
                 seq += 1
                 receipts.append(_make_receipt(
-                    TOOL, TOOL_VERSION, check,
-                    "%s#%s" % (proof_name, target), "fail", details, seq))
+                    TOOL, TOOL_VERSION, "proof-profile-not-loadable",
+                    "%s#selected_profile_manifest" % proof_name, "fail",
+                    profile_load_evaluation_error, seq))
+            else:
+                profile_load_evaluation = authorized_profile_view.get(
+                    "_evaluation")
+                try:
+                    current_runtime = check_queue.validate_runtime(
+                        str(root),
+                        authorized_profile_view=authorized_profile_view)
+                except (OSError, TypeError, UnicodeError, ValueError) as exc:
+                    profile_load_evaluation_error = (
+                        "runtime validation could not consume the authorized "
+                        "Profile view: %s" % exc)
+                    profile_manifest_bad += 1
+                    dimension_bad += 1
+                    seq += 1
+                    receipts.append(_make_receipt(
+                        TOOL, TOOL_VERSION,
+                        "proof-runtime-check-unavailable", str(root),
+                        "fail", profile_load_evaluation_error, seq))
+
+        (registered_dimensions, all_registered_dimensions,
+         dimension_registry_authoritative, registry_failures) = (
+            _registered_receipt_dimensions(profile_load_evaluation))
+        for check, target, details in registry_failures:
+            dimension_bad += 1
+            seq += 1
+            receipts.append(_make_receipt(
+                TOOL, TOOL_VERSION, check,
+                "%s#%s" % (proof_name, target), "fail", details, seq))
     if "dimension_coverage" not in missing:
         dimension_failures, cited_dimension_receipts = (
             _dimension_coverage_failures(
@@ -2075,11 +2161,8 @@ def main():
     profile_identity_checked = False
     profile_manifest_checked = False
     current_evidence_bad = 0
-    current_runtime = None
     selected_profile_id = None
-    root = None
     if args.root:
-        root = Path(args.root).resolve()
         if not root.is_dir():
             path_bad += 1
             seq += 1
@@ -2087,7 +2170,6 @@ def main():
                 TOOL, TOOL_VERSION, "proof-root-invalid", str(root), "fail",
                 "--root must resolve to an existing directory", seq))
         else:
-            current_runtime = check_queue.validate_runtime(str(root))
             current_evidence_failures = _reused_receipt_evidence_failures(
                 root, proof, runtime=current_runtime)
             current_evidence_bad = len(current_evidence_failures)
@@ -2097,7 +2179,29 @@ def main():
                     TOOL, TOOL_VERSION, check, target, "fail", details, seq
                 ))
 
-            active_state, active_state_errors = _load_active_standards_state(root)
+            if repository_snapshot_error is not None:
+                path_bad += 1
+                seq += 1
+                receipts.append(_make_receipt(
+                    TOOL, TOOL_VERSION,
+                    "proof-repository-snapshot-unavailable", str(root),
+                    "fail", repository_snapshot_error, seq))
+
+            active_view = ((current_runtime or {}).get(
+                "_active_standards_authorized_view"))
+            if isinstance(active_view, dict):
+                active_state = {
+                    "standards_version": active_view.get(
+                        "standards_version"),
+                    "selected_profile_manifest": active_view.get(
+                        "selected_profile_manifest"),
+                }
+                active_state_errors = []
+            else:
+                active_state = {}
+                active_state_errors = [
+                    "the one runtime validation exposed no authorized "
+                    "K00/03 identity view"]
             for index, details in enumerate(active_state_errors):
                 active_state_bad += 1
                 seq += 1
@@ -2160,100 +2264,43 @@ def main():
             if ("selected_profile_manifest" not in missing and
                     not _selected_profile_manifest_error(
                         selected_profile_manifest)):
-                manifest_path, manifest_resolve_error = _resolve_under_root(
-                    root, selected_profile_manifest
-                )
-                if (not manifest_resolve_error and manifest_path.is_file()):
-                    defaults_path, defaults_resolve_error = _resolve_under_root(
-                        root, EXECUTION_DEFAULTS_PATH
-                    )
-                    try:
-                        if defaults_resolve_error or not defaults_path.is_file():
-                            raise OSError(
-                                defaults_resolve_error or
-                                "required defaults registry is missing"
-                            )
-                        defaults = kblib.parse_yaml_subset(
-                            defaults_path.read_text(encoding="utf-8")
-                        )
-                        manifest_text = manifest_path.read_text(encoding="utf-8")
-                    except (OSError, UnicodeError,
-                            kblib.YamlSubsetError) as exc:
-                        profile_manifest_bad += 1
-                        seq += 1
-                        receipts.append(_make_receipt(
-                            TOOL, TOOL_VERSION,
-                            "proof-profile-identity-unreadable",
-                            "%s#selected_profile_manifest" % proof_name,
-                            "fail",
-                            "cannot validate the selected profile identity: %s"
-                            % exc, seq))
+                if (profile_load_evaluation is not None and
+                        profile_load_evaluation.authorized):
+                    selected_profile_id = profile_load_evaluation.profile_id
+                    profile_identity_checked = True
+                    profile_manifest_checked = True
+                elif profile_load_evaluation is not None:
+                    profile_manifest_bad += 1
+                    if profile_load_evaluation.findings:
+                        last_finding = profile_load_evaluation.findings[-1]
+                        detail = "%s: %s" % (
+                            last_finding["check"], last_finding["details"])
                     else:
-                        reserved_ids = (
-                            defaults.get("reserved_profile_ids") or []
-                            if isinstance(defaults, dict) else []
-                        )
-                        selected_profile_id, identity_errors = (
-                            kblib.profile_identity(
-                                manifest_text,
-                                Path(selected_profile_manifest).parts[1],
-                                reserved_ids
-                            )
-                        )
-                        for check, details in identity_errors:
-                            profile_manifest_bad += 1
-                            seq += 1
-                            receipts.append(_make_receipt(
-                                TOOL, TOOL_VERSION,
-                                "proof-%s" % check,
-                                "%s#selected_profile_manifest" % proof_name,
-                                "fail", details, seq))
-                        if not identity_errors:
-                            profile_identity_checked = True
-                            profile_check_path = root / "Tools/check_profile.py"
-                            try:
-                                declared_profile_dir = (
-                                    root / Path(selected_profile_manifest).parent
-                                )
-                                completed = subprocess.run(
-                                    [sys.executable, str(profile_check_path),
-                                     str(declared_profile_dir), "--root",
-                                     str(root)],
-                                    capture_output=True, text=True, timeout=60,
-                                    check=False,
-                                )
-                            except (OSError, subprocess.TimeoutExpired) as exc:
-                                completed = None
-                                profile_manifest_bad += 1
-                                seq += 1
-                                receipts.append(_make_receipt(
-                                    TOOL, TOOL_VERSION,
-                                    "proof-profile-check-unavailable",
-                                    "%s#selected_profile_manifest" % proof_name,
-                                    "fail", "cannot run check_profile.py: %s" %
-                                    exc, seq))
-                            if completed is not None:
-                                if completed.returncode == 0:
-                                    profile_manifest_checked = True
-                                else:
-                                    profile_manifest_bad += 1
-                                    output_lines = [
-                                        line.strip()
-                                        for line in (completed.stdout + "\n" +
-                                                     completed.stderr).splitlines()
-                                        if line.strip()
-                                    ]
-                                    detail = (output_lines[-1]
-                                              if output_lines else
-                                              "no diagnostic output")
-                                    seq += 1
-                                    receipts.append(_make_receipt(
-                                        TOOL, TOOL_VERSION,
-                                        "proof-profile-not-loadable",
-                                        "%s#selected_profile_manifest" %
-                                        proof_name, "fail",
-                                        "check_profile.py exited %d: %s" %
-                                        (completed.returncode, detail), seq))
+                        output_lines = [
+                            line.strip() for line in
+                            profile_load_evaluation.output.splitlines()
+                            if line.strip()
+                        ]
+                        detail = (output_lines[-1] if output_lines else
+                                  "no diagnostic output")
+                    seq += 1
+                    receipts.append(_make_receipt(
+                        TOOL, TOOL_VERSION, "proof-profile-not-loadable",
+                        "%s#selected_profile_manifest" % proof_name, "fail",
+                        "profile-load exited %d: %s" %
+                        (profile_load_evaluation.exit_code, detail), seq))
+                elif profile_load_evaluation_error is None:
+                    # A regular manifest should have produced an evaluation
+                    # above; fail closed if a future control-flow change breaks
+                    # that invariant.
+                    profile_manifest_bad += 1
+                    seq += 1
+                    receipts.append(_make_receipt(
+                        TOOL, TOOL_VERSION,
+                        "proof-profile-check-unavailable",
+                        "%s#selected_profile_manifest" % proof_name, "fail",
+                        "profile-load evaluation was not available for the "
+                        "selected manifest", seq))
 
             if profile_identity_checked:
                 expected_prefix = "P:%s:" % selected_profile_id
@@ -2423,12 +2470,23 @@ def main():
             progress_path = None
         try:
             if progress_path is not None:
-                progress_bytes = progress_path.read_bytes()
-                progress_sha256 = kblib.sha256_bytes(progress_bytes)
-                progress_ledger = kblib.parse_yaml_subset(
-                    progress_bytes.decode("utf-8")
-                )
-        except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
+                if args.root and root is not None and root.is_dir():
+                    if (not isinstance(current_runtime, dict) or
+                            not isinstance(current_runtime.get("progress"),
+                                           dict)):
+                        raise ValueError(
+                            "the one Terminal Proof runtime view contains no "
+                            "parsed Progress Ledger")
+                    progress_ledger = current_runtime["progress"]
+                    progress_sha256 = current_runtime.get("progress_sha256")
+                else:
+                    progress_bytes = progress_path.read_bytes()
+                    progress_sha256 = kblib.sha256_bytes(progress_bytes)
+                    progress_ledger = kblib.parse_yaml_subset(
+                        progress_bytes.decode("utf-8")
+                    )
+        except (OSError, UnicodeError, ValueError,
+                kblib.YamlSubsetError) as exc:
             progress_cross_fail += 1
             seq += 1
             receipts.append(_make_receipt(
@@ -2443,7 +2501,8 @@ def main():
             if args.root and root is not None and root.is_dir():
                 proof_progress_sha256, binding_failures = (
                     _terminal_progress_binding(
-                        root, progress_ledger, progress_sha256
+                        root, progress_ledger, progress_sha256,
+                        runtime=current_runtime,
                     )
                 )
             progress_failures = binding_failures + \
@@ -2504,12 +2563,23 @@ def main():
             ledger_path = None
         try:
             if ledger_path is not None:
-                coverage_bytes = ledger_path.read_bytes()
-                coverage_sha256 = kblib.sha256_bytes(coverage_bytes)
-                ledger = kblib.parse_yaml_subset(
-                    coverage_bytes.decode("utf-8")
-                )
-        except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
+                if args.root and root is not None and root.is_dir():
+                    if (not isinstance(current_runtime, dict) or
+                            not isinstance(current_runtime.get("coverage"),
+                                           dict)):
+                        raise ValueError(
+                            "the one Terminal Proof runtime view contains no "
+                            "parsed Coverage Ledger")
+                    ledger = current_runtime["coverage"]
+                    coverage_sha256 = current_runtime.get("coverage_sha256")
+                else:
+                    coverage_bytes = ledger_path.read_bytes()
+                    coverage_sha256 = kblib.sha256_bytes(coverage_bytes)
+                    ledger = kblib.parse_yaml_subset(
+                        coverage_bytes.decode("utf-8")
+                    )
+        except (OSError, UnicodeError, ValueError,
+                kblib.YamlSubsetError) as exc:
             coverage_cross_fail += 1
             seq += 1
             receipts.append(_make_receipt(
@@ -2545,6 +2615,7 @@ def main():
             _validate_required_queue_linkage(
                 root, proof, progress_ledger,
                 coverage_sha256, proof_progress_sha256,
+                runtime=current_runtime,
             )
         )
         queue_cross_fail = len(queue_failures)
@@ -2572,9 +2643,23 @@ def main():
     if args.root and root is not None and root.is_dir():
         corpus_failures, corpus_plan_linkage_checked = (
             _validate_corpus_plan_linkage(
-                root, proof, proof_progress_sha256))
+                root, proof, proof_progress_sha256,
+                runtime=current_runtime,
+                authorized_profile_view=authorized_profile_view,
+                repository_snapshot_sha256=repository_snapshot_sha256))
         corpus_plan_cross_fail = len(corpus_failures)
         for check, target, details in corpus_failures:
+            seq += 1
+            receipts.append(_make_receipt(
+                TOOL, TOOL_VERSION, check, target, "fail", details, seq
+            ))
+
+    if args.root and root is not None and root.is_dir():
+        profile_currency_failures = _terminal_currency_failures(
+            root, current_runtime, authorized_profile_view,
+            repository_snapshot_sha256)
+        profile_manifest_bad += len(profile_currency_failures)
+        for check, target, details in profile_currency_failures:
             seq += 1
             receipts.append(_make_receipt(
                 TOOL, TOOL_VERSION, check, target, "fail", details, seq
@@ -2631,6 +2716,21 @@ def main():
                 summary_receipt[field] = proof.get(field)
             summary_receipt["terminal_proof_path"] = proof_receipt_path
             summary_receipt["terminal_proof_sha256"] = proof_sha256
+            # The final currency boundary above proves that every repository
+            # byte outside .git/.cambium still equals the one snapshot all
+            # substantive Terminal consumers observed.  Persist that boundary
+            # in the summary so ``update_task`` can reject an otherwise-valid
+            # proof after K, Card, Read Set, Profile, or Tool bytes change.
+            summary_receipt["repository_snapshot_sha256"] = (
+                repository_snapshot_sha256)
+        if (profile_load_evaluation is not None and
+                profile_load_evaluation.authorized):
+            summary_receipt["profile_snapshot_sha256"] = (
+                profile_load_evaluation.profile_snapshot_sha256)
+            summary_receipt["profile_contract_fingerprint"] = (
+                profile_load_evaluation.profile_contract_fingerprint)
+            summary_receipt["profile_load_inputs_sha256"] = (
+                profile_load_evaluation.profile_load_inputs_sha256)
         receipts.append(summary_receipt)
 
     print("check_proof: checking %s against %d required template field(s)" % (args.proof, len(required_fields)))

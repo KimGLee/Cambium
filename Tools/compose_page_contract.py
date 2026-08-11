@@ -41,6 +41,7 @@ Exit codes: 0 = ok / check passed; 1 = conflict or input error;
 import argparse
 import hashlib
 import os
+import re
 import sys
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -48,9 +49,10 @@ REPO_ROOT = os.path.dirname(TOOLS_DIR)
 sys.path.insert(0, TOOLS_DIR)
 
 import kblib  # noqa: E402
+import profile_admission  # noqa: E402
 
 TOOL = "compose_page_contract"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 
 DEFAULT_BASE = "kernel/K08 Metadata and Status/applicability-base.yaml"
 DEFAULT_RELATIONSHIPS = (
@@ -63,6 +65,8 @@ DEFAULT_OUTPUT = "Tools/page_contract.yaml"
 ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
 METADATA_SLOT = "Metadata Contract"
 VOCAB_SLOT = "Vocabulary Extensions"
+PROVENANCE_RE = re.compile(
+    r"^# input ([a-z][a-z0-9-]*): (.+) sha256=([0-9a-f]{64})$")
 
 
 def read_text(path):
@@ -75,75 +79,89 @@ def fail(message):
     return 1
 
 
-def resolve_profile_dir(root, override, errors):
-    if override:
-        profile_dir = override if os.path.isabs(override) \
-            else os.path.join(root, override)
-        if not os.path.isdir(profile_dir):
-            errors.append("--profile does not name an existing directory: %s"
-                          % override)
-            return None
-        return profile_dir
-    state_path = os.path.join(root, ACTIVE_STATE_PATH)
+def load_yaml(path, errors, label, text=None):
     try:
-        state_text = read_text(state_path)
-    except OSError as exc:
-        errors.append("cannot read the active Standards state: %s" % exc)
-        return None
-    state, parse_errors = kblib.active_standards_state(state_text)
-    errors.extend(parse_errors)
-    manifest = state.get("selected_profile_manifest") or ""
-    if "{{" in manifest or not manifest.strip():
-        errors.append("no instantiated selected_profile_manifest; pass "
-                      "--profile for a validation run")
-        return None
-    manifest_path = os.path.join(root, manifest)
-    if not os.path.isfile(manifest_path):
-        errors.append("selected profile manifest does not exist: %s"
-                      % manifest)
-        return None
-    return os.path.dirname(manifest_path)
-
-
-def slot_file(root, profile_dir, slot, errors):
-    manifest_path = os.path.join(profile_dir, "profile.md")
-    try:
-        manifest_text = read_text(manifest_path)
-    except OSError as exc:
-        errors.append("cannot read the profile manifest: %s" % exc)
-        return None
-    bindings = kblib.profile_slot_bindings(manifest_text)
-    binding = bindings.get(slot)
-    if binding is None:
-        errors.append("the manifest does not bind the `%s` slot" % slot)
-        return None
-    kind, detail = kblib.resolve_profile_binding(binding, root, profile_dir)
-    if kind != "path":
-        errors.append("slot `%s` binding %r does not resolve" %
-                      (slot, binding))
-        return None
-    return detail
-
-
-def load_yaml(path, errors, label):
-    try:
-        return kblib.parse_yaml_subset(read_text(path))
+        return kblib.parse_yaml_subset(
+            read_text(path) if text is None else text)
     except (OSError, kblib.YamlSubsetError) as exc:
         errors.append("cannot parse %s (%s): %s" % (label, path, exc))
         return None
 
 
-def compose(root, base_path, rel_path, sources_role_path, profile_dir):
+def _repository_input_snapshot(root, path, label):
+    root = os.path.abspath(os.fspath(root))
+    candidate = os.fspath(path)
+    if not os.path.isabs(candidate):
+        candidate = os.path.join(root, candidate)
+    candidate = os.path.abspath(candidate)
+
+    # Find the repository root as an actual ancestor instead of comparing
+    # lexical absolute strings.  macOS exposes the same temporary tree as
+    # both /var/... and /private/var/...; treating that harmless system alias
+    # as a repository escape breaks otherwise canonical inputs.  Deriving the
+    # relative spelling from the ancestor walk still preserves every path
+    # segment *inside* the repository, so repository_file_snapshot can reject
+    # symlink and hard-link aliases there.
+    relative_parts = []
+    current = candidate
+    while True:
+        try:
+            if os.path.samefile(current, root):
+                break
+        except OSError:
+            pass
+        parent, name = os.path.split(current)
+        if not name or parent == current:
+            relative_parts = []
+            break
+        relative_parts.append(name)
+        current = parent
+    if not relative_parts:
+        raise ValueError("%s path escapes the repository" % label)
+    relative = "/".join(reversed(relative_parts))
+    return kblib.repository_file_snapshot(
+        root, relative, singly_linked=True)
+
+
+def compose(root, base_path, rel_path, sources_role_path, admission):
     """Return (contract, provenance, errors); contract = fields + roles."""
     errors = []
-    base = load_yaml(base_path, errors, "applicability base")
-    relationships = load_yaml(rel_path, errors, "relationship base")
-    sources_role = load_yaml(sources_role_path, errors, "sources-role base")
-    contract_path = slot_file(root, profile_dir, METADATA_SLOT, errors)
-    vocab_path = slot_file(root, profile_dir, VOCAB_SLOT, errors)
-    contract = load_yaml(contract_path, errors, "Metadata Contract") \
+    kernel_snapshots = {}
+    for label, path in (
+            ("applicability base", base_path),
+            ("relationship base", rel_path),
+            ("sources-role base", sources_role_path)):
+        try:
+            kernel_snapshots[path] = _repository_input_snapshot(
+                root, path, label)
+        except (OSError, ValueError) as exc:
+            errors.append("cannot bind %s (%s): %s" % (label, path, exc))
+    base = load_yaml(
+        base_path, errors, "applicability base",
+        kernel_snapshots[base_path].read_text()) \
+        if base_path in kernel_snapshots else None
+    relationships = load_yaml(
+        rel_path, errors, "relationship base",
+        kernel_snapshots[rel_path].read_text()) \
+        if rel_path in kernel_snapshots else None
+    sources_role = load_yaml(
+        sources_role_path, errors, "sources-role base",
+        kernel_snapshots[sources_role_path].read_text()) \
+        if sources_role_path in kernel_snapshots else None
+    contract_path, error = profile_admission.require_slot(
+        admission, METADATA_SLOT)
+    if error:
+        errors.append(error)
+    vocab_path, error = profile_admission.require_slot(admission, VOCAB_SLOT)
+    if error:
+        errors.append(error)
+    contract = load_yaml(
+        contract_path, errors, "Metadata Contract",
+        admission.slot_text(METADATA_SLOT)) \
         if contract_path else None
-    vocab = load_yaml(vocab_path, errors, "Vocabulary Extensions") \
+    vocab = load_yaml(
+        vocab_path, errors, "Vocabulary Extensions",
+        admission.slot_text(VOCAB_SLOT)) \
         if vocab_path else None
     if errors:
         return None, None, errors
@@ -285,14 +303,24 @@ def compose(root, base_path, rel_path, sources_role_path, profile_dir):
                 boundary_labels[key] = value
 
     provenance = []
+    admitted_bytes = {
+        base_path: kernel_snapshots[base_path].data,
+        rel_path: kernel_snapshots[rel_path].data,
+        sources_role_path: kernel_snapshots[sources_role_path].data,
+        contract_path: admission.slot_bytes.get(METADATA_SLOT),
+        vocab_path: admission.slot_bytes.get(VOCAB_SLOT),
+    }
     for label, path in (("applicability-base", base_path),
                         ("relationship-base", rel_path),
                         ("sources-role-base", sources_role_path),
                         ("metadata-contract", contract_path),
                         ("vocabulary-extensions", vocab_path)):
-        digest = hashlib.sha256(
-            open(path, "rb").read()).hexdigest()
-        rel = os.path.relpath(path, root).replace(os.sep, "/")
+        data = admitted_bytes.get(path)
+        digest = hashlib.sha256(data).hexdigest()
+        if path in kernel_snapshots:
+            rel = kernel_snapshots[path].repository_path
+        else:
+            rel = os.path.relpath(path, root).replace(os.sep, "/")
         provenance.append((label, rel, digest))
     ordered = {name: index[name] for name in fields}
     return {"fields": ordered, "section_roles": roles,
@@ -314,6 +342,108 @@ def render(contract, provenance):
          "section_roles": contract["section_roles"],
          "boundary_projection": contract["boundary_projection"]})
     return "\n".join(lines) + "\n" + body
+
+
+def compiled_artifact(root, admission, *, base_path=None, rel_path=None,
+                      sources_role_path=None):
+    """Return deterministic page-contract bytes from one admitted revision."""
+    root = os.path.realpath(os.path.abspath(os.fspath(root)))
+    base_path = base_path or os.path.join(root, DEFAULT_BASE)
+    rel_path = rel_path or os.path.join(root, DEFAULT_RELATIONSHIPS)
+    sources_role_path = sources_role_path or os.path.join(
+        root, DEFAULT_SOURCES_ROLE)
+    contract, provenance, errors = compose(
+        root, base_path, rel_path, sources_role_path, admission)
+    if errors:
+        return None, None, errors
+    return render(contract, provenance), contract, []
+
+
+def _declared_kernel_inputs(artifact):
+    """Read the three kernel input identities from immutable artifact bytes."""
+    declared = {}
+    try:
+        lines = artifact.read_text().splitlines()
+    except UnicodeError as exc:
+        raise ValueError("compiled page contract is not UTF-8: %s" % exc)
+    for line in lines:
+        match = PROVENANCE_RE.match(line)
+        if match is None:
+            continue
+        label, path, _digest = match.groups()
+        if label in declared:
+            raise ValueError(
+                "compiled page contract repeats input %s" % label)
+        declared[label] = path
+    required = (
+        "applicability-base", "relationship-base", "sources-role-base")
+    missing = [label for label in required if label not in declared]
+    if missing:
+        raise ValueError(
+            "compiled page contract lacks provenance for %s" %
+            ", ".join(missing))
+    return tuple(declared[label] for label in required)
+
+
+def admitted_artifact(root, artifact_path, admission):
+    """Return immutable compiled bytes iff they equal the admitted IR."""
+    try:
+        artifact = _repository_input_snapshot(
+            root, artifact_path, "compiled page contract")
+    except (OSError, ValueError) as exc:
+        return None, [
+            "compiled page contract is unsafe or unreadable: %s" % exc]
+    compile_kwargs = {}
+    if admission.active_state_repo_path is None:
+        # Explicit Profile validation permits the composer's explicit kernel
+        # base inputs.  They are names, not trusted bytes: each is rebound via
+        # a canonical no-follow snapshot and the entire artifact must then be
+        # byte-identical.  Active runtime admission always uses the canonical
+        # kernel bases and cannot select inputs through an artifact.
+        try:
+            base_path, rel_path, sources_role_path = \
+                _declared_kernel_inputs(artifact)
+        except ValueError as exc:
+            return None, [str(exc)]
+        compile_kwargs = {
+            "base_path": base_path,
+            "rel_path": rel_path,
+            "sources_role_path": sources_role_path,
+        }
+    text, _contract, errors = compiled_artifact(
+        root, admission, **compile_kwargs)
+    if errors:
+        return None, errors
+    if artifact.data != text.encode("utf-8"):
+        return None, [
+            "compiled page contract %s does not match the selected Profile "
+            "and kernel bases; recompose it with "
+            "Tools/compose_page_contract.py" % artifact.repository_path
+        ]
+    currency = profile_admission.currency_errors(admission)
+    return (None, currency) if currency else (artifact, [])
+
+
+def artifact_currency_errors(root, artifact_path, admission):
+    """Require a compiled page contract to equal the admitted deterministic IR."""
+    _artifact, errors = admitted_artifact(root, artifact_path, admission)
+    return errors
+
+
+def compilation_currency_errors(root, admission, expected_text, *, base_path,
+                                rel_path, sources_role_path):
+    """Recompile all inputs and require the initially rendered IR to persist."""
+    current_text, _contract, errors = compiled_artifact(
+        root, admission, base_path=base_path, rel_path=rel_path,
+        sources_role_path=sources_role_path)
+    if errors:
+        return errors
+    if current_text != expected_text:
+        return [
+            "kernel compiler inputs changed during page-contract composition; "
+            "rerun against one stable input revision"
+        ]
+    return profile_admission.currency_errors(admission)
 
 
 def main(argv=None):
@@ -344,21 +474,28 @@ def main(argv=None):
         root, DEFAULT_SOURCES_ROLE)
     output = args.output or os.path.join(root, DEFAULT_OUTPUT)
 
-    errors = []
-    profile_dir = resolve_profile_dir(root, args.profile, errors)
-    if profile_dir is None:
+    admission, errors = profile_admission.admit_profile(
+        root, args.profile, active_state_path=ACTIVE_STATE_PATH)
+    if admission is None:
         for error in errors:
             print("compose_page_contract: %s" % error)
         return 1
 
-    contract, provenance, errors = compose(root, base_path, rel_path,
-                                           sources_role_path, profile_dir)
+    text, contract, errors = compiled_artifact(
+        root, admission, base_path=base_path, rel_path=rel_path,
+        sources_role_path=sources_role_path)
     if errors:
         for error in errors:
             print("compose_page_contract: %s" % error)
         return 1
 
-    text = render(contract, provenance)
+    currency = compilation_currency_errors(
+        root, admission, text, base_path=base_path, rel_path=rel_path,
+        sources_role_path=sources_role_path)
+    if currency:
+        for error in currency:
+            print("compose_page_contract: %s" % error)
+        return 1
     if args.check:
         try:
             existing = read_text(output)
@@ -370,10 +507,24 @@ def main(argv=None):
             print("compose_page_contract: %s is stale; recompose it"
                   % output)
             return 2
+        currency = compilation_currency_errors(
+            root, admission, text, base_path=base_path, rel_path=rel_path,
+            sources_role_path=sources_role_path)
+        if currency:
+            for error in currency:
+                print("compose_page_contract: %s" % error)
+            return 1
         print("compose_page_contract: %s is current (%d field(s))"
               % (output, len(contract["fields"])))
         return 0
     kblib.atomic_write_text(output, text)
+    currency = compilation_currency_errors(
+        root, admission, text, base_path=base_path, rel_path=rel_path,
+        sources_role_path=sources_role_path)
+    if currency:
+        for error in currency:
+            print("compose_page_contract: %s" % error)
+        return 1
     print("compose_page_contract: wrote %s (%d field(s), %d section role(s))"
           % (output, len(contract["fields"]),
              len(contract["section_roles"])))

@@ -13,11 +13,13 @@ from unittest import mock
 
 TOOLS = Path(__file__).resolve().parents[1]
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import check_queue
 import kblib
 import register_amendment
+from profile_fixture import install_loadable_profile
 
 
 class RegisterAmendmentTests(unittest.TestCase):
@@ -25,6 +27,7 @@ class RegisterAmendmentTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name) / "repo"
         shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root)
         (self.root / ".cambium/deltas/amendments").mkdir(parents=True)
         (self.root / ".cambium/deltas/replans").mkdir(parents=True)
 
@@ -227,6 +230,41 @@ class RegisterAmendmentTests(unittest.TestCase):
         self.assertEqual(record["plan_sha256"], receipt["plan_sha256"])
         self.assertEqual("s1", receipt["scope_version_before"])
         self.assertEqual("s2", receipt["scope_version_after"])
+
+    def test_registration_transaction_runs_profile_load_producer_once(self):
+        producer = check_queue.check_profile.evaluate_profile_load
+        receipt_path = self.root / register_amendment.RECEIPT_PATH
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                wraps=producer) as evaluate:
+            _, _, _, prepared = self.prepare_scope_registration()
+            register_amendment._apply(
+                str(self.root), prepared, str(receipt_path))
+
+        self.assertEqual(1, evaluate.call_count)
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+
+    def test_registration_rejects_stale_admitted_profile_before_publication(self):
+        _, _, before, prepared = self.prepare_scope_registration()
+        progress_before = (self.root / check_queue.PROGRESS_PATH).read_bytes()
+        profile_slot = self.root / "profiles/test-profile/slots.md"
+        profile_slot.write_text(
+            profile_slot.read_text(encoding="utf-8") +
+            "\n<!-- changed after transaction admission -->\n",
+            encoding="utf-8",
+        )
+        receipt_path = self.root / register_amendment.RECEIPT_PATH
+
+        with self.assertRaisesRegex(
+                ValueError, "changed after profile-load authorization"):
+            register_amendment._apply(
+                str(self.root), prepared, str(receipt_path))
+
+        self.assertEqual(progress_before,
+                         (self.root / check_queue.PROGRESS_PATH).read_bytes())
+        self.assertEqual(before, self.shas())
+        self.assertFalse(receipt_path.exists())
+        self.assertFalse((self.root / ".cambium/tmp/state-writer.lock").exists())
 
     def test_cancel_batch_registers_exact_plan(self):
         plan_relative, _, _ = self.cross_plan("cancel-batch")

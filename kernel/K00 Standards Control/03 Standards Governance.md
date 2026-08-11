@@ -15,7 +15,7 @@
 | Change authority | User's explicit governance instruction |
 | Content-task behavior | Frozen; read-only control plane |
 
-The four `{{ ... }}` entries are placeholders. Initial adoption is the first governance release: fill a copy of `profiles/_template/`; pass `check_profile.py`; record exactly one `profiles/<profile-id>/profile.md`, a version, `approved` status, and date here; record upstream tag, commit, or archive checksum in the Change Summary; compose vocabulary; stamp Cards; pass governance checks. This is adopter state, not Cambium release metadata. Until all four values are instantiated, the standard is pre-release and content tasks cannot freeze a Task Contract.
+The four `{{ ... }}` entries are placeholders. Initial adoption is the first governance release: fill a copy of `profiles/_template/`; pass the `profile-load` Gate against that candidate; record exactly one `profiles/<profile-id>/profile.md`, a version, `approved` status, and date here; record upstream tag, commit, or archive checksum in the Change Summary; compose vocabulary; stamp Cards; pass governance checks. This is adopter state, not Cambium release metadata. Until all four values are instantiated, the standard is pre-release and content tasks cannot freeze a Task Contract.
 
 The Standards lifecycle is:
 
@@ -37,7 +37,10 @@ For an active-task adoption, the restricted-YAML adoption plan is the canonical
 machine revision record. Its `governance_revision_ref` must point back to this
 file and its SHA-256 must bind these complete approved governance bytes. The
 plan additionally binds deterministic after snapshots of the whole `kernel/`
-tree and selected Profile directory. Its changed-predicate rows are the
+tree and selected Profile directory. The after Profile MUST pass
+`profile-load`; because that Gate closes every Profile-owned dependency inside
+the directory, the directory snapshot binds the resolved dependency bytes and
+the Gate's contract fingerprint binds their typed ownership edges. Its changed-predicate rows are the
 machine-consumed list; the Change Summary remains the governance register and
 must agree in meaning, but no second Markdown adoption checklist or copied
 revision record is created.

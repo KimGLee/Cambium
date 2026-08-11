@@ -19,7 +19,7 @@ import check_queue
 import kblib
 
 TOOL = "adopt_standards"
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.4.0"
 GATE_ID = "standards-adoption"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -56,6 +56,53 @@ def _plan_identity(plan):
         "selected_profile_manifest":
             plan["selected_profile_manifest_after"],
     }
+
+
+def _after_profile_evidence(root, plan, *, expected=None, phase):
+    """Load and CAS the candidate Profile without publishing its receipt.
+
+    ``standards_adoption_plan_errors`` performs the admission judgment.  This
+    helper is intentionally called again at transaction boundaries: admission
+    is not a lease on mutable Profile bytes.  ``expected`` is the evidence
+    captured immediately after admission and therefore binds both the plan's
+    explicit tree snapshot, typed dependency contract, and root-owned
+    profile-load inputs that admission actually authorized.
+    """
+    manifest = plan["selected_profile_manifest_after"]
+    evidence, errors = check_queue.profile_load_evidence(root, manifest)
+    if errors:
+        raise ValueError(
+            "%s candidate Profile failed profile-load: %s" %
+            (phase, "; ".join(errors)))
+    if evidence["selected_profile_manifest"] != manifest:
+        raise ValueError(
+            "%s candidate Profile manifest changed after plan admission" %
+            phase)
+    if (evidence["profile_snapshot_sha256"] !=
+            plan["profile_snapshot_sha256_after"]):
+        raise ValueError(
+            "%s candidate Profile snapshot changed after plan admission" %
+            phase)
+    if (evidence["profile_contract_fingerprint"] !=
+            plan["profile_contract_fingerprint_after"]):
+        raise ValueError(
+            "%s candidate Profile typed contract differs from the admitted "
+            "plan" % phase)
+    if (evidence["profile_load_inputs_sha256"] !=
+            plan["profile_load_inputs_sha256_after"]):
+        raise ValueError(
+            "%s candidate Profile load inputs differ from the admitted "
+            "plan" % phase)
+    if expected is not None:
+        for field in (
+                "selected_profile_manifest", "profile_snapshot_sha256",
+                "profile_contract_fingerprint",
+                "profile_load_inputs_sha256"):
+            if evidence.get(field) != expected.get(field):
+                raise ValueError(
+                    "%s candidate Profile %s changed after plan admission" %
+                    (phase, field))
+    return evidence
 
 
 def _load_plan(root, relative):
@@ -192,6 +239,10 @@ def _new_receipt(phase, result, plan, transaction_id, plan_path, plan_sha,
             plan["standards_snapshot_sha256_after"],
         "profile_snapshot_sha256_after":
             plan["profile_snapshot_sha256_after"],
+        "profile_contract_fingerprint_after":
+            plan["profile_contract_fingerprint_after"],
+        "profile_load_inputs_sha256_after":
+            plan["profile_load_inputs_sha256_after"],
         "queue_revision_before": plan["queue_revision_before"],
         "queue_revision_after": plan["queue_revision_after"],
         "state_revision_before": plan["queue_state_revision_before"],
@@ -229,7 +280,10 @@ def _new_receipt(phase, result, plan, transaction_id, plan_path, plan_sha,
 def _prepare_result(root, plan_relative):
     root = os.path.realpath(os.path.abspath(root))
     plan_file, plan_raw, plan = _load_plan(root, plan_relative)
-    current = check_queue.validate_runtime(root)
+    current = check_queue.validate_runtime(
+        root,
+        allow_invalid_current_profile_for_corrective_adoption=True,
+        allow_active_standards_mismatch_for_adoption=True)
     if current["errors"]:
         raise ValueError("current runtime is inconsistent: %s" %
                          "; ".join(current["errors"]))
@@ -251,6 +305,12 @@ def _prepare_result(root, plan_relative):
     if plan_errors:
         raise ValueError("invalid Standards adoption plan: %s" %
                          "; ".join(plan_errors))
+    # Capture the after-image's semantic contract only after the complete plan
+    # has been admitted.  This is in-memory transaction evidence, never a
+    # current-task receipt: until commit the Queue still owns the before
+    # Profile identity.
+    profile_evidence = _after_profile_evidence(
+        root, plan, phase="post-admission")
 
     paths = _state_paths(root, current)
     before_raw = _read_state_bytes(paths)
@@ -359,6 +419,10 @@ def _prepare_result(root, plan_relative):
             plan["standards_snapshot_sha256_after"],
         "profile_snapshot_sha256_after":
             plan["profile_snapshot_sha256_after"],
+        "profile_contract_fingerprint_after":
+            plan["profile_contract_fingerprint_after"],
+        "profile_load_inputs_sha256_after":
+            plan["profile_load_inputs_sha256_after"],
         "selected_route_ids_after": plan["selected_route_ids_after"],
         "selected_card_paths_after": plan["selected_card_paths_after"],
         "selected_profile_route_ids_after":
@@ -445,6 +509,7 @@ def _prepare_result(root, plan_relative):
         "prepare": prepare, "commit": commit, "gate": gate,
         "transaction_id": transaction_id,
         "projection_shas": projection_shas,
+        "profile_evidence": profile_evidence,
     }
 
 
@@ -489,6 +554,14 @@ def _lock_operation(prepared, receipt_path, abort_id):
         "planned_after_required_queue_sha256": prepared["after_sha"]["queue"],
         "before_progress_sha256": prepared["before_sha"]["progress"],
         "planned_after_progress_sha256": prepared["after_sha"]["progress"],
+        "selected_profile_manifest_after":
+            prepared["profile_evidence"]["selected_profile_manifest"],
+        "profile_snapshot_sha256_after":
+            prepared["profile_evidence"]["profile_snapshot_sha256"],
+        "profile_contract_fingerprint_after":
+            prepared["profile_evidence"]["profile_contract_fingerprint"],
+        "profile_load_inputs_sha256_after":
+            prepared["profile_evidence"]["profile_load_inputs_sha256"],
     }
 
 
@@ -510,12 +583,19 @@ def _commit_transaction(prepared, receipt_path):
                     live = fh.read()
                 if kblib.sha256_bytes(live) != prepared["before_sha"][name]:
                     raise ValueError("%s changed after adoption planning" % name)
-            locked = check_queue.validate_runtime(prepared["root"])
+            locked = check_queue.validate_runtime(
+                prepared["root"],
+                allow_invalid_current_profile_for_corrective_adoption=True,
+                allow_active_standards_mismatch_for_adoption=True)
             if locked["errors"]:
                 raise ValueError("runtime changed before write: %s" %
                                  "; ".join(locked["errors"]))
             if locked.get("writer_locks") and len(locked["writer_locks"]) > 1:
                 raise ValueError("another runtime writer lock appeared")
+            _after_profile_evidence(
+                prepared["root"], prepared["plan"],
+                expected=prepared["profile_evidence"],
+                phase="locked pre-write")
 
         prepare_before = kblib.receipt_append_observation(
             receipt_path, [prepared["prepare"]])
@@ -540,17 +620,37 @@ def _commit_transaction(prepared, receipt_path):
                 kblib.atomic_write_text(
                     prepared["paths"][name], prepared["after_text"][name],
                     validator=kblib.parse_yaml_subset)
+            _after_profile_evidence(
+                prepared["root"], prepared["plan"],
+                expected=prepared["profile_evidence"],
+                phase="post-write")
             post = check_queue.validate_runtime(
                 prepared["root"], extra_receipts=final_receipts)
             if post["errors"]:
                 raise ValueError("post-write check_queue failed: %s" %
                                  "; ".join(post["errors"]))
+            # Runtime validation can be arbitrarily expensive.  Re-CAS the
+            # candidate immediately before publishing its final evidence so a
+            # mutation during that check cannot inherit the earlier pass.
+            _after_profile_evidence(
+                prepared["root"], prepared["plan"],
+                expected=prepared["profile_evidence"],
+                phase="pre-final-receipt")
             # The gate was computed from these exact after bytes during
             # preparation and is consumed only after the locked revalidation.
             final_outcome, error, _ = kblib.write_receipts_observed(
                 receipt_path, final_receipts, before=final_before)
             if error is not None:
                 raise error
+            # The append is itself an external I/O boundary.  A Profile
+            # mutation racing that append must enter the transaction recovery
+            # path too.  Because the commit receipt may now be durable, the
+            # existing reconciliation predicate deliberately keeps the writer
+            # lock even after state rollback and abort evidence.
+            _after_profile_evidence(
+                prepared["root"], prepared["plan"],
+                expected=prepared["profile_evidence"],
+                phase="post-final-receipt")
         except Exception as exc:
             rollback_failures = _restore(
                 prepared["paths"], prepared["before_raw"])

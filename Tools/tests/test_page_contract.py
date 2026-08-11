@@ -13,6 +13,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from Tools.tests.profile_fixture import install_loadable_profile
+
 TOOLS = Path(__file__).resolve().parents[1]
 COMPOSER = TOOLS / "compose_page_contract.py"
 CHECKER = TOOLS / "check_page_contract.py"
@@ -169,7 +171,27 @@ class PageContractTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
         self.addCleanup(self.tmp.cleanup)
+        profile = install_loadable_profile(root)
+        manifest = profile / "profile.md"
+        manifest_text = manifest.read_text(encoding="utf-8")
+        custom_manifest = files.get("profile/profile.md", MANIFEST)
+        for line in custom_manifest.splitlines():
+            if not line.startswith("- `") or "`: `" not in line:
+                continue
+            slot = line.split("`", 2)[1]
+            existing = next(
+                (candidate for candidate in manifest_text.splitlines()
+                 if candidate.startswith("- `%s`:" % slot)),
+                None,
+            )
+            if existing is not None:
+                manifest_text = manifest_text.replace(existing, line)
+        manifest.write_text(manifest_text, encoding="utf-8")
         for rel, text in files.items():
+            if rel == "profile/profile.md":
+                continue
+            if rel.startswith("profile/"):
+                rel = "profiles/test-profile/" + rel[len("profile/"):]
             path = root / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
@@ -181,7 +203,7 @@ class PageContractTests(unittest.TestCase):
              "--base", str(root / "kernel/applicability-base.yaml"),
              "--relationships", str(root / "kernel/relationship-base.yaml"),
              "--sources-role", str(root / "kernel/sources-role-base.yaml"),
-             "--profile", "profile",
+             "--profile", "profiles/test-profile",
              "--output", str(root / "page_contract.yaml")],
             text=True, capture_output=True, check=False)
         self.assertEqual(expect, result.returncode,
@@ -191,7 +213,7 @@ class PageContractTests(unittest.TestCase):
     def check(self, root, *args):
         return subprocess.run(
             [sys.executable, str(CHECKER), str(root),
-             "--profile", "profile",
+             "--profile", "profiles/test-profile",
              "--contract", str(root / "page_contract.yaml"), *args],
             text=True, capture_output=True, check=False)
 
@@ -215,11 +237,69 @@ class PageContractTests(unittest.TestCase):
              "--base", str(root / "kernel/applicability-base.yaml"),
              "--relationships", str(root / "kernel/relationship-base.yaml"),
              "--sources-role", str(root / "kernel/sources-role-base.yaml"),
-             "--profile", "profile",
+             "--profile", "profiles/test-profile",
              "--output", str(root / "page_contract.yaml"), "--check"],
             text=True, capture_output=True, check=False)
         self.assertEqual(0, result.returncode,
                          result.stdout + result.stderr)
+
+    def test_kernel_base_byte_change_makes_compiled_contract_stale(self):
+        root = self.build(base_files())
+        self.compose(root)
+        base = root / "kernel/applicability-base.yaml"
+        base.write_text(
+            base.read_text(encoding="utf-8") + "\n# revision B\n",
+            encoding="utf-8")
+
+        result = subprocess.run(
+            [sys.executable, str(COMPOSER), "--root", str(root),
+             "--base", str(base),
+             "--relationships", str(root / "kernel/relationship-base.yaml"),
+             "--sources-role", str(root / "kernel/sources-role-base.yaml"),
+             "--profile", "profiles/test-profile",
+             "--output", str(root / "page_contract.yaml"), "--check"],
+            text=True, capture_output=True, check=False)
+
+        self.assertEqual(2, result.returncode, result.stdout + result.stderr)
+        self.assertIn("is stale", result.stdout)
+
+    def test_unrelated_unloadable_slot_blocks_composition(self):
+        files = base_files()
+        files["profile/profile.md"] = MANIFEST + \
+            "- `Priority Rubric`: `broken-priority.md`\n"
+        files["profile/broken-priority.md"] = "TODO(profile)\n"
+        root = self.build(files)
+        result = self.compose(root, expect=1)
+        self.assertIn("profile-load", result.stdout)
+        self.assertIn("TODO(profile)", result.stdout)
+
+    def test_unrelated_slot_breakage_blocks_page_gate_after_composition(self):
+        root = self.build(base_files())
+        self.compose(root)
+        manifest = root / "profiles/test-profile/profile.md"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace(
+                "- `Priority Rubric`: `slots.md`",
+                "- `Priority Rubric`: `broken-priority.md`"),
+            encoding="utf-8")
+        (manifest.parent / "broken-priority.md").write_text(
+            "TODO(profile)\n", encoding="utf-8")
+        result = self.check(root)
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("profile-load", result.stdout)
+
+    def test_profile_change_rejects_prechange_compiled_contract(self):
+        """A valid Profile B cannot consume a page contract compiled for A."""
+        root = self.build(base_files())
+        self.compose(root)
+        metadata = root / "profiles/test-profile/metadata-contract.yaml"
+        metadata.write_text(CONTRACT_CONFIGURED, encoding="utf-8")
+
+        result = self.check(root, "--strict")
+
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("compiled page contract", result.stdout)
+        self.assertIn("does not match the selected Profile", result.stdout)
 
     def test_loosening_difference_is_a_conflict(self):
         files = base_files(CONTRACT_CONFIGURED.replace(

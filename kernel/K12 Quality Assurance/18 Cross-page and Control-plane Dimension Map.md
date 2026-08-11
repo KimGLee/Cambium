@@ -45,11 +45,11 @@ Closed List 3 emits a candidate list; whether two candidates are one canonical c
 
 ## Gate Receipt Dimensions
 
-A Gate ID of [[kernel/K00 Standards Control/12 Control Registry#Control Registry|Control Registry]] whose canonical gate is a judgment item filed above or in K12/08 takes that item's dimension. The rest file as:
+A Gate ID of [[kernel/K00 Standards Control/12 Control Registry#Control Registry|Control Registry]] whose canonical gate is a judgment item filed above or in K12/08 takes that item's dimension. The rest:
 
 | Dimension | Gate IDs |
 |---|---|
-| guidance_and_contract | `runtime-card-synchronization`; `runtime-startup-recovery`; `large-scale-execution-admission`; `standards-adoption`; `standards-revalidation`; `guidance-disposition`; `receipt-validity` |
+| guidance_and_contract | `runtime-card-synchronization`; `profile-load`; `runtime-startup-recovery`; `large-scale-execution-admission`; `standards-adoption`; `standards-revalidation`; `guidance-disposition`; `receipt-validity` |
 | coverage_and_integration | `required-queue-consistency`; `required-queue-admission`; `required-queue-completion`; `maintenance-completion`; `corpus-plan-semantic-acceptance`; `terminal-proof` |
 | structure_and_links | `corpus-plan-structure`; `duplicate-detection` |
 | source_and_currentness | `knowledge-freshness` |

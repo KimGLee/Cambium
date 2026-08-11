@@ -1,4 +1,5 @@
 import io
+import copy
 import json
 import shlex
 from contextlib import redirect_stdout
@@ -14,11 +15,15 @@ from unittest import mock
 
 TOOLS = Path(__file__).resolve().parents[1]
 FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
+sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import check_batch_close
 import check_queue
+import compose_vocab
 import kblib
+import profile_admission
+from profile_fixture import install_loadable_profile
 
 
 class CheckBatchCloseTests(unittest.TestCase):
@@ -42,18 +47,46 @@ class CheckBatchCloseTests(unittest.TestCase):
         )
 
     def install_profile_and_tools(self):
+        install_loadable_profile(self.root)
         manifest = self.root / "profiles/test-profile/profile.md"
+        manifest_text = manifest.read_text(encoding="utf-8")
         manifest.write_text(
-            manifest.read_text(encoding="utf-8") +
-            "\n## Implemented Slots\n\n"
-            "- `Registered Scan Registry`: `registries/registered-scans.md`\n"
-            "\n## Execution Default Overrides\n\n"
-            "| Override item ID from the registry | Non-default profile value |\n"
-            "|---|---|\n",
+            manifest_text.replace(
+                "- `Audit Dimension Registry`: `slots.md`",
+                "- `Audit Dimension Registry`: "
+                "`registries/audit-dimensions.md`",
+            ).replace(
+                "- `Registered Scan Registry`: `slots.md`",
+                "- `Registered Scan Registry`: "
+                "`registries/registered-scans.md`",
+            ),
+            encoding="utf-8",
+        )
+        audit_registry = manifest.parent / "registries/audit-dimensions.md"
+        audit_registry.parent.mkdir(parents=True)
+        audit_registry.write_text(
+            "# Audit Dimension Registry\n\n"
+            "## Extension Dimensions\n\n"
+            "- Registration: None\n\n"
+            "| Dimension ID | Target list(s): `review`, `receipt`, or "
+            "`review + receipt` | Meaning |\n"
+            "|---|---|---|\n\n"
+            "## Judgment Items\n\n"
+            "| Stable Judgment Item ID | Base or registered receipt "
+            "Dimension ID | Exact kernel audit-layer name | Bounded audit "
+            "object one run proves | Evidence role: `emits`, `consumes`, "
+            "or `triggers` | Predicate owner (repo-relative path; optional "
+            "`#heading`) |\n"
+            "|---|---|---|---|---|---|\n"
+            "| `fixture-item` | `coverage_and_integration` | `Batch Review` "
+            "| The fixture scan candidates have accepted dispositions. | "
+            "`emits` | `profiles/test-profile/registries/"
+            "audit-dimensions.md#Fixture Predicate` |\n\n"
+            "## Fixture Predicate\n\n"
+            "The fixture verifier reports residual candidates.\n",
             encoding="utf-8",
         )
         registry = manifest.parent / "registries/registered-scans.md"
-        registry.parent.mkdir(parents=True)
         registry.write_text(
             "# Registered Scan Registry\n\n## Scan Registrations\n\n"
             "| Stable Scan ID | Activation role | Whole-corpus scope/root | "
@@ -62,11 +95,12 @@ class CheckBatchCloseTests(unittest.TestCase):
             "|---|---|---|---|---|---|\n"
             "| `fixture-residuals` | `K12/09 item 6 — residual-content scan` | "
             "Whole repository | `python3 Tools/fixture_residual.py . "
-            "--scan-id fixture-residuals` | candidate-only | fixture-item |\n",
+            "--scan-id fixture-residuals` | candidate-only | `fixture-item` |\n",
             encoding="utf-8",
         )
         tools = self.root / "Tools"
-        tools.mkdir()
+        tools.mkdir(exist_ok=True)
+        (tools / "schemas").mkdir(exist_ok=True)
         shutil.copy2(TOOLS / "kblib.py", tools / "kblib.py")
         (tools / "fixture_residual.py").write_text(
             "#!/usr/bin/env python3\n"
@@ -100,18 +134,31 @@ class CheckBatchCloseTests(unittest.TestCase):
             "kblib.write_receipts(a.receipts,[r])\n",
             encoding="utf-8",
         )
-        (tools / "vocab.yaml").write_text(
+        vocab_base = (
+            "kernel/K08 Metadata and Status/vocabulary-base.yaml")
+        (self.root / vocab_base).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(TOOLS.parent / vocab_base, self.root / vocab_base)
+        profile_manifest = self.root / "profiles/test-profile/profile.md"
+        profile_manifest.write_text(
+            profile_manifest.read_text(encoding="utf-8").replace(
+                "- `Vocabulary Extensions`: `slots.md`",
+                "- `Vocabulary Extensions`: `vocabulary-extensions.yaml`"),
+            encoding="utf-8")
+        (profile_manifest.parent / "vocabulary-extensions.yaml").write_text(
             "schema_version: 1\n"
-            "composition_policy: fixture\n"
+            "frontmatter_extensions:\n"
+            "  fields: []\n"
             "fields:\n"
-            "  priority:\n"
-            "    owner: fixture\n"
-            "    values:\n"
-            "      - P0\n"
-            "      - P1\n"
-            "      - P2\n",
-            encoding="utf-8",
-        )
+            "volatility_defaults:\n"
+            "  fixture: stable\n",
+            encoding="utf-8")
+        admission, admission_errors = profile_admission.admit_profile(
+            self.root, profile_manifest.parent)
+        self.assertEqual([], admission_errors)
+        rendered, _vocab, compile_errors = compose_vocab.compiled_artifact(
+            self.root, admission)
+        self.assertEqual([], compile_errors)
+        (tools / "vocab.yaml").write_text(rendered, encoding="utf-8")
 
     def queue(self):
         return kblib.load_yaml_file(self.root / check_queue.QUEUE_PATH)
@@ -206,15 +253,6 @@ class CheckBatchCloseTests(unittest.TestCase):
 
     def install_inactive_corpus_plan(self):
         manifest = self.root / "profiles/test-profile/profile.md"
-        text = manifest.read_text(encoding="utf-8")
-        marker = (
-            "- `Registered Scan Registry`: "
-            "`registries/registered-scans.md`\n")
-        self.assertIn(marker, text)
-        manifest.write_text(text.replace(
-            marker, marker +
-            "- `Corpus Planning`: `corpus-planning.yaml`\n", 1),
-            encoding="utf-8")
         (manifest.parent / "corpus-planning.yaml").write_text(
             "schema_version: 1\n"
             "applicability:\n"
@@ -233,16 +271,16 @@ class CheckBatchCloseTests(unittest.TestCase):
     def install_configured_corpus_plan(self):
         manifest = self.root / "profiles/test-profile/profile.md"
         text = manifest.read_text(encoding="utf-8")
-        marker = (
-            "- `Registered Scan Registry`: "
-            "`registries/registered-scans.md`\n")
-        self.assertIn(marker, text)
-        manifest.write_text(text.replace(
-            marker, marker +
-            "- `Profile Scope`: `scope-and-architecture.md`\n"
-            "- `Role Registry`: `roles.md`\n"
-            "- `Corpus Planning`: `corpus-planning.yaml`\n", 1),
-            encoding="utf-8")
+        manifest.write_text(
+            text.replace(
+                "- `Profile Scope`: `slots.md`",
+                "- `Profile Scope`: `scope-and-architecture.md`",
+            ).replace(
+                "- `Role Registry`: `slots.md`",
+                "- `Role Registry`: `roles.md`",
+            ),
+            encoding="utf-8",
+        )
         (manifest.parent / "scope-and-architecture.md").write_text(
             "# Scope And Architecture\n\n## Logical Architecture\n\n"
             "| Stable Layer ID | Repository-relative directories | "
@@ -351,7 +389,7 @@ class CheckBatchCloseTests(unittest.TestCase):
         child = next(row for row in rows
                      if row.get("receipt_id") == close["corpus_plan_receipt"])
         self.assertEqual("check_corpus_plan", child["tool"])
-        self.assertEqual("1.6.0", child["tool_version"])
+        self.assertEqual("1.7.0", child["tool_version"])
         self.assertEqual("configured", child["corpus_plan_applicability"])
         runtime = check_queue.validate_runtime(self.root)
         item = runtime["items_by_id"]["B1"]
@@ -376,6 +414,86 @@ class CheckBatchCloseTests(unittest.TestCase):
                 kblib.repository_snapshot_sha256(self.root),
         )
         self.assertEqual([], errors)
+
+        historical_catalog = {
+            receipt_id: (path, copy.deepcopy(receipt))
+            for receipt_id, (path, receipt)
+            in runtime["current_receipt_catalog"].items()
+        }
+        for _path, receipt in historical_catalog.values():
+            if receipt.get("tool") == check_batch_close.TOOL:
+                receipt["tool_version"] = "1.6.0"
+        historical_kwargs = {
+            "item_id": "B1",
+            "task_id": runtime["queue"]["task_id"],
+            "queue_revision": runtime["queue"]["queue_revision"],
+            "queue_state_revision": runtime["queue"]["state_revision"],
+            "required_queue_sha256": runtime["queue_sha256"],
+            "coverage_ledger_sha256": runtime["coverage_sha256"],
+            "progress_ledger_sha256": runtime["progress_sha256"],
+            "delta_sha256": item["delta_sha256"],
+            "queue_consistency_receipt": consistency,
+            "delta_apply_receipt": self.delta_apply_receipt,
+            "work_spec_path": item["work_spec_path"],
+            "work_spec_sha256": item["work_spec_sha256"],
+            "selected_profile_manifest": runtime["queue"][
+                "selected_profile_manifest"],
+            "corpus_plan_required": True,
+            "corpus_plan_triggers": ["manifest"],
+            "historical": True,
+        }
+        mismatched = check_queue.close_gate_receipt_errors(
+            historical_catalog, close_gate, **historical_kwargs)
+        self.assertTrue(any(
+            "tool_version='1.7.0', expected '1.6.0'" in error
+            for error in mismatched), mismatched)
+
+        historical_catalog[close["corpus_plan_receipt"]][1][
+            "tool_version"] = "1.6.0"
+        self.assertEqual([], check_queue.close_gate_receipt_errors(
+            historical_catalog, close_gate, **historical_kwargs))
+
+    def test_one_authorized_view_drives_corpus_scan_and_quota_overrides(self):
+        self.install_configured_corpus_plan()
+        view, errors = check_queue.profile_load_authorized_view(
+            self.root, "profiles/test-profile/profile.md")
+        self.assertEqual([], errors)
+        runtime = check_queue.validate_runtime(
+            self.root, authorized_profile_view=view)
+        self.assertEqual([], runtime["errors"])
+        item = runtime["items_by_id"]["B1"]
+
+        with mock.patch.object(
+                check_batch_close.check_profile, "evaluate_profile_load",
+                side_effect=AssertionError(
+                    "shared batch admission must suppress producer reruns")):
+            corpus = check_batch_close._corpus_plan_close_check(
+                self.root, runtime, item,
+                kblib.repository_snapshot_sha256(self.root),
+                authorized_profile_view=view)
+            evaluation = check_batch_close._profile_evaluation(
+                self.root, runtime, authorized_profile_view=view)
+
+        self.assertEqual([], corpus["errors"])
+        self.assertIs(view["_evaluation"], evaluation)
+        self.assertEqual((15.0, 35.0),
+                         check_batch_close._priority_quotas(evaluation))
+
+    def test_batch_rejects_vocab_compiled_before_profile_change(self):
+        """The closed list cannot reuse Profile A's vocabulary under B."""
+        extension = self.root / \
+            "profiles/test-profile/vocabulary-extensions.yaml"
+        extension.write_text(
+            extension.read_text(encoding="utf-8").replace(
+                "  fixture: stable", "  fixture: slow"),
+            encoding="utf-8")
+
+        completed = self.batch_close(
+            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("vocab-artifact-stale", completed.stdout)
+        self.assertIn("does not match the selected Profile", completed.stdout)
 
     @staticmethod
     def output_value(output, name):
@@ -668,13 +786,17 @@ class CheckBatchCloseTests(unittest.TestCase):
     def test_priority_quotas_read_the_shared_override_table(self):
         runtime = self.set_override_rows("")
         self.assertEqual((15.0, 35.0),
-                         check_batch_close._priority_quotas(self.root, runtime))
+                         check_batch_close._priority_quotas(
+                             check_batch_close._profile_evaluation(
+                                 self.root, runtime)))
         runtime = self.set_override_rows(
             "| `concurrency_cap` | `4` |\n"
             "| `priority_quota.P0` | `20%` |\n"
             "| `priority_quota.P1` | `40` |\n")
         self.assertEqual((20.0, 40.0),
-                         check_batch_close._priority_quotas(self.root, runtime))
+                         check_batch_close._priority_quotas(
+                             check_batch_close._profile_evaluation(
+                                 self.root, runtime)))
         manifest_text = (
             self.root / "profiles/test-profile/profile.md"
         ).read_text(encoding="utf-8")
@@ -686,11 +808,11 @@ class CheckBatchCloseTests(unittest.TestCase):
     def test_priority_quota_override_still_fails_closed_on_a_bad_value(self):
         runtime = self.set_override_rows("| `priority_quota.P0` | `many` |\n")
         with self.assertRaises(ValueError) as caught:
-            check_batch_close._priority_quotas(self.root, runtime)
-        self.assertIn("not a numeric percent", str(caught.exception))
+            check_batch_close._profile_evaluation(self.root, runtime)
+        self.assertIn("expected a number", str(caught.exception))
         runtime = self.set_override_rows("| `priority_quota.P1` | `140` |\n")
         with self.assertRaises(ValueError) as caught:
-            check_batch_close._priority_quotas(self.root, runtime)
+            check_batch_close._profile_evaluation(self.root, runtime)
         self.assertIn("under 100", str(caught.exception))
 
     def test_a_quota_of_the_whole_corpus_is_refused_by_the_consumer_too(self):
@@ -705,22 +827,42 @@ class CheckBatchCloseTests(unittest.TestCase):
                     runtime = self.set_override_rows(
                         "| `%s` | `%s` |\n" % (item, value))
                     with self.assertRaises(ValueError) as caught:
-                        check_batch_close._priority_quotas(self.root, runtime)
+                        check_batch_close._profile_evaluation(
+                            self.root, runtime)
                     self.assertIn("under 100", str(caught.exception))
         runtime = self.set_override_rows(
             "| `priority_quota.P0` | `99.9%` |\n")
         self.assertEqual(
             (99.9, 35.0),
-            check_batch_close._priority_quotas(self.root, runtime))
+            check_batch_close._priority_quotas(
+                check_batch_close._profile_evaluation(self.root, runtime)))
 
     def test_priority_quotas_fail_closed_on_a_malformed_override_row(self):
         """The shared reader refuses; the close attempt must not proceed."""
         runtime = self.set_override_rows(
             "| `priority_quota.P0` | `20%` | why |\n")
-        with self.assertRaises(kblib.ProfileOverrideRowError) as caught:
-            check_batch_close._priority_quotas(self.root, runtime)
-        self.assertIn("3 cell(s)", str(caught.exception))
+        with self.assertRaises(ValueError) as caught:
+            check_batch_close._profile_evaluation(self.root, runtime)
+        self.assertIn("found 3", str(caught.exception))
         self.assertIsInstance(caught.exception, ValueError)
+
+    def test_quota_and_scan_share_one_authorized_profile_revision(self):
+        runtime = self.set_override_rows(
+            "| `priority_quota.P0` | `20%` |\n")
+        evaluation = check_batch_close._profile_evaluation(self.root, runtime)
+        manifest = self.root / "profiles/test-profile/profile.md"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace(
+                "| `priority_quota.P0` | `20%` |",
+                "| `priority_quota.P0` | `80%` |"),
+            encoding="utf-8")
+
+        self.assertEqual(
+            (20.0, 35.0), check_batch_close._priority_quotas(evaluation))
+        command, expected = check_batch_close._profile_scan_command(
+            self.root, evaluation)
+        self.assertIn("--scan-id", command)
+        self.assertEqual("fixture-residuals", expected["scan_id"])
 
     def test_override_reader_ignores_fenced_examples_and_other_sections(self):
         manifest_text = (
@@ -827,6 +969,82 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertIn("must use different declared labels", completed.stdout)
         self.assertFalse((self.root / ".cambium/receipts/batch-close.jsonl").exists())
 
+    def test_custom_registered_verifier_without_config_remains_legal(self):
+        runtime = check_queue.validate_runtime(self.root)
+        self.assertEqual([], runtime["errors"])
+
+        evaluation = check_batch_close._profile_evaluation(self.root, runtime)
+        command, expected = check_batch_close._profile_scan_command(
+            self.root, evaluation)
+
+        self.assertEqual(sys.executable, command[0])
+        self.assertEqual(
+            str((self.root / "Tools/fixture_residual.py").resolve()),
+            command[1])
+        self.assertEqual(str(self.root.resolve()), command[2])
+        self.assertNotIn("--config", command)
+        self.assertEqual({"scan_id": "fixture-residuals"}, expected)
+
+    def test_registered_foreign_config_is_rejected_before_verifier_launch(self):
+        foreign = self.root / "profiles/foreign/scan-config.yaml"
+        foreign.parent.mkdir(parents=True)
+        foreign.write_text("schema_version: 1\n", encoding="utf-8")
+        registry = (
+            self.root /
+            "profiles/test-profile/registries/registered-scans.md"
+        )
+        source = registry.read_text(encoding="utf-8")
+        registry.write_text(source.replace(
+            "--scan-id fixture-residuals`",
+            "--scan-id fixture-residuals "
+            "--config profiles/foreign/scan-config.yaml`",
+            1,
+        ), encoding="utf-8")
+
+        verifier = self.root / "Tools/fixture_residual.py"
+        marker = self.root / "Tools/fixture-residual-launched"
+        source = verifier.read_text(encoding="utf-8")
+        verifier.write_text(source.replace(
+            "import kblib\n",
+            "import kblib\n"
+            "open(os.path.join(os.path.dirname(__file__), "
+            "'fixture-residual-launched'), 'w', encoding='utf-8').write("
+            "'launched')\n",
+            1,
+        ), encoding="utf-8")
+
+        completed = self.batch_close(
+            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("profiles/foreign/scan-config.yaml", completed.stdout)
+        self.assertFalse(marker.exists(), completed.stdout)
+
+    def test_missing_non_registry_slot_blocks_scan_before_verifier_launch(self):
+        # A valid Audit/Scan subgraph is not sufficient runtime authority.
+        # Batch close must consume the complete profile-load result, including
+        # the other eleven interface slots, before compiling item 6.
+        (self.root / "profiles/test-profile/slots.md").unlink()
+
+        verifier = self.root / "Tools/fixture_residual.py"
+        marker = self.root / "Tools/fixture-residual-launched"
+        source = verifier.read_text(encoding="utf-8")
+        verifier.write_text(source.replace(
+            "import kblib\n",
+            "import kblib\n"
+            "open(os.path.join(os.path.dirname(__file__), "
+            "'fixture-residual-launched'), 'w', encoding='utf-8').write("
+            "'launched')\n",
+            1,
+        ), encoding="utf-8")
+
+        completed = self.batch_close(
+            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("slot-binding-unresolved", completed.stdout)
+        self.assertFalse(marker.exists(), completed.stdout)
+
     def test_registered_check_cannot_mutate_around_a_self_reported_pass(self):
         script = self.root / "Tools/fixture_residual.py"
         script.write_text(
@@ -897,6 +1115,21 @@ class CheckBatchCloseTests(unittest.TestCase):
             "positive-control and production summaries disagree on "
             "config_fingerprint", completed.stdout)
 
+    def test_registered_verifier_cannot_self_report_a_foreign_scan_id(self):
+        script = self.root / "Tools/fixture_residual.py"
+        source = script.read_text(encoding="utf-8").replace(
+            "r['scan_id']=a.scan_id\n",
+            "r['scan_id']='foreign-scan'\n")
+        script.write_text(source, encoding="utf-8")
+
+        completed = self.batch_close(
+            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn(
+            "expected 'fixture-residuals' from the admitted Profile contract",
+            completed.stdout)
+
     def test_candidate_production_receipts_do_not_replace_bound_summary(self):
         summary = {
             "tool": "fixture_residual",
@@ -920,6 +1153,33 @@ class CheckBatchCloseTests(unittest.TestCase):
             [], check_batch_close._positive_control_binding_errors(
                 {"receipts": [dict(summary)]},
                 {"receipts": [candidate, dict(summary)]}))
+
+    def test_both_invocations_must_match_admitted_config_bytes(self):
+        summary = {
+            "tool": "fixture_residual",
+            "tool_version": "1.0.0",
+            "check": "residual-content-summary",
+            "scan_id": "fixture-residuals",
+            "config_fingerprint": "sha256:" + "d" * 64,
+            "positive_control_result": "passed",
+            "positive_control_mode": "production-classifier",
+            "positive_control_count": 2,
+            "positive_control_fingerprint": "sha256:" + "c" * 64,
+            "result": "pass",
+        }
+
+        errors = check_batch_close._positive_control_binding_errors(
+            {"receipts": [dict(summary)]},
+            {"receipts": [dict(summary)]},
+            expected_binding={
+                "scan_id": "fixture-residuals",
+                "config_fingerprint": "sha256:" + "e" * 64,
+            })
+
+        self.assertEqual(2, len(errors), errors)
+        self.assertTrue(all(
+            "config_fingerprint" in error and
+            "admitted Profile contract" in error for error in errors))
 
     def _install_authoritative_state_mutating_verifier(self, exit_code):
         script = self.root / "Tools/fixture_residual.py"
