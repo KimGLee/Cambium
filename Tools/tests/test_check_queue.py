@@ -316,6 +316,46 @@ class QueueFixture(unittest.TestCase):
         return result, dict(result["blocked"]).get(batch_id, [])
 
 
+class ReviewedEraTests(QueueFixture):
+    """K02/01: `reviewed` carries the era of the evidence that earned it."""
+
+    def set_page(self, index, **fields):
+        coverage = kblib.load_yaml_file(self.coverage_path)
+        coverage["pages"][index].update(fields)
+        self.coverage_path.write_text(kblib.canonical_yaml(coverage),
+                                      encoding="utf-8")
+        self.refresh_initial_origin()
+        return coverage
+
+    def test_reviewed_without_receipts_is_a_candidate(self):
+        coverage = self.set_page(0, authoring_status="reviewed",
+                                 gate_receipts=[])
+        unsupported = check_queue.unsupported_reviewed_records(coverage)
+        self.assertEqual([coverage["pages"][0]["path"]], unsupported)
+        completed = self.run_cli()
+        self.assertIn("no gate_receipts", completed.stdout)
+        self.assertIn("K02/01", completed.stdout)
+
+    def test_reviewed_with_receipts_is_accepted(self):
+        coverage = self.set_page(0, authoring_status="reviewed",
+                                 gate_receipts=["audit-some-receipt-0001"])
+        self.assertEqual(
+            [], check_queue.unsupported_reviewed_records(coverage))
+
+    def test_other_statuses_owe_no_era(self):
+        coverage = self.set_page(0, authoring_status="drafted",
+                                 gate_receipts=[])
+        self.assertEqual(
+            [], check_queue.unsupported_reviewed_records(coverage))
+
+    def test_unsupported_reviewed_never_becomes_an_error(self):
+        # A hard failure would wedge the instance out of the migration that
+        # resolves it.
+        self.set_page(0, authoring_status="reviewed", gate_receipts=[])
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+
+
 class HubPageAdmissionTests(QueueFixture):
     """K13/10 concurrency admission condition 2."""
 
@@ -332,6 +372,37 @@ class HubPageAdmissionTests(QueueFixture):
         self.assertEqual(2, completed.returncode, completed.stdout)
         self.assertIn("existing control or hub page(s)", completed.stdout)
         self.assertIn("exclusive or serial-integrator", completed.stdout)
+
+    def test_condition_two_is_reported_over_the_whole_queue(self):
+        # The defect is time-invariant, so consistency mode reports it for
+        # every queued batch at once instead of one batch at a time as each
+        # reaches the head of the Queue.
+        self.write_page("Topics/A.md", "---\ntype: overview\n---\n\n# A\n")
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        defects = "; ".join(result["structural_admission_defects"])
+        self.assertIn("B1", defects)
+        self.assertIn("Topics/A.md", defects)
+        self.assertIn("execution_mode=", defects)
+        consistency = self.run_cli()
+        self.assertIn("manifest edits existing hub page(s)",
+                      consistency.stdout)
+
+    def test_condition_two_defect_is_a_candidate_not_an_error(self):
+        # A hard error would wedge the instance: register_amendment and
+        # apply_amendment both refuse to run against a runtime with errors,
+        # and an Amendment is the only way to change execution_mode.
+        self.write_page("Topics/A.md", "---\ntype: overview\n---\n\n# A\n")
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertTrue(result["structural_admission_defects"])
+
+    def test_serial_integrator_batch_reports_no_structural_defect(self):
+        self.write_page("Topics/A.md", "---\ntype: overview\n---\n\n# A\n")
+        self.set_execution_mode("B1", "serial-integrator")
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual([], result["structural_admission_defects"])
 
     def test_runtime_card_and_card_index_types_are_hub_pages(self):
         for page_type in ("runtime-card", "card-index"):

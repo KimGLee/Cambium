@@ -1357,6 +1357,36 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertEqual("B1", page["batch"])
         self.assertEqual("B3", page["next_batch"])
 
+    def test_close_refuses_a_gap_still_routed_to_the_batch(self):
+        # K13/08 Batch Reference Settlement: routing, not manifest
+        # membership, decides which gaps a batch owes.  A real adopter closed
+        # a batch leaving two gaps whose pages were outside its manifest but
+        # whose next_batch named it; both were stranded on a terminal batch.
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage.setdefault("open_gaps", []).append({
+            "id": "gap-stranded",
+            "page": coverage["pages"][0]["path"],
+            "type": "rereview",
+            "note": "routed here from outside the manifest",
+            "next_batch": "B1",
+        })
+        (self.root / check_queue.COVERAGE_PATH).write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        self.refresh_initial_origin()
+        result = check_queue.validate_runtime(self.root)
+        item = result["items_by_id"]["B1"]
+        errors = check_queue.batch_reference_settlement_errors(result, item)
+        self.assertTrue(errors)
+        joined = "; ".join(errors)
+        self.assertIn("gap-stranded", joined)
+        self.assertIn("K13/08 settlement", joined)
+
+    def test_close_settlement_passes_when_no_gap_routes_to_the_batch(self):
+        result = check_queue.validate_runtime(self.root)
+        item = result["items_by_id"]["B1"]
+        self.assertEqual(
+            [], check_queue.batch_reference_settlement_errors(result, item))
+
     def test_merge_ready_requires_substantive_review_for_l_tier_pages(self):
         # K12/12: mandatory for L-tier, produced by a context other than the
         # author.  Until this guard, nothing counted the receipts and the

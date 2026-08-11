@@ -36,6 +36,7 @@ The inventory MUST form a persistent, queryable Coverage Ledger; it cannot exist
 - Knowledge objects not yet created but belonging to Required coverage also have records.
 - File system counts, the excluded scope, and Ledger summary counts can be reconciled.
 - Legacy pages without metadata default to `authoring_status: unassessed` and cannot be treated as drafted merely because the file exists.
+- `authoring_status: reviewed` carries the era of the evidence that earned it. The record MUST name, in `gate_receipts`, at least one receipt whose review established that status; a record claiming `reviewed` with no such receipt is reporting an era it cannot produce, and the reconciliation reports it as a candidate for re-review rather than accepting the claim. This is the same producer-era discipline K12/10 already applies to receipts, extended to the status the receipts earn: without it a page reviewed under a superseded Standards version and a page reviewed under the current one are the same six characters, completion counts include work no current gate would pass, and `check_freshness` and the re-review mechanism have no way to tell the two apart. Adoption of this rule in a corpus with legacy `reviewed` records is a migration, not an edit: the revision that adopts it declares whether the unsupported records are re-reviewed, retired, or carried under an explicit exception with a stated end.
 - Every unfinished Required item has an explicit `next_batch`.
 - Every `deferred` and `excluded` item has a reason and a re-entry condition or scope basis.
 

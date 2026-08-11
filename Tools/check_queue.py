@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.12.0"
+TOOL_VERSION = "1.13.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -3585,6 +3585,76 @@ def _require_receipt(catalog, receipt_id, label, errors, expected=None):
             errors.append("%s receipt %s has %s=%r, expected %r" %
                           (label, receipt_id, field, receipt.get(field), value))
     return receipt
+
+
+def unsupported_reviewed_records(coverage):
+    """Return Coverage paths claiming `reviewed` with no evidence era.
+
+    K02/01: the status carries the era of the evidence that earned it.  A
+    record naming no `gate_receipts` is claiming an era it cannot produce, so
+    a page reviewed under a superseded Standards version is indistinguishable
+    from one reviewed under the current one.  Reported as candidates, never
+    errors: in a corpus with legacy records the honest disposition is a
+    declared migration, and a hard failure would wedge the instance out of
+    the very replan that performs it.
+    """
+    unsupported = []
+    for page in (coverage or {}).get("pages") or []:
+        if not isinstance(page, dict):
+            continue
+        if page.get("authoring_status") != "reviewed":
+            continue
+        receipts = page.get("gate_receipts")
+        if not isinstance(receipts, list) or not any(
+                _nonempty_string(value) for value in receipts):
+            path = page.get("path")
+            if _nonempty_string(path):
+                unsupported.append(str(path))
+    return sorted(unsupported)
+
+
+def batch_reference_settlement_errors(result, item):
+    """Return K13/08 Batch Reference Settlement failures for a close.
+
+    A terminal batch keeps its history and loses its live references.  Three
+    of the four reference kinds in the K13/08 table were each discovered as a
+    separate production incident -- page ownership, gap routing, and the
+    stale ``batch_specs`` row -- because nothing enumerated them.  This is the
+    enumeration made executable at the transition that consumes it.  Receipt
+    ``batch_id`` is deliberately absent: sealed evidence names the batch
+    forever and is never settled.
+
+    Judged at write time against the post-delta Ledger, so sealed history is
+    never re-judged.
+    """
+    errors = []
+    item_id = item.get("id")
+    coverage = result.get("coverage") or {}
+
+    gaps = coverage.get("open_gaps")
+    if isinstance(gaps, list):
+        stranded = sorted(
+            str(gap.get("id") or gap.get("page"))
+            for gap in gaps
+            if isinstance(gap, dict) and gap.get("next_batch") == item_id
+        )
+        if stranded:
+            errors.append(
+                "K13/08 settlement: %d open gap(s) still route to this batch "
+                "and would be stranded on a terminal batch: %s; the Delta "
+                "must close each one or re-route it to a named later batch "
+                "(routing, not manifest membership, decides which gaps the "
+                "batch owes)" %
+                (len(stranded), ", ".join(stranded[:8]) +
+                 ("..." if len(stranded) > 8 else ""))
+            )
+
+    # The batch_specs row is deliberately NOT settled here.  Its row is
+    # harmless at close and becomes harmful only when a later replan tries to
+    # recompile a sealed item from it; that reference is settled on the
+    # replan side (compile_queue treats a terminal item's spec row as history
+    # rather than a proposal), which is where the incident actually occurred.
+    return errors
 
 
 def substantive_review_errors(result, item):
@@ -8984,6 +9054,7 @@ def validate_runtime(root, allowed_open_delta=None,
         root, queue.get("selected_profile_manifest"))
     hub_page_cache = {}
     hub_admission = {}
+    structural_admission_defects = []
     for item_id, item in items_by_id.items():
         if item.get("state") != "queued":
             continue
@@ -8999,10 +9070,35 @@ def validate_runtime(root, allowed_open_delta=None,
                 reasons.append(
                     "batch edits existing control or hub page(s): %s; %s" %
                     (", ".join(hub["blocking"]), HUB_EXIT_HINT))
+                # K13/10 condition 2 does not depend on which batch is being
+                # admitted today: a queued batch whose manifest edits an
+                # existing hub page can never reach `open` while its
+                # execution_mode stays concurrent, and only a structural
+                # Amendment can change that.  Reported through readiness
+                # alone the defect stays invisible until the batch reaches
+                # the head of the queue, so the same class is rediscovered
+                # one batch at a time; surfaced here it is visible for the
+                # whole Queue at once.  It stays a candidate rather than an
+                # error because the repair path is an Amendment, and
+                # register_amendment/apply_amendment refuse to run against a
+                # runtime with errors -- a hard failure would wedge the
+                # instance out of its own fix.
+                structural_admission_defects.append(
+                    "%s: manifest edits existing hub page(s) %s while "
+                    "execution_mode=%s; K13/10 admits a hub-editing batch "
+                    "only under exclusive or serial-integrator execution, so "
+                    "this batch cannot be activated until a structural "
+                    "Amendment changes its mode" %
+                    (item_id, ", ".join(hub["blocking"]),
+                     item.get("execution_mode")))
             if hub["unresolved"]:
                 reasons.append(
                     "manifest page(s) cannot be classified against K13/10 hub "
                     "roles: %s" % ", ".join(hub["unresolved"]))
+                structural_admission_defects.append(
+                    "%s: manifest page(s) cannot be classified against K13/10 "
+                    "hub roles: %s" %
+                    (item_id, ", ".join(hub["unresolved"])))
         if task_state not in ("planned", "active"):
             reasons.append("task_state=%s forbids activation" % task_state)
         pending_amendments = _pending_cross_ledger_amendments(progress)
@@ -9120,6 +9216,7 @@ def validate_runtime(root, allowed_open_delta=None,
     return {
         "root": root, "errors": errors, "ready": ready, "blocked": blocked,
         "hub_page_admission": hub_admission,
+        "structural_admission_defects": sorted(structural_admission_defects),
         "queue": queue, "coverage": coverage, "progress": progress,
         "queue_path": queue_path, "coverage_sha256": coverage_sha,
         "queue_sha256": queue_sha, "progress_sha256": progress_sha,
@@ -10142,7 +10239,20 @@ def main(argv=None):
                 ("paused", "blocked", "complete", "cancelled")):
             candidates.append("batch hold(s) require resolution: %s" %
                               ", ".join(sorted(held_ids)))
-    elif not errors:
+    for defect in result.get("structural_admission_defects") or []:
+        candidates.append(defect)
+    unsupported_reviewed = unsupported_reviewed_records(result.get("coverage"))
+    if unsupported_reviewed:
+        candidates.append(
+            "%d Coverage record(s) claim authoring_status=reviewed with no "
+            "gate_receipts, so the era of the review that earned the status "
+            "cannot be produced (K02/01); a declared migration must "
+            "re-review, retire, or explicitly except them: %s" %
+            (len(unsupported_reviewed),
+             ", ".join(unsupported_reviewed[:5]) +
+             ("..." if len(unsupported_reviewed) > 5 else ""))
+        )
+    if not errors:
         queue_items = result.get("queue", {}).get("required_queue") or []
         if not queue_items:
             candidates.append("Queue is valid but empty; Required work has not been materialized")

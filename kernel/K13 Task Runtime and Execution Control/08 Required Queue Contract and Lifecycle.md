@@ -102,6 +102,28 @@ merge-ready -> open
 `closed` passed serial integration/global gates. Terminal history is immutable;
 later work uses a successor. Cancellation needs a scope/disposition Amendment.
 
+### Batch Reference Settlement
+
+A batch ID is referenced from exactly four places, and this closed list is the
+contract: nothing may begin referencing a batch without first being added
+here. Each reference has its own terminal-state rule, and a transition into a
+terminal state settles all four or refuses:
+
+| Reference | Owner | Terminal-state rule |
+|---|---|---|
+| Coverage page `batch` / `next_batch` | Coverage Ledger | The close projection transfers `batch` to the closing ID and moves `next_batch` onward or empties it; the page frontmatter copies follow through the K08/07 projector |
+| Coverage `open_gaps[].next_batch` | Coverage Ledger | Every gap routed to the batch is closed by its Delta or re-routed to a named later batch; a gap left pointing at a terminal batch is a settlement failure, and routing — not manifest membership — decides which gaps the batch owes |
+| `batch_specs[]` row | Coverage Ledger | Terminal batches carry no current spec row; the row retires at close, because a spec that can no longer be recompiled to match its sealed Queue item blocks every later replan |
+| Receipt `batch_id` | Receipt catalog | Immutable. Sealed evidence keeps naming the batch forever and is never rewritten or retired |
+
+The rule is one sentence: **a terminal batch keeps its history and loses its
+live references.** Each of the four was learned the same expensive way — page
+ownership, gap routing, and the stale spec row were each discovered as a
+separate incident, months apart, because no list said how many kinds of
+reference existed. The list exists so the fifth kind is designed rather than
+discovered: adding a reference means amending this table and the close
+settlement together, in the revision that introduces it.
+
 `hold_state` independently takes `none`, `confirmation-required`, `blocked`,
 `revalidation-required`, or `paused`; it is neither lifecycle nor task state.
 Each non-queued item retains ordered `transition_receipts` binding task/item,
