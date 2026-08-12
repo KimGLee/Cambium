@@ -142,9 +142,11 @@ core_pack:
     question: "Confirm the derived residual scan: which structured-content class belongs only under one root?"
     procedure:
       - "Identify the structure class and its accepted root (dated scratch entries, derived cards, generated digests; candidates from Q4 layers)"
-      - "Scan real pages under that root; collect the frontmatter value and exact headings they actually use"
-      - "Propose allowed_roots / frontmatter_match / heading_match / mandated_headings from those real strings only"
-      - "Warn: a matcher matching nothing real fails the non-inert positive control by design"
+      - "Branch on whether the corpus already has pages. Both branches are honest; only one of them is observation"
+      - "Existing corpus: scan real pages under that root, collect the frontmatter value and exact headings they actually use, and propose allowed_roots / frontmatter_match / heading_match / mandated_headings from those real strings only"
+      - "Empty corpus: there is nothing to observe, so declare instead. Derive the strings from the page structure the operator just confirmed in Q4-Q10, and record that this class is designed rather than observed"
+      - "Empty corpus, second obligation: the first batch MUST create at least one page under the accepted root carrying the declared structure. Enter it as an ordinary Required Coverage object like any other page (K02/01 already records objects not yet created); it needs no new object type and no separate interview round"
+      - "State the two checks correctly, because they prove different things. The positive control proves only that the matchers and mandated_headings are self-consistent -- it synthesizes its inputs and passes on an empty repository. The production scan is what proves a real matching page exists: a run that finds no candidate outside the accepted roots must still recognise at least one Markdown file inside them, or the configuration is inert and the run fails"
       - "Operator confirms; write scan-configs/residual-scan.yaml and the registry row with this Profile's --config path; fill the second judgment item and the Residual Disposition prose"
     change_cost: adoption
     maps_to:

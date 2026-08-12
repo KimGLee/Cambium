@@ -27,9 +27,10 @@ allowed_roots:
 # absolute paths, parent traversal, and overlaps are rejected.
 excluded_roots: []
 
-# The cheapest matcher to keep non-inert: name the controlled field value that
-# the accepted roots' own pages already carry. Leave `values: []` only when this
-# profile has no such controlled value.
+# The cheapest matcher the production scan can recognise: name the controlled
+# field value that the accepted roots' own pages carry, or will carry once the
+# first batch creates them. Leave `values: []` only when this profile has no
+# such controlled value.
 frontmatter_match:
   field: type
   values:

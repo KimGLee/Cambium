@@ -52,9 +52,14 @@ the terminal value. The same shape serves any derived-artifact pipeline
 
 `<X>-type structure belongs only under <X's root>`; the scan reports it
 leaking anywhere else. Instances: dated scratch entries outside the daily-log
-folder; interview-card structure outside the interview layer. Matchers MUST
-come from strings that really occur under the accepted root — the non-inert
-positive control fails fabricated matchers by design.
+folder; interview-card structure outside the interview layer. On a corpus that
+already has pages, matchers come from strings that really occur under the
+accepted root. On an empty one they are declared from the page structure just
+confirmed, and the first batch creates the page that carries them: the
+production scan requires the repository to contain at least one file the
+matchers recognise, so a declared class must be materialized rather than left
+on paper. The positive control does not catch a fabricated matcher — it
+synthesizes its own inputs and proves only self-consistency.
 
 ## 8. Term-band Rule (bilingual corpora, language expansion)
 

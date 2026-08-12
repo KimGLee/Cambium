@@ -65,9 +65,11 @@ own-observation source class recorded with a retrieval date), and the adopter
 instantiates it with their own content. Patterns are shapes, never copied
 answers, and none reads as an exemption from kernel behavior: a profile with
 a minimal source table remains fully bound by K07. Residual-scan
-configuration is deliberately excluded from static defaults: non-inert
-positive controls require corpus-real matchers, so scan parameters are
-derived from corpus inspection and confirmed by the operator instead.
+configuration is deliberately excluded from static defaults: the production
+scan requires the repository to contain at least one file the matchers
+recognise, so scan parameters are derived from corpus inspection — or, on an
+empty corpus, declared and then materialized by the first batch — and
+confirmed by the operator instead.
 
 One kernel absorption is already decided: `last_verified` becomes conditional
 on `volatility: fast` in the K08 applicability base, promoting a field-proven
