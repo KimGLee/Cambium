@@ -749,6 +749,65 @@ class RepositorySnapshotTests(unittest.TestCase):
         self.assertNotEqual(
             changed_content, kblib.repository_snapshot_sha256(self.root))
 
+    def test_snapshot_excludes_import_cache_but_tracks_source_bytes(self):
+        package = self.root / "fixture_package"
+        nested = package / "nested"
+        nested.mkdir(parents=True)
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        (nested / "__init__.py").write_text("", encoding="utf-8")
+        module = nested / "sample.py"
+        original_source = b"VALUE = 'original'\n"
+        module.write_bytes(original_source)
+
+        environment = os.environ.copy()
+        environment.pop("PYTHONDONTWRITEBYTECODE", None)
+        environment.pop("PYTHONPYCACHEPREFIX", None)
+        command = [
+            sys.executable,
+            "-c",
+            "import sys; "
+            "sys.dont_write_bytecode = False; "
+            "sys.pycache_prefix = None; "
+            "from fixture_package.nested import sample; "
+            "assert sample.VALUE == 'original'",
+        ]
+
+        def import_fixture():
+            completed = subprocess.run(
+                command, cwd=str(self.root), env=environment, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
+            )
+            self.assertEqual(0, completed.returncode, completed.stdout)
+
+        cache = nested / "__pycache__"
+        baseline = kblib.repository_snapshot_sha256(self.root)
+        self.assertFalse(cache.exists())
+
+        import_fixture()
+        self.assertTrue(cache.is_dir())
+        self.assertTrue(list(cache.glob("sample.*.pyc")))
+        self.assertEqual(
+            baseline, kblib.repository_snapshot_sha256(self.root))
+
+        import_fixture()
+        self.assertEqual(
+            baseline, kblib.repository_snapshot_sha256(self.root))
+
+        before_touch = module.stat()
+        os.utime(
+            module,
+            ns=(before_touch.st_atime_ns,
+                before_touch.st_mtime_ns + 2_000_000_000),
+        )
+        self.assertEqual(original_source, module.read_bytes())
+        import_fixture()
+        self.assertEqual(
+            baseline, kblib.repository_snapshot_sha256(self.root))
+
+        module.write_bytes(b"VALUE = 'changed'\n")
+        self.assertNotEqual(
+            baseline, kblib.repository_snapshot_sha256(self.root))
+
     def test_snapshot_rejects_symlinked_content(self):
         target = self.root / "target.md"
         target.write_text("target\n", encoding="utf-8")

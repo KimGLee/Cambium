@@ -1,0 +1,40 @@
+name: deep-verify
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deep-verify:
+    name: deep-verify (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.14"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run exhaustive verification
+        run: make ci-exhaustive
+
+      - name: Tracked and untracked non-ignored tree must be unchanged
+        if: ${{ always() }}
+        run: |
+          git status --porcelain=v1 --untracked-files=all > "$RUNNER_TEMP/worktree-status"
+          if test -s "$RUNNER_TEMP/worktree-status"; then
+            echo "Exhaustive verification modified tracked or untracked non-ignored files:"
+            cat "$RUNNER_TEMP/worktree-status"
+            exit 1
+          fi
