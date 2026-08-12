@@ -444,14 +444,31 @@ compilation. The Work Spec carries batch-specific outcome, instructions,
 acceptance conditions, and constraints; Queue order, lifecycle, holds, and
 receipts remain in the Required Queue.
 
+`init_state.py` infers nothing, so the Task Contract's five selection fields
+and the Coverage Ledger come up empty. Do not fill them by hand. Write one plan
+from `Tools/schemas/task_plan.template.yaml`, get it confirmed, and apply it:
+the transaction is the record of what was agreed, and hand-edited state is not.
+Objects not yet created belong in the plan too — the Queue is compiled from
+what the task intends to build, not only from what the file system holds.
+
+The plan names routes, not paths. `selected_card_paths`, `selected_read_sets`,
+and `loaded_module_paths` are resolved from `selected_route_ids` through the
+canonical indexes and the transitive loading-boundary closure; selecting R01
+alone reaches every other route and well over a hundred modules. List a path
+only to add a profile supplemental Read Set, which has no registry to resolve
+it from.
+
 ```text
-# Fill .cambium/state/coverage_ledger.yaml with the accepted inventory.
-# Objects not yet created belong in it too; the Queue is compiled from what
-# the task intends to build, not only from what the file system already holds.
-python3 Tools/compile_queue.py . --output .cambium/tmp/queue-proposal.yaml
+# One confirmed plan fills the Task Contract and Coverage (K13/18).
+cp Tools/schemas/task_plan.template.yaml \
+  .cambium/deltas/task-plans/TP-001.yaml
+# Edit it, replace every TODO(plan), then dry-run and apply:
+python3 Tools/apply_task_plan.py . --plan .cambium/deltas/task-plans/TP-001.yaml
+python3 Tools/apply_task_plan.py . --plan .cambium/deltas/task-plans/TP-001.yaml --apply
+# It prints the next command, with the Queue revision and SHA already filled in:
 python3 Tools/compile_queue.py . --apply --actor-role integrator \
   --expected-queue-revision 1 \
-  --expected-sha256 SHA_PRINTED_BY_INIT
+  --expected-sha256 SHA_PRINTED_BY_APPLY_TASK_PLAN
 python3 Tools/check_queue.py .
 python3 Tools/render_queue.py .
 ```

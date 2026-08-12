@@ -29,6 +29,7 @@ This page is the stable entry point of the Task Runtime and Execution Control st
 | [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction\|Standards Adoption State Transaction]] | `Purpose And Boundary`, `Permitted Transaction`, `Guarded Write Protocol`, `Resume Boundary`, `Related` |
 | [[kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary\|Resume Next Action Vocabulary]] | `Purpose And Boundary`, `Token Table`, `Tokens Without An Automated Path`, `Related` |
 | [[kernel/K13 Task Runtime and Execution Control/17 Escalation Policy\|Escalation Policy]] | `Purpose And Boundary`, `The Kernel Trigger`, `Profile-declared Triggers`, `Firing And Resuming`, `A Trigger Is Not A Gate`, `Control Accretion Decision`, `Related` |
+| [[kernel/K13 Task Runtime and Execution Control/18 Initial Task Planning Transaction\|Initial Task Planning Transaction]] | `Purpose And Boundary`, `What The Plan Supplies And What It May Never Infer`, `Where The Transaction Stops`, `Guarded Write Protocol`, `Applying It Twice`, `Control Accretion Decision`, `Related` |
 
 ## Applicable Read Sets
 

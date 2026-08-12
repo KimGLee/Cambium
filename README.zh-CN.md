@@ -374,14 +374,28 @@ restricted YAML 记录已接受/已拒绝的 Capability 决策；证据采用仅
 特定的 outcome、instructions、acceptance conditions 和 constraints；Queue 顺序、
 生命周期、hold 及 receipt 仍保留在 Required Queue 中。
 
+`init_state.py` 不推断任何内容，因此任务合同的五个选择字段与 Coverage Ledger
+建出来都是空的。**不要手工填写它们。** 依据
+`Tools/schemas/task_plan.template.yaml` 写一份计划，确认之后再应用：这份事务
+本身就是「当时确认了什么」的记录，手改的状态不是。尚未创建的对象同样要写进
+计划——Queue 是从任务打算构建的内容编译出来的，不只是文件系统已有的内容。
+
+计划里写的是路由，不是路径。`selected_card_paths`、`selected_read_sets` 与
+`loaded_module_paths` 由 `selected_route_ids` 经规范索引与加载边界的传递闭包
+解析得到；只选 R01 一条就会闭合到其余全部路由与一百多个模块。只有在需要加入
+profile 补充 Read Set（它没有可解析的注册表）时，才手写路径。
+
 ```text
-# Fill .cambium/state/coverage_ledger.yaml with the accepted inventory.
-# Objects not yet created belong in it too; the Queue is compiled from what
-# the task intends to build, not only from what the file system already holds.
-python3 Tools/compile_queue.py . --output .cambium/tmp/queue-proposal.yaml
+# 一份已确认的计划填入任务合同与 Coverage（K13/18）。
+cp Tools/schemas/task_plan.template.yaml \
+  .cambium/deltas/task-plans/TP-001.yaml
+# 编辑它，替换掉每一处 TODO(plan)，然后先 dry-run 再 apply：
+python3 Tools/apply_task_plan.py . --plan .cambium/deltas/task-plans/TP-001.yaml
+python3 Tools/apply_task_plan.py . --plan .cambium/deltas/task-plans/TP-001.yaml --apply
+# 它会打印下一条命令，Queue 的 revision 与 SHA 已经填好：
 python3 Tools/compile_queue.py . --apply --actor-role integrator \
   --expected-queue-revision 1 \
-  --expected-sha256 SHA_PRINTED_BY_INIT
+  --expected-sha256 SHA_PRINTED_BY_APPLY_TASK_PLAN
 python3 Tools/check_queue.py .
 python3 Tools/render_queue.py .
 ```
