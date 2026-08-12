@@ -184,9 +184,10 @@ Cambium 在设置期间不会创建语料库。首先为该语料库创建一个
 cp -R profiles/_template profiles/my-profile
 ```
 
-`profiles/_template-minimal/` 是同一接口的预关闭最小深度：所有具备合法退出态的
-槽位开关出厂即关闭，运营性答案预填待确认，只保留模板无法替你回答的决策。两个
-深度产出的 Profile 同等合规；深度契约见 [`profiles/README.md`](profiles/README.md)。
+模板出厂即预关闭：所有具备合法退出态的槽位开关已处于关闭态，运营性答案预填待
+确认，只保留模板无法替你回答的决策。若想现在就逐一回答全部开关，采纳面试会在
+同一次填充中走完这些关闭项。两条路径产出的 Profile 同等合规；填充深度契约见
+[`profiles/README.md`](profiles/README.md)。
 
 1. 替换每一个 `TODO(profile)`；这些占位符位于 `profiles/my-profile/` 中。保持 `profile_id`
    与目录名相同，并以 [`profiles/README.md`](profiles/README.md) 作为接口权威。

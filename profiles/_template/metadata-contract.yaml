@@ -1,5 +1,5 @@
 # Metadata Contract — the profile's page-contract differences.
-# Interface: profiles/README.md#metadata-contract-slot
+# Interface: profiles/README.md#Metadata-Contract-Slot
 # Semantic owners: kernel/K08 Metadata and Status/06 Frontmatter
 # Applicability Contract.md, 08 Relationship Metadata Contract.md, and
 # 09 Page Boundary Contract.md; writer
@@ -8,6 +8,13 @@
 # and relationship-base.yaml; declare only differences here — never restate a
 # kernel default, and a difference may only tighten (optional -> required,
 # optional -> conditional, conditional -> required).
+#
+# This slot ships in its kernel-defaults branch: the kernel applicability and
+# relationship bases apply unchanged, and a profile with no differences
+# declares that explicitly instead of restating defaults. Open the slot later
+# (state: configured) when the corpus needs a tightened mode, an extension
+# field, or a relationship extension. The shapes below are the complete
+# reference for that branch.
 #
 # applicability.state: configured | kernel-defaults
 #   kernel-defaults -> all four lists empty.
@@ -34,7 +41,7 @@
 schema_version: 1
 
 applicability:
-  state: TODO(profile)
+  state: kernel-defaults
 
 applicability_differences: []
 

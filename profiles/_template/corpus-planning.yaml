@@ -1,20 +1,36 @@
+# Corpus Planning slot: ships in its inactive branch.
+# Interface: profiles/README.md#Corpus-Planning-Slot
+# `not-applicable` requires a nonempty reason, three null bindings, an empty
+# scale, and two null authority values. K02/03 owns the applicability
+# judgment: a corpus that grows into large-scale construction, migration, or
+# persistent multi-batch work must configure this slot at that point, through
+# ordinary Standards adoption. See profiles/examples/worked-planning/ for the
+# configured branch.
+#
+# Shapes for the configured branch, so opening it needs no second document:
+#   artifact_bindings   three distinct repository-relative YAML paths
+#   capability_scale    one or more rows, each exactly
+#                         {rank, value, predicate, target_eligible}
+#                       rank is an explicit integer, contiguous from 0,
+#                       ordered lowest to highest; prose order never supplies
+#                       a hidden ordering
+#   pass_authority      {role_id: a Role Registry ID,
+#                        decision_scope_id: corpus-plan-semantic-acceptance}
+#                       — the decision scope is that exact fixed value
+
 schema_version: 1
 
 applicability:
-  state: TODO(profile)
-  reason: TODO(profile)
+  state: not-applicable
+  reason: "Bounded corpus maintained one note at a time; no corpus-wide capability plan is needed or changed, and no multi-batch construction or migration is planned."
 
 artifact_bindings:
-  global_map: TODO(profile)
-  capability_matrix: TODO(profile)
-  gap_register: TODO(profile)
+  global_map: null
+  capability_matrix: null
+  gap_register: null
 
-capability_scale:
-  - rank: TODO(profile)
-    value: TODO(profile)
-    predicate: TODO(profile)
-    target_eligible: TODO(profile)
+capability_scale: []
 
 pass_authority:
-  role_id: TODO(profile)
-  decision_scope_id: corpus-plan-semantic-acceptance
+  role_id: null
+  decision_scope_id: null

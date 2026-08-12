@@ -29,26 +29,28 @@ bypass R09 adoption.
 ## Profile Adoption Reform And Onboarding
 
 Reduce profile adoption cost without shrinking the interface. The 13-slot
-interface stays; the reform ships two depths of the same interface, both fully
-conformant, differing only in how many kernel defaults and degenerate states
-the adopter accepts. Taking a default is full conformance, never a lower
-conformance tier. Acceptance target for the minimal depth: a real small corpus
-reaches a checked candidate profile with at most 15 operator decisions in at
-most 30 minutes.
+interface stays; the reform ships one template that pre-closes every switch
+with a legal exit state and pre-fills the operational answers that generalize,
+and moves fill depth into the adoption interview, which walks those closed
+switches on request. Taking a default is full conformance, never a lower
+conformance tier. Acceptance target: a real small corpus reaches a checked
+candidate profile with at most 15 operator decisions in at most 30 minutes.
 
-### Minimal Template
+### Pre-closed Template
 
-A pre-closed template variant in which every slot with a legal exit state
-(`None`, `Not applicable`, `kernel-defaults`, empty override table) ships
-already closed with scenario-accurate reasons. Identity remains unfilled, so
-the variant is no more selectable than the full template. The full template
-remains the canonical form for adopters who answer everything explicitly.
+One template in which every slot with a legal exit state (`None`,
+`Not applicable`, `kernel-defaults`, empty override table) ships already
+closed with scenario-accurate reasons, and the shapes for each closed branch
+travel as comments in the slot file that closes it. Identity remains
+unfilled, so the template is not selectable. An adopter who wants every
+switch answered explicitly gets that from the interview's expansion packs,
+not from a second directory to keep in step.
 
 ### Pre-filled Defaults, Answer Patterns, And Kernel Absorption
 
 Operational answers — process and host role bindings, audit starter judgment
 items, no-grants priority, language display/naming/length defaults, and a
-generic volatility domain — ship pre-filled in the minimal template with
+generic volatility domain — ship pre-filled in the template with
 generalized wording and are confirmed or replaced during the interview; the
 kernel is not changed for them. Once real adoptions show a pre-filled answer
 is stable, it is harvested into a kernel-owned default-declaration state
@@ -74,7 +76,7 @@ its now-redundant difference row when adopting the revised standard.
 
 ### Interview Contract
 
-Each decision that remains open in the minimal template carries
+Each decision that remains open in the template carries
 machine-readable question metadata — question, answer shape, validation,
 target slot and field, and trigger — embedded alongside the placeholder. Any
 agent can conduct the interview, project confirmed answers into the canonical
@@ -659,7 +661,7 @@ rolls into a preserved successor task rather than mutating live Contract bytes.
 ## Implementation Order
 
 Profile onboarding and typed dependency compilation can progress independently
-of agent orchestration. Within the onboarding line, the minimal template and
+of agent orchestration. Within the onboarding line, the pre-closed template and
 the kernel-default/degenerate-state work precede the interview contract, which
 in turn precedes the Plugin `adopt` operation that consumes its question
 packs. The persistent Required Queue is already the execution

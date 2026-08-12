@@ -23,23 +23,29 @@ Use these declarations consistently:
 - Write these declaration words bare, exactly as `_template` shows them (`- Registration: Configured`). The backticks above are this page's own code formatting; `check_profile.py` compares the literal cell text, so `` `Configured` `` with backticks is a different string and is rejected as `declaration-invalid`. The same applies to `None` and to the em dash in `Not applicable — <reason>`.
 - References between slots use IDs, paths, or owner pointers. Do not copy the referenced rule into the referring slot.
 
-## Template Depths
+## Fill Depth
 
-`profiles/_template/` and `profiles/_template-minimal/` are two depths of the
-same 13-slot interface, and both produce fully conformant profiles: the
-difference is how many answers ship pre-closed or pre-filled, never
-compliance. The minimal depth pre-closes every slot switch that has a legal
-exit state, pre-fills generalized operational answers for confirmation, and
-leaves open only the decisions no template can make. Its `README.md`,
-`interview.yaml`, and `answer-patterns.md` are orientation files an assisting
-agent can use to conduct the fill; they are deleted from the copied profile
-and are never profile policy. Identity is unfilled in both depths, so neither
-template is runnable or selectable in place, and a profile started at the
-minimal depth deepens later through ordinary Standards adoption — nothing
-about the minimal depth weakens a gate or bypasses R09.
+`profiles/_template/` is the one form. Fill depth is a property of the
+interview, not of a second directory: the template pre-closes every slot
+switch that has a legal exit state, pre-fills the operational answers that
+generalize, and leaves open only the decisions no template can make, while
+`interview.yaml`'s `expansion_packs` walk those closed switches in the same
+sitting for an operator who wants every one answered now. Both routes produce
+fully conformant profiles — the difference is how many answers ship
+pre-closed, never compliance.
+
+A closed switch opens later through ordinary Standards adoption without
+interrupting an active task, and the shapes for each closed branch travel as
+comments in the slot file that closes it, so opening one needs no second
+document. Nothing about shipping a switch closed weakens a gate or bypasses
+R09. The template's `README.md`, and `interview.yaml` and `answer-patterns.md`
+at this level, are orientation an assisting agent uses to conduct the fill;
+the README is deleted from the copied profile and none of the three is ever
+profile policy. Identity is unfilled, so the template is never runnable or
+selectable in place.
 
 ```text
-cp -R profiles/_template-minimal profiles/my-profile
+cp -R profiles/_template profiles/my-profile
 rm profiles/my-profile/README.md   # template orientation, never profile policy
 # Answer the open decisions (the template README lists them), then:
 python3 Tools/check_profile.py profiles/my-profile
@@ -47,10 +53,11 @@ python3 Tools/check_profile.py profiles/my-profile
 
 ## Adoption Flow
 
-The flow below is template-independent; both depths follow it, and
+The flow below holds at either fill depth, and
 [interview.yaml](interview.yaml) carries it in machine-readable form for an
-assisting agent (at full depth the interview also walks every expansion pack
-instead of leaving it closed). A solo fill follows the same steps by hand.
+assisting agent (to answer every switch now, the interview also walks every
+expansion pack instead of leaving it closed). A solo fill follows the same
+steps by hand.
 
 1. **Locate the corpus first.** Name the corpus directory, or accept a
    proposed default; create it when it does not exist. A profile describes a
@@ -110,7 +117,7 @@ Kernel Runtime Cards belong to `kernel/`. Profiles share the kernel route regist
 
 ## Profile Scope Slot
 
-**Required.** Provide the knowledge-base goal and audience, ordered content-priority factors, excluded scope, logical layers and directories, organizing mainline / Knowledge Spine, placement-role bindings, new-page placement order, terminology structure, foundation-depth predicates, production-reasoning applicability, representative sample types, and dependency-ordered build stages. New-page placement is first-match and ends in a catch-all row. An unused layer role binds to `None` plus a fallback Layer ID; an unused expression predicate is `always false`. Representative samples and build stages may be `Not applicable` only when the profile does not support the corresponding bulk or module work. This slot supplies the standing Excluded Scope; R11 records the actual per-task Required / optional / deferred / excluded boundaries in the Task Contract and Coverage Ledger rather than adding another profile table. This slot cannot override kernel conservation, ownership, migration, or quality rules.
+**Required.** Provide the knowledge-base goal and audience, ordered content-priority factors, excluded scope, logical layers and directories, organizing mainline / Knowledge Spine, placement-role bindings, new-page placement order, terminology structure, foundation-depth predicates, production-reasoning applicability, representative sample types, and dependency-ordered build stages. [[kernel/K01 Scope and Architecture/01 Scope Boundaries|K01/01]] owns the boundaries, hierarchy, and directory responsibilities this slot answers for; its `Profile Scope Interface` section is the kernel side of this projection. New-page placement is first-match and ends in a catch-all row. An unused layer role binds to `None` plus a fallback Layer ID; an unused expression predicate is `always false`. Representative samples and build stages may be `Not applicable` only when the profile does not support the corresponding bulk or module work. This slot supplies the standing Excluded Scope; R11 records the actual per-task Required / optional / deferred / excluded boundaries in the Task Contract and Coverage Ledger rather than adding another profile table. This slot cannot override kernel conservation, ownership, migration, or quality rules.
 
 A logical layer with multiple directories uses a semicolon-delimited list. Each value is the exact repository-relative directory path without a trailing slash; the checker treats display-only forms such as `Domain/` as a different, invalid machine path. Profile Scope is the sole owner of Layer IDs, directory sets, and layer responsibilities; the Global Map references those IDs instead of asking the adopter to repeat the same declarations.
 
@@ -130,7 +137,7 @@ Capability Scale rows carry an explicit integer `Rank`, contiguous from `0` and 
 
 ## Priority Rubric Slot
 
-**Required.** Provide testable P0 and P1 grant predicates and the reader capability or time horizon each grant protects. P2 remains the kernel fallback for other in-scope pages. Quota selections belong only to `Execution Default Overrides`; this slot cannot redefine P0/P1/P2, tier derivation, quota coupling, or exemptions.
+**Required.** Provide testable P0 and P1 grant predicates and the reader capability or time horizon each grant protects. P2 remains the kernel fallback for other in-scope pages. [[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota|K00/07]] owns tier derivation and the quota model and delegates the P0/P1 grant conditions here. Quota selections belong only to `Execution Default Overrides`; this slot cannot redefine P0/P1/P2, tier derivation, quota coupling, or exemptions.
 
 ## Execution Default Overrides Contract
 
@@ -138,7 +145,7 @@ Capability Scale rows carry an explicit integer `Rank`, contiguous from `0` and 
 
 ## Vocabulary Extensions Slot
 
-**Required file; extensions are conditional.** Register each domain once in `volatility_defaults`; the composer derives the domain vocabulary from those keys. Register optional additions to other kernel-extensible fields and optional profile-owned fields. The composer reads the profile ID and this slot's path from the selected manifest, derives each base-field extension owner from the resolved extensions-file path, and adds profile-only controlled fields to the generated frontmatter-field list. An expression-readiness axis, when present, is a profile-owned field with a field name, values, `Expression Status Axis` role, and one prose owner. Extensions cannot delete, rename, or redefine kernel values. `Tools/vocab.yaml` is generated and is not a rule owner.
+**Required file; extensions are conditional.** Register each domain once in `volatility_defaults`; the composer derives the domain vocabulary from those keys. Register optional additions to other kernel-extensible fields and optional profile-owned fields. [[kernel/K08 Metadata and Status/01 Frontmatter and Core Vocabularies|K08/01]] owns the frontmatter schema and the core vocabularies these extensions append to. The composer reads the profile ID and this slot's path from the selected manifest, derives each base-field extension owner from the resolved extensions-file path, and adds profile-only controlled fields to the generated frontmatter-field list. An expression-readiness axis, when present, is a profile-owned field with a field name, values, `Expression Status Axis` role, and one prose owner. Extensions cannot delete, rename, or redefine kernel values. `Tools/vocab.yaml` is generated and is not a rule owner.
 
 ## Language Contract Slot
 
@@ -146,15 +153,15 @@ Capability Scale rows carry an explicit integer `Rank`, contiguous from `0` and 
 
 ## Expression Layer Entry Slot
 
-**Required file; artifact registration is optional.** Each configured artifact declares its ID, type, display label, entry point, single profile-rule owner, canonical dependency map, invalidation trigger, and either a readiness-field/supplemental-gate reference or `None`. No registered artifact means the profile supplies no concrete R05 target; it does not remove R05.
+**Required file; artifact registration is optional.** Each configured artifact declares its ID, type, display label, entry point, single profile-rule owner, canonical dependency map, invalidation trigger, and either a readiness-field/supplemental-gate reference or `None`. No registered artifact means the profile supplies no concrete R05 target; it does not remove R05. [[kernel/K11 Expression Layer/01 Expression Architecture and Separation|K11/01]] owns expression separation and names this slot as the registry its artifacts come from.
 
 ## Source Policy Slot
 
-**Required.** Register concrete source authority and what each source is canonical for, verification entry points and pins/windows, and staleness triggers with bounded affected scope. Domain-specific comparison rules and provenance additions are optional and may only tighten the kernel policy; kernel conflict, gap, `unknown`, `contested`, provenance, and promotion behavior are not restated here.
+**Required.** Register concrete source authority and what each source is canonical for, verification entry points and pins/windows, and staleness triggers with bounded affected scope. [[kernel/K07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles|K07/01]] owns the source hierarchy, evidence roles, verification, and freshness model this slot instantiates. Domain-specific comparison rules and provenance additions are optional and may only tighten the kernel policy; kernel conflict, gap, `unknown`, `contested`, provenance, and promotion behavior are not restated here.
 
 ## Role Registry Slot
 
-**Required.** Bind `proposer`, `gatekeeper`, `executor`, `stopper`, `knowledge-host`, and `knowledge-host UI`. Metric-traceability bindings for task, dataset, trial, execution runtime, grader, and aggregation are conditional on reporting evaluated metrics. Additional profile roles are optional. Role bindings identify actors or systems; verifier commands and gate predicates belong to their own registries.
+**Required.** Bind `proposer`, `gatekeeper`, `executor`, `stopper`, `knowledge-host`, and `knowledge-host UI`. Metric-traceability bindings for task, dataset, trial, execution runtime, grader, and aggregation are conditional on reporting evaluated metrics. Additional profile roles are optional. Role bindings identify actors or systems; verifier commands and gate predicates belong to their own registries. [[kernel/K04 Content Depth/03 Process and Flow Structure|K04/03]] defines the role vocabulary bound here.
 
 ## Audit Dimension Registry Slot
 

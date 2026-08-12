@@ -1,20 +1,23 @@
-# Minimal-depth Template
+# Profile Template
 
 ## What This Is
 
-This directory is the pre-closed, minimal depth of the same 13-slot profile
-interface that `profiles/_template/` presents in full. Both depths produce
-fully conformant profiles; the difference is how many answers ship pre-closed
-or pre-filled here instead of asked. It is a template, not a profile: the
-identity is unfilled, so nothing in this directory is selectable or runnable
-in place. The normative interface remains [profiles/README.md](../README.md).
+This directory is the 13-slot profile interface as a copyable form. It is a
+template, not a profile: the identity is unfilled, so nothing here is
+selectable or runnable in place. The normative interface remains
+[profiles/README.md](../README.md).
 
-Use this depth when the corpus is bounded and maintained one note at a time.
-Use `profiles/_template/` when you intend to answer every switch explicitly.
-Every closed switch here can be opened later through ordinary Standards
-adoption without interrupting an active task; a corpus that grows into
-multi-batch construction must configure Corpus Planning at that point
-(K02/03 owns that judgment, not this template).
+Every slot switch that has a legal exit state ships in it, and every
+operational answer that generalizes ships pre-filled. What is left open is
+exactly the set of decisions no template can make. A closed switch is not a
+lesser profile: a filled copy is fully conformant either way, and each switch
+opens later through ordinary Standards adoption without interrupting an active
+task.
+
+The shapes for every closed branch travel with the slot file that closes it,
+as comments. Opening a switch therefore needs no second document — read the
+comment block in that file, uncomment or write the rows, and re-run
+`check_profile.py`.
 
 ## What Ships Pre-closed
 
@@ -41,13 +44,14 @@ becomes your profile's own answer.
 ## What Remains To Answer
 
 The open placeholder markers are exactly the decisions no template can make.
-The shared [adoption interview contract](../interview.yaml) carries them as a
+The [adoption interview contract](../interview.yaml) carries them as a
 machine-readable interview an assisting agent can conduct — including a setup
 step (S0: corpus location, created if absent) before the first question and a
 closing review (C3: closed switches, derived fills, and remaining needs)
-after the last; the shared [answer patterns](../answer-patterns.md) carry the
-shapes to propose. The same contract serves the full template at full depth.
-In table form:
+after the last; the [answer patterns](../answer-patterns.md) carry the shapes
+to propose. To answer every switch now rather than leaving the legal exit
+states closed, the same contract walks its `expansion_packs` in the same
+sitting; each pack names the slot it fills. In table form:
 
 | # | Decision | File | Notes |
 |---|---|---|---|
@@ -85,12 +89,12 @@ detects a stale path but never guesses or rewrites the intended profile ID.
 ## Validation
 
 ```text
-cp -R profiles/_template-minimal profiles/<profile-id>
+cp -R profiles/_template profiles/<profile-id>
 rm profiles/<profile-id>/README.md   # template orientation, never profile policy
 # answer the twelve decisions above, then:
 python3 Tools/check_profile.py profiles/<profile-id>
 ```
 
-The template itself is not validated in place, exactly as with
-`profiles/_template/`. Selection still requires R09 adoption; copying,
-filling, and checking do not activate anything.
+The template itself is never validated in place: its identity is unfilled, so
+it is neither runnable nor selectable. Selection still requires R09 adoption;
+copying, filling, and checking do not activate anything.

@@ -1,8 +1,15 @@
 # Structure Registry — structural units (K01/05) and support layers (K01/06).
-# Interface: profiles/README.md#structure-registry-slot
+# Interface: profiles/README.md#Structure-Registry-Slot
 # Shape is validated by Tools/check_profile.py; vault resolution (paths,
 # headings, parent graph, Global Map and Coverage references) is validated by
 # Tools/check_structure.py against the adopting repository.
+#
+# This slot ships in its inactive branch. A flat corpus registers no hollow
+# units merely to fill the table; configure the slot later, through ordinary
+# Standards adoption, when a directory first carries a responsibility that is
+# built, maintained, or audited independently. See
+# profiles/examples/agent-atlas/ for the configured branch. The shapes below
+# are the complete reference for that branch — read them when you open it.
 #
 # applicability.state: configured | not-applicable
 #   configured     -> null reason, at least one unit.
@@ -40,8 +47,11 @@
 #                    readiness_projection: <role mapping>}
 
 schema_version: 1
+
 applicability:
-  state: TODO(profile)
-  reason: TODO(profile)
+  state: not-applicable
+  reason: "A flat corpus maintained one page at a time; no directory carries a unique responsibility that is built, maintained, or audited independently, so the K01/05 module admission test admits nothing."
+
 units: []
+
 support_layers: []

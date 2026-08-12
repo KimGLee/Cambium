@@ -1,8 +1,7 @@
-"""End-to-end regression for `profiles/_template-minimal`.
+"""End-to-end regression for `profiles/_template`.
 
-The minimal-depth template ships every legal exit state pre-closed and every
-operational default pre-filled, leaving open exactly the decisions no template
-can make. Two properties keep that promise honest, and this module pins both:
+The template ships every legal exit state pre-closed and every operational
+default pre-filled, leaving open exactly the decisions no template can make. Two properties keep that promise honest, and this module pins both:
 
 1. Shape: validating the unfilled template fails on nothing but the open
    placeholder markers and the unfilled profile identity — zero structural or
@@ -26,7 +25,7 @@ import unittest
 from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[2]
-TEMPLATE = REPOSITORY / "profiles" / "_template-minimal"
+TEMPLATE = REPOSITORY / "profiles" / "_template"
 CHECK_PROFILE = REPOSITORY / "Tools" / "check_profile.py"
 ORIENTATION = ("README.md",)
 SHARED = ("interview.yaml", "answer-patterns.md")  # profiles/-level, template-independent
@@ -193,7 +192,7 @@ def run_check(profile_relpath, cwd):
         cwd=str(cwd), text=True, capture_output=True, check=False)
 
 
-class MinimalTemplateShape(unittest.TestCase):
+class TemplateShape(unittest.TestCase):
     def test_template_exists_with_orientation_files(self):
         self.assertTrue((TEMPLATE / "profile.md").is_file())
         for name in ORIENTATION:
@@ -208,7 +207,7 @@ class MinimalTemplateShape(unittest.TestCase):
                 % name)
 
     def test_unfilled_failures_are_exactly_the_open_decisions(self):
-        result = run_check("profiles/_template-minimal", REPOSITORY)
+        result = run_check("profiles/_template", REPOSITORY)
         self.assertNotEqual(0, result.returncode)
         fail_lines = [l for l in result.stdout.splitlines()
                       if l.strip().startswith("[FAIL")]
@@ -220,11 +219,11 @@ class MinimalTemplateShape(unittest.TestCase):
                 % line)
             for name in ORIENTATION:
                 self.assertNotIn(
-                    "_template-minimal/%s" % name, line,
+                    "_template/%s" % name, line,
                     "orientation file must carry no sentinel: %s" % line)
 
 
-class MinimalTemplateFillEndToEnd(unittest.TestCase):
+class TemplateFillEndToEnd(unittest.TestCase):
     def test_filled_copy_passes_check_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
