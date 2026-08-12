@@ -218,21 +218,21 @@ cp -R profiles/_template profiles/my-profile
 
 ### 采用进空语料库
 
-Profile 里有三项答案是在描述语料库，而没有页面的语料库还给不出它们。这不需要
-单独的播种任务、第二次采用，也不放宽任何合同——三项都由**首批**满足，而不是
-在首批之前。
+Profile 里有几项答案是在描述语料库，而没有页面的语料库还给不出它们。其中两项
+由**首批**满足，不需要单独的播种任务、第二次采用，也不放宽任何合同；第三项是
+一个尚未解决的缺口，这里如实标出。
 
 - **残留扫描**。它的 matcher 通常取自真实页面携带的字符串。没有页面时，就
   **声明**你将使用的结构类，并让首批在接受根下创建一个携带它的页面。生产扫描
   会拒绝一个在仓库里认不出任何文件的配置，所以声明的结构类必须被物化；正对照
   只证明 matcher 与 `mandated_headings` 自洽，在空仓库上照样通过。
-- **Corpus Planning**，当任务按大规模工作准入时。Global Map 点名的是已存在的
-  canonical owner，所以首批 manifest 同时携带这些属主与三份制品路径，使该批的
-  关批门禁适用，规划在那里被证明。该顺序由
-  [`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>)
-  拥有。
 - **Coverage**。尚未创建的知识对象同样有记录，所以第一份 Queue 是从你**打算
   建**的页面编译出来的，而不是从你**已经有**的页面。
+- **Corpus Planning 是那个未解决的**。Global Map 点名的是已存在的 canonical
+  owner，所以空语料库根本配置不出这个槽，而
+  [`K00/13`](<kernel/K00 Standards Control/13 Runtime Admission and Recovery.md>)
+  只在规划已配置的前提下准入大规模工作。本版如实记录这个先后缺口而不绕开它，
+  见 [`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>)。
 
 复制、填写、验证 Profile 或记录 manifest 路径本身都不会激活它。只有完整的
 R09 初始采用变更闭合后，该 manifest 才会成为内容工作的选定 Profile。应验证

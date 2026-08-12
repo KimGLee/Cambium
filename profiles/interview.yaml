@@ -175,7 +175,7 @@ core_pack:
       - "Open any requested expansion pack now; otherwise record the explicit choice to stay minimal"
       - "Ask for any remaining need the interview did not cover; route it or record it"
       - "Say what happens next, because a checked profile is not an adopted one and nothing else in this contract says so: the operator authorizes R09 adoption (the profile is selected only there, and it bumps standards_version), then the runtime is initialized, then admission records the Task Contract and writes the intended pages into Coverage -- Queue compilation reads Coverage, never this profile"
-      - "Empty corpus, name the two things the first batch owes: the residual-scan witness declared in C1, and -- when the task is admitted as large-scale work -- the canonical owners the Global Map will name plus the three planning artifact paths in that batch manifest, which is what lets the plan be proved at close instead of before admission"
+      - "Empty corpus: name what the first batch owes -- the residual-scan witness declared in C1. If the work is meant to be admitted as large-scale, say plainly that Corpus Planning cannot be configured before canonical owners exist and that K00/13 admits large-scale work only against a configured plan; that ordering is an open gap, not something to improvise around"
     change_cost: adoption
 
 self_path_rewrites:

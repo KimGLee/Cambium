@@ -260,10 +260,10 @@ in [`profiles/README.md`](profiles/README.md).
 
 ### Adopting into an empty corpus
 
-Three of the profile's answers describe a corpus, and a corpus with no pages
-cannot yet supply them. None of this needs a separate seeding task, a second
-adoption, or any relaxed contract; each is satisfied by the first batch instead
-of before it.
+Some of the profile's answers describe a corpus, and a corpus with no pages
+cannot yet supply them. Two are satisfied by the first batch rather than before
+it, and need no separate seeding task, second adoption, or relaxed contract. A
+third is an open gap and is stated as one.
 
 - **The residual scan.** Its matchers normally come from strings real pages
   carry. With no pages, declare the structure class you will use, and have the
@@ -272,14 +272,14 @@ of before it.
   repository, so a declared class must be materialized; the positive control
   proves only that matchers and `mandated_headings` agree and passes on an
   empty repository.
-- **Corpus Planning**, when the task is admitted as large-scale work. The
-  Global Map names existing canonical owners, so the initial batch's manifest
-  carries both those owners and the three artifact paths, which makes that
-  batch's close gate applicable and proves the plan there.
-  [`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>)
-  owns that ordering.
 - **Coverage.** Knowledge objects that do not exist yet still get records, so
   the first Queue is compiled from pages you intend rather than pages you have.
+- **Corpus Planning is the open one.** The Global Map names existing canonical
+  owners, so an empty corpus cannot configure the slot, and
+  [`K00/13`](<kernel/K00 Standards Control/13 Runtime Admission and Recovery.md>)
+  admits large-scale work only against a configured plan. This revision records
+  the ordering gap rather than working around it; see
+  [`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>).
 
 Copying, filling, validating, or recording a manifest path does not activate a
 profile by itself. The manifest becomes the selected profile for content work

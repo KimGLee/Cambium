@@ -14,7 +14,7 @@ source_files:
   - kernel/K01 Scope and Architecture/05 Structural Unit Interface.md
   - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
   - kernel/K02 Knowledge Work Construction/02 Coverage Reconciliation.md
-source_hash: 'a92c03cfa0b9'
+source_hash: '6a95f5c94546'
 ---
 # R13 Corpus Planning Card
 
