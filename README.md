@@ -261,9 +261,9 @@ in [`profiles/README.md`](profiles/README.md).
 ### Adopting into an empty corpus
 
 Some of the profile's answers describe a corpus, and a corpus with no pages
-cannot yet supply them. Two are satisfied by the first batch rather than before
-it, and need no separate seeding task, second adoption, or relaxed contract. A
-third is an open gap and is stated as one.
+cannot yet supply them. None of it needs a relaxed contract or a mechanism that
+does not exist; what an empty corpus needs is to be founded first, which is
+ordinary authoring work.
 
 - **The residual scan.** Its matchers normally come from strings real pages
   carry. With no pages, declare the structure class you will use, and have the
@@ -274,12 +274,33 @@ third is an open gap and is stated as one.
   empty repository.
 - **Coverage.** Knowledge objects that do not exist yet still get records, so
   the first Queue is compiled from pages you intend rather than pages you have.
-- **Corpus Planning is the open one.** The Global Map names existing canonical
-  owners, so an empty corpus cannot configure the slot, and
+- **Corpus Planning** can declare its bindings now and be proved later. The
+  Global Map names existing canonical owners, so the plan becomes provable once
+  some exist, and
   [`K00/13`](<kernel/K00 Standards Control/13 Runtime Admission and Recovery.md>)
-  admits large-scale work only against a configured plan. This revision records
-  the ordering gap rather than working around it; see
-  [`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>).
+  admits large-scale work only against a proved one. That is the sequence
+  below, not an obstruction.
+
+### Founding a corpus, then building it
+
+Creating the first pages of an empty corpus is bounded authoring work. It is
+not the large-scale creation `K00/13` admits, so it selects neither R11 nor
+Corpus Planning, and — being bounded — it initializes no `.cambium/` runtime
+state at all.
+
+1. Adopt the profile through R09.
+2. Author one canonical owner per `Profile Scope` layer, plus the residual
+   witness declared during the interview. Ordinary single-note and module
+   routes; no Queue, no Coverage, no admission gate.
+3. With owners on disk, R13 establishes the Global Map, Capability Matrix, and
+   Gap Register against them, and the Corpus Planning slot reaches
+   `configured`.
+4. The large-scale build is the task that follows: initialize runtime state,
+   pass the `K00/13` admission conditions, compile the Queue, run batches.
+
+The founding pages are ordinary Required objects from step 4 onward and enter
+batches for review like any other page. Nothing is built twice; the sequence
+costs one task boundary and the R09 that configures the slot.
 
 Copying, filling, validating, or recording a manifest path does not activate a
 profile by itself. The manifest becomes the selected profile for content work

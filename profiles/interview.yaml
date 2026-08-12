@@ -175,7 +175,7 @@ core_pack:
       - "Open any requested expansion pack now; otherwise record the explicit choice to stay minimal"
       - "Ask for any remaining need the interview did not cover; route it or record it"
       - "Say what happens next, because a checked profile is not an adopted one and nothing else in this contract says so: the operator authorizes R09 adoption (the profile is selected only there, and it bumps standards_version), then the runtime is initialized, then admission records the Task Contract and writes the intended pages into Coverage -- Queue compilation reads Coverage, never this profile"
-      - "Empty corpus: name what the first batch owes -- the residual-scan witness declared in C1. If the work is meant to be admitted as large-scale, say plainly that Corpus Planning cannot be configured before canonical owners exist and that K00/13 admits large-scale work only against a configured plan; that ordering is an open gap, not something to improvise around"
+      - "Empty corpus: say that founding it comes before building it, and that founding is bounded authoring work -- one canonical owner per Profile Scope layer plus the residual witness declared in C1, on ordinary single-note and module routes, selecting neither R11 nor Corpus Planning and initializing no runtime state. Once those owners exist, R13 establishes the three planning artifacts against them and the large-scale build is admitted as the task that follows; the founding pages become ordinary Required objects there"
     change_cost: adoption
 
 self_path_rewrites:

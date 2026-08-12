@@ -218,9 +218,9 @@ cp -R profiles/_template profiles/my-profile
 
 ### 采用进空语料库
 
-Profile 里有几项答案是在描述语料库，而没有页面的语料库还给不出它们。其中两项
-由**首批**满足，不需要单独的播种任务、第二次采用，也不放宽任何合同；第三项是
-一个尚未解决的缺口，这里如实标出。
+Profile 里有几项答案是在描述语料库，而没有页面的语料库还给不出它们。这不需要
+放宽任何合同，也不需要任何尚不存在的机制——空语料库需要的是先被**建立起来**，
+而建立它是普通的创作工作。
 
 - **残留扫描**。它的 matcher 通常取自真实页面携带的字符串。没有页面时，就
   **声明**你将使用的结构类，并让首批在接受根下创建一个携带它的页面。生产扫描
@@ -228,11 +228,28 @@ Profile 里有几项答案是在描述语料库，而没有页面的语料库还
   只证明 matcher 与 `mandated_headings` 自洽，在空仓库上照样通过。
 - **Coverage**。尚未创建的知识对象同样有记录，所以第一份 Queue 是从你**打算
   建**的页面编译出来的，而不是从你**已经有**的页面。
-- **Corpus Planning 是那个未解决的**。Global Map 点名的是已存在的 canonical
-  owner，所以空语料库根本配置不出这个槽，而
+- **Corpus Planning** 现在就能声明绑定，稍后再证明。Global Map 点名的是已存在
+  的 canonical owner，所以有了属主之后这份规划才可证明；而
   [`K00/13`](<kernel/K00 Standards Control/13 Runtime Admission and Recovery.md>)
-  只在规划已配置的前提下准入大规模工作。本版如实记录这个先后缺口而不绕开它，
-  见 [`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>)。
+  只在规划已证明的前提下准入大规模工作。这是下面那条顺序，不是阻碍。
+
+### 先建立语料库，再构建它
+
+创建一个空语料库的头几页是**有界创作工作**。它不是 `K00/13` 所准入的大规模
+创建，因此既不选 R11 也不需要 Corpus Planning；而且既然有界，它根本不初始化
+`.cambium/` 运行时状态。
+
+1. 通过 R09 采用 Profile。
+2. 为 `Profile Scope` 的每一层各写出至少一个 canonical owner，加上面试中声明的
+   残留见证页。普通的单页与模块路线；没有 Queue、没有 Coverage、没有准入门禁。
+3. 属主落盘之后，R13 据此建立 Global Map、Capability Matrix 与 Gap Register，
+   Corpus Planning 槽随之到达 `configured`。
+4. 大规模构建是随后的那个任务：初始化运行时状态、过 `K00/13` 的准入条件、编译
+   Queue、跑批次。
+
+从第 4 步起，那几页就是普通的 Required 对象，与其余页一样进批次复查。没有任何
+内容被建两遍；这条顺序的代价是一个任务边界，加上把槽配置成 `configured` 的那
+一次 R09。
 
 复制、填写、验证 Profile 或记录 manifest 路径本身都不会激活它。只有完整的
 R09 初始采用变更闭合后，该 manifest 才会成为内容工作的选定 Profile。应验证
