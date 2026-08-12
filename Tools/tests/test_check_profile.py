@@ -831,8 +831,8 @@ class ProfileLoadCliTests(unittest.TestCase):
             for receipt in receipts))
 
     def test_unfilled_template_cannot_authorize_profile_load(self):
-        template = self.root / "profiles/_template-minimal"
-        shutil.copytree(REPOSITORY / "profiles/_template-minimal", template)
+        template = self.root / "profiles/_template"
+        shutil.copytree(REPOSITORY / "profiles/_template", template)
 
         completed, receipts = self._run_check(template, "template.jsonl")
 

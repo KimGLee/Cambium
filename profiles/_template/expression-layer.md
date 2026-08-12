@@ -4,20 +4,19 @@ Interface: [Expression Layer Entry slot](../README.md#expression-layer-entry-slo
 
 ## Registered Artifacts
 
-- Registration: TODO(profile)
+- Registration: None
 
-When `Configured`, copy this complete block once per artifact. When `None`, delete the Artifact block.
+This profile registers no expression artifact, so it supplies no concrete R05
+target: the corpus's readers use the canonical pages directly, and no derived,
+reader-facing artifact exists to keep in sync. Registering `None` does not
+remove R05 — an R05 task on this profile has no valid target and stops instead
+of inventing one. The `Expression Layer Predicate` in
+[Profile Scope](scope-and-architecture.md#placement-layer-registrations) is
+`always false` for the same reason, and
+[vocabulary-extensions.yaml](vocabulary-extensions.yaml) registers no
+readiness axis.
 
-### Artifact
-
-| Property | Value |
-|---|---|
-| Stable artifact ID | TODO(profile) |
-| Artifact role/type | TODO(profile) |
-| Reader-facing display label | TODO(profile) |
-| Entry point (repo-relative path or resolvable link) | TODO(profile) |
-| Profile-rule owner (repo-relative path; optional `#heading`) | TODO(profile) |
-| Existing canonical dependency-map ID/path | TODO(profile) |
-| Testable regeneration/invalidation predicate | TODO(profile) |
-| Vocabulary Extensions readiness-field ID or `None` | TODO(profile) |
-| Routing/Gate Registry supplemental Gate ID or `None` | TODO(profile) |
+The `### Artifact` block shipped by `profiles/_template/expression-layer.md`
+is deleted rather than left empty, as that template instructs. Open this slot
+later, through ordinary Standards adoption, when a derived reader-facing
+artifact (a card set, a digest, a published view) first appears.

@@ -2,6 +2,11 @@
 
 Interface: [Source Policy slot](../README.md#source-policy-slot)
 
+For a personal or operational corpus, the maintainer's own observation —
+recorded with a retrieval date — is a registrable source class, alongside the
+primary vendor or upstream documentation. "This corpus has no sources" is
+almost never true; name where its claims actually come from.
+
 ## Source Authority
 
 | Rank | Stable Source ID and exact location | Bounded canonical claim/content class | Version/release/commit, or retrieval date if unversioned |
@@ -22,14 +27,14 @@ Interface: [Source Policy slot](../README.md#source-policy-slot)
 
 ## Domain-specific Comparison Rules
 
-- Registration: TODO(profile)
+- Registration: None
 
 | Condition | Additional profile rule |
 |---|---|
 
 ## Provenance Extensions
 
-- Registration: TODO(profile)
+- Registration: None
 
 | Applicability / trigger | Additional provenance requirement | Recording target reference (Vocabulary field ID, body heading, or evidence path) |
 |---|---|---|

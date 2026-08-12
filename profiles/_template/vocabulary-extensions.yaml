@@ -1,5 +1,33 @@
+# Vocabulary Extensions slot: ships with no extension registered.
 # Interface: profiles/README.md#Vocabulary-Extensions-Slot
-# After check_profile and R09/K00 adoption, compose with: python3 Tools/compose_vocab.py
+# After check_profile and R09/K00 adoption, compose with:
+#   python3 Tools/compose_vocab.py
+#
+# No kernel-field extension and no profile-owned field is registered here.
+# `volatility_defaults` is the only required registration; the composer
+# derives the domain vocabulary from its keys. Rename `general`, or split it
+# into real domains, during the interview — the keys become this corpus's
+# `domain` values.
+#
+# Shapes for the two optional registrations, so opening either needs no
+# second document. Both are commented reference, not unfilled answers:
+#
+#   Kernel-field extension — add values to a kernel-extensible field:
+#     fields:
+#       type:
+#         values: []
+#       scope:
+#         values: []
+#
+#   Expression-readiness field — a profile-owned controlled field. Register
+#   it only when a registered expression artifact uses a readiness axis (see
+#   expression-layer.md); the mapping key is the field name:
+#     fields:
+#       <controlled-field-name>:
+#         owner: "<repo-relative owner path, optionally #heading>"
+#         role: Expression Status Axis
+#         values:
+#           - <one allowed value; repeat as needed>
 
 schema_version: 1
 
@@ -8,21 +36,7 @@ frontmatter_extensions:
   fields: []
 
 fields:
-  # Optional kernel-field extension shape:
-  # type:
-  #   values: []
-  # scope:
-  #   values: []
-
-  # Conditional expression-readiness field. Replace the mapping key with the
-  # field name and point `owner` to its promotion rules. Delete this mapping
-  # when no registered artifact uses a readiness axis.
-  TODO(profile):  # replace with the controlled field name
-    owner: "TODO(profile)"  # repo-relative owner path, optionally #heading
-    role: Expression Status Axis
-    values:
-      - TODO(profile)  # one allowed value; repeat as needed
 
 # key = domain ID; value = fast | slow | stable
 volatility_defaults:
-  TODO(profile): TODO(profile)
+  general: slow

@@ -1,8 +1,8 @@
-# Adoption interview contract — template-independent.
-# Applies to BOTH template depths: at minimal depth, conduct setup, the core
-# pack, and the closing review; at full depth, additionally walk every
-# expansion pack as an in-interview question pack instead of leaving it
-# closed. Any agent can conduct it: ask, collect a confirmed answer, project
+# Adoption interview contract for profiles/_template.
+# Fill depth lives here, not in a second template: conduct setup, the core
+# pack, and the closing review to keep the shipped exit states closed; walk
+# every expansion pack as an in-interview question pack to answer every
+# switch now. Any agent can conduct it: ask, collect a confirmed answer, project
 # it into the named file/anchor, then validate with
 # `python3 Tools/check_profile.py profiles/<profile-id>`.
 # Conduct rules:
@@ -18,10 +18,18 @@
 #   - Self-path rewrites are derived materialization inputs. `profile-load`
 #     validates them and fails closed, but never guesses or edits a value.
 
-interview_contract_version: 4
-target_templates:
-  - profiles/_template-minimal   # core pack + closing; packs open later on trigger
-  - profiles/_template           # core pack + walk every expansion pack now
+# Every entry below binds the exact interface slot name it fills:
+# a core_pack question through `maps_to[].file`, an expansion pack
+# through `binds_slot`. The two together must reach every slot in
+# `profiles/README.md`, so a slot added to the interface without a
+# question fails the interview-coverage regression rather than
+# reaching an adopter as a file nobody was asked to fill.
+
+interview_contract_version: 5
+target_template: profiles/_template
+fill_depths:
+  - shipped-closed   # setup + core pack + closing; packs open later on trigger
+  - every-switch-now # the same, plus every expansion pack walked in this sitting
 
 setup:
   - id: S0
@@ -171,40 +179,48 @@ self_path_rewrites:
   - {file: registries/audit-dimensions.md, cell: "foundation item predicate owner", validation: "profile-load: canonical path inside this Profile and exactly one heading"}
   - {file: registries/audit-dimensions.md, cell: "residual item predicate owner", validation: "profile-load: canonical path inside this Profile and exactly one heading"}
 
-# Expansion packs. At minimal depth they open a closed slot later, through
+# Expansion packs. Left unwalked, they open a closed slot later, through
 # ordinary Standards adoption — never silently: the operator asks, or a
-# fail-closed gate names the slot. At full depth the interview walks every
+# fail-closed gate names the slot. Walked now, the interview covers every
 # pack now, before C3, and the answers land in the same slot files.
 expansion_packs:
   - slot: corpus-planning
+    binds_slot: Corpus Planning
     trigger: {gates: [corpus-plan-structure], routes: [R11, R13], elective: true}
     opens: "large-scale construction, migration, or persistent multi-batch work"
     asks: "Global Map / Capability Matrix / Gap Register bindings; capability scale (the 0-4 pattern in answer-patterns.md); pass authority"
   - slot: structure-registry
+    binds_slot: Structure Registry
     trigger: {gates: [structure-registry], routes: [R03, R06], elective: true}
     opens: "a directory first carries an independently built, maintained, or audited responsibility"
     asks: "units (id/kind/parent/root/entry/roles); support layers with bindings"
   - slot: priority-rubric
+    binds_slot: Priority Rubric
     trigger: {elective: true}
     opens: "pages start protecting capabilities or deadlines the P2 fallback does not"
     asks: "P0/P1 grant predicates + protected capability or horizon"
   - slot: expression-layer
+    binds_slot: Expression Layer Entry
     trigger: {routes: [R05], elective: true}
     opens: "a derived reader-facing artifact first appears"
     asks: "artifact registration; readiness axis + reviewer role + readiness gate (three-piece pattern in answer-patterns.md)"
   - slot: metadata-contract
+    binds_slot: Metadata Contract
     trigger: {elective: true}
     opens: "a tightened mode, extension field, or relationship extension is needed"
     asks: "differences (tighten only) / extension fields / relationship extensions / section roles"
   - slot: language-registrations
+    binds_slot: Language Contract
     trigger: {elective: true}
     opens: "domain-scoped anti-patterns or migration invalidations (bilingual corpora: the term-band pattern)"
     asks: "K10/04 extension rows"
   - slot: source-registrations
+    binds_slot: Source Policy
     trigger: {elective: true}
     opens: "comparison rules or provenance extensions (metric-reporting corpora: the evaluation-provenance pattern)"
     asks: "the two optional Source Policy registrations; Metric Traceability role bindings"
   - slot: routing-and-gates
+    binds_slot: Routing And Gate Registry
     trigger: {elective: true}
     opens: "supplemental routes, L-tier triggers, specialized audit invariants, extension gates"
     asks: "the four registry subsections"

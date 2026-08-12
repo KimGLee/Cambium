@@ -1,6 +1,7 @@
 # Profile Manifest
 
-Interface and usage: [Profile interface](../README.md)
+Interface and usage: [Profile interface](../README.md). Fill orientation:
+[this template's README](README.md).
 
 ## Profile Identity
 
