@@ -37,7 +37,7 @@ Every example README carries a `## Validation Provenance` table: for each valida
 
 The three examples together are not a complete tour of the interface, and this section names what is still missing so that an absent form is not read as a forbidden one.
 
-Between them the examples now show both sides of every optional and conditional switch in `profiles/_template/` that existed when they were written: Atlas configures sixteen of the seventeen, Minimal Notes leaves all seventeen inactive, and each package states the reason for its own choice. The optional K08/09 `boundary_projection` key added later is left in its inactive kernel-default form by every example (see the table below).
+Between them the examples now show both sides of every optional and conditional switch in `profiles/_template/` that existed when they were written: Atlas configures seventeen of the eighteen, Minimal Notes leaves all eighteen inactive, and each package states the reason for its own choice. The optional K08/09 `boundary_projection` key added later is left in its inactive kernel-default form by every example (see the table below).
 
 Documented forms that still have **no** worked example anywhere in this repository:
 

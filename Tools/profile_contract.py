@@ -45,6 +45,7 @@ PROFILE_FILE_SLOTS = (
     "Role Registry",
     AUDIT_SLOT,
     SCAN_SLOT,
+    "Escalation Policy",
     "Routing And Gate Registry",
 )
 

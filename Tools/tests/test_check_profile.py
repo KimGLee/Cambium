@@ -396,7 +396,7 @@ class ProfileLoadCliTests(unittest.TestCase):
         self.assertEqual(contract.fingerprint,
                          summary["profile_contract_fingerprint"])
         self.assertEqual(
-            13,
+            14,
             len([edge for edge in contract.dependency_edges
                  if edge.kind == "manifest-slot"]))
         self.assertEqual(

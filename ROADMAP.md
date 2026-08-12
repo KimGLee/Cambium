@@ -14,7 +14,7 @@ bypass R09 adoption.
 
 | Area | Current state |
 |---|---|
-| Profile setup | Copy the 15-file `_template` (13 bound slot files, the manifest, and one scan-config parameter file), fill it manually, and run `check_profile.py` |
+| Profile setup | Copy the 17-file `_template` (14 bound slot files, the manifest, the fill orientation README, and one scan-config parameter file), fill it manually, and run `check_profile.py` |
 | Execution | The kernel defines sequential work, concurrent disjoint batches, independent review contexts, and serial integration |
 | Persistent work state | `.cambium/` separates object-level Coverage, the canonical Required Queue, task-level Progress, and hash-bound restricted-YAML complex-batch Work Specs; standard-library tools initialize, compile, validate, transition, apply Amendment-bound cross-Ledger changes, recover interrupted-write evidence, and render Queue state |
 | Active-task Standards adoption | One restricted-YAML plan binds approved governance bytes, deterministic Kernel/Profile snapshots, old/new Contract/Standards/Profile/load set, changed predicates, dimension/boundary-specific invalidated evidence, immediate Queue consistency, and deferred gates; after required pre-rollbacks/holds, `adopt_standards.py` synchronizes all three runtime identities without changing lifecycle/holds, while append-only receipts preserve producer-era history, filter invalidated-evidence receipt IDs from current use, recover interruption, and avoid a prose duplicate |
@@ -28,7 +28,7 @@ bypass R09 adoption.
 
 ## Profile Adoption Reform And Onboarding
 
-Reduce profile adoption cost without shrinking the interface. The 13-slot
+Reduce profile adoption cost without shrinking the interface. The 14-slot
 interface stays; the reform ships one template that pre-closes every switch
 with a legal exit state and pre-fills the operational answers that generalize,
 and moves fill depth into the adoption interview, which walks those closed

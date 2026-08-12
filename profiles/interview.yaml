@@ -219,6 +219,11 @@ expansion_packs:
     trigger: {elective: true}
     opens: "comparison rules or provenance extensions (metric-reporting corpora: the evaluation-provenance pattern)"
     asks: "the two optional Source Policy registrations; Metric Traceability role bindings"
+  - slot: escalation-policy
+    binds_slot: Escalation Policy
+    trigger: {elective: true}
+    opens: "work runs long or autonomous enough that some situation must reach a person before the run continues"
+    asks: "one row per trigger: ID, the condition that fires it, machine- or review-checkable, the deciding Role ID, and what counts as the decision having been made"
   - slot: routing-and-gates
     binds_slot: Routing And Gate Registry
     trigger: {elective: true}
