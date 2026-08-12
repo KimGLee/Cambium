@@ -176,9 +176,11 @@ Cambium 的 receipt 与 Terminal Proof 在采用方仓库的本地信任边界�
 
 ## 采用 Cambium
 
-无论目标语料库已经存在还是将从零开始构建，Profile 采用都遵循相同流程；
-Cambium 在设置期间不会创建语料库。首先为该语料库创建一个 Profile。不要
-直接编辑共享模板，也不要复制示例作为起点。
+无论目标语料库已经存在还是将从零开始构建，Profile 采用都遵循同一套流程，
+Cambium 在设置期间也从不创建语料库。两者只有一处不同，见下面的**采用进空
+语料库**：已有页面的语料库按它**包含什么**来描述，还没有页面的语料库按它的
+首批**将要包含什么**来描述。首先为该语料库创建一个 Profile。不要直接编辑共享
+模板，也不要复制示例作为起点。
 
 ```text
 cp -R profiles/_template profiles/my-profile
@@ -213,6 +215,24 @@ cp -R profiles/_template profiles/my-profile
 
 5. 在开始语料库内容工作前完成 R09 治理门禁。[`Tools/README.md`](Tools/README.md)
    记录了各项命令、receipt 和退出语义；工具成功本身不能证明完整的治理门禁已经通过。
+
+### 采用进空语料库
+
+Profile 里有三项答案是在描述语料库，而没有页面的语料库还给不出它们。这不需要
+单独的播种任务、第二次采用，也不放宽任何合同——三项都由**首批**满足，而不是
+在首批之前。
+
+- **残留扫描**。它的 matcher 通常取自真实页面携带的字符串。没有页面时，就
+  **声明**你将使用的结构类，并让首批在接受根下创建一个携带它的页面。生产扫描
+  会拒绝一个在仓库里认不出任何文件的配置，所以声明的结构类必须被物化；正对照
+  只证明 matcher 与 `mandated_headings` 自洽，在空仓库上照样通过。
+- **Corpus Planning**，当任务按大规模工作准入时。Global Map 点名的是已存在的
+  canonical owner，所以首批 manifest 同时携带这些属主与三份制品路径，使该批的
+  关批门禁适用，规划在那里被证明。该顺序由
+  [`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>)
+  拥有。
+- **Coverage**。尚未创建的知识对象同样有记录，所以第一份 Queue 是从你**打算
+  建**的页面编译出来的，而不是从你**已经有**的页面。
 
 复制、填写、验证 Profile 或记录 manifest 路径本身都不会激活它。只有完整的
 R09 初始采用变更闭合后，该 manifest 才会成为内容工作的选定 Profile。应验证
@@ -339,6 +359,8 @@ restricted YAML 记录已接受/已拒绝的 Capability 决策；证据采用仅
 
 ```text
 # Fill .cambium/state/coverage_ledger.yaml with the accepted inventory.
+# Objects not yet created belong in it too; the Queue is compiled from what
+# the task intends to build, not only from what the file system already holds.
 python3 Tools/compile_queue.py . --output .cambium/tmp/queue-proposal.yaml
 python3 Tools/compile_queue.py . --apply --actor-role integrator \
   --expected-queue-revision 1 \

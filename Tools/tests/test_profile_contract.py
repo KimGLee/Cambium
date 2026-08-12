@@ -40,6 +40,21 @@ SCAN_HEADER = (
 )
 
 
+
+# Derived from the linker's own registry rather than re-listed: `check_profile`
+# refuses a repository whose interface and this registry disagree, so a slot
+# added to the interface reaches these fixtures automatically instead of
+# waiting for someone to remember five hand-written manifests.
+SPECIAL_BINDINGS = {
+    profile_contract.AUDIT_SLOT: "registries/audit-dimensions.md",
+    profile_contract.SCAN_SLOT: "registries/registered-scans.md",
+}
+BINDING_BLOCK = "".join(
+    "- `%s`: `%s`\n" % (name, SPECIAL_BINDINGS.get(name, "slots.md"))
+    for name in profile_contract.PROFILE_FILE_SLOTS
+)
+
+
 class ProfileContractFixture:
     def __init__(self, owner):
         self.temporary = tempfile.TemporaryDirectory()
@@ -63,22 +78,7 @@ class ProfileContractFixture:
         self.manifest.write_text(
             "# Sample\n\n## Profile Identity\n\n"
             "- `profile_id`: `sample`\n\n"
-            "## Implemented Slots\n\n"
-            "- `Profile Scope`: `slots.md`\n"
-            "- `Corpus Planning`: `slots.md`\n"
-            "- `Structure Registry`: `slots.md`\n"
-            "- `Metadata Contract`: `slots.md`\n"
-            "- `Priority Rubric`: `slots.md`\n"
-            "- `Vocabulary Extensions`: `slots.md`\n"
-            "- `Language Contract`: `slots.md`\n"
-            "- `Expression Layer Entry`: `slots.md`\n"
-            "- `Source Policy`: `slots.md`\n"
-            "- `Role Registry`: `slots.md`\n"
-            "- `Audit Dimension Registry`: "
-            "`registries/audit-dimensions.md`\n"
-            "- `Registered Scan Registry`: "
-            "`registries/registered-scans.md`\n"
-            "- `Routing And Gate Registry`: `slots.md`\n",
+            "## Implemented Slots\n\n" + BINDING_BLOCK,
             encoding="utf-8",
         )
         self.generic_slot.write_text(

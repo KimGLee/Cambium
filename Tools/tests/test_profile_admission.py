@@ -52,7 +52,7 @@ class ProfileAdmissionTests(unittest.TestCase):
         self.assertEqual([], errors)
         self.assertIsNotNone(admission)
         self.assertEqual(1, evaluate.call_count)
-        self.assertEqual(13, len(admission.slot_paths))
+        self.assertEqual(14, len(admission.slot_paths))
         self.assertIn("# Synthetic Slot Fixture",
                       admission.slot_text("Profile Scope"))
         self.assertEqual([], profile_admission.currency_errors(admission))

@@ -11,7 +11,7 @@ classification, or any predicate's meaning.
 
 ## Profile Dependency Closure
 
-The closure begins at the exact Profile manifest, resolves all thirteen
+The closure begins at the exact Profile manifest, resolves all fourteen
 required file bindings, and then resolves every machine-active Profile-owned
 dependency declared by those slot interfaces. A manifest slot value uses one
 exact canonical path relative to that Profile directory; `inline`, `./`, `..`,

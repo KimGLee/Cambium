@@ -20,6 +20,7 @@ Interface: [Profile interface](../README.md)
 - `Role Registry`: `slots.md`
 - `Audit Dimension Registry`: `slots.md`
 - `Registered Scan Registry`: `slots.md`
+- `Escalation Policy`: `slots.md`
 - `Routing And Gate Registry`: `slots.md`
 
 ## Execution Default Overrides
