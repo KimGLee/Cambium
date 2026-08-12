@@ -2,7 +2,7 @@
 
 ## What This Is
 
-This directory is the 13-slot profile interface as a copyable form. It is a
+This directory is the 14-slot profile interface as a copyable form. It is a
 template, not a profile: the identity is unfilled, so nothing here is
 selectable or runnable in place. The normative interface remains
 [profiles/README.md](../README.md).
@@ -25,8 +25,8 @@ Every slot switch with a legal exit state is already in it, with a
 scenario-generic reason: Corpus Planning and Structure Registry
 (`not-applicable`), Metadata Contract (`kernel-defaults`), Priority Rubric
 (`No grants`), Expression Layer (`None`, Artifact block deleted), the four
-Routing And Gate registrations (`None`), the optional Language and Source
-registrations (`None`), Metric Traceability (`Not applicable`), Extension
+Routing And Gate registrations (`None`), the Escalation Policy registry
+(`None`), the optional Language and Source registrations (`None`), Metric Traceability (`Not applicable`), Extension
 Roles and Extension Dimensions (`None`), Production System Reasoning,
 Representative Sample Plan, and Dependency-ordered Build Sequence
 (`Not applicable`), and an empty Execution Default Overrides table. Confirm

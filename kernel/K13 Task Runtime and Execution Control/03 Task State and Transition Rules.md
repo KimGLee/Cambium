@@ -37,7 +37,7 @@ shortcut.
 
 - `planned`: the contract, scope, or inventory has not yet met the execution threshold.
 - `active`: executing, or the next Required batch is known.
-- `paused`: unfinished work stopped by request, `hard_stop_at`, interruption, or checkpoint; resume information MUST be saved.
+- `paused`: unfinished work stopped by request, `hard_stop_at`, interruption, checkpoint, or a fired escalation trigger ([[kernel/K13 Task Runtime and Execution Control/17 Escalation Policy|K13/17]] owns which conditions oblige one); resume information MUST be saved.
 - `blocked`: an external dependency exists that cannot be resolved in the current environment, and no other Required work can proceed.
 - `completion-candidate`: a build-only state in which the executor believes the scope is satisfied and awaits the Terminal Audit; a maintenance task MUST NOT enter it.
 - `complete`: the selected closure passed: a valid Terminal Proof for build, or a valid maintenance completion gate for maintenance.

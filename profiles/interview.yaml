@@ -142,9 +142,11 @@ core_pack:
     question: "Confirm the derived residual scan: which structured-content class belongs only under one root?"
     procedure:
       - "Identify the structure class and its accepted root (dated scratch entries, derived cards, generated digests; candidates from Q4 layers)"
-      - "Scan real pages under that root; collect the frontmatter value and exact headings they actually use"
-      - "Propose allowed_roots / frontmatter_match / heading_match / mandated_headings from those real strings only"
-      - "Warn: a matcher matching nothing real fails the non-inert positive control by design"
+      - "Branch on whether the corpus already has pages. Both branches are honest; only one of them is observation"
+      - "Existing corpus: scan real pages under that root, collect the frontmatter value and exact headings they actually use, and propose allowed_roots / frontmatter_match / heading_match / mandated_headings from those real strings only"
+      - "Empty corpus: there is nothing to observe, so declare instead. Derive the strings from the page structure the operator just confirmed in Q4-Q10, and record that this class is designed rather than observed"
+      - "Empty corpus, second obligation: the first batch MUST create at least one page under the accepted root carrying the declared structure. Enter it as an ordinary Required Coverage object like any other page (K02/01 already records objects not yet created); it needs no new object type and no separate interview round"
+      - "State the two checks correctly, because they prove different things. The positive control proves only that the matchers and mandated_headings are self-consistent -- it synthesizes its inputs and passes on an empty repository. The production scan is what proves a real matching page exists: a run that finds no candidate outside the accepted roots must still recognise at least one Markdown file inside them, or the configuration is inert and the run fails"
       - "Operator confirms; write scan-configs/residual-scan.yaml and the registry row with this Profile's --config path; fill the second judgment item and the Residual Disposition prose"
     change_cost: adoption
     maps_to:
@@ -172,6 +174,8 @@ core_pack:
       - "Show the derived fills (placement rows, fallbacks, the scan registration) for a final confirmation"
       - "Open any requested expansion pack now; otherwise record the explicit choice to stay minimal"
       - "Ask for any remaining need the interview did not cover; route it or record it"
+      - "Say what happens next, because a checked profile is not an adopted one and nothing else in this contract says so: the operator authorizes R09 adoption (the profile is selected only there, and it bumps standards_version), then the runtime is initialized, then admission records the Task Contract and writes the intended pages into Coverage -- Queue compilation reads Coverage, never this profile"
+      - "Empty corpus, name the two things the first batch owes: the residual-scan witness declared in C1, and -- when the task is admitted as large-scale work -- the canonical owners the Global Map will name plus the three planning artifact paths in that batch manifest, which is what lets the plan be proved at close instead of before admission"
     change_cost: adoption
 
 self_path_rewrites:
@@ -219,6 +223,11 @@ expansion_packs:
     trigger: {elective: true}
     opens: "comparison rules or provenance extensions (metric-reporting corpora: the evaluation-provenance pattern)"
     asks: "the two optional Source Policy registrations; Metric Traceability role bindings"
+  - slot: escalation-policy
+    binds_slot: Escalation Policy
+    trigger: {elective: true}
+    opens: "work runs long or autonomous enough that some situation must reach a person before the run continues"
+    asks: "one row per trigger: ID, the condition that fires it, machine- or review-checkable, the deciding Role ID, and what counts as the decision having been made"
   - slot: routing-and-gates
     binds_slot: Routing And Gate Registry
     trigger: {elective: true}

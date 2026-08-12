@@ -20,7 +20,7 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
   - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
   - kernel/K13 Task Runtime and Execution Control/13 Final Handoff.md
-source_hash: 'd3759923703c'
+source_hash: '4143933aebc3'
 ---
 # R08 Audit and Completion Card
 

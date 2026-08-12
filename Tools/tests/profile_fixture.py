@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import shutil
+import sys
 
 
 TESTS = Path(__file__).resolve().parent
@@ -9,20 +10,23 @@ TOOLS = TESTS.parent
 REPOSITORY = TOOLS.parent
 SYNTHETIC_PROFILE = TESTS / "fixtures" / "synthetic_profile"
 
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+import profile_contract  # noqa: E402  (path set above)
+
+# Derived, never re-listed: `check_profile` refuses a repository whose
+# interface slot list and this registry disagree, so deriving the synthetic
+# interface from the registry keeps the fixture in step with the real one by
+# construction instead of by whoever remembers to edit both.
 PROFILE_INTERFACE = "# Profiles\n\n" + "".join(
-    "## %s Slot\n\n" % name for name in (
-        "Profile Scope", "Corpus Planning", "Structure Registry",
-        "Metadata Contract", "Priority Rubric", "Vocabulary Extensions",
-        "Language Contract", "Expression Layer Entry", "Source Policy",
-        "Role Registry", "Audit Dimension Registry",
-        "Registered Scan Registry", "Routing And Gate Registry",
-    )
+    "## %s Slot\n\n" % name
+    for name in profile_contract.PROFILE_FILE_SLOTS
 )
 
 
 def install_loadable_profile(root, profile_id="test-profile",
                              override_rows="", standards_version="3.0.0"):
-    """Overlay a real 13-slot Profile and its root-owned dependencies."""
+    """Overlay a real 14-slot Profile and its root-owned dependencies."""
     root = Path(root)
     profile = root / "profiles" / profile_id
     shutil.copytree(SYNTHETIC_PROFILE, profile, dirs_exist_ok=True)

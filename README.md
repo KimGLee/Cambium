@@ -209,10 +209,13 @@ provenance requires controls outside this repository.
 
 ## Adopt Cambium
 
-Profile adoption follows the same process whether the target corpus already
-exists or will be built from zero; Cambium does not create the corpus during
-setup. Start by creating a profile for that corpus. Do not edit the shared
-template in place and do not copy an example as the starting point.
+Profile adoption follows one process whether the target corpus already exists
+or will be built from zero, and Cambium never creates the corpus during setup.
+The two differ in exactly one place, described under **Adopting into an empty
+corpus** below: a corpus with pages is described from what it contains, and a
+corpus without them is described from what its first batch will contain. Start
+by creating a profile for that corpus. Do not edit the shared template in place
+and do not copy an example as the starting point.
 
 ```text
 cp -R profiles/_template profiles/my-profile
@@ -254,6 +257,29 @@ in [`profiles/README.md`](profiles/README.md).
    [`Tools/README.md`](Tools/README.md) documents the individual commands,
    receipts, and exit semantics; tool success alone is not proof that the
    complete governance gate passed.
+
+### Adopting into an empty corpus
+
+Three of the profile's answers describe a corpus, and a corpus with no pages
+cannot yet supply them. None of this needs a separate seeding task, a second
+adoption, or any relaxed contract; each is satisfied by the first batch instead
+of before it.
+
+- **The residual scan.** Its matchers normally come from strings real pages
+  carry. With no pages, declare the structure class you will use, and have the
+  first batch create one page under the accepted root that carries it. The
+  production scan refuses a configuration that recognises nothing in the
+  repository, so a declared class must be materialized; the positive control
+  proves only that matchers and `mandated_headings` agree and passes on an
+  empty repository.
+- **Corpus Planning**, when the task is admitted as large-scale work. The
+  Global Map names existing canonical owners, so the initial batch's manifest
+  carries both those owners and the three artifact paths, which makes that
+  batch's close gate applicable and proves the plan there.
+  [`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>)
+  owns that ordering.
+- **Coverage.** Knowledge objects that do not exist yet still get records, so
+  the first Queue is compiled from pages you intend rather than pages you have.
 
 Copying, filling, validating, or recording a manifest path does not activate a
 profile by itself. The manifest becomes the selected profile for content work
@@ -399,6 +425,8 @@ receipts remain in the Required Queue.
 
 ```text
 # Fill .cambium/state/coverage_ledger.yaml with the accepted inventory.
+# Objects not yet created belong in it too; the Queue is compiled from what
+# the task intends to build, not only from what the file system already holds.
 python3 Tools/compile_queue.py . --output .cambium/tmp/queue-proposal.yaml
 python3 Tools/compile_queue.py . --apply --actor-role integrator \
   --expected-queue-revision 1 \

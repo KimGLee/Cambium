@@ -18,7 +18,7 @@ A Global Map entry must name a Markdown file that really exists, and a Profile S
 
 | Role | Count | Meaning |
 |---|---:|---|
-| Filled profile skeleton | 14 | [profile.md](profile.md) plus the thirteen bound slot files corresponding to `_template/` |
+| Filled profile skeleton | 15 | [profile.md](profile.md) plus the fourteen bound slot files corresponding to `_template/` |
 | Example orientation | 1 | This README; it is not loaded as profile policy |
 | Registered-scan parameters | 1 | [scan-configs/residual-scan.yaml](scan-configs/residual-scan.yaml), consumed by the one scan registration |
 | Planning artifacts | 3 | [planning/](planning/), bound by [corpus-planning.yaml](corpus-planning.yaml) and owned by K02/05–07 |

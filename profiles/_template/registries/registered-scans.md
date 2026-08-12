@@ -6,9 +6,13 @@ The interface requires one real residual-content verifier; a profile cannot
 opt out. The common archetype: one class of structured content belongs only
 under one root (dated scratch entries, derived cards, generated digests), and
 the scan reports that structure leaking anywhere else. Derive the matchers
-from content that really occurs in this corpus — the non-inert positive
-control fails a configuration whose matchers match nothing real, so a generic
-static default is impossible by design. Fill
+from content that really occurs in this corpus; on an empty corpus, declare
+them from the page structure this profile registers and have the first batch
+create the page that carries them. Either way the configuration must end up
+repository-backed: the production scan requires at least one Markdown file the
+matchers recognise, so a generic static default is impossible by design. The
+positive control checks something narrower — that the matchers and
+`mandated_headings` agree — and passes on an empty repository. Fill
 [the profile-owned scan configuration](../scan-configs/residual-scan.yaml)
 and bind `Tools/check_residual_content.py` below with the same Stable Scan ID
 passed through `--scan-id`. Materialize the command's `--config` argument with

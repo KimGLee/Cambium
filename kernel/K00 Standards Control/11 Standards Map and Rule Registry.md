@@ -21,7 +21,7 @@
 - `K10` [[kernel/K10 Writing and Formatting Standard|Writing and Formatting Standard]]: naming, formulas, tables, diagrams, rendering workflow, and the reader-facing language binding provided by `Language Contract`.
 - `K11` [[kernel/K11 Expression Layer Standard|Expression Layer Standard]]: expression artifacts, coverage, readiness, evidence binding, and migration audit; concrete artifact bindings are registered by the `Expression Layer Entry`.
 - `K12` [[kernel/K12 Quality Assurance Standard|Quality Assurance Standard]]: single-note, batch, Guidance / Coverage reconciliation, module, source promotion, audit evidence reuse and invalidation, content-level propagation, substantive correctness review, active-task Standards adoption semantics, tiered rendering, and Terminal Audit; extension QA dimensions, scans, and gates are activated by the `Audit Dimension Registry`, the `Registered Scan Registry`, and the `Routing And Gate Registry` respectively; which receipt dimension each judgment item files under is fixed by [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map|K12/08]] and [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map|K12/18]].
-- `K13` [[kernel/K13 Task Runtime and Execution Control Standard|Task Runtime and Execution Control Standard]]: Task Contract, time semantics, task state, Guidance/Amendment, Progress Ledger, Required Queue, batch admission/integration, controlled Standards-adoption state writes, completion, handoff, and recovery.
+- `K13` [[kernel/K13 Task Runtime and Execution Control Standard|Task Runtime and Execution Control Standard]]: Task Contract, time semantics, task state, Guidance/Amendment, Progress Ledger, Required Queue, batch admission/integration, controlled Standards-adoption state writes, completion, handoff, recovery, and the escalation contract.
 
 ## Cross-domain Rule Registry
 
@@ -68,6 +68,7 @@ This registry governs rule text. The three conditions do not authorize a view of
 | Active-task Standards adoption semantics, changed-predicate scope, evidence invalidation, and required gate reruns | [[kernel/K12 Quality Assurance/10 Standards Version Adoption\|Standards Version Adoption]] |
 | Active-task Standards adoption state-write and interrupted-transaction boundary | [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction\|Standards Adoption State Transaction]] |
 | Resume `next_action` token vocabulary | [[kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary\|Resume Next Action Vocabulary]] |
+| Escalation contract: which conditions oblige suspending a run and handing the decision to a person | [[kernel/K13 Task Runtime and Execution Control/17 Escalation Policy\|Escalation Policy]] |
 | Guidance classification and impact | [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis\|Guidance Classification and Impact Analysis]] |
 | Guidance disposition and safe switching | [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching\|Guidance Disposition and Safe Switching]] |
 | Amendment record and controlled replanning | [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning\|Amendment Log and Controlled Replanning]] |

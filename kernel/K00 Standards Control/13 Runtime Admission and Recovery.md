@@ -55,6 +55,7 @@ and MAY begin only after the following conditions are met:
 5. The Runtime Startup Gate has passed. The `.cambium/` namespace was initialized only if absent; otherwise the existing task was inspected and legitimately resumed. Coverage, Queue, and Progress agree on task, scope, Standards version, and selected profile manifest.
 6. The Coverage Ledger has been created or refreshed and reconciled against the file system and exclusions; ownership, incoming links, and user modifications have been inventoried.
 7. The selected profile's `Corpus Planning` slot uses `applicability.state: configured`; its Global Map, Capability Matrix, and Gap Register bindings exist, reflect the admitted scope, and `python3 Tools/check_corpus_plan.py .` passes. R11 consumes this condition; R13 owns creating or reconciling the artifacts.
+   A corpus whose Profile Scope layer directories hold no canonical owner satisfies this condition forward instead, on the bootstrap ordering K02/03 owns: bindings declared here, artifacts proved at the initial batch's close.
 8. The Required Queue has been compiled from explicit Coverage assignments and dependencies, and `python3 Tools/check_queue.py .` passes against the current revisions and fingerprint. A missing or empty Queue caused by a wrong path is not a pass.
 9. Foundational knowledge dependencies have been identified; all prerequisite content MUST NOT be crammed into the application mainline pages declared by the selected `Profile Scope`.
 10. Source-driven tasks have established a source inventory and a claim extraction plan.
