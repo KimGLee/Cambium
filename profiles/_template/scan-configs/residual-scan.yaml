@@ -28,9 +28,9 @@ allowed_roots:
 excluded_roots: []
 
 # The cheapest matcher the production scan can recognise: name the controlled
-# field value that the accepted roots' own pages carry, or will carry once the
-# first batch creates them. Leave `values: []` only when this profile has no
-# such controlled value.
+# field value that the accepted roots' own pages carry, or will carry once
+# bounded founding creates them. Leave `values: []` only when this profile has
+# no such controlled value.
 frontmatter_match:
   field: type
   values:

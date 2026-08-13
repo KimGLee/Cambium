@@ -2,8 +2,10 @@
 # Fill depth lives here, not in a second template: conduct setup, the core
 # pack, and the closing review to keep the shipped exit states closed; walk
 # every expansion pack as an in-interview question pack to answer every
-# switch now. Any agent can conduct it: ask, collect a confirmed answer, project
-# it into the named file/anchor, then validate with
+# switch now. Any agent can conduct it: confirm identity (S0 + Q0), create
+# the candidate with `python3 Tools/scaffold_profile.py . --profile-id <id>`
+# (manual whitelist copy is the no-agent fallback), then ask, collect a
+# confirmed answer, project it into the named file/anchor, and validate with
 # `python3 Tools/check_profile.py profiles/<profile-id>`.
 # Conduct rules:
 #   - Every answer is the operator's; propose shapes (see answer-patterns.md),
@@ -25,7 +27,7 @@
 # question fails the interview-coverage regression rather than
 # reaching an adopter as a file nobody was asked to fill.
 
-interview_contract_version: 5
+interview_contract_version: 6
 target_template: profiles/_template
 fill_depths:
   - shipped-closed   # setup + core pack + closing; packs open later on trigger
@@ -50,6 +52,8 @@ core_pack:
     answer_shape: "slug matching [a-z0-9][a-z0-9_-]*"
     validation: "check_profile rejects profile-id-invalid; directory must match"
     change_cost: migration
+    notes:
+      - "Collected with S0, before the candidate exists: the scaffolder consumes it, proposes a default derived from the corpus name, and derives the mechanical identity and self-path cells at copy time"
     maps_to:
       - {file: profile.md, anchor: "## Profile Identity"}
     derives:
@@ -145,7 +149,7 @@ core_pack:
       - "Branch on whether the corpus already has pages. Both branches are honest; only one of them is observation"
       - "Existing corpus: scan real pages under that root, collect the frontmatter value and exact headings they actually use, and propose allowed_roots / frontmatter_match / heading_match / mandated_headings from those real strings only"
       - "Empty corpus: there is nothing to observe, so declare instead. Derive the strings from the page structure the operator just confirmed in Q4-Q10, and record that this class is designed rather than observed"
-      - "Empty corpus, second obligation: the first batch MUST create at least one page under the accepted root carrying the declared structure. Enter it as an ordinary Required Coverage object like any other page (K02/01 already records objects not yet created); it needs no new object type and no separate interview round"
+      - "Empty corpus, second obligation: bounded founding MUST materialize the declared class — at least one page under the accepted root carrying the declared structure, authored during founding alongside the per-layer canonical owners (one page may serve as both owner and witness when that is semantically natural, never merged only to save files). Founding is ordinary bounded authoring: no `.cambium/`, no Coverage, no Queue, no batch. When a large-scale task is later admitted, the founding pages enter Required Coverage there like any other page for unified re-review; nothing is recorded now"
       - "State the two checks correctly, because they prove different things. The positive control proves only that the matchers and mandated_headings are self-consistent -- it synthesizes its inputs and passes on an empty repository. The production scan is what proves a real matching page exists: a run that finds no candidate outside the accepted roots must still recognise at least one Markdown file inside them, or the configuration is inert and the run fails"
       - "Operator confirms; write scan-configs/residual-scan.yaml and the registry row with this Profile's --config path; fill the second judgment item and the Residual Disposition prose"
     change_cost: adoption
@@ -174,8 +178,11 @@ core_pack:
       - "Show the derived fills (placement rows, fallbacks, the scan registration) for a final confirmation"
       - "Open any requested expansion pack now; otherwise record the explicit choice to stay minimal"
       - "Ask for any remaining need the interview did not cover; route it or record it"
-      - "Say what happens next, because a checked profile is not an adopted one and nothing else in this contract says so: the operator authorizes R09 adoption (the profile is selected only there, and it bumps standards_version), then the runtime is initialized, then admission records the Task Contract and writes the intended pages into Coverage -- Queue compilation reads Coverage, never this profile"
-      - "Empty corpus: say that founding it comes before building it, and that founding is bounded authoring work -- one canonical owner per Profile Scope layer plus the residual witness declared in C1, on ordinary single-note and module routes, selecting neither R11 nor Corpus Planning and initializing no runtime state. Once those owners exist, R13 establishes the three planning artifacts against them and the large-scale build is admitted as the task that follows; the founding pages become ordinary Required objects there"
+      - "Branch on corpus state before saying what happens next, and end with exactly one next action. A checked profile is not an adopted one, and nothing else in this contract says so"
+      - "Existing corpus, bounded work ahead: next action is authorizing initial R09 adoption (the profile is selected only there, and it bumps standards_version). Content work then uses the ordinary routes; no runtime state is created"
+      - "Existing corpus, large-scale work ahead: the real pages already supply canonical owners, so walk the corpus-planning expansion pack now, prepare the three planning artifacts against those owners, and let one initial R09 adopt the profile with the slot already configured -- no second revision is needed. After adoption: the operator confirms a Task Plan, then runtime initialization, admission, and Queue compilation follow; Queue compilation reads Coverage, never this profile"
+      - "Empty corpus: founding comes before building, and founding is bounded authoring work -- one canonical owner per Profile Scope layer plus the residual witness declared in C1, on ordinary single-note and module routes, selecting neither R11 nor Corpus Planning and initializing no runtime state. The initial adoption keeps Corpus Planning not-applicable with a reason that authorizes bounded founding and defers, not forbids, large-scale work. Once the founding owners exist, a second R09 revision configures the slot: R13 prepares the three artifacts inside that open revision against the configured after Profile (K02/03 candidate preparation), and the large-scale build is admitted as the task that follows; the founding pages become ordinary Required objects there"
+      - "Whatever the branch, the interview's confirmation state is not derivable from the candidate files alone: after any interruption, re-present this closing summary in full and re-collect the confirmation instead of assuming it still holds"
     change_cost: adoption
 
 self_path_rewrites:

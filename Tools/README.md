@@ -458,17 +458,21 @@ not skip the canonical rule text, which remains under the rest of `kernel/`.
   vocabulary. This repository ships no composed `vocab.yaml`, so here the
   command reports that no profile is selected and exits 1; see Generated
   artifacts below.
-- **Profile bring-up** = copy `profiles/_template/`, fill the copy, then run
-  `check_profile.py --root .` against that filled profile before loading it.
+- **Profile bring-up** = scaffold a candidate with `scaffold_profile.py`
+  (whitelist copy of `profiles/_template/` plus mechanical derivation; manual
+  whitelist copy is the no-agent fallback), fill the candidate through the
+  interview contract or by hand, then run `check_profile.py --root .` against
+  it before loading it.
   A successful pass binds both the selected Profile tree snapshot and the
   typed dependency graph fingerprint; no partial contract emits the pass
   summary. The form
   itself is not a runtime target. Profile bring-up is not part of batch or note
   close because a profile is authored once and then loaded, not edited per
-  batch. Setup is currently manual and file-based: `check_profile.py` validates
+  batch. `check_profile.py` validates
   authority, self-path closure, structure, and bindings but does not ask
   questions, generate domain choices, author a profile, approve it, judge the
-  quality of its answers, or select it.
+  quality of its answers, or select it; the scaffolder likewise creates only
+  an unadopted candidate.
 
 Shared conventions:
 

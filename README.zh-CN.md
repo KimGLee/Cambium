@@ -164,9 +164,13 @@ Queue 修订，同时保留任务以及每个批次的生命周期/hold。Queue 
 包含旧版或未登记的操作性 Amendment 状态，必须在公共执行路径之外完成转换后
 才能加载；Standards 采用不会猜测或静默升级这些状态。
 
-Profile 设置同样是手动且基于文件的。用户复制 `_template`，填写生成的
-Profile，并使用 `check_profile.py` 验证；此版本不包含 Profile 问卷或配置
-生成器。规划中的便捷层与运行时层见 [`ROADMAP.md`](ROADMAP.md)。
+Profile 设置由 Agent 基于显式契约主导：`scaffold_profile.py` 按受版本控制的
+白名单创建候选包，机器可读的访谈契约（`profiles/interview.yaml`）承载任何
+协助 Agent 要提出的问题并把操作者确认的答案投影进对应文件，`check_profile.py`
+验证结果。在文本编辑器里按同一套契约手工填写仍是无 Agent 的后备路径。此版本
+不捆绑自动化的访谈 runner；无论由谁主持访谈，产出都只是候选——不发明领域
+政策、不批准 Profile、也不选定它。规划中的便捷层与运行时层见
+[`ROADMAP.md`](ROADMAP.md)。
 
 Cambium 的 receipt 与 Terminal Proof 在采用方仓库的本地信任边界内运作。
 随项目提供的检查可以验证 receipt 结构、声明的 producer 与版本标签、与当前
@@ -181,20 +185,27 @@ Cambium 的 receipt 与 Terminal Proof 在采用方仓库的本地信任边界�
 
 无论目标语料库已经存在还是将从零开始构建，Profile 采用都遵循同一套流程，
 Cambium 在设置期间也从不创建语料库。两者只有一处不同，见下面的**采用进空
-语料库**：已有页面的语料库按它**包含什么**来描述，还没有页面的语料库按它的
-首批**将要包含什么**来描述。首先为该语料库创建一个 Profile。不要直接编辑共享
-模板，也不要复制示例作为起点。
+语料库**：已有页面的语料库按它**包含什么**来描述，还没有页面的语料库按有界
+founding **将要创建什么**来描述。首先确认语料库位置与 Profile ID，然后为该
+语料库 scaffold 一个候选 Profile。不要直接编辑共享模板，也不要复制示例作为
+起点。
 
 ```text
-cp -R profiles/_template profiles/my-profile
+python3 Tools/scaffold_profile.py . --profile-id my-profile           # dry-run
+python3 Tools/scaffold_profile.py . --profile-id my-profile --apply
 ```
+
+scaffolder 精确复制 [`profiles/template-files.yaml`](profiles/template-files.yaml)
+中的白名单、派生机械的身份与自路径单元格，并拒绝已存在的目标；手工按白名单
+复制是无 Agent 的后备路径。
 
 模板出厂即预关闭：所有具备合法退出态的槽位开关已处于关闭态，运营性答案预填待
 确认，只保留模板无法替你回答的决策。若想现在就逐一回答全部开关，采纳面试会在
 同一次填充中走完这些关闭项。两条路径产出的 Profile 同等合规；填充深度契约见
 [`profiles/README.md`](profiles/README.md)。
 
-1. 替换每一个 `TODO(profile)`；这些占位符位于 `profiles/my-profile/` 中。保持 `profile_id`
+1. 回答 `profiles/my-profile/` 中剩余的 `TODO(profile)` 决策——通过
+   [采纳访谈](profiles/interview.yaml) 或手工填写。保持 `profile_id`
    与目录名相同，并以 [`profiles/README.md`](profiles/README.md) 作为接口权威。
 2. 验证填写后的副本：
 
@@ -226,15 +237,21 @@ Profile 里有几项答案是在描述语料库，而没有页面的语料库还
 而建立它是普通的创作工作。
 
 - **残留扫描**。它的 matcher 通常取自真实页面携带的字符串。没有页面时，就
-  **声明**你将使用的结构类，并让首批在接受根下创建一个携带它的页面。生产扫描
+  **声明**你将使用的结构类，并由有界 founding 在接受根下创建一个携带它的
+  页面——残留见证页，在任何批次或运行时状态存在之前写成。生产扫描
   会拒绝一个在仓库里认不出任何文件的配置，所以声明的结构类必须被物化；正对照
   只证明 matcher 与 `mandated_headings` 自洽，在空仓库上照样通过。
 - **Coverage**。尚未创建的知识对象同样有记录，所以第一份 Queue 是从你**打算
-  建**的页面编译出来的，而不是从你**已经有**的页面。
-- **Corpus Planning** 现在就能声明绑定，稍后再证明。Global Map 点名的是已存在
-  的 canonical owner，所以有了属主之后这份规划才可证明；而
+  建**的页面编译出来的，而不是从你**已经有**的页面。这些计划中的页面通过
+  大规模任务里由用户确认的 Task Plan 进入 Coverage；Profile 永远不生成
+  Coverage。
+- **Corpus Planning** 在初始采用时保持 `not-applicable`，其理由授权有界
+  founding，并**推迟**而非禁止大规模工作。Global Map 点名的是已存在
+  的 canonical owner，所以 founding 创建出属主之后，这份规划才通过第二次
+  R09 修订变得可证明；而
   [`K00/13`](<kernel/K00 Standards Control/13 Runtime Admission and Recovery.md>)
   只在规划已证明的前提下准入大规模工作。这是下面那条顺序，不是阻碍。
+  （已有页面的语料库跳过这一步：属主已存在，初始采用即可直接配置该槽。）
 
 ### 先建立语料库，再构建它
 
@@ -244,9 +261,15 @@ Profile 里有几项答案是在描述语料库，而没有页面的语料库还
 
 1. 通过 R09 采用 Profile。
 2. 为 `Profile Scope` 的每一层各写出至少一个 canonical owner，加上面试中声明的
-   残留见证页。普通的单页与模块路线；没有 Queue、没有 Coverage、没有准入门禁。
-3. 属主落盘之后，R13 据此建立 Global Map、Capability Matrix 与 Gap Register，
-   Corpus Planning 槽随之到达 `configured`。
+   残留见证页（语义自然兼容时，一个页面可以同时承担 owner 与 witness；不能
+   为了少建文件而强行合并）。普通的单页与模块路线；没有 Queue、没有
+   Coverage、没有准入门禁。
+3. 属主落盘之后，由第二次 R09 修订配置 Corpus Planning 槽：R13 在该开放修订
+   内，针对 `configured` 的 after Profile 准备 Global Map、Capability Matrix
+   与 Gap Register
+   （[`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>)
+   的 candidate preparation）；修订以采用该 after-image 闭合时，它们才成为
+   权威。
 4. 大规模构建是随后的那个任务：初始化运行时状态、过 `K00/13` 的准入条件、编译
    Queue、跑批次。
 

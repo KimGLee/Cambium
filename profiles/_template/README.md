@@ -89,11 +89,17 @@ detects a stale path but never guesses or rewrites the intended profile ID.
 ## Validation
 
 ```text
-cp -R profiles/_template profiles/<profile-id>
-rm profiles/<profile-id>/README.md   # template orientation, never profile policy
+python3 Tools/scaffold_profile.py . --profile-id <profile-id>           # dry-run
+python3 Tools/scaffold_profile.py . --profile-id <profile-id> --apply
 # answer the twelve decisions above, then:
 python3 Tools/check_profile.py profiles/<profile-id>
 ```
+
+The scaffolder copies exactly the whitelist in
+[template-files.yaml](../template-files.yaml) (never this README) and derives
+the materialization cells below. The manual fallback — copy the whitelisted
+files by hand, delete nothing else, keep this README out — performs the same
+checklist itself.
 
 The template itself is never validated in place: its identity is unfilled, so
 it is neither runnable nor selectable. Selection still requires R09 adoption;
