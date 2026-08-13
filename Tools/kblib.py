@@ -885,6 +885,68 @@ def effective_priority_policy(rubric_text):
     return policy, sha256_bytes(payload), errors
 
 
+def effective_quota_ceilings(policy, exceptions):
+    """Fold standing quotas and granted exceptions into effective ceilings.
+
+    ``policy`` is the object from :func:`effective_priority_policy`;
+    ``exceptions`` is the list of currently applicable contract policy
+    exceptions (the caller decides currency and scope).  For each registered
+    policy the effective ceiling is the largest granted exception limit when
+    one exists, else the standing resolved value.
+
+    K00/07's joint bound is judged HERE, over the effective pair, because a
+    grant and the other class's standing quota partition the same corpus: a
+    P0 grant of 80 next to a standing P1 of 35 is a 115 percent ceiling, and
+    summing the grants alone would call that bounded.  This function is the
+    one owner of that arithmetic; shape validators may keep the weaker
+    grants-only necessary condition but never redefine this rule.
+
+    Returns ``(ceilings, errors)``.  ``ceilings`` maps policy_id to
+    ``{"limit": number, "source": "standing" | "exception:<decision_id>"}``.
+    """
+    from fractions import Fraction
+    ceilings = {}
+    for policy_id in sorted(POLICY_REGISTRY):
+        resolved = (policy or {}).get("resolved", {}).get(policy_id)
+        ceilings[policy_id] = {"limit": resolved, "source": "standing"}
+    for entry in exceptions or []:
+        if not isinstance(entry, dict):
+            continue
+        policy_id = entry.get("policy_id")
+        limit = entry.get("limit")
+        if policy_id not in POLICY_REGISTRY:
+            continue
+        if isinstance(limit, bool) or not isinstance(limit, (int, float)):
+            continue
+        current = ceilings[policy_id]
+        if (current["source"] == "standing" or
+                not isinstance(current["limit"], (int, float)) or
+                limit > current["limit"]):
+            ceilings[policy_id] = {
+                "limit": limit,
+                "source": "exception:%s" % entry.get("decision_id"),
+            }
+    errors = []
+    joint = Fraction(0)
+    for policy_id, ceiling in sorted(ceilings.items()):
+        limit = ceiling["limit"]
+        if isinstance(limit, bool) or not isinstance(limit, (int, float)):
+            errors.append(
+                "effective ceiling for %s does not resolve to a number; an "
+                "unresolvable policy authorizes nothing" % policy_id)
+            continue
+        joint += Fraction(str(limit))
+    if not errors and joint >= 100:
+        detail = ", ".join(
+            "%s=%s(%s)" % (policy_id, ceiling["limit"], ceiling["source"])
+            for policy_id, ceiling in sorted(ceilings.items()))
+        errors.append(
+            "effective quota ceilings sum to %s%% (%s); K00/07 requires the "
+            "pair to stay strictly below 100 so the P2 remainder class "
+            "stays non-empty" % (float(joint), detail))
+    return ceilings, errors
+
+
 def quota_share_within_limit(pages, total, limit):
     """Decide ``pages/total <= limit%`` exactly, never through prose or floats.
 

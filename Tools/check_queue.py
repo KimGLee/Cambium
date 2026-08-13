@@ -194,6 +194,7 @@ LOCK_STATE_FINGERPRINTS = {
 GENERIC_WRITER_TOOLS = frozenset((
     "apply_delta", "update_queue", "compile_queue", "update_task",
     "check_batch_close", "adopt_standards", "register_amendment",
+    "apply_contract_amendment", "apply_task_plan",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
 BATCH_CLOSE_TOOL_VERSION = "1.8.0"
@@ -308,6 +309,16 @@ POLICY_EXCEPTION_FIELDS = frozenset((
     "scope_kind", "scope_ref", "rationale", "approval_reference",
 ))
 POLICY_EXCEPTION_SCOPE_KINDS = frozenset(("task", "repository-snapshot"))
+# Producer eras whose batch-close protocol carries the policy-exception
+# disposition.  K12/10 producer-era identity cuts both ways: an older bundle
+# is never re-judged against members its era lacked, and it is never allowed
+# to carry evidence its era could not have produced.  A 1.7 bundle claiming a
+# policy-exception disposition is a forgery, not history.
+POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset(("1.8.0",))
+SEALED_POLICY_EXCEPTION_FIELDS = frozenset((
+    "decision_id", "policy_id", "limit", "scope_kind", "scope_ref",
+    "policy_fingerprint", "pages", "total",
+))
 CHECKPOINT_FIELDS = frozenset((
     "recorded_at", "summary", "task_state", "task_transition_receipt",
     "coverage_sha256", "required_queue_sha256", "queue_revision",
@@ -585,7 +596,14 @@ def producer_module(tool):
 
 def registered_gate_check(gate_id, module):
     """Return the check name the producer of ``gate_id`` actually writes."""
-    declared = getattr(module, "GATE_CHECK", None) if module else None
+    # A producer registering several Gates exports the whole mapping; the
+    # single GATE_CHECK export remains the one-Gate spelling.
+    mapping = getattr(module, "GATE_CHECKS", None) if module else None
+    declared = None
+    if isinstance(mapping, dict):
+        declared = mapping.get(gate_id)
+    if declared is None:
+        declared = getattr(module, "GATE_CHECK", None) if module else None
     consumed = CONSUMED_GATE_CHECKS.get(gate_id)
     if declared is not None and consumed is not None and declared != consumed:
         return None
@@ -711,8 +729,11 @@ def gate_registry_producer_errors(registry):
                     gate_id, predicate["tool_version"], tool,
                     getattr(module, "TOOL_VERSION", None)))
         declared_gate = getattr(module, "GATE_ID", None)
-        if declared_gate is not None and tool != TOOL and \
-                declared_gate != gate_id:
+        declared_gates = getattr(module, "GATE_CHECKS", None)
+        admitted = (isinstance(declared_gates, dict) and
+                    gate_id in declared_gates)
+        if (declared_gate is not None and tool != TOOL and
+                declared_gate != gate_id and not admitted):
             errors.append(
                 "Gate ID %s registers Tool %s, which binds %s to its receipts"
                 % (gate_id, tool, declared_gate))
@@ -1105,6 +1126,94 @@ def _policy_exception_errors(value, label):
             "stays non-empty" %
             (label, ceilings.get("priority_quota.P0", 0) +
              ceilings.get("priority_quota.P1", 0)))
+    return errors
+
+
+def _sealed_policy_exception_errors(sealed, decision_id, candidate_type,
+                                    label):
+    """Validate one sealed policy-exception decision record, strictly.
+
+    The sealed mapping is the durable record of an authorization; replay
+    validates it with the same severity the close-time writer applied, and
+    every check here FAILS CLOSED: a field of the wrong type is an error,
+    never a skipped comparison.  In particular the share arithmetic is only
+    meaningful over validated integers -- guarding it behind an isinstance
+    test that silently skips on mismatch would let a string smuggle an
+    unverified authorization through replay.
+    """
+    errors = []
+    errors.extend(_closed_mapping_errors(
+        sealed, "%s sealed policy exception" % label,
+        SEALED_POLICY_EXCEPTION_FIELDS))
+    if set(sealed) != set(SEALED_POLICY_EXCEPTION_FIELDS):
+        return errors
+    if sealed.get("decision_id") != decision_id:
+        errors.append("%s sealed decision_id does not match accepted_by" %
+                      label)
+    policy_id = sealed.get("policy_id")
+    registered = kblib.POLICY_REGISTRY.get(policy_id) if isinstance(
+        policy_id, str) else None
+    if registered is None:
+        errors.append(
+            "%s sealed policy_id %r is not in the closed policy registry" %
+            (label, policy_id))
+    else:
+        # The candidate names its class in its type (`...:priority-quota-P0`)
+        # and the exception names its policy; the two must be the same class.
+        # A P0 excess accepted through a P1 grant is an authorization for a
+        # different decision than the one the reviewer sealed.
+        suffix = str(candidate_type or "").rsplit(":", 1)[-1]
+        expected_suffix = "priority-quota-%s" % registered.get("quota_class")
+        if suffix != expected_suffix:
+            errors.append(
+                "%s sealed policy %s covers class %s, but the candidate is "
+                "%r; an exception authorizes exactly its own class" %
+                (label, policy_id, registered.get("quota_class"),
+                 candidate_type))
+    fingerprint = sealed.get("policy_fingerprint")
+    if not isinstance(fingerprint, str) or not SHA256_RE.fullmatch(
+            fingerprint):
+        errors.append(
+            "%s sealed policy_fingerprint must be sha256:<64 lowercase "
+            "hex>" % label)
+    if sealed.get("scope_kind") not in POLICY_EXCEPTION_SCOPE_KINDS:
+        errors.append("%s sealed scope_kind must be one of %s" %
+                      (label, ", ".join(sorted(POLICY_EXCEPTION_SCOPE_KINDS))))
+    if not _nonempty_string(sealed.get("scope_ref")):
+        errors.append("%s sealed scope_ref must be a non-empty string" %
+                      label)
+    limit = sealed.get("limit")
+    limit_ok = (not isinstance(limit, bool) and
+                isinstance(limit, (int, float)))
+    if not limit_ok:
+        errors.append("%s sealed limit must be a number" % label)
+    elif (registered is not None and
+          registered.get("limit_domain") == "percent-share-under-100" and
+          not 0 <= limit < 100):
+        errors.append(
+            "%s sealed limit %r is not a corpus share at least 0 and under "
+            "100" % (label, limit))
+        limit_ok = False
+    counts_ok = True
+    for field in ("pages", "total"):
+        value = sealed.get(field)
+        if isinstance(value, bool) or not isinstance(value, int):
+            errors.append("%s sealed %s must be an integer" % (label, field))
+            counts_ok = False
+    if counts_ok:
+        pages, total = sealed["pages"], sealed["total"]
+        if not (0 <= pages <= total and total >= 1):
+            errors.append(
+                "%s sealed counts %r/%r are not a corpus share" %
+                (label, pages, total))
+            counts_ok = False
+    if (counts_ok and limit_ok and
+            not kblib.quota_share_within_limit(
+                sealed["pages"], sealed["total"], limit)):
+        errors.append(
+            "%s sealed share %s/%s exceeds the sealed limit %r; the receipt "
+            "claims an authorization its own numbers refute" %
+            (label, sealed.get("pages"), sealed.get("total"), limit))
     return errors
 
 
@@ -4556,6 +4665,14 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                 # after the exception is revoked or the task ends; replay
                 # validates the sealed record, never current contract state.
                 decision_id = accepted_by.split(":", 1)[1]
+                if receipt_version not in \
+                        POLICY_EXCEPTION_DISPOSITION_VERSIONS:
+                    errors.append(
+                        "%s claims a policy-exception disposition, but its "
+                        "producer era %s predates that protocol; an older "
+                        "bundle cannot carry evidence its era could not "
+                        "have produced" % (disposition_label,
+                                           receipt_version))
                 sealed = disposition.get("policy_exception")
                 if not _nonempty_string(decision_id):
                     errors.append("%s has empty policy-exception decision" %
@@ -4565,28 +4682,9 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                         "%s policy-exception disposition seals no decision "
                         "facts" % disposition_label)
                 else:
-                    for field in ("decision_id", "policy_id", "limit",
-                                  "scope_kind", "scope_ref",
-                                  "policy_fingerprint", "pages", "total"):
-                        if field not in sealed:
-                            errors.append(
-                                "%s sealed policy exception misses %s" %
-                                (disposition_label, field))
-                    if sealed.get("decision_id") != decision_id:
-                        errors.append(
-                            "%s sealed decision_id does not match "
-                            "accepted_by" % disposition_label)
-                    if (isinstance(sealed.get("pages"), int) and
-                            isinstance(sealed.get("total"), int) and
-                            not kblib.quota_share_within_limit(
-                                sealed["pages"], sealed["total"],
-                                sealed.get("limit"))):
-                        errors.append(
-                            "%s sealed share %s/%s exceeds the sealed limit "
-                            "%r; the receipt claims an authorization its own "
-                            "numbers refute" %
-                            (disposition_label, sealed.get("pages"),
-                             sealed.get("total"), sealed.get("limit")))
+                    errors.extend(_sealed_policy_exception_errors(
+                        sealed, decision_id, candidate_type,
+                        disposition_label))
             elif accepted_by not in ("candidate-id", "candidate-type"):
                 errors.append("%s has invalid accepted_by" %
                               disposition_label)
@@ -6343,13 +6441,20 @@ CONTRACT_AMENDMENT_ROW_FIELDS = frozenset((
     "state_revision_before", "state_revision_after",
     "contract_version_before", "contract_version_after",
     "plan_path", "plan_sha256", "verification_receipt",
+    # The state edge this transaction claims, recorded in the row so the
+    # commit receipt can be cross-bound to a durable record exactly as the
+    # K13/15 adoption record binds its receipt.  ``after_progress_sha256``
+    # is absent by construction: the row lives inside the progress document.
+    "coverage_sha256_before", "required_queue_sha256_before",
+    "progress_sha256_before", "after_coverage_sha256",
+    "after_required_queue_sha256", "policy_fingerprint",
 ))
 CONTRACT_AMENDMENT_PLAN_PREFIX = ".cambium/deltas/contract-amendments"
 CONTRACT_AMENDMENT_TOOL_VERSIONS = frozenset(("1.0.0",))
 
 
 def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
-                                   task_id):
+                                   task_id, accounted, live_contract):
     """Validate one committed contract-amendment row, K13/06.
 
     The dedicated writer has no pending phase: it either commits the whole
@@ -6410,6 +6515,16 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
                               label)
         except (OSError, ValueError) as exc:
             errors.append("%s plan is not resolvable: %s" % (label, exc))
+    # The row's own state-edge and policy identity fields must be well
+    # formed before anything binds to them.
+    for field in ("coverage_sha256_before", "required_queue_sha256_before",
+                  "progress_sha256_before", "after_coverage_sha256",
+                  "after_required_queue_sha256", "policy_fingerprint"):
+        value = amendment.get(field)
+        if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+            errors.append(
+                "%s %s must be spelled sha256:<64 hex digits>" %
+                (label, field))
     receipt_id = amendment.get("verification_receipt")
     entry = historical_catalog.get(receipt_id) if _nonempty_string(
         receipt_id) else None
@@ -6430,11 +6545,26 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
         "after_contract_version": amendment.get("contract_version_after"),
         "queue_revision_before": queue_before,
         "queue_revision_after": queue_after,
+        # The receipt's claimed state edge must equal the durable row's,
+        # so tampering either alone is visible.  The receipt spells the
+        # queue fields with the longer Required Queue writer names.
+        "before_coverage_sha256": amendment.get("coverage_sha256_before"),
+        "before_required_queue_sha256":
+            amendment.get("required_queue_sha256_before"),
+        "before_progress_sha256": amendment.get("progress_sha256_before"),
+        "after_coverage_sha256": amendment.get("after_coverage_sha256"),
+        "after_required_queue_sha256":
+            amendment.get("after_required_queue_sha256"),
+        "policy_fingerprint": amendment.get("policy_fingerprint"),
     }
     for field, value in bindings.items():
         if receipt.get(field) != value:
             errors.append("%s commit receipt has %s=%r, expected %r" %
                           (label, field, receipt.get(field), value))
+    after_progress = receipt.get("after_progress_sha256")
+    if not SHA256_RE.fullmatch(str(after_progress or "")):
+        errors.append("%s commit receipt has invalid after_progress_sha256" %
+                      label)
     if receipt.get("tool_version") not in \
             CONTRACT_AMENDMENT_TOOL_VERSIONS:
         errors.append(
@@ -6452,6 +6582,22 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
                 "%s commit receipt carries no %s identity; a receipt whose "
                 "Standards era cannot be told is not replayable evidence" %
                 (label, field))
+    # Nonemptiness is not identity: the claimed era must be one this
+    # instance accounts for, and the manifest must be the task's own.  A
+    # receipt claiming `never-adopted` or a foreign profile is one this
+    # runtime never produced.
+    errors.extend(_producer_era_errors(
+        receipt, receipt_id, "%s commit" % label, accounted))
+    live_manifest = (live_contract or {}).get("selected_profile_manifest")
+    claimed_manifest = receipt.get("selected_profile_manifest")
+    if (_nonempty_string(claimed_manifest) and
+            _nonempty_string(live_manifest) and
+            claimed_manifest != live_manifest):
+        errors.append(
+            "%s commit receipt claims selected_profile_manifest=%r, but "
+            "this task's contract selects %r; a grant judged against a "
+            "foreign profile is not this task's evidence" %
+            (label, claimed_manifest, live_manifest))
     return errors
 
 
@@ -6469,12 +6615,16 @@ def _cross_ledger_amendment_errors(
     seen_commits = set()
     pending_count = 0
     pending_seen = False
+    accounted = accounted_standards_versions(progress, queue)
+    live_contract = progress.get("contract") if isinstance(
+        progress.get("contract"), dict) else {}
     for index, amendment in enumerate(amendments):
         if (isinstance(amendment, dict) and
                 amendment.get("operation") == "contract-amendment"):
             errors.extend(_contract_amendment_row_errors(
                 root, amendment, "Progress amendments[%d]" % index,
-                historical_catalog, progress.get("task_id")))
+                historical_catalog, progress.get("task_id"),
+                accounted, live_contract))
             continue
         if (isinstance(amendment, dict) and
                 amendment.get("operation") is not None and

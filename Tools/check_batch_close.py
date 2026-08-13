@@ -1360,6 +1360,13 @@ def main(argv=None):
                         "cannot adapt shared Profile evaluation for batch "
                         "consumers: %s" % "; ".join(admission_errors))
                 p0, p1 = _priority_quotas(profile_evaluation)
+                # One resolution, used everywhere in this close: the quotas
+                # handed to check_vocab, the fingerprint on its distribution
+                # receipt, and the exception-consumption comparison below
+                # all come from this single resolver call.
+                (quota_policy_object, quota_policy_fingerprint,
+                 _quota_policy_errors) = kblib.effective_priority_policy(
+                    _rubric_text_for(profile_evaluation))
                 checks = {}
                 links = _run_receipting_command(
                     [sys.executable, str(SCRIPT_DIR / "check_links.py"), root],
@@ -1409,6 +1416,7 @@ def main(argv=None):
                     # first close on foreign example values.
                     "--exclude", "kernel/Cards", "--exclude", "profiles",
                     "--quota-p0", str(p0), "--quota-p1", str(p1),
+                    "--policy-fingerprint", str(quota_policy_fingerprint),
                 ]
                 vocab = _run_inprocess_checker(
                     [sys.executable, str(SCRIPT_DIR / "check_vocab.py"),
@@ -1501,12 +1509,20 @@ def main(argv=None):
                     ordinary_candidates, args.accept_candidate_id,
                     args.accept_candidate_type)
             check_errors.extend(disposition_errors)
-            _policy_object, quota_policy_fingerprint, _policy_errors = \
-                kblib.effective_priority_policy(
-                    _rubric_text_for(profile_evaluation))
+            current_exceptions = _quota_exceptions(
+                runtime, profile_evaluation)
+            # Belt over the writer's braces: the effective ceilings --
+            # exception where granted, standing quota where not -- must be
+            # jointly admissible at CONSUMPTION too, so a contract state
+            # that somehow bypassed the writer still cannot authorize a
+            # close that consumes the whole corpus (K00/07).
+            _ceilings, ceiling_errors = kblib.effective_quota_ceilings(
+                quota_policy_object,
+                [entry for entries in current_exceptions.values()
+                 for entry in entries])
+            check_errors.extend(ceiling_errors)
             quota_errors, quota_accepted = _quota_candidate_dispositions(
-                quota_candidates,
-                _quota_exceptions(runtime, profile_evaluation), snapshot,
+                quota_candidates, current_exceptions, snapshot,
                 quota_policy_fingerprint)
             check_errors.extend(quota_errors)
             accepted = accepted + quota_accepted

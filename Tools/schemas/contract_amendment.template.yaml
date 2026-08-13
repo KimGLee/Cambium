@@ -56,9 +56,14 @@ policy_exceptions_after:
     # The policy this excepts, named as its owner registers it,
     # e.g. priority_quota.P0 (owner: K00/07).
     policy_id: TODO(amendment)
-    # SHA-256 of the policy source bytes this exception was judged against
-    # (for a Profile-owned policy: the owning slot file). A revision of those
-    # bytes invalidates the exception.
+    # The CURRENT effective-policy fingerprint from the resolver
+    # (kblib.effective_priority_policy): a canonical hash over the resolved
+    # standing quotas, kernel defaults, and comparison protocol -- NOT the
+    # SHA of any file, and not computable by hand. Run the writer once with
+    # any placeholder here; its refusal prints the expected value, and the
+    # operator's job is to confirm the standing policy is the one this grant
+    # was judged against before recording it. A later policy revision moves
+    # the fingerprint and thereby invalidates the exception.
     baseline_policy_fingerprint: TODO(amendment)
     # The bound this exception grants. Its unit and meaning belong to the
     # policy owner; for priority_quota.* it is the maximum corpus share in

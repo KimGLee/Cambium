@@ -154,8 +154,11 @@ receipt 授权当前执行；在写回验证完成后，它们只用于证明历
 Standards 采用事务仅同步三项 Standards/Profile 标识、Progress load set 及结构性
 Queue 修订，同时保留任务以及每个批次的生命周期/hold。Queue 实体化后，若主机
 没有提供等价的受控写入器，则对其他任何 Task Contract 字段的变更都会被拒绝；
-基线恢复路径是暂停或取消当前任务、保留其运行时，并启动一个后继任务。通用的
-非范围 Contract Amendment 写入器仍属于路线图工作。
+基线恢复路径是暂停或取消当前任务、保留其运行时，并启动一个后继任务。目前有
+一个非范围 Contract 字段拥有受控写入器：`apply_contract_amendment.py` 在单一
+锚定事务中修订 Contract 的 `policy_exceptions`（K00/07 有界政策豁免登记）。
+覆盖其余非范围字段（objective、acceptance、timing）的通用写入器仍属于路线图
+工作。
 
 这些写入器只接受当前公开的 schema 和 receipt 协议。采用方已有的运行时如果
 包含旧版或未登记的操作性 Amendment 状态，必须在公共执行路径之外完成转换后

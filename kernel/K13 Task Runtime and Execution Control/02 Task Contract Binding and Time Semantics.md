@@ -51,7 +51,9 @@ valid exceptions to standing policies, each a closed record of `decision_id`,
 `repository-snapshot`), `scope_ref`, `rationale`, and `approval_reference`.
 An exception is contract state because it is *current authorization* -- it
 ends with its task or named snapshot, and its baseline fingerprint binds it to
-the exact policy bytes it was judged against, so a Standards or Profile
+the exact *effective policy* it was judged against (the resolved standing
+values, kernel defaults included, under one comparison protocol -- never the
+hash of a policy file alone), so a Standards, Profile, or kernel-default
 revision it never saw invalidates it. Absent means the same as explicitly
 empty. Its sole writer after materialization is the
 [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|K13/06]]

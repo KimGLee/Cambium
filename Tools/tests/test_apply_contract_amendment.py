@@ -58,7 +58,9 @@ AMENDMENT_RELATIVE = ".cambium/deltas/contract-amendments/CA-001.yaml"
 EXCEPTION = {
     "decision_id": "PE-001",
     "policy_id": "priority_quota.P0",
-    "baseline_policy_fingerprint": "sha256:" + "a" * 64,
+    # Replaced per-test with the fixture profile's real resolver fingerprint;
+    # the writer refuses any other value by design.
+    "baseline_policy_fingerprint": None,
     "limit": 18,
     "scope_kind": "task",
     "scope_ref": "new-task",
@@ -101,6 +103,21 @@ class ContractAmendmentTests(TaskPlanTransactionTests):
         self.assertEqual(0, result.returncode,
                          result.stdout + result.stderr)
 
+    def current_fingerprint(self):
+        """The fixture profile's real effective-policy fingerprint."""
+        rubric = (self.root / "profiles/sample/slots.md").read_text(
+            encoding="utf-8")
+        policy, fingerprint, errors = kblib.effective_priority_policy(rubric)
+        self.assertEqual([], errors)
+        del policy
+        return fingerprint
+
+    def exception(self, **overrides):
+        entry = copy.deepcopy(EXCEPTION)
+        entry["baseline_policy_fingerprint"] = self.current_fingerprint()
+        entry.update(overrides)
+        return entry
+
     def amendment_plan(self, **overrides):
         plan = {
             "schema_version": 1,
@@ -115,7 +132,7 @@ class ContractAmendmentTests(TaskPlanTransactionTests):
                 "progress_sha256": self.state_sha(check_queue.PROGRESS_PATH),
             },
             "contract_version_after": "c2",
-            "policy_exceptions_after": [copy.deepcopy(EXCEPTION)],
+            "policy_exceptions_after": [self.exception()],
         }
         plan.update(overrides)
         return plan
@@ -222,13 +239,43 @@ class ContractAmendmentTests(TaskPlanTransactionTests):
 
     def test_a_malformed_exception_is_refused_in_the_validator_s_words(self):
         self.materialize()
-        exception = copy.deepcopy(EXCEPTION)
-        exception["scope_kind"] = "forever"
+        exception = self.exception(scope_kind="forever")
         del exception["rationale"]
         plan = self.amendment_plan(policy_exceptions_after=[exception])
         message = self.amendment_error(plan)
         self.assertIn("K13/02 shape", message)
         self.assertIn("scope_kind", message)
+
+    def test_a_wrong_fingerprint_is_refused_and_the_expected_one_is_printed(
+            self):
+        """The canonical fingerprint is internal; the writer must teach it.
+
+        A plan author following the template cannot compute the resolver's
+        canonical-JSON fingerprint by hand, so the refusal itself carries the
+        expected value: the operator confirms the policy, not the hash.
+        """
+        self.materialize()
+        plan = self.amendment_plan(policy_exceptions_after=[self.exception(
+            baseline_policy_fingerprint="sha256:" + "a" * 64)])
+        message = self.amendment_error(plan)
+        self.assertIn("does not match the current effective policy", message)
+        self.assertIn(self.current_fingerprint(), message)
+
+    def test_a_grant_jointly_unbounded_with_the_standing_quota_is_refused(
+            self):
+        """K00/07's joint bound is judged over EFFECTIVE ceilings.
+
+        The fixture profile registers no standing override, so P1 stands at
+        the kernel default of 35.  A P0 grant of 70 is bounded alone and
+        bounded among the grants, but 70 + 35 consumes the corpus the three
+        classes partition; summing the grants alone would admit it.
+        """
+        self.materialize()
+        plan = self.amendment_plan(policy_exceptions_after=[self.exception(
+            limit=70)])
+        message = self.amendment_error(plan)
+        self.assertIn("not jointly admissible", message)
+        self.assertIn("standing", message)
 
     def test_an_unfilled_template_sentinel_is_refused(self):
         self.materialize()

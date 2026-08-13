@@ -154,10 +154,40 @@ class QuotaExceptionLifecycleTests(CheckBatchCloseTests):
                  "--actor-role", "integrator", "--apply"])
         return code, buffer.getvalue()
 
+    def close_the_batch(self):
+        """Drive B1 merge-ready -> closed through the sanctioned recovery
+        command, so the sealed dispositions enter the historical replay path
+        (`_closed_gate_errors`) instead of stopping at the gate receipt."""
+        import shlex
+        import subprocess
+        resumed = self.run_tool("check_queue.py", "--resume-status")
+        command = next(
+            (line.split("=", 1)[1]
+             for line in resumed.stdout.splitlines()
+             if line.strip().startswith(
+                 "batch_close_recovery.update_queue_command=")),
+            None)
+        self.assertIsNotNone(command, resumed.stdout)
+        completed = subprocess.run(
+            shlex.split(command), cwd=str(TOOLS.parent), text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        queue = kblib.parse_yaml_subset(
+            (self.root / check_queue.QUEUE_PATH).read_text(encoding="utf-8"))
+        states = {item.get("id"): item.get("state")
+                  for item in queue.get("required_queue") or []}
+        self.assertEqual("closed", states.get("B1"), states)
+
     # ---- the lifecycle -------------------------------------------------
 
     def test_the_whole_lifecycle_closes_and_replays(self):
-        """Excess -> exception -> close -> replay; grant precedes merge."""
+        """Excess -> grant -> close -> Queue closed -> revoke -> history.
+
+        The terminal states are the point: the batch actually reaches
+        `closed`, the grant is then revoked through the same writer, and the
+        historical close must STILL replay -- the sealed disposition, not
+        the (now gone) contract entry, is what authorizes history.
+        """
         code, output = self.register_exception()
         self.assertEqual(0, code, output)
         self.assertEqual([], check_queue.validate_runtime(
@@ -173,6 +203,24 @@ class QuotaExceptionLifecycleTests(CheckBatchCloseTests):
             "the close's own receipt must survive the consumer that replays "
             "it; a disposition vocabulary that rejects policy-exception "
             "refuses the tool's own output")
+        self.close_the_batch()
+        self.assertEqual(
+            [], check_queue.validate_runtime(str(self.root))["errors"],
+            "the closed batch's sealed dispositions must replay")
+
+        # Revocation: the same transaction with an empty after-image.
+        code, output = self.register_exception(
+            amendment_id="CA-101", contract_version_after="c-exc-2",
+            exceptions=[])
+        self.assertEqual(0, code, output)
+        contract = kblib.parse_yaml_subset(
+            (self.root / check_queue.PROGRESS_PATH).read_text(
+                encoding="utf-8"))["contract"]
+        self.assertEqual([], contract.get("policy_exceptions"))
+        self.assertEqual(
+            [], check_queue.validate_runtime(str(self.root))["errors"],
+            "history closed under a then-valid exception must survive its "
+            "revocation; the disposition sealed the decision facts")
 
     def test_an_uncovered_excess_refuses_and_a_late_grant_names_why(self):
         """No exception -> close refuses; grant at merge-ready -> finding 7."""
@@ -257,6 +305,49 @@ class QuotaExceptionLifecycleTests(CheckBatchCloseTests):
              "policy_fingerprint": fingerprint, "pages": 37, "total": 246},
             sealed)
 
+    def test_the_distribution_receipt_carries_shares_not_an_empty_dict(self):
+        """Blocker 6: the pass summary sealed `priority_shares: {}` forever.
+
+        The name was rebound to a fresh dict after the summary captured the
+        old one.  Both the summary and the new whole-corpus distribution
+        Gate receipt must carry the real measured shares, and the
+        distribution receipt must bind the policy fingerprint it was handed
+        instead of leaving consumers to re-derive the policy.
+        """
+        import json
+        import subprocess
+        fingerprint = self.rubric_fingerprint()
+        receipts_path = self.root / ".cambium/receipts/vocab-check.jsonl"
+        completed = subprocess.run(
+            [sys.executable, str(TOOLS / "check_vocab.py"), str(self.root),
+             "--vocab", str(self.root / "Tools/vocab.yaml"),
+             "--exclude", "kernel/Cards", "--exclude", "profiles",
+             "--quota-p0", "15", "--quota-p1", "35",
+             "--policy-fingerprint", fingerprint,
+             "--receipts", str(receipts_path)],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False)
+        self.assertEqual(2, completed.returncode, completed.stdout)
+        records = [json.loads(line) for line in
+                   receipts_path.read_text(encoding="utf-8").splitlines()]
+        distribution = [record for record in records
+                        if record.get("check") == "priority-quota-distribution"]
+        self.assertEqual(1, len(distribution))
+        record = distribution[0]
+        self.assertEqual("pass", record["result"])
+        self.assertEqual(fingerprint, record["policy_fingerprint"])
+        self.assertEqual(["P0"], record["quota_exceeded"])
+        share = record["priority_shares"]["P0"]
+        self.assertEqual(1, share["pages"])
+        self.assertEqual(2, share["total"])
+        summaries = [r for r in records
+                     if isinstance(r.get("priority_shares"), dict)
+                     and r.get("check") != "priority-quota-distribution"]
+        for summary in summaries:
+            self.assertNotEqual(
+                {}, summary["priority_shares"],
+                "a summary that seals an empty dict measures nothing")
+
     # ---- the transaction holes (blockers 5a and 5c) --------------------
 
     def test_a_plan_modified_between_prepare_and_commit_is_refused(self):
@@ -290,6 +381,81 @@ class QuotaExceptionLifecycleTests(CheckBatchCloseTests):
         self.assertEqual(
             [], check_queue.validate_runtime(str(self.root))["errors"],
             "a refused commit must leave the runtime untouched")
+
+    def test_a_tampered_sealed_exception_fails_replay(self):
+        """The sealed record replays with close-time severity, fail-closed.
+
+        Each tamper is one the pre-rebuild validator accepted: a P0 candidate
+        re-sealed under a P1 grant, a garbage fingerprint, string counts
+        (which used to SKIP the arithmetic instead of failing it), an opened
+        mapping, and a pre-1.8 producer era claiming a disposition its
+        protocol did not have.
+        """
+        import json
+        code, output = self.register_exception()
+        self.assertEqual(0, code, output)
+        self.prepare_applied_batch()
+        closed = self.batch_close(
+            "--accept-candidate-type", "check_vocab:frontmatter-missing",
+            "--accept-candidate-type", "check_vocab:vocab-field-missing")
+        self.assertEqual(0, closed.returncode, closed.stdout)
+        self.close_the_batch()
+        receipt_file = self.root / ".cambium/receipts/batch-close.jsonl"
+        pristine = receipt_file.read_text(encoding="utf-8")
+        self.assertEqual(
+            [], check_queue.validate_runtime(str(self.root))["errors"])
+
+        def tampered_errors(mutate):
+            lines = pristine.strip().splitlines()
+            records = [json.loads(line) for line in lines]
+            hits = 0
+            for record in records:
+                dispositions = record.get("candidate_dispositions")
+                if not isinstance(dispositions, list):
+                    continue
+                for disposition in dispositions:
+                    sealed = disposition.get("policy_exception")
+                    if isinstance(sealed, dict):
+                        mutate(record, disposition, sealed)
+                        hits += 1
+            self.assertEqual(1, hits, "fixture seals exactly one exception")
+            receipt_file.write_text(
+                "\n".join(json.dumps(record, ensure_ascii=False,
+                                     sort_keys=True) for record in records)
+                + "\n", encoding="utf-8")
+            errors = check_queue.validate_runtime(str(self.root))["errors"]
+            receipt_file.write_text(pristine, encoding="utf-8")
+            self.assertTrue(errors, "the tamper must not replay as valid")
+            return "\n".join(errors)
+
+        message = tampered_errors(
+            lambda r, d, s: s.update(policy_id="priority_quota.P1"))
+        self.assertIn("exactly its own class", message)
+        message = tampered_errors(
+            lambda r, d, s: s.update(policy_fingerprint="garbage"))
+        self.assertIn("policy_fingerprint", message)
+        message = tampered_errors(
+            lambda r, d, s: s.update(pages=str(s["pages"]),
+                                     total=str(s["total"])))
+        self.assertIn("must be an integer", message)
+        message = tampered_errors(
+            lambda r, d, s: s.update(surplus_field=True))
+        self.assertIn("unsupported field", message)
+
+        # The era gate reads the close bundle's own producer version, so the
+        # forgery re-brands the WHOLE bundle as 1.7 -- a consistent-looking
+        # historical bundle that carries a disposition its protocol lacked.
+        lines = pristine.strip().splitlines()
+        records = [json.loads(line) for line in lines]
+        for record in records:
+            if record.get("tool") == "check_batch_close":
+                record["tool_version"] = "1.7.0"
+        receipt_file.write_text(
+            "\n".join(json.dumps(record, ensure_ascii=False, sort_keys=True)
+                      for record in records) + "\n", encoding="utf-8")
+        errors = check_queue.validate_runtime(str(self.root))["errors"]
+        receipt_file.write_text(pristine, encoding="utf-8")
+        self.assertIn("predates that protocol", "\n".join(errors))
 
     def test_a_stripped_amendment_receipt_fails_replay(self):
         code, output = self.register_exception(amendment_id="CA-300",

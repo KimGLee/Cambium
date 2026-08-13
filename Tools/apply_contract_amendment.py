@@ -136,6 +136,81 @@ def _validate_plan_shape(plan):
             "shape:\n  %s" % "\n  ".join(shape_errors[:8]))
 
 
+def _current_effective_policy(root, contract):
+    """Resolve the selected Profile's effective quota policy, or refuse.
+
+    The writer resolves the same slot bytes the batch-close consumer will:
+    the manifest's ``Priority Rubric`` binding through
+    ``kblib.effective_priority_policy``.  A plan author never computes the
+    canonical fingerprint by hand -- it is an internal representation -- so
+    this function is what makes the template's fingerprint field checkable:
+    the writer prints the expected value on mismatch.
+    """
+    manifest_rel = contract.get("selected_profile_manifest")
+    if not isinstance(manifest_rel, str) or not manifest_rel.strip():
+        raise Refusal("the contract names no selected_profile_manifest; a "
+                      "policy exception cannot be judged against no profile")
+    manifest_path = os.path.join(root, manifest_rel)
+    try:
+        with open(manifest_path, encoding="utf-8") as handle:
+            manifest_text = handle.read()
+    except OSError as exc:
+        raise Refusal("the selected profile manifest is unreadable: %s" % exc)
+    bindings = kblib.profile_slot_bindings(manifest_text)
+    binding = (bindings.get("Priority Rubric") or "").strip("`").strip()
+    if not binding:
+        raise Refusal("the selected Profile binds no Priority Rubric slot; "
+                      "K00/07 places the standing quotas there")
+    rubric_path = os.path.join(os.path.dirname(manifest_path), binding)
+    try:
+        with open(rubric_path, encoding="utf-8") as handle:
+            rubric_text = handle.read()
+    except OSError as exc:
+        raise Refusal("the Priority Rubric slot is unreadable: %s" % exc)
+    policy, fingerprint, errors = kblib.effective_priority_policy(rubric_text)
+    if errors or fingerprint is None:
+        raise Refusal(
+            "the selected Profile's Priority Rubric does not resolve:\n  %s"
+            % "\n  ".join(errors[:5]))
+    return policy, fingerprint
+
+
+def _require_policy_authorization(policy, fingerprint, exceptions):
+    """Refuse a plan whose grants are unbound or jointly unbounded.
+
+    Two checks, both against the resolver's one policy object.  First, every
+    exception for a registered policy must carry the CURRENT effective-policy
+    fingerprint -- an exception judged against policy bytes that are not the
+    live ones is not a grant, and the consumer would silently never match it.
+    Second, the effective ceilings -- exception where granted, standing quota
+    where not -- must jointly stay strictly below 100 (K00/07): summing the
+    grants alone would admit a P0 grant of 80 next to a standing P1 of 35.
+    """
+    for index, entry in enumerate(exceptions):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("policy_id") not in kblib.POLICY_REGISTRY:
+            continue
+        claimed = entry.get("baseline_policy_fingerprint")
+        if claimed != fingerprint:
+            raise Refusal(
+                "policy_exceptions_after[%d] baseline_policy_fingerprint "
+                "does not match the current effective policy.\n"
+                "  claimed:  %s\n"
+                "  expected: %s\n"
+                "The expected value is the fingerprint of the resolved "
+                "policy object (standing quotas, kernel defaults, protocol "
+                "version), not the SHA of any file; confirm the standing "
+                "policy is the one this grant was judged against, then "
+                "record the expected value" % (index, claimed, fingerprint))
+    ceilings, errors = kblib.effective_quota_ceilings(policy, exceptions)
+    del ceilings
+    if errors:
+        raise Refusal(
+            "the granted ceilings are not jointly admissible:\n  %s"
+            % "\n  ".join(errors))
+
+
 def _state_paths(root):
     return {
         "coverage": kblib.managed_repository_path(
@@ -279,6 +354,10 @@ def prepare(root, plan_relative):
             % "\n  ".join(current["errors"][:5]))
 
     contract_before = documents["progress"]["contract"]
+    policy, policy_fingerprint = _current_effective_policy(
+        root, contract_before)
+    _require_policy_authorization(
+        policy, policy_fingerprint, plan["policy_exceptions_after"])
     commit_receipt = kblib.make_receipt(
         TOOL, TOOL_VERSION, CHECK, plan["amendment_id"], "pass",
         "amended Task Contract field(s) %s from plan %s"
@@ -296,6 +375,21 @@ def prepare(root, plan_relative):
     relative_plan = os.path.relpath(plan_path, root).replace(os.sep, "/")
     row["plan_path"] = relative_plan
     row["plan_sha256"] = kblib.sha256_bytes(plan_raw)
+    # The row records the same state edge the receipt claims, so the runtime
+    # validator can cross-bind the two exactly as the K13/15 adoption record
+    # binds its commit receipt.  ``after_progress_sha256`` stays on the
+    # receipt alone: the row lives inside the progress document, and a hash
+    # of bytes that contain it is not computable.  This block runs BEFORE the
+    # progress bytes are rendered; a field added after rendering would never
+    # reach the written document.
+    row.update({
+        "coverage_sha256_before": kblib.sha256_bytes(raw["coverage"]),
+        "required_queue_sha256_before": kblib.sha256_bytes(raw["queue"]),
+        "progress_sha256_before": kblib.sha256_bytes(raw["progress"]),
+        "after_coverage_sha256": kblib.sha256_bytes(raw["coverage"]),
+        "after_required_queue_sha256": kblib.sha256_bytes(queue_text),
+        "policy_fingerprint": policy_fingerprint,
+    })
 
     progress_text = kblib.canonical_yaml(progress)
     commit_receipt.update({
@@ -318,6 +412,7 @@ def prepare(root, plan_relative):
         "after_progress_sha256": kblib.sha256_bytes(progress_text),
         "before_coverage_sha256": kblib.sha256_bytes(raw["coverage"]),
         "after_coverage_sha256": kblib.sha256_bytes(raw["coverage"]),
+        "policy_fingerprint": policy_fingerprint,
     })
 
     proposed = check_queue.validate_runtime(
@@ -349,6 +444,8 @@ def prepare(root, plan_relative):
         },
         "receipt": commit_receipt,
         "row": row,
+        "policy_fingerprint": policy_fingerprint,
+        "contract_before": contract_before,
     }
 
 
@@ -365,12 +462,25 @@ def commit(prepared, receipt_path):
         "plan_path": prepared["plan_path"],
         "plan_sha256": prepared["plan_sha"],
         "commit_receipt_id": receipt["receipt_id"],
+        # The generic writer recovery protocol (`check_queue`
+        # `_bind_generic_lock_receipts`) reads these three: they let a
+        # recovery view decide whether the declared receipt actually landed
+        # and therefore whether to complete or roll back a stale lock.
+        "receipt_id": receipt["receipt_id"],
+        "receipt_path": receipt_path,
+        "transaction_phase": "commit",
     }
     for name in STATE_NAMES:
         operation["before_%s_sha256" % name] = prepared["before_sha"][name]
     for name in WRITTEN_NAMES:
         operation["planned_after_%s_sha256" % name] = \
             prepared["after_sha"][name]
+    # The recovery semantic cross-check reads the longer Required Queue
+    # spelling from writer-lock metadata; both names identify the same file.
+    operation["before_required_queue_sha256"] = \
+        prepared["before_sha"]["queue"]
+    operation["planned_after_required_queue_sha256"] = \
+        prepared["after_sha"]["queue"]
 
     with kblib.runtime_write_lock(root, owner_metadata=operation) as lease:
         with kblib.no_authoritative_write_guard(lease):
@@ -391,6 +501,18 @@ def commit(prepared, receipt_path):
                 raise Refusal(
                     "the amendment plan changed between prepare and commit; "
                     "re-prepare against its current bytes")
+            # Same-lock policy re-resolution: the Priority Rubric could have
+            # been revised between prepare and commit, and a grant judged
+            # against bytes that are no longer the live policy must refuse
+            # here, not silently never match at consumption.
+            _, live_fingerprint = _current_effective_policy(
+                root, prepared["contract_before"])
+            if live_fingerprint != prepared["policy_fingerprint"]:
+                raise Refusal(
+                    "the effective quota policy changed between prepare and "
+                    "commit (fingerprint %s -> %s); re-prepare so the grant "
+                    "is judged against the live policy"
+                    % (prepared["policy_fingerprint"], live_fingerprint))
         written = []
         appended = False
         try:

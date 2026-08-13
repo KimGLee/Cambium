@@ -134,8 +134,14 @@ receipt is an anchor event: the contract fingerprint chain follows the change
 instead of failing closed on it. It advances `contract_version` and the Queue
 revision exactly once, changes no scope, no batch structure, and no lifecycle.
 An exception is current authorization *because it is contract state*; the
-amendment row is history, and historical evidence never authorizes. Extending
-the amendable field allowlist is a governance change under this module.
+amendment row is history, and historical evidence never authorizes. The
+writer resolves the effective policy at prepare and again in the commit
+lock: each exception must carry the current effective-policy fingerprint,
+and the effective ceilings -- exception where granted, standing quota where
+not -- must jointly stay under 100 per K00/07. It refuses while a batch is `merge-ready` (the revision bump would
+strand its sealed delta bindings): grant before merge, or roll back first.
+Extending the amendable field allowlist is a governance change under this
+module.
 
 A Contract change outside that allowlist keeps the prior disposition: the
 operator MUST pause or cancel the current task, preserve its runtime history,

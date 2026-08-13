@@ -181,8 +181,11 @@ lifecycle/hold. After
 Queue materialization, a change to any other Task Contract field is rejected
 unless a host supplies an equivalent controlled writer; the
 baseline recovery path is to pause or cancel the current task, preserve its
-runtime, and begin a successor task. A generic non-scope Contract Amendment
-writer remains roadmap work.
+runtime, and begin a successor task. One non-scope contract field has its
+guarded writer today: `apply_contract_amendment.py` amends the contract's
+`policy_exceptions` register of bounded K00/07 policy exceptions in a single
+anchored transaction. A generic writer for the remaining non-scope fields
+(objective, acceptance, timing) remains roadmap work.
 
 These writers accept only the current public schema and receipt protocols. An
 existing adopter runtime with older or unregistered operational Amendment
@@ -476,8 +479,9 @@ python3 Tools/render_queue.py .
 Lifecycle writes are dry runs unless `--apply` is supplied, and an apply also
 requires the current revision/fingerprint printed by the state tools. See
 [`Tools/README.md`](Tools/README.md) for transition commands, exit code 2
-holds, receipts, Amendment registration and execution, interruption recovery,
-and both completion paths.
+holds, receipts, Amendment registration and execution (including the
+contract-amendment writer for bounded K00/07 policy exceptions), interruption
+recovery, and both completion paths.
 
 ## License
 

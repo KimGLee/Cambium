@@ -655,10 +655,14 @@ identity through a host adapter; those controls must strengthen the existing
 byte and state bindings rather than replace them.
 
 Add a guarded non-scope Task Contract Amendment transaction for objective,
-exclusion, acceptance, timing, and pause-policy changes. The current baseline
-intentionally fails closed on direct post-materialization edits and ships only
-scope/disposition Amendment writes; until this writer exists, such a change
-rolls into a preserved successor task rather than mutating live Contract bytes.
+exclusion, acceptance, timing, and pause-policy changes. The
+`policy_exceptions` field shipped its writer first
+(`Tools/apply_contract_amendment.py`, K13/06 Contract Amendment): one anchored
+transaction with resolver-validated policy fingerprints and effective joint
+quota bounds, and the pattern the remaining fields' writer extends. The
+current baseline still fails closed on direct post-materialization edits of
+every other field; until the generic writer exists, such a change rolls into
+a preserved successor task rather than mutating live Contract bytes.
 
 ## Implementation Order
 

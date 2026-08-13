@@ -404,11 +404,20 @@ def _lock_operation(prepared, commit, abort):
         "plan_sha256": prepared["plan_sha"],
         "commit_receipt_id": commit["receipt_id"],
         "abort_receipt_id": abort["receipt_id"],
+        # The generic writer recovery protocol (`check_queue`
+        # `_bind_generic_lock_receipts`) reads these three to decide whether
+        # the declared receipt actually landed after an interruption.
+        "receipt_id": commit["receipt_id"],
+        "receipt_path": RECEIPT_PATH,
+        "transaction_phase": "commit",
     }
     for name in STATE_NAMES:
         operation["before_%s_sha256" % name] = prepared["before_sha"][name]
     for name in WRITTEN_NAMES:
         operation["planned_after_%s_sha256" % name] = prepared["after_sha"][name]
+    # The recovery semantic cross-check reads the longer Required Queue
+    # spelling from writer-lock metadata; both names identify the same file.
+    operation["before_required_queue_sha256"] = prepared["before_sha"]["queue"]
     return operation
 
 
@@ -423,6 +432,15 @@ def commit(prepared, receipt_path):
         "compile_queue"
         % (len(plan["coverage_after"]["pages"]), prepared["plan_path"],
            len(prepared["queue"].get("required_queue") or [])), 1)
+    # The state edge, on the receipt itself, so the generic writer recovery
+    # protocol can compare declared intent against the landed receipt.
+    commit_receipt.update({
+        "before_coverage_sha256": prepared["before_sha"]["coverage"],
+        "before_required_queue_sha256": prepared["before_sha"]["queue"],
+        "before_progress_sha256": prepared["before_sha"]["progress"],
+        "after_coverage_sha256": prepared["after_sha"]["coverage"],
+        "after_progress_sha256": prepared["after_sha"]["progress"],
+    })
     abort_receipt = _receipt(
         plan, "abort", "fail",
         "initial task planning aborted and the empty skeleton restored", 2)
