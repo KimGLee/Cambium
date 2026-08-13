@@ -16,7 +16,7 @@ This page is the stable entry for the Quality Assurance standard. The detailed r
 | [[kernel/K12 Quality Assurance/02 Rendering Verification\|Rendering Verification]] | `Rendering Verification Levels`, `Escalation Record` |
 | [[kernel/K12 Quality Assurance/03 Module and Coverage Review\|Module and Coverage Review]] | `Module Review`, `Coverage Reconciliation Review` |
 | [[kernel/K12 Quality Assurance/04 Guidance and Source Review\|Guidance and Source Review]] | `Guidance Reconciliation Review`, `Source Intake And Promotion Review` |
-| [[kernel/K12 Quality Assurance/05 Automated and Manual Checks\|Automated and Manual Checks]] | `Automated Checks`, `Domain-specific Checks`, `Manual Checks` |
+| [[kernel/K12 Quality Assurance/05 Automated and Manual Checks\|Automated and Manual Checks]] | `Automated Checks`, `Codification Admission`, `Domain-specific Checks`, `Manual Checks` |
 | [[kernel/K12 Quality Assurance/06 Completion Gate and Reporting\|Completion Gate and Reporting]] | `Completion Gate`, `Final Report`, `Related` |
 | [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation\|Audit Evidence Reuse and Invalidation]] | `Purpose`, `Audit Layers`, `Dimension-specific Audit Receipt`, `Reuse Gate`, `Invalidation`, `Specialized Audit Boundary`, `Terminal Reconciliation Rules`, `Related` |
 | [[kernel/K12 Quality Assurance/08 Judgment Item Dimension Map\|Judgment Item Dimension Map]] | `Purpose`, `Terms`, `Evidence Role`, `Uniform Sections`, `Item Map`, `Reverse Check`, `Profile Registration`, `Related`; this half files the Single Note Review layer |
