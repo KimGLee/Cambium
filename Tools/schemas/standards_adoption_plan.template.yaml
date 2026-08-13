@@ -22,6 +22,15 @@ selected_profile_manifest_before: "profiles/my-profile/profile.md"
 selected_profile_manifest_after: "profiles/my-profile/profile.md"
 governance_revision_ref: "kernel/K00 Standards Control/03 Standards Governance.md"
 governance_revision_sha256: "sha256:replace-with-current-governance-file-fingerprint"
+# Where the adopted revision came from.  The distribution publishes no
+# version numbers by design, so this pair is what makes upstream and
+# downstream comparable: name the upstream source (repository URL or name)
+# and its revision identifier -- for a git upstream, the exact commit hash
+# the adopted kernel bytes were taken from.  A corpus that tracks no
+# upstream declares that with an explicit null pair; absence is not an
+# answer, and half a pair identifies nothing.
+upstream_source_ref: TODO(adoption-upstream)
+upstream_revision_id: TODO(adoption-upstream)
 standards_snapshot_sha256_after: "sha256:replace-with-kernel-tree-fingerprint"
 profile_snapshot_sha256_after: "sha256:replace-with-selected-profile-tree-fingerprint"
 profile_contract_fingerprint_after: "sha256:replace-with-profile-contract-fingerprint"

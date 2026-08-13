@@ -158,6 +158,10 @@ class AdoptStandardsTests(unittest.TestCase):
             "governance_revision_ref": self.GOVERNANCE,
             "governance_revision_sha256": kblib.sha256_file(
                 self.root / self.GOVERNANCE),
+            # The 1.5 upstream identity pair; the fixture corpus tracks a
+            # nominal upstream so the recorded form is exercised.
+            "upstream_source_ref": "https://example.test/cambium.git",
+            "upstream_revision_id": "0123456789abcdef0123456789abcdef01234567",
             "standards_snapshot_sha256_after":
                 kblib.repository_tree_sha256(self.root, "kernel"),
             "profile_snapshot_sha256_after":
@@ -231,6 +235,51 @@ class AdoptStandardsTests(unittest.TestCase):
         with redirect_stdout(stdout):
             code = adopt_standards.main(args)
         return code, stdout.getvalue()
+
+    def test_upstream_identity_is_recorded_and_half_a_pair_is_refused(self):
+        """1.5: the adoption record is what makes up/downstream comparable.
+
+        The distribution publishes no version numbers, so the upstream pair
+        (or its explicit null form) is required, recorded, receipt-bound,
+        and surfaced by resume-status.  Half a pair identifies nothing and
+        is refused; a legacy record without the fields stays valid history.
+        """
+        self.pause()
+        plan = self.plan()
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        record = result["progress"]["standards_adoptions"][0]
+        self.assertEqual("https://example.test/cambium.git",
+                         record["upstream_source_ref"])
+        self.assertEqual("0123456789abcdef0123456789abcdef01234567",
+                         record["upstream_revision_id"])
+        resume = self.run_tool("check_queue.py", "--resume-status")
+        self.assertIn(
+            "standards_upstream=https://example.test/cambium.git@0123456789"
+            "abcdef0123456789abcdef01234567", resume.stdout)
+
+    def test_a_declared_null_upstream_pair_is_an_answer(self):
+        self.pause()
+        plan = self.plan(overrides={
+            "upstream_source_ref": None, "upstream_revision_id": None})
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        record = result["progress"]["standards_adoptions"][0]
+        self.assertIsNone(record["upstream_source_ref"])
+        self.assertIsNone(record["upstream_revision_id"])
+        resume = self.run_tool("check_queue.py", "--resume-status")
+        self.assertIn("standards_upstream=none-declared", resume.stdout)
+
+    def test_half_an_upstream_pair_is_refused(self):
+        self.pause()
+        self.plan(overrides={"upstream_revision_id": None})
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(1, code, output)
+        self.assertIn("both name the upstream or both be null", output)
 
     def test_noop_dry_run_and_missing_register_apply(self):
         self.pause()
