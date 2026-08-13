@@ -48,6 +48,16 @@ none of the three is ever profile policy, and the scaffolder never copies the
 README into a candidate (a manual fallback copy deletes it). Identity is
 unfilled, so the template is never runnable or selectable in place.
 
+This whole creation kit — the template, its `template-files.yaml` whitelist,
+`Tools/scaffold_profile.py`, and the two fill-guidance documents above — is
+declared distribution-only in root `distribution-boundary.yaml` (owner
+[[kernel/K00 Standards Control/03 Standards Governance#Distribution Boundary|K00/03]]).
+An adopter that has instantiated its profile does not carry it, and the
+paragraphs above are read in this repository rather than in a governed
+corpus. What survives adoption is the interface below, which `check_profile`
+consumes as the slot contract, together with the onboarding tools that still
+speak to a runtime.
+
 ```text
 python3 Tools/scaffold_profile.py . --profile-id my-profile --apply
 # Answer the open decisions (the template README lists them), then:
