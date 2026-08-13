@@ -842,7 +842,20 @@ POLICY_REGISTRY = {
         "quota_class": "P1",
         "limit_domain": "percent-share-under-100",
     },
+    "coverage.reviewed_era": {
+        "owner": "kernel/K02 Knowledge Work Construction/"
+                 "01 Inventory and Coverage Ledger.md",
+        "limit_domain": "record-count-ceiling",
+    },
 }
+# Policy families.  A family fixes what `limit` means and which resolver
+# produces the baseline fingerprint an exception is judged against.
+PRIORITY_QUOTA_POLICY_IDS = frozenset(
+    policy_id for policy_id, entry in POLICY_REGISTRY.items()
+    if entry["limit_domain"] == "percent-share-under-100")
+RECORD_COUNT_POLICY_IDS = frozenset(
+    policy_id for policy_id, entry in POLICY_REGISTRY.items()
+    if entry["limit_domain"] == "record-count-ceiling")
 # Bumped when the comparison arithmetic or the resolution semantics change,
 # so an exception judged under one protocol cannot silently authorize under
 # another.
@@ -885,6 +898,58 @@ def effective_priority_policy(rubric_text):
     return policy, sha256_bytes(payload), errors
 
 
+COVERAGE_POLICY_PROTOCOL_VERSION = 1
+
+
+def effective_coverage_policy():
+    """Resolve the kernel-owned Coverage evidence-era policy.
+
+    K02/01 fixes this rule with no profile input to resolve: `reviewed`
+    carries the era of the evidence that earned it.  The object exists for
+    the same reason the quota resolver's does -- an exception binds to a
+    fingerprint of the policy it was judged against, so a later revision of
+    the rule invalidates a grant made under the old one -- but here the
+    whole policy is kernel text, so the object is closed and constant.
+
+    Returns ``(policy, fingerprint, errors)`` for symmetry with
+    :func:`effective_priority_policy`; ``errors`` is always empty.
+    """
+    policy = {
+        "schema_version": 1,
+        "protocol_version": COVERAGE_POLICY_PROTOCOL_VERSION,
+        "policy_id": "coverage.reviewed_era",
+        "source": "kernel",
+        "rule": "authoring_status reviewed names the receipt era that "
+                "earned it",
+    }
+    payload = json.dumps(policy, ensure_ascii=False, sort_keys=True,
+                         separators=(",", ":"))
+    return policy, sha256_bytes(payload), []
+
+
+def effective_policy_for(policy_id, rubric_text=None):
+    """Resolve the effective policy object for one registered policy.
+
+    One dispatcher so every consumer -- the amendment writer, the runtime
+    validator, the close -- judges an exception against the same baseline
+    its family defines, instead of each deciding what "the policy" means.
+
+    Returns ``(policy, fingerprint, errors)``.  A quota policy needs the
+    selected Profile's Priority Rubric bytes; a kernel-owned policy takes
+    none.  An unregistered policy id resolves to nothing.
+    """
+    if policy_id in PRIORITY_QUOTA_POLICY_IDS:
+        if rubric_text is None:
+            return None, None, [
+                "%s is a Profile-configured policy; its Priority Rubric "
+                "bytes are required to resolve it" % policy_id]
+        return effective_priority_policy(rubric_text)
+    if policy_id in RECORD_COUNT_POLICY_IDS:
+        return effective_coverage_policy()
+    return None, None, [
+        "%r is not in the closed policy registry" % policy_id]
+
+
 def effective_quota_ceilings(policy, exceptions):
     """Fold standing quotas and granted exceptions into effective ceilings.
 
@@ -906,7 +971,9 @@ def effective_quota_ceilings(policy, exceptions):
     """
     from fractions import Fraction
     ceilings = {}
-    for policy_id in sorted(POLICY_REGISTRY):
+    # Quota family only: the joint bound is an arithmetic over corpus shares,
+    # and a policy from another family has no standing share to fold in.
+    for policy_id in sorted(PRIORITY_QUOTA_POLICY_IDS):
         resolved = (policy or {}).get("resolved", {}).get(policy_id)
         ceilings[policy_id] = {"limit": resolved, "source": "standing"}
     for entry in exceptions or []:
@@ -914,7 +981,7 @@ def effective_quota_ceilings(policy, exceptions):
             continue
         policy_id = entry.get("policy_id")
         limit = entry.get("limit")
-        if policy_id not in POLICY_REGISTRY:
+        if policy_id not in PRIORITY_QUOTA_POLICY_IDS:
             continue
         if isinstance(limit, bool) or not isinstance(limit, (int, float)):
             continue

@@ -178,31 +178,46 @@ def _current_effective_policy(root, contract):
 def _require_policy_authorization(policy, fingerprint, exceptions):
     """Refuse a plan whose grants are unbound or jointly unbounded.
 
-    Two checks, both against the resolver's one policy object.  First, every
-    exception for a registered policy must carry the CURRENT effective-policy
-    fingerprint -- an exception judged against policy bytes that are not the
-    live ones is not a grant, and the consumer would silently never match it.
-    Second, the effective ceilings -- exception where granted, standing quota
-    where not -- must jointly stay strictly below 100 (K00/07): summing the
-    grants alone would admit a P0 grant of 80 next to a standing P1 of 35.
+    Two checks.  First, every exception for a registered policy must carry
+    the CURRENT effective-policy fingerprint of ITS OWN family -- a quota
+    grant is judged against the resolved Profile quotas, a kernel-owned
+    policy against the kernel statement of the rule.  An exception judged
+    against bytes that are not the live ones is not a grant, and the
+    consumer would silently never match it.  Second, the effective quota
+    ceilings -- exception where granted, standing quota where not -- must
+    jointly stay strictly below 100 (K00/07): summing the grants alone
+    would admit a P0 grant of 80 next to a standing P1 of 35.
     """
     for index, entry in enumerate(exceptions):
         if not isinstance(entry, dict):
             continue
-        if entry.get("policy_id") not in kblib.POLICY_REGISTRY:
+        policy_id = entry.get("policy_id")
+        if policy_id not in kblib.POLICY_REGISTRY:
             continue
+        if policy_id in kblib.PRIORITY_QUOTA_POLICY_IDS:
+            expected = fingerprint
+        else:
+            _object, expected, resolve_errors = kblib.effective_policy_for(
+                policy_id)
+            if resolve_errors or expected is None:
+                raise Refusal(
+                    "policy_exceptions_after[%d] names %s, which does not "
+                    "resolve to an effective policy:\n  %s"
+                    % (index, policy_id, "\n  ".join(resolve_errors)))
         claimed = entry.get("baseline_policy_fingerprint")
-        if claimed != fingerprint:
+        if claimed != expected:
             raise Refusal(
                 "policy_exceptions_after[%d] baseline_policy_fingerprint "
-                "does not match the current effective policy.\n"
+                "does not match the current effective policy for %s.\n"
                 "  claimed:  %s\n"
                 "  expected: %s\n"
                 "The expected value is the fingerprint of the resolved "
-                "policy object (standing quotas, kernel defaults, protocol "
-                "version), not the SHA of any file; confirm the standing "
-                "policy is the one this grant was judged against, then "
-                "record the expected value" % (index, claimed, fingerprint))
+                "policy object (for a quota: the standing values, kernel "
+                "defaults and protocol version; for a kernel-owned policy: "
+                "the kernel statement of the rule), not the SHA of any "
+                "file; confirm the policy is the one this grant was judged "
+                "against, then record the expected value"
+                % (index, policy_id, claimed, expected))
     ceilings, errors = kblib.effective_quota_ceilings(policy, exceptions)
     del ceilings
     if errors:

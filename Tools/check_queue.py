@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.15.0"
+TOOL_VERSION = "1.16.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -1092,14 +1092,19 @@ def _policy_exception_errors(value, label):
                 "exception to a policy nobody registered is unbounded "
                 "authorization" % (entry_label, policy_id))
         limit = entry.get("limit")
+        domain = registered.get("limit_domain") if registered else None
         if (not isinstance(limit, (int, float)) or isinstance(limit, bool)):
             errors.append("%s limit must be a number" % entry_label)
-        elif (registered is not None and
-              registered.get("limit_domain") == "percent-share-under-100" and
-              not 0 <= limit < 100):
+        elif domain == "percent-share-under-100" and not 0 <= limit < 100:
             errors.append(
                 "%s limit must be a corpus share at least 0 and under 100; "
                 "%r is not a bound, per %s" %
+                (entry_label, limit, registered["owner"]))
+        elif domain == "record-count-ceiling" and (
+                isinstance(limit, float) or limit < 0):
+            errors.append(
+                "%s limit must be a non-negative whole record count; %r "
+                "cannot be compared to a number of records, per %s" %
                 (entry_label, limit, registered["owner"]))
         if entry.get("scope_kind") not in POLICY_EXCEPTION_SCOPE_KINDS:
             errors.append(
@@ -4200,6 +4205,62 @@ def _require_receipt(catalog, receipt_id, label, errors, expected=None):
             errors.append("%s receipt %s has %s=%r, expected %r" %
                           (label, receipt_id, field, receipt.get(field), value))
     return receipt
+
+
+def coverage_reviewed_era_exception(progress, queue, count):
+    """Return the contract exception that currently covers ``count``, or None.
+
+    K02/01 offers three dispositions for legacy `reviewed` records, and one
+    of them -- carry them under an explicit exception with a stated end --
+    had no machine carrier: the declaration lived in a revision's prose, no
+    consumer could read it, and the candidate it was meant to answer came
+    back every run.  Because activation requires a passing readiness gate,
+    choosing the disposition the kernel offers wedged the queue.
+
+    The carrier is the contract's `policy_exceptions` register (K13/02),
+    written by the K13/06 Contract Amendment transaction, with
+    `coverage.reviewed_era` in the closed policy registry.  Its `limit` is a
+    ceiling on how many records may still claim an era they cannot produce,
+    which is why the grant cannot hide new ones: the count only legitimately
+    falls as batches re-review, and any record beyond the ceiling reports as
+    a candidate exactly as before.  The stated end is the ceiling reaching
+    the scope's end -- a task-scoped grant dies with the task.
+
+    Returns ``(entry, reason)``: ``entry`` is the covering exception or
+    None, and ``reason`` explains a near miss for the operator.
+    """
+    contract = (progress or {}).get("contract")
+    entries = contract.get("policy_exceptions") if isinstance(
+        contract, dict) else None
+    if not isinstance(entries, list) or not entries:
+        return None, None
+    _policy, fingerprint, _errors = kblib.effective_coverage_policy()
+    task_id = (queue or {}).get("task_id")
+    stale = False
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("policy_id") != "coverage.reviewed_era":
+            continue
+        if entry.get("baseline_policy_fingerprint") != fingerprint:
+            # Judged against policy bytes that are no longer the rule.
+            stale = True
+            continue
+        if (entry.get("scope_kind") == "task" and
+                entry.get("scope_ref") != task_id):
+            continue
+        limit = entry.get("limit")
+        if isinstance(limit, bool) or not isinstance(limit, int):
+            continue
+        if count <= limit:
+            return entry, None
+        return None, (
+            "%d record(s) exceed the %d the exception %s bounds" %
+            (count, limit, entry.get("decision_id")))
+    if stale:
+        return None, ("an exception exists but was judged against a "
+                      "superseded statement of the rule")
+    return None, None
 
 
 def unsupported_reviewed_records(coverage):
@@ -11695,6 +11756,10 @@ def main(argv=None):
     result = validate_runtime(args.root)
     errors = list(result["errors"])
     candidates = []
+    # Notes are neither errors nor candidates: a fact the operator must keep
+    # seeing, whose disposition is already recorded.  They never change the
+    # exit code, because a decision already made is not an open judgment.
+    notes = []
     hub_page_candidates = []
     writer_locks = result.get("writer_locks") or []
     maintenance_context = None
@@ -11855,15 +11920,31 @@ def main(argv=None):
         candidates.append(defect)
     unsupported_reviewed = unsupported_reviewed_records(result.get("coverage"))
     if unsupported_reviewed:
-        candidates.append(
-            "%d Coverage record(s) claim authoring_status=reviewed with no "
-            "gate_receipts, so the era of the review that earned the status "
-            "cannot be produced (K02/01); a declared migration must "
-            "re-review, retire, or explicitly except them: %s" %
-            (len(unsupported_reviewed),
-             ", ".join(unsupported_reviewed[:5]) +
-             ("..." if len(unsupported_reviewed) > 5 else ""))
-        )
+        covering, near_miss = coverage_reviewed_era_exception(
+            result.get("progress"), result.get("queue"),
+            len(unsupported_reviewed))
+        if covering is not None:
+            # Covered by a bounded contract exception: the disposition
+            # K02/01 offers, now readable.  Reported, never suppressed --
+            # the operator sees the count falling toward the stated end.
+            notes.append(
+                "%d Coverage record(s) still claim authoring_status=reviewed "
+                "with no gate_receipts, within the %d bounded by contract "
+                "policy exception %s (%s:%s, K02/01)" %
+                (len(unsupported_reviewed), covering.get("limit"),
+                 covering.get("decision_id"), covering.get("scope_kind"),
+                 covering.get("scope_ref")))
+        else:
+            candidates.append(
+                "%d Coverage record(s) claim authoring_status=reviewed with "
+                "no gate_receipts, so the era of the review that earned the "
+                "status cannot be produced (K02/01); a declared migration "
+                "must re-review, retire, or explicitly except them%s: %s" %
+                (len(unsupported_reviewed),
+                 "" if near_miss is None else " -- %s" % near_miss,
+                 ", ".join(unsupported_reviewed[:5]) +
+                 ("..." if len(unsupported_reviewed) > 5 else ""))
+            )
     if not errors:
         queue_items = result.get("queue", {}).get("required_queue") or []
         if not queue_items:
@@ -11877,6 +11958,8 @@ def main(argv=None):
         print("[FAIL] %s" % error)
     for candidate in candidates:
         print("[HOLD] %s" % candidate)
+    for note in notes:
+        print("[NOTE] %s" % note)
     if not errors and not candidates:
         print("[PASS] Required Queue is consistent")
     if args.resume_status:
