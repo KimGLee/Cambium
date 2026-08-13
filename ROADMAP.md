@@ -14,7 +14,7 @@ bypass R09 adoption.
 
 | Area | Current state |
 |---|---|
-| Profile setup | Copy the 17-file `_template` (14 bound slot files, the manifest, the fill orientation README, and one scan-config parameter file), fill it manually, and run `check_profile.py` |
+| Profile setup | `scaffold_profile.py` creates the candidate from the version-controlled whitelist `profiles/template-files.yaml` (16 copied files; the orientation README is never copied) and derives the mechanical identity/self-path cells; the interview contract `profiles/interview.yaml` collects the remaining decisions; `check_profile.py` validates. Manual whitelist copy remains the no-agent fallback |
 | Execution | The kernel defines sequential work, concurrent disjoint batches, independent review contexts, and serial integration |
 | Persistent work state | `.cambium/` separates object-level Coverage, the canonical Required Queue, task-level Progress, and hash-bound restricted-YAML complex-batch Work Specs; standard-library tools initialize, compile, validate, transition, apply Amendment-bound cross-Ledger changes, recover interrupted-write evidence, and render Queue state |
 | Active-task Standards adoption | One restricted-YAML plan binds approved governance bytes, deterministic Kernel/Profile snapshots, old/new Contract/Standards/Profile/load set, changed predicates, dimension/boundary-specific invalidated evidence, immediate Queue consistency, and deferred gates; after required pre-rollbacks/holds, `adopt_standards.py` synchronizes all three runtime identities without changing lifecycle/holds, while append-only receipts preserve producer-era history, filter invalidated-evidence receipt IDs from current use, recover interruption, and avoid a prose duplicate |

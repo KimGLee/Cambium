@@ -7,8 +7,8 @@ opt out. The common archetype: one class of structured content belongs only
 under one root (dated scratch entries, derived cards, generated digests), and
 the scan reports that structure leaking anywhere else. Derive the matchers
 from content that really occurs in this corpus; on an empty corpus, declare
-them from the page structure this profile registers and have the first batch
-create the page that carries them. Either way the configuration must end up
+them from the page structure this profile registers and have bounded founding
+create the witness page that carries them. Either way the configuration must end up
 repository-backed: the production scan requires at least one Markdown file the
 matchers recognise, so a generic static default is impossible by design. The
 positive control checks something narrower — that the matchers and

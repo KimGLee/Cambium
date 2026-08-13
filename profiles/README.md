@@ -2,18 +2,22 @@
 
 ## Creating A Profile
 
-`profiles/_template/` is a static, domain-neutral form. Copy it to `profiles/<profile-id>/`, replace every `TODO(profile)` placeholder, keep or update the manifest bindings when files move inside that profile folder, and run `python3 Tools/check_profile.py profiles/<profile-id>`. Every profile-owned slot must resolve inside the selected profile folder; a manifest cannot borrow another profile's files or a repository-root fallback. Headings, row or field labels, and YAML comments around a placeholder describe the expected answer shape; they are guidance, not additional values. Use a lowercase path slug matching `[a-z0-9][a-z0-9_-]*`; the manifest `profile_id` must equal the directory name. Fill identity and the core slots before registries so later entries reference existing IDs and paths rather than restating their rules. The template itself is neither runnable nor a default profile.
+`profiles/_template/` is a static, domain-neutral form. A candidate profile is created from it by the scaffolder, which copies exactly the files listed in the version-controlled whitelist [template-files.yaml](template-files.yaml), derives the mechanical identity and self-path cells from the profile ID, and refuses an existing target:
 
 ```text
-cp -R profiles/_template profiles/my-profile
-# Fill profiles/my-profile/, then:
+python3 Tools/scaffold_profile.py . --profile-id my-profile           # dry-run plan
+python3 Tools/scaffold_profile.py . --profile-id my-profile --apply
+# Answer the interview / fill the remaining TODO(profile) answers, then:
 python3 Tools/check_profile.py profiles/my-profile
 ```
 
-Profile setup is currently manual and file-based. `check_profile.py` is the
-canonical producer of the `profile-load` Gate: it validates a filled copy and
-derives its Profile dependency closure, but does not ask questions, generate
-domain decisions, author the profile, approve it, or select it for use.
+A manual copy of the whitelisted files to `profiles/<profile-id>/` is the no-agent fallback; it takes on by hand what the scaffolder derives (identity, the self-path cells) and must not bring the template's orientation `README.md` along. Either way, replace every remaining `TODO(profile)` placeholder and keep or update the manifest bindings when files move inside that profile folder. Every profile-owned slot must resolve inside the selected profile folder; a manifest cannot borrow another profile's files or a repository-root fallback. Headings, row or field labels, and YAML comments around a placeholder describe the expected answer shape; they are guidance, not additional values. Use a lowercase path slug matching `[a-z0-9][a-z0-9_-]*`; the manifest `profile_id` must equal the directory name. Fill identity and the core slots before registries so later entries reference existing IDs and paths rather than restating their rules. The template itself is neither runnable nor a default profile.
+
+`check_profile.py` is the canonical producer of the `profile-load` Gate: it
+validates a filled copy and derives its Profile dependency closure. Neither it
+nor the scaffolder asks questions, generates domain decisions, authors the
+profile, approves it, or selects it for use; the questions belong to the
+[interview contract](interview.yaml), and the answers belong to the operator.
 
 Use these declarations consistently:
 
@@ -40,13 +44,12 @@ comments in the slot file that closes it, so opening one needs no second
 document. Nothing about shipping a switch closed weakens a gate or bypasses
 R09. The template's `README.md`, and `interview.yaml` and `answer-patterns.md`
 at this level, are orientation an assisting agent uses to conduct the fill;
-the README is deleted from the copied profile and none of the three is ever
-profile policy. Identity is unfilled, so the template is never runnable or
-selectable in place.
+none of the three is ever profile policy, and the scaffolder never copies the
+README into a candidate (a manual fallback copy deletes it). Identity is
+unfilled, so the template is never runnable or selectable in place.
 
 ```text
-cp -R profiles/_template profiles/my-profile
-rm profiles/my-profile/README.md   # template orientation, never profile policy
+python3 Tools/scaffold_profile.py . --profile-id my-profile --apply
 # Answer the open decisions (the template README lists them), then:
 python3 Tools/check_profile.py profiles/my-profile
 ```
@@ -57,21 +60,36 @@ The flow below holds at either fill depth, and
 [interview.yaml](interview.yaml) carries it in machine-readable form for an
 assisting agent (to answer every switch now, the interview also walks every
 expansion pack instead of leaving it closed). A solo fill follows the same
-steps by hand.
+steps by hand. At any point,
+`python3 Tools/profile_onboarding_status.py . --json` derives where the
+onboarding stands — candidate state, `profile-load` result, adoption state,
+corpus and runtime state — and exactly one `next_action`; it is a read-only
+projection, never a second authoritative ledger.
 
-1. **Locate the corpus first.** Name the corpus directory, or accept a
-   proposed default; create it when it does not exist. A profile describes a
-   corpus, so no other answer is meaningful before this one. Environment
-   setup time (creating, connecting, or granting the directory) is setup, not
-   filling effort.
-2. **Fill** — by interview or by hand — and validate with
+1. **Confirm identity first.** Name the corpus directory (or accept a
+   proposed default; create it when it does not exist) and the profile ID
+   together. A profile describes a corpus, so no other answer is meaningful
+   before these. Environment setup time (creating, connecting, or granting
+   the directory) is setup, not filling effort.
+2. **Scaffold the candidate.** `scaffold_profile.py` dry-runs, then creates
+   `profiles/<profile-id>/` from the whitelist with the mechanical cells
+   derived; a manual whitelist copy is the no-agent fallback. Nobody starts
+   by hand-editing a directory the interview will later rename.
+3. **Fill** — by interview or by hand — and validate with
    `check_profile.py`.
-3. **Close with a review.** Before calling the fill done, enumerate every
+4. **Close with a review.** Before calling the fill done, enumerate every
    switch left in its exit state and every derived fill, confirm each still
    holds, open anything the operator wants opened now, and ask for any need
    the fill did not cover. A closed switch whose reason no longer holds is an
-   unconfirmed answer, not a default.
-4. **Adopt through R09.** Filling and checking never select the profile.
+   unconfirmed answer, not a default. Whether the operator has confirmed a
+   pre-filled answer is not derivable from the candidate files alone, so an
+   interrupted fill re-presents this closing summary in full on resumption
+   instead of assuming earlier confirmations still stand.
+5. **Adopt through R09.** Filling and checking never select the profile.
+   With no runtime present, the transaction is
+   `python3 Tools/apply_profile_adoption.py . --plan <plan> [--apply]` —
+   dry-run first, plan-fingerprint-bound, and fully restoring on failure;
+   an active `.cambium/` task adopts through `adopt_standards.py` instead.
 
 **Profile prose language.** Slot prose is written in this interface's
 language (English) regardless of the corpus body language, so any agent or

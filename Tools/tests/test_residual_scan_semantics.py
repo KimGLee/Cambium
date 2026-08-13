@@ -207,11 +207,15 @@ class TheInterviewTeachesBothBranches(unittest.TestCase):
                     "first batch will create. Collapsing them is what left an "
                     "empty corpus with no honest answer")
 
-    def test_c1_obliges_the_first_batch_to_materialize_the_witness(self):
+    def test_c1_obliges_bounded_founding_to_materialize_the_witness(self):
         self.assertIn(
-            "first batch MUST create at least one page", self.step,
+            "bounded founding MUST materialize the declared class", self.step,
             "the declared class has to reach the repository or the production "
             "scan refuses the close; nothing else in the flow says so")
+        self.assertIn(
+            "at least one page under the accepted root", self.step,
+            "the obligation must stay concrete: one real page under the "
+            "accepted root, not a paper declaration")
 
 
 if __name__ == "__main__":

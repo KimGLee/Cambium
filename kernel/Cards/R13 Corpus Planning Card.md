@@ -14,7 +14,7 @@ source_files:
   - kernel/K01 Scope and Architecture/05 Structural Unit Interface.md
   - kernel/K02 Knowledge Work Construction/01 Inventory and Coverage Ledger.md
   - kernel/K02 Knowledge Work Construction/02 Coverage Reconciliation.md
-source_hash: 'a1d98fa88b11'
+source_hash: '57aa3a0f54ca'
 ---
 # R13 Corpus Planning Card
 
@@ -33,7 +33,7 @@ owns that work.
 
 ## Before Start
 
-- [ ] Resolve `applicability.state`; `configured` binds all three artifact paths, one capability scale, and a pass authority, while `not-applicable` carries a nonempty reason and no active bindings.
+- [ ] Resolve `applicability.state`; `configured` binds all three artifact paths, one capability scale, and a pass authority, while `not-applicable` carries a nonempty reason and no active bindings — except R09 candidate preparation (K02/03): inside an open authorized revision, prepare and validate the artifacts against the `configured` after Profile, passed explicitly through `--profile`; they become authoritative only when the revision closes.
 - [ ] Read the current Global Map, Capability Matrix, and Gap Register together so one edit does not create a second owner or stale cross-reference.
 - [ ] Identify whether this operation is planning, Coverage promotion, content work, migration, or audit; route every non-planning operation to its owner.
 

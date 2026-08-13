@@ -26,7 +26,12 @@ then read:
 Resolve `Applicability` before editing a planning artifact. `Configured`
 requires all three bound paths, the declared capability scale, and a pass
 authority. `applicability.state: not-applicable` with a nonempty `reason` is valid only within the bounded case
-defined by K02/03 through K02/07 and authorizes no artifact invention.
+defined by K02/03 through K02/07 and authorizes no artifact invention. The
+one exception is R09 candidate preparation, owned by K02/03: inside an open,
+user-authorized R09 revision whose after Profile configures this slot, R13
+prepares and validates the three artifacts against that candidate binding
+(`check_corpus_plan.py` with the explicit `--profile` candidate manifest);
+they become authoritative only when the revision closes by adopting it.
 
 ## Triggered
 

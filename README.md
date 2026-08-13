@@ -192,10 +192,16 @@ existing adopter runtime with older or unregistered operational Amendment
 state must be converted outside the public execution path before it is loaded;
 Standards adoption does not guess or silently upgrade that state.
 
-Profile setup is also manual and file-based. Users copy `_template`, fill the
-resulting profile, and validate it with `check_profile.py`; this release does
-not include a profile questionnaire or configuration generator. Planned
-convenience and runtime layers are described in [`ROADMAP.md`](ROADMAP.md).
+Profile setup is agent-conducted over explicit contracts: `scaffold_profile.py`
+creates the candidate package from the version-controlled whitelist, the
+machine-readable interview contract (`profiles/interview.yaml`) carries the
+questions any assisting agent asks and projects the operator's confirmed
+answers, and `check_profile.py` validates the result. Filling in a text editor
+against the same contracts remains the no-agent fallback. This release does not
+bundle an automated interview runner; whatever conducts the interview produces
+only a candidate and never invents domain policy, approves a profile, or
+selects one for use. Planned convenience and runtime layers are described in
+[`ROADMAP.md`](ROADMAP.md).
 
 Cambium's receipts and Terminal Proof operate inside the adopting repository's
 local trust boundary. The shipped checks can validate receipt structure,
@@ -216,13 +222,20 @@ Profile adoption follows one process whether the target corpus already exists
 or will be built from zero, and Cambium never creates the corpus during setup.
 The two differ in exactly one place, described under **Adopting into an empty
 corpus** below: a corpus with pages is described from what it contains, and a
-corpus without them is described from what its first batch will contain. Start
-by creating a profile for that corpus. Do not edit the shared template in place
-and do not copy an example as the starting point.
+corpus without them is described from what bounded founding will create. Start
+by confirming the corpus location and profile ID, then scaffold a candidate
+profile for that corpus. Do not edit the shared template in place and do not
+copy an example as the starting point.
 
 ```text
-cp -R profiles/_template profiles/my-profile
+python3 Tools/scaffold_profile.py . --profile-id my-profile           # dry-run
+python3 Tools/scaffold_profile.py . --profile-id my-profile --apply
 ```
+
+The scaffolder copies exactly the whitelist in
+[`profiles/template-files.yaml`](profiles/template-files.yaml), derives the
+mechanical identity and self-path cells, and refuses an existing target; a
+manual whitelist copy is the no-agent fallback.
 
 The template ships pre-closed: every slot switch with a legal exit state is
 already in it, operational answers are pre-filled for confirmation, and only
@@ -231,8 +244,9 @@ instead, the adoption interview walks the closed ones in the same sitting.
 Either route produces a fully conformant profile; the fill-depth contract is
 in [`profiles/README.md`](profiles/README.md).
 
-1. Replace every `TODO(profile)` in `profiles/my-profile/`. Keep `profile_id`
-   equal to the directory name and use
+1. Answer the remaining `TODO(profile)` decisions in `profiles/my-profile/` —
+   by the [adoption interview](profiles/interview.yaml) or by hand. Keep
+   `profile_id` equal to the directory name and use
    [`profiles/README.md`](profiles/README.md) as the interface authority.
 2. Validate the filled copy:
 
@@ -242,20 +256,30 @@ in [`profiles/README.md`](profiles/README.md).
 
 3. Perform initial adoption through the full
    [`R09 Standards Governance Read Set`](<kernel/Read Sets/R09 Standards Governance Read Set.md>).
-   Record the adopter's Standards version, status `approved`, effective date,
-   and exact `profiles/my-profile/profile.md` path in K00/03. Directory presence,
-   profile discovery, an example, or a generated file never selects a profile.
-4. With those candidate state fields in place, compose the profile vocabulary
-   and the frontmatter page contract, and regenerate the Runtime Cards for the
-   adopted Standards version:
+   Prepare a restricted-YAML adoption plan from
+   [`Tools/schemas/profile_adoption_plan.template.yaml`](Tools/schemas/profile_adoption_plan.template.yaml) —
+   it binds the adopter's Standards version, status `approved`, effective
+   date, the exact `profiles/my-profile/profile.md` path, and the candidate's
+   exact `profile-load` fingerprints. Directory presence, profile discovery,
+   an example, or a generated file never selects a profile.
+4. With the user's explicit authorization, run the no-runtime adoption
+   transaction. Dry-run first; `--apply` executes prepare/commit/abort with
+   full restoration on any failure:
 
    ```text
-   python3 Tools/compose_vocab.py
-   python3 Tools/compose_page_contract.py
-   python3 Tools/stamp_cards.py . --set-version YOUR_VERSION
-   python3 Tools/stamp_cards.py . --check
+   python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml
+   python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml --apply
    ```
 
+   The transaction instantiates the four K00/03 values, creates the first
+   Change Summary entry, composes the profile vocabulary and the frontmatter
+   page contract, stamps the Runtime Cards for the adopted version, and
+   re-verifies the gates; a failure at any step restores the previous control
+   plane rather than leaving a partial adoption. The same steps remain
+   runnable by hand (`compose_vocab.py`, `compose_page_contract.py`,
+   `stamp_cards.py --set-version` / `--check`) as the no-agent fallback. An
+   existing `.cambium/` runtime is refused here: an active task adopts through
+   `adopt_standards.py` (next section).
 5. Complete the R09 governance gates before beginning corpus-content work.
    [`Tools/README.md`](Tools/README.md) documents the individual commands,
    receipts, and exit semantics; tool success alone is not proof that the
@@ -269,20 +293,26 @@ does not exist; what an empty corpus needs is to be founded first, which is
 ordinary authoring work.
 
 - **The residual scan.** Its matchers normally come from strings real pages
-  carry. With no pages, declare the structure class you will use, and have the
-  first batch create one page under the accepted root that carries it. The
+  carry. With no pages, declare the structure class you will use, and have
+  bounded founding create one page under the accepted root that carries it —
+  the residual witness, authored before any batch or runtime state exists. The
   production scan refuses a configuration that recognises nothing in the
   repository, so a declared class must be materialized; the positive control
   proves only that matchers and `mandated_headings` agree and passes on an
   empty repository.
 - **Coverage.** Knowledge objects that do not exist yet still get records, so
-  the first Queue is compiled from pages you intend rather than pages you have.
-- **Corpus Planning** can declare its bindings now and be proved later. The
-  Global Map names existing canonical owners, so the plan becomes provable once
-  some exist, and
+  the first Queue is compiled from pages you intend rather than pages you
+  have. Those intended pages enter Coverage through the user-confirmed Task
+  Plan of the large-scale task; the profile never generates Coverage.
+- **Corpus Planning** stays `not-applicable` at initial adoption, with a
+  reason that authorizes bounded founding and defers — not forbids —
+  large-scale work. The Global Map names existing canonical owners, so the
+  plan becomes provable once founding creates some, through a second R09
+  revision, and
   [`K00/13`](<kernel/K00 Standards Control/13 Runtime Admission and Recovery.md>)
   admits large-scale work only against a proved one. That is the sequence
-  below, not an obstruction.
+  below, not an obstruction. (A corpus that already has pages skips this: its
+  owners exist, so the initial adoption can configure the slot directly.)
 
 ### Founding a corpus, then building it
 
@@ -293,11 +323,18 @@ state at all.
 
 1. Adopt the profile through R09.
 2. Author one canonical owner per `Profile Scope` layer, plus the residual
-   witness declared during the interview. Ordinary single-note and module
-   routes; no Queue, no Coverage, no admission gate.
-3. With owners on disk, R13 establishes the Global Map, Capability Matrix, and
-   Gap Register against them, and the Corpus Planning slot reaches
-   `configured`.
+   witness declared during the interview (one page may serve as both owner and
+   witness when that is semantically natural, never merged only to save
+   files). Ordinary single-note and module routes; no Queue, no Coverage, no
+   admission gate.
+3. With owners on disk, a second R09 revision configures the Corpus Planning
+   slot: R13 prepares the Global Map, Capability Matrix, and Gap Register
+   inside that open revision against the `configured` after Profile
+   ([`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>)
+   candidate preparation), validated with `check_profile.py` and
+   `check_corpus_plan.py --profile <candidate manifest>`; the revision closes
+   through the same `apply_profile_adoption.py` transaction (its
+   `profile-revision` branch), and the artifacts become authoritative then.
 4. The large-scale build is the task that follows: initialize runtime state,
    pass the `K00/13` admission conditions, compile the Queue, run batches.
 
