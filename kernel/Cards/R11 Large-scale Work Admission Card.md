@@ -18,7 +18,7 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
-source_hash: '6e72687b3729'
+source_hash: '9b9ff77a5ffb'
 ---
 # R11 Large-scale Work Admission Card
 
@@ -35,7 +35,6 @@ Load before large-scale creation, moves, or deletion, together with [[kernel/Car
 - [ ] Initialize `.cambium/` only when absent. If it exists, first run `check_queue.py --resume-status` and reconcile the recorded task; bind Coverage, Required Queue, and Progress to the same task, scope, Standards version, and selected profile.
 - [ ] Reconcile Coverage with the file system and exclusions; inventory ownership, incoming links, user modifications, explicit batch manifests, and dependencies.
 - [ ] Require Corpus Planning `applicability.state: configured`; reconcile the bound Global Map, Capability Matrix, and Gap Register and pass `Tools/check_corpus_plan.py`. Use R13 to create or repair them; R11 only consumes this admission condition.
-- [ ] Corpus with no canonical owner yet: the profile still declares the three bindings, and the initial batch manifest carries the owners the Global Map will name plus the three artifact paths, so the close gate is applicable by manifest and proves the plan there. Only the first batch may use this; the batch cannot close until `check_corpus_plan` passes.
 - [ ] Compile the Queue from explicit Coverage inputs, record its path/revisions/fingerprint, and require `python3 Tools/check_queue.py .` plus `--require-ready <initial-batch-id>` to pass.
 - [ ] Declare the initial batch simple with null/null or bind a current complex Work Spec whose batch ID and ordered manifest match the Queue.
 - [ ] Identify foundational dependencies without burying shared foundations in the profile application mainline.
