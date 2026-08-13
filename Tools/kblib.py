@@ -723,6 +723,108 @@ class ProfileOverrideRowError(ValueError):
     """An override row whose shape no resolver may silently interpret."""
 
 
+PRIORITY_QUOTA_SECTION = "Priority Quota"
+PRIORITY_QUOTA_KERNEL_DEFAULTS = (15.0, 35.0)
+
+
+def priority_quota_policy(rubric_text):
+    """Read the Priority Rubric slot's quota registration, K00/07.
+
+    Returns ``((p0, p1), configured, errors)``.  One reader for the one
+    long-lived quota truth: the profile-load Gate validates through it and the
+    batch-close consumer resolves through it, so the two can never disagree
+    about what the slot declares.  ``Registration: None`` selects the kernel
+    defaults; ``Configured`` requires exactly one ``P0`` and one ``P1`` row,
+    each a percent share in [0, 100), a nonempty rationale, and the pair
+    strictly below 100 together -- P2 is the remainder class, carries every
+    terminology stub and placeholder page, and must stay reachable.
+    """
+    errors = []
+    inside = False
+    declaration = None
+    rows = []
+    for _line_number, line in markdown_authority_lines(rubric_text or ""):
+        heading = markdown_atx_heading(line)
+        if heading is not None:
+            if inside and heading[0] <= 2:
+                break
+            inside = (heading[0] == 2 and
+                      heading[1] == PRIORITY_QUOTA_SECTION)
+            continue
+        if not inside:
+            continue
+        stripped = line.strip()
+        match = re.fullmatch(r"-\s+Registration:\s*(.+)", stripped)
+        if match:
+            declaration = match.group(1).strip()
+            continue
+        if stripped.startswith("|") and stripped.endswith("|"):
+            cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+            if all(set(cell) <= {"-", ":", " "} for cell in cells):
+                continue
+            rows.append(cells)
+    if declaration is None:
+        errors.append(
+            "the %s section must declare `- Registration: None` (kernel "
+            "defaults) or `- Registration: Configured`" %
+            PRIORITY_QUOTA_SECTION)
+        return PRIORITY_QUOTA_KERNEL_DEFAULTS, False, errors
+    if declaration == "None":
+        data_rows = rows[1:] if rows else []
+        if data_rows:
+            errors.append(
+                "Registration: None leaves active quota rows behind; remove "
+                "them so the single declaration is authoritative")
+        return PRIORITY_QUOTA_KERNEL_DEFAULTS, False, errors
+    if declaration != "Configured":
+        errors.append(
+            "%s declaration %r is invalid; use `None` or `Configured`" %
+            (PRIORITY_QUOTA_SECTION, declaration))
+        return PRIORITY_QUOTA_KERNEL_DEFAULTS, False, errors
+
+    values = {}
+    data_rows = rows[1:] if rows else []
+    for cells in data_rows:
+        if len(cells) != 3 or not all(cells):
+            errors.append(
+                "a Configured quota row must carry exactly class, maximum "
+                "share, and a nonempty rationale; found %r" % (cells,))
+            continue
+        cls = cells[0].strip("`").strip()
+        if cls not in ("P0", "P1"):
+            errors.append("quota class %r is not P0 or P1" % cls)
+            continue
+        if cls in values:
+            errors.append("quota class %s is declared twice" % cls)
+            continue
+        raw = cells[1].strip("`").strip()
+        number = raw[:-1].strip() if raw.endswith("%") else raw
+        try:
+            share = float(number)
+        except ValueError:
+            errors.append(
+                "%s maximum share %r is not a number, optionally followed "
+                "by %%" % (cls, raw))
+            continue
+        if not 0 <= share < 100:
+            errors.append(
+                "%s maximum share must be at least 0 and under 100" % cls)
+            continue
+        values[cls] = share
+    missing = sorted({"P0", "P1"} - set(values))
+    if missing:
+        errors.append(
+            "Configured must declare both quota classes; missing %s" %
+            ", ".join(missing))
+        return PRIORITY_QUOTA_KERNEL_DEFAULTS, False, errors
+    if values["P0"] + values["P1"] >= 100:
+        errors.append(
+            "the two quota shares sum to %.1f%%; K00/07 requires the pair to "
+            "stay strictly below 100 so the P2 remainder class stays "
+            "non-empty" % (values["P0"] + values["P1"]))
+    return (values["P0"], values["P1"]), True, errors
+
+
 def profile_execution_default_overrides(manifest_text):
     """Return the manifest's ``Execution Default Overrides`` rows as a mapping.
 

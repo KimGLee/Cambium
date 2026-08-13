@@ -118,7 +118,26 @@ registration evidence never authorizes a new replan or cancellation.
 
 The baseline transaction writer covers scope/disposition replans and
 cancellation. It MUST NOT be bypassed by directly editing a materialized Task
-Contract. If a host has no guarded writer for a non-scope Contract change, the
+Contract.
+
+### Contract Amendment
+
+`Tools/apply_contract_amendment.py` is the guarded writer for the one
+non-scope Contract change the runtime supports: the contract's
+`policy_exceptions` register (field shape owned by
+[[kernel/K13 Task Runtime and Execution Control/02 Task Contract Binding and Time Semantics|K13/02]]).
+It consumes one confirmed restricted-YAML plan under
+`.cambium/deltas/contract-amendments/`, has no pending phase -- it validates
+the complete after-image and commits under the shared writer lock, or writes
+nothing -- and lands one `verified` `contract-amendment` row whose commit
+receipt is an anchor event: the contract fingerprint chain follows the change
+instead of failing closed on it. It advances `contract_version` and the Queue
+revision exactly once, changes no scope, no batch structure, and no lifecycle.
+An exception is current authorization *because it is contract state*; the
+amendment row is history, and historical evidence never authorizes. Extending
+the amendable field allowlist is a governance change under this module.
+
+A Contract change outside that allowlist keeps the prior disposition: the
 operator MUST pause or cancel the current task, preserve its runtime history,
 and carry the approved change into a successor task.
 

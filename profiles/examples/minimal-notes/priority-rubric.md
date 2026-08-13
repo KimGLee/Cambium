@@ -10,3 +10,7 @@ Every in-scope page stays at the kernel P2 fallback. This profile grants no P0 a
 |---|---|---|
 | `P0` | No grants | Not applicable |
 | `P1` | No grants | Not applicable |
+
+## Priority Quota
+
+- Registration: None

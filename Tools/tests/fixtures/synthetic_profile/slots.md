@@ -35,3 +35,7 @@ recorded as an intentional fixture exception before the batch closes.
 | Stable Scan ID | Activation role | Whole-corpus scope/root | Deterministic verifier command/path | Candidate predicate/boundary | Judgment Item ID reference |
 |---|---|---|---|---|---|
 | `test-profile-residuals` | `K12/09 item 6 — residual-content scan` | Run once from the repository root. | `python3 Tools/check_residual_content.py . --scan-id test-profile-residuals --config profiles/test-profile/scan-configs/residual-scan.yaml --time-limit 55` | A synthetic scratch heading outside the accepted root is a candidate. | `test-profile-residual-disposition` |
+
+## Priority Quota
+
+- Registration: None

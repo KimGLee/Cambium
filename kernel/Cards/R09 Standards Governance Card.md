@@ -22,7 +22,7 @@ source_files:
   - kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'f3e7ecb48183'
+source_hash: '711a614fa858'
 ---
 # R09 Standards Governance Card
 

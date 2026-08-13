@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.14.0"
+TOOL_VERSION = "1.15.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -196,14 +196,14 @@ GENERIC_WRITER_TOOLS = frozenset((
     "check_batch_close", "adopt_standards", "register_amendment",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.7.0"
+BATCH_CLOSE_TOOL_VERSION = "1.8.0"
 # Batch-close has a finite historical protocol catalog because its 1.4 era
 # sealed a different Closed List shape.  A current action still accepts only
 # BATCH_CLOSE_TOOL_VERSION; this set is used only while replaying an already
 # recorded closed edge.  Other historical receipts are judged through
 # :func:`accounted_standards_versions` instead of an unbounded version list.
 SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((
-    BATCH_CLOSE_TOOL_VERSION, "1.6.0", "1.5.0",
+    BATCH_CLOSE_TOOL_VERSION, "1.7.0", "1.6.0", "1.5.0",
     *LEGACY_CLOSED_LIST_VERSIONS,
 ))
 CORPUS_PLAN_TOOL = "check_corpus_plan"
@@ -212,6 +212,7 @@ CORPUS_PLAN_TOOL_VERSION = "1.7.0"
 # Batch-close 1.7 is the first protocol that consumes corpus-plan 1.7; older
 # supported bundles retain their 1.6 child identity during historical replay.
 HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
+    "1.7.0": "1.7.0",
     "1.6.0": "1.6.0",
     "1.5.0": "1.6.0",
     "1.4.0": "1.6.0",
@@ -294,7 +295,19 @@ CONTRACT_FIELDS = frozenset((
     "selected_card_paths", "selected_profile_route_ids",
     "selected_read_sets", "loaded_module_paths", "minimum_run_until",
     "checkpoint_at", "hard_stop_at", "completion_gate",
+    "policy_exceptions",
 ))
+# Optional so that contracts sealed before the field existed stay valid:
+# requiring it would strand every live runtime behind a hand migration the
+# anchor chain itself forbids (editing contract bytes outside a chained
+# writer breaks the chain's binding to the current contract).  Absent means
+# exactly what an explicit empty list means.
+CONTRACT_OPTIONAL_FIELDS = frozenset(("policy_exceptions",))
+POLICY_EXCEPTION_FIELDS = frozenset((
+    "decision_id", "policy_id", "baseline_policy_fingerprint", "limit",
+    "scope_kind", "scope_ref", "rationale", "approval_reference",
+))
+POLICY_EXCEPTION_SCOPE_KINDS = frozenset(("task", "repository-snapshot"))
 CHECKPOINT_FIELDS = frozenset((
     "recorded_at", "summary", "task_state", "task_transition_receipt",
     "coverage_sha256", "required_queue_sha256", "queue_revision",
@@ -998,6 +1011,59 @@ def _valid_timestamp(value):
     return _timestamp_value(value) is not None
 
 
+def _policy_exception_errors(value, label):
+    """Validate the contract's bounded policy exceptions, K13/02 shape.
+
+    Every entry is an answer a person already gave: which policy it excepts,
+    the bound it grants, what it was granted against, and where the approval
+    lives.  The baseline fingerprint is what makes an exception die with the
+    policy it was judged against instead of surviving a Standards or Profile
+    revision it never saw.
+    """
+    errors = []
+    if not isinstance(value, list):
+        return ["%s must be an explicit list" % label]
+    seen = set()
+    for index, entry in enumerate(value):
+        entry_label = "%s[%d]" % (label, index)
+        if not isinstance(entry, dict):
+            errors.append("%s must be a mapping" % entry_label)
+            continue
+        errors.extend(_closed_mapping_errors(
+            entry, entry_label, POLICY_EXCEPTION_FIELDS))
+        if not isinstance(entry, dict) or set(entry) - POLICY_EXCEPTION_FIELDS:
+            continue
+        for field in ("decision_id", "policy_id", "scope_ref", "rationale",
+                      "approval_reference"):
+            if not _nonempty_string(entry.get(field)):
+                errors.append("%s %s must be a non-empty string" %
+                              (entry_label, field))
+        decision = entry.get("decision_id")
+        if _nonempty_string(decision):
+            if decision in seen:
+                errors.append("%s repeats decision_id %s" %
+                              (label, decision))
+            seen.add(decision)
+        fingerprint = entry.get("baseline_policy_fingerprint")
+        if (not isinstance(fingerprint, str) or
+                not SHA256_RE.fullmatch(fingerprint)):
+            errors.append(
+                "%s baseline_policy_fingerprint must be sha256:<64 lowercase "
+                "hex>; an exception unbound from the policy bytes it was "
+                "judged against would survive revisions it never saw" %
+                entry_label)
+        limit = entry.get("limit")
+        if (not isinstance(limit, (int, float)) or isinstance(limit, bool)):
+            errors.append("%s limit must be a number; its meaning belongs to "
+                          "the policy owner" % entry_label)
+        if entry.get("scope_kind") not in POLICY_EXCEPTION_SCOPE_KINDS:
+            errors.append(
+                "%s scope_kind must be one of %s" %
+                (entry_label,
+                 ", ".join(sorted(POLICY_EXCEPTION_SCOPE_KINDS))))
+    return errors
+
+
 def _closed_mapping_errors(value, label, fields, optional_fields=()):
     """Require one explicit mapping with exactly the declared field set."""
     if not isinstance(value, dict):
@@ -1169,7 +1235,7 @@ def _contract_anchor_chain(progress, catalog):
             progress.get("amendments"), list) else []:
         if (not isinstance(amendment, dict) or
                 amendment.get("operation") not in
-                ("scope-replan", "cancel-batch") or
+                ("scope-replan", "cancel-batch", "contract-amendment") or
                 amendment.get("status") != "verified" or
                 amendment.get("writeback_done") is not True):
             continue
@@ -1193,6 +1259,14 @@ def _contract_anchor_chain(progress, catalog):
         if receipt.get("before_contract_scope_version") != amendment.get(
                 "scope_version_before"):
             errors.append("%s before scope does not match its Amendment" % label)
+            valid = False
+        if (amendment.get("operation") == "contract-amendment" and
+                receipt.get("before_contract_scope_version") !=
+                receipt.get("after_contract_scope_version")):
+            # Scope belongs to the replan machinery; a contract amendment
+            # that moved scope_version would be a scope change routed
+            # around the Coverage proposal it requires.
+            errors.append("%s may not change scope_version" % label)
             valid = False
         if not _nonempty_string(receipt.get("after_contract_version")):
             errors.append("%s has invalid after_contract_version" % label)
@@ -1337,7 +1411,12 @@ def _progress_shape_errors(progress):
     errors = []
     contract = progress.get("contract")
     errors.extend(_closed_mapping_errors(contract, "Progress contract",
-                                         CONTRACT_FIELDS))
+                                         CONTRACT_FIELDS,
+                                         CONTRACT_OPTIONAL_FIELDS))
+    if isinstance(contract, dict) and "policy_exceptions" in contract:
+        errors.extend(_policy_exception_errors(
+            contract.get("policy_exceptions"),
+            "Progress contract.policy_exceptions"))
     if isinstance(contract, dict):
         for field in ("contract_version", "objective", "scope_version",
                       "standards_version",
@@ -6003,7 +6082,27 @@ def _operational_amendment_registration_errors(
     """
     errors = []
     operation = amendment.get("operation")
+    if operation is None:
+        # An ordinary Guidance log row carries no operation and owes no
+        # registration binding.
+        return errors
+    if operation == "contract-amendment":
+        # Written only by its dedicated K13/06 transaction writer, which has
+        # no pending phase; the row lands committed with its verification
+        # receipt, and _contract_amendment_row_errors owns its binding.
+        return errors
     if operation not in OPERATIONAL_AMENDMENT_OPERATIONS:
+        # Fail closed: a row *claiming* an operation this validator does not
+        # know would otherwise skip every registration binding below, making
+        # an unknown operation name a way to hold authorization with no
+        # registered evidence at all.
+        errors.append(
+            "%s declares unknown operation %r; operational Amendments are "
+            "limited to %s, and an unrecognized operation cannot be exempt "
+            "from registration binding" %
+            (label, operation,
+             ", ".join(sorted(OPERATIONAL_AMENDMENT_OPERATIONS) +
+                       ["contract-amendment"])))
         return errors
     status = amendment.get("status")
     writeback = amendment.get("writeback_done")
@@ -6153,6 +6252,104 @@ def _registration_execution_bridge_errors(
     return errors
 
 
+CONTRACT_AMENDMENT_ROW_FIELDS = frozenset((
+    "id", "date", "summary", "status", "writeback_done", "operation",
+    "approval_reference",
+    "scope_version_before", "scope_version_after",
+    "queue_revision_before", "queue_revision_after",
+    "state_revision_before", "state_revision_after",
+    "contract_version_before", "contract_version_after",
+    "plan_path", "plan_sha256", "verification_receipt",
+))
+CONTRACT_AMENDMENT_PLAN_PREFIX = ".cambium/deltas/contract-amendments"
+
+
+def _contract_amendment_row_errors(root, amendment, label, historical_catalog):
+    """Validate one committed contract-amendment row, K13/06.
+
+    The dedicated writer has no pending phase: it either commits the whole
+    transaction -- contract bytes, Queue revision, this row, and the receipt
+    the row names -- or writes nothing.  A row in any other state is
+    therefore not an in-progress amendment but evidence of a bypassed
+    writer, and fails closed.  Anchor continuity (the before/after contract
+    fingerprints actually chaining) belongs to _contract_anchor_chain; this
+    validator owns the row's own shape and its binding to plan and receipt.
+    """
+    errors = []
+    errors.extend(_closed_mapping_errors(
+        amendment, label, CONTRACT_AMENDMENT_ROW_FIELDS))
+    if set(amendment) - CONTRACT_AMENDMENT_ROW_FIELDS or \
+            set(CONTRACT_AMENDMENT_ROW_FIELDS) - set(amendment):
+        return errors
+    if (amendment.get("status") != "verified" or
+            amendment.get("writeback_done") is not True):
+        errors.append(
+            "%s contract-amendment must be verified/written-back; its writer "
+            "has no pending phase, so any other state is a bypassed "
+            "transaction rather than an in-progress one" % label)
+    for field in ("id", "date", "summary", "approval_reference",
+                  "contract_version_before", "contract_version_after"):
+        if not _nonempty_string(amendment.get(field)):
+            errors.append("%s %s must be a non-empty string" % (label, field))
+    if amendment.get("contract_version_before") == amendment.get(
+            "contract_version_after"):
+        errors.append("%s must advance contract_version" % label)
+    scope_before = amendment.get("scope_version_before")
+    scope_after = amendment.get("scope_version_after")
+    if not _nonempty_string(scope_before) or scope_before != scope_after:
+        errors.append("%s must record one unchanged scope_version; scope "
+                      "belongs to the replan machinery" % label)
+    queue_before = amendment.get("queue_revision_before")
+    queue_after = amendment.get("queue_revision_after")
+    if (not isinstance(queue_before, int) or isinstance(queue_before, bool) or
+            queue_before < 1 or queue_after != queue_before + 1):
+        errors.append("%s queue revision edge must increment by one" % label)
+    state_before = amendment.get("state_revision_before")
+    state_after = amendment.get("state_revision_after")
+    if (not isinstance(state_before, int) or isinstance(state_before, bool) or
+            state_before < 0 or state_after != state_before):
+        errors.append("%s must preserve state_revision; it changes no batch "
+                      "lifecycle" % label)
+    plan_path = amendment.get("plan_path")
+    plan_sha = amendment.get("plan_sha256")
+    if not _nonempty_string(plan_path) or not (
+            isinstance(plan_sha, str) and SHA256_RE.fullmatch(plan_sha)):
+        errors.append("%s must bind plan_path and plan_sha256" % label)
+    else:
+        try:
+            plan_file = kblib.managed_repository_path(
+                root, plan_path, CONTRACT_AMENDMENT_PLAN_PREFIX,
+                suffixes=(".yaml", ".yml"), must_exist=True)
+            if kblib.sha256_file(plan_file) != plan_sha:
+                errors.append("%s plan bytes differ from persisted SHA" %
+                              label)
+        except (OSError, ValueError) as exc:
+            errors.append("%s plan is not resolvable: %s" % (label, exc))
+    receipt_id = amendment.get("verification_receipt")
+    entry = historical_catalog.get(receipt_id) if _nonempty_string(
+        receipt_id) else None
+    if entry is None:
+        errors.append("%s verification_receipt is not in the receipt "
+                      "catalog" % label)
+        return errors
+    receipt = entry[1]
+    bindings = {
+        "check": "contract_amendment",
+        "result": "pass",
+        "plan_path": plan_path,
+        "plan_sha256": plan_sha,
+        "before_contract_version": amendment.get("contract_version_before"),
+        "after_contract_version": amendment.get("contract_version_after"),
+        "queue_revision_before": queue_before,
+        "queue_revision_after": queue_after,
+    }
+    for field, value in bindings.items():
+        if receipt.get(field) != value:
+            errors.append("%s commit receipt has %s=%r, expected %r" %
+                          (label, field, receipt.get(field), value))
+    return errors
+
+
 def _cross_ledger_amendment_errors(
         root, progress, current_catalog, historical_catalog, queue,
         coverage_sha, queue_sha, progress_sha):
@@ -6168,6 +6365,26 @@ def _cross_ledger_amendment_errors(
     pending_count = 0
     pending_seen = False
     for index, amendment in enumerate(amendments):
+        if (isinstance(amendment, dict) and
+                amendment.get("operation") == "contract-amendment"):
+            errors.extend(_contract_amendment_row_errors(
+                root, amendment, "Progress amendments[%d]" % index,
+                historical_catalog))
+            continue
+        if (isinstance(amendment, dict) and
+                amendment.get("operation") is not None and
+                amendment.get("operation") not in
+                ("scope-replan", "cancel-batch", "queue-replan")):
+            # Fail closed here, at the walk itself: a row claiming an
+            # operation no validator owns would otherwise be skipped by
+            # every specialized check below, making an unknown operation
+            # name an exemption from evidence.
+            errors.append(
+                "Progress amendments[%d] declares unknown operation %r; "
+                "known operations are scope-replan, cancel-batch, "
+                "queue-replan, contract-amendment" %
+                (index, amendment.get("operation")))
+            continue
         if (not isinstance(amendment, dict) or
                 amendment.get("operation") not in
                 ("scope-replan", "cancel-batch")):
@@ -6440,6 +6657,7 @@ def _coverage_provenance_errors(progress, queue, catalog, coverage_sha,
         ("apply_amendment", "amendment_transaction"),
         ("apply_delta", "delta_apply"),
         (STANDARDS_ADOPTION_TOOL, "standards_adoption"),
+        ("apply_contract_amendment", "contract_amendment"),
     }
     writers = []
     # Writer receipts live in one collision-checked managed namespace.  Some
@@ -6456,7 +6674,8 @@ def _coverage_provenance_errors(progress, queue, catalog, coverage_sha,
                 receipt.get("actor_role") != "integrator"):
             continue
         tool = receipt.get("tool")
-        if (tool in ("apply_amendment", STANDARDS_ADOPTION_TOOL) and
+        if (tool in ("apply_amendment", STANDARDS_ADOPTION_TOOL,
+                     "apply_contract_amendment") and
                 receipt.get("transaction_phase") != "commit"):
             continue
         # Historical after-images remain valid evidence for history, but they

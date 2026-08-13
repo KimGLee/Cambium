@@ -124,6 +124,13 @@ def _pending_controls(progress):
             raise ValueError("Progress amendments[%d] must be a mapping" %
                              index)
         status = entry.get("status")
+        if status == "withdrawn" and entry.get("writeback_done") is False:
+            # K13/06 withdrawal: the row is final and authorizes nothing.
+            # check_queue already treats it as terminal; counting it as
+            # pending here would let one withdrawn registration wedge every
+            # future task transition -- the exact failure the withdrawal
+            # action exists to prevent.
+            continue
         if (status not in FINAL_CONTROL_STATUSES or
                 (status == "verified" and
                  entry.get("writeback_done") is not True)):

@@ -53,7 +53,7 @@ import compose_vocab
 import profile_admission
 
 TOOL = "check_vocab"
-TOOL_VERSION = "1.5.0"
+TOOL_VERSION = "1.6.0"
 GATE_ID = "frontmatter-vocabulary"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -117,6 +117,7 @@ def main(argv=None, *, authorized_admission=None):
                          "contract may override)")
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
     args = ap.parse_args(argv)
+    priority_shares = {}
 
     vocab_path = args.vocab or os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "vocab.yaml")
@@ -297,11 +298,13 @@ def main(argv=None, *, authorized_admission=None):
 
     if not any(r["result"] == "fail" for r in receipts):
         seq += 1
-        receipts.append(_make_receipt(
+        _summary = _make_receipt(
             GATE_CHECK,
             (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
             "no illegal controlled-vocabulary values found (unknown_value=0; "
-            "candidates counted separately)", seq, root=args.vault_root))
+            "candidates counted separately)", seq, root=args.vault_root)
+        _summary["priority_shares"] = priority_shares
+        receipts.append(_summary)
 
     if admission is not None:
         evidence = {
@@ -335,19 +338,30 @@ def main(argv=None, *, authorized_admission=None):
                                for k, v in sorted(dist[_axis].items()))
             print("  %s distribution: %s" % (_axis, _parts))
     _ptot = sum(dist["priority"].values())
+    priority_shares = {}
     for _pcls, _quota in (("P0", args.quota_p0), ("P1", args.quota_p1)):
         _n = dist["priority"].get(_pcls, 0)
-        if _ptot and _n * 100.0 / _ptot > _quota:
+        _share = (_n * 100.0 / _ptot) if _ptot else 0.0
+        priority_shares[_pcls] = {
+            "pages": _n, "total": _ptot, "share": round(_share, 4),
+            "quota": _quota,
+        }
+        if _ptot and _share > _quota:
+            # One candidate per class: an exception is a bounded grant for
+            # one class at one magnitude, and a type that fused P0 and P1
+            # would make accepting one mean accepting both.
             seq += 1
-            receipts.append(_make_receipt(
-                "priority-quota", "vault", "candidate",
-                "%s share %.0f%% (%d/%d) exceeds the K00/07 Priority Quota "
-                "target <=%.0f%%; over-quota pages must be downgraded or an "
-                "exemption recorded in the Coverage Ledger"
-                % (_pcls, _n * 100.0 / _ptot, _n, _ptot, _quota), seq,
-                root=args.vault_root))
-            print("  [CAND priority-quota] %s share %.0f%% exceeds the <=%.0f%% quota (K00/07)"
-                  % (_pcls, _n * 100.0 / _ptot, _quota))
+            _receipt = _make_receipt(
+                "priority-quota-%s" % _pcls, "vault", "candidate",
+                "%s share %.1f%% (%d/%d) exceeds the K00/07 Priority Quota "
+                "target <=%.0f%%; resolve by demotion, a profile quota "
+                "registration, or a bounded contract policy exception"
+                % (_pcls, _share, _n, _ptot, _quota), seq,
+                root=args.vault_root)
+            _receipt["priority_share"] = priority_shares[_pcls]
+            receipts.append(_receipt)
+            print("  [CAND priority-quota-%s] share %.1f%% exceeds the <=%.0f%% quota (K00/07)"
+                  % (_pcls, _share, _quota))
 
     if admission is not None:
         final_currency = compose_vocab.artifact_currency_errors(

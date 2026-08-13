@@ -137,7 +137,7 @@ Capability Scale rows carry an explicit integer `Rank`, contiguous from `0` and 
 
 ## Priority Rubric Slot
 
-**Required.** Provide testable P0 and P1 grant predicates and the reader capability or time horizon each grant protects. P2 remains the kernel fallback for other in-scope pages. [[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota|K00/07]] owns tier derivation and the quota model and delegates the P0/P1 grant conditions here. Quota selections belong only to `Execution Default Overrides`; this slot cannot redefine P0/P1/P2, tier derivation, quota coupling, or exemptions.
+**Required.** Provide testable P0 and P1 grant predicates and the reader capability or time horizon each grant protects. P2 remains the kernel fallback for other in-scope pages. [[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota|K00/07]] owns tier derivation and the quota model and delegates both the P0/P1 grant conditions and the standing quota targets here: the required `Priority Quota` block declares `- Registration: None` (kernel defaults, P0 <=15% / P1 <=35%) or `Configured` with both classes, a maximum corpus share and a required rationale per class, the pair strictly below 100 together. `check_profile.py` validates the block and batch close resolves quotas from the same bytes, so grant conditions, standing targets, and their reasons live in one slot instead of being reassembled from four places. A temporary excess is not registered here -- it is a bounded Task Contract policy exception (K13/06), and it dies with its task. This slot cannot redefine P0/P1/P2, tier derivation, or quota coupling.
 
 ## Execution Default Overrides Contract
 

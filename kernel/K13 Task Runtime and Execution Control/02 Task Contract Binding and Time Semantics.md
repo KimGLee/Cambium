@@ -45,6 +45,19 @@ Freeze `standards_version` and `selected_profile_manifest` once work starts.
 Only an authorized governance change may modify them; afterward run K12/10
 Active-task Adoption against the revision's changed predicates.
 
+The contract MAY carry a `policy_exceptions` register: bounded, currently
+valid exceptions to standing policies, each a closed record of `decision_id`,
+`policy_id`, `baseline_policy_fingerprint`, `limit`, `scope_kind` (`task` or
+`repository-snapshot`), `scope_ref`, `rationale`, and `approval_reference`.
+An exception is contract state because it is *current authorization* -- it
+ends with its task or named snapshot, and its baseline fingerprint binds it to
+the exact policy bytes it was judged against, so a Standards or Profile
+revision it never saw invalidates it. Absent means the same as explicitly
+empty. Its sole writer after materialization is the
+[[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|K13/06]]
+Contract Amendment transaction; the policy each exception excepts keeps its
+own owner, and consumption is judged where the policy is consumed.
+
 ## Time And Stop Semantics
 
 Time fields MUST use explicit semantics; they cannot all be written as an ambiguous "deadline":

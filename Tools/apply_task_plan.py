@@ -96,11 +96,11 @@ def _load_plan(root, relative):
     return path, raw, plan
 
 
-def _closed(mapping, allowed, label):
+def _closed(mapping, allowed, label, optional=frozenset()):
     if not isinstance(mapping, dict):
         raise Refusal("%s must be a mapping" % label)
-    unknown = sorted(set(mapping) - allowed)
-    missing = sorted(allowed - set(mapping))
+    unknown = sorted(set(mapping) - set(allowed))
+    missing = sorted(set(allowed) - set(optional) - set(mapping))
     if unknown:
         raise Refusal("%s has unsupported field(s): %s"
                       % (label, ", ".join(unknown)))
@@ -130,7 +130,9 @@ def _validate_plan_shape(plan):
                 "task plan before.%s must be spelled sha256:<64 hex digits>; "
                 "`check_queue.py . --resume-status` reports the three current "
                 "values" % field)
-    _closed(plan["contract_after"], CONTRACT_FIELDS, "task plan contract_after")
+    _closed(plan["contract_after"], CONTRACT_FIELDS,
+            "task plan contract_after",
+            optional=check_queue.CONTRACT_OPTIONAL_FIELDS)
     _closed(plan["coverage_after"], COVERAGE_AFTER_FIELDS,
             "task plan coverage_after")
     for field in sorted(COVERAGE_AFTER_FIELDS):

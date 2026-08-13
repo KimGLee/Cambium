@@ -1,0 +1,72 @@
+# =============================================================================
+# Contract Amendment plan (the one confirmed input that amends a frozen Task
+# Contract; the template is the schema doc)
+# Owner standard: "kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning.md"
+# Location: .cambium/deltas/contract-amendments/<amendment-id>.yaml
+#
+# Consumed by Tools/apply_contract_amendment.py. Only the restricted YAML
+# subset is allowed (Tools/kblib.py parse_yaml_subset). Unknown fields fail
+# closed.
+#
+# What this transaction is for: once the Queue is materialized the Task
+# Contract fingerprint is frozen, and the only field this writer may change is
+# `policy_exceptions` -- the contract's register of bounded, task-scoped
+# policy exceptions. Scope changes stay with the replan machinery, Standards
+# identity with K13/15, and any other contract change with a successor task.
+#
+# An exception is current authorization with a declared end. Its baseline
+# fingerprint binds it to the policy bytes it was judged against, so a
+# Standards or Profile revision it never saw invalidates it rather than being
+# silently covered by it.
+# =============================================================================
+
+schema_version: 1
+
+# Unique within Progress amendments; never reused, including after withdrawal
+# of unrelated operational amendments.
+amendment_id: CA-001
+
+# MUST equal the task_id recorded by all three state documents.
+task_id: TODO(amendment)
+
+date: TODO(amendment)
+
+# The rationale a reader sees in the Progress amendment log.
+summary: TODO(amendment)
+
+# Where the operator's confirmation of these exact answers is recorded.
+approval_reference: TODO(amendment)
+
+# Compare-and-swap. SHA-256 of each current state file's exact bytes, spelled
+# `sha256:<64 hex digits>`; `check_queue.py . --resume-status` reports them.
+before:
+  coverage_sha256: TODO(amendment)
+  queue_sha256: TODO(amendment)
+  progress_sha256: TODO(amendment)
+
+# Must differ from the live contract_version so the anchor chain can tell the
+# two contracts apart.
+contract_version_after: TODO(amendment)
+
+# The COMPLETE after-image of the contract's policy_exceptions list -- not a
+# diff. Removing an exception means confirming a plan whose list no longer
+# carries it. Field meanings are owned by K13/02.
+policy_exceptions_after:
+  - decision_id: PE-001
+    # The policy this excepts, named as its owner registers it,
+    # e.g. priority_quota.P0 (owner: K00/07).
+    policy_id: TODO(amendment)
+    # SHA-256 of the policy source bytes this exception was judged against
+    # (for a Profile-owned policy: the owning slot file). A revision of those
+    # bytes invalidates the exception.
+    baseline_policy_fingerprint: TODO(amendment)
+    # The bound this exception grants. Its unit and meaning belong to the
+    # policy owner; for priority_quota.* it is the maximum corpus share in
+    # percent.
+    limit: 0
+    # task: ends when this task ends. repository-snapshot: speaks only for
+    # the snapshot named by scope_ref.
+    scope_kind: task
+    scope_ref: TODO(amendment)
+    rationale: TODO(amendment)
+    approval_reference: TODO(amendment)

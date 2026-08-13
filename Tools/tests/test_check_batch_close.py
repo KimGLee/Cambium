@@ -783,78 +783,104 @@ class CheckBatchCloseTests(unittest.TestCase):
             "selected_profile_manifest": "profiles/test-profile/profile.md",
         }}
 
-    def test_priority_quotas_read_the_shared_override_table(self):
-        runtime = self.set_override_rows("")
-        self.assertEqual((15.0, 35.0),
-                         check_batch_close._priority_quotas(
-                             check_batch_close._profile_evaluation(
-                                 self.root, runtime)))
-        runtime = self.set_override_rows(
-            "| `concurrency_cap` | `4` |\n"
-            "| `priority_quota.P0` | `20%` |\n"
-            "| `priority_quota.P1` | `40` |\n")
-        self.assertEqual((20.0, 40.0),
-                         check_batch_close._priority_quotas(
-                             check_batch_close._profile_evaluation(
-                                 self.root, runtime)))
-        manifest_text = (
-            self.root / "profiles/test-profile/profile.md"
-        ).read_text(encoding="utf-8")
-        self.assertEqual(
-            {"concurrency_cap": "4", "priority_quota.P0": "20%",
-             "priority_quota.P1": "40"},
-            kblib.profile_execution_default_overrides(manifest_text))
+    def set_quota_section(self, body):
+        """Rewrite the synthetic rubric's Priority Quota section."""
+        rubric = self.root / "profiles/test-profile/slots.md"
+        text = rubric.read_text(encoding="utf-8")
+        head, _, _ = text.partition("\n## Priority Quota\n")
+        rubric.write_text(head + "\n## Priority Quota\n" + body,
+                          encoding="utf-8")
+        return {"queue": {
+            "selected_profile_manifest": "profiles/test-profile/profile.md",
+        }}
 
-    def test_priority_quota_override_still_fails_closed_on_a_bad_value(self):
-        runtime = self.set_override_rows("| `priority_quota.P0` | `many` |\n")
-        with self.assertRaises(ValueError) as caught:
-            check_batch_close._profile_evaluation(self.root, runtime)
-        self.assertIn("expected a number", str(caught.exception))
-        runtime = self.set_override_rows("| `priority_quota.P1` | `140` |\n")
-        with self.assertRaises(ValueError) as caught:
-            check_batch_close._profile_evaluation(self.root, runtime)
-        self.assertIn("under 100", str(caught.exception))
+    def resolved_quotas(self, runtime):
+        return check_batch_close._priority_quotas(
+            check_batch_close._profile_evaluation(self.root, runtime))
 
-    def test_a_quota_of_the_whole_corpus_is_refused_by_the_consumer_too(self):
-        """The same open upper end the profile checker enforces on the row.
+    def test_priority_quotas_read_the_rubric_slot(self):
+        """K00/07: the standing quota truth lives in the Priority Rubric.
 
-        The consumer reads an already-checked manifest, but its own guard must
-        not disagree with the checker about which values exist.
+        The retired priority_quota.* override rows are rejected upstream by
+        profile-load as unknown registry items, so the one long-lived source
+        is the slot this consumer reads through the same kblib reader the
+        Gate validated with.
         """
-        for item in ("priority_quota.P0", "priority_quota.P1"):
-            for value in ("100", "100%"):
-                with self.subTest(item=item, value=value):
-                    runtime = self.set_override_rows(
-                        "| `%s` | `%s` |\n" % (item, value))
-                    with self.assertRaises(ValueError) as caught:
-                        check_batch_close._profile_evaluation(
-                            self.root, runtime)
-                    self.assertIn("under 100", str(caught.exception))
-        runtime = self.set_override_rows(
-            "| `priority_quota.P0` | `99.9%` |\n")
-        self.assertEqual(
-            (99.9, 35.0),
-            check_batch_close._priority_quotas(
-                check_batch_close._profile_evaluation(self.root, runtime)))
+        runtime = self.set_quota_section("\n- Registration: None\n")
+        self.assertEqual((15.0, 35.0), self.resolved_quotas(runtime))
+        runtime = self.set_quota_section(
+            "\n- Registration: Configured\n\n"
+            "| Class | Maximum corpus share | Rationale |\n"
+            "|---|---|---|\n"
+            "| `P0` | `20%` | foundational density |\n"
+            "| `P1` | `40` | applied breadth |\n")
+        self.assertEqual((20.0, 40.0), self.resolved_quotas(runtime))
 
-    def test_priority_quotas_fail_closed_on_a_malformed_override_row(self):
-        """The shared reader refuses; the close attempt must not proceed."""
-        runtime = self.set_override_rows(
-            "| `priority_quota.P0` | `20%` | why |\n")
-        with self.assertRaises(ValueError) as caught:
-            check_batch_close._profile_evaluation(self.root, runtime)
-        self.assertIn("found 3", str(caught.exception))
-        self.assertIsInstance(caught.exception, ValueError)
-
-    def test_quota_and_scan_share_one_authorized_profile_revision(self):
+    def test_a_retired_override_row_fails_profile_load(self):
+        """The old carrier is rejected at the Gate, not silently ignored."""
         runtime = self.set_override_rows(
             "| `priority_quota.P0` | `20%` |\n")
+        with self.assertRaises(ValueError) as caught:
+            check_batch_close._profile_evaluation(self.root, runtime)
+        self.assertIn("not in the closed overridable registry",
+                      str(caught.exception))
+
+    def test_the_two_quota_shares_may_not_consume_the_corpus_together(self):
+        """K00/07: the two shares together stay strictly below 100.
+
+        Each value passes its own per-value form (60 < 100), so only the
+        joint bound can catch the pair; it now lives in the shared slot
+        reader, so profile-load and this consumer refuse identically.
+        """
+        runtime = self.set_quota_section(
+            "\n- Registration: Configured\n\n"
+            "| Class | Maximum corpus share | Rationale |\n"
+            "|---|---|---|\n"
+            "| `P0` | `60` | dense |\n"
+            "| `P1` | `60` | broad |\n")
+        with self.assertRaises(ValueError) as caught:
+            self.resolved_quotas(runtime)
+        self.assertIn("strictly below 100", str(caught.exception))
+
+    def test_a_malformed_quota_registration_fails_closed(self):
+        for body, expected in (
+                ("\n- Registration: Configured\n\n"
+                 "| Class | Maximum corpus share | Rationale |\n"
+                 "|---|---|---|\n"
+                 "| `P0` | `many` | words |\n"
+                 "| `P1` | `40` | applied |\n",
+                 "not a number"),
+                ("\n- Registration: Configured\n\n"
+                 "| Class | Maximum corpus share | Rationale |\n"
+                 "|---|---|---|\n"
+                 "| `P0` | `20` | dense |\n",
+                 "missing P1"),
+                ("\n- Registration: Sometimes\n", "invalid"),
+                ("\n- Registration: None\n\n"
+                 "| Class | Maximum corpus share | Rationale |\n"
+                 "|---|---|---|\n"
+                 "| `P0` | `20` | left behind |\n",
+                 "active quota rows behind"),
+        ):
+            with self.subTest(expected=expected):
+                runtime = self.set_quota_section(body)
+                with self.assertRaises(ValueError) as caught:
+                    self.resolved_quotas(runtime)
+                self.assertIn(expected, str(caught.exception))
+
+    def test_quota_and_scan_share_one_authorized_profile_revision(self):
+        runtime = self.set_quota_section(
+            "\n- Registration: Configured\n\n"
+            "| Class | Maximum corpus share | Rationale |\n"
+            "|---|---|---|\n"
+            "| `P0` | `20%` | dense |\n"
+            "| `P1` | `35` | applied |\n")
         evaluation = check_batch_close._profile_evaluation(self.root, runtime)
-        manifest = self.root / "profiles/test-profile/profile.md"
-        manifest.write_text(
-            manifest.read_text(encoding="utf-8").replace(
-                "| `priority_quota.P0` | `20%` |",
-                "| `priority_quota.P0` | `80%` |"),
+        rubric = self.root / "profiles/test-profile/slots.md"
+        rubric.write_text(
+            rubric.read_text(encoding="utf-8").replace(
+                "| `P0` | `20%` | dense |",
+                "| `P0` | `80%` | dense |"),
             encoding="utf-8")
 
         self.assertEqual(

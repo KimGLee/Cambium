@@ -133,18 +133,33 @@ class ExecutionDefaultOverrideTests(unittest.TestCase):
                 self.assertIn("override-value-domain",
                               self.override_checks(receipts))
 
+    SHARE_REGISTRY = (
+        "schema_version: 1\n"
+        "overridable:\n"
+        "  - item: \"concurrency_cap\"\n"
+        "    owner: \"kernel/K13 Task Runtime and Execution Control/"
+        "10 Batch Admission Transitions and Serial Integration.md\"\n"
+        "  - item: \"fixture.share\"\n"
+        "    owner: \"kernel/K00 Standards Control/"
+        "07 Effort Tiering and Priority Quota.md\"\n"
+        "    value_domain: \"percent-share-under-100\"\n"
+        "constitutional: []\n"
+    )
+
     def test_share_domain_accepts_bare_and_suffixed_percentages(self):
         for value in ("20", "20%", "0", "99.9%", "12.5%"):
             with self.subTest(value=value):
                 _, receipts = self.run_check(
-                    "| `priority_quota.P0` | `%s` |\n" % value)
+                    "| `fixture.share` | `%s` |\n" % value,
+                    execution_defaults=self.SHARE_REGISTRY)
                 self.assertEqual(set(), self.override_checks(receipts))
 
     def test_share_domain_rejects_out_of_range_and_non_numeric(self):
         for value in ("120%", "-5", "a lot"):
             with self.subTest(value=value):
                 _, receipts = self.run_check(
-                    "| `priority_quota.P1` | `%s` |\n" % value)
+                    "| `fixture.share` | `%s` |\n" % value,
+                    execution_defaults=self.SHARE_REGISTRY)
                 self.assertIn("override-value-domain",
                               self.override_checks(receipts))
 
@@ -155,13 +170,13 @@ class ExecutionDefaultOverrideTests(unittest.TestCase):
         exceeds the quota, so a share of the whole corpus states an empty
         class and leaves nothing able to exceed it.
         """
-        for item in ("priority_quota.P0", "priority_quota.P1"):
-            for value in ("100", "100%", "100.0"):
-                with self.subTest(item=item, value=value):
-                    _, receipts = self.run_check(
-                        "| `%s` | `%s` |\n" % (item, value))
-                    self.assertIn("override-value-domain",
-                                  self.override_checks(receipts))
+        for value in ("100", "100%", "100.0"):
+            with self.subTest(value=value):
+                _, receipts = self.run_check(
+                    "| `fixture.share` | `%s` |\n" % value,
+                    execution_defaults=self.SHARE_REGISTRY)
+                self.assertIn("override-value-domain",
+                              self.override_checks(receipts))
 
     def test_the_registry_names_a_domain_the_checker_implements(self):
         """Registry and checker are updated together, per the unknown path."""
@@ -171,8 +186,11 @@ class ExecutionDefaultOverrideTests(unittest.TestCase):
         registry = kblib.load_yaml_file(EXECUTION_DEFAULTS)
         named = {entry["item"]: entry.get("value_domain")
                  for entry in registry["overridable"]}
-        self.assertEqual("percent-share-under-100", named["priority_quota.P0"])
-        self.assertEqual("percent-share-under-100", named["priority_quota.P1"])
+        # priority_quota.* is retired from this registry: the standing quota
+        # truth lives in the Priority Rubric slot's Priority Quota block, so
+        # a manifest still carrying the old rows fails as an unknown item.
+        self.assertNotIn("priority_quota.P0", named)
+        self.assertNotIn("priority_quota.P1", named)
         for item, domain in named.items():
             if domain is not None:
                 self.assertIn(domain, check_profile.VALUE_DOMAINS, item)
@@ -197,7 +215,9 @@ class ExecutionDefaultOverrideTests(unittest.TestCase):
                       self.override_checks(receipts))
 
     def test_domain_failure_names_the_owner_module(self):
-        _, receipts = self.run_check("| `priority_quota.P0` | `120%` |\n")
+        _, receipts = self.run_check(
+            "| `fixture.share` | `120%` |\n",
+            execution_defaults=self.SHARE_REGISTRY)
         details = [r["details"] for r in receipts
                    if r["check"] == "override-value-domain"]
         self.assertEqual(1, len(details), receipts)
@@ -232,7 +252,6 @@ class ShippedRegistryTests(unittest.TestCase):
         self.assertEqual([
             "concurrency_cap",
             "batch_size.S", "batch_size.M", "batch_size.L",
-            "priority_quota.P0", "priority_quota.P1",
             "maintenance.unselected_rounds_before_log_only",
             "maintenance.incoming_retarget_divisor",
         ], items)
