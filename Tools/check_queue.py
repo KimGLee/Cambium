@@ -3569,6 +3569,21 @@ def _standards_adoption_errors(root, progress, catalog, queue):
         latest = records[-1]
         contract = progress.get("contract") if isinstance(
             progress.get("contract"), dict) else {}
+        # A K13/06 Contract Amendment is the other guarded writer of the
+        # frozen contract, and it MUST advance `contract_version`.  This
+        # binding was written when adoption was the only one, so it read
+        # "the adoption is the last word on the contract" -- a sentence no
+        # kernel module states.  An amendment that literally continues from
+        # this adoption's after-version supersedes that one field; the
+        # contract anchor chain owns the continuity from there, and every
+        # other field stays strictly bound because the amendment writer's
+        # allowlist cannot touch them.
+        superseding = next(
+            (row for row in (progress.get("amendments") or [])
+             if isinstance(row, dict) and
+             row.get("operation") == "contract-amendment" and
+             row.get("contract_version_before") ==
+             latest.get("contract_version_after")), None)
         for field, contract_field in (
                 ("contract_version_after", "contract_version"),
                 ("standards_version_after", "standards_version"),
@@ -3578,6 +3593,8 @@ def _standards_adoption_errors(root, progress, catalog, queue):
                 ("selected_profile_route_ids_after", "selected_profile_route_ids"),
                 ("selected_read_sets_after", "selected_read_sets"),
                 ("loaded_module_paths_after", "loaded_module_paths")):
+            if field == "contract_version_after" and superseding is not None:
+                continue
             if latest.get(field) != contract.get(contract_field):
                 errors.append("latest Standards adoption %s does not bind live "
                               "Progress contract.%s" % (field, contract_field))
