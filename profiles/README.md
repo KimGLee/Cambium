@@ -86,6 +86,10 @@ projection, never a second authoritative ledger.
    interrupted fill re-presents this closing summary in full on resumption
    instead of assuming earlier confirmations still stand.
 5. **Adopt through R09.** Filling and checking never select the profile.
+   With no runtime present, the transaction is
+   `python3 Tools/apply_profile_adoption.py . --plan <plan> [--apply]` —
+   dry-run first, plan-fingerprint-bound, and fully restoring on failure;
+   an active `.cambium/` task adopts through `adopt_standards.py` instead.
 
 **Profile prose language.** Slot prose is written in this interface's
 language (English) regardless of the corpus body language, so any agent or

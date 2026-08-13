@@ -1,0 +1,63 @@
+# =============================================================================
+# R09 Profile-adoption transaction plan (no-runtime branch)
+# Owner standard: kernel/K00 Standards Control/03 Standards Governance.md
+# Implemented by: Tools/apply_profile_adoption.py
+# Location: any repository-contained path outside kernel/, the candidate
+#   profile directory, and .cambium/ (which must not exist for this writer);
+#   e.g. adoption-plans/<plan-id>.yaml
+#
+# The plan is restricted YAML and binds one exact before-state.  It drives the
+# sole writer for the two R09 branches that exist BEFORE any runtime does:
+# initial adoption (all four K00/03 placeholders uninstantiated) and a later
+# profile revision (all four instantiated).  It changes only the four K00/03
+# Standards Control cells, appends one Change Summary row, re-measures the
+# K00/16 register cell for K00/03, and recomposes the generated artifacts
+# (vocab.yaml, page_contract.yaml, kernel/Cards) through their own producers.
+# It never touches `.cambium/`; an existing runtime routes the revision to
+# adopt_standards.py instead.
+# =============================================================================
+
+schema_version: 1
+plan_id: "PA-001"
+# `initial-adoption` requires all four K00/03 placeholders uninstantiated and
+# null `*_before` fields below; `profile-revision` requires all four
+# instantiated and both `*_before` fields matching the current K00/03 cells.
+branch: initial-adoption
+standards_version_after: TODO(profile-adoption)
+# The no-runtime writer records only released governance; `approved` is the
+# sole admissible status (K00/03 lifecycle: draft -> approved -> superseded).
+standards_status_after: approved
+standards_effective_date_after: TODO(profile-adoption)
+selected_profile_manifest_after: "profiles/my-profile/profile.md"
+# profile-revision only; initial adoption declares the absence explicitly with
+# a null pair -- an old profile does not exist and is not a prerequisite.
+standards_version_before: null
+selected_profile_manifest_before: null
+
+# The complete Change cell of the new Change Summary row, verbatim: the change
+# description including the profile selection and, when applicable, the
+# upstream tag, commit, or archive checksum.  One Markdown table cell: no `|`
+# and no newline.
+change_summary: TODO(profile-adoption)
+
+# This writer exists for the no-runtime case, where no task state can consume
+# a changed predicate.  The list MUST be empty; a revision with changed
+# predicates against an existing runtime is an active-task adoption and
+# belongs to adopt_standards.py (K12/10 / K13/15).
+changed_predicates: []
+# An empty predicate list takes K12/10's no-predicate-change branch; with no
+# runtime there is no task to adopt, so the requirement is exactly `none`.
+adoption_requirement: none
+
+# Fingerprints computed at plan time and re-verified at apply time; drift in
+# any of them refuses the apply, and the operator re-prepares the plan -- the
+# tool never adopts unseen bytes.
+# Exact current K00/03 governance file bytes (kblib.sha256_file).
+k00_03_sha256_before: "sha256:replace-with-current-governance-file-fingerprint"
+# The next three come from one passing check_profile.evaluate_profile_load of
+# the candidate: the deterministic candidate Profile directory tree snapshot,
+# the typed dependency-contract fingerprint, and the root-owned profile-load
+# input fingerprint.
+profile_snapshot_sha256_after: "sha256:replace-with-selected-profile-tree-fingerprint"
+profile_contract_fingerprint_after: "sha256:replace-with-profile-contract-fingerprint"
+profile_load_inputs_sha256_after: "sha256:replace-with-root-profile-load-input-fingerprint"

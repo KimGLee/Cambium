@@ -214,19 +214,27 @@ scaffolder 精确复制 [`profiles/template-files.yaml`](profiles/template-files
    ```
 
 3. 通过完整的 [`R09 Standards Governance Read Set`](<kernel/Read Sets/R09 Standards Governance Read Set.md>)
-   执行初始采用。在 K00/03 中记录采用方的 Standards version、状态 `approved`、
-   effective date 以及准确的 `profiles/my-profile/profile.md` 路径。目录存在、
-   Profile discovery、示例或生成的文件都不能选定 Profile。
-4. 这些候选状态字段就位后，组合 Profile vocabulary 与 frontmatter 页面契约，
-   并为已采用的 Standards version 重新生成 Runtime Cards：
+   执行初始采用。从
+   [`Tools/schemas/profile_adoption_plan.template.yaml`](Tools/schemas/profile_adoption_plan.template.yaml)
+   准备一份 restricted-YAML 采用计划——它绑定采用方的 Standards version、状态
+   `approved`、effective date、准确的 `profiles/my-profile/profile.md` 路径，
+   以及候选的精确 `profile-load` 指纹。目录存在、Profile discovery、示例或
+   生成的文件都不能选定 Profile。
+4. 在用户明确授权后，运行无运行时的采用事务。先 dry-run；`--apply` 执行
+   prepare/commit/abort，任何一步失败都完整恢复：
 
    ```text
-   python3 Tools/compose_vocab.py
-   python3 Tools/compose_page_contract.py
-   python3 Tools/stamp_cards.py . --set-version YOUR_VERSION
-   python3 Tools/stamp_cards.py . --check
+   python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml
+   python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml --apply
    ```
 
+   该事务实例化 K00/03 的四个值、创建首条 Change Summary、组合 Profile
+   vocabulary 与 frontmatter 页面契约、为已采用版本 stamp Runtime Cards，并
+   复验各门禁；任何一步失败都会恢复此前的控制面，不会留下部分采用。同样的
+   步骤仍可手工执行（`compose_vocab.py`、`compose_page_contract.py`、
+   `stamp_cards.py --set-version` / `--check`），作为无 Agent 的后备路径。
+   存在 `.cambium/` 运行时会被拒绝：活动任务通过 `adopt_standards.py` 采用
+   （见下一节）。
 5. 在开始语料库内容工作前完成 R09 治理门禁。[`Tools/README.md`](Tools/README.md)
    记录了各项命令、receipt 和退出语义；工具成功本身不能证明完整的治理门禁已经通过。
 
@@ -268,8 +276,10 @@ Profile 里有几项答案是在描述语料库，而没有页面的语料库还
    内，针对 `configured` 的 after Profile 准备 Global Map、Capability Matrix
    与 Gap Register
    （[`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>)
-   的 candidate preparation）；修订以采用该 after-image 闭合时，它们才成为
-   权威。
+   的 candidate preparation），用 `check_profile.py` 与
+   `check_corpus_plan.py --profile <候选 manifest>` 验证；修订通过同一个
+   `apply_profile_adoption.py` 事务（其 `profile-revision` 分支）闭合，
+   届时这些制品才成为权威。
 4. 大规模构建是随后的那个任务：初始化运行时状态、过 `K00/13` 的准入条件、编译
    Queue、跑批次。
 

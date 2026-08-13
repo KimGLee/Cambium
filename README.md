@@ -256,20 +256,30 @@ in [`profiles/README.md`](profiles/README.md).
 
 3. Perform initial adoption through the full
    [`R09 Standards Governance Read Set`](<kernel/Read Sets/R09 Standards Governance Read Set.md>).
-   Record the adopter's Standards version, status `approved`, effective date,
-   and exact `profiles/my-profile/profile.md` path in K00/03. Directory presence,
-   profile discovery, an example, or a generated file never selects a profile.
-4. With those candidate state fields in place, compose the profile vocabulary
-   and the frontmatter page contract, and regenerate the Runtime Cards for the
-   adopted Standards version:
+   Prepare a restricted-YAML adoption plan from
+   [`Tools/schemas/profile_adoption_plan.template.yaml`](Tools/schemas/profile_adoption_plan.template.yaml) —
+   it binds the adopter's Standards version, status `approved`, effective
+   date, the exact `profiles/my-profile/profile.md` path, and the candidate's
+   exact `profile-load` fingerprints. Directory presence, profile discovery,
+   an example, or a generated file never selects a profile.
+4. With the user's explicit authorization, run the no-runtime adoption
+   transaction. Dry-run first; `--apply` executes prepare/commit/abort with
+   full restoration on any failure:
 
    ```text
-   python3 Tools/compose_vocab.py
-   python3 Tools/compose_page_contract.py
-   python3 Tools/stamp_cards.py . --set-version YOUR_VERSION
-   python3 Tools/stamp_cards.py . --check
+   python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml
+   python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml --apply
    ```
 
+   The transaction instantiates the four K00/03 values, creates the first
+   Change Summary entry, composes the profile vocabulary and the frontmatter
+   page contract, stamps the Runtime Cards for the adopted version, and
+   re-verifies the gates; a failure at any step restores the previous control
+   plane rather than leaving a partial adoption. The same steps remain
+   runnable by hand (`compose_vocab.py`, `compose_page_contract.py`,
+   `stamp_cards.py --set-version` / `--check`) as the no-agent fallback. An
+   existing `.cambium/` runtime is refused here: an active task adopts through
+   `adopt_standards.py` (next section).
 5. Complete the R09 governance gates before beginning corpus-content work.
    [`Tools/README.md`](Tools/README.md) documents the individual commands,
    receipts, and exit semantics; tool success alone is not proof that the
@@ -321,8 +331,10 @@ state at all.
    slot: R13 prepares the Global Map, Capability Matrix, and Gap Register
    inside that open revision against the `configured` after Profile
    ([`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>)
-   candidate preparation), and they become authoritative when the revision
-   closes by adopting it.
+   candidate preparation), validated with `check_profile.py` and
+   `check_corpus_plan.py --profile <candidate manifest>`; the revision closes
+   through the same `apply_profile_adoption.py` transaction (its
+   `profile-revision` branch), and the artifacts become authoritative then.
 4. The large-scale build is the task that follows: initialize runtime state,
    pass the `K00/13` admission conditions, compile the Queue, run batches.
 
