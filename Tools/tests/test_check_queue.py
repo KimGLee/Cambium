@@ -85,6 +85,11 @@ class QueueFixture(unittest.TestCase):
                     self.coverage_path)
                 record["after_progress_sha256"] = kblib.sha256_file(
                     self.progress_path)
+                # The origin receipt is the first anchor of the contract
+                # chain; a fixture that edits contract bytes must re-anchor
+                # it, exactly as a real writer re-anchors on amendment.
+                record["contract_sha256"] = check_queue._contract_sha256(
+                    kblib.load_yaml_file(self.progress_path))
         receipt_path.write_text(
             "".join(json.dumps(record, separators=(",", ":")) + "\n"
                     for record in records),
@@ -376,6 +381,78 @@ class ReviewedEraTests(QueueFixture):
         self.set_page(0, authoring_status="reviewed", gate_receipts=[])
         result = check_queue.validate_runtime(self.root)
         self.assertEqual([], result["errors"])
+
+    def grant_exception(self, limit, *, policy_id="coverage.reviewed_era",
+                        scope_ref="fixture-task", fingerprint=None):
+        """Write the contract exception this migration disposition needs."""
+        if fingerprint is None:
+            _policy, fingerprint, _errors = kblib.effective_coverage_policy()
+        progress = kblib.load_yaml_file(self.progress_path)
+        progress["contract"]["policy_exceptions"] = [{
+            "decision_id": "PE-COV-1",
+            "policy_id": policy_id,
+            "baseline_policy_fingerprint": fingerprint,
+            "limit": limit,
+            "scope_kind": "task",
+            "scope_ref": scope_ref,
+            "rationale": "legacy reviewed records re-reviewed as their "
+                         "batches run; ends at queue exhaustion",
+            "approval_reference": "fixture migration declaration",
+        }]
+        self.progress_path.write_text(kblib.canonical_yaml(progress),
+                                      encoding="utf-8")
+        self.refresh_initial_origin()
+
+    def test_a_bounded_exception_turns_the_candidate_into_a_note(self):
+        """The disposition K02/01 offers must not wedge the queue.
+
+        Activation consumes a PASSING readiness gate, so while the declared
+        exception had no machine carrier, choosing it left the candidate
+        standing forever and no batch could ever be activated again.
+        """
+        self.set_page(0, authoring_status="reviewed", gate_receipts=[])
+        blocked = self.run_cli()
+        self.assertEqual(2, blocked.returncode, blocked.stdout)
+        self.assertIn("[HOLD]", blocked.stdout)
+
+        self.grant_exception(1)
+        covered = self.run_cli()
+        self.assertEqual(0, covered.returncode, covered.stdout)
+        self.assertIn("[NOTE]", covered.stdout)
+        self.assertIn("PE-COV-1", covered.stdout)
+        self.assertNotIn("[HOLD] 1 Coverage record", covered.stdout)
+
+    def test_the_ceiling_cannot_hide_one_more_record(self):
+        """The bound is a count, so the grant shrinks as work proceeds."""
+        self.set_page(0, authoring_status="reviewed", gate_receipts=[])
+        self.set_page(1, authoring_status="reviewed", gate_receipts=[])
+        self.grant_exception(1)
+        completed = self.run_cli()
+        self.assertEqual(2, completed.returncode, completed.stdout)
+        self.assertIn("2 record(s) exceed the 1", completed.stdout)
+
+    def test_an_exception_for_another_task_does_not_cover_this_one(self):
+        self.set_page(0, authoring_status="reviewed", gate_receipts=[])
+        self.grant_exception(5, scope_ref="some-other-task")
+        completed = self.run_cli()
+        self.assertEqual(2, completed.returncode, completed.stdout)
+        self.assertIn("[HOLD]", completed.stdout)
+
+    def test_a_stale_fingerprint_names_why_it_no_longer_covers(self):
+        """A grant judged against a superseded statement of the rule dies."""
+        self.set_page(0, authoring_status="reviewed", gate_receipts=[])
+        self.grant_exception(5, fingerprint="sha256:" + "a" * 64)
+        completed = self.run_cli()
+        self.assertEqual(2, completed.returncode, completed.stdout)
+        self.assertIn("superseded statement of the rule", completed.stdout)
+
+    def test_a_quota_exception_does_not_cover_the_coverage_policy(self):
+        self.set_page(0, authoring_status="reviewed", gate_receipts=[])
+        self.grant_exception(5, policy_id="priority_quota.P0",
+                             fingerprint="sha256:" + "b" * 64)
+        completed = self.run_cli()
+        self.assertEqual(2, completed.returncode, completed.stdout)
+        self.assertIn("[HOLD]", completed.stdout)
 
 
 class HubPageAdmissionTests(QueueFixture):
