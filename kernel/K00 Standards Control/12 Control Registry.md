@@ -52,6 +52,30 @@ are authorized and resolvable, while the latter executes the admitted scan
 against corpus bytes and produces candidates. Runtime consumers reuse the
 typed Profile contract; they do not add parallel path rules.
 
+## Verification Run and Process Contract
+
+The **adopter verification set** is derived from the Stable Gate ID Registry
+below, never listed anywhere else: it is every row whose producer is a named
+deterministic tool and whose Lifecycle is `not-batch-scoped`.
+Batch-positioned rows run at their batch boundary, `manual-attestation` rows
+are recorded by a person under the Gate Receipt Payload Contract, and
+transaction writers (`adopt_standards`, `record_corpus_acceptance`) produce
+their receipts only inside their own guarded transactions -- a verification
+sweep never invokes them. `Tools/run_gates.py` executes this derivation; a
+registry row it cannot classify fails the run closed, so extending the
+registry forces the runner to be extended with it rather than silently
+narrowing the set. A prose checklist of these commands, wherever it appears,
+is a copy of this derivation and loses to it on disagreement.
+
+Every registered deterministic producer answers through one **process
+contract** (implementation: `kblib.exit_code`): exit `0` = every emitted
+receipt passed; `1` = at least one failure or the run could not produce
+reliable evidence; `2` = no failure, but one or more candidates or holds. `2`
+is a HOLD -- it is never mapped to success and never to failure by any
+consumer, machine or human; each held line names a judgment a person still
+owes. A tool-specific meaning of `2` (a stale stamp, a held Queue) is still
+this contract: reliable evidence, non-clean outcome, read the lines.
+
 ## Stable Gate ID Registry
 
 This closed table is the machine registry for Standards revalidation. `Tool`,
@@ -119,7 +143,7 @@ moves its own cell.
 | `source-promotion` | `manual-attestation` | `1.0.0` | `source-promotion` | `*` | `coverage_and_integration`, `source_and_currentness` | `not-batch-scoped` |
 | `expression-layer-acceptance` | `manual-attestation` | `1.0.0` | `expression-layer-acceptance` | `*` | `content_and_depth`, `coverage_and_integration`, `guidance_and_contract`, `source_and_currentness`, `structure_and_links` | `not-batch-scoped` |
 | `coverage-reconciliation` | `manual-attestation` | `1.0.0` | `coverage-reconciliation` | `*` | `coverage_and_integration` | `not-batch-scoped` |
-| `standards-adoption` | `adopt_standards` | `1.4.0` | `standards_adoption` | `*` | `*` | `not-batch-scoped` |
+| `standards-adoption` | `adopt_standards` | `1.5.0` | `standards_adoption` | `*` | `*` | `not-batch-scoped` |
 | `standards-revalidation` | `check_queue` | `1.15.0` | `required_queue` | `require-revalidation:*` | `*` | `queued`, `open` |
 | `guidance-disposition` | `manual-attestation` | `1.0.0` | `guidance-disposition` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `receipt-validity` | `manual-attestation` | `1.0.0` | `receipt-validity` | `*` | `guidance_and_contract` | `not-batch-scoped` |

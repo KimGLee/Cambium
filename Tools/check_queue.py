@@ -359,8 +359,12 @@ AMENDMENT_COMMON_FIELDS = frozenset((
     "id", "date", "summary", "status", "writeback_done",
 ))
 STANDARDS_ADOPTION_TOOL = "adopt_standards"
-STANDARDS_ADOPTION_TOOL_VERSION = "1.4.0"
+STANDARDS_ADOPTION_TOOL_VERSION = "1.5.0"
 STANDARDS_ADOPTION_PROFILE_CONTRACT_MIN_VERSION = (1, 3, 0)
+# The 1.5 producer records where the adopted revision came from: the
+# distribution has no version numbers by design, so upstream/downstream
+# comparability is the adoption record's job, not a prose convention's.
+STANDARDS_ADOPTION_UPSTREAM_MIN_VERSION = (1, 5, 0)
 STANDARDS_ADOPTION_PROFILE_INPUT_MIN_VERSION = (1, 4, 0)
 STANDARDS_ADOPTION_PLAN_PREFIX = ".cambium/deltas/standards-adoptions"
 STANDARDS_GATE_REGISTRY_PATH = \
@@ -418,6 +422,11 @@ STANDARDS_ADOPTION_PLAN_FIELDS = frozenset((
     "progress_sha256_before", "changed_predicates", "invalidated_evidence",
     "invalidation_boundaries", "immediate_gate_reruns",
     "boundary_gate_reruns",
+    # 1.5 producer: where the adopted revision came from.  Both explicit --
+    # a nonempty pair naming the upstream source and its revision identifier
+    # (for a git upstream, the commit hash), or both null, which DECLARES
+    # that this adoption tracks no upstream.  Absent is not an answer.
+    "upstream_source_ref", "upstream_revision_id",
 ))
 STANDARDS_CHANGED_PREDICATE_FIELDS = frozenset((
     "predicate_id", "owner_path", "change_kind", "affected_gate_ids",
@@ -450,6 +459,7 @@ STANDARDS_ADOPTION_RECORD_FIELDS = frozenset((
     "invalidated_evidence_receipt_ids", "invalidation_boundary_ids",
     "immediate_gate_reruns", "immediate_gate_receipts",
     "boundary_gate_reruns",
+    "upstream_source_ref", "upstream_revision_id",
 ))
 
 
@@ -1266,7 +1276,9 @@ def _standards_adoption_shape_errors(progress):
         errors.extend(_closed_mapping_errors(
             record, label, STANDARDS_ADOPTION_RECORD_FIELDS,
             optional_fields=("profile_contract_fingerprint_after",
-                             "profile_load_inputs_sha256_after")))
+                             "profile_load_inputs_sha256_after",
+                             "upstream_source_ref",
+                             "upstream_revision_id")))
         if not isinstance(record, dict):
             continue
         for field in (
@@ -2594,6 +2606,23 @@ def _standards_adoption_profile_inputs_required(producer_tool_version):
         STANDARDS_ADOPTION_PROFILE_INPUT_MIN_VERSION
 
 
+def _standards_adoption_upstream_required(producer_tool_version):
+    """Return whether this producer era promised an upstream identity.
+
+    Only an exact semantic version below 1.5 selects the legacy shape.  An
+    absent or malformed producer identity fails closed onto the current
+    shape.
+    """
+    match = re.fullmatch(
+        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
+        str(producer_tool_version),
+    )
+    if match is None:
+        return True
+    return tuple(int(part) for part in match.groups()) >= \
+        STANDARDS_ADOPTION_UPSTREAM_MIN_VERSION
+
+
 def standards_adoption_plan_errors(
         root, plan, catalog=None, queue=None, progress=None,
         validate_current=True,
@@ -2611,11 +2640,16 @@ def standards_adoption_plan_errors(
         _standards_adoption_profile_contract_required(producer_tool_version)
     profile_inputs_required = validate_current or \
         _standards_adoption_profile_inputs_required(producer_tool_version)
+    upstream_required = validate_current or \
+        _standards_adoption_upstream_required(producer_tool_version)
     optional_fields = []
     if not profile_contract_required:
         optional_fields.append("profile_contract_fingerprint_after")
     if not profile_inputs_required:
         optional_fields.append("profile_load_inputs_sha256_after")
+    if not upstream_required:
+        optional_fields.extend(
+            ("upstream_source_ref", "upstream_revision_id"))
     errors = _closed_mapping_errors(
         plan, "Standards adoption plan", STANDARDS_ADOPTION_PLAN_FIELDS,
         optional_fields=tuple(optional_fields))
@@ -2634,6 +2668,23 @@ def standards_adoption_plan_errors(
     if plan.get("task_state_before") not in ("active", "paused"):
         errors.append("Standards adoption plan supports only active or paused "
                       "tasks; completion-candidate must first transition back")
+    if upstream_required and isinstance(plan, dict) and \
+            not (set(("upstream_source_ref", "upstream_revision_id")) -
+                 set(plan)):
+        source = plan.get("upstream_source_ref")
+        revision = plan.get("upstream_revision_id")
+        if (source is None) != (revision is None):
+            errors.append(
+                "Standards adoption plan upstream_source_ref and "
+                "upstream_revision_id must both name the upstream or both "
+                "be null; half an identity identifies nothing")
+        elif source is not None and (
+                not _nonempty_string(source) or
+                not _nonempty_string(revision)):
+            errors.append(
+                "Standards adoption plan upstream_source_ref and "
+                "upstream_revision_id must be non-empty strings or an "
+                "explicit null pair declaring no upstream")
     if (plan.get("standards_version_before") ==
             plan.get("standards_version_after")):
         errors.append("Standards adoption must change standards_version")
@@ -3337,6 +3388,15 @@ def _standards_adoption_errors(root, progress, catalog, queue):
             errors.append(
                 "%s misses profile_load_inputs_sha256_after required by "
                 "adopt_standards %s" % (label, producer_tool_version))
+        if _standards_adoption_upstream_required(producer_tool_version):
+            for field in ("upstream_source_ref", "upstream_revision_id"):
+                if field not in record:
+                    errors.append(
+                        "%s misses %s required by adopt_standards %s; the "
+                        "distribution has no version numbers, so the "
+                        "adoption record is what makes upstream and "
+                        "downstream comparable" %
+                        (label, field, producer_tool_version))
         errors.extend("%s %s" % (label, error)
                       for error in standards_adoption_plan_errors(
                           root, plan, catalog=catalog, queue=queue,
@@ -3440,6 +3500,10 @@ def _standards_adoption_errors(root, progress, catalog, queue):
                 "immediate_gate_reruns": "immediate_gate_reruns",
                 "immediate_gate_receipts": "immediate_gate_receipts",
                 "boundary_gate_reruns": "boundary_gate_reruns",
+                # 1.5 upstream identity; on legacy chains both sides are
+                # absent and absent equals absent.
+                "upstream_source_ref": "upstream_source_ref",
+                "upstream_revision_id": "upstream_revision_id",
             }
             for receipt_field, record_field in receipt_bindings.items():
                 if receipt.get(receipt_field) != record.get(record_field):
@@ -11318,6 +11382,16 @@ def _print_resume_status(result, errors):
     print("  task_state=%s" % progress.get("task_state"))
     print("  scope_version=%s" % queue.get("scope_version"))
     print("  standards_version=%s" % queue.get("standards_version"))
+    adoptions = progress.get("standards_adoptions")
+    latest = adoptions[-1] if isinstance(adoptions, list) and adoptions and \
+        isinstance(adoptions[-1], dict) else None
+    if latest is not None and "upstream_revision_id" in latest:
+        if latest.get("upstream_revision_id") is None:
+            print("  standards_upstream=none-declared")
+        else:
+            print("  standards_upstream=%s@%s" %
+                  (latest.get("upstream_source_ref"),
+                   latest.get("upstream_revision_id")))
     print("  selected_profile_manifest=%s" %
           queue.get("selected_profile_manifest"))
     print("  contract_version=%s" % contract.get("contract_version"))

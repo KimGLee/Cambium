@@ -19,7 +19,7 @@ import check_queue
 import kblib
 
 TOOL = "adopt_standards"
-TOOL_VERSION = "1.4.0"
+TOOL_VERSION = "1.5.0"
 GATE_ID = "standards-adoption"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -235,6 +235,8 @@ def _new_receipt(phase, result, plan, transaction_id, plan_path, plan_sha,
             plan["selected_profile_manifest_after"],
         "governance_revision_ref": plan["governance_revision_ref"],
         "governance_revision_sha256": plan["governance_revision_sha256"],
+        "upstream_source_ref": plan["upstream_source_ref"],
+        "upstream_revision_id": plan["upstream_revision_id"],
         "standards_snapshot_sha256_after":
             plan["standards_snapshot_sha256_after"],
         "profile_snapshot_sha256_after":
@@ -415,6 +417,8 @@ def _prepare_result(root, plan_relative):
             plan["selected_profile_manifest_after"],
         "governance_revision_ref": plan["governance_revision_ref"],
         "governance_revision_sha256": plan["governance_revision_sha256"],
+        "upstream_source_ref": plan["upstream_source_ref"],
+        "upstream_revision_id": plan["upstream_revision_id"],
         "standards_snapshot_sha256_after":
             plan["standards_snapshot_sha256_after"],
         "profile_snapshot_sha256_after":

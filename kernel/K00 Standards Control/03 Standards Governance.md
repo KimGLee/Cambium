@@ -73,6 +73,10 @@ For any revision that adds a check, freeze, invalidation, or reconciliation obli
 
 If the three questions are not fully answered, the revision MUST NOT pass. Control obligations are managed in the Registry just like content rules.
 
+## Distribution Boundary
+
+What an adopter carries is what its governance needs, not what the distribution has. The trees that verify or scaffold the distribution itself -- the unit suite, profile templates, shipped examples -- have no gate, no receipt, and no consumer inside an adopter runtime, and an ungoverned tree that turns red under an upstream change invites improvisation in the inverted direction. The machine declaration is root `distribution-boundary.yaml`, owned by this section; `Tools/run_gates.py` reports a candidate for each declared tree present in an adopter runtime. Extending the declaration is a governance change under this page, judged by the Control Accretion Rule above.
+
 ## Structural Migration Conservation
 
 For any structural migration of the standards corpus (splits, moves, renames, or re-ownership), the following conservation rules apply:
