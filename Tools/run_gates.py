@@ -144,6 +144,34 @@ def _boundary_findings(root, manifest):
     return findings, []
 
 
+def _effective_policy(root, manifest):
+    """Resolve the selected profile's standing quota policy, or fail closed.
+
+    The sweep hands `check_vocab` the SAME resolved values and fingerprint
+    the batch-close consumer uses (one resolver, `kblib`), because a sweep
+    that measures against kernel defaults on a profile with a Configured
+    quota block reports an excess nobody has -- the first live run of this
+    tool did exactly that, which is why this function exists.
+    """
+    manifest_path = os.path.join(root, manifest)
+    with open(manifest_path, encoding="utf-8") as handle:
+        manifest_text = handle.read()
+    bindings = kblib.profile_slot_bindings(manifest_text)
+    binding = (bindings.get("Priority Rubric") or "").strip("`").strip()
+    if not binding:
+        raise RunnerError("the selected Profile binds no Priority Rubric "
+                          "slot; K00/07 places the standing quotas there")
+    rubric_path = os.path.join(os.path.dirname(manifest_path), binding)
+    with open(rubric_path, encoding="utf-8") as handle:
+        rubric_text = handle.read()
+    policy, fingerprint, errors = kblib.effective_priority_policy(rubric_text)
+    if errors or fingerprint is None:
+        raise RunnerError(
+            "the selected Profile's Priority Rubric does not resolve:\n  %s"
+            % "\n  ".join(errors[:5]))
+    return policy, fingerprint
+
+
 def _residual_scan_command(root, manifest):
     """Compile the profile's registered scan, or explain why there is none."""
     contract = profile_contract.load_profile_contract(root, manifest)
@@ -169,11 +197,17 @@ def _recipes(root, manifest, excludes):
     for value in excludes:
         exclude_args.extend(["--exclude", value])
     python = _python()
+    policy, policy_fingerprint = _effective_policy(root, manifest)
     recipes = {
         ("check_links", "*"): [
             python, _tool_path("check_links"), root, *exclude_args],
         ("check_vocab", "*"): [
-            python, _tool_path("check_vocab"), root, *exclude_args],
+            python, _tool_path("check_vocab"), root, *exclude_args,
+            "--quota-p0",
+            str(policy["resolved"]["priority_quota.P0"]),
+            "--quota-p1",
+            str(policy["resolved"]["priority_quota.P1"]),
+            "--policy-fingerprint", policy_fingerprint],
         ("check_structure", "*"): [
             python, _tool_path("check_structure"), root,
             "--profile", os.path.join(root, profile_dir)],
