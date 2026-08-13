@@ -166,6 +166,54 @@ class BoundaryTests(unittest.TestCase):
         self.assertIn("Tools/tests", findings[0])
         self.assertIn("distribution-only", findings[0])
 
+    def test_a_declared_single_file_is_a_candidate_like_a_tree(self):
+        """An entry may be one file, not only a directory.
+
+        A file is declared when its whole reason to exist is a declared
+        tree -- a manifest OF it, or a tool whose one job is to copy it --
+        because retiring the tree and keeping the file leaves executable
+        code that can never run.
+        """
+        self.install_declaration()
+        os.makedirs(os.path.join(self.root, "Tools"))
+        open(os.path.join(self.root, "Tools", "scaffold_profile.py"),
+             "w").write("x\n")
+        findings, errors = run_gates._boundary_findings(
+            self.root, "profiles/mine/profile.md")
+        self.assertEqual([], errors)
+        self.assertEqual(1, len(findings))
+        self.assertIn("Tools/scaffold_profile.py", findings[0])
+
+    def test_the_profile_creation_kit_is_declared_whole(self):
+        """The kit is one closure: template, whitelist, copier, guidance."""
+        declaration, errors = run_gates._boundary_declaration(
+            str(TOOLS.parent))
+        self.assertEqual([], errors)
+        declared = {entry["path"].rstrip("/") for entry in declaration}
+        for member in ("profiles/_template", "profiles/template-files.yaml",
+                       "Tools/scaffold_profile.py", "profiles/interview.yaml",
+                       "profiles/answer-patterns.md"):
+            self.assertIn(member, declared)
+
+    def test_onboarding_tools_that_survive_adoption_are_not_declared(self):
+        """The split the kit's closure stops at, pinned.
+
+        `profile_onboarding_status.py` speaks to a live runtime -- its own
+        precedence rule 2 is `resume-existing-task` -- and
+        `apply_profile_adoption.py` is the adopter's own no-runtime R09
+        writer, kept for the same reason an already-used `init_state.py` is.
+        Sweeping either into the kit would retire a tool an adopter still
+        reaches.
+        """
+        declaration, errors = run_gates._boundary_declaration(
+            str(TOOLS.parent))
+        self.assertEqual([], errors)
+        declared = {entry["path"].rstrip("/") for entry in declaration}
+        for survivor in ("Tools/profile_onboarding_status.py",
+                         "Tools/apply_profile_adoption.py",
+                         "Tools/init_state.py"):
+            self.assertNotIn(survivor, declared)
+
     def test_an_adopter_without_the_trees_is_clean(self):
         self.install_declaration()
         findings, errors = run_gates._boundary_findings(
