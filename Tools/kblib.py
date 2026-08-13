@@ -36,7 +36,7 @@ import time
 from types import MappingProxyType
 import uuid
 
-LIB_VERSION = "1.6.0"
+LIB_VERSION = "1.7.0"
 
 # ---------------------------------------------------------------------------
 # Restricted YAML subset parser
@@ -2531,6 +2531,209 @@ def sha256_file(path):
         for chunk in iter(lambda: fh.read(1024 * 1024), b""):
             digest.update(chunk)
     return "sha256:" + digest.hexdigest()
+
+
+class RepositoryTargetSnapshot:
+    """One canonical repository target, including a safely missing tail.
+
+    Existing targets carry bytes and the complete identity observed through a
+    stable no-follow descriptor.  Missing targets retain the identity of the
+    deepest existing parent directory so a writer can later reject a stale
+    plan before materializing the target.
+    """
+
+    __slots__ = (
+        "path", "repository_path", "exists", "missing_components",
+        "parent_repository_path", "parent_dev", "parent_ino",
+        "dev", "ino", "mode", "nlink", "size", "mtime_ns", "ctime_ns",
+        "data", "sha256",
+    )
+
+    def __init__(self, path, repository_path, *, exists,
+                 missing_components=(), parent_repository_path="",
+                 parent_dev=None, parent_ino=None, descriptor=None,
+                 data=None):
+        self.path = path
+        self.repository_path = repository_path
+        self.exists = exists
+        self.missing_components = tuple(missing_components)
+        self.parent_repository_path = parent_repository_path
+        self.parent_dev = parent_dev
+        self.parent_ino = parent_ino
+        self.dev = descriptor.st_dev if descriptor is not None else None
+        self.ino = descriptor.st_ino if descriptor is not None else None
+        self.mode = descriptor.st_mode if descriptor is not None else None
+        self.nlink = descriptor.st_nlink if descriptor is not None else None
+        self.size = descriptor.st_size if descriptor is not None else None
+        self.mtime_ns = (
+            getattr(descriptor, "st_mtime_ns",
+                    int(descriptor.st_mtime * 1e9))
+            if descriptor is not None else None
+        )
+        self.ctime_ns = (
+            getattr(descriptor, "st_ctime_ns",
+                    int(descriptor.st_ctime * 1e9))
+            if descriptor is not None else None
+        )
+        self.data = data
+        self.sha256 = sha256_bytes(data) if data is not None else None
+
+    def read_text(self):
+        if not self.exists:
+            raise FileNotFoundError(
+                errno.ENOENT, "repository target is safely missing",
+                self.repository_path)
+        return self.data.decode("utf-8")
+
+
+def _stable_stat_identity(descriptor):
+    """Return every stat field used to bind a repository target snapshot."""
+    return (
+        descriptor.st_dev, descriptor.st_ino, descriptor.st_mode,
+        descriptor.st_nlink, descriptor.st_size,
+        getattr(descriptor, "st_mtime_ns",
+                int(descriptor.st_mtime * 1e9)),
+        getattr(descriptor, "st_ctime_ns",
+                int(descriptor.st_ctime * 1e9)),
+    )
+
+
+def repository_target_snapshot(root, relative_path, suffixes=None,
+                               singly_linked=True):
+    """Resolve and snapshot one canonical file or safely missing target.
+
+    Every existing path segment must use the directory entry's exact spelling
+    and must not be a symlink.  A missing leaf or tail is represented
+    explicitly instead of being confused with an unchecked path.  Existing
+    targets must be regular files and are read from a stable ``O_NOFOLLOW``
+    descriptor.
+    """
+    absolute = repository_path(root, relative_path)
+    if isinstance(suffixes, str):
+        suffixes = (suffixes,)
+    elif suffixes is not None:
+        suffixes = tuple(suffixes)
+    if suffixes is not None:
+        if not suffixes or any(
+                not isinstance(suffix, str) or not suffix
+                for suffix in suffixes):
+            raise ValueError("suffixes must contain non-empty strings")
+        if not relative_path.endswith(suffixes):
+            raise ValueError("path must end with %s" %
+                             " or ".join(suffixes))
+
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    directory_only = getattr(os, "O_DIRECTORY", None)
+    if nofollow is None or directory_only is None:
+        raise OSError(errno.ENOTSUP,
+                      "repository target snapshots require O_NOFOLLOW and "
+                      "O_DIRECTORY", absolute)
+    close_on_exec = getattr(os, "O_CLOEXEC", 0)
+    directory_flags = os.O_RDONLY | nofollow | directory_only | close_on_exec
+    root_real = os.path.realpath(os.path.abspath(root))
+    current_fd = os.open(root_real, directory_flags)
+    parts = relative_path.split("/")
+    existing_parts = []
+    try:
+        for index, part in enumerate(parts):
+            try:
+                entries = os.listdir(current_fd)
+            except OSError as exc:
+                raise ValueError("cannot inspect repository path: %s" % exc)
+            if part not in entries:
+                # On case-insensitive or Unicode-normalizing filesystems the
+                # declared spelling may still resolve even though no directory
+                # entry has that exact byte spelling.  Such an alias is not a
+                # safely missing tail: fail closed before a writer can treat an
+                # existing target as an absent no-op.
+                try:
+                    os.stat(part, dir_fd=current_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    pass
+                except OSError as exc:
+                    raise ValueError(
+                        "cannot prove repository target is missing: %s" % exc)
+                else:
+                    raise ValueError(
+                        "path spelling does not exactly match repository "
+                        "directory entries")
+                parent = os.fstat(current_fd)
+                if not stat.S_ISDIR(parent.st_mode):
+                    raise ValueError("repository target parent is not a directory")
+                return RepositoryTargetSnapshot(
+                    absolute, relative_path, exists=False,
+                    missing_components=parts[index:],
+                    parent_repository_path="/".join(existing_parts),
+                    parent_dev=parent.st_dev, parent_ino=parent.st_ino,
+                )
+
+            listed = os.stat(part, dir_fd=current_fd,
+                             follow_symlinks=False)
+            if stat.S_ISLNK(listed.st_mode):
+                raise ValueError("path must not contain a symlink component")
+
+            if index < len(parts) - 1:
+                if not stat.S_ISDIR(listed.st_mode):
+                    raise ValueError(
+                        "repository target parent is not a directory: %s" %
+                        "/".join(existing_parts + [part]))
+                child_fd = os.open(part, directory_flags, dir_fd=current_fd)
+                opened = os.fstat(child_fd)
+                if (not stat.S_ISDIR(opened.st_mode) or
+                        (listed.st_dev, listed.st_ino) !=
+                        (opened.st_dev, opened.st_ino)):
+                    os.close(child_fd)
+                    raise OSError(errno.EAGAIN,
+                                  "repository path identity changed",
+                                  relative_path)
+                os.close(current_fd)
+                current_fd = child_fd
+                existing_parts.append(part)
+                continue
+
+            if not stat.S_ISREG(listed.st_mode):
+                raise ValueError("path must name a regular file")
+            if singly_linked and listed.st_nlink != 1:
+                raise ValueError(
+                    "path must name a singly-linked regular file")
+            fd = os.open(part, os.O_RDONLY | nofollow | close_on_exec,
+                         dir_fd=current_fd)
+            try:
+                before = os.fstat(fd)
+                if (not stat.S_ISREG(before.st_mode) or
+                        (singly_linked and before.st_nlink != 1) or
+                        (listed.st_dev, listed.st_ino) !=
+                        (before.st_dev, before.st_ino)):
+                    raise OSError(errno.EAGAIN,
+                                  "repository target identity changed "
+                                  "before read", relative_path)
+                chunks = []
+                while True:
+                    chunk = os.read(fd, 1024 * 1024)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                after = os.fstat(fd)
+                named_after = os.stat(part, dir_fd=current_fd,
+                                      follow_symlinks=False)
+                if (_stable_stat_identity(before) !=
+                        _stable_stat_identity(after) or
+                        (after.st_dev, after.st_ino) !=
+                        (named_after.st_dev, named_after.st_ino)):
+                    raise OSError(errno.EAGAIN,
+                                  "repository target changed while reading",
+                                  relative_path)
+            finally:
+                os.close(fd)
+            parent = os.fstat(current_fd)
+            return RepositoryTargetSnapshot(
+                absolute, relative_path, exists=True,
+                parent_repository_path="/".join(existing_parts),
+                parent_dev=parent.st_dev, parent_ino=parent.st_ino,
+                descriptor=after, data=b"".join(chunks),
+            )
+    finally:
+        os.close(current_fd)
 
 
 class RepositoryFileSnapshot:
