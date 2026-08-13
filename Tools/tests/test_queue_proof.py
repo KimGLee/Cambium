@@ -72,6 +72,31 @@ class ActiveStandardsFixtureTests(unittest.TestCase):
         )
 
 
+class RepositoryPathResolutionTests(unittest.TestCase):
+    def test_root_and_candidate_are_compared_in_the_same_canonical_namespace(self):
+        """A lexical root alias must not make its own child look like an escape."""
+        root = Path("/lexical/repository")
+        canonical_root = Path("/canonical/repository")
+        candidate = canonical_root / "kernel/Cards/Card Index.md"
+
+        original_resolve = Path.resolve
+
+        def aliased_resolve(path, *args, **kwargs):
+            if path == root:
+                return canonical_root
+            if path == candidate:
+                return candidate
+            return original_resolve(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "resolve", autospec=True,
+                               side_effect=aliased_resolve):
+            resolved, error = check_proof._resolve_under_root(
+                root, "kernel/Cards/Card Index.md")
+
+        self.assertIsNone(error)
+        self.assertEqual(candidate, resolved)
+
+
 class QueueProofStructuralTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()

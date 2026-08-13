@@ -221,8 +221,13 @@ def _resolve_under_root(root, raw_path):
         return None, syntax_error
     candidate = Path(raw_path)
     try:
-        resolved = (root / candidate).resolve()
-        resolved.relative_to(root)
+        # Compare canonical paths on both sides.  On macOS, callers can spell a
+        # temporary repository under /var while Path.resolve() spells its
+        # children under the /private/var target.  Resolving only the candidate
+        # therefore rejects an in-repository path as an escape.
+        resolved_root = Path(root).resolve()
+        resolved = (resolved_root / candidate).resolve()
+        resolved.relative_to(resolved_root)
     except (OSError, RuntimeError, ValueError) as exc:
         return None, "path cannot be resolved under the repository root: %s" % exc
     return resolved, None
