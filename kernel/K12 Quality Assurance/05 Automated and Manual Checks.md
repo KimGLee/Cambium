@@ -8,6 +8,21 @@
 
 Each batch of work generates an AuditPlan before batch close per [[kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation|Audit Evidence Reuse and Invalidation]]. The full checks at batch close are governed by the [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]]; this page does not list them separately.
 
+## Codification Admission
+
+This section owns the criterion for which side of this page's boundary a rule falls on. A rule MAY be carried by a deterministic check when four questions all answer yes, and only then:
+
+1. The judgment depends only on sets, existence, equality, order, counts, or format — never on semantic understanding.
+2. The inputs are deterministically readable bytes inside the repository.
+3. The output is pass / fail / candidate with a locatable position.
+4. The same input always produces the same output.
+
+Any answer of no leaves the rule in the semantic layer, judged by a person or an agent under review discipline. Once all four answer yes, codification is the DEFAULT, not an option: a coded invariant cannot drift back, while a prose invariant is re-judged by every executor that reads it, and each re-judgment is a chance to diverge. Semantic review then carries only what determinism cannot express.
+
+A deterministic check judges; it never adjudicates. It may report that two records disagree; it does not decide which is authoritative, whether a boundary was crossed, or whether a compression is faithful — those verdicts stay with review and carry review evidence. The following MUST NOT be disguised as deterministic checks, whatever their prompt or threshold dressing: whether a source actually supports a claim; whether a canonical owner, responsibility boundary, or split granularity is semantically right; whether two concepts are synonymous, inclusive, conflicting, or merely similar; whether a conclusion is stable enough for promotion; whether structure, summary, evidence quality, or content depth meets substantive acceptance.
+
+An admitted check enters through the [[kernel/K00 Standards Control/12 Control Registry#Stable Gate ID Registry|Control Registry]] with a Gate ID, producer, and consumer, or it is a second truth source rather than a control. The kernel leaf owns the rule first; a judgment rule that exists only as a constant inside a tool is unowned, and the tool never invents semantics its owner never stated.
+
 ## Domain-specific Checks
 
 The following domain-specific check items run only on the changed / invalidated scope:

@@ -102,6 +102,25 @@ class DerivationTests(unittest.TestCase):
         self.assertEqual(2, len(commands))
         self.assertEqual(1, len(set(commands)))
 
+    def test_the_vocab_sweep_measures_against_the_resolved_policy(self):
+        """First-live-run defect, pinned: a sweep that hands check_vocab no
+        quotas measures a Configured profile against kernel defaults and
+        reports an excess nobody has.  The recipe must carry the resolver's
+        values and fingerprint -- the same ones batch-close consumes."""
+        import kblib
+        recipes = self.recipes()
+        command = recipes[("check_vocab", "*")]
+        rubric = (TOOLS.parent /
+                  "profiles/examples/agent-atlas/priority-rubric.md")
+        policy, fingerprint, errors = kblib.effective_priority_policy(
+            rubric.read_text(encoding="utf-8"))
+        self.assertEqual([], errors)
+        self.assertIn("--quota-p0", command)
+        self.assertIn(str(policy["resolved"]["priority_quota.P0"]),
+                      command)
+        self.assertIn("--policy-fingerprint", command)
+        self.assertIn(fingerprint, command)
+
     def test_the_manual_card_synchronization_row_gets_its_machine_input(self):
         derived, _ = run_gates.derive_verification_set(
             self.ROOT, self.registry(), self.recipes())
