@@ -719,6 +719,66 @@ class InitPublicationTests(unittest.TestCase):
         self.assertIn("--resume-status", completed.stdout)
 
 
+class RepositoryTargetSnapshotTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "repo"
+        (self.root / "Domain").mkdir(parents=True)
+        (self.root / "Domain/Page.md").write_text(
+            "page\n", encoding="utf-8")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_existing_target_binds_bytes_and_namespace_identity(self):
+        target = kblib.repository_target_snapshot(
+            self.root, "Domain/Page.md", suffixes=".md")
+
+        self.assertTrue(target.exists)
+        self.assertEqual(b"page\n", target.data)
+        self.assertEqual("page\n", target.read_text())
+        descriptor = (self.root / "Domain/Page.md").stat()
+        self.assertEqual((descriptor.st_dev, descriptor.st_ino),
+                         (target.dev, target.ino))
+        self.assertEqual(1, target.nlink)
+
+    def test_safe_missing_tail_binds_deepest_existing_parent(self):
+        target = kblib.repository_target_snapshot(
+            self.root, "Domain/Future/Nested.md", suffixes=".md")
+
+        self.assertFalse(target.exists)
+        self.assertEqual(("Future", "Nested.md"), target.missing_components)
+        self.assertEqual("Domain", target.parent_repository_path)
+        parent = (self.root / "Domain").stat()
+        self.assertEqual((parent.st_dev, parent.st_ino),
+                         (target.parent_dev, target.parent_ino))
+
+    def test_missing_leaf_does_not_hide_symlink_parent(self):
+        (self.root / "Alias").symlink_to(
+            self.root / "Domain", target_is_directory=True)
+
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            kblib.repository_target_snapshot(
+                self.root, "Alias/Missing.md", suffixes=".md")
+
+    def test_existing_target_rejects_hard_link(self):
+        os.link(self.root / "Domain/Page.md",
+                self.root / "Domain/Linked.md")
+
+        with self.assertRaisesRegex(ValueError, "singly-linked"):
+            kblib.repository_target_snapshot(
+                self.root, "Domain/Linked.md", suffixes=".md")
+
+    def test_case_alias_is_not_treated_as_safely_missing(self):
+        alias = self.root / "Domain/page.md"
+        if not alias.exists():
+            self.skipTest("filesystem is case-sensitive")
+
+        with self.assertRaisesRegex(ValueError, "exactly match"):
+            kblib.repository_target_snapshot(
+                self.root, "Domain/page.md", suffixes=".md")
+
+
 class RepositorySnapshotTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
