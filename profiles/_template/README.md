@@ -97,7 +97,7 @@ python3 Tools/check_profile.py profiles/<profile-id>
 
 The scaffolder copies exactly the whitelist in
 [template-files.yaml](../template-files.yaml) (never this README) and derives
-the materialization cells below. The manual fallback — copy the whitelisted
+the materialization cells below. The manual no-agent fallback — copy the whitelisted
 files by hand, delete nothing else, keep this README out — performs the same
 checklist itself.
 
