@@ -27,16 +27,44 @@
 # question fails the interview-coverage regression rather than
 # reaching an adopter as a file nobody was asked to fill.
 
-interview_contract_version: 6
+# Machine fields (consumed by conducting agents, by
+# `Tools/profile_onboarding_status.py`, and by the end-to-end behavior tests):
+#   phase           - one of the `phases` ids below; entries sharing a phase
+#                     are proposed together and confirmed as a group.
+#   classification  - `semantic`: the answer is an operator decision an agent
+#                     may propose but never auto-fill. Mechanical
+#                     materialization is never a question: it lives only in
+#                     `derives` and `self_path_rewrites`, each with an owner.
+#   depends_on      - ids whose answers this item consumes; collect them first.
+#   reconfirm_if    - ids whose changed answer voids this item's confirmation:
+#                     re-derive its mechanical parts and re-collect the
+#                     confirmation instead of carrying the old one forward.
+#   branches        - mutually exclusive situations the item's procedure
+#                     distinguishes; the conducting agent names the applicable
+#                     branch before collecting the confirmation.
+#   derives[].owner - `scaffolder` (materialized at copy time by
+#                     Tools/scaffold_profile.py) or `conducting-agent`
+#                     (projected during the interview from a confirmed
+#                     answer). `check_profile` validates; it never fills.
+
+interview_contract_version: 7
 target_template: profiles/_template
 fill_depths:
   - shipped-closed   # setup + core pack + closing; packs open later on trigger
   - every-switch-now # the same, plus every expansion pack walked in this sitting
 
+phases:
+  - {id: identity-and-architecture, groups: "who this corpus serves and how it is shaped (S0, Q0-Q4, Q9)"}
+  - {id: content-judgment, groups: "how content is prioritized, sourced, verified, and judged (Q5-Q8, Q10)"}
+  - {id: derived-and-conditional, groups: "derived configuration, pre-closed switches, expansion packs, closing review (C1-C3)"}
+
 setup:
   - id: S0
     question: "Where does the corpus live? Name a path, or accept a proposed default (for example ~/Documents/<corpus-name>)."
     answer_shape: "absolute path, or acceptance of the proposed default"
+    phase: identity-and-architecture
+    classification: semantic
+    depends_on: []
     change_cost: migration
     procedure:
       - "Propose a default location derived from the corpus name; the operator names another path or accepts"
@@ -51,18 +79,25 @@ core_pack:
     question: "What is the profile ID? (equals the directory name)"
     answer_shape: "slug matching [a-z0-9][a-z0-9_-]*"
     validation: "check_profile rejects profile-id-invalid; directory must match"
+    phase: identity-and-architecture
+    classification: semantic
+    depends_on: [S0]
     change_cost: migration
     notes:
       - "Collected with S0, before the candidate exists: the scaffolder consumes it, proposes a default derived from the corpus name, and derives the mechanical identity and self-path cells at copy time"
     maps_to:
       - {file: profile.md, anchor: "## Profile Identity"}
     derives:
-      - "judgment item IDs (<profile-id>-foundation-depth, <profile-id>-residual-disposition)"
-      - "every Profile-owned dependency path (see self_path_rewrites; profile-load validates the result)"
+      - {what: "manifest `profile_id` cell (equals the directory name)", owner: scaffolder}
+      - {what: "every Profile-owned dependency path (see self_path_rewrites; profile-load validates the result)", owner: scaffolder}
+      - {what: "judgment item IDs (<profile-id>-foundation-depth, <profile-id>-residual-disposition)", owner: conducting-agent}
 
   - id: Q1
     question: "In one sentence: what must this corpus let its readers do, and who are they?"
     answer_shape: "one goal sentence + reader role(s)"
+    phase: identity-and-architecture
+    classification: semantic
+    depends_on: []
     change_cost: adoption
     maps_to:
       - {file: scope-and-architecture.md, anchor: "## Goal"}
@@ -70,15 +105,21 @@ core_pack:
   - id: Q2
     question: "What is the body language? Is there a secondary language?"
     answer_shape: "language tag; secondary defaults to 'None — monolingual'"
+    phase: identity-and-architecture
+    classification: semantic
+    depends_on: []
     change_cost: migration
     maps_to:
       - {file: language-contract.md, anchor: "## Language Routing"}
     derives:
-      - "Content Length Unit: characters for CJK body languages, words otherwise"
+      - {what: "Content Length Unit: characters for CJK body languages, words otherwise", owner: conducting-agent}
 
   - id: Q3
     question: "Is anything inside the tree explicitly out of scope? (pre-filled: no exclusions)"
     answer_shape: "confirm pre-fill, or rows of {excluded content, destination}"
+    phase: identity-and-architecture
+    classification: semantic
+    depends_on: [S0]
     change_cost: adoption
     maps_to:
       - {file: scope-and-architecture.md, anchor: "## Excluded Scope"}
@@ -87,18 +128,24 @@ core_pack:
     question: "Is the corpus flat or layered? Name each layer's ID, directories, and single responsibility."
     answer_shape: "one row for a flat corpus (one layer owning the whole tree); more rows when layered"
     validation: "exact repository-relative paths, no trailing slash; root binding '.' is structurally legal"
+    phase: identity-and-architecture
+    classification: semantic
+    depends_on: [S0]
     change_cost: migration
     maps_to:
       - {file: scope-and-architecture.md, anchor: "## Logical Architecture"}
     derives:
-      - "Placement Layer Registrations fallback IDs (all rows)"
-      - "New Page Placement Rule target IDs"
-      - "Terminology Structure target ID"
-      - "scan allowed_roots candidates (C1)"
+      - {what: "Placement Layer Registrations fallback IDs (all rows)", owner: conducting-agent}
+      - {what: "New Page Placement Rule target IDs", owner: conducting-agent}
+      - {what: "Terminology Structure target ID", owner: conducting-agent}
+      - {what: "scan allowed_roots candidates (C1)", owner: conducting-agent}
 
   - id: Q5
     question: "What makes a note high priority in this corpus? (one substantive factor is enough; a catch-all row is pre-filled)"
     answer_shape: "ranked factor list, >=1 substantive row"
+    phase: content-judgment
+    classification: semantic
+    depends_on: [Q1]
     change_cost: adoption
     maps_to:
       - {file: scope-and-architecture.md, anchor: "## Content Priority Factors"}
@@ -106,6 +153,9 @@ core_pack:
   - id: Q6
     question: "Which recurring names deserve their own term note, and when is one included?"
     answer_shape: "one bounded class + inclusion/exclusion boundary"
+    phase: content-judgment
+    classification: semantic
+    depends_on: []
     change_cost: adoption
     maps_to:
       - {file: scope-and-architecture.md, anchor: "## Terminology Structure"}
@@ -113,6 +163,9 @@ core_pack:
   - id: Q7
     question: "Where do this corpus's claims actually come from? Rank the source authorities (own observation with a retrieval date is registrable), then name how each claim class is verified and what makes it stale."
     answer_shape: "authority rows + verification rows + staleness rows"
+    phase: content-judgment
+    classification: semantic
+    depends_on: [Q1]
     change_cost: adoption
     maps_to:
       - {file: source-policy.md, anchor: "## Source Authority"}
@@ -122,6 +175,9 @@ core_pack:
   - id: Q8
     question: "Do any pages need P0/P1 priority above the uniform P2 fallback? (pre-filled: no grants)"
     answer_shape: "confirm 'No grants', or grant predicates + protected capability"
+    phase: content-judgment
+    classification: semantic
+    depends_on: [Q5]
     change_cost: adoption
     maps_to:
       - {file: priority-rubric.md, anchor: "## Profile-owned Grant Criteria"}
@@ -129,6 +185,9 @@ core_pack:
   - id: Q9
     question: "What is the one-line organizing logic connecting pages, and which field or statement locates a page on it?"
     answer_shape: "one spine sentence + one locator"
+    phase: identity-and-architecture
+    classification: semantic
+    depends_on: [Q1, Q4]
     change_cost: adoption
     maps_to:
       - {file: scope-and-architecture.md, anchor: "## Knowledge Spine"}
@@ -136,6 +195,9 @@ core_pack:
   - id: Q10
     question: "Which page class must be deep enough to act on, and what four things must such a page name? (pattern: the thing, its version, where its backup/definition lives, the one check that verifies it)"
     answer_shape: "one page class + one testable predicate"
+    phase: content-judgment
+    classification: semantic
+    depends_on: [Q1]
     change_cost: adoption
     maps_to:
       - {file: scope-and-architecture.md, anchor: "## Foundation Depth Requirements"}
@@ -144,6 +206,14 @@ core_pack:
   - id: C1
     kind: derived-confirm
     question: "Confirm the derived residual scan: which structured-content class belongs only under one root?"
+    phase: derived-and-conditional
+    classification: semantic
+    depends_on: [Q0, Q4, Q10]
+    reconfirm_if: [Q0, Q4, Q10]
+    branches: [existing-corpus, empty-corpus]
+    derives:
+      - {what: "allowed_roots / frontmatter_match / heading_match / mandated_headings proposals (observed strings on an existing corpus; declared strings on an empty one)", owner: conducting-agent}
+      - {what: "the registry row's --config path (already materialized at copy time)", owner: scaffolder}
     procedure:
       - "Identify the structure class and its accepted root (dated scratch entries, derived cards, generated digests; candidates from Q4 layers)"
       - "Branch on whether the corpus already has pages. Both branches are honest; only one of them is observation"
@@ -162,6 +232,10 @@ core_pack:
     kind: prefill-confirm
     question: "Confirm the pre-filled operational defaults: role bindings; naming/display/length rows; the 'general: slow' volatility domain (rename or split it into real domains)."
     note: "For an existing corpus, 'as found' naming beats a renaming campaign; changed naming rows are migration-grade."
+    phase: derived-and-conditional
+    classification: semantic
+    depends_on: [Q2, Q4]
+    reconfirm_if: [Q2, Q4]
     change_cost: "cheap (naming rows: migration)"
     maps_to:
       - {file: registries/roles.md}
@@ -173,6 +247,11 @@ core_pack:
   - id: C3
     kind: closing-review
     question: "Closing review: anything to open now, and anything the interview did not cover?"
+    phase: derived-and-conditional
+    classification: semantic
+    depends_on: [S0, Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, C1, C2]
+    reconfirm_if: [S0, Q0, Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, C1, C2]
+    branches: [existing-corpus-bounded, existing-corpus-large-scale, empty-corpus]
     procedure:
       - "Enumerate every switch shipped closed (Corpus Planning, Structure Registry, priority grants, Expression Layer, metadata extensions, optional Language/Source registrations, supplemental routes and gates) with a one-line meaning each"
       - "Show the derived fills (placement rows, fallbacks, the scan registration) for a final confirmation"
@@ -185,10 +264,13 @@ core_pack:
       - "Whatever the branch, the interview's confirmation state is not derivable from the candidate files alone: after any interruption, re-present this closing summary in full and re-collect the confirmation instead of assuming it still holds"
     change_cost: adoption
 
+# Mechanical materialization, owned by the scaffolder at copy time (a manual
+# fallback copy performs the same rewrites by hand). `profile-load` validates
+# the result and fails closed, but never guesses or edits a value.
 self_path_rewrites:
-  - {file: registries/registered-scans.md, cell: "verifier command --config path", validation: "profile-load: canonical path inside this Profile"}
-  - {file: registries/audit-dimensions.md, cell: "foundation item predicate owner", validation: "profile-load: canonical path inside this Profile and exactly one heading"}
-  - {file: registries/audit-dimensions.md, cell: "residual item predicate owner", validation: "profile-load: canonical path inside this Profile and exactly one heading"}
+  - {file: registries/registered-scans.md, cell: "verifier command --config path", owner: scaffolder, validation: "profile-load: canonical path inside this Profile"}
+  - {file: registries/audit-dimensions.md, cell: "foundation item predicate owner", owner: scaffolder, validation: "profile-load: canonical path inside this Profile and exactly one heading"}
+  - {file: registries/audit-dimensions.md, cell: "residual item predicate owner", owner: scaffolder, validation: "profile-load: canonical path inside this Profile and exactly one heading"}
 
 # Expansion packs. Left unwalked, they open a closed slot later, through
 # ordinary Standards adoption — never silently: the operator asks, or a
@@ -196,46 +278,55 @@ self_path_rewrites:
 # pack now, before C3, and the answers land in the same slot files.
 expansion_packs:
   - slot: corpus-planning
+    phase: derived-and-conditional
     binds_slot: Corpus Planning
     trigger: {gates: [corpus-plan-structure], routes: [R11, R13], elective: true}
     opens: "large-scale construction, migration, or persistent multi-batch work"
     asks: "Global Map / Capability Matrix / Gap Register bindings; capability scale (the 0-4 pattern in answer-patterns.md); pass authority"
   - slot: structure-registry
+    phase: derived-and-conditional
     binds_slot: Structure Registry
     trigger: {gates: [structure-registry], routes: [R03, R06], elective: true}
     opens: "a directory first carries an independently built, maintained, or audited responsibility"
     asks: "units (id/kind/parent/root/entry/roles); support layers with bindings"
   - slot: priority-rubric
+    phase: derived-and-conditional
     binds_slot: Priority Rubric
     trigger: {elective: true}
     opens: "pages start protecting capabilities or deadlines the P2 fallback does not"
     asks: "P0/P1 grant predicates + protected capability or horizon"
   - slot: expression-layer
+    phase: derived-and-conditional
     binds_slot: Expression Layer Entry
     trigger: {routes: [R05], elective: true}
     opens: "a derived reader-facing artifact first appears"
     asks: "artifact registration; readiness axis + reviewer role + readiness gate (three-piece pattern in answer-patterns.md)"
   - slot: metadata-contract
+    phase: derived-and-conditional
     binds_slot: Metadata Contract
     trigger: {elective: true}
     opens: "a tightened mode, extension field, or relationship extension is needed"
     asks: "differences (tighten only) / extension fields / relationship extensions / section roles"
   - slot: language-registrations
+    phase: derived-and-conditional
     binds_slot: Language Contract
     trigger: {elective: true}
     opens: "domain-scoped anti-patterns or migration invalidations (bilingual corpora: the term-band pattern)"
     asks: "K10/04 extension rows"
   - slot: source-registrations
+    phase: derived-and-conditional
     binds_slot: Source Policy
     trigger: {elective: true}
     opens: "comparison rules or provenance extensions (metric-reporting corpora: the evaluation-provenance pattern)"
     asks: "the two optional Source Policy registrations; Metric Traceability role bindings"
   - slot: escalation-policy
+    phase: derived-and-conditional
     binds_slot: Escalation Policy
     trigger: {elective: true}
     opens: "work runs long or autonomous enough that some situation must reach a person before the run continues"
     asks: "one row per trigger: ID, the condition that fires it, machine- or review-checkable, the deciding Role ID, and what counts as the decision having been made"
   - slot: routing-and-gates
+    phase: derived-and-conditional
     binds_slot: Routing And Gate Registry
     trigger: {elective: true}
     opens: "supplemental routes, L-tier triggers, specialized audit invariants, extension gates"

@@ -82,6 +82,7 @@ from collections.abc import Mapping
 import contextlib
 from dataclasses import dataclass
 import io
+import json
 import os
 import re
 import sys
@@ -179,6 +180,229 @@ PRIORITY_RUBRIC_SLOT = "Priority Rubric"
 METADATA_CONTRACT_SLOT = "Metadata Contract"
 
 AUDIT_DIMENSION_SLOT = "Audit Dimension Registry"
+
+# ---------------------------------------------------------------------------
+# Structured finding classification (``--json``).
+#
+# An assisting agent triaging a failed run needs to know which findings it
+# can fix directly and re-run (MECHANICAL: path resolution, identity and
+# directory agreement, table/manifest shape, self-reference containment,
+# declaration word shape) and which findings name an operator answer that is
+# missing or unconfirmed (SEMANTIC_UNRESOLVED: the unfilled sentinel and
+# every other finding whose subject is the *content* of a decision rather
+# than the shape of one already made).  The map is a closed dict over every
+# check code this producer can emit -- its own literals, the kblib
+# identity/shape validators it consumes, and the profile_contract
+# diagnostics it forwards (``profile-contract-sentinel`` is re-emitted as
+# ``unfilled-placeholder`` and therefore does not appear here).
+# test_check_profile pins the coverage against the emitting sources, so
+# adding a check without classifying it fails the suite.
+#
+# Non-obvious calls, decided by reading each check:
+# * profile-id-*: the manifest identity must equal the profile directory
+#   name (profile-id-directory-mismatch), so the correct value is a pure
+#   function of the package location -- mechanical, including the reserved
+#   placeholder case.
+# * declaration-invalid / extension-dimensions-registration /
+#   corpus-planning-applicability: the operator's declaration exists but is
+#   misspelled or mis-shaped; normalizing an already-made choice to its
+#   legal spelling is mechanical.  (An *unanswered* declaration still
+#   carries the sentinel and fails as unfilled-placeholder instead.)
+# * configured-table-missing/-empty/-incomplete, *-row-empty, and the empty
+#   registry findings: the declared structure demands content that simply is
+#   not there (or a cell is blank); inventing that content would be a domain
+#   decision, so these stay semantic-unresolved.
+# * override-choice-empty / override-value-domain: the profile value is
+#   absent or rejected; an admissible replacement is an operator choice.
+#   The sibling override rows (duplicate, unknown item, constitutional,
+#   redundant default, row shape, unknown domain name) each have one
+#   determined fix -- remove or reshape the row -- and stay mechanical.
+# * slot-not-in-interface: the tool's own result text says whether the
+#   extension binding is reasonable "is a human call" -- semantic-unresolved.
+# ---------------------------------------------------------------------------
+MECHANICAL = "mechanical"
+SEMANTIC_UNRESOLVED = "semantic-unresolved"
+
+_SEMANTIC_UNRESOLVED_CHECKS = frozenset((
+    "unfilled-placeholder",
+    "slot-not-in-interface",
+    "override-choice-empty",
+    "override-value-domain",
+    "configured-table-missing",
+    "configured-table-empty",
+    "configured-table-incomplete",
+    "extension-dimensions-configured-empty",
+    "extension-dimensions-row-empty",
+    "judgment-items-empty",
+    "judgment-items-row-empty",
+    "registered-scans-empty",
+    "registered-scans-row-empty",
+))
+
+_MECHANICAL_CHECKS = frozenset((
+    # invocation and canonical-input handling
+    "profile-receipt-path-inside-profile",
+    "profile-load-noncanonical-input",
+    "profile-load-input-unreadable",
+    "profile-load-input-changed",
+    "profile-dir-missing",
+    "manifest-missing",
+    "profile-snapshot-invalid",
+    "profile-snapshot-changed-during-check",
+    "interface-unreadable",
+    "defaults-unreadable",
+    "execution-defaults-unreadable",
+    "profile-text-unreadable",
+    # interface and manifest shape
+    "interface-no-slots",
+    "profile-interface-slot-registry-mismatch",
+    "manifest-section-duplicate",
+    "slots-section-empty",
+    "slot-unbound",
+    "slot-binding-duplicate",
+    "slot-binding-inline",
+    "slot-binding-invalid",
+    "slot-binding-unresolved",
+    "slot-binding-outside-profile",
+    "slot-binding-unrecognized",
+    # manifest identity (the value is a pure function of the directory name)
+    "profile-id-missing",
+    "profile-id-duplicate",
+    "profile-id-placeholder",
+    "profile-id-invalid",
+    "profile-id-directory-mismatch",
+    # optional/conditional declarations
+    "declaration-invalid",
+    "inactive-table-has-rows",
+    # Corpus Planning slot envelope
+    "corpus-planning-binding",
+    "corpus-planning-yaml",
+    "corpus-planning-schema",
+    "corpus-planning-applicability",
+    "corpus-planning-artifact",
+    "corpus-planning-scale",
+    "corpus-planning-authority",
+    # Structure Registry slot shape (kblib validator)
+    "structure-registry-binding",
+    "structure-registry-yaml",
+    "structure-registry-schema",
+    "structure-registry-applicability",
+    "structure-registry-unit",
+    "structure-registry-parent",
+    "structure-registry-layer",
+    "structure-registry-layout",
+    "structure-registry-role",
+    # Priority Rubric quota block
+    "priority-quota-policy",
+    # Metadata Contract slot shape (kblib validator)
+    "metadata-contract-binding",
+    "metadata-contract-yaml",
+    "metadata-contract-schema",
+    "metadata-contract-applicability",
+    "metadata-contract-entry",
+    "metadata-contract-condition",
+    "metadata-contract-section-role",
+    "metadata-contract-boundary-projection",
+    # Execution Default Overrides table
+    "overrides-section-missing",
+    "override-row-shape",
+    "override-item-duplicate",
+    "override-constitutional-item",
+    "override-item-unknown",
+    "override-redundant-default",
+    "override-value-domain-unknown",
+    # typed dependency closure (profile_contract diagnostics)
+    "profile-contract-manifest-path",
+    "profile-contract-profile-root",
+    "profile-contract-snapshot-invalid",
+    "profile-contract-manifest-name",
+    "profile-contract-manifest-unreadable",
+    "profile-contract-slot-duplicate",
+    "profile-contract-slot-missing",
+    "profile-contract-slot-invalid",
+    "profile-contract-slot-unresolved",
+    "profile-contract-slot-outside-profile",
+    "profile-contract-slot-unreadable",
+    "extension-dimensions-registration",
+    "extension-dimensions-none-with-rows",
+    "extension-dimension-id-invalid",
+    "extension-dimension-id-duplicate",
+    "extension-dimension-base-collision",
+    "extension-dimension-target-invalid",
+    "judgment-item-id-invalid",
+    "judgment-item-id-duplicate",
+    "judgment-item-dimension-unknown",
+    "judgment-item-evidence-role-invalid",
+    "registered-scan-id-invalid",
+    "registered-scan-id-duplicate",
+    "registered-scan-judgment-reference",
+    "registered-scans-required-count",
+    "registered-scan-command-literal",
+    "registered-scan-command-parse",
+    "registered-scan-command-shape",
+    "registered-scan-command-interpreter",
+    "registered-scan-command-script",
+    "registered-scan-command-root",
+    "registered-scan-command-shell-operator",
+    "registered-scan-command-gate-option",
+    "registered-scan-command-scan-id",
+    "registered-scan-command-config",
+    # registry table shape (composed `<section>-<shape>` diagnostics)
+    "extension-dimensions-section-count",
+    "extension-dimensions-table-count",
+    "extension-dimensions-table-shape",
+    "extension-dimensions-table-header",
+    "extension-dimensions-table-separator",
+    "extension-dimensions-row-shape",
+    "judgment-items-section-count",
+    "judgment-items-table-count",
+    "judgment-items-table-shape",
+    "judgment-items-table-header",
+    "judgment-items-table-separator",
+    "judgment-items-row-shape",
+    "registered-scans-section-count",
+    "registered-scans-table-count",
+    "registered-scans-table-shape",
+    "registered-scans-table-header",
+    "registered-scans-table-separator",
+    "registered-scans-row-shape",
+    # Profile-owned dependency resolution (composed `<kind>-<failure>`)
+    "predicate-owner-heading-empty",
+    "predicate-owner-heading-missing",
+    "predicate-owner-path-invalid",
+    "predicate-owner-path-outside-profile",
+    "predicate-owner-unreadable",
+    "predicate-owner-heading-non-markdown",
+    "predicate-owner-heading-count",
+    "scan-config-heading-empty",
+    "scan-config-heading-missing",
+    "scan-config-path-invalid",
+    "scan-config-path-outside-profile",
+    "scan-config-unreadable",
+    "scan-config-heading-non-markdown",
+    "scan-config-heading-count",
+))
+
+if _MECHANICAL_CHECKS & _SEMANTIC_UNRESOLVED_CHECKS:
+    raise AssertionError(
+        "finding category defined twice: %s" %
+        sorted(_MECHANICAL_CHECKS & _SEMANTIC_UNRESOLVED_CHECKS))
+
+FINDING_CATEGORIES = {
+    **{check: MECHANICAL for check in sorted(_MECHANICAL_CHECKS)},
+    **{check: SEMANTIC_UNRESOLVED
+       for check in sorted(_SEMANTIC_UNRESOLVED_CHECKS)},
+}
+
+
+def finding_category(check):
+    """Category for one emitted check code; unknown codes stay conservative.
+
+    The closed map is pinned by tests, so an unknown code here means a
+    mis-deployed tree; classifying it as semantic-unresolved keeps an
+    assisting agent from auto-"fixing" a finding nobody classified.
+    """
+    return FINDING_CATEGORIES.get(check, SEMANTIC_UNRESOLVED)
 
 
 def canonical_profile_load_inputs(root):
@@ -528,7 +752,18 @@ def main(argv=None, *, _evaluation_out=None,
                          "(default: %s under --root)"
                          % DEFAULT_EXECUTION_DEFAULTS)
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
+    ap.add_argument("--json", action="store_true",
+                    help="write one deterministic JSON object (tool, root, "
+                         "result, findings each carrying a closed "
+                         "mechanical/semantic-unresolved category) to stdout "
+                         "instead of the human summary; receipts and exit "
+                         "codes are unchanged")
     args = ap.parse_args(argv)
+
+    def say(message):
+        """Human summary line; silenced when --json owns stdout."""
+        if not args.json:
+            print(message)
 
     # Canonicalize both endpoints before relativizing.  macOS exposes the
     # same temporary tree as both /var and /private/var; mixing those aliases
@@ -587,6 +822,27 @@ def main(argv=None, *, _evaluation_out=None,
         exit_code = kblib.exit_code(receipts)
         if write_receipts and _write_receipts:
             kblib.write_receipts(args.receipts, receipts)
+        if args.json:
+            # One deterministic structured-diagnostics object: same checks,
+            # same order, same exit semantics as the human summary, plus the
+            # closed mechanical/semantic-unresolved category per finding.
+            print(json.dumps({
+                "tool": TOOL,
+                "tool_version": TOOL_VERSION,
+                "profile_dir": profile_disp,
+                "root": root,
+                "result": {0: "pass", 1: "fail", 2: "candidate"}[exit_code],
+                "findings": [
+                    {
+                        "check": receipt["check"],
+                        "target": receipt["target"],
+                        "details": receipt["details"],
+                        "category": finding_category(receipt["check"]),
+                    }
+                    for receipt in receipts
+                    if receipt["result"] != "pass"
+                ],
+            }, ensure_ascii=False, sort_keys=True, indent=2))
         if _evaluation_out is not None:
             authorized_contract = (
                 contract
@@ -641,7 +897,7 @@ def main(argv=None, *, _evaluation_out=None,
                 "--receipts must stay outside the Profile directory so "
                 "validation cannot mutate the package whose snapshot it "
                 "binds")
-            print("check_profile: FAIL — receipt output cannot be written "
+            say("check_profile: FAIL — receipt output cannot be written "
                   "inside the selected Profile")
             return finish(write_receipts=False)
 
@@ -679,7 +935,7 @@ def main(argv=None, *, _evaluation_out=None,
     except (OSError, ValueError) as exc:
         add("profile-load-input-unreadable", root, "fail",
             "cannot bind canonical profile-load inputs: %s" % exc)
-        print("check_profile: FAIL — canonical profile-load input is not a "
+        say("check_profile: FAIL — canonical profile-load input is not a "
               "stable singly-linked file: %s" % exc)
         return finish()
 
@@ -688,7 +944,7 @@ def main(argv=None, *, _evaluation_out=None,
         add("profile-dir-missing", profile_disp, "fail",
             "profile directory does not exist; a scan with nothing to check "
             "is an invocation error, never a pass")
-        print("check_profile: FAIL — no such profile directory: %s" % args.profile_dir)
+        say("check_profile: FAIL — no such profile directory: %s" % args.profile_dir)
         return finish()
 
     manifest_path = os.path.join(profile_dir, MANIFEST_NAME)
@@ -697,7 +953,7 @@ def main(argv=None, *, _evaluation_out=None,
             "the profile manifest %s is missing; every slot binding is "
             "declared there, so nothing about this profile can be verified"
             % MANIFEST_NAME)
-        print("check_profile: FAIL — %s has no %s" % (profile_disp, MANIFEST_NAME))
+        say("check_profile: FAIL — %s has no %s" % (profile_disp, MANIFEST_NAME))
         return finish()
 
     # Bind the exact Profile bytes before reading any of its declarations.
@@ -709,7 +965,7 @@ def main(argv=None, *, _evaluation_out=None,
     except (OSError, ValueError) as exc:
         add("profile-snapshot-invalid", profile_disp, "fail",
             "cannot bind the selected Profile directory snapshot: %s" % exc)
-        print("check_profile: FAIL — cannot bind one immutable Profile "
+        say("check_profile: FAIL — cannot bind one immutable Profile "
               "snapshot: %s" % exc)
         return finish()
     profile_snapshot_before = profile_snapshot.sha256
@@ -724,7 +980,7 @@ def main(argv=None, *, _evaluation_out=None,
     except (OSError, UnicodeError) as exc:
         add("interface-unreadable", DEFAULT_INTERFACE, "fail",
             "cannot read the normative slot interface: %s" % exc)
-        print("check_profile: FAIL — cannot read interface %s: %s" % (interface_path, exc))
+        say("check_profile: FAIL — cannot read interface %s: %s" % (interface_path, exc))
         return finish()
 
     try:
@@ -733,7 +989,7 @@ def main(argv=None, *, _evaluation_out=None,
     except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
         add("defaults-unreadable", DEFAULT_DEFAULTS, "fail",
             "cannot read/parse the profile-form placeholder registry: %s" % exc)
-        print("check_profile: FAIL — cannot read defaults %s: %s" % (defaults_path, exc))
+        say("check_profile: FAIL — cannot read defaults %s: %s" % (defaults_path, exc))
         return finish()
 
     try:
@@ -742,7 +998,7 @@ def main(argv=None, *, _evaluation_out=None,
     except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
         add("execution-defaults-unreadable", DEFAULT_EXECUTION_DEFAULTS, "fail",
             "cannot read/parse the kernel execution-default registry: %s" % exc)
-        print("check_profile: FAIL — cannot read execution defaults %s: %s"
+        say("check_profile: FAIL — cannot read execution defaults %s: %s"
               % (execution_defaults_path, exc))
         return finish()
 
@@ -762,7 +1018,7 @@ def main(argv=None, *, _evaluation_out=None,
     except (OSError, UnicodeError) as exc:
         add("profile-text-unreadable", profile_disp, "fail",
             "Profile text files must be readable strict UTF-8: %s" % exc)
-        print("check_profile: FAIL — Profile text is not strict UTF-8: %s" %
+        say("check_profile: FAIL — Profile text is not strict UTF-8: %s" %
               exc)
         return finish()
     manifest_disp = "%s/%s" % (profile_disp, MANIFEST_NAME)
@@ -1106,27 +1362,27 @@ def main(argv=None, *, _evaluation_out=None,
         summary["profile_load_inputs_sha256"] = profile_load_inputs_sha256
 
     # ---- human-readable summary ----
-    print("check_profile: %s (profile_id=%s)"
+    say("check_profile: %s (profile_id=%s)"
           % (profile_disp, profile_id if profile_id else "<none>"))
-    print("  interface=%s slots=%d bound_ok=%d explicit_overrides=%d "
+    say("  interface=%s slots=%d bound_ok=%d explicit_overrides=%d "
           "files_scanned=%d files_skipped=%d"
           % (os.path.relpath(interface_path, root).replace(os.sep, "/"),
              len(slots), bound_ok, len(registered), files_read, files_skipped))
-    print("  sentinel_hits(fail)=%d" % len(hits))
+    say("  sentinel_hits(fail)=%d" % len(hits))
     for r in receipts:
         if r["result"] == "fail":
-            print("  [FAIL %s] %s — %s" % (r["check"], r["target"], r["details"]))
+            say("  [FAIL %s] %s — %s" % (r["check"], r["target"], r["details"]))
         elif r["result"] == "candidate":
-            print("  [CAND %s] %s — %s" % (r["check"], r["target"], r["details"]))
+            say("  [CAND %s] %s — %s" % (r["check"], r["target"], r["details"]))
     if fails:
-        print("  Conclusion: NOT LOADABLE — %d failure(s). This profile is "
+        say("  Conclusion: NOT LOADABLE — %d failure(s). This profile is "
               "incomplete; the composed standard must not be judged fully "
               "loaded." % len(fails))
     elif candidates:
-        print("  Conclusion: REVIEW REQUIRED — %d candidate finding(s); no "
+        say("  Conclusion: REVIEW REQUIRED — %d candidate finding(s); no "
               "profile-load pass receipt was emitted." % len(candidates))
     else:
-        print("  Conclusion: Profile load authorized; every interface slot and "
+        say("  Conclusion: Profile load authorized; every interface slot and "
               "machine-active Profile dependency resolves inside the selected "
               "Profile. This checks authority and structure, not whether the "
               "answers are good.")

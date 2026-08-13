@@ -60,7 +60,11 @@ The flow below holds at either fill depth, and
 [interview.yaml](interview.yaml) carries it in machine-readable form for an
 assisting agent (to answer every switch now, the interview also walks every
 expansion pack instead of leaving it closed). A solo fill follows the same
-steps by hand.
+steps by hand. At any point,
+`python3 Tools/profile_onboarding_status.py . --json` derives where the
+onboarding stands — candidate state, `profile-load` result, adoption state,
+corpus and runtime state — and exactly one `next_action`; it is a read-only
+projection, never a second authoritative ledger.
 
 1. **Confirm identity first.** Name the corpus directory (or accept a
    proposed default; create it when it does not exist) and the profile ID

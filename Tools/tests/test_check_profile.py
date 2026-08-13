@@ -2,10 +2,14 @@
 
 Covers the execution-default override registry and the end-to-end typed
 ``profile-load`` Gate, including the transitive dependency closure that keeps
-one selected Profile from consuming another Profile's runtime-active cells.
+one selected Profile from consuming another Profile's runtime-active cells,
+plus the closed mechanical/semantic-unresolved classification map behind
+``--json`` structured diagnostics.
 """
 
+import ast
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -264,8 +268,8 @@ class ShippedRegistryTests(unittest.TestCase):
                 (REPOSITORY / entry["owner"]).is_file(), entry["owner"])
 
 
-class ProfileLoadCliTests(unittest.TestCase):
-    """End-to-end admission tests for the typed ``profile-load`` Gate."""
+class ProfileCliFixture(unittest.TestCase):
+    """Shared temp-root fixture and helpers for the profile-load CLI."""
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -358,6 +362,9 @@ class ProfileLoadCliTests(unittest.TestCase):
              if key not in dynamic}
             for receipt in receipts
         ]
+
+class ProfileLoadCliTests(ProfileCliFixture):
+    """End-to-end admission tests for the typed ``profile-load`` Gate."""
 
     def test_renaming_only_profile_id_rejects_all_stale_foreign_edges(self):
         """Exact Issue #42 reproduction: the source Profile still exists."""
@@ -979,6 +986,247 @@ class ProfileLoadCliTests(unittest.TestCase):
         self.assertIn("receipt output cannot be written inside",
                       completed.stdout)
         self.assertFalse(receipt_path.exists())
+
+
+class FindingClassificationTests(unittest.TestCase):
+    """The ``--json`` category map must stay a CLOSED dict over every code.
+
+    The emittable set is collected by introspection of the three emitting
+    sources -- ``check_profile.py``'s own ``add(...)`` literals, the kblib
+    identity/shape validators it consumes, and ``profile_contract``'s
+    diagnostics (literal plus the composed ``<prefix>-<shape>`` /
+    ``<kind>-<failure>`` families) -- so adding a check anywhere without
+    classifying it fails here rather than shipping an unclassified finding.
+    """
+
+    TOOLS = REPOSITORY / "Tools"
+
+    @staticmethod
+    def _literal_add_codes(tree):
+        codes = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = (func.attr if isinstance(func, ast.Attribute)
+                    else func.id if isinstance(func, ast.Name) else None)
+            if name != "add" or not node.args:
+                continue
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                codes.add(first.value)
+        return codes
+
+    def _check_profile_codes(self):
+        tree = ast.parse(
+            (self.TOOLS / "check_profile.py").read_text(encoding="utf-8"))
+        return self._literal_add_codes(tree)
+
+    def _kblib_passthrough_codes(self):
+        """Codes check_profile forwards from kblib validators.
+
+        ``profile_identity``, ``validate_structure_registry_shape``, and
+        ``validate_metadata_contract_shape`` return ``(check, ...)`` tuples
+        whose check literals all carry one of three closed name families;
+        collecting the families from the source keeps this maintained-free.
+        """
+        source = (self.TOOLS / "kblib.py").read_text(encoding="utf-8")
+        return set(re.findall(
+            r'"((?:profile-id|structure-registry|metadata-contract)'
+            r'-[a-z][a-z-]*)"', source))
+
+    def _profile_contract_codes(self):
+        """Every diagnostic check ``profile_contract`` can emit.
+
+        Literal ``add("...")`` codes, plus the two composed families: the
+        table-shape helpers (``section``/``table``/``cells``) format
+        ``"%s-<shape>"`` with the section prefix their call sites pass, and
+        ``profile_dependency`` formats ``"%s-<failure>"`` with the literal
+        dependency kind.  Templates and prefixes/kinds are both read from
+        the AST so a new prefix, kind, or template extends the set here
+        automatically.
+        """
+        tree = ast.parse(
+            (self.TOOLS / "profile_contract.py").read_text(encoding="utf-8"))
+        codes = self._literal_add_codes(tree)
+        # ``check = ("...-invalid" if ... else "...-unresolved")`` binds the
+        # code before the add() call; collect the constants of any such
+        # ``check`` assignment too.
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and any(
+                    isinstance(target, ast.Name) and target.id == "check"
+                    for target in node.targets):
+                value = node.value
+                branches = ((value.body, value.orelse)
+                            if isinstance(value, ast.IfExp) else (value,))
+                for branch in branches:
+                    if isinstance(branch, ast.Constant) and \
+                            isinstance(branch.value, str):
+                        codes.add(branch.value)
+        table_templates, dependency_templates = set(), set()
+        prefixes, kinds = set(), set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                target = None
+                if node.name in ("section", "table", "cells"):
+                    target = table_templates
+                elif node.name == "profile_dependency":
+                    target = dependency_templates
+                if target is not None:
+                    for sub in ast.walk(node):
+                        if isinstance(sub, ast.Constant) and \
+                                isinstance(sub.value, str) and \
+                                sub.value.startswith("%s-"):
+                            target.add(sub.value[len("%s-"):])
+            if isinstance(node, ast.Call) and \
+                    isinstance(node.func, ast.Attribute) and node.args:
+                if node.func.attr in ("section", "table", "cells"):
+                    last = node.args[-1]
+                    if isinstance(last, ast.Constant) and \
+                            isinstance(last.value, str):
+                        prefixes.add(last.value)
+                if node.func.attr == "profile_dependency":
+                    first = node.args[0]
+                    if isinstance(first, ast.Constant) and \
+                            isinstance(first.value, str):
+                        kinds.add(first.value)
+        # A parse regression must not silently shrink the composed families.
+        self.assertTrue(table_templates and dependency_templates)
+        self.assertTrue(prefixes and kinds)
+        codes.update("%s-%s" % (prefix, template)
+                     for prefix in prefixes for template in table_templates)
+        codes.update("%s-%s" % (kind, template)
+                     for kind in kinds for template in dependency_templates)
+        return codes
+
+    def _emittable_codes(self):
+        sys.path.insert(0, str(self.TOOLS))
+        import check_profile
+        codes = (self._check_profile_codes() |
+                 self._kblib_passthrough_codes() |
+                 self._profile_contract_codes())
+        # profile-contract-sentinel is re-emitted as unfilled-placeholder;
+        # the pass summary is a pass receipt, never a finding.
+        codes.discard("profile-contract-sentinel")
+        codes.discard(check_profile.GATE_CHECK)
+        return codes
+
+    def test_category_map_covers_exactly_the_emittable_codes(self):
+        sys.path.insert(0, str(REPOSITORY / "Tools"))
+        import check_profile
+
+        emittable = self._emittable_codes()
+        classified = set(check_profile.FINDING_CATEGORIES)
+
+        self.assertEqual(
+            sorted(emittable - classified), [],
+            "emittable check codes without a category; classify them in "
+            "check_profile.FINDING_CATEGORIES")
+        self.assertEqual(
+            sorted(classified - emittable), [],
+            "classified codes the tool can no longer emit; remove them "
+            "from check_profile.FINDING_CATEGORIES")
+
+    def test_every_category_value_is_one_of_the_two_tokens(self):
+        sys.path.insert(0, str(REPOSITORY / "Tools"))
+        import check_profile
+
+        self.assertEqual(
+            {check_profile.MECHANICAL, check_profile.SEMANTIC_UNRESOLVED},
+            set(check_profile.FINDING_CATEGORIES.values()))
+
+    def test_pinned_semantic_and_mechanical_anchors(self):
+        """The load-bearing calls: sentinels are open answers, paths are not."""
+        sys.path.insert(0, str(REPOSITORY / "Tools"))
+        import check_profile
+
+        semantic = check_profile.SEMANTIC_UNRESOLVED
+        mechanical = check_profile.MECHANICAL
+        categories = check_profile.FINDING_CATEGORIES
+        self.assertEqual(semantic, categories["unfilled-placeholder"])
+        self.assertEqual(semantic, categories["override-choice-empty"])
+        self.assertEqual(semantic, categories["slot-not-in-interface"])
+        self.assertEqual(mechanical, categories["slot-binding-unresolved"])
+        self.assertEqual(mechanical,
+                         categories["profile-id-directory-mismatch"])
+        self.assertEqual(
+            mechanical, categories["predicate-owner-path-outside-profile"])
+        # Unknown codes stay conservative: never auto-"fixed" by an agent.
+        self.assertEqual(semantic,
+                         check_profile.finding_category("not-a-real-check"))
+
+
+class JsonDiagnosticsTests(ProfileCliFixture):
+    """``--json`` structured diagnostics over the same CLI fixtures."""
+
+    def _run_json(self, profile):
+        completed = subprocess.run(
+            [sys.executable, "-B", str(SCRIPT), str(profile),
+             "--root", str(self.root), "--json"],
+            text=True, capture_output=True, check=False)
+        return completed, json.loads(completed.stdout)
+
+    def test_json_is_one_object_with_categorized_findings(self):
+        copied = self._copied_profile("json-broken-notes")
+
+        completed, report = self._run_json(copied)
+
+        self.assertEqual(1, completed.returncode)
+        self.assertEqual("check_profile", report["tool"])
+        self.assertEqual("fail", report["result"])
+        self.assertEqual("profiles/examples/json-broken-notes",
+                         report["profile_dir"])
+        self.assertTrue(report["findings"])
+        for finding in report["findings"]:
+            self.assertEqual(
+                {"check", "target", "details", "category"},
+                set(finding))
+            self.assertIn(finding["category"],
+                          ("mechanical", "semantic-unresolved"))
+        checks = {finding["check"]: finding["category"]
+                  for finding in report["findings"]}
+        self.assertEqual(
+            "mechanical", checks["scan-config-path-outside-profile"])
+
+    def test_json_pass_has_no_findings_and_matching_exit(self):
+        copied = self._copied_profile("json-pass-notes", self_owned=True)
+
+        completed, report = self._run_json(copied)
+
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertEqual("pass", report["result"])
+        self.assertEqual([], report["findings"])
+
+    def test_json_output_is_deterministic(self):
+        copied = self._copied_profile("json-stable-notes")
+
+        first, _ = self._run_json(copied)
+        second, _ = self._run_json(copied)
+
+        self.assertEqual(first.stdout, second.stdout)
+
+    def test_sentinel_findings_are_semantic_unresolved(self):
+        copied = self._copied_profile("json-sentinel-notes", self_owned=True)
+        (copied / "priority-rubric.md").write_text(
+            "TODO(profile)\n", encoding="utf-8")
+
+        completed, report = self._run_json(copied)
+
+        self.assertEqual(1, completed.returncode)
+        sentinel_findings = [finding for finding in report["findings"]
+                             if finding["check"] == "unfilled-placeholder"]
+        self.assertTrue(sentinel_findings)
+        for finding in sentinel_findings:
+            self.assertEqual("semantic-unresolved", finding["category"])
+
+    def test_human_output_is_unchanged_without_json(self):
+        copied = self._copied_profile("json-human-notes")
+
+        completed, _receipts = self._run_check(copied, "json-human.jsonl")
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("[FAIL ", completed.stdout)
+        self.assertNotIn('"findings"', completed.stdout)
 
 
 if __name__ == "__main__":
