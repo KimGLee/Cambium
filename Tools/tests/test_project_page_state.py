@@ -497,6 +497,55 @@ class ProjectPageStateTests(unittest.TestCase):
         self.assertEqual([], list(pathlib.Path(root).rglob(
             ".cambium-page-state-*")))
 
+    def test_later_failure_does_not_overwrite_concurrent_published_edit(self):
+        """Rollback is a CAS: a changed after-image belongs to its writer."""
+        root = self.build()
+        page = pathlib.Path(root, "Domain/Closed.md")
+        concurrent = "Concurrent edit after page-state publication.\n"
+        original_publish = project_page_state._publish_staged
+        publications = 0
+
+        def edit_first_then_fail_second(root_path, staged):
+            nonlocal publications
+            publications += 1
+            if publications == 1:
+                result = original_publish(root_path, staged)
+                # An uncooperative writer can change the installed inode while
+                # the projector moves on to the next page.  A later rollback
+                # must not erase those bytes merely because the inode still
+                # belongs to this transaction's published after-image.
+                page.write_text(concurrent, encoding="utf-8")
+                return result
+            raise OSError("injected later-page publication failure")
+
+        with mock.patch.object(
+                project_page_state, "_publish_staged",
+                side_effect=edit_first_then_fail_second):
+            code, output = self.run_main(root, "--apply")
+
+        self.assertEqual(1, code, output)
+        self.assertGreaterEqual(publications, 2)
+        self.assertEqual(concurrent, page.read_text(encoding="utf-8"))
+        self.assertIn("rollback is incomplete", output)
+        lock = pathlib.Path(root, ".cambium/tmp/state-writer.lock")
+        self.assertTrue(lock.is_dir())
+        owner = json.loads((lock / "owner.json").read_text(encoding="utf-8"))
+        self.assertEqual("rollback-required",
+                         owner.get("operation", {}).get("status"))
+        journal = json.loads(
+            (lock / project_page_state.JOURNAL_NAME).read_text(
+                encoding="utf-8"))
+        artifact = next(
+            row for row in journal.get("artifacts", [])
+            if row.get("path") == "Domain/Closed.md")
+        self.assertIsNone(artifact.get("staged_after_image_active"))
+        self.assertTrue(artifact.get("after_image_verified"))
+        self.assertTrue(artifact.get("published"))
+        self.assertTrue(artifact.get("claimed"))
+        backup = pathlib.Path(root, "Domain", artifact["rollback_image"])
+        self.assertTrue(backup.is_file())
+        self.assertEqual(CLOSED.encode("utf-8"), backup.read_bytes())
+
     def test_late_coverage_change_rolls_back_all_pages(self):
         """A stale Ledger owner cannot leave a successful projection."""
         root = self.build()
