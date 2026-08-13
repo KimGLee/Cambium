@@ -1,32 +1,35 @@
-"""When the Corpus Planning gate is owed, and what a corpus with no pages owes.
+"""When the Corpus Planning gate is owed, and why an empty corpus still cannot.
 
 Two gates read the Corpus Planning choice at different moments, and conflating
-them is what made a corpus starting from zero pages look deadlocked. Admission
-(K00/13) requires a configured plan before large-scale work; batch close
-requires one when the task selected R13 or when the batch's manifest touches a
-bound planning artifact. Nothing derives the requirement from the work merely
-being multi-batch, and an unrelated batch acquires no gate because the
-repository happens to hold a plan.
+them is what made the cold-start ordering hard to state. Admission (K00/13)
+requires a configured plan before large-scale work; batch close requires one
+when the task selected R13 or when the batch's manifest touches a bound
+planning artifact. Nothing derives the requirement from the work merely being
+multi-batch, and an unrelated batch acquires no gate because the repository
+happens to hold a plan.
 
-That difference is what the bootstrap ordering rests on. A corpus whose layer
-directories hold no canonical owner cannot supply a Global Map, because the Map
-names owners that exist. K02/03 lets such a corpus declare the bindings and
-prove them at its initial batch's close, and the mechanism that makes the
-deferral binding rather than a promise is already here: putting the three
-artifact paths in that batch's manifest makes the close gate applicable by
-manifest. If that predicate ever stopped firing on manifest intersection, the
-deferral would silently become an exemption, so it is pinned here.
+A corpus whose layer directories hold no canonical owner cannot supply a Global
+Map, because the Map names owners that exist. That ordering gap is open in this
+revision, and one wrong way to close it is pinned here so it is not tried
+again: the three planning artifacts cannot ride the initial batch's manifest.
+A Queue manifest equals the Coverage projection, and `check_batch_close`
+requires every member to be a Markdown knowledge object -- the artifacts are
+restricted YAML validated by a different gate with a different receipt
+dimension, so putting them there would subject a control-plane artifact to
+content review and give it a status vocabulary that means nothing for it.
+
+What the manifest trigger does reach is the Markdown the plan names: Global Map
+entry paths, Matrix canonical and evidence paths, Gap promoted and evidence
+paths. Those are pages, and a batch that touches one owes the gate.
 
 Also pinned: `check_profile` authorizes a `configured` slot whose artifacts do
-not exist yet. The planning artifacts are not Profile-owned dependencies --
-they are corpus state with their own resolution contract -- and the whole
-ordering depends on the profile being adoptable before the corpus it plans is
-built. A change that made profile-load resolve them would re-close the loop
-this ordering opens.
+not exist yet. The planning artifacts are corpus state, not Profile
+dependencies, so profile-load must not resolve them; a change that made it do
+so would close a door the eventual fix will need.
 
-These are regression tests, not gates. They record no receipt and claim no
-Gate ID. They do not check that any prose describes the ordering correctly;
-they check that the machine still behaves the way the prose now says it does.
+These are regression tests, not gates. They record no receipt and claim no Gate
+ID, and they check machine behavior rather than whether any prose describes it
+correctly.
 """
 
 import importlib.util
@@ -112,15 +115,31 @@ class WhenTheCloseGateIsOwed(unittest.TestCase):
             "make this gate applicable, and the bootstrap deferral would have "
             "no mechanism behind it")
 
-    def test_a_batch_carrying_the_artifacts_owes_the_gate(self):
+    def test_a_batch_touching_a_page_the_plan_names_owes_the_gate(self):
+        """The reachable half: Map entries and Matrix paths are Markdown."""
+        page = "Notes/Mapped Owner.md"
+        result = dict(self.result)
+        result["global_map"] = {"entries": [{"path": page}]}
         required, triggers = check_corpus_plan.close_requirement(
-            contract([]), {"manifest": list(self.paths)}, self.result)
+            contract([]), {"manifest": [page]}, result)
         self.assertTrue(
             required,
-            "an initial batch that writes the three artifacts is exactly how "
-            "a corpus starting from zero proves its plan; if this stops "
-            "firing, the deferral becomes an exemption")
+            "a batch that edits a page the plan names must reconcile the plan "
+            "at close; this is what manifest applicability is for")
         self.assertIn("manifest", triggers)
+
+    def test_the_three_artifacts_can_never_be_manifest_members(self):
+        """The unreachable half, pinned so it is not designed around again."""
+        bindings = self.result["slot"]["bindings"]
+        for role, path in bindings.items():
+            with self.subTest(role=role):
+                self.assertFalse(
+                    path.lower().endswith(".md"),
+                    "the planning artifacts are restricted YAML; a Queue "
+                    "manifest equals the Coverage projection and check_batch_"
+                    "close requires every member to be a Markdown knowledge "
+                    "object, so no batch can carry %s as a manifest entry and "
+                    "no ordering may be built on the idea that it can" % role)
 
     def test_an_unrelated_batch_owes_nothing(self):
         required, triggers = check_corpus_plan.close_requirement(

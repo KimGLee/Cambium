@@ -218,21 +218,38 @@ cp -R profiles/_template profiles/my-profile
 
 ### 采用进空语料库
 
-Profile 里有三项答案是在描述语料库，而没有页面的语料库还给不出它们。这不需要
-单独的播种任务、第二次采用，也不放宽任何合同——三项都由**首批**满足，而不是
-在首批之前。
+Profile 里有几项答案是在描述语料库，而没有页面的语料库还给不出它们。这不需要
+放宽任何合同，也不需要任何尚不存在的机制——空语料库需要的是先被**建立起来**，
+而建立它是普通的创作工作。
 
 - **残留扫描**。它的 matcher 通常取自真实页面携带的字符串。没有页面时，就
   **声明**你将使用的结构类，并让首批在接受根下创建一个携带它的页面。生产扫描
   会拒绝一个在仓库里认不出任何文件的配置，所以声明的结构类必须被物化；正对照
   只证明 matcher 与 `mandated_headings` 自洽，在空仓库上照样通过。
-- **Corpus Planning**，当任务按大规模工作准入时。Global Map 点名的是已存在的
-  canonical owner，所以首批 manifest 同时携带这些属主与三份制品路径，使该批的
-  关批门禁适用，规划在那里被证明。该顺序由
-  [`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>)
-  拥有。
 - **Coverage**。尚未创建的知识对象同样有记录，所以第一份 Queue 是从你**打算
   建**的页面编译出来的，而不是从你**已经有**的页面。
+- **Corpus Planning** 现在就能声明绑定，稍后再证明。Global Map 点名的是已存在
+  的 canonical owner，所以有了属主之后这份规划才可证明；而
+  [`K00/13`](<kernel/K00 Standards Control/13 Runtime Admission and Recovery.md>)
+  只在规划已证明的前提下准入大规模工作。这是下面那条顺序，不是阻碍。
+
+### 先建立语料库，再构建它
+
+创建一个空语料库的头几页是**有界创作工作**。它不是 `K00/13` 所准入的大规模
+创建，因此既不选 R11 也不需要 Corpus Planning；而且既然有界，它根本不初始化
+`.cambium/` 运行时状态。
+
+1. 通过 R09 采用 Profile。
+2. 为 `Profile Scope` 的每一层各写出至少一个 canonical owner，加上面试中声明的
+   残留见证页。普通的单页与模块路线；没有 Queue、没有 Coverage、没有准入门禁。
+3. 属主落盘之后，R13 据此建立 Global Map、Capability Matrix 与 Gap Register，
+   Corpus Planning 槽随之到达 `configured`。
+4. 大规模构建是随后的那个任务：初始化运行时状态、过 `K00/13` 的准入条件、编译
+   Queue、跑批次。
+
+从第 4 步起，那几页就是普通的 Required 对象，与其余页一样进批次复查。没有任何
+内容被建两遍；这条顺序的代价是一个任务边界，加上把槽配置成 `configured` 的那
+一次 R09。
 
 复制、填写、验证 Profile 或记录 manifest 路径本身都不会激活它。只有完整的
 R09 初始采用变更闭合后，该 manifest 才会成为内容工作的选定 Profile。应验证
@@ -357,14 +374,28 @@ restricted YAML 记录已接受/已拒绝的 Capability 决策；证据采用仅
 特定的 outcome、instructions、acceptance conditions 和 constraints；Queue 顺序、
 生命周期、hold 及 receipt 仍保留在 Required Queue 中。
 
+`init_state.py` 不推断任何内容，因此任务合同的五个选择字段与 Coverage Ledger
+建出来都是空的。**不要手工填写它们。** 依据
+`Tools/schemas/task_plan.template.yaml` 写一份计划，确认之后再应用：这份事务
+本身就是「当时确认了什么」的记录，手改的状态不是。尚未创建的对象同样要写进
+计划——Queue 是从任务打算构建的内容编译出来的，不只是文件系统已有的内容。
+
+计划里写的是路由，不是路径。`selected_card_paths`、`selected_read_sets` 与
+`loaded_module_paths` 由 `selected_route_ids` 经规范索引与加载边界的传递闭包
+解析得到；只选 R01 一条就会闭合到其余全部路由与一百多个模块。只有在需要加入
+profile 补充 Read Set（它没有可解析的注册表）时，才手写路径。
+
 ```text
-# Fill .cambium/state/coverage_ledger.yaml with the accepted inventory.
-# Objects not yet created belong in it too; the Queue is compiled from what
-# the task intends to build, not only from what the file system already holds.
-python3 Tools/compile_queue.py . --output .cambium/tmp/queue-proposal.yaml
+# 一份已确认的计划填入任务合同与 Coverage（K13/18）。
+cp Tools/schemas/task_plan.template.yaml \
+  .cambium/deltas/task-plans/TP-001.yaml
+# 编辑它，替换掉每一处 TODO(plan)，然后先 dry-run 再 apply：
+python3 Tools/apply_task_plan.py . --plan .cambium/deltas/task-plans/TP-001.yaml
+python3 Tools/apply_task_plan.py . --plan .cambium/deltas/task-plans/TP-001.yaml --apply
+# 它会打印下一条命令，Queue 的 revision 与 SHA 已经填好：
 python3 Tools/compile_queue.py . --apply --actor-role integrator \
   --expected-queue-revision 1 \
-  --expected-sha256 SHA_PRINTED_BY_INIT
+  --expected-sha256 SHA_PRINTED_BY_APPLY_TASK_PLAN
 python3 Tools/check_queue.py .
 python3 Tools/render_queue.py .
 ```

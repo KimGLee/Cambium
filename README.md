@@ -260,10 +260,10 @@ in [`profiles/README.md`](profiles/README.md).
 
 ### Adopting into an empty corpus
 
-Three of the profile's answers describe a corpus, and a corpus with no pages
-cannot yet supply them. None of this needs a separate seeding task, a second
-adoption, or any relaxed contract; each is satisfied by the first batch instead
-of before it.
+Some of the profile's answers describe a corpus, and a corpus with no pages
+cannot yet supply them. None of it needs a relaxed contract or a mechanism that
+does not exist; what an empty corpus needs is to be founded first, which is
+ordinary authoring work.
 
 - **The residual scan.** Its matchers normally come from strings real pages
   carry. With no pages, declare the structure class you will use, and have the
@@ -272,14 +272,35 @@ of before it.
   repository, so a declared class must be materialized; the positive control
   proves only that matchers and `mandated_headings` agree and passes on an
   empty repository.
-- **Corpus Planning**, when the task is admitted as large-scale work. The
-  Global Map names existing canonical owners, so the initial batch's manifest
-  carries both those owners and the three artifact paths, which makes that
-  batch's close gate applicable and proves the plan there.
-  [`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>)
-  owns that ordering.
 - **Coverage.** Knowledge objects that do not exist yet still get records, so
   the first Queue is compiled from pages you intend rather than pages you have.
+- **Corpus Planning** can declare its bindings now and be proved later. The
+  Global Map names existing canonical owners, so the plan becomes provable once
+  some exist, and
+  [`K00/13`](<kernel/K00 Standards Control/13 Runtime Admission and Recovery.md>)
+  admits large-scale work only against a proved one. That is the sequence
+  below, not an obstruction.
+
+### Founding a corpus, then building it
+
+Creating the first pages of an empty corpus is bounded authoring work. It is
+not the large-scale creation `K00/13` admits, so it selects neither R11 nor
+Corpus Planning, and — being bounded — it initializes no `.cambium/` runtime
+state at all.
+
+1. Adopt the profile through R09.
+2. Author one canonical owner per `Profile Scope` layer, plus the residual
+   witness declared during the interview. Ordinary single-note and module
+   routes; no Queue, no Coverage, no admission gate.
+3. With owners on disk, R13 establishes the Global Map, Capability Matrix, and
+   Gap Register against them, and the Corpus Planning slot reaches
+   `configured`.
+4. The large-scale build is the task that follows: initialize runtime state,
+   pass the `K00/13` admission conditions, compile the Queue, run batches.
+
+The founding pages are ordinary Required objects from step 4 onward and enter
+batches for review like any other page. Nothing is built twice; the sequence
+costs one task boundary and the R09 that configures the slot.
 
 Copying, filling, validating, or recording a manifest path does not activate a
 profile by itself. The manifest becomes the selected profile for content work
@@ -423,14 +444,31 @@ compilation. The Work Spec carries batch-specific outcome, instructions,
 acceptance conditions, and constraints; Queue order, lifecycle, holds, and
 receipts remain in the Required Queue.
 
+`init_state.py` infers nothing, so the Task Contract's five selection fields
+and the Coverage Ledger come up empty. Do not fill them by hand. Write one plan
+from `Tools/schemas/task_plan.template.yaml`, get it confirmed, and apply it:
+the transaction is the record of what was agreed, and hand-edited state is not.
+Objects not yet created belong in the plan too — the Queue is compiled from
+what the task intends to build, not only from what the file system holds.
+
+The plan names routes, not paths. `selected_card_paths`, `selected_read_sets`,
+and `loaded_module_paths` are resolved from `selected_route_ids` through the
+canonical indexes and the transitive loading-boundary closure; selecting R01
+alone reaches every other route and well over a hundred modules. List a path
+only to add a profile supplemental Read Set, which has no registry to resolve
+it from.
+
 ```text
-# Fill .cambium/state/coverage_ledger.yaml with the accepted inventory.
-# Objects not yet created belong in it too; the Queue is compiled from what
-# the task intends to build, not only from what the file system already holds.
-python3 Tools/compile_queue.py . --output .cambium/tmp/queue-proposal.yaml
+# One confirmed plan fills the Task Contract and Coverage (K13/18).
+cp Tools/schemas/task_plan.template.yaml \
+  .cambium/deltas/task-plans/TP-001.yaml
+# Edit it, replace every TODO(plan), then dry-run and apply:
+python3 Tools/apply_task_plan.py . --plan .cambium/deltas/task-plans/TP-001.yaml
+python3 Tools/apply_task_plan.py . --plan .cambium/deltas/task-plans/TP-001.yaml --apply
+# It prints the next command, with the Queue revision and SHA already filled in:
 python3 Tools/compile_queue.py . --apply --actor-role integrator \
   --expected-queue-revision 1 \
-  --expected-sha256 SHA_PRINTED_BY_INIT
+  --expected-sha256 SHA_PRINTED_BY_APPLY_TASK_PLAN
 python3 Tools/check_queue.py .
 python3 Tools/render_queue.py .
 ```
