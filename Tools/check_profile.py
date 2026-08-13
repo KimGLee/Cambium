@@ -175,6 +175,7 @@ CORPUS_AUTHORITY_FIELDS = {"role_id", "decision_scope_id"}
 CORPUS_DECISION_SCOPE = "corpus-plan-semantic-acceptance"
 
 STRUCTURE_REGISTRY_SLOT = "Structure Registry"
+PRIORITY_RUBRIC_SLOT = "Priority Rubric"
 METADATA_CONTRACT_SLOT = "Metadata Contract"
 
 AUDIT_DIMENSION_SLOT = "Audit Dimension Registry"
@@ -903,6 +904,19 @@ def main(argv=None, *, _evaluation_out=None,
                                 kblib.validate_structure_registry_shape(
                                     document, target):
                             add(check, label, "fail", details)
+            elif slot == PRIORITY_RUBRIC_SLOT:
+                target = os.path.relpath(
+                    detail, root).replace(os.sep, "/")
+                try:
+                    rubric_text = profile_snapshot_text(detail)
+                except (OSError, UnicodeError) as exc:
+                    add("priority-quota-policy", target, "fail",
+                        "cannot read the Priority Rubric: %s" % exc)
+                else:
+                    _quotas, _configured, policy_errors = \
+                        kblib.priority_quota_policy(rubric_text)
+                    for details in policy_errors:
+                        add("priority-quota-policy", target, "fail", details)
             elif slot == METADATA_CONTRACT_SLOT:
                 target = os.path.relpath(
                     detail, root).replace(os.sep, "/")

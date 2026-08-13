@@ -49,6 +49,7 @@ contract:
   checkpoint_at: ""
   hard_stop_at: ""
   completion_gate: "guidance pending=0 AND required_authoring_gaps=0 AND remaining_required_work_units=0 AND unresolved_invalidations=0 AND all applicable gates passed"
+  policy_exceptions: []
 
 checkpoint:
   recorded_at: "2026-07-05T10:00:00Z"

@@ -766,7 +766,7 @@ class UpdateQueueTests(unittest.TestCase):
                 self.assertEqual(1, attempted.returncode, attempted.stdout)
                 self.assertIn(
                     "unsupported tool_version='%s' for current close action; "
-                    "expected one of ['1.7.0']" % version,
+                    "expected one of ['1.8.0']" % version,
                     attempted.stdout)
         self.assertEqual("merge-ready", self.load(
             check_queue.QUEUE_PATH)["required_queue"][0]["state"])

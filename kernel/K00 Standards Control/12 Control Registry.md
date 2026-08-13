@@ -16,6 +16,7 @@ The [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-doma
 | `large-scale-execution-admission` | Large-scale execution admission | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Large-scale Pre-execution Gate\|Large-scale Pre-execution Gate]] | R11 packages the gate with the actual work route but does not authorize content work |
 | `wiki-link-integrity` | Wiki link integrity | The K12/09 Closed List consumes the `check_links` summary | Note close uses only its scoped self-check; migration retargets affected links; Terminal Audit reruns the same gate on the frozen snapshot |
 | `frontmatter-vocabulary` | Frontmatter vocabulary | The K12/09 Closed List consumes the `check_vocab` summary | Note close uses a scoped self-check; Terminal Audit reruns the same gate on the frozen snapshot |
+| `priority-quota-distribution` | Whole-corpus priority share measurement under one identified effective policy ([[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota\|K00/07]]) | The `check_vocab` `priority-quota-distribution` receipt: per-class structured shares, the exceeded classes, and the effective-policy fingerprint they were measured under. It measures and itemizes; the human call on an excess stays with the per-class quota candidates, which only a bounded contract policy exception may disposition | Batch close, Maintenance/REBASE coverage reconciliation, and the Terminal Audit consume the same structured receipt; none of them re-derives a share from display text |
 | `required-queue-consistency` | Queue structure, Work Spec binding, operational Amendment registration, and Queue/Coverage/Progress drift | K13/08 `check_queue.py` consistency mode | Resume, operational Amendment writers, batch close, Standards adoption, and Terminal Audit consume the same current consistency contract |
 | `required-queue-admission` | Readiness, dependencies, confirmation, concurrent-write conflicts, and the K13/10 condition-2 hub classification, whose inputs are the manifest pages' own frontmatter and the selected profile's `Expression Layer Entry` rows | K13/10 `check_queue.py --require-ready <batch-id>` | Activation consumes the batch-bound receipt; no other layer recreates readiness |
 | `required-queue-completion` | Build Queue exhaustion and completion readiness | K13/12 `check_queue.py --require-complete` | Entry to build `completion-candidate` consumes the frozen Queue-complete receipt |
@@ -98,16 +99,17 @@ moves its own cell.
 |---|---|---|---|---|---|---|
 | `runtime-card-synchronization` | `manual-attestation` | `1.0.0` | `runtime-card-synchronization` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `profile-load` | `check_profile` | `1.9.0` | `profile-check-summary` | `*` | `guidance_and_contract` | `not-batch-scoped` |
-| `runtime-startup-recovery` | `check_queue` | `1.14.0` | `required_queue` | `resume-status` | `*` | `not-batch-scoped` |
+| `runtime-startup-recovery` | `check_queue` | `1.15.0` | `required_queue` | `resume-status` | `*` | `not-batch-scoped` |
 | `large-scale-execution-admission` | `manual-attestation` | `1.0.0` | `large-scale-execution-admission` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `wiki-link-integrity` | `check_links` | `1.5.0` | `link-check-summary` | `*` | `*` | `not-batch-scoped` |
-| `frontmatter-vocabulary` | `check_vocab` | `1.5.0` | `vocab-check-summary` | `*` | `*` | `not-batch-scoped` |
-| `required-queue-consistency` | `check_queue` | `1.14.0` | `required_queue` | `consistency` | `*` | `not-batch-scoped` |
-| `required-queue-admission` | `check_queue` | `1.14.0` | `required_queue` | `require-ready:*` | `*` | `queued` |
-| `required-queue-completion` | `check_queue` | `1.14.0` | `required_queue` | `require-complete` | `*` | `queue-exhausted` |
-| `maintenance-completion` | `check_queue` | `1.14.0` | `required_queue` | `require-maintenance-complete` | `*` | `queue-exhausted` |
+| `frontmatter-vocabulary` | `check_vocab` | `1.7.0` | `vocab-check-summary` | `*` | `*` | `not-batch-scoped` |
+| `priority-quota-distribution` | `check_vocab` | `1.7.0` | `priority-quota-distribution` | `*` | `*` | `not-batch-scoped` |
+| `required-queue-consistency` | `check_queue` | `1.15.0` | `required_queue` | `consistency` | `*` | `not-batch-scoped` |
+| `required-queue-admission` | `check_queue` | `1.15.0` | `required_queue` | `require-ready:*` | `*` | `queued` |
+| `required-queue-completion` | `check_queue` | `1.15.0` | `required_queue` | `require-complete` | `*` | `queue-exhausted` |
+| `maintenance-completion` | `check_queue` | `1.15.0` | `required_queue` | `require-maintenance-complete` | `*` | `queue-exhausted` |
 | `batch-review` | `manual-attestation` | `1.0.0` | `batch_gate` | `*` | `none` | `open` |
-| `batch-close` | `check_batch_close` | `1.7.0` | `batch_close_gate` | `*` | `*` | `merge-ready` |
+| `batch-close` | `check_batch_close` | `1.8.0` | `batch_close_gate` | `*` | `*` | `merge-ready` |
 | `structure-registry` | `check_structure` | `1.1.0` | `structure-registry-summary` | `*` | `*` | `not-batch-scoped` |
 | `page-contract` | `check_page_contract` | `1.4.0` | `page-contract-summary` | `*` | `*` | `not-batch-scoped` |
 | `boundary-contract` | `check_boundary_contract` | `1.1.0` | `boundary-contract-summary` | `*` | `*` | `not-batch-scoped` |
@@ -118,7 +120,7 @@ moves its own cell.
 | `expression-layer-acceptance` | `manual-attestation` | `1.0.0` | `expression-layer-acceptance` | `*` | `content_and_depth`, `coverage_and_integration`, `guidance_and_contract`, `source_and_currentness`, `structure_and_links` | `not-batch-scoped` |
 | `coverage-reconciliation` | `manual-attestation` | `1.0.0` | `coverage-reconciliation` | `*` | `coverage_and_integration` | `not-batch-scoped` |
 | `standards-adoption` | `adopt_standards` | `1.4.0` | `standards_adoption` | `*` | `*` | `not-batch-scoped` |
-| `standards-revalidation` | `check_queue` | `1.14.0` | `required_queue` | `require-revalidation:*` | `*` | `queued`, `open` |
+| `standards-revalidation` | `check_queue` | `1.15.0` | `required_queue` | `require-revalidation:*` | `*` | `queued`, `open` |
 | `guidance-disposition` | `manual-attestation` | `1.0.0` | `guidance-disposition` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `receipt-validity` | `manual-attestation` | `1.0.0` | `receipt-validity` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `rendering` | `manual-attestation` | `1.0.0` | `rendering` | `*` | `rendering`, `structure_and_links` | `not-batch-scoped` |

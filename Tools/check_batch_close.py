@@ -62,7 +62,7 @@ import profile_contract
 
 
 TOOL = "check_batch_close"
-TOOL_VERSION = "1.7.0"
+TOOL_VERSION = "1.8.0"
 GATE_ID = "batch-close"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -331,13 +331,17 @@ def _stable_candidate(receipt, member):
         "details": details,
     }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
-    return {
+    candidate = {
         "candidate_id": "candidate-sha256:%s" % digest,
         "candidate_type": "%s:%s" % (source_tool, check),
         "member": member,
         "target": target,
         "details": details,
     }
+    share = receipt.get("priority_share")
+    if isinstance(share, dict):
+        candidate["priority_share"] = dict(share)
+    return candidate
 
 
 def _split_pipe_row(line):
@@ -762,27 +766,91 @@ def _profile_scan_command(root, evaluation):
     return command, expected
 
 
+def _rubric_text_for(evaluation):
+    contract = evaluation.contract
+    snapshot = evaluation.profile_snapshot
+    manifest_text = snapshot.read_text(contract.manifest_repo_path)
+    bindings = kblib.profile_slot_bindings(manifest_text)
+    binding = (bindings.get("Priority Rubric") or "").strip("`").strip()
+    if not binding:
+        raise ValueError("the selected Profile binds no Priority Rubric slot")
+    return snapshot.read_text(
+        "%s/%s" % (contract.profile_repo_dir.rstrip("/"), binding))
+
+
 def _priority_quotas(evaluation):
-    p0, p1 = 15.0, 35.0
+    """Resolve the long-lived quota truth from the Priority Rubric slot.
+
+    K00/07 owns the quota model and places the standing values in the
+    selected profile's Priority Rubric; the retired ``priority_quota.*``
+    execution-default rows are rejected by profile-load as unknown items, and
+    this consumer reads the same slot bytes through the same kblib reader the
+    Gate validated, so the two cannot disagree.
+    """
     if not evaluation.authorized:
         raise ValueError("priority quotas require one authorized profile-load")
-    overrides = dict(evaluation.execution_default_overrides)
-    for item in ("priority_quota.P0", "priority_quota.P1"):
-        if item not in overrides:
+    contract = evaluation.contract
+    snapshot = evaluation.profile_snapshot
+    manifest_text = snapshot.read_text(contract.manifest_repo_path)
+    bindings = kblib.profile_slot_bindings(manifest_text)
+    binding = (bindings.get("Priority Rubric") or "").strip("`").strip()
+    if not binding:
+        raise ValueError("the selected Profile binds no Priority Rubric slot")
+    rubric_repo_path = "%s/%s" % (contract.profile_repo_dir.rstrip("/"),
+                                  binding)
+    rubric_text = snapshot.read_text(rubric_repo_path)
+    policy, fingerprint, errors = kblib.effective_priority_policy(rubric_text)
+    if errors or fingerprint is None:
+        raise ValueError(
+            "the Priority Rubric quota registration does not resolve: %s" %
+            "; ".join(errors))
+    return (policy["resolved"]["priority_quota.P0"],
+            policy["resolved"]["priority_quota.P1"])
+
+
+def _quota_exceptions(runtime, evaluation):
+    """Return the contract's currently valid priority-quota exceptions.
+
+    Validity is judged here, at consumption: the baseline fingerprint must
+    equal the SHA-256 of the *current* Priority Rubric slot bytes -- a
+    Standards or Profile revision the exception never saw invalidates it
+    rather than being silently covered -- and a task-scoped exception must
+    name this task.  Snapshot-scoped entries are returned with their scope
+    for the caller to compare against the merged snapshot it is closing.
+    """
+    contract_state = (runtime.get("progress") or {}).get("contract") or {}
+    entries = contract_state.get("policy_exceptions")
+    if not isinstance(entries, list) or not entries:
+        return {}
+    profile = evaluation.contract
+    snapshot = evaluation.profile_snapshot
+    manifest_text = snapshot.read_text(profile.manifest_repo_path)
+    bindings = kblib.profile_slot_bindings(manifest_text)
+    binding = (bindings.get("Priority Rubric") or "").strip("`").strip()
+    rubric_repo_path = "%s/%s" % (profile.profile_repo_dir.rstrip("/"),
+                                  binding) if binding else None
+    rubric_fingerprint = None
+    if rubric_repo_path:
+        _policy, rubric_fingerprint, _errors = \
+            kblib.effective_priority_policy(
+                snapshot.read_text(rubric_repo_path))
+    task_id = (runtime.get("queue") or {}).get("task_id")
+    valid = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
             continue
-        try:
-            number = float(overrides[item].strip("% "))
-        except ValueError:
-            raise ValueError("%s override is not a numeric percent" % item)
-        if not 0 <= number < 100:
-            raise ValueError(
-                "%s override is not a corpus share at least 0 and under 100"
-                % item)
-        if item.endswith("P0"):
-            p0 = number
-        else:
-            p1 = number
-    return p0, p1
+        policy_id = entry.get("policy_id")
+        if policy_id not in ("priority_quota.P0", "priority_quota.P1"):
+            continue
+        if entry.get("baseline_policy_fingerprint") != rubric_fingerprint:
+            # Stale against the live policy source: not an error, simply no
+            # longer an authorization.
+            continue
+        if (entry.get("scope_kind") == "task" and
+                entry.get("scope_ref") != task_id):
+            continue
+        valid.setdefault(policy_id.split(".")[1], []).append(entry)
+    return valid
 
 
 def _manifest_page_contract_member(run, manifest_paths, member):
@@ -965,6 +1033,69 @@ def _candidate_dispositions(candidates, accepted_ids, accepted_types):
             else "candidate-type")
         accepted.append(disposition)
     return errors, accepted, unaccepted
+
+
+QUOTA_CANDIDATE_TYPES = frozenset((
+    "check_vocab:priority-quota-P0", "check_vocab:priority-quota-P1",
+))
+def _quota_candidate_dispositions(candidates, exceptions, snapshot,
+                                  policy_fingerprint):
+    """Disposition priority-quota candidates through contract exceptions only.
+
+    Authorization is an exact-arithmetic decision over the candidate's
+    structured share -- `pages` and `total` as integers, cross-multiplied by
+    `kblib.quota_share_within_limit` -- never a re-parse of display prose,
+    where one rounding becomes a grant.  A candidate that arrives without its
+    structured share fails closed.  Each accepted disposition seals the
+    decision facts (decision ID, limit, scope, policy fingerprint, and the
+    exact counts) so the close receipt carries what was authorized, by what
+    bound, against which effective policy.
+    """
+    errors = []
+    accepted = []
+    for candidate in candidates:
+        cls = candidate["candidate_type"].rsplit("-", 1)[1]
+        share = candidate.get("priority_share")
+        if (not isinstance(share, dict) or
+                not isinstance(share.get("pages"), int) or
+                not isinstance(share.get("total"), int)):
+            errors.append(
+                "priority-quota candidate (%s) carries no structured share; "
+                "authorization never derives from display text" % cls)
+            continue
+        grants = exceptions.get(cls) or []
+        chosen = None
+        for entry in grants:
+            if (entry.get("scope_kind") == "repository-snapshot" and
+                    entry.get("scope_ref") != snapshot):
+                continue
+            if kblib.quota_share_within_limit(
+                    share["pages"], share["total"], entry.get("limit")):
+                chosen = entry
+                break
+        if chosen is None:
+            errors.append(
+                "priority-quota excess (%s, %d/%d) has no valid contract "
+                "policy exception covering it; resolve by demotion, a "
+                "profile quota registration, or a bounded policy exception "
+                "via apply_contract_amendment" %
+                (cls, share["pages"], share["total"]))
+            continue
+        disposition = dict(candidate)
+        disposition["accepted_by"] = (
+            "policy-exception:%s" % chosen.get("decision_id"))
+        disposition["policy_exception"] = {
+            "decision_id": chosen.get("decision_id"),
+            "policy_id": chosen.get("policy_id"),
+            "limit": chosen.get("limit"),
+            "scope_kind": chosen.get("scope_kind"),
+            "scope_ref": chosen.get("scope_ref"),
+            "policy_fingerprint": policy_fingerprint,
+            "pages": share["pages"],
+            "total": share["total"],
+        }
+        accepted.append(disposition)
+    return errors, accepted
 
 
 def _member_receipt(field, run, snapshot, runtime, item, integrator,
@@ -1229,6 +1360,13 @@ def main(argv=None):
                         "cannot adapt shared Profile evaluation for batch "
                         "consumers: %s" % "; ".join(admission_errors))
                 p0, p1 = _priority_quotas(profile_evaluation)
+                # One resolution, used everywhere in this close: the quotas
+                # handed to check_vocab, the fingerprint on its distribution
+                # receipt, and the exception-consumption comparison below
+                # all come from this single resolver call.
+                (quota_policy_object, quota_policy_fingerprint,
+                 _quota_policy_errors) = kblib.effective_priority_policy(
+                    _rubric_text_for(profile_evaluation))
                 checks = {}
                 links = _run_receipting_command(
                     [sys.executable, str(SCRIPT_DIR / "check_links.py"), root],
@@ -1278,6 +1416,7 @@ def main(argv=None):
                     # first close on foreign example values.
                     "--exclude", "kernel/Cards", "--exclude", "profiles",
                     "--quota-p0", str(p0), "--quota-p1", str(p1),
+                    "--policy-fingerprint", str(quota_policy_fingerprint),
                 ]
                 vocab = _run_inprocess_checker(
                     [sys.executable, str(SCRIPT_DIR / "check_vocab.py"),
@@ -1347,11 +1486,46 @@ def main(argv=None):
                 check_errors.append(
                     "two checker findings produced the same stable "
                     "candidate ID")
+            quota_candidates = [
+                candidate for candidate in all_candidates
+                if candidate["candidate_type"] in QUOTA_CANDIDATE_TYPES]
+            ordinary_candidates = [
+                candidate for candidate in all_candidates
+                if candidate["candidate_type"] not in QUOTA_CANDIDATE_TYPES]
+            blocked_generic = sorted(
+                set(args.accept_candidate_type) & QUOTA_CANDIDATE_TYPES)
+            quota_ids = {candidate["candidate_id"]
+                         for candidate in quota_candidates}
+            blocked_generic += sorted(
+                set(args.accept_candidate_id) & quota_ids)
+            if blocked_generic:
+                check_errors.append(
+                    "priority-quota candidates cannot be accepted by the "
+                    "generic disposition flags (%s); they resolve only "
+                    "through a bounded contract policy exception" %
+                    ", ".join(blocked_generic))
             disposition_errors, accepted, unaccepted = \
                 _candidate_dispositions(
-                    all_candidates, args.accept_candidate_id,
+                    ordinary_candidates, args.accept_candidate_id,
                     args.accept_candidate_type)
             check_errors.extend(disposition_errors)
+            current_exceptions = _quota_exceptions(
+                runtime, profile_evaluation)
+            # Belt over the writer's braces: the effective ceilings --
+            # exception where granted, standing quota where not -- must be
+            # jointly admissible at CONSUMPTION too, so a contract state
+            # that somehow bypassed the writer still cannot authorize a
+            # close that consumes the whole corpus (K00/07).
+            _ceilings, ceiling_errors = kblib.effective_quota_ceilings(
+                quota_policy_object,
+                [entry for entries in current_exceptions.values()
+                 for entry in entries])
+            check_errors.extend(ceiling_errors)
+            quota_errors, quota_accepted = _quota_candidate_dispositions(
+                quota_candidates, current_exceptions, snapshot,
+                quota_policy_fingerprint)
+            check_errors.extend(quota_errors)
+            accepted = accepted + quota_accepted
             after_checks = kblib.repository_snapshot_sha256(root)
             _assert_authoritative_state_unchanged(root, state_anchor)
             try:

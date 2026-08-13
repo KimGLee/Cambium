@@ -318,10 +318,22 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
             self.assertEqual(0, completed.returncode,
                              completed.stdout + completed.stderr)
             rows = self.receipt_rows(receipts)
-            self.assertEqual("vocab-check-summary", rows[-1]["check"])
+            # check_vocab is a two-Gate producer (K00/12): the corpus-wide
+            # distribution receipt closes every run, and each receipt binds
+            # exactly the Gate whose row registers its check.
+            self.assertEqual("priority-quota-distribution", rows[-1]["check"])
             self.assert_producer_identity(
-                rows, check_vocab.TOOL, check_vocab.TOOL_VERSION,
+                [rows[-1]], check_vocab.TOOL, check_vocab.TOOL_VERSION,
+                "priority-quota-distribution")
+            summary_rows = [row for row in rows
+                            if row["check"] != "priority-quota-distribution"]
+            self.assertEqual("vocab-check-summary", summary_rows[-1]["check"])
+            self.assert_producer_identity(
+                summary_rows, check_vocab.TOOL, check_vocab.TOOL_VERSION,
                 check_vocab.GATE_ID)
+            self.assertEqual(
+                sorted(check_vocab.GATE_CHECKS),
+                sorted({row["gate_id"] for row in rows}))
 
     def test_residual_receipts_bind_registered_gate(self):
         with tempfile.TemporaryDirectory() as temporary:

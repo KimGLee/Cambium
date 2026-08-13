@@ -655,10 +655,77 @@ identity through a host adapter; those controls must strengthen the existing
 byte and state bindings rather than replace them.
 
 Add a guarded non-scope Task Contract Amendment transaction for objective,
-exclusion, acceptance, timing, and pause-policy changes. The current baseline
-intentionally fails closed on direct post-materialization edits and ships only
-scope/disposition Amendment writes; until this writer exists, such a change
-rolls into a preserved successor task rather than mutating live Contract bytes.
+exclusion, acceptance, timing, and pause-policy changes. The
+`policy_exceptions` field shipped its writer first
+(`Tools/apply_contract_amendment.py`, K13/06 Contract Amendment): one anchored
+transaction with resolver-validated policy fingerprints and effective joint
+quota bounds, and the pattern the remaining fields' writer extends. The
+current baseline still fails closed on direct post-materialization edits of
+every other field; until the generic writer exists, such a change rolls into
+a preserved successor task rather than mutating live Contract bytes.
+
+## Receipt Ledger Integrity Chain
+
+Receipt files are plain append-only JSONL with no integrity structure of
+their own. Tamper evidence today is earned field by field through cross
+binding: a receipt field is immutable only because a second durable record
+-- an amendment row, the contract anchor chain, a persisted plan, live state
+bytes -- also records it, and replay compares the two. Every field that
+AUTHORIZES anything is covered this way. The structural residue is the class
+of fields with only one carrier, of which `after_progress_sha256` on the
+K13/06 contract-amendment and K13/15 adoption commit receipts is the
+canonical example: the durable row lives inside the progress document, so it
+cannot record the hash of bytes that contain it, and replay can verify the
+field's format but never its historical value. Per-field cross binding can
+never close this class, because its members are exactly the fields for which
+no second carrier can exist.
+
+This item closes the class wholesale by giving the canonical receipt ledgers
+an integrity structure:
+
+- Every receipt in a chained ledger carries `prev_receipt_sha256`, the
+  SHA-256 of the previous line's exact bytes; the first line anchors to a
+  declared per-file genesis value. Editing any landed line breaks every
+  subsequent link.
+- A self-contained chain is NOT sufficient: whoever can edit the file can
+  re-derive the whole chain. The chain tail must be pinned outside the file
+  it protects -- each authoritative writer records the tail hash of every
+  ledger it appended to in the same state write it already compare-and-swaps
+  (e.g. a `receipts_tail_sha256` map in the Progress Ledger), so rewriting a
+  ledger consistently would also have to rewrite state that IS cross-bound.
+- Producer-era split, K12/10 discipline: receipts written by pre-chain
+  producer eras carry no link and replay forever under today's rules; the
+  chain requirement binds only eras that declare it. No historical ledger is
+  retro-invalidated for a reason its producer could not have anticipated.
+- Recovery semantics extend the existing uncertain-append rule: an uncertain
+  tail blocks further appends to that ledger and retains the writer lock
+  until reconciliation decides whether the line landed; a broken link marks
+  the ledger's suffix suspect as a whole, and distinguishing corruption from
+  tampering -- and repairing either -- needs its own guarded path, since an
+  unguarded repair channel would be the new tampering channel.
+
+Scope, when adopted: the canonical `.cambium/receipts/` ledgers consumed by
+runtime validation (task transitions, queue transitions, contract
+amendments, adoption, delta application, batch-close bundles). Adoption is a
+Standards revision under K12/10 with a coordinated version bump of every
+producer, not a tool patch.
+
+This roadmap item does not:
+
+- change what any receipt authorizes -- authorization already rests on
+  double-carrier bindings, and the chain adds forensic integrity, not new
+  authority;
+- defend against an adversary with unrestricted repository write access,
+  who can alter state, plans, and anchors together; the Evidence trust
+  boundary is unchanged, and deployments needing that defense layer signed
+  receipts or host-adapter attestations on top (see Observability And
+  Conformance);
+- replace version-control history where the adopter has it -- a
+  git-managed corpus already carries file-level tamper evidence the runtime
+  simply does not consume;
+- ship the cheaper partial forms (per-line self-hash without a chain, or a
+  chain without an external anchor); both detect less than they appear to
+  and would read as "closed" when the class is not.
 
 ## Implementation Order
 

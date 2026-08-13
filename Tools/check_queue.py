@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.14.0"
+TOOL_VERSION = "1.15.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -194,16 +194,17 @@ LOCK_STATE_FINGERPRINTS = {
 GENERIC_WRITER_TOOLS = frozenset((
     "apply_delta", "update_queue", "compile_queue", "update_task",
     "check_batch_close", "adopt_standards", "register_amendment",
+    "apply_contract_amendment", "apply_task_plan",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.7.0"
+BATCH_CLOSE_TOOL_VERSION = "1.8.0"
 # Batch-close has a finite historical protocol catalog because its 1.4 era
 # sealed a different Closed List shape.  A current action still accepts only
 # BATCH_CLOSE_TOOL_VERSION; this set is used only while replaying an already
 # recorded closed edge.  Other historical receipts are judged through
 # :func:`accounted_standards_versions` instead of an unbounded version list.
 SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((
-    BATCH_CLOSE_TOOL_VERSION, "1.6.0", "1.5.0",
+    BATCH_CLOSE_TOOL_VERSION, "1.7.0", "1.6.0", "1.5.0",
     *LEGACY_CLOSED_LIST_VERSIONS,
 ))
 CORPUS_PLAN_TOOL = "check_corpus_plan"
@@ -212,6 +213,7 @@ CORPUS_PLAN_TOOL_VERSION = "1.7.0"
 # Batch-close 1.7 is the first protocol that consumes corpus-plan 1.7; older
 # supported bundles retain their 1.6 child identity during historical replay.
 HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
+    "1.7.0": "1.7.0",
     "1.6.0": "1.6.0",
     "1.5.0": "1.6.0",
     "1.4.0": "1.6.0",
@@ -294,6 +296,28 @@ CONTRACT_FIELDS = frozenset((
     "selected_card_paths", "selected_profile_route_ids",
     "selected_read_sets", "loaded_module_paths", "minimum_run_until",
     "checkpoint_at", "hard_stop_at", "completion_gate",
+    "policy_exceptions",
+))
+# Optional so that contracts sealed before the field existed stay valid:
+# requiring it would strand every live runtime behind a hand migration the
+# anchor chain itself forbids (editing contract bytes outside a chained
+# writer breaks the chain's binding to the current contract).  Absent means
+# exactly what an explicit empty list means.
+CONTRACT_OPTIONAL_FIELDS = frozenset(("policy_exceptions",))
+POLICY_EXCEPTION_FIELDS = frozenset((
+    "decision_id", "policy_id", "baseline_policy_fingerprint", "limit",
+    "scope_kind", "scope_ref", "rationale", "approval_reference",
+))
+POLICY_EXCEPTION_SCOPE_KINDS = frozenset(("task", "repository-snapshot"))
+# Producer eras whose batch-close protocol carries the policy-exception
+# disposition.  K12/10 producer-era identity cuts both ways: an older bundle
+# is never re-judged against members its era lacked, and it is never allowed
+# to carry evidence its era could not have produced.  A 1.7 bundle claiming a
+# policy-exception disposition is a forgery, not history.
+POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset(("1.8.0",))
+SEALED_POLICY_EXCEPTION_FIELDS = frozenset((
+    "decision_id", "policy_id", "limit", "scope_kind", "scope_ref",
+    "policy_fingerprint", "pages", "total",
 ))
 CHECKPOINT_FIELDS = frozenset((
     "recorded_at", "summary", "task_state", "task_transition_receipt",
@@ -572,7 +596,14 @@ def producer_module(tool):
 
 def registered_gate_check(gate_id, module):
     """Return the check name the producer of ``gate_id`` actually writes."""
-    declared = getattr(module, "GATE_CHECK", None) if module else None
+    # A producer registering several Gates exports the whole mapping; the
+    # single GATE_CHECK export remains the one-Gate spelling.
+    mapping = getattr(module, "GATE_CHECKS", None) if module else None
+    declared = None
+    if isinstance(mapping, dict):
+        declared = mapping.get(gate_id)
+    if declared is None:
+        declared = getattr(module, "GATE_CHECK", None) if module else None
     consumed = CONSUMED_GATE_CHECKS.get(gate_id)
     if declared is not None and consumed is not None and declared != consumed:
         return None
@@ -698,8 +729,11 @@ def gate_registry_producer_errors(registry):
                     gate_id, predicate["tool_version"], tool,
                     getattr(module, "TOOL_VERSION", None)))
         declared_gate = getattr(module, "GATE_ID", None)
-        if declared_gate is not None and tool != TOOL and \
-                declared_gate != gate_id:
+        declared_gates = getattr(module, "GATE_CHECKS", None)
+        admitted = (isinstance(declared_gates, dict) and
+                    gate_id in declared_gates)
+        if (declared_gate is not None and tool != TOOL and
+                declared_gate != gate_id and not admitted):
             errors.append(
                 "Gate ID %s registers Tool %s, which binds %s to its receipts"
                 % (gate_id, tool, declared_gate))
@@ -998,6 +1032,191 @@ def _valid_timestamp(value):
     return _timestamp_value(value) is not None
 
 
+def _policy_exception_errors(value, label):
+    """Validate the contract's bounded policy exceptions, K13/02 shape.
+
+    Every entry is an answer a person already gave: which policy it excepts,
+    the bound it grants, what it was granted against, and where the approval
+    lives.  The baseline fingerprint is what makes an exception die with the
+    policy it was judged against instead of surviving a Standards or Profile
+    revision it never saw.
+    """
+    errors = []
+    if not isinstance(value, list):
+        return ["%s must be an explicit list" % label]
+    seen = set()
+    for index, entry in enumerate(value):
+        entry_label = "%s[%d]" % (label, index)
+        if not isinstance(entry, dict):
+            errors.append("%s must be a mapping" % entry_label)
+            continue
+        errors.extend(_closed_mapping_errors(
+            entry, entry_label, POLICY_EXCEPTION_FIELDS))
+        if not isinstance(entry, dict) or set(entry) - POLICY_EXCEPTION_FIELDS:
+            continue
+        for field in ("decision_id", "policy_id", "scope_ref", "rationale",
+                      "approval_reference"):
+            if not _nonempty_string(entry.get(field)):
+                errors.append("%s %s must be a non-empty string" %
+                              (entry_label, field))
+        decision = entry.get("decision_id")
+        if _nonempty_string(decision):
+            if decision in seen:
+                errors.append("%s repeats decision_id %s" %
+                              (label, decision))
+            seen.add(decision)
+        fingerprint = entry.get("baseline_policy_fingerprint")
+        if (not isinstance(fingerprint, str) or
+                not SHA256_RE.fullmatch(fingerprint)):
+            errors.append(
+                "%s baseline_policy_fingerprint must be sha256:<64 lowercase "
+                "hex>; an exception unbound from the policy bytes it was "
+                "judged against would survive revisions it never saw" %
+                entry_label)
+        policy_id = entry.get("policy_id")
+        registered = kblib.POLICY_REGISTRY.get(policy_id) if isinstance(
+            policy_id, str) else None
+        if _nonempty_string(policy_id) and registered is None:
+            errors.append(
+                "%s policy_id %r is not in the closed policy registry; an "
+                "exception to a policy nobody registered is unbounded "
+                "authorization" % (entry_label, policy_id))
+        limit = entry.get("limit")
+        if (not isinstance(limit, (int, float)) or isinstance(limit, bool)):
+            errors.append("%s limit must be a number" % entry_label)
+        elif (registered is not None and
+              registered.get("limit_domain") == "percent-share-under-100" and
+              not 0 <= limit < 100):
+            errors.append(
+                "%s limit must be a corpus share at least 0 and under 100; "
+                "%r is not a bound, per %s" %
+                (entry_label, limit, registered["owner"]))
+        if entry.get("scope_kind") not in POLICY_EXCEPTION_SCOPE_KINDS:
+            errors.append(
+                "%s scope_kind must be one of %s" %
+                (entry_label,
+                 ", ".join(sorted(POLICY_EXCEPTION_SCOPE_KINDS))))
+    # Joint bound and conflict rules across the register: the granted P0 and
+    # P1 ceilings partition the same corpus as the standing quotas do, and
+    # two grants for the same policy in the same scope are a conflict, not a
+    # choice the consumer may make.
+    by_key = {}
+    ceilings = {}
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        policy_id = entry.get("policy_id")
+        limit = entry.get("limit")
+        key = (policy_id, entry.get("scope_kind"), entry.get("scope_ref"))
+        if all(key):
+            if key in by_key:
+                errors.append(
+                    "%s carries conflicting grants for %s in the same scope; "
+                    "one policy has one current bound" % (label, policy_id))
+            by_key[key] = entry
+        if (isinstance(limit, (int, float)) and not isinstance(limit, bool)
+                and isinstance(policy_id, str) and
+                policy_id in kblib.POLICY_REGISTRY):
+            ceilings[policy_id] = max(ceilings.get(policy_id, 0), limit)
+    if (ceilings.get("priority_quota.P0", 0) +
+            ceilings.get("priority_quota.P1", 0)) >= 100:
+        errors.append(
+            "%s granted quota ceilings sum to %.1f%%; K00/07 requires the "
+            "pair to stay strictly below 100 so the P2 remainder class "
+            "stays non-empty" %
+            (label, ceilings.get("priority_quota.P0", 0) +
+             ceilings.get("priority_quota.P1", 0)))
+    return errors
+
+
+def _sealed_policy_exception_errors(sealed, decision_id, candidate_type,
+                                    label):
+    """Validate one sealed policy-exception decision record, strictly.
+
+    The sealed mapping is the durable record of an authorization; replay
+    validates it with the same severity the close-time writer applied, and
+    every check here FAILS CLOSED: a field of the wrong type is an error,
+    never a skipped comparison.  In particular the share arithmetic is only
+    meaningful over validated integers -- guarding it behind an isinstance
+    test that silently skips on mismatch would let a string smuggle an
+    unverified authorization through replay.
+    """
+    errors = []
+    errors.extend(_closed_mapping_errors(
+        sealed, "%s sealed policy exception" % label,
+        SEALED_POLICY_EXCEPTION_FIELDS))
+    if set(sealed) != set(SEALED_POLICY_EXCEPTION_FIELDS):
+        return errors
+    if sealed.get("decision_id") != decision_id:
+        errors.append("%s sealed decision_id does not match accepted_by" %
+                      label)
+    policy_id = sealed.get("policy_id")
+    registered = kblib.POLICY_REGISTRY.get(policy_id) if isinstance(
+        policy_id, str) else None
+    if registered is None:
+        errors.append(
+            "%s sealed policy_id %r is not in the closed policy registry" %
+            (label, policy_id))
+    else:
+        # The candidate names its class in its type (`...:priority-quota-P0`)
+        # and the exception names its policy; the two must be the same class.
+        # A P0 excess accepted through a P1 grant is an authorization for a
+        # different decision than the one the reviewer sealed.
+        suffix = str(candidate_type or "").rsplit(":", 1)[-1]
+        expected_suffix = "priority-quota-%s" % registered.get("quota_class")
+        if suffix != expected_suffix:
+            errors.append(
+                "%s sealed policy %s covers class %s, but the candidate is "
+                "%r; an exception authorizes exactly its own class" %
+                (label, policy_id, registered.get("quota_class"),
+                 candidate_type))
+    fingerprint = sealed.get("policy_fingerprint")
+    if not isinstance(fingerprint, str) or not SHA256_RE.fullmatch(
+            fingerprint):
+        errors.append(
+            "%s sealed policy_fingerprint must be sha256:<64 lowercase "
+            "hex>" % label)
+    if sealed.get("scope_kind") not in POLICY_EXCEPTION_SCOPE_KINDS:
+        errors.append("%s sealed scope_kind must be one of %s" %
+                      (label, ", ".join(sorted(POLICY_EXCEPTION_SCOPE_KINDS))))
+    if not _nonempty_string(sealed.get("scope_ref")):
+        errors.append("%s sealed scope_ref must be a non-empty string" %
+                      label)
+    limit = sealed.get("limit")
+    limit_ok = (not isinstance(limit, bool) and
+                isinstance(limit, (int, float)))
+    if not limit_ok:
+        errors.append("%s sealed limit must be a number" % label)
+    elif (registered is not None and
+          registered.get("limit_domain") == "percent-share-under-100" and
+          not 0 <= limit < 100):
+        errors.append(
+            "%s sealed limit %r is not a corpus share at least 0 and under "
+            "100" % (label, limit))
+        limit_ok = False
+    counts_ok = True
+    for field in ("pages", "total"):
+        value = sealed.get(field)
+        if isinstance(value, bool) or not isinstance(value, int):
+            errors.append("%s sealed %s must be an integer" % (label, field))
+            counts_ok = False
+    if counts_ok:
+        pages, total = sealed["pages"], sealed["total"]
+        if not (0 <= pages <= total and total >= 1):
+            errors.append(
+                "%s sealed counts %r/%r are not a corpus share" %
+                (label, pages, total))
+            counts_ok = False
+    if (counts_ok and limit_ok and
+            not kblib.quota_share_within_limit(
+                sealed["pages"], sealed["total"], limit)):
+        errors.append(
+            "%s sealed share %s/%s exceeds the sealed limit %r; the receipt "
+            "claims an authorization its own numbers refute" %
+            (label, sealed.get("pages"), sealed.get("total"), limit))
+    return errors
+
+
 def _closed_mapping_errors(value, label, fields, optional_fields=()):
     """Require one explicit mapping with exactly the declared field set."""
     if not isinstance(value, dict):
@@ -1169,7 +1388,7 @@ def _contract_anchor_chain(progress, catalog):
             progress.get("amendments"), list) else []:
         if (not isinstance(amendment, dict) or
                 amendment.get("operation") not in
-                ("scope-replan", "cancel-batch") or
+                ("scope-replan", "cancel-batch", "contract-amendment") or
                 amendment.get("status") != "verified" or
                 amendment.get("writeback_done") is not True):
             continue
@@ -1193,6 +1412,14 @@ def _contract_anchor_chain(progress, catalog):
         if receipt.get("before_contract_scope_version") != amendment.get(
                 "scope_version_before"):
             errors.append("%s before scope does not match its Amendment" % label)
+            valid = False
+        if (amendment.get("operation") == "contract-amendment" and
+                receipt.get("before_contract_scope_version") !=
+                receipt.get("after_contract_scope_version")):
+            # Scope belongs to the replan machinery; a contract amendment
+            # that moved scope_version would be a scope change routed
+            # around the Coverage proposal it requires.
+            errors.append("%s may not change scope_version" % label)
             valid = False
         if not _nonempty_string(receipt.get("after_contract_version")):
             errors.append("%s has invalid after_contract_version" % label)
@@ -1337,7 +1564,12 @@ def _progress_shape_errors(progress):
     errors = []
     contract = progress.get("contract")
     errors.extend(_closed_mapping_errors(contract, "Progress contract",
-                                         CONTRACT_FIELDS))
+                                         CONTRACT_FIELDS,
+                                         CONTRACT_OPTIONAL_FIELDS))
+    if isinstance(contract, dict) and "policy_exceptions" in contract:
+        errors.extend(_policy_exception_errors(
+            contract.get("policy_exceptions"),
+            "Progress contract.policy_exceptions"))
     if isinstance(contract, dict):
         for field in ("contract_version", "objective", "scope_version",
                       "standards_version",
@@ -4424,8 +4656,36 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                               disposition_label)
             else:
                 disposition_types.append(candidate_type)
-            if disposition.get("accepted_by") not in (
-                    "candidate-id", "candidate-type"):
+            accepted_by = disposition.get("accepted_by")
+            if isinstance(accepted_by, str) and accepted_by.startswith(
+                    "policy-exception:"):
+                # K00/07: a priority-quota excess is consumed only through a
+                # bounded contract exception.  The disposition seals the
+                # decision facts so this receipt replays as history even
+                # after the exception is revoked or the task ends; replay
+                # validates the sealed record, never current contract state.
+                decision_id = accepted_by.split(":", 1)[1]
+                if receipt_version not in \
+                        POLICY_EXCEPTION_DISPOSITION_VERSIONS:
+                    errors.append(
+                        "%s claims a policy-exception disposition, but its "
+                        "producer era %s predates that protocol; an older "
+                        "bundle cannot carry evidence its era could not "
+                        "have produced" % (disposition_label,
+                                           receipt_version))
+                sealed = disposition.get("policy_exception")
+                if not _nonempty_string(decision_id):
+                    errors.append("%s has empty policy-exception decision" %
+                                  disposition_label)
+                elif not isinstance(sealed, dict):
+                    errors.append(
+                        "%s policy-exception disposition seals no decision "
+                        "facts" % disposition_label)
+                else:
+                    errors.extend(_sealed_policy_exception_errors(
+                        sealed, decision_id, candidate_type,
+                        disposition_label))
+            elif accepted_by not in ("candidate-id", "candidate-type"):
                 errors.append("%s has invalid accepted_by" %
                               disposition_label)
         if sorted(disposition_ids) != sorted(accepted_ids):
@@ -6003,7 +6263,27 @@ def _operational_amendment_registration_errors(
     """
     errors = []
     operation = amendment.get("operation")
+    if operation is None:
+        # An ordinary Guidance log row carries no operation and owes no
+        # registration binding.
+        return errors
+    if operation == "contract-amendment":
+        # Written only by its dedicated K13/06 transaction writer, which has
+        # no pending phase; the row lands committed with its verification
+        # receipt, and _contract_amendment_row_errors owns its binding.
+        return errors
     if operation not in OPERATIONAL_AMENDMENT_OPERATIONS:
+        # Fail closed: a row *claiming* an operation this validator does not
+        # know would otherwise skip every registration binding below, making
+        # an unknown operation name a way to hold authorization with no
+        # registered evidence at all.
+        errors.append(
+            "%s declares unknown operation %r; operational Amendments are "
+            "limited to %s, and an unrecognized operation cannot be exempt "
+            "from registration binding" %
+            (label, operation,
+             ", ".join(sorted(OPERATIONAL_AMENDMENT_OPERATIONS) +
+                       ["contract-amendment"])))
         return errors
     status = amendment.get("status")
     writeback = amendment.get("writeback_done")
@@ -6153,6 +6433,174 @@ def _registration_execution_bridge_errors(
     return errors
 
 
+CONTRACT_AMENDMENT_ROW_FIELDS = frozenset((
+    "id", "date", "summary", "status", "writeback_done", "operation",
+    "approval_reference",
+    "scope_version_before", "scope_version_after",
+    "queue_revision_before", "queue_revision_after",
+    "state_revision_before", "state_revision_after",
+    "contract_version_before", "contract_version_after",
+    "plan_path", "plan_sha256", "verification_receipt",
+    # The state edge this transaction claims, recorded in the row so the
+    # commit receipt can be cross-bound to a durable record exactly as the
+    # K13/15 adoption record binds its receipt.  ``after_progress_sha256``
+    # is absent by construction: the row lives inside the progress document.
+    "coverage_sha256_before", "required_queue_sha256_before",
+    "progress_sha256_before", "after_coverage_sha256",
+    "after_required_queue_sha256", "policy_fingerprint",
+))
+CONTRACT_AMENDMENT_PLAN_PREFIX = ".cambium/deltas/contract-amendments"
+CONTRACT_AMENDMENT_TOOL_VERSIONS = frozenset(("1.0.0",))
+
+
+def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
+                                   task_id, accounted, live_contract):
+    """Validate one committed contract-amendment row, K13/06.
+
+    The dedicated writer has no pending phase: it either commits the whole
+    transaction -- contract bytes, Queue revision, this row, and the receipt
+    the row names -- or writes nothing.  A row in any other state is
+    therefore not an in-progress amendment but evidence of a bypassed
+    writer, and fails closed.  Anchor continuity (the before/after contract
+    fingerprints actually chaining) belongs to _contract_anchor_chain; this
+    validator owns the row's own shape and its binding to plan and receipt.
+    """
+    errors = []
+    errors.extend(_closed_mapping_errors(
+        amendment, label, CONTRACT_AMENDMENT_ROW_FIELDS))
+    if set(amendment) - CONTRACT_AMENDMENT_ROW_FIELDS or \
+            set(CONTRACT_AMENDMENT_ROW_FIELDS) - set(amendment):
+        return errors
+    if (amendment.get("status") != "verified" or
+            amendment.get("writeback_done") is not True):
+        errors.append(
+            "%s contract-amendment must be verified/written-back; its writer "
+            "has no pending phase, so any other state is a bypassed "
+            "transaction rather than an in-progress one" % label)
+    for field in ("id", "date", "summary", "approval_reference",
+                  "contract_version_before", "contract_version_after"):
+        if not _nonempty_string(amendment.get(field)):
+            errors.append("%s %s must be a non-empty string" % (label, field))
+    if amendment.get("contract_version_before") == amendment.get(
+            "contract_version_after"):
+        errors.append("%s must advance contract_version" % label)
+    scope_before = amendment.get("scope_version_before")
+    scope_after = amendment.get("scope_version_after")
+    if not _nonempty_string(scope_before) or scope_before != scope_after:
+        errors.append("%s must record one unchanged scope_version; scope "
+                      "belongs to the replan machinery" % label)
+    queue_before = amendment.get("queue_revision_before")
+    queue_after = amendment.get("queue_revision_after")
+    if (not isinstance(queue_before, int) or isinstance(queue_before, bool) or
+            queue_before < 1 or queue_after != queue_before + 1):
+        errors.append("%s queue revision edge must increment by one" % label)
+    state_before = amendment.get("state_revision_before")
+    state_after = amendment.get("state_revision_after")
+    if (not isinstance(state_before, int) or isinstance(state_before, bool) or
+            state_before < 0 or state_after != state_before):
+        errors.append("%s must preserve state_revision; it changes no batch "
+                      "lifecycle" % label)
+    plan_path = amendment.get("plan_path")
+    plan_sha = amendment.get("plan_sha256")
+    if not _nonempty_string(plan_path) or not (
+            isinstance(plan_sha, str) and SHA256_RE.fullmatch(plan_sha)):
+        errors.append("%s must bind plan_path and plan_sha256" % label)
+    else:
+        try:
+            plan_file = kblib.managed_repository_path(
+                root, plan_path, CONTRACT_AMENDMENT_PLAN_PREFIX,
+                suffixes=(".yaml", ".yml"), must_exist=True)
+            if kblib.sha256_file(plan_file) != plan_sha:
+                errors.append("%s plan bytes differ from persisted SHA" %
+                              label)
+        except (OSError, ValueError) as exc:
+            errors.append("%s plan is not resolvable: %s" % (label, exc))
+    # The row's own state-edge and policy identity fields must be well
+    # formed before anything binds to them.
+    for field in ("coverage_sha256_before", "required_queue_sha256_before",
+                  "progress_sha256_before", "after_coverage_sha256",
+                  "after_required_queue_sha256", "policy_fingerprint"):
+        value = amendment.get(field)
+        if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+            errors.append(
+                "%s %s must be spelled sha256:<64 hex digits>" %
+                (label, field))
+    receipt_id = amendment.get("verification_receipt")
+    entry = historical_catalog.get(receipt_id) if _nonempty_string(
+        receipt_id) else None
+    if entry is None:
+        errors.append("%s verification_receipt is not in the receipt "
+                      "catalog" % label)
+        return errors
+    receipt = entry[1]
+    bindings = {
+        "tool": "apply_contract_amendment",
+        "check": "contract_amendment",
+        "result": "pass",
+        "actor_role": "integrator",
+        "transaction_phase": "commit",
+        "plan_path": plan_path,
+        "plan_sha256": plan_sha,
+        "before_contract_version": amendment.get("contract_version_before"),
+        "after_contract_version": amendment.get("contract_version_after"),
+        "queue_revision_before": queue_before,
+        "queue_revision_after": queue_after,
+        # The receipt's claimed state edge must equal the durable row's,
+        # so tampering either alone is visible.  The receipt spells the
+        # queue fields with the longer Required Queue writer names.
+        "before_coverage_sha256": amendment.get("coverage_sha256_before"),
+        "before_required_queue_sha256":
+            amendment.get("required_queue_sha256_before"),
+        "before_progress_sha256": amendment.get("progress_sha256_before"),
+        "after_coverage_sha256": amendment.get("after_coverage_sha256"),
+        "after_required_queue_sha256":
+            amendment.get("after_required_queue_sha256"),
+        "policy_fingerprint": amendment.get("policy_fingerprint"),
+    }
+    for field, value in bindings.items():
+        if receipt.get(field) != value:
+            errors.append("%s commit receipt has %s=%r, expected %r" %
+                          (label, field, receipt.get(field), value))
+    after_progress = receipt.get("after_progress_sha256")
+    if not SHA256_RE.fullmatch(str(after_progress or "")):
+        errors.append("%s commit receipt has invalid after_progress_sha256" %
+                      label)
+    if receipt.get("tool_version") not in \
+            CONTRACT_AMENDMENT_TOOL_VERSIONS:
+        errors.append(
+            "%s commit receipt has unsupported producer tool_version %r; "
+            "known contract-amendment eras: %s" %
+            (label, receipt.get("tool_version"),
+             ", ".join(sorted(CONTRACT_AMENDMENT_TOOL_VERSIONS))))
+    if receipt.get("task_id") != task_id:
+        errors.append(
+            "%s commit receipt has task_id=%r, expected %r" %
+            (label, receipt.get("task_id"), task_id))
+    for field in ("standards_version", "selected_profile_manifest"):
+        if not _nonempty_string(receipt.get(field)):
+            errors.append(
+                "%s commit receipt carries no %s identity; a receipt whose "
+                "Standards era cannot be told is not replayable evidence" %
+                (label, field))
+    # Nonemptiness is not identity: the claimed era must be one this
+    # instance accounts for, and the manifest must be the task's own.  A
+    # receipt claiming `never-adopted` or a foreign profile is one this
+    # runtime never produced.
+    errors.extend(_producer_era_errors(
+        receipt, receipt_id, "%s commit" % label, accounted))
+    live_manifest = (live_contract or {}).get("selected_profile_manifest")
+    claimed_manifest = receipt.get("selected_profile_manifest")
+    if (_nonempty_string(claimed_manifest) and
+            _nonempty_string(live_manifest) and
+            claimed_manifest != live_manifest):
+        errors.append(
+            "%s commit receipt claims selected_profile_manifest=%r, but "
+            "this task's contract selects %r; a grant judged against a "
+            "foreign profile is not this task's evidence" %
+            (label, claimed_manifest, live_manifest))
+    return errors
+
+
 def _cross_ledger_amendment_errors(
         root, progress, current_catalog, historical_catalog, queue,
         coverage_sha, queue_sha, progress_sha):
@@ -6167,7 +6615,31 @@ def _cross_ledger_amendment_errors(
     seen_commits = set()
     pending_count = 0
     pending_seen = False
+    accounted = accounted_standards_versions(progress, queue)
+    live_contract = progress.get("contract") if isinstance(
+        progress.get("contract"), dict) else {}
     for index, amendment in enumerate(amendments):
+        if (isinstance(amendment, dict) and
+                amendment.get("operation") == "contract-amendment"):
+            errors.extend(_contract_amendment_row_errors(
+                root, amendment, "Progress amendments[%d]" % index,
+                historical_catalog, progress.get("task_id"),
+                accounted, live_contract))
+            continue
+        if (isinstance(amendment, dict) and
+                amendment.get("operation") is not None and
+                amendment.get("operation") not in
+                ("scope-replan", "cancel-batch", "queue-replan")):
+            # Fail closed here, at the walk itself: a row claiming an
+            # operation no validator owns would otherwise be skipped by
+            # every specialized check below, making an unknown operation
+            # name an exemption from evidence.
+            errors.append(
+                "Progress amendments[%d] declares unknown operation %r; "
+                "known operations are scope-replan, cancel-batch, "
+                "queue-replan, contract-amendment" %
+                (index, amendment.get("operation")))
+            continue
         if (not isinstance(amendment, dict) or
                 amendment.get("operation") not in
                 ("scope-replan", "cancel-batch")):
@@ -6440,6 +6912,7 @@ def _coverage_provenance_errors(progress, queue, catalog, coverage_sha,
         ("apply_amendment", "amendment_transaction"),
         ("apply_delta", "delta_apply"),
         (STANDARDS_ADOPTION_TOOL, "standards_adoption"),
+        ("apply_contract_amendment", "contract_amendment"),
     }
     writers = []
     # Writer receipts live in one collision-checked managed namespace.  Some
@@ -6456,7 +6929,8 @@ def _coverage_provenance_errors(progress, queue, catalog, coverage_sha,
                 receipt.get("actor_role") != "integrator"):
             continue
         tool = receipt.get("tool")
-        if (tool in ("apply_amendment", STANDARDS_ADOPTION_TOOL) and
+        if (tool in ("apply_amendment", STANDARDS_ADOPTION_TOOL,
+                     "apply_contract_amendment") and
                 receipt.get("transaction_phase") != "commit"):
             continue
         # Historical after-images remain valid evidence for history, but they
@@ -10847,6 +11321,16 @@ def _print_resume_status(result, errors):
     print("  selected_profile_manifest=%s" %
           queue.get("selected_profile_manifest"))
     print("  contract_version=%s" % contract.get("contract_version"))
+    exceptions = contract.get("policy_exceptions")
+    if isinstance(exceptions, list) and exceptions:
+        for entry in exceptions:
+            if isinstance(entry, dict):
+                print("  policy_exception=%s policy=%s limit=%s scope=%s:%s"
+                      % (entry.get("decision_id"), entry.get("policy_id"),
+                         entry.get("limit"), entry.get("scope_kind"),
+                         entry.get("scope_ref")))
+    else:
+        print("  policy_exceptions=none")
     print("  completion_semantics=%s" %
           contract.get("completion_semantics"))
     print("  objective=%s" % json.dumps(

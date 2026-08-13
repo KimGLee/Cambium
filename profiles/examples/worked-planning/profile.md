@@ -27,12 +27,12 @@ Normative interface: [Profile interface](../../README.md). Example namespace rul
 
 Allowed items: [execution-default registry](../../../kernel/K00%20Standards%20Control/execution-defaults-base.yaml).
 
-The one registered row is deliberate: `priority_quota.P0` is the item this
+The one registered row is deliberate: `concurrency_cap` is an item this
 distribution's tools actually resolve from the manifest, so the row changes
-observable behaviour rather than recording an intention. The value is the P0
-share target as a percentage; `10` is stricter than the kernel default this
-profile's owner module publishes.
+observable behaviour rather than recording an intention. Quota targets are
+not overrides -- they live in this profile's `Priority Rubric` under
+`Priority Quota`, beside the grant predicates and their rationale.
 
 | Override item ID from the registry | Non-default profile value |
 |---|---|
-| `priority_quota.P0` | 10 |
+| `concurrency_cap` | 1 |

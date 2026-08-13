@@ -34,7 +34,7 @@ source_files:
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K00 Standards Control/17 Profile Dependency Closure.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: '461432a8bce7'
+source_hash: '8cd6998bbf45'
 ---
 # R07 Long-running Execution Card
 
@@ -64,6 +64,7 @@ Each batch follows the fixed loop: version/Guidance self-check → `check_queue.
 - After one canonical delta apply passes, perform checks and close that batch before any other Queue/Coverage write; the apply receipt opens a strict serial critical section.
 - Treat meaningful user changes to objective, scope, acceptance, priority, or content judgment as Guidance: classify, disposition, record, switch safely, and verify closure.
 - For a same-scope Queue replan, scope replan, or cancellation, prepare its exact proposal or plan and use `register_amendment.py` as the sole approved-row writer before `compile_queue.py` or `apply_amendment.py` consumes it. The pending registration receipt must remain current and bind live state; after verified write-back it proves history only and cannot authorize another action.
+- For a bounded policy exception (K00/07 priority-quota excess accepted temporarily), prepare a confirmed contract-amendment plan and use `apply_contract_amendment.py` as its sole writer -- grant BEFORE any affected batch reaches `merge-ready` (the writer refuses past that point), and revoke by confirming a plan whose after list no longer carries the exception; closed history replays through its sealed dispositions either way.
 - Reuse a receipt only when its predicate remains compatible, fingerprints match, and no relevant invalidation exists.
 - A Standards/Profile mismatch or failed current `profile-load` blocks normal work. First roll a stale `completion-candidate` back through K13/03, formally roll back affected `merge-ready` batches, and put affected `open` batches under `revalidation-required`. Then use only `adopt_standards.py`; corrective adoption may inspect an invalid before Profile but must revalidate and atomically bind a passing after Profile. It changes none of those states/holds. `profile-load` is an admission Gate, not a batch boundary rerun; downstream affected Gates still run at their named boundaries. Commit consumes Queue consistency. Filter accumulated invalidated-evidence receipt IDs from current use, but retain producer-era evidence for historical verification. Never create a prose copy.
 - Pause or block with a complete checkpoint. Resume from the machine-readable state only after the Queue path, revisions, fingerprint, holds, unapplied deltas, and cross-state `check_queue.py` result are reconciled.

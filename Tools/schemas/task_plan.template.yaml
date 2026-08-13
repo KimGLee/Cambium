@@ -78,6 +78,9 @@ contract_after:
   checkpoint_at: ""
   hard_stop_at: ""
   completion_gate: TODO(plan)
+  # Optional register of bounded policy exceptions (K13/02); usually absent
+  # at planning. Granted later through apply_contract_amendment.py.
+  policy_exceptions: []
 
 # The complete initial Coverage inventory and the compiler's batch inputs.
 # Record shapes are owned by K02/01; `batch_specs` shape by K13/08.
