@@ -236,6 +236,68 @@ class AdoptStandardsTests(unittest.TestCase):
             code = adopt_standards.main(args)
         return code, stdout.getvalue()
 
+    def test_a_contract_amendment_may_follow_an_adoption(self):
+        """The other guarded contract writer must not be locked out.
+
+        The latest-adoption binding was written when `adopt_standards` was
+        the only writer of a materialized contract, so it read "the adoption
+        is the last word on contract_version" -- a sentence no kernel module
+        states.  Once the K13/06 Contract Amendment writer existed, that
+        made every post-adoption amendment invalid, and the combination had
+        no test because the amendment fixtures carry no adoption record.
+        Here the amendment row supersedes exactly one field; everything the
+        amendment cannot touch stays strictly bound.
+        """
+        self.pause()
+        self.plan()
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        record = result["progress"]["standards_adoptions"][-1]
+
+        progress = self.load(check_queue.PROGRESS_PATH)
+        progress["contract"]["contract_version"] = "c-amended"
+        progress.setdefault("amendments", []).append({
+            "operation": "contract-amendment",
+            "contract_version_before": record["contract_version_after"],
+            "contract_version_after": "c-amended",
+        })
+        errors = check_queue._standards_adoption_errors(
+            str(self.root), progress, result["receipt_catalog"],
+            result["queue"])
+        self.assertEqual(
+            [], [e for e in errors if "contract_version_after" in e],
+            "an amendment continuing from this adoption supersedes the "
+            "adoption's contract_version binding")
+
+        # Everything the amendment writer cannot touch stays bound.
+        progress["contract"]["standards_version"] = "9.9.9"
+        errors = check_queue._standards_adoption_errors(
+            str(self.root), progress, result["receipt_catalog"],
+            result["queue"])
+        self.assertTrue(
+            any("standards_version_after" in e for e in errors), errors)
+
+    def test_an_unrelated_amendment_does_not_release_the_binding(self):
+        """Only an amendment that literally continues from it supersedes."""
+        self.pause()
+        self.plan()
+        self.assertEqual(0, self.command(apply=True, actor="integrator")[0])
+        result = check_queue.validate_runtime(self.root)
+        progress = self.load(check_queue.PROGRESS_PATH)
+        progress["contract"]["contract_version"] = "c-drifted"
+        progress.setdefault("amendments", []).append({
+            "operation": "contract-amendment",
+            "contract_version_before": "c-something-else",
+            "contract_version_after": "c-drifted",
+        })
+        errors = check_queue._standards_adoption_errors(
+            str(self.root), progress, result["receipt_catalog"],
+            result["queue"])
+        self.assertTrue(
+            any("contract_version_after" in e for e in errors), errors)
+
     def test_upstream_identity_is_recorded_and_half_a_pair_is_refused(self):
         """1.5: the adoption record is what makes up/downstream comparable.
 
