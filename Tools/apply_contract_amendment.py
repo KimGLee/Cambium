@@ -70,6 +70,10 @@ class Refusal(Exception):
     """A condition that stops the transaction before any byte is written."""
 
 
+class ReceiptPublicationUncertain(Exception):
+    """Receipt bytes may be durable; the lock is retained, nothing rolled back."""
+
+
 def _load_plan(root, relative):
     path = kblib.managed_repository_path(
         root, relative, PLAN_PREFIX, suffixes=(".yaml", ".yml"),
@@ -174,10 +178,22 @@ def _require_amendable_runtime(documents, plan):
             "the Queue is not materialized; before materialization the "
             "contract is an adopter input and initial planning owns the "
             "edge -- amend the task plan, not the contract")
-    if progress.get("task_state") not in ("active", "paused"):
+    merge_ready = sorted(
+        item.get("id") for item in queue.get("required_queue") or []
+        if isinstance(item, dict) and item.get("state") == "merge-ready")
+    if merge_ready:
         raise Refusal(
-            "task_state is %r; a contract amendment applies only to an "
-            "active or paused task" % progress.get("task_state"))
+            "batch(es) %s are merge-ready; this transaction advances the "
+            "Queue revision, which would strand their delta_apply receipt "
+            "bindings. Close or roll back the merge-ready batch first (the "
+            "K13/15 adoption transaction refuses the same state for the "
+            "same reason) -- or grant the exception before the batch leaves "
+            "open" % ", ".join(merge_ready))
+    if progress.get("task_state") not in ("planned", "active", "paused"):
+        raise Refusal(
+            "task_state is %r; a contract amendment applies only to a "
+            "planned, active, or paused task -- a terminal task's contract "
+            "is history" % progress.get("task_state"))
     for name in STATE_NAMES:
         recorded = documents[name].get("task_id")
         if recorded != plan["task_id"]:
@@ -364,7 +380,19 @@ def commit(prepared, receipt_path):
                 if kblib.sha256_bytes(live) != prepared["before_sha"][name]:
                     raise Refusal(
                         "%s changed between planning and commit" % name)
+            # The plan's bytes are sealed into the row and receipt; a plan
+            # edited after prepare would commit a row pointing at bytes that
+            # no longer exist.  Same-lock re-verification, like the K13/15
+            # adoption re-CAS of its own plan.
+            plan_file = kblib.managed_repository_path(
+                root, prepared["plan_path"], PLAN_PREFIX,
+                suffixes=(".yaml", ".yml"), must_exist=True)
+            if kblib.sha256_file(plan_file) != prepared["plan_sha"]:
+                raise Refusal(
+                    "the amendment plan changed between prepare and commit; "
+                    "re-prepare against its current bytes")
         written = []
+        appended = False
         try:
             for name in WRITTEN_NAMES:
                 kblib.atomic_write_text(
@@ -374,13 +402,23 @@ def commit(prepared, receipt_path):
                 receipt_path, [receipt])
             outcome, error, _ = kblib.write_receipts_observed(
                 receipt_path, [receipt], before=before)
+            appended = outcome == "present"
+            if outcome == "uncertain" or (appended and error is not None):
+                # The receipt bytes may be durable.  Rolling back the state
+                # now could leave a committed receipt describing a runtime
+                # that no longer exists; the lock is retained with the
+                # before/planned-after fingerprints as recovery evidence,
+                # exactly as K13/15 keeps its lock past possible-commit.
+                raise ReceiptPublicationUncertain(
+                    "commit receipt publication is uncertain (%r); the "
+                    "writer lock is retained for reconciliation" % outcome)
             if error is not None:
                 raise error
-            if outcome != "present":
+            if not appended:
                 raise Refusal(
-                    "commit receipt append reported %r; the transaction is "
-                    "uncertain and the lease is preserved for reconciliation"
-                    % outcome)
+                    "commit receipt append reported %r" % outcome)
+        except ReceiptPublicationUncertain:
+            raise
         except Exception:
             for name in reversed(written):
                 kblib.atomic_write_text(
@@ -447,6 +485,11 @@ def main(argv=None):
 
     try:
         receipt = commit(prepared, receipt_path)
+    except ReceiptPublicationUncertain as exc:
+        print("[FAIL] %s" % exc)
+        print("apply_contract_amendment: reconcile with check_queue.py . "
+              "--resume-status before any further write")
+        return 1
     except (Refusal, OSError, ValueError, TypeError) as exc:
         print("[FAIL] %s" % exc)
         return 1

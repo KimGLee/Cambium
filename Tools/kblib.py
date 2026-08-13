@@ -825,6 +825,84 @@ def priority_quota_policy(rubric_text):
     return (values["P0"], values["P1"]), True, errors
 
 
+POLICY_REGISTRY = {
+    # The closed registry of policies a contract exception may except.  Each
+    # entry names the owner module and the bound domain its `limit` uses.
+    # Extending this mapping is a governance change under the owner named on
+    # the row, not an edit.
+    "priority_quota.P0": {
+        "owner": "kernel/K00 Standards Control/"
+                 "07 Effort Tiering and Priority Quota.md",
+        "quota_class": "P0",
+        "limit_domain": "percent-share-under-100",
+    },
+    "priority_quota.P1": {
+        "owner": "kernel/K00 Standards Control/"
+                 "07 Effort Tiering and Priority Quota.md",
+        "quota_class": "P1",
+        "limit_domain": "percent-share-under-100",
+    },
+}
+# Bumped when the comparison arithmetic or the resolution semantics change,
+# so an exception judged under one protocol cannot silently authorize under
+# another.
+PRIORITY_QUOTA_PROTOCOL_VERSION = 1
+
+
+def effective_priority_policy(rubric_text):
+    """Resolve the one effective quota policy and its canonical fingerprint.
+
+    Everything an authorization decision depends on is folded into one object
+    and one fingerprint: the registered policy IDs, the *resolved* per-class
+    values (kernel defaults included -- a `Registration: None` slot resolves
+    to the kernel numbers, so a kernel default change moves this fingerprint
+    even though the rubric bytes did not), the resolution source, and the
+    comparison protocol version.  An exception's baseline fingerprint binds
+    to this object; hashing the rubric file alone would let the effective
+    policy drift underneath a standing grant.
+
+    Returns ``(policy, fingerprint, errors)``.  ``fingerprint`` is None when
+    the slot does not resolve.
+    """
+    (p0, p1), configured, errors = priority_quota_policy(rubric_text)
+    policy = {
+        "schema_version": 1,
+        "protocol_version": PRIORITY_QUOTA_PROTOCOL_VERSION,
+        "source": "profile-configured" if configured else "kernel-defaults",
+        "kernel_defaults": {
+            "priority_quota.P0": PRIORITY_QUOTA_KERNEL_DEFAULTS[0],
+            "priority_quota.P1": PRIORITY_QUOTA_KERNEL_DEFAULTS[1],
+        },
+        "resolved": {
+            "priority_quota.P0": p0,
+            "priority_quota.P1": p1,
+        },
+    }
+    if errors:
+        return policy, None, errors
+    payload = json.dumps(policy, ensure_ascii=False, sort_keys=True,
+                         separators=(",", ":"))
+    return policy, sha256_bytes(payload), errors
+
+
+def quota_share_within_limit(pages, total, limit):
+    """Decide ``pages/total <= limit%`` exactly, never through prose or floats.
+
+    The authorization comparison is cross-multiplied over exact rationals:
+    ``pages * 100 <= limit * total`` with ``limit`` read as a decimal string.
+    37/246 is 15.04065...%, renders as 15.0, and a limit of 15 must refuse
+    it; one display rounding must never become an authorization.
+    """
+    if (not isinstance(pages, int) or isinstance(pages, bool) or
+            not isinstance(total, int) or isinstance(total, bool) or
+            pages < 0 or total <= 0 or pages > total):
+        return False
+    if isinstance(limit, bool) or not isinstance(limit, (int, float)):
+        return False
+    from fractions import Fraction
+    return Fraction(pages * 100, 1) <= Fraction(str(limit)) * total
+
+
 def profile_execution_default_overrides(manifest_text):
     """Return the manifest's ``Execution Default Overrides`` rows as a mapping.
 

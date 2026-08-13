@@ -1052,15 +1052,59 @@ def _policy_exception_errors(value, label):
                 "hex>; an exception unbound from the policy bytes it was "
                 "judged against would survive revisions it never saw" %
                 entry_label)
+        policy_id = entry.get("policy_id")
+        registered = kblib.POLICY_REGISTRY.get(policy_id) if isinstance(
+            policy_id, str) else None
+        if _nonempty_string(policy_id) and registered is None:
+            errors.append(
+                "%s policy_id %r is not in the closed policy registry; an "
+                "exception to a policy nobody registered is unbounded "
+                "authorization" % (entry_label, policy_id))
         limit = entry.get("limit")
         if (not isinstance(limit, (int, float)) or isinstance(limit, bool)):
-            errors.append("%s limit must be a number; its meaning belongs to "
-                          "the policy owner" % entry_label)
+            errors.append("%s limit must be a number" % entry_label)
+        elif (registered is not None and
+              registered.get("limit_domain") == "percent-share-under-100" and
+              not 0 <= limit < 100):
+            errors.append(
+                "%s limit must be a corpus share at least 0 and under 100; "
+                "%r is not a bound, per %s" %
+                (entry_label, limit, registered["owner"]))
         if entry.get("scope_kind") not in POLICY_EXCEPTION_SCOPE_KINDS:
             errors.append(
                 "%s scope_kind must be one of %s" %
                 (entry_label,
                  ", ".join(sorted(POLICY_EXCEPTION_SCOPE_KINDS))))
+    # Joint bound and conflict rules across the register: the granted P0 and
+    # P1 ceilings partition the same corpus as the standing quotas do, and
+    # two grants for the same policy in the same scope are a conflict, not a
+    # choice the consumer may make.
+    by_key = {}
+    ceilings = {}
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        policy_id = entry.get("policy_id")
+        limit = entry.get("limit")
+        key = (policy_id, entry.get("scope_kind"), entry.get("scope_ref"))
+        if all(key):
+            if key in by_key:
+                errors.append(
+                    "%s carries conflicting grants for %s in the same scope; "
+                    "one policy has one current bound" % (label, policy_id))
+            by_key[key] = entry
+        if (isinstance(limit, (int, float)) and not isinstance(limit, bool)
+                and isinstance(policy_id, str) and
+                policy_id in kblib.POLICY_REGISTRY):
+            ceilings[policy_id] = max(ceilings.get(policy_id, 0), limit)
+    if (ceilings.get("priority_quota.P0", 0) +
+            ceilings.get("priority_quota.P1", 0)) >= 100:
+        errors.append(
+            "%s granted quota ceilings sum to %.1f%%; K00/07 requires the "
+            "pair to stay strictly below 100 so the P2 remainder class "
+            "stays non-empty" %
+            (label, ceilings.get("priority_quota.P0", 0) +
+             ceilings.get("priority_quota.P1", 0)))
     return errors
 
 
@@ -4503,8 +4547,47 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                               disposition_label)
             else:
                 disposition_types.append(candidate_type)
-            if disposition.get("accepted_by") not in (
-                    "candidate-id", "candidate-type"):
+            accepted_by = disposition.get("accepted_by")
+            if isinstance(accepted_by, str) and accepted_by.startswith(
+                    "policy-exception:"):
+                # K00/07: a priority-quota excess is consumed only through a
+                # bounded contract exception.  The disposition seals the
+                # decision facts so this receipt replays as history even
+                # after the exception is revoked or the task ends; replay
+                # validates the sealed record, never current contract state.
+                decision_id = accepted_by.split(":", 1)[1]
+                sealed = disposition.get("policy_exception")
+                if not _nonempty_string(decision_id):
+                    errors.append("%s has empty policy-exception decision" %
+                                  disposition_label)
+                elif not isinstance(sealed, dict):
+                    errors.append(
+                        "%s policy-exception disposition seals no decision "
+                        "facts" % disposition_label)
+                else:
+                    for field in ("decision_id", "policy_id", "limit",
+                                  "scope_kind", "scope_ref",
+                                  "policy_fingerprint", "pages", "total"):
+                        if field not in sealed:
+                            errors.append(
+                                "%s sealed policy exception misses %s" %
+                                (disposition_label, field))
+                    if sealed.get("decision_id") != decision_id:
+                        errors.append(
+                            "%s sealed decision_id does not match "
+                            "accepted_by" % disposition_label)
+                    if (isinstance(sealed.get("pages"), int) and
+                            isinstance(sealed.get("total"), int) and
+                            not kblib.quota_share_within_limit(
+                                sealed["pages"], sealed["total"],
+                                sealed.get("limit"))):
+                        errors.append(
+                            "%s sealed share %s/%s exceeds the sealed limit "
+                            "%r; the receipt claims an authorization its own "
+                            "numbers refute" %
+                            (disposition_label, sealed.get("pages"),
+                             sealed.get("total"), sealed.get("limit")))
+            elif accepted_by not in ("candidate-id", "candidate-type"):
                 errors.append("%s has invalid accepted_by" %
                               disposition_label)
         if sorted(disposition_ids) != sorted(accepted_ids):
@@ -6262,9 +6345,11 @@ CONTRACT_AMENDMENT_ROW_FIELDS = frozenset((
     "plan_path", "plan_sha256", "verification_receipt",
 ))
 CONTRACT_AMENDMENT_PLAN_PREFIX = ".cambium/deltas/contract-amendments"
+CONTRACT_AMENDMENT_TOOL_VERSIONS = frozenset(("1.0.0",))
 
 
-def _contract_amendment_row_errors(root, amendment, label, historical_catalog):
+def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
+                                   task_id):
     """Validate one committed contract-amendment row, K13/06.
 
     The dedicated writer has no pending phase: it either commits the whole
@@ -6334,8 +6419,11 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog):
         return errors
     receipt = entry[1]
     bindings = {
+        "tool": "apply_contract_amendment",
         "check": "contract_amendment",
         "result": "pass",
+        "actor_role": "integrator",
+        "transaction_phase": "commit",
         "plan_path": plan_path,
         "plan_sha256": plan_sha,
         "before_contract_version": amendment.get("contract_version_before"),
@@ -6347,6 +6435,23 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog):
         if receipt.get(field) != value:
             errors.append("%s commit receipt has %s=%r, expected %r" %
                           (label, field, receipt.get(field), value))
+    if receipt.get("tool_version") not in \
+            CONTRACT_AMENDMENT_TOOL_VERSIONS:
+        errors.append(
+            "%s commit receipt has unsupported producer tool_version %r; "
+            "known contract-amendment eras: %s" %
+            (label, receipt.get("tool_version"),
+             ", ".join(sorted(CONTRACT_AMENDMENT_TOOL_VERSIONS))))
+    if receipt.get("task_id") != task_id:
+        errors.append(
+            "%s commit receipt has task_id=%r, expected %r" %
+            (label, receipt.get("task_id"), task_id))
+    for field in ("standards_version", "selected_profile_manifest"):
+        if not _nonempty_string(receipt.get(field)):
+            errors.append(
+                "%s commit receipt carries no %s identity; a receipt whose "
+                "Standards era cannot be told is not replayable evidence" %
+                (label, field))
     return errors
 
 
@@ -6369,7 +6474,7 @@ def _cross_ledger_amendment_errors(
                 amendment.get("operation") == "contract-amendment"):
             errors.extend(_contract_amendment_row_errors(
                 root, amendment, "Progress amendments[%d]" % index,
-                historical_catalog))
+                historical_catalog, progress.get("task_id")))
             continue
         if (isinstance(amendment, dict) and
                 amendment.get("operation") is not None and
@@ -11066,6 +11171,16 @@ def _print_resume_status(result, errors):
     print("  selected_profile_manifest=%s" %
           queue.get("selected_profile_manifest"))
     print("  contract_version=%s" % contract.get("contract_version"))
+    exceptions = contract.get("policy_exceptions")
+    if isinstance(exceptions, list) and exceptions:
+        for entry in exceptions:
+            if isinstance(entry, dict):
+                print("  policy_exception=%s policy=%s limit=%s scope=%s:%s"
+                      % (entry.get("decision_id"), entry.get("policy_id"),
+                         entry.get("limit"), entry.get("scope_kind"),
+                         entry.get("scope_ref")))
+    else:
+        print("  policy_exceptions=none")
     print("  completion_semantics=%s" %
           contract.get("completion_semantics"))
     print("  objective=%s" % json.dumps(
