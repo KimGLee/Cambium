@@ -2243,6 +2243,174 @@ def validate_receipt_output_path(path):
     return absolute
 
 
+# ---------------------------------------------------------------------------
+# Receipt append mutex (K12/07).
+#
+# Receipt registers are append-only, and for most of this runtime's life that
+# was enough: two appenders never conflict, so appends needed no lock at all.
+# Sealing broke that assumption.  A seal REWRITES a register -- it is the one
+# operation that removes bytes -- so an append landing between the moment the
+# seal reads a register and the moment it installs the rewritten image is
+# silently dropped, and the post-seal validation passes because the dropped
+# receipt is gone from the very evidence set being checked.  No number of
+# hash comparisons closes that window; only a lock both sides take does.
+#
+# The primitive is a rename, not a lock directory, because the mounts this
+# runtime has to survive refuse ``unlink``: a lock directory acquired there
+# can be created but never released.  Renaming one marker file between
+# ``.free`` and ``.held`` is atomic on every filesystem in play and needs no
+# deletion.  An abandoned mutex is deliberately NOT broken automatically --
+# the same fail-closed rule the writer lock follows -- because a premature
+# break is exactly the silent-loss bug this exists to prevent; recovery is
+# an operator renaming ``.held`` back to ``.free`` after proving no writer
+# remains.
+#
+# Lock order is always runtime_write_lock -> receipt_append_mutex.  Nothing
+# acquires them the other way round, and re-entrant acquisition inside one
+# process is a no-op so a writer holding the mutex may still append its own
+# receipts through the ordinary primitive.
+# ---------------------------------------------------------------------------
+RECEIPT_APPEND_FREE_PATH = ".cambium/tmp/receipt-append.free"
+RECEIPT_APPEND_HELD_PATH = ".cambium/tmp/receipt-append.held"
+
+_RECEIPT_APPEND_DEPTH = 0
+
+
+class ReceiptAppendLockedError(RuntimeError):
+    """Another writer holds the receipt append mutex."""
+
+
+def receipt_runtime_root(path):
+    """Return the runtime root owning ``path``, or None outside a runtime."""
+    absolute = os.path.abspath(os.fspath(path))
+    parts = absolute.split(os.sep)
+    for index in range(len(parts) - 1, -1, -1):
+        if parts[index] == ".cambium":
+            return os.sep.join(parts[:index]) or os.sep
+    return None
+
+
+def receipt_append_mutex_state(root):
+    """Return ``free``, ``held``, or ``absent`` without acquiring anything."""
+    if os.path.exists(os.path.join(root, RECEIPT_APPEND_HELD_PATH)):
+        return "held"
+    if os.path.exists(os.path.join(root, RECEIPT_APPEND_FREE_PATH)):
+        return "free"
+    return "absent"
+
+
+def _receipt_mutex_record(note):
+    return json.dumps({
+        "pid": os.getpid(),
+        "note": note,
+        "held_since": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }, sort_keys=True) + "\n"
+
+
+@contextmanager
+def receipt_append_mutex(root, note="receipt-append", timeout=60.0,
+                         poll_interval=0.02):
+    """Hold the one mutex every receipt append and every seal rewrite takes."""
+    global _RECEIPT_APPEND_DEPTH
+    if _RECEIPT_APPEND_DEPTH > 0:
+        _RECEIPT_APPEND_DEPTH += 1
+        try:
+            yield False
+        finally:
+            _RECEIPT_APPEND_DEPTH -= 1
+        return
+    root_real = os.path.realpath(os.path.abspath(root))
+    free_path = os.path.join(root_real, RECEIPT_APPEND_FREE_PATH)
+    held_path = os.path.join(root_real, RECEIPT_APPEND_HELD_PATH)
+    os.makedirs(os.path.dirname(free_path), mode=0o700, exist_ok=True)
+    if not os.path.exists(free_path) and not os.path.exists(held_path):
+        try:
+            with open(free_path, "x", encoding="utf-8") as handle:
+                handle.write(_receipt_mutex_record("initialized"))
+        except FileExistsError:
+            pass
+    deadline = time.monotonic() + (timeout if timeout is not None else 0.0)
+    record = _receipt_mutex_record(note)
+    while True:
+        try:
+            os.rename(free_path, held_path)
+        except OSError:
+            if _reclaim_dead_receipt_mutex(held_path, free_path):
+                continue
+            if timeout is not None and time.monotonic() >= deadline:
+                raise ReceiptAppendLockedError(
+                    "receipt append mutex %s is held by a live writer; a seal "
+                    "in progress removes bytes from a register, so no append "
+                    "may proceed beside it. If no writer remains and the "
+                    "record names no running process, reconcile by renaming "
+                    "%s back to %s" %
+                    (RECEIPT_APPEND_HELD_PATH, RECEIPT_APPEND_HELD_PATH,
+                     RECEIPT_APPEND_FREE_PATH))
+            time.sleep(poll_interval)
+            continue
+        # Claim, then publish identity, then confirm the claim survived.  A
+        # reclaimer that read the previous owner's dead record in the gap
+        # between the rename and this write would otherwise be able to free
+        # a mutex this process is legitimately holding.
+        try:
+            with open(held_path, "w", encoding="utf-8") as handle:
+                handle.write(record)
+                handle.flush()
+                os.fsync(handle.fileno())
+            with open(held_path, encoding="utf-8") as handle:
+                if handle.read() != record:
+                    continue
+        except OSError:
+            continue
+        break
+    _RECEIPT_APPEND_DEPTH += 1
+    try:
+        yield True
+    finally:
+        _RECEIPT_APPEND_DEPTH -= 1
+        os.rename(held_path, free_path)
+
+
+def process_is_alive(pid):
+    """True when ``pid`` still names a running process on this host.
+
+    An unknown or unreadable owner counts as alive: this answer is only ever
+    used to justify taking something away from another writer, so every
+    uncertain case must resolve against doing that.
+    """
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def _reclaim_dead_receipt_mutex(held_path, free_path):
+    """Free the mutex only when its recorded owner no longer exists.
+
+    A crashed appender would otherwise wedge every later append and every
+    seal, including the recovery that exists to clean up after it.  The one
+    safe basis for reclaiming is proof that the recorded process is gone --
+    never a timeout, which cannot tell a slow writer from a dead one.
+    """
+    try:
+        with open(held_path, encoding="utf-8") as handle:
+            owner = json.load(handle)
+    except (OSError, ValueError):
+        return False
+    if process_is_alive(owner.get("pid")):
+        return False
+    try:
+        os.rename(held_path, free_path)
+    except OSError:
+        return False
+    return True
+
+
 def _receipt_lines(receipts):
     """Return the exact newline-terminated records used by receipt writers."""
     lines = [
@@ -2412,6 +2580,13 @@ def write_receipts(path, receipts, exclusive=False):
     to create the final name, which is suitable for a one-receipt canonical
     artifact.  Callers needing a state transaction must additionally hold
     :func:`runtime_write_lock` for the full transaction.
+
+    Every managed append also takes :func:`receipt_append_mutex` for its
+    duration.  Two appends never needed to exclude each other, but a seal
+    rewrites a register, and an append landing inside that rewrite's window
+    is lost with no trace in the evidence set the post-seal validation
+    reads.  The mutex is the shared protocol both sides take; it is
+    re-entrant, so a writer already holding it appends normally.
     """
     if not path:
         return
@@ -2419,6 +2594,16 @@ def write_receipts(path, receipts, exclusive=False):
     if not lines:
         return
     absolute = validate_receipt_output_path(path)
+    root = receipt_runtime_root(absolute)
+    if root is not None:
+        with receipt_append_mutex(root, note="write_receipts:%s" %
+                                  os.path.basename(absolute)):
+            return _append_receipt_lines(absolute, lines, exclusive)
+    return _append_receipt_lines(absolute, lines, exclusive)
+
+
+def _append_receipt_lines(absolute, lines, exclusive=False):
+    """Append exact receipt records through no-follow descriptors."""
     parent = os.path.dirname(absolute)
     basename = os.path.basename(absolute)
     if not basename:

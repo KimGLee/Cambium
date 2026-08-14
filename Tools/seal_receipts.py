@@ -60,7 +60,7 @@ import kblib
 import check_queue
 
 TOOL = "seal_receipts"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 SEAL_RECEIPTS_PATH = ".cambium/receipts/seal-receipts.jsonl"
 COLD_PENDING_PREFIX = ".cambium/receipts/cold/pending"
 RECEIPTS_ROOT = ".cambium/receipts"
@@ -327,12 +327,29 @@ def _projection(receipt_id, segment, line_number, raw_line, receipt):
     return row
 
 
+def log(message):
+    print(message)
+
+
+def _bound_evidence(result):
+    """Map each born-cold evidence path to the hash an attestation bound."""
+    bound = {}
+    for _receipt_id, (_relative, receipt) in (
+            result.get("receipt_catalog") or {}).items():
+        path = receipt.get("candidate_evidence_path")
+        digest = receipt.get("candidate_evidence_sha256")
+        if isinstance(path, str) and isinstance(digest, str):
+            bound[path] = digest
+    return bound
+
+
 def _plan_payload(root, result, by_file, stamp):
     """Build segments, manifest rows, index rows and hot rewrites."""
     queue = result.get("queue") or {}
     manifest_rows = []
     index_rows = []
     file_edits = []
+    skipped = []
     for relative in sorted(by_file):
         seal_ids = {receipt_id for receipt_id, _ in by_file[relative]}
         with open(os.path.join(root, relative), encoding="utf-8") as handle:
@@ -382,19 +399,22 @@ def _plan_payload(root, result, by_file, stamp):
         file_edits.append({
             "source_path": relative,
             "segment": segment,
+            "source_chars_before": len(original),
             "source_sha256_before": kblib.sha256_bytes(
                 original.encode("utf-8")),
             "source_sha256_after": kblib.sha256_bytes(kept.encode("utf-8")),
         })
 
     # Adopt born-cold close-evidence files into the manifest so the per-run
-    # hash guard covers them too.  They are written by check_batch_close at
-    # close time and bound by the attestation that names their path, bytes
-    # and hash; the manifest row makes them fail-closed thereafter.
+    # hash guard covers them too -- but only files an attestation already
+    # binds by hash.  Manifesting an unbound file would mint a manifest hash
+    # for bytes nothing vouches for, which is how a tampered evidence file
+    # becomes permanent evidence.
     evidence_dir = os.path.join(root, kblib.RECEIPT_COLD_EVIDENCE_PREFIX)
     already = {entry.get("segment")
                for entry in (result.get("cold_receipts") or {}).get(
                    "manifest", [])}
+    bound = _bound_evidence(result)
     if os.path.isdir(evidence_dir):
         for name in sorted(os.listdir(evidence_dir)):
             if not name.endswith(".jsonl"):
@@ -404,6 +424,15 @@ def _plan_payload(root, result, by_file, stamp):
                 continue
             with open(os.path.join(root, relative), "rb") as handle:
                 payload = handle.read()
+            expected = bound.get(relative)
+            if expected is None:
+                skipped.append(relative)
+                continue
+            if kblib.sha256_bytes(payload) != expected:
+                raise RuntimeError(
+                    "close evidence %s does not match the hash its "
+                    "attestation bound; refusing to seal tampered evidence"
+                    % relative)
             manifest_rows.append({
                 "kind": "close-evidence",
                 "segment": relative,
@@ -417,6 +446,10 @@ def _plan_payload(root, result, by_file, stamp):
                 "tool": TOOL,
                 "tool_version": TOOL_VERSION,
             })
+    for relative in skipped:
+        log("[SKIP] close evidence %s is bound by no current attestation; "
+            "leaving it unmanifested rather than minting a hash for bytes "
+            "nothing vouches for" % relative)
     return manifest_rows, index_rows, file_edits
 
 
@@ -547,36 +580,45 @@ def _publish(root, pending):
             raise RuntimeError(
                 "seal receipt append outcome=%s error=%s" % (outcome, error))
 
+    # Both registers are created even when this seal has no rows for one of
+    # them: a first seal that adopts only born-cold evidence writes manifest
+    # rows and no projections, and a cold namespace with a manifest and no
+    # index.jsonl is invalid by the loader's own rule.
     for path, lines in (
             (os.path.join(root, kblib.RECEIPT_COLD_MANIFEST_PATH),
              pending["manifest_lines"]),
             (os.path.join(root, kblib.RECEIPT_COLD_INDEX_PATH),
              pending["index_lines"])):
+        _repair_partial_tail(path)
         present = set(_existing_lines(path))
         missing = [line for line in lines if line not in present]
-        if missing:
-            if len(missing) != len(lines):
-                raise RuntimeError(
-                    "%s holds part of seal %s; reconcile by hand" %
-                    (path, seal_id))
-            _append_lines(path, missing)
+        _append_lines(path, missing)
 
     for edit in pending["edits"]:
         full = os.path.join(root, edit["source_path"])
+        _finish_interrupted_rewrite(full, edit)
         current = _file_sha256(root, edit["source_path"])
         if current == edit["source_sha256_after"]:
             continue
-        if current != edit["source_sha256_before"]:
+        with open(full, encoding="utf-8") as handle:
+            original = handle.read()
+        planned_before = original[:edit["source_chars_before"]]
+        if kblib.sha256_bytes(
+                planned_before.encode("utf-8")) != edit["source_sha256_before"]:
             raise RuntimeError(
                 "source register %s is neither its pre-seal nor its post-seal "
-                "image; reconcile this seal by hand" % edit["source_path"])
+                "image and is not an append-extension of either; reconcile "
+                "this seal by hand" % edit["source_path"])
+        # Defence in depth behind the append mutex: if some writer appended
+        # without taking it, the tail is carried into the rewritten image
+        # rather than truncated away.  A seal may remove only the rows it
+        # sealed.
+        tail = original[len(planned_before):]
         sealed_ids = {json.loads(line)["receipt_id"]
                       for line in pending["index_lines"]
                       if json.loads(line)["segment"] == edit["segment"]}
-        with open(full, encoding="utf-8") as handle:
-            original = handle.read()
         kept = []
-        for raw in original.splitlines(keepends=True):
+        for raw in planned_before.splitlines(keepends=True):
             body = raw.strip()
             if body and json.loads(body).get("receipt_id") in sealed_ids:
                 continue
@@ -587,12 +629,91 @@ def _publish(root, pending):
             raise RuntimeError(
                 "recomputed rewrite of %s does not match the planned "
                 "after-image" % edit["source_path"])
-        _write_atomic(full, text)
+        _write_atomic(full, text + tail)
 
+    _require_publication_complete(root, pending)
     _append_lines(os.path.join(root, kblib.RECEIPT_COLD_JOURNAL_PATH),
                   [_jsonl_line({"phase": "complete",
                                 "seal_receipt": seal_id,
                                 "at": _now()})])
+
+
+def _repair_partial_tail(path):
+    """Drop a torn final line left by an interrupted append.
+
+    A register with no newline at all is not a file with a good prefix: the
+    single fragment in it is the torn record, and keeping it would turn an
+    interrupted write into a well-formed lie.
+    """
+    if not os.path.exists(path):
+        return
+    with open(path, "rb") as handle:
+        payload = handle.read()
+    if not payload or payload.endswith(b"\n"):
+        return
+    keep = payload.rsplit(b"\n", 1)[0] + b"\n" if b"\n" in payload else b""
+    _write_atomic(path, keep.decode("utf-8"))
+
+
+def _finish_interrupted_rewrite(full, edit):
+    """Install a durable ``.seal-rewrite`` left by an interrupted fallback.
+
+    ``_write_atomic`` writes and fsyncs the temporary before it touches the
+    live name, precisely so this case is finishable: on a mount that refuses
+    ``os.replace`` the in-place fallback can tear, and the intact planned
+    image is still sitting beside it.
+    """
+    temporary = full + ".seal-rewrite"
+    if not os.path.exists(temporary):
+        return
+    with open(temporary, "rb") as handle:
+        payload = handle.read()
+    if kblib.sha256_bytes(payload) != edit["source_sha256_after"]:
+        return
+    with open(full, "wb") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _require_publication_complete(root, pending):
+    """Prove every postcondition before the journal may say complete."""
+    failures = []
+    for row in pending["manifest_rows"]:
+        digest = _file_sha256(root, row["segment"])
+        if digest != row["segment_sha256"]:
+            failures.append("segment %s is %s, expected %s" %
+                            (row["segment"], digest, row["segment_sha256"]))
+    for path, lines in (
+            (kblib.RECEIPT_COLD_MANIFEST_PATH, pending["manifest_lines"]),
+            (kblib.RECEIPT_COLD_INDEX_PATH, pending["index_lines"])):
+        present = set(_existing_lines(os.path.join(root, path)))
+        absent = [line for line in lines if line not in present]
+        if absent:
+            failures.append("%s is missing %d row(s) of this seal" %
+                            (path, len(absent)))
+    receipts = _existing_lines(os.path.join(root, pending["receipt_path"]))
+    if not any(json.loads(line).get("receipt_id") == pending["seal_receipt"]
+               for line in receipts if line.strip()):
+        failures.append("seal receipt %s never landed" %
+                        pending["seal_receipt"])
+    for edit in pending["edits"]:
+        current = _file_sha256(root, edit["source_path"])
+        if current == edit["source_sha256_after"]:
+            continue
+        sealed_ids = {json.loads(line)["receipt_id"]
+                      for line in pending["index_lines"]
+                      if json.loads(line)["segment"] == edit["segment"]}
+        live = {json.loads(line).get("receipt_id")
+                for line in _existing_lines(
+                    os.path.join(root, edit["source_path"])) if line.strip()}
+        if sealed_ids & live:
+            failures.append("%s still holds %d sealed row(s)" %
+                            (edit["source_path"], len(sealed_ids & live)))
+    if failures:
+        raise RuntimeError(
+            "seal publication is incomplete, so the journal stays open: %s" %
+            "; ".join(failures))
 
 
 def _require_unchanged(root, planned, by_file, before_tree):
@@ -621,65 +742,75 @@ def _require_unchanged(root, planned, by_file, before_tree):
 
 
 def apply_seal(root, result, by_file, receipts_path, before_tree=None):
-    # The fingerprint has to be taken before the first byte of the plan is
-    # read, not after: it is the "compare" half of the swap, and a
-    # fingerprint taken after the read would certify the very append it
-    # exists to detect.
+    """Seal under both locks, planning only once appends are excluded.
+
+    The receipt append mutex is taken before the plan is read, not after.
+    A seal removes bytes from a register, so a receipt appended between the
+    read and the rewrite is dropped -- and dropped invisibly, because the
+    post-seal validation reads the evidence set the row is now missing
+    from.  Comparing hashes on either side of that window narrows it and
+    cannot close it; excluding the appender does.  Lock order is always
+    runtime_write_lock then receipt_append_mutex.
+    """
     if before_tree is None:
         before_tree = _receipt_tree_fingerprint(root)
-    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    manifest_rows, index_rows, file_edits = _plan_payload(
-        root, result, by_file, stamp)
-    if not manifest_rows:
-        return None
-    pending = _pending_record(root, result, receipts_path, manifest_rows,
-                              index_rows, file_edits)
     queue = result.get("queue") or {}
     metadata = {
         "tool": TOOL,
         "tool_version": TOOL_VERSION,
         "action": "seal-receipts",
-        "receipt_id": pending["seal_receipt"],
         "receipt_path": receipts_path,
         "task_id": queue.get("task_id"),
         "before_state_revision": queue.get("state_revision"),
         "before_required_queue_sha256": result.get("queue_sha256"),
         "before_coverage_sha256": result.get("coverage_sha256"),
         "before_progress_sha256": result.get("progress_sha256"),
-        "segments": [row["segment"] for row in manifest_rows],
-        "source_rewrites": [
-            {"path": edit["source_path"],
-             "before_sha256": edit["source_sha256_before"],
-             "planned_after_sha256": edit["source_sha256_after"]}
-            for edit in file_edits],
-        "manifest_rows_sha256": pending["receipt"]["manifest_rows_sha256"],
-        "index_rows_sha256": pending["receipt"]["index_rows_sha256"],
+        "planned_sources": sorted(by_file),
+        "recovery": "the cold journal's begin row and its hash-bound pending "
+                    "record carry this transaction's exact intent",
     }
     with kblib.runtime_write_lock(
             root, owner_metadata=metadata, timeout=0.0) as lease:
-        with kblib.no_authoritative_write_guard(lease):
-            _require_unchanged(root, result, by_file, before_tree)
-            pending_path = "%s/%s.json" % (COLD_PENDING_PREFIX,
-                                           pending["seal_receipt"])
-            full = os.path.join(root, pending_path)
-            os.makedirs(os.path.dirname(full), mode=0o700, exist_ok=True)
-            with open(full, "x", encoding="utf-8") as handle:
-                json.dump(pending, handle, ensure_ascii=False, sort_keys=True)
-                handle.flush()
-                os.fsync(handle.fileno())
-        _append_lines(
-            os.path.join(root, kblib.RECEIPT_COLD_JOURNAL_PATH),
-            [_jsonl_line({"phase": "begin",
-                          "seal_receipt": pending["seal_receipt"],
-                          "pending_path": pending_path,
-                          "segments": [row["segment"]
-                                       for row in manifest_rows],
-                          "manifest_rows_sha256":
-                              pending["receipt"]["manifest_rows_sha256"],
-                          "index_rows_sha256":
-                              pending["receipt"]["index_rows_sha256"],
-                          "at": _now()})])
-        _publish(root, pending)
+        with kblib.receipt_append_mutex(root, note="seal_receipts"):
+            pending = None
+            with kblib.no_authoritative_write_guard(lease):
+                _require_unchanged(root, result, by_file, before_tree)
+                stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+                manifest_rows, index_rows, file_edits = _plan_payload(
+                    root, result, by_file, stamp)
+                if manifest_rows:
+                    pending = _pending_record(
+                        root, result, receipts_path, manifest_rows,
+                        index_rows, file_edits)
+                    pending_path = "%s/%s.json" % (
+                        COLD_PENDING_PREFIX, pending["seal_receipt"])
+                    payload = json.dumps(pending, ensure_ascii=False,
+                                         sort_keys=True)
+                    pending["pending_sha256"] = kblib.sha256_bytes(
+                        payload.encode("utf-8"))
+                    full = os.path.join(root, pending_path)
+                    os.makedirs(os.path.dirname(full), mode=0o700,
+                                exist_ok=True)
+                    with open(full, "x", encoding="utf-8") as handle:
+                        handle.write(payload)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+            if pending is None:
+                return None
+            _append_lines(
+                os.path.join(root, kblib.RECEIPT_COLD_JOURNAL_PATH),
+                [_jsonl_line({"phase": "begin",
+                              "seal_receipt": pending["seal_receipt"],
+                              "pending_path": pending_path,
+                              "pending_sha256": pending["pending_sha256"],
+                              "segments": [row["segment"]
+                                           for row in manifest_rows],
+                              "manifest_rows_sha256":
+                                  pending["receipt"]["manifest_rows_sha256"],
+                              "index_rows_sha256":
+                                  pending["receipt"]["index_rows_sha256"],
+                              "at": _now()})])
+            _publish(root, pending)
     return pending["receipt"]
 
 
@@ -695,16 +826,23 @@ def _cold_errors(root):
 
 
 def verify(root):
-    """Prove the whole cold chain, not just segment bytes."""
-    manifest_path = os.path.join(root, kblib.RECEIPT_COLD_MANIFEST_PATH)
-    if not os.path.exists(manifest_path):
-        print("cold manifest absent; nothing sealed")
-        return 0
+    """Prove the whole cold chain, not just segment bytes.
+
+    An absent manifest is only innocent when the journal is also balanced.
+    A seal that died between its begin row and its first segment byte leaves
+    exactly the manifest-absent state, and reporting that as "nothing
+    sealed" would be this command declaring the one failure it is run to
+    catch a clean bill of health.
+    """
     store, errors = _cold_errors(root)
     for error in errors:
         print("[FAIL] %s" % error)
     if errors:
         return 1
+    if not os.path.exists(os.path.join(root, kblib.RECEIPT_COLD_MANIFEST_PATH)):
+        print("[PASS] cold manifest absent and the cold journal is balanced; "
+              "nothing is sealed")
+        return 0
     print("[PASS] %d sealed segment(s) match their manifest hashes, %d "
           "projection(s) match their sealed records, and %d seal receipt(s) "
           "still bind both cold registers" %
@@ -728,17 +866,18 @@ def _unfinished_seals(root):
     return open_seals
 
 
-def _adopt_own_lock(root, seal_id):
-    """Take over the writer lock this exact seal left behind.
+def _adopt_own_lock(root, seal_id, errors):
+    """Take over the writer lock this exact seal left behind, if it is dead.
 
-    An interrupted writer is supposed to leave its lock standing, and an
-    operator is supposed to clear it only after reconciling the recorded
-    fingerprints against the live files.  ``--reconcile`` is that
-    reconciliation, so it may adopt the lock -- but only after proving from
-    the owner metadata that the lock belongs to the very transaction it is
-    finishing.  The directory is renamed rather than removed, because the
-    mounts this tool has to survive refuse ``unlink`` and because the
-    owner record is the recovery evidence.
+    An interrupted writer leaves its lock standing on purpose, and an
+    operator may clear it only after proving no writer remains.
+    ``--reconcile`` performs that proof mechanically or not at all: the
+    owner record must name this tool and this seal, and its recorded pid
+    must no longer exist.  A lock whose owner is still running is a live
+    seal, not a corpse -- stealing it would put two writers inside the one
+    window this whole protocol exists to keep single-occupancy.  The
+    directory is renamed rather than removed, because the mounts this tool
+    has to survive refuse ``unlink`` and the owner record is evidence.
     """
     lock_path = os.path.join(root, ".cambium/tmp/state-writer.lock")
     owner_path = os.path.join(lock_path, "owner.json")
@@ -748,17 +887,78 @@ def _adopt_own_lock(root, seal_id):
         with open(owner_path, encoding="utf-8") as handle:
             owner = json.load(handle)
     except (OSError, ValueError):
+        errors.append("a writer lock stands with no readable owner record; "
+                      "reconcile it by hand before finishing this seal")
         return False
     operation = owner.get("operation") or {}
-    if (operation.get("tool") != TOOL or
-            operation.get("receipt_id") != seal_id):
+    if operation.get("tool") != TOOL:
+        errors.append("the standing writer lock belongs to %r, not this seal" %
+                      operation.get("tool"))
+        return False
+    if operation.get("action") not in ("seal-receipts", "reconcile-seal"):
+        errors.append("the standing writer lock records action %r" %
+                      operation.get("action"))
+        return False
+    if kblib.process_is_alive(owner.get("pid")):
+        errors.append(
+            "the writer lock's owner (pid %r) is still running; a live seal "
+            "is not an interrupted one, and --reconcile will not take a lock "
+            "out from under a running writer" % owner.get("pid"))
         return False
     retired = os.path.join(
         root, ".cambium/tmp/state-writer.lock.reconciled-%s" % seal_id)
     if os.path.exists(retired):
+        errors.append("a previous reconciliation of %s is already recorded at "
+                      "%s" % (seal_id, os.path.basename(retired)))
         return False
     os.rename(lock_path, retired)
     return True
+
+
+def _load_pending(root, entry, errors):
+    """Load one seal's pending record, bound to the journal that names it."""
+    relative = entry.get("pending_path")
+    if not _nonempty(relative):
+        errors.append("journal begin row for %s names no pending record" %
+                      entry.get("seal_receipt"))
+        return None
+    full = os.path.join(root, relative)
+    try:
+        with open(full, "rb") as handle:
+            payload = handle.read()
+    except OSError as exc:
+        errors.append("pending record %s is unreadable (%s); this seal cannot "
+                      "be finished mechanically" % (relative, exc))
+        return None
+    recorded = entry.get("pending_sha256")
+    actual = kblib.sha256_bytes(payload)
+    if recorded != actual:
+        errors.append(
+            "pending record %s hashes to %s but the journal bound %r; a "
+            "recovery plan that no longer matches the transaction that wrote "
+            "it is not a recovery plan" % (relative, actual, recorded))
+        return None
+    try:
+        pending = json.loads(payload.decode("utf-8"))
+    except (UnicodeError, ValueError) as exc:
+        errors.append("pending record %s does not parse: %s" % (relative, exc))
+        return None
+    if pending.get("seal_receipt") != entry.get("seal_receipt"):
+        errors.append("pending record %s names a different seal" % relative)
+        return None
+    receipt = pending.get("receipt") or {}
+    if (_group_sha256(pending.get("manifest_lines") or []) !=
+            receipt.get("manifest_rows_sha256") or
+            _group_sha256(pending.get("index_lines") or []) !=
+            receipt.get("index_rows_sha256")):
+        errors.append("pending record %s carries rows its own seal receipt "
+                      "does not bind" % relative)
+        return None
+    return pending
+
+
+def _nonempty(value):
+    return isinstance(value, str) and bool(value.strip())
 
 
 def reconcile(root, apply_it):
@@ -769,28 +969,33 @@ def reconcile(root, apply_it):
         return 0
     for seal_id, entry in sorted(open_seals.items()):
         print("[HOLD] seal %s began and never completed" % seal_id)
-        pending_path = os.path.join(root, entry["pending_path"])
-        if not os.path.exists(pending_path):
-            print("[FAIL] pending record %s is gone; this seal cannot be "
-                  "finished mechanically" % entry["pending_path"])
+        errors = []
+        pending = _load_pending(root, entry, errors)
+        for error in errors:
+            print("[FAIL] %s" % error)
+        if pending is None:
             return 1
-        with open(pending_path, encoding="utf-8") as handle:
-            pending = json.load(handle)
         if not apply_it:
             print("       %d manifest row(s), %d index row(s), %d rewrite(s)"
                   % (len(pending["manifest_lines"]),
                      len(pending["index_lines"]), len(pending["edits"])))
             print("       dry run; add --apply to finish it")
             continue
-        if _adopt_own_lock(root, seal_id):
+        adopt_errors = []
+        if _adopt_own_lock(root, seal_id, adopt_errors):
             print("       adopted the writer lock this seal left behind")
+        elif adopt_errors:
+            for error in adopt_errors:
+                print("[FAIL] %s" % error)
+            return 1
         with kblib.runtime_write_lock(
                 root, owner_metadata={"tool": TOOL,
                                       "tool_version": TOOL_VERSION,
                                       "action": "reconcile-seal",
                                       "receipt_id": seal_id},
                 timeout=0.0):
-            _publish(root, pending)
+            with kblib.receipt_append_mutex(root, note="reconcile-seal"):
+                _publish(root, pending)
         print("[PASS] seal %s finished" % seal_id)
     if not apply_it:
         return 0

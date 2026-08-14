@@ -25,6 +25,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -38,6 +39,111 @@ import kblib  # noqa: E402
 import check_queue  # noqa: E402
 import seal_receipts  # noqa: E402
 from test_update_queue import UpdateQueueTests  # noqa: E402
+
+
+# A seal that dies mid-publication must leave a state the tool can finish,
+# not one an operator has to reason about.  Proving that needs a writer that
+# really stops -- an exception unwinds the interpreter and runs cleanup, and
+# the recovery path deliberately refuses to adopt a lock whose owner process
+# is still alive -- so each boundary is injured in a child that calls
+# ``os._exit`` with the lock and journal exactly as a power cut would leave
+# them.
+CRASH_SCRIPT = r'''
+import os, sys
+sys.path.insert(0, %(tools)r)
+sys.path.insert(0, %(tests)r)
+import kblib, check_queue, seal_receipts
+
+root, point = sys.argv[1], sys.argv[2]
+
+
+def die():
+    sys.stdout.flush()
+    os._exit(97)
+
+
+manifest = kblib.RECEIPT_COLD_MANIFEST_PATH
+index = kblib.RECEIPT_COLD_INDEX_PATH
+journal = kblib.RECEIPT_COLD_JOURNAL_PATH
+
+real_publish = seal_receipts._publish
+real_append = seal_receipts._append_lines
+real_atomic = seal_receipts._write_atomic
+real_receipts = kblib.write_receipts_observed
+real_complete = seal_receipts._require_publication_complete
+state = {"segments": 0, "rewrites": 0}
+
+
+def publish(root_, pending):
+    if point == "journal-begin":
+        die()
+    if point == "segments":
+        for row in pending["manifest_rows"]:
+            if row["kind"] != "sealed-receipts":
+                continue
+            full = os.path.join(root_, row["segment"])
+            os.makedirs(os.path.dirname(full), mode=0o700, exist_ok=True)
+            payload = seal_receipts._segment_payload_from_source(
+                root_, row, pending["index_lines"])
+            with open(full, "xb") as handle:
+                handle.write(payload)
+            die()
+    return real_publish(root_, pending)
+
+
+def receipts(path, records, **kwargs):
+    if point == "seal-receipt":
+        die()
+    return real_receipts(path, records, **kwargs)
+
+
+def append(path, lines):
+    if point == "manifest" and path.endswith(os.path.basename(manifest)):
+        die()
+    if point == "torn-index-line" and path.endswith(os.path.basename(index)):
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(lines[0][:20] if lines else "{")
+            handle.flush()
+        die()
+    real_append(path, lines)
+    if point == "index" and path.endswith(os.path.basename(index)):
+        die()
+    if point == "complete" and path.endswith(os.path.basename(journal)):
+        if any('"complete"' in line for line in lines):
+            die()
+
+
+def atomic(path, text):
+    if point == "registers":
+        die()
+    if point == "torn-rewrite":
+        temporary = path + ".seal-rewrite"
+        with open(temporary, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text[:len(text) // 3])
+            handle.flush()
+        die()
+    real_atomic(path, text)
+    state["rewrites"] += 1
+    if point == "rewrite":
+        die()
+
+
+seal_receipts._publish = publish
+seal_receipts._append_lines = append
+seal_receipts._write_atomic = atomic
+seal_receipts._require_publication_complete = real_complete
+kblib.write_receipts_observed = receipts
+
+result = check_queue.validate_runtime(root)
+by_file = seal_receipts.plan_seal(root, result)
+seal_receipts.apply_seal(root, result, by_file,
+                         seal_receipts.SEAL_RECEIPTS_PATH)
+die()
+'''
 
 
 class SealReceiptsTests(UpdateQueueTests):
@@ -273,19 +379,146 @@ class SealReceiptsTests(UpdateQueueTests):
         self.assertEqual([], check_queue.validate_runtime(
             self.root)["writer_locks"])
 
-    # -- interruption -----------------------------------------------------
+    # -- the append that a rewrite must never swallow ---------------------
 
-    def test_an_interrupted_seal_fails_closed_and_reconciles(self):
-        """A begin with no complete is loud, and finishable."""
+    def source_ids(self, relative):
+        path = self.root / relative
+        if not path.exists():
+            return set()
+        return {json.loads(line)["receipt_id"]
+                for line in path.read_text(encoding="utf-8").splitlines()
+                if line.strip()}
+
+    def intruder_row(self, suffix="a"):
+        return json.dumps({
+            "receipt_id": "audit-intruder-20260814T000000Z-%s-0001" % suffix,
+            "check": "probe", "target": ".", "result": "pass",
+            "details": "a cooperating writer appended here",
+            "checked_at": "2026-08-14T00:00:00Z", "tool": "probe",
+            "tool_version": "1.0.0", "invalidated_by": None,
+        }, ensure_ascii=False, sort_keys=True)
+
+    def test_an_append_landing_inside_the_rewrite_window_survives(self):
+        """The reproduction: append after the hash check, before the swap.
+
+        A writer that bypasses the append mutex still must not lose its
+        row.  The rewrite carries the unplanned tail across instead of
+        installing an image computed before it existed.
+        """
         self.close_b1()
         result = check_queue.validate_runtime(self.root)
         by_file = seal_receipts.plan_seal(self.root, result)
-        boom = RuntimeError("power cut after the journal begin")
+        target = sorted(by_file)[0]
+        row = self.intruder_row()
+        original_plan = seal_receipts._plan_payload
+
+        def plan_then_intrude(root, res, files, stamp):
+            planned = original_plan(root, res, files, stamp)
+            with open(self.root / target, "a", encoding="utf-8") as handle:
+                handle.write(row + "\n")
+            return planned
+
+        seal_receipts._plan_payload = plan_then_intrude
+        try:
+            receipt = seal_receipts.apply_seal(
+                self.root, result, by_file,
+                seal_receipts.SEAL_RECEIPTS_PATH)
+        finally:
+            seal_receipts._plan_payload = original_plan
+        self.assertIsNotNone(receipt)
+        self.assertIn(json.loads(row)["receipt_id"], self.source_ids(target),
+                      "a seal may remove only the rows it sealed")
+
+    def test_an_append_cannot_start_while_a_seal_holds_the_mutex(self):
+        """The protocol itself: both sides take one exclusive marker."""
+        self.close_b1()
+        register = ".cambium/receipts/concurrent.jsonl"
+        row = self.intruder_row("b")
+        script = (
+            "import json, sys; sys.path.insert(0, %r)\n"
+            "import kblib\n"
+            "kblib.write_receipts(%r, [json.loads(%r)])\n"
+            % (str(TOOLS), str(self.root / register), row))
+        started = []
+
+        def plan_then_race(root, res, files, stamp):
+            planned = seal_receipts._plan_payload_original(
+                root, res, files, stamp)
+            started.append(subprocess.Popen(
+                [sys.executable, "-c", script],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT))
+            time.sleep(0.4)
+            self.assertIsNone(started[0].poll(),
+                              "an appender must wait for the seal, not race it")
+            return planned
+
+        seal_receipts._plan_payload_original = seal_receipts._plan_payload
+        seal_receipts._plan_payload = plan_then_race
+        try:
+            result = check_queue.validate_runtime(self.root)
+            by_file = seal_receipts.plan_seal(self.root, result)
+            self.assertIsNotNone(seal_receipts.apply_seal(
+                self.root, result, by_file,
+                seal_receipts.SEAL_RECEIPTS_PATH))
+        finally:
+            seal_receipts._plan_payload = \
+                seal_receipts._plan_payload_original
+        self.assertEqual(0, started[0].wait(timeout=30))
+        self.assertIn(json.loads(row)["receipt_id"],
+                      self.source_ids(register))
+        self.assertEqual("free", kblib.receipt_append_mutex_state(self.root))
+
+    # -- interruption: one crash per durable boundary ----------------------
+
+    CRASH_POINTS = (
+        "journal-begin", "segments", "seal-receipt", "manifest", "index",
+        "torn-index-line", "registers", "torn-rewrite", "rewrite", "complete",
+    )
+
+    def crash_child(self, point):
+        """Seal in a child process that dies at one durable boundary."""
+        script = CRASH_SCRIPT % {"tools": str(TOOLS), "tests": str(TESTS)}
+        completed = subprocess.run(
+            [sys.executable, "-c", script, str(self.root), point],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False)
+        self.assertNotEqual(0, completed.returncode, completed.stdout)
+        return completed
+
+    def assert_recovers(self, point):
+        interrupted = check_queue.validate_runtime(self.root)
+        if point != "complete":
+            self.assertTrue(
+                any("never completed" in error or "interrupted seal" in error
+                    for error in interrupted["errors"]),
+                "%s: %r" % (point, interrupted["errors"]))
+        completed = seal_receipts.main(
+            [str(self.root), "--reconcile", "--apply"])
+        self.assertEqual(0, completed, point)
+        finished = check_queue.validate_runtime(self.root)
+        self.assertEqual([], finished["errors"], point)
+        self.assertTrue(self.sealed_ids(), point)
+        self.assertEqual(0, self.seal("--verify").returncode, point)
+
+    def test_every_durable_boundary_recovers(self):
+        """One crash per publication step; each must reconcile to clean."""
+        for point in self.CRASH_POINTS:
+            with self.subTest(point=point):
+                self.setUp()
+                self.close_b1()
+                self.crash_child(point)
+                self.assert_recovers(point)
+
+    def test_reconcile_refuses_while_the_writer_is_alive(self):
+        """A live seal is not a corpse; --reconcile will not rob it."""
+        self.close_b1()
+        result = check_queue.validate_runtime(self.root)
+        by_file = seal_receipts.plan_seal(self.root, result)
+        original = seal_receipts._publish
 
         def explode(root, pending):
-            raise boom
+            raise RuntimeError("stop after the journal begin")
 
-        original = seal_receipts._publish
         seal_receipts._publish = explode
         try:
             with self.assertRaises(RuntimeError):
@@ -294,17 +527,163 @@ class SealReceiptsTests(UpdateQueueTests):
                     seal_receipts.SEAL_RECEIPTS_PATH)
         finally:
             seal_receipts._publish = original
-        interrupted = check_queue.validate_runtime(self.root)
-        self.assertTrue(any("never completed" in error
-                            for error in interrupted["errors"]),
-                        interrupted["errors"])
-        self.assertTrue(interrupted["writer_locks"],
-                        "an interrupted writer leaves its lock standing")
-        self.assertEqual(0, seal_receipts.main(
+        self.assertEqual(1, seal_receipts.main(
+            [str(self.root), "--reconcile", "--apply"]),
+            "the owner pid is this still-running process")
+
+    def test_a_tampered_pending_record_fails_before_the_first_write(self):
+        self.close_b1()
+        self.crash_child("journal-begin")
+        pending_dir = self.root / seal_receipts.COLD_PENDING_PREFIX
+        record = sorted(pending_dir.glob("*.json"))[0]
+        data = json.loads(record.read_text(encoding="utf-8"))
+        data["edits"] = []
+        record.write_text(json.dumps(data, ensure_ascii=False,
+                                     sort_keys=True), encoding="utf-8")
+        self.assertEqual(1, seal_receipts.main(
             [str(self.root), "--reconcile", "--apply"]))
-        finished = check_queue.validate_runtime(self.root)
-        self.assertEqual([], finished["errors"])
-        self.assertTrue(self.sealed_ids())
+        self.assertEqual(set(), self.sealed_ids())
+
+    # -- born-cold evidence ------------------------------------------------
+
+    ATTESTATION_REGISTER = ".cambium/receipts/fixture.jsonl"
+    CRAFTED_EVIDENCE = "%s/crafted-B1.jsonl" % kblib.RECEIPT_COLD_EVIDENCE_PREFIX
+
+    def stock_evidence(self, payload):
+        """Bind the real attestation to evidence with bytes worth tampering.
+
+        The fixture's close accepts nothing, so its evidence file is empty
+        and a same-length edit has nothing to edit.  The payload here holds
+        no newline, so the attestation's record count stays the zero its
+        accepted-candidate count already declares and only the two fields
+        under test -- byte length and content hash -- change.
+        """
+        target = self.root / self.CRAFTED_EVIDENCE
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+        register = self.root / self.ATTESTATION_REGISTER
+        records = [json.loads(line) for line in
+                   register.read_text(encoding="utf-8").splitlines()
+                   if line.strip()]
+        bound = 0
+        for record in records:
+            if "candidate_evidence_path" not in record:
+                continue
+            record["candidate_evidence_path"] = self.CRAFTED_EVIDENCE
+            record["candidate_evidence_sha256"] = kblib.sha256_bytes(payload)
+            record["candidate_evidence_bytes"] = len(payload)
+            record["candidate_evidence_records"] = payload.count(b"\n")
+            bound += 1
+        self.assertTrue(bound, "the close bundle binds candidate evidence")
+        self.rewrite(self.ATTESTATION_REGISTER,
+                     [json.dumps(record, ensure_ascii=False)
+                      for record in records])
+        return target
+
+    def test_a_same_length_edit_to_close_evidence_fails_closed(self):
+        """Externalized detail is bound by hash, not by length."""
+        self.close_b1()
+        evidence = self.stock_evidence(b'{"acceptance":"accepted"}')
+        self.assertEqual([], check_queue.validate_runtime(
+            self.root)["errors"], "the rebound attestation starts clean")
+        before = evidence.read_bytes()
+        edited = b'{"acceptance":"rejectd"}!'
+        self.assertEqual(len(edited), len(before), "the edit keeps the length")
+        evidence.write_bytes(edited)
+        result = check_queue.validate_runtime(self.root)
+        self.assertTrue(any("candidate evidence file" in error and
+                            "hashes to" in error
+                            for error in result["errors"]), result["errors"])
+
+    def test_tampered_close_evidence_cannot_be_sealed(self):
+        """A seal must not mint a manifest hash for laundered bytes."""
+        self.close_b1()
+        evidence = self.stock_evidence(b'{"acceptance":"accepted"}')
+        evidence.write_bytes(b'{"acceptance":"rejectd"}!')
+        completed = self.seal("--apply")
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertEqual(set(), self.sealed_ids())
+
+    def test_a_seal_of_only_born_cold_evidence_writes_a_valid_namespace(self):
+        """Manifest rows with no projections still need an index file."""
+        self.close_b1()
+        original = seal_receipts.plan_seal
+        seal_receipts.plan_seal = lambda root, result: {}
+        try:
+            result = check_queue.validate_runtime(self.root)
+            self.assertEqual([], result["errors"])
+            receipt = seal_receipts.apply_seal(
+                self.root, result, {}, seal_receipts.SEAL_RECEIPTS_PATH)
+        finally:
+            seal_receipts.plan_seal = original
+        self.assertIsNotNone(receipt)
+        self.assertEqual(0, receipt["index_rows"])
+        self.assertTrue((self.root / kblib.RECEIPT_COLD_INDEX_PATH).exists())
+        self.assertEqual([], check_queue.validate_runtime(
+            self.root)["errors"])
+        self.assertEqual(0, self.seal("--verify").returncode)
+
+    # -- the archive must stay inside the repository -----------------------
+
+    def test_a_symlinked_cold_directory_fails_closed(self):
+        self.close_b1()
+        self.assertEqual(0, self.seal("--apply").returncode)
+        cold = self.root / kblib.RECEIPT_COLD_PREFIX
+        elsewhere = Path(str(self.root) + "-cold-elsewhere")
+        os.rename(cold, elsewhere)
+        os.symlink(elsewhere, cold)
+        result = check_queue.validate_runtime(self.root)
+        self.assertTrue(any("symlink" in error for error in result["errors"]),
+                        result["errors"])
+
+    def test_a_symlinked_segments_directory_fails_closed(self):
+        """An intermediate component is checked, not just the leaf."""
+        self.close_b1()
+        self.assertEqual(0, self.seal("--apply").returncode)
+        segments = self.root / kblib.RECEIPT_COLD_SEGMENT_PREFIX
+        elsewhere = Path(str(self.root) + "-segments-elsewhere")
+        os.rename(segments, elsewhere)
+        os.symlink(elsewhere, segments)
+        result = check_queue.validate_runtime(self.root)
+        self.assertTrue(any("symlink" in error for error in result["errors"]),
+                        result["errors"])
+
+    def test_a_hard_linked_cold_segment_fails_closed(self):
+        """A second name for sealed bytes is a second writer for them."""
+        self.close_b1()
+        self.assertEqual(0, self.seal("--apply").returncode)
+        segment = self.root / self.sealed_segment()
+        os.link(segment, str(segment) + ".twin")
+        result = check_queue.validate_runtime(self.root)
+        self.assertTrue(any("hard link" in error
+                            for error in result["errors"]), result["errors"])
+
+    # -- the writer behind the archive -------------------------------------
+
+    def test_an_unsupported_seal_producer_fails_closed(self):
+        self.close_b1()
+        self.assertEqual(0, self.seal("--apply").returncode)
+        register = self.root / ".cambium/receipts/seal-receipts.jsonl"
+        rows = [json.loads(line) for line in
+                register.read_text(encoding="utf-8").splitlines()
+                if line.strip()]
+        rows[0]["tool_version"] = "0.9.0"
+        self.rewrite(".cambium/receipts/seal-receipts.jsonl",
+                     [json.dumps(row, ensure_ascii=False) for row in rows])
+        result = check_queue.validate_runtime(self.root)
+        self.assertTrue(any("not a supported sealing protocol" in error
+                            for error in result["errors"]), result["errors"])
+        self.assertEqual({}, result["receipt_catalog"].cold)
+
+    def test_verify_fails_while_a_seal_is_only_begun(self):
+        """Manifest-absent is innocent only when the journal is balanced."""
+        self.close_b1()
+        self.crash_child("journal-begin")
+        self.assertFalse(
+            (self.root / kblib.RECEIPT_COLD_MANIFEST_PATH).exists())
+        completed = self.seal("--verify")
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("never completed", completed.stdout)
 
     def test_a_sealed_receipt_refuses_live_field_revalidation(self):
         """The fail-closed rule for consumers without a sealed branch."""

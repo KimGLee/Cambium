@@ -165,10 +165,6 @@
 # inline, and drops the inline accepted_candidate_ids list its 1.8.0-era
 # shape carried; member and failure receipts bind counts and the same
 # evidence file instead of repeating rows.
-# `apply_review_patch.py` (check: conditional_close) executes a K12/12
-# reviewer-issued conditional close: binds finding_id, review_receipt,
-# reviewer_context, executor_id, and the exact before/after page hashes;
-# the post-image hash proves no byte beyond the ruled patch changed.
 # `check_batch_close.py` is the sole close-bundle producer. Its successful
 # publication appends, in order, one distinct `closed_list_<member>` pass
 # receipt for every member of the current producer-era Closed List,

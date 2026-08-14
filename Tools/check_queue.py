@@ -319,6 +319,14 @@ POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset(("1.8.0", "1.9.0"))
 # Producer eras whose close bundles externalize full candidate detail to a
 # born-cold evidence file and keep only counts, the accepted-set fingerprint,
 # and the policy-exception dispositions inline (K12/09 compact evidence).
+# The sealing writer and the protocol versions whose cold archives this
+# validator will vouch for.  Sealing is the one operation that removes bytes
+# from a register, so an archive is exactly as trustworthy as the writer that
+# produced it; a version whose protocol did not exclude concurrent appenders
+# or bind its registers to a receipt cannot be certified after the fact.
+SEAL_TOOL = "seal_receipts"
+SUPPORTED_SEAL_TOOL_VERSIONS = frozenset(("1.2.0",))
+
 COMPACT_CLOSE_EVIDENCE_VERSIONS = frozenset(("1.9.0",))
 SEALED_POLICY_EXCEPTION_FIELDS = frozenset((
     "decision_id", "policy_id", "limit", "scope_kind", "scope_ref",
@@ -1957,6 +1965,53 @@ def _cold_register_rows(lines, label, errors):
     return rows, groups
 
 
+def _cold_path_within_root(root, relative, errors):
+    """Reject a cold path that leaves the repository by any component.
+
+    Checking only the final component is not enough: a symlinked
+    intermediate directory -- ``cold/segments`` pointed somewhere else, or
+    ``cold`` itself -- moves the whole archive outside the repository while
+    every per-file check still passes, and the sealed bytes then live
+    somewhere the repository snapshot does not cover.
+    """
+    root_real = os.path.realpath(root)
+    current = root_real
+    for part in relative.split("/"):
+        if part in ("", ".", ".."):
+            errors.append("cold path %r is not a plain repository path" %
+                          relative)
+            return False
+        current = os.path.join(current, part)
+        if os.path.islink(current):
+            errors.append("cold path %s traverses symlink %s; sealed evidence "
+                          "must live inside the repository it is evidence "
+                          "for (K12/07 fail-closed)" %
+                          (relative, os.path.relpath(current, root_real)))
+            return False
+    resolved = os.path.realpath(os.path.join(root_real, relative))
+    if resolved != current or not resolved.startswith(root_real + os.sep):
+        errors.append("cold path %s resolves outside the repository "
+                      "(K12/07 fail-closed)" % relative)
+        return False
+    return True
+
+
+def _cold_namespace_errors(root, errors):
+    """The cold namespace itself must be a real directory inside the root."""
+    for relative in (kblib.RECEIPT_COLD_PREFIX,
+                     kblib.RECEIPT_COLD_SEGMENT_PREFIX,
+                     kblib.RECEIPT_COLD_EVIDENCE_PREFIX):
+        full = os.path.join(root, relative)
+        if not os.path.exists(full) and not os.path.islink(full):
+            continue
+        if not _cold_path_within_root(root, relative, errors):
+            return False
+        if not os.path.isdir(full):
+            errors.append("cold path %s must be a directory" % relative)
+            return False
+    return True
+
+
 def _cold_manifest_entries(root, rows, bound, errors):
     """Prove each bound manifest row's segment presence and shape."""
     entries = {}
@@ -1995,6 +2050,8 @@ def _cold_manifest_entries(root, rows, bound, errors):
             errors.append("cold manifest segment %s has invalid records" %
                           segment)
             continue
+        if not _cold_path_within_root(root, segment, errors):
+            continue
         segment_path = os.path.join(root, segment)
         try:
             descriptor = os.lstat(segment_path)
@@ -2005,6 +2062,12 @@ def _cold_manifest_entries(root, rows, bound, errors):
             continue
         if os.path.islink(segment_path) or not stat.S_ISREG(descriptor.st_mode):
             errors.append("cold segment %s must be a regular file" % segment)
+            continue
+        if descriptor.st_nlink != 1:
+            errors.append("cold segment %s has %d hard links; a second name "
+                          "for sealed bytes is a second writer for them "
+                          "(K12/07 fail-closed)" %
+                          (segment, descriptor.st_nlink))
             continue
         if descriptor.st_size != size_value:
             errors.append("cold segment %s is %d bytes on disk but the "
@@ -2060,8 +2123,8 @@ def _cold_index_rows(rows, entries, bound, catalog, errors):
     return index, by_segment
 
 
-def _cold_segment_errors(root, entries, by_segment, errors):
-    """Re-hash every sealed segment and every projected record.
+def _cold_verified_records(root, entries, by_segment, errors):
+    """Re-hash every sealed segment and return the projections it proves.
 
     This is the per-run cost sealing does not buy out.  Presence and size
     prove nothing about content: a same-length edit to a sealed verdict
@@ -2069,7 +2132,14 @@ def _cold_segment_errors(root, entries, by_segment, errors):
     read are derived from these bytes.  Measured on a 65 MB adopter
     archive this whole pass costs 0.42s; what sealing actually retires is
     re-deserializing the bodies, a further 1.33s on the same archive.
+
+    The return value is what makes the check load-bearing rather than
+    advisory.  Reporting a hash failure while still handing the projection
+    to consumers would leave the run resolving a receipt it has just proved
+    it cannot vouch for, so an unproven projection is withheld, not warned
+    about.
     """
+    verified = set()
     for segment in sorted(entries):
         entry = entries[segment]
         try:
@@ -2106,6 +2176,9 @@ def _cold_segment_errors(root, entries, by_segment, errors):
                     "at %s line %d; a projection that no longer names its own "
                     "record is an assertion, not evidence (K12/07 "
                     "fail-closed)" % (row["receipt_id"], segment, row["line"]))
+                continue
+            verified.add(row["receipt_id"])
+    return verified
 
 
 def _cold_orphan_segment_errors(root, named, errors):
@@ -2153,11 +2226,20 @@ def _cold_bound_seals(catalog, manifest_groups, index_groups, errors):
                           "never seal (K12/07 fail-closed)" % seal_id)
             continue
         receipt = entry[1]
-        if (receipt.get("check") != "receipt_seal" or
+        if (receipt.get("tool") != SEAL_TOOL or
+                receipt.get("check") != "receipt_seal" or
                 receipt.get("result") != "pass" or
                 receipt.get("invalidated_by") is not None):
             errors.append("cold registers name %s as a seal receipt, but that "
-                          "receipt is not a passing receipt_seal" % seal_id)
+                          "receipt is not a passing %s receipt_seal" %
+                          (seal_id, SEAL_TOOL))
+            continue
+        if receipt.get("tool_version") not in SUPPORTED_SEAL_TOOL_VERSIONS:
+            errors.append(
+                "seal receipt %s was produced by %s %r, which is not a "
+                "supported sealing protocol; a cold archive is only as "
+                "trustworthy as the writer that made it (K12/07 fail-closed)"
+                % (seal_id, SEAL_TOOL, receipt.get("tool_version")))
             continue
         proven = True
         for kind, groups, field in (
@@ -2176,7 +2258,7 @@ def _cold_bound_seals(catalog, manifest_groups, index_groups, errors):
             bound.add(seal_id)
     seen = set(manifest_groups) | set(index_groups)
     for receipt_id, (_relative, receipt) in catalog.items():
-        if (receipt.get("tool") != "seal_receipts" or
+        if (receipt.get("tool") != SEAL_TOOL or
                 receipt.get("check") != "receipt_seal" or
                 receipt.get("result") != "pass" or
                 receipt.get("invalidated_by") is not None):
@@ -2210,6 +2292,9 @@ def _cold_receipt_store(root, errors, catalog):
     # exactly the interruption a namespace-presence short-circuit would
     # have declared clean.
     _cold_journal_errors(root, errors)
+    if not _cold_namespace_errors(root, errors):
+        catalog.cold = store["index"]
+        return store
     if (not os.path.exists(manifest_path) and
             not os.path.exists(index_path) and
             not os.path.isdir(segment_dir)):
@@ -2236,10 +2321,11 @@ def _cold_receipt_store(root, errors, catalog):
     entries, named = _cold_manifest_entries(root, manifest_rows, bound, errors)
     index, by_segment = _cold_index_rows(
         index_rows, entries, bound, catalog, errors)
-    _cold_segment_errors(root, entries, by_segment, errors)
+    verified = _cold_verified_records(root, entries, by_segment, errors)
     _cold_orphan_segment_errors(root, named, errors)
     store["manifest"] = [entries[segment] for segment in sorted(entries)]
-    store["index"] = index
+    store["index"] = {receipt_id: row for receipt_id, row in index.items()
+                      if receipt_id in verified}
     store["seals"] = sorted(bound)
     catalog.cold = store["index"]
     return store
@@ -4893,6 +4979,63 @@ def batch_review_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     return errors
 
 
+def _candidate_evidence_binding_errors(root, label, relative, expected_sha,
+                                       expected_bytes, expected_records):
+    """Prove the born-cold evidence file is the one the attestation bound.
+
+    The attestation carries this file's hash precisely because the full
+    disposition detail was moved out of it; checking only that a file of
+    the right length sits at the path re-creates the hole the externalizing
+    was supposed to be safe under.  A same-length edit to an acceptance row
+    would pass, and the next seal would then hash the edited bytes into the
+    cold manifest and make the edit permanent evidence -- laundering a
+    tamper through the very mechanism that exists to freeze history.  So
+    the bytes are compared on every run, before any seal can adopt them.
+    """
+    errors = []
+    if not _cold_path_within_root(root, relative, errors):
+        return errors
+    full = os.path.join(root, relative)
+    try:
+        descriptor = os.lstat(full)
+    except OSError:
+        return ["%s candidate evidence file %s is missing (K12/07 "
+                "fail-closed)" % (label, relative)]
+    if os.path.islink(full) or not stat.S_ISREG(descriptor.st_mode):
+        return ["%s candidate evidence file %s must be a regular file" %
+                (label, relative)]
+    if descriptor.st_nlink != 1:
+        return ["%s candidate evidence file %s has %d hard links" %
+                (label, relative, descriptor.st_nlink)]
+    try:
+        with open(full, "rb") as handle:
+            payload = handle.read()
+    except OSError as exc:
+        return ["%s candidate evidence file %s is unreadable: %s" %
+                (label, relative, exc)]
+    if expected_bytes is not None and len(payload) != expected_bytes:
+        errors.append("%s candidate evidence file %s is %d bytes on disk but "
+                      "the attestation sealed %d (K12/07 fail-closed)" %
+                      (label, relative, len(payload), expected_bytes))
+    if isinstance(expected_sha, str) and SHA256_RE.fullmatch(expected_sha):
+        actual = kblib.sha256_bytes(payload)
+        if actual != expected_sha:
+            errors.append(
+                "%s candidate evidence file %s hashes to %s but the "
+                "attestation bound %s; externalized detail is evidence only "
+                "while its attestation still names these exact bytes (K12/07 "
+                "fail-closed)" % (label, relative, actual, expected_sha))
+    if (isinstance(expected_records, int) and
+            not isinstance(expected_records, bool)):
+        actual_records = payload.count(b"\n")
+        if actual_records != expected_records:
+            errors.append(
+                "%s candidate evidence file %s holds %d record(s) but the "
+                "attestation sealed %d" %
+                (label, relative, actual_records, expected_records))
+    return errors
+
+
 def _compact_attestation_errors(attestation, attestation_id, item_id,
                                 root=None):
     """Validate a compact-era reviewer attestation (K12/09, 1.9.0+).
@@ -4976,25 +5119,9 @@ def _compact_attestation_errors(attestation, attestation_id, item_id,
                       "accepted_candidate_count=%d" %
                       (label, evidence_records, count))
     if root is not None and evidence_path is not None:
-        full = os.path.join(root, evidence_path)
-        try:
-            descriptor = os.lstat(full)
-        except OSError:
-            errors.append("%s candidate evidence file %s is missing "
-                          "(K12/07 fail-closed)" % (label, evidence_path))
-            descriptor = None
-        if descriptor is not None:
-            if (os.path.islink(full) or
-                    not stat.S_ISREG(descriptor.st_mode)):
-                errors.append("%s candidate evidence file %s must be a "
-                              "regular file" % (label, evidence_path))
-            elif (evidence_bytes is not None and
-                  descriptor.st_size != evidence_bytes):
-                errors.append("%s candidate evidence file %s is %d bytes "
-                              "on disk but the attestation sealed %d "
-                              "(K12/07 fail-closed)" %
-                              (label, evidence_path, descriptor.st_size,
-                               evidence_bytes))
+        errors.extend(_candidate_evidence_binding_errors(
+            root, label, evidence_path, evidence_sha, evidence_bytes,
+            evidence_records))
     dispositions = attestation.get("candidate_dispositions")
     if not isinstance(dispositions, list):
         errors.append("%s candidate_dispositions must be a list carrying "
