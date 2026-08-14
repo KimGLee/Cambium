@@ -729,18 +729,21 @@ This roadmap item does not:
 
 ## Detached State Transaction Protocol
 
-An adopter runtime can live on an execution channel with a hard wall-clock
-cap (a device bridge capping every command at 45 seconds), while a state
-writer's full validation legitimately exceeds it. The 2026-08-13 incident:
-a close transition that could not finish on the device was executed against
-a byte-identical replica of the runtime in another environment and the
-after-image installed back, verified by before/after hashes of the three
-state files and the close gate's repository snapshot binding. The result
-was correct and the user ratified it as a one-time procedural exception —
-explicitly NOT a reusable precedent, because the writer lock taken in the
-replica protects the replica, not the authoritative namespace, and the
-state-file hashes do not cover the receipt append frontier, pending deltas,
-archive moves, or recovery locks.
+An adopter runtime can live on an execution channel that terminates a
+command before a state writer's full validation finishes. During the
+incident, the active `device_bash` tool channel exposed `timeout_ms <=
+45000` and terminated commands at that limit. This is a property of that
+execution channel, not a general device, mount, or bridge guarantee. The
+historical 75-second close duration is unverified. The 2026-08-13
+incident: a close transition that could not finish on the device was
+executed against a byte-identical replica of the runtime in another
+environment and the after-image installed back, verified by before/after
+hashes of the three state files and the close gate's repository snapshot
+binding. The result was correct and the user ratified it as a one-time
+procedural exception — explicitly NOT a reusable precedent, because the
+writer lock taken in the replica protects the replica, not the
+authoritative namespace, and the state-file hashes do not cover the receipt
+append frontier, pending deltas, archive moves, or recovery locks.
 
 Receipt sealing (K12/07) removed the incident's proximate cause; the class
 remains. If detached execution is ever needed again, it must be a protocol,

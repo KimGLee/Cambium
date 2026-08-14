@@ -2,11 +2,11 @@
 
 The incident: an adopter's shared close register reached 63MB because every
 close attempt appended full candidate detail three times over, and the
-close transition re-deserialized all of it on every run -- 75 seconds of
-CPU against a 45-second execution channel.  Sealing is the structural
-answer: verified frozen rows move verbatim into cold segments, thin
-projections keep every ID resolvable, and the hot path never parses the
-archive again.
+close transition re-deserialized all of it on every run.  The close
+transition did not complete through the active execution channel.  Sealing
+is the structural answer: verified frozen rows move verbatim into cold
+segments, thin projections keep every ID resolvable, and the hot path
+never parses the archive again.
 
 The near-miss these tests exist for is the first version of that answer,
 which checked only that each segment was present at its recorded byte
