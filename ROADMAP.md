@@ -727,6 +727,127 @@ This roadmap item does not:
   chain without an external anchor); both detect less than they appear to
   and would read as "closed" when the class is not.
 
+## Detached State Transaction Protocol
+
+An adopter runtime can live on an execution channel with a hard wall-clock
+cap (a device bridge capping every command at 45 seconds), while a state
+writer's full validation legitimately exceeds it. The 2026-08-13 incident:
+a close transition that could not finish on the device was executed against
+a byte-identical replica of the runtime in another environment and the
+after-image installed back, verified by before/after hashes of the three
+state files and the close gate's repository snapshot binding. The result
+was correct and the user ratified it as a one-time procedural exception —
+explicitly NOT a reusable precedent, because the writer lock taken in the
+replica protects the replica, not the authoritative namespace, and the
+state-file hashes do not cover the receipt append frontier, pending deltas,
+archive moves, or recovery locks.
+
+Receipt sealing (K12/07) removed the incident's proximate cause; the class
+remains. If detached execution is ever needed again, it must be a protocol,
+not an improvisation:
+
+- `detached prepare`: acquire the REAL writer lock on the authoritative
+  namespace, record the complete before-image (three state files, every
+  receipt register tail, pending-delta and lock inventory) in the lock
+  owner metadata, and export it.
+- Compute the transaction elsewhere against exactly that before-image.
+- `detached commit`: under the still-held authoritative lock, CAS the full
+  before-image (not just the three state files), append only new receipt
+  bytes, install the explicit after-image, and write prepare/commit/abort
+  receipts exactly as the in-place writers do.
+- Any drift between prepare and commit aborts; the lock and the recorded
+  intent drive the same `--resume-status` recovery every other writer uses.
+
+Do not ship the shortcut form (copy out, compute, copy back with state-file
+hash checks alone); it reads as safe exactly until a concurrent writer,
+receipt append, or archive move lands between the copies.
+
+## Concurrent Sealing Protocol
+
+Receipt sealing ships with a deliberately narrow operating boundary: a declared
+maintenance window with a single writer, stated in K12/07 and enforced socially
+rather than mechanically. The receipt append mutex makes the ordinary accident —
+a checker or writer running beside a seal — fail loudly instead of dropping a
+receipt, and that is all it claims. The following are known and accepted at that
+boundary. None of them blocks the current version; each is listed so that a
+later version widening the boundary knows what it has to close, and so that
+nobody rediscovers them as surprises.
+
+- **Intra-process concurrency.** Mutex acquisition is re-entrant through a
+  module-level counter, which is what lets a writer append its own receipts
+  while holding it. The cost is that threads, and forked children sharing the
+  interpreter state, are not separated from each other.
+- **Bypassing appenders.** The mutex binds only writers that go through
+  `kblib.write_receipts`. Anything appending bytes to a register directly is
+  unaffected. The rewrite's tail-preservation is the second line of defence
+  here, and it is a mitigation, not an exclusion.
+- **Marker aliasing.** `receipt-append.free` / `.held` are ordinary paths under
+  `.cambium/tmp/` and are not themselves checked for symlink or hardlink
+  aliasing before use.
+- **Cross-host writers.** Reclaiming an abandoned mutex rests on the recorded
+  pid being absent from *this* host. That is sound for a crashed local writer
+  and says nothing about a writer elsewhere.
+- **Cold-path containment is detection, not prevention.** The symlink-component
+  and hard-link checks over `cold/` are evaluated once per consistency run.
+  They catch a stale working copy or an ordinary mistake; they do not defend
+  against a party who can change the filesystem between the check and its use.
+- **Coordinated tampering.** The journal binds the pending record by hash and
+  the cold registers are bound by the seal receipt, so editing any one of them
+  alone fails closed. An edit to journal and pending together, by someone who
+  can also write the receipt register, is not defended — consistent with the
+  standing trust boundary that a party controlling the repository, the tools,
+  and all evidence can fabricate an internally consistent history.
+- **Recovery scope.** `--reconcile` deterministically finishes the publication
+  paths the sealing writer implements. Other interruptions are required only to
+  fail closed and preserve recoverable evidence; the operator runbook in
+  `Tools/README.md` covers them, and restoring the pre-seal `.cambium/` copy is
+  always a valid answer.
+
+Widening this boundary means a real concurrent protocol: an epoch or cutover
+that appenders participate in rather than a marker they cooperate with, with the
+exclusion property stated as an invariant and tested against genuine racing
+writers. That is a separate change with its own acceptance criteria, not an
+incremental hardening of the above.
+
+## Machine-readable Review Rulings
+
+A K12/12 substantive review currently ends in prose. Its findings, their
+grades, and the confirmation round's verdict on each are written for a
+person; nothing a gate reads carries them. The 2026-08-13 incident: a
+confirmation round ruled one finding not-closed while issuing the exact
+five-character fix, the fix was applied correctly by hand, and the receipt
+that recorded the batch wrote `result: pass` at top level with the deviation
+admitted only in its prose. The machine gates read the field.
+
+A first attempt at the carrier — a `closed-conditional` ruling executed by a
+tool that verifies pre-image, patch uniqueness and post-image — was written
+and then withdrawn before release, because it verified a shape no producer
+emits: no review tool writes a machine-readable verdict, so the tool's
+`review_receipt` field could only ever have been filled in by the same
+executor it was meant to constrain, and no gate consumed the resulting
+receipt. Shipping it would have repeated the original error one level up:
+a rule whose enforcement is prose.
+
+The order this work has to follow:
+
+- A review round writes machine-readable findings — stable finding ID,
+  grade, target page and the bytes judged — into a review register, as a
+  receipt from the reviewing context.
+- The confirmation round writes a verdict per finding against those IDs,
+  with reviewer identity distinct from the executor's, in the same way
+  `check_batch_close` already requires distinct integrator and reviewer
+  labels.
+- Only then can a conditional close mean anything: an executor tool
+  resolves the reviewer's verdict receipt, refuses one it cannot resolve or
+  that names itself as reviewer, applies the literal patch under the writer
+  lock with pre-image CAS, and writes a receipt a close gate reads.
+- The batch-close gate then refuses to close a batch with an unexecuted
+  `closed-conditional` finding, which is the consumer that makes the whole
+  chain load-bearing.
+
+Until the first step exists, a round-2 not-closed escalates. That is the
+current rule and it is not a gap.
+
 ## Implementation Order
 
 Profile onboarding and typed dependency compilation can progress independently

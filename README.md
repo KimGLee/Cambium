@@ -454,8 +454,12 @@ revisions/fingerprint, pending deltas, and any recorded archive move have been
 reconciled. JSONL receipts are append-only; an uncertain receipt append keeps
 the lock instead of deleting or rewriting evidence. A new task does
 not reuse an old namespace, even when the old task is complete or cancelled;
-an explicit archive/rollover process must handle that history. Cambium does not
-yet automate rollover.
+an explicit archive/rollover process must handle that history. Within one
+task, `Tools/seal_receipts.py` is that process for verified frozen history:
+it moves already-revalidated rows of closed batches into the cold chain
+(`.cambium/receipts/cold/`, K12/07), so hot registers stop growing with
+every close while every byte and receipt ID stays resolvable. Cross-task
+namespace rollover remains manual.
 
 Once the current task is known and valid, inventory Required objects into
 Coverage, declare explicit `batch_specs`, compile the Queue, and run

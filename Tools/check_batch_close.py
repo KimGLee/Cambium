@@ -62,7 +62,7 @@ import profile_contract
 
 
 TOOL = "check_batch_close"
-TOOL_VERSION = "1.8.0"
+TOOL_VERSION = "1.9.0"
 GATE_ID = "batch-close"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -1005,6 +1005,43 @@ def _internal_member_run(run, member):
     }
 
 
+def _write_close_evidence(root, batch, attempt_id, rows):
+    """Persist full candidate detail once, born-cold (K12/09 compact).
+
+    The evidence file carries every disposition row verbatim -- one JSON
+    object per line, sorted keys -- under the cold namespace the hot
+    catalog never deserializes.  The receipts that authorize the close
+    bind it by path, byte size, record count, and content hash, so the
+    detail stays auditable forever without ever again being a per-run
+    parse cost.  Exclusive create: one attempt writes one evidence file.
+    """
+    token = attempt_id.rsplit("-", 2)[-2]
+    relative = "%s/%s-%s.jsonl" % (
+        kblib.RECEIPT_COLD_EVIDENCE_PREFIX, batch, token)
+    full = os.path.join(root, relative)
+    os.makedirs(os.path.dirname(full), mode=0o700, exist_ok=True)
+    payload = "".join(
+        json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
+        for row in rows)
+    encoded = payload.encode("utf-8")
+    with open(full, "x", encoding="utf-8") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return {
+        "candidate_evidence_path": relative,
+        "candidate_evidence_sha256": kblib.sha256_bytes(encoded),
+        "candidate_evidence_bytes": len(encoded),
+        "candidate_evidence_records": len(rows),
+    }
+
+
+def _candidate_set_sha256(candidate_ids):
+    """Fingerprint the exact accepted-candidate ID set, order-free."""
+    joined = "\n".join(sorted(candidate_ids)) + ("\n" if candidate_ids else "")
+    return kblib.sha256_bytes(joined.encode("utf-8"))
+
+
 def _candidate_dispositions(candidates, accepted_ids, accepted_types):
     current_ids = {candidate["candidate_id"] for candidate in candidates}
     current_types = {candidate["candidate_type"] for candidate in candidates}
@@ -1104,13 +1141,20 @@ def _member_receipt(field, run, snapshot, runtime, item, integrator,
         TOOL, TOOL_VERSION, "closed_list_%s" % field, ".", "pass",
         run["details"], sequence, root=runtime.get("root"),
     )
+    type_counts = {}
+    for entry in accepted_candidates:
+        key = entry.get("candidate_type")
+        type_counts[key] = type_counts.get(key, 0) + 1
     receipt.update({
         "task_id": runtime["queue"].get("task_id"),
         "batch_id": item.get("id"),
         "integrator_id": integrator,
         "reviewer_id": reviewer,
         "merged_snapshot_sha256": snapshot,
-        "candidate_evidence": accepted_candidates,
+        "candidate_count": len(accepted_candidates),
+        "candidate_type_counts": dict(sorted(type_counts.items())),
+        "candidate_set_sha256": _candidate_set_sha256(
+            [entry["candidate_id"] for entry in accepted_candidates]),
     })
     if run.get("source_command"):
         receipt["source_command"] = run["source_command"]
@@ -1544,8 +1588,13 @@ def main(argv=None):
                     "task_id": runtime["queue"].get("task_id"),
                     "integrator_id": args.integrator,
                     "reviewer_id": args.reviewer,
-                    "candidate_evidence": all_candidates,
+                    "candidate_count": len(all_candidates),
                 })
+                try:
+                    failure.update(_write_close_evidence(
+                        root, args.batch, attempt_id, all_candidates))
+                except OSError as exc:
+                    failure["candidate_evidence_error"] = str(exc)
                 _append_receipts(receipt_path, [failure])
                 _assert_authoritative_state_unchanged(root, state_anchor)
                 for error in check_errors:
@@ -1571,18 +1620,33 @@ def main(argv=None):
                 args.batch, "pass", args.review_attestation.strip(),
                 len(check_queue.CLOSED_LIST_EVIDENCE_FIELDS) + 1,
                 root=root)
+            accepted_type_counts = {}
+            for entry in accepted:
+                key = entry.get("candidate_type")
+                accepted_type_counts[key] = \
+                    accepted_type_counts.get(key, 0) + 1
+            evidence_binding = _write_close_evidence(
+                root, args.batch, attempt_id, accepted)
             attestation.update({
                 "task_id": runtime["queue"].get("task_id"),
                 "batch_id": args.batch,
                 "integrator_id": args.integrator,
                 "reviewer_id": args.reviewer,
                 "merged_snapshot_sha256": snapshot,
-                "accepted_candidate_ids": [entry["candidate_id"]
-                                           for entry in accepted],
+                "accepted_candidate_count": len(accepted),
                 "accepted_candidate_types": sorted(set(
                     entry["candidate_type"] for entry in accepted)),
-                "candidate_dispositions": accepted,
+                "accepted_by_type_counts": dict(sorted(
+                    accepted_type_counts.items())),
+                "candidate_set_sha256": _candidate_set_sha256(
+                    [entry["candidate_id"] for entry in accepted]),
+                "candidate_dispositions": [
+                    entry for entry in accepted
+                    if str(entry.get("accepted_by", "")).startswith(
+                        "policy-exception:")
+                ],
             })
+            attestation.update(evidence_binding)
             records.append(attestation)
 
             global_review = _make_receipt(
@@ -1665,6 +1729,7 @@ def main(argv=None):
             pre_errors = check_queue.close_gate_receipt_errors(
                 catalog, attempt_id,
                 item_id=args.batch,
+                root=root,
                 task_id=runtime["queue"].get("task_id"),
                 queue_revision=runtime["queue"].get("queue_revision"),
                 queue_state_revision=runtime["queue"].get(
@@ -1705,6 +1770,7 @@ def main(argv=None):
             persisted_errors.extend(check_queue.close_gate_receipt_errors(
                 check_queue.current_receipt_catalog(persisted), attempt_id,
                 item_id=args.batch,
+                root=root,
                 task_id=runtime["queue"].get("task_id"),
                 queue_revision=runtime["queue"].get("queue_revision"),
                 queue_state_revision=runtime["queue"].get("state_revision"),

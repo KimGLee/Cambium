@@ -423,6 +423,23 @@ class CheckBatchCloseTests(unittest.TestCase):
         for _path, receipt in historical_catalog.values():
             if receipt.get("tool") == check_batch_close.TOOL:
                 receipt["tool_version"] = "1.6.0"
+                if receipt.get("check") == "batch_global_review_attestation":
+                    # A 1.6.0-era attestation carried the full inline
+                    # disposition list; simulating that era from a compact
+                    # 1.9.0 body must restore the legacy shape from the
+                    # externalized evidence the compact writer produced.
+                    evidence_rows = []
+                    evidence_path = receipt.get("candidate_evidence_path")
+                    if evidence_path:
+                        evidence_rows = [
+                            json.loads(line)
+                            for line in (self.root / evidence_path)
+                            .read_text(encoding="utf-8").splitlines()
+                            if line.strip()
+                        ]
+                    receipt["candidate_dispositions"] = evidence_rows
+                    receipt["accepted_candidate_ids"] = [
+                        row["candidate_id"] for row in evidence_rows]
         historical_kwargs = {
             "item_id": "B1",
             "task_id": runtime["queue"]["task_id"],

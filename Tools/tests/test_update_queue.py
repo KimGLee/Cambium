@@ -158,11 +158,18 @@ class UpdateQueueTests(unittest.TestCase):
             close_gate["reviewer_attestation_receipt"],
             *close_gate["closed_list_evidence"].values(),
         ]
+
+        def restamp(record):
+            record["tool_version"] = version
+            if (record.get("check") == "batch_global_review_attestation" and
+                    version not in
+                    check_queue.COMPACT_CLOSE_EVIDENCE_VERSIONS):
+                # A pre-compact era carried the full inline disposition
+                # list; this fixture's bundle has zero candidates.
+                record.setdefault("accepted_candidate_ids", [])
+
         for receipt_id in bundle_ids:
-            self.rewrite_receipt_for_negative_test(
-                receipt_id,
-                lambda record: record.__setitem__("tool_version", version),
-            )
+            self.rewrite_receipt_for_negative_test(receipt_id, restamp)
 
     def restamp_close_bundle_as_legacy_1_4(self, close_gate_id):
         """Reproduce the sealed seven-member check_batch_close 1.4 era."""
@@ -185,6 +192,8 @@ class UpdateQueueTests(unittest.TestCase):
             if record.get("receipt_id") in (
                     close_gate_id, close_gate["global_review_receipt"]):
                 record["closed_list_evidence"].pop(omitted_field)
+            if record.get("check") == "batch_global_review_attestation":
+                record.setdefault("accepted_candidate_ids", [])
 
         for receipt_id in bundle_ids:
             self.rewrite_receipt_for_negative_test(receipt_id, restamp)
@@ -243,6 +252,12 @@ class UpdateQueueTests(unittest.TestCase):
             evidence[field] = receipt_id
         attestation_id = "audit-batch-review-attestation-%s-r%d" % (
             batch_id, revision)
+        evidence_relative = "%s/%s-r%d-fixture.jsonl" % (
+            kblib.RECEIPT_COLD_EVIDENCE_PREFIX, batch_id, revision)
+        evidence_path = self.root / evidence_relative
+        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        if not evidence_path.exists():
+            evidence_path.write_bytes(b"")
         self.append_receipt(
             attestation_id, check="batch_global_review_attestation",
             target=batch_id, tool="check_batch_close",
@@ -251,7 +266,13 @@ class UpdateQueueTests(unittest.TestCase):
             integrator_id=integrator_id, reviewer_id=reviewer_id,
             merged_snapshot_sha256=merged_snapshot_sha256,
             details="fixture independent review attestation",
-            accepted_candidate_ids=[], accepted_candidate_types=[],
+            accepted_candidate_count=0, accepted_candidate_types=[],
+            accepted_by_type_counts={},
+            candidate_set_sha256=kblib.sha256_bytes(b""),
+            candidate_evidence_path=evidence_relative,
+            candidate_evidence_sha256=kblib.sha256_bytes(b""),
+            candidate_evidence_bytes=0,
+            candidate_evidence_records=0,
             candidate_dispositions=[])
         global_review_id = "audit-batch-global-review-%s-r%d" % (
             batch_id, revision)
@@ -766,7 +787,7 @@ class UpdateQueueTests(unittest.TestCase):
                 self.assertEqual(1, attempted.returncode, attempted.stdout)
                 self.assertIn(
                     "unsupported tool_version='%s' for current close action; "
-                    "expected one of ['1.8.0']" % version,
+                    "expected one of ['1.9.0']" % version,
                     attempted.stdout)
         self.assertEqual("merge-ready", self.load(
             check_queue.QUEUE_PATH)["required_queue"][0]["state"])

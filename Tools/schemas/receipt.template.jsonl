@@ -102,8 +102,8 @@
 # check_links 1.5.0 / wiki-link-integrity; check_vocab 1.7.0 /
 # frontmatter-vocabulary and priority-quota-distribution;
 # check_residual_content 1.2.0 /
-# registered-residual-content; check_queue 1.16.0 / its registered
-# Required-Queue modes; check_batch_close 1.8.0 / batch-close; check_proof
+# registered-residual-content; check_queue 1.17.0 / its registered
+# Required-Queue modes; check_batch_close 1.9.0 / batch-close; check_proof
 # 1.17.0 / terminal-proof; and adopt_standards 1.5.0 /
 # standards-adoption. Deterministic producers not shown above -- among them
 # check_corpus_plan and record_corpus_acceptance -- follow the same rule. Every receipt
@@ -136,6 +136,35 @@
 #                             gate_receipts
 # Page receipts may be valid historical evidence. They never authorize the
 # lifecycle edge without this current wrapper, and invalidated IDs are rejected.
+# Receipt cold chain (K12/07): `.cambium/receipts/cold/` is never scanned
+# by the hot catalog.  `cold/manifest.jsonl` binds each sealed segment's
+# exact bytes/hash/record count and seal identity; `cold/index.jsonl` keeps
+# one thin projection per sealed receipt (identity + era fields +
+# record_sha256 + segment position); `cold/journal.jsonl` records one
+# begin/complete pair per seal transaction.  Every row of all three names
+# the `seal_receipt` that wrote it.
+#   seal_receipts.py receipt (check: receipt_seal), the cold chain's root
+#   of trust -- it is never sealed:
+#     sealed_segments        : segment paths this transaction wrote
+#     sealed_records         : projections appended
+#     manifest_rows          : manifest rows appended
+#     index_rows             : index rows appended
+#     manifest_rows_sha256   : sha256 of those manifest lines, as written
+#     index_rows_sha256      : sha256 of those index lines, as written
+#     queue_revision / queue_state_revision : seal-time Queue identity
+# What sealing retires is deserialization, not integrity.  Every
+# consistency run re-hashes every segment against the manifest, proves
+# every projection against the exact sealed line it names, and proves both
+# cold registers against the seal receipt's two row hashes; rows of a seal
+# whose binding fails never enter the catalog.  An unreferenced segment, an
+# unfinished seal, or a sealed ID with a hot twin fails the run closed.
+# A 1.9.0+ close bundle externalizes candidate detail: the attestation
+# carries accepted_candidate_count / accepted_by_type_counts /
+# candidate_set_sha256 plus candidate_evidence_path/sha256/bytes/records
+# binding one born-cold evidence file, keeps policy-exception dispositions
+# inline, and drops the inline accepted_candidate_ids list its 1.8.0-era
+# shape carried; member and failure receipts bind counts and the same
+# evidence file instead of repeating rows.
 # `check_batch_close.py` is the sole close-bundle producer. Its successful
 # publication appends, in order, one distinct `closed_list_<member>` pass
 # receipt for every member of the current producer-era Closed List,
