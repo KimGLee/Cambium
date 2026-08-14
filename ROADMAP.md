@@ -745,9 +745,11 @@ writer lock taken in the replica protects the replica, not the
 authoritative namespace, and the state-file hashes do not cover the receipt
 append frontier, pending deltas, archive moves, or recovery locks.
 
-Receipt sealing (K12/07) removed the incident's proximate cause; the class
-remains. If detached execution is ever needed again, it must be a protocol,
-not an improvisation:
+Receipt sealing (K12/07) removed the known unbounded hot-ledger
+deserialization cost, but the surviving measurements do not establish that
+cost as the incident's proximate cause; the detached-execution class remains.
+If detached execution is ever needed again, it must be a protocol, not an
+improvisation:
 
 - `detached prepare`: acquire the REAL writer lock on the authoritative
   namespace, record the complete before-image (three state files, every
