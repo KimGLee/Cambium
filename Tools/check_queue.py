@@ -2641,8 +2641,15 @@ def _consumed_standards_revalidation_keys(item, catalog):
 
 def outstanding_standards_revalidation(result, batch_id):
     """Return plan bindings not yet consumed by a Queue transition."""
-    raw = standards_revalidation_requirements(
-        result.get("root"), result.get("progress") or {}).get(batch_id, [])
+    requirements = result.get("_standards_revalidation_requirements")
+    if not isinstance(requirements, dict):
+        # Public helpers also accept deliberately reduced/test contexts.  Such
+        # a caller has no validation-scoped derivation to reuse, so preserve
+        # the historical standalone behavior instead of requiring a private
+        # field.  ``validate_runtime`` always supplies the derived map once.
+        requirements = standards_revalidation_requirements(
+            result.get("root"), result.get("progress") or {})
+    raw = requirements.get(batch_id, [])
     item = (result.get("items_by_id") or {}).get(batch_id) or {}
     # Consumption is replayed from the immutable historical catalog: the
     # era-filtered current catalog drops receipts whose producer version was
@@ -11631,6 +11638,12 @@ def validate_runtime(root, allowed_open_delta=None,
         coverage,
     )
     errors.extend(task_errors)
+    # Derive the requirements map once from this validation's Progress view
+    # and the adoption-plan bytes observed for it.  Rebuilding it through each
+    # batch helper made a corpus with N batches parse every historical
+    # adoption plan roughly 2N times.
+    standards_revalidation_requirements_by_batch = \
+        standards_revalidation_requirements(root, progress)
     standards_barrier_context = {
         "root": root, "queue": queue, "coverage": coverage,
         "progress": progress, "items_by_id": items_by_id,
@@ -11638,6 +11651,8 @@ def validate_runtime(root, allowed_open_delta=None,
         "current_receipt_catalog": current_catalog,
         "invalidated_evidence_receipt_ids":
             sorted(invalidated_evidence_receipt_ids),
+        "_standards_revalidation_requirements":
+            standards_revalidation_requirements_by_batch,
     }
     standards_revalidation_barriers = {}
     standards_revalidation_outstanding = {}
@@ -11725,6 +11740,8 @@ def validate_runtime(root, allowed_open_delta=None,
             standards_revalidation_barriers,
         "standards_revalidation_outstanding":
             standards_revalidation_outstanding,
+        "_standards_revalidation_requirements":
+            standards_revalidation_requirements_by_batch,
         "writer_locks": writer_locks,
         "managed_deltas": managed_deltas,
         "applied_delta_receipts": applied_delta_receipts,
