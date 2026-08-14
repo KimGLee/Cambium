@@ -722,6 +722,43 @@ class AdoptStandardsTests(unittest.TestCase):
             "governance_revision_sha256" in output or
             "standards_snapshot_sha256_after" in output, output)
 
+    def test_runtime_derives_revalidation_requirements_once(self):
+        """One runtime view must not reparse every plan once per batch."""
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        self.plan(invalidated_receipt=invalidated_gate)
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+
+        original_requirements = \
+            check_queue.standards_revalidation_requirements
+        with mock.patch.object(
+                check_queue, "standards_revalidation_requirements",
+                wraps=original_requirements) as requirements_build:
+            first = check_queue.validate_runtime(self.root)
+            result = check_queue.validate_runtime(self.root)
+
+        self.assertEqual([], first["errors"])
+        self.assertEqual([], result["errors"])
+        self.assertEqual(2, requirements_build.call_count,
+                         "each validation owns exactly one derived map")
+        self.assertIn("_standards_revalidation_requirements", result)
+        self.assertTrue(result["standards_revalidation_outstanding"]["B1"])
+
+        # The cached private view is an optimization, not a new requirement
+        # on helper callers.  Removing it must preserve the exact projection.
+        reduced = {
+            key: value for key, value in result.items()
+            if key != "_standards_revalidation_requirements"
+        }
+        self.assertEqual(
+            check_queue.outstanding_standards_revalidation(result, "B1"),
+            check_queue.outstanding_standards_revalidation(reduced, "B1"),
+        )
+        self.assertEqual(
+            check_queue.current_attempt_evidence_barrier(result, "B1"),
+            check_queue.current_attempt_evidence_barrier(reduced, "B1"),
+        )
+
     def test_semantic_adoption_preserves_history_but_filters_current_use(self):
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         self.plan(invalidated_receipt=invalidated_gate)

@@ -880,6 +880,21 @@ class HubPageAdmissionTests(QueueFixture):
 
 
 class CheckQueueTests(QueueFixture):
+    def test_runtime_reuses_an_empty_revalidation_requirements_map(self):
+        """An empty derived map is cached data, not a cache miss."""
+        original = check_queue.standards_revalidation_requirements
+        with mock.patch.object(
+                check_queue, "standards_revalidation_requirements",
+                wraps=original) as requirements_build:
+            result = check_queue.validate_runtime(self.root)
+            self.assertEqual(
+                [], check_queue.outstanding_standards_revalidation(
+                    result, "B1"))
+
+        self.assertEqual([], result["errors"])
+        self.assertEqual({}, result["_standards_revalidation_requirements"])
+        self.assertEqual(1, requirements_build.call_count)
+
     def test_required_completion_predicate_consumes_only_runtime_result(self):
         result = {
             "errors": [],
