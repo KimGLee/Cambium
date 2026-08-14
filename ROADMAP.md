@@ -814,6 +814,34 @@ exclusion property stated as an invariant and tested against genuine racing
 writers. That is a separate change with its own acceptance criteria, not an
 incremental hardening of the above.
 
+## Sealed Evidence Reachability
+
+Sealing now keeps the aggregate a recorded Queue transition consumed out of the
+cold namespace, gives the consumption replay an explicit sealed branch that
+re-proves the record's own hash at the read, and fails a run closed when a
+recorded consumption's evidence resolves in neither namespace. That closes the
+defect an adopter hit: its transitions stayed hot, what they bind went cold, and
+obligations those transitions had discharged silently reopened while every run
+reported zero errors. Three things about the shape of that defect are not closed.
+
+- **The protected set is still enumerated by hand.** `_hot_reference_ids` lists
+  fields; consumers resolve receipt IDs from wherever they like. The defect was
+  never one missing field — it was that nothing compared the two sets. The
+  regression test now asserts that no reachable hot body resolves a sealed
+  receipt outside a declared sealed-branch field, which catches the whole class,
+  but only over what a fixture reaches. Deriving the protected set from the
+  consumers themselves would remove the enumeration rather than guard it.
+- **Nothing moves a row back.** `seal_receipts.py` moves rows cold and has no
+  rehydration path. Body resolution makes an already-sealed archive survivable
+  for consumers that have a sealed branch; a consumer that genuinely requires a
+  row hot — because it needs a field no projection carries and no branch exists
+  — has no sanctioned repair short of restoring a pre-seal copy.
+- **The projection schema is fixed and identity-only.** Each new body-level
+  consumer therefore faces a binary choice: keep its evidence hot, or re-read
+  the sealed record. A projection whose fields consumers declare against would
+  let the seal carry what its readers actually need, and would make "this field
+  is not in the projection" a planning-time answer rather than a runtime one.
+
 ## Machine-readable Review Rulings
 
 A K12/12 substantive review currently ends in prose. Its findings, their
