@@ -12315,6 +12315,32 @@ def _batch_close_recovery_inventory(result):
     return inventory
 
 
+def _actionable_revalidation_batches(result):
+    """Outstanding batches whose aggregate this producer would still admit.
+
+    ``standards_revalidation_outstanding`` reports every batch whose plan
+    bindings are unconsumed, terminal ones included, because that is a true
+    statement about this runtime's history and dropping it would hide it.
+    A *recommended action* is a different claim: it asserts the named tool
+    would run.  So this filters on
+    :func:`standards_revalidation_producer_eligibility` -- the same
+    predicate ``--require-revalidation`` itself applies -- rather than on a
+    second, parallel notion of eligibility that could drift from it.  A
+    token naming a batch the producer declines is not a recovery action; it
+    is a dead end that masks the real next step for as long as the runtime
+    lives.
+    """
+    outstanding = result.get("standards_revalidation_outstanding") or {}
+    items = result.get("items_by_id") or {}
+    return sorted(
+        (batch_id for batch_id in outstanding
+         if standards_revalidation_producer_eligibility(
+             result, batch_id) is None),
+        key=lambda batch_id: (
+            (items.get(batch_id) or {}).get("order", sys.maxsize), batch_id),
+    )
+
+
 def _resume_recommendation(result, errors):
     locks = result.get("writer_locks") or []
     if locks:
@@ -12367,16 +12393,12 @@ def _resume_recommendation(result, errors):
     if task_state == "completion-candidate":
         return ("preserve the frozen candidate and run the Terminal Audit; "
                 "do not activate new work or initialize a new task")
-    outstanding = result.get("standards_revalidation_outstanding") or {}
-    if outstanding:
-        batch_id = sorted(
-            outstanding,
-            key=lambda value: (
-                (items.get(value) or {}).get("order", sys.maxsize), value),
-        )[0]
+    actionable_revalidation = _actionable_revalidation_batches(result)
+    if actionable_revalidation:
         return ("run the current boundary gates for batch %s, aggregate them "
                 "with check_queue.py --require-revalidation, then consume "
-                "that receipt before merge/apply/close" % batch_id)
+                "that receipt before merge/apply/close" %
+                actionable_revalidation[0])
     if in_flight:
         return ("resume the existing task and reconcile in-flight batch(es) %s "
                 "before starting new work" % ",".join(sorted(in_flight)))
@@ -12453,16 +12475,9 @@ def _resume_next_action(result, errors):
         return "resume-paused-task"
     if task_state == "blocked":
         return "resolve-blocked-task"
-    revalidation = result.get("standards_revalidation_outstanding") or {}
-    if revalidation:
-        ordered = sorted(
-            revalidation,
-            key=lambda batch_id: (
-                (items.get(batch_id) or {}).get("order", sys.maxsize),
-                batch_id,
-            ),
-        )
-        return "run-standards-revalidation:%s" % ordered[0]
+    actionable_revalidation = _actionable_revalidation_batches(result)
+    if actionable_revalidation:
+        return "run-standards-revalidation:%s" % actionable_revalidation[0]
     if task_state == "completion-candidate":
         return "run-terminal-audit"
     merge_ready = sorted(

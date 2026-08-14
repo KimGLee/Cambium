@@ -2942,6 +2942,70 @@ class AdoptStandardsTests(unittest.TestCase):
             "a record references a sealed receipt at a field no sealed "
             "branch covers")
 
+    # ------------------------------------------------------------------
+    # `run-standards-revalidation:<id>` must name a batch its own producer
+    # would admit.  K00/12 gives that Gate the lifecycle cells `queued,
+    # open`, so the token was naming closed batches for an aggregate
+    # `--require-revalidation` refuses outright -- and because exactly one
+    # token is reported per run, it hid every later row behind it.
+    # ------------------------------------------------------------------
+
+    def revalidation_result(self, **item):
+        """A reduced resume context carrying one outstanding batch."""
+        record = {"id": "B1", "order": 1, "state": "queued",
+                  "hold_state": "none"}
+        record.update(item)
+        return {
+            "standards_revalidation_outstanding": {
+                "B1": [{"adoption_id": "SA-001", "boundary_id": "INV-B1",
+                        "required_gate_id": "batch-close"}]},
+            "items_by_id": {"B1": record},
+            "progress": {"task_state": item.pop("task_state", "active")},
+            "queue": {"required_queue": [{"id": "B1"}]},
+        }
+
+    def test_next_action_only_names_a_batch_the_producer_admits(self):
+        cases = (
+            ({"state": "queued"}, True),
+            ({"state": "open", "hold_state": "revalidation-required"}, True),
+            ({"state": "open", "hold_state": "none"}, False),
+            ({"state": "closed"}, False),
+            ({"state": "cancelled"}, False),
+            ({"state": "merge-ready"}, False),
+        )
+        for item, admitted in cases:
+            with self.subTest(**item):
+                result = self.revalidation_result(**item)
+                eligible = (
+                    check_queue.standards_revalidation_producer_eligibility(
+                        result, "B1") is None)
+                self.assertEqual(admitted, eligible)
+                self.assertEqual(
+                    ["B1"] if admitted else [],
+                    check_queue._actionable_revalidation_batches(result))
+                token = check_queue._resume_next_action(result, [])
+                if admitted:
+                    self.assertEqual("run-standards-revalidation:B1", token)
+                else:
+                    self.assertNotIn("run-standards-revalidation", token)
+
+    def test_a_named_batch_always_passes_the_producer_gate(self):
+        """The acceptance condition, stated as the invariant it is."""
+        for state in sorted(check_queue.STATES):
+            for hold in sorted(check_queue.HOLDS):
+                for task_state in ("active", "paused"):
+                    result = self.revalidation_result(
+                        state=state, hold_state=hold, task_state=task_state)
+                    for batch_id in check_queue._actionable_revalidation_batches(
+                            result):
+                        self.assertIsNone(
+                            check_queue
+                            .standards_revalidation_producer_eligibility(
+                                result, batch_id),
+                            "named %s at state=%s hold=%s task=%s, which the "
+                            "producer refuses" %
+                            (batch_id, state, hold, task_state))
+
 
 if __name__ == "__main__":
     unittest.main()
