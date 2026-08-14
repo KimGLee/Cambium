@@ -16,7 +16,7 @@ source_files:
   - kernel/K02 Knowledge Work Construction/05 Global Map Contract.md
   - kernel/K02 Knowledge Work Construction/06 Capability Matrix Contract.md
   - kernel/K02 Knowledge Work Construction/07 Gap Register Contract.md
-source_hash: '80e4f3c20c63'
+source_hash: '296972ecca65'
 ---
 # R12 Targeted and Specialized Audit Card
 

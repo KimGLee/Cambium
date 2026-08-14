@@ -385,8 +385,11 @@ python3 Tools/init_state.py . \
 写入器残留，并对状态文件、receipt、revision/fingerprint、待处理 delta 及任何
 已记录的 archive move 完成核对前，不要删除它。JSONL receipt 仅可追加；不确定的
 receipt append 会保留锁，而不是删除或重写证据。新任务不会复用旧命名空间，
-即使旧任务已完成或已取消；必须通过显式的 archive/rollover 流程处理该历史。
-Cambium 尚未实现 rollover 自动化。
+即使旧任务已完成或已取消；必须通过显式的 archive/rollover 流程处理该历史。在
+同一任务内部，`Tools/seal_receipts.py` 就是已验证冻结历史的那个流程：它把已
+关闭批次的、经过完整复验的收据行移入冷链（`.cambium/receipts/cold/`，见
+K12/07），热账本不再随每次关批增长，而每一个字节与收据 ID 永久可解析。跨任务
+的命名空间滚转仍需人工处理。
 
 确认当前任务已知且有效后，将 Required 对象清点到 Coverage 中，声明显式的
 `batch_specs`，编译 Queue，并在激活批次前运行 `check_queue.py`。简单的

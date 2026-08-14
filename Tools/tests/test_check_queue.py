@@ -343,6 +343,29 @@ class QueueFixture(unittest.TestCase):
         return result, dict(result["blocked"]).get(batch_id, [])
 
 
+class CorpusPlanEraMapTests(unittest.TestCase):
+    """Every supported close era must resolve a corpus-plan child protocol.
+
+    The incident: bumping the batch-close producer to 1.9.0 without adding
+    the 1.8.0 -> 1.7.0 row left every real 1.8.0-era closed bundle that
+    carried a Corpus Planning child failing consistency with "no registered
+    historical child protocol" -- found by an adopter's live runtime, not
+    by any fixture, because the fixtures restamp to older eras.  The map is
+    an invariant of the version set, so pin it as one.
+    """
+
+    def test_every_supported_close_era_resolves_a_child_protocol(self):
+        for version in check_queue.SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS:
+            if version == check_queue.BATCH_CLOSE_TOOL_VERSION:
+                continue
+            self.assertIn(
+                version,
+                check_queue.HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS,
+                "supported historical era %s has no corpus-plan child "
+                "protocol; a real closed bundle of that era would fail "
+                "every consistency run" % version)
+
+
 class ReviewedEraTests(QueueFixture):
     """K02/01: `reviewed` carries the era of the evidence that earned it."""
 

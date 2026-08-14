@@ -544,6 +544,7 @@ def _transition_item(item, args, result):
             check_queue.current_receipt_catalog(result),
             args.close_gate_receipt,
             item_id=item["id"],
+            root=result.get("root"),
             task_id=result["queue"].get("task_id"),
             queue_revision=result["queue"].get("queue_revision"),
             queue_state_revision=result["queue"].get("state_revision"),
@@ -1089,6 +1090,7 @@ def main(argv=None):
                         check_queue.current_receipt_catalog(current),
                         args.close_gate_receipt,
                         item_id=args.id,
+                        root=current.get("root"),
                         task_id=current["queue"].get("task_id"),
                         queue_revision=current["queue"].get("queue_revision"),
                         queue_state_revision=current["queue"].get(

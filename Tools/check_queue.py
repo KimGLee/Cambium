@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.16.0"
+TOOL_VERSION = "1.17.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -194,17 +194,17 @@ LOCK_STATE_FINGERPRINTS = {
 GENERIC_WRITER_TOOLS = frozenset((
     "apply_delta", "update_queue", "compile_queue", "update_task",
     "check_batch_close", "adopt_standards", "register_amendment",
-    "apply_contract_amendment", "apply_task_plan",
+    "apply_contract_amendment", "apply_task_plan", "seal_receipts",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.8.0"
+BATCH_CLOSE_TOOL_VERSION = "1.9.0"
 # Batch-close has a finite historical protocol catalog because its 1.4 era
 # sealed a different Closed List shape.  A current action still accepts only
 # BATCH_CLOSE_TOOL_VERSION; this set is used only while replaying an already
 # recorded closed edge.  Other historical receipts are judged through
 # :func:`accounted_standards_versions` instead of an unbounded version list.
 SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((
-    BATCH_CLOSE_TOOL_VERSION, "1.7.0", "1.6.0", "1.5.0",
+    BATCH_CLOSE_TOOL_VERSION, "1.8.0", "1.7.0", "1.6.0", "1.5.0",
     *LEGACY_CLOSED_LIST_VERSIONS,
 ))
 CORPUS_PLAN_TOOL = "check_corpus_plan"
@@ -213,6 +213,7 @@ CORPUS_PLAN_TOOL_VERSION = "1.7.0"
 # Batch-close 1.7 is the first protocol that consumes corpus-plan 1.7; older
 # supported bundles retain their 1.6 child identity during historical replay.
 HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
+    "1.8.0": "1.7.0",
     "1.7.0": "1.7.0",
     "1.6.0": "1.6.0",
     "1.5.0": "1.6.0",
@@ -314,7 +315,11 @@ POLICY_EXCEPTION_SCOPE_KINDS = frozenset(("task", "repository-snapshot"))
 # is never re-judged against members its era lacked, and it is never allowed
 # to carry evidence its era could not have produced.  A 1.7 bundle claiming a
 # policy-exception disposition is a forgery, not history.
-POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset(("1.8.0",))
+POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset(("1.8.0", "1.9.0"))
+# Producer eras whose close bundles externalize full candidate detail to a
+# born-cold evidence file and keep only counts, the accepted-set fingerprint,
+# and the policy-exception dispositions inline (K12/09 compact evidence).
+COMPACT_CLOSE_EVIDENCE_VERSIONS = frozenset(("1.9.0",))
 SEALED_POLICY_EXCEPTION_FIELDS = frozenset((
     "decision_id", "policy_id", "limit", "scope_kind", "scope_ref",
     "policy_fingerprint", "pages", "total",
@@ -1743,17 +1748,38 @@ def _progress_shape_errors(progress):
     return errors
 
 
+class _Catalog(dict):
+    """The hot receipt catalog plus the sealed-receipt projection index.
+
+    The hot map keeps ``receipt_id -> (relative_path, receipt)`` exactly as
+    before.  ``cold`` carries the K12/07 sealed index --
+    ``receipt_id -> thin projection`` -- so any consumer holding the catalog
+    can resolve sealed existence without a second parameter threading
+    through every historical-validation signature.
+    """
+
+    __slots__ = ("cold",)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cold = {}
+
+
 def _receipt_catalog(root, errors):
     """Load the repository receipt register into one collision-checked map.
 
     Queue references use receipt IDs rather than file paths.  The canonical
     receipt namespace is therefore scanned recursively; malformed JSONL,
     duplicate IDs, symlinks, and hard-linked files make the evidence set
-    unreliable instead of being silently skipped.
+    unreliable instead of being silently skipped.  The one deliberate
+    exception is the ``cold/`` namespace: sealed segments and born-cold
+    close evidence are never deserialized on the hot path -- that is the
+    entire point of sealing -- and their integrity is carried by the cold
+    manifest instead (K12/07).
     """
     relative_dir = ".cambium/receipts"
     receipt_dir = os.path.join(root, relative_dir)
-    catalog = {}
+    catalog = _Catalog()
     if not os.path.exists(receipt_dir):
         return catalog
     if not os.path.isdir(receipt_dir) or os.path.islink(receipt_dir):
@@ -1764,6 +1790,10 @@ def _receipt_catalog(root, errors):
         safe_dirs = []
         for name in sorted(dirnames):
             full = os.path.join(dirpath, name)
+            if dirpath == receipt_dir and name == "cold":
+                # The cold namespace is loaded by _cold_receipt_store from
+                # its manifest and index, never by this recursive scan.
+                continue
             if os.path.islink(full):
                 errors.append("receipt namespace contains symlink directory %s" %
                               os.path.relpath(full, root))
@@ -1818,6 +1848,401 @@ def _receipt_catalog(root, errors):
                     continue
                 catalog[receipt_id] = (relative, receipt)
     return catalog
+
+
+def _cold_register_lines(path, label, errors):
+    """Read one append-only cold register as exact lines, or None."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            content = handle.read()
+    except (OSError, UnicodeError) as exc:
+        errors.append("cannot read %s: %s" % (label, exc))
+        return None
+    if content and not content.endswith("\n"):
+        errors.append("%s does not end with a newline; a truncated append "
+                      "leaves the cold chain unprovable (K12/07 fail-closed)"
+                      % label)
+        return None
+    return content.splitlines()
+
+
+def _cold_group_sha256(lines):
+    """Hash one seal's contiguous register rows exactly as written."""
+    payload = "".join(line + "\n" for line in lines)
+    return kblib.sha256_bytes(payload.encode("utf-8"))
+
+
+def _cold_journal_errors(root, errors):
+    """Every seal transaction must have reached its ``complete`` row.
+
+    The journal is what makes an interrupted seal loud.  ``begin`` lands
+    before the first segment byte and ``complete`` lands after the hot
+    rewrites, so an unmatched ``begin`` means a writer died mid-transaction
+    and the operator must reconcile it against the recorded fingerprints
+    rather than let a half-sealed archive validate.
+    """
+    journal_path = os.path.join(root, kblib.RECEIPT_COLD_JOURNAL_PATH)
+    if not os.path.exists(journal_path):
+        return
+    if not os.path.isfile(journal_path) or os.path.islink(journal_path):
+        errors.append("cold journal must be a regular file")
+        return
+    lines = _cold_register_lines(journal_path, "cold journal", errors)
+    if lines is None:
+        return
+    open_seals = {}
+    for line_number, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError as exc:
+            errors.append("malformed cold journal line %d: %s" %
+                          (line_number, exc))
+            continue
+        if not isinstance(entry, dict):
+            errors.append("cold journal line %d must be a JSON object" %
+                          line_number)
+            continue
+        phase = entry.get("phase")
+        seal_id = entry.get("seal_receipt")
+        if phase not in ("begin", "complete") or not _nonempty_string(seal_id):
+            errors.append("cold journal line %d must record phase "
+                          "begin/complete for one seal_receipt" % line_number)
+            continue
+        if phase == "begin":
+            if seal_id in open_seals:
+                errors.append("cold journal opens seal %s twice" % seal_id)
+            open_seals[seal_id] = line_number
+        else:
+            open_seals.pop(seal_id, None)
+    for seal_id, line_number in sorted(open_seals.items(),
+                                       key=lambda pair: pair[1]):
+        errors.append(
+            "cold journal seal %s began at line %d and never completed; an "
+            "interrupted seal must be reconciled against the journal's "
+            "recorded fingerprints before the runtime validates again "
+            "(K12/07 fail-closed)" % (seal_id, line_number))
+
+
+def _cold_register_rows(lines, label, errors):
+    """Parse one cold register into rows plus per-seal raw-line groups.
+
+    Runs before any content check, because which rows count as evidence is
+    decided by the seal binding and not by the rows themselves.
+    """
+    rows = []
+    groups = {}
+    for line_number, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError as exc:
+            errors.append("malformed %s line %d: %s" %
+                          (label, line_number, exc))
+            continue
+        if not isinstance(entry, dict):
+            errors.append("%s line %d must be a JSON object" %
+                          (label, line_number))
+            continue
+        seal_id = entry.get("seal_receipt")
+        if not _nonempty_string(seal_id):
+            errors.append("%s line %d does not name the seal receipt that "
+                          "wrote it; an unattributed cold row has no root of "
+                          "trust (K12/07 fail-closed)" % (label, line_number))
+            continue
+        groups.setdefault(seal_id, []).append(line)
+        rows.append((line_number, seal_id, entry))
+    return rows, groups
+
+
+def _cold_manifest_entries(root, rows, bound, errors):
+    """Prove each bound manifest row's segment presence and shape."""
+    entries = {}
+    named = set()
+    for line_number, seal_id, entry in rows:
+        if seal_id not in bound:
+            continue
+        segment = entry.get("segment")
+        if (not _nonempty_string(segment) or
+                not (segment.startswith(
+                    kblib.RECEIPT_COLD_SEGMENT_PREFIX + "/") or
+                     segment.startswith(
+                    kblib.RECEIPT_COLD_EVIDENCE_PREFIX + "/")) or
+                not segment.endswith(".jsonl") or "/../" in segment):
+            errors.append("cold manifest line %d has invalid segment path %r" %
+                          (line_number, segment))
+            continue
+        named.add(segment)
+        if segment in entries:
+            errors.append("cold manifest repeats segment %s" % segment)
+            continue
+        sha_value = entry.get("segment_sha256")
+        size_value = entry.get("segment_bytes")
+        records = entry.get("records")
+        if not isinstance(sha_value, str) or not SHA256_RE.fullmatch(sha_value):
+            errors.append("cold manifest segment %s has invalid "
+                          "segment_sha256" % segment)
+            continue
+        if (not isinstance(size_value, int) or isinstance(size_value, bool) or
+                size_value < 0):
+            errors.append("cold manifest segment %s has invalid "
+                          "segment_bytes" % segment)
+            continue
+        if (not isinstance(records, int) or isinstance(records, bool) or
+                records < 0):
+            errors.append("cold manifest segment %s has invalid records" %
+                          segment)
+            continue
+        segment_path = os.path.join(root, segment)
+        try:
+            descriptor = os.lstat(segment_path)
+        except OSError:
+            errors.append("cold segment %s is missing; sealed evidence "
+                          "must stay resolvable (K12/07 fail-closed)" %
+                          segment)
+            continue
+        if os.path.islink(segment_path) or not stat.S_ISREG(descriptor.st_mode):
+            errors.append("cold segment %s must be a regular file" % segment)
+            continue
+        if descriptor.st_size != size_value:
+            errors.append("cold segment %s is %d bytes on disk but the "
+                          "manifest sealed %d; sealed bytes may not drift "
+                          "(K12/07 fail-closed)" %
+                          (segment, descriptor.st_size, size_value))
+            continue
+        entries[segment] = entry
+    return entries, named
+
+
+def _cold_index_rows(rows, entries, bound, catalog, errors):
+    """Admit bound projections and bind each to a manifested segment."""
+    index = {}
+    by_segment = {}
+    for line_number, seal_id, entry in rows:
+        if seal_id not in bound:
+            continue
+        receipt_id = entry.get("receipt_id")
+        if not _nonempty_string(receipt_id):
+            errors.append("cold index line %d has no receipt_id" % line_number)
+            continue
+        if receipt_id in catalog:
+            errors.append("sealed receipt_id %s still present in hot "
+                          "register %s; a sealed row must leave the hot "
+                          "file it was sealed from" %
+                          (receipt_id, catalog[receipt_id][0]))
+            continue
+        if receipt_id in index:
+            errors.append("cold index repeats receipt_id %s" % receipt_id)
+            continue
+        segment = entry.get("segment")
+        if segment not in entries:
+            errors.append("cold index receipt %s names unknown segment %r" %
+                          (receipt_id, segment))
+            continue
+        record_sha = entry.get("record_sha256")
+        if (not isinstance(record_sha, str) or
+                not SHA256_RE.fullmatch(record_sha)):
+            errors.append("cold index receipt %s has invalid record_sha256" %
+                          receipt_id)
+            continue
+        record_line = entry.get("line")
+        if (not isinstance(record_line, int) or isinstance(record_line, bool)
+                or record_line < 1 or
+                record_line > entries[segment].get("records", 0)):
+            errors.append("cold index receipt %s names line %r, which is "
+                          "outside segment %s" %
+                          (receipt_id, record_line, segment))
+            continue
+        index[receipt_id] = entry
+        by_segment.setdefault(segment, []).append(entry)
+    return index, by_segment
+
+
+def _cold_segment_errors(root, entries, by_segment, errors):
+    """Re-hash every sealed segment and every projected record.
+
+    This is the per-run cost sealing does not buy out.  Presence and size
+    prove nothing about content: a same-length edit to a sealed verdict
+    would pass a size check silently, and the projections that consumers
+    read are derived from these bytes.  Measured on a 65 MB adopter
+    archive this whole pass costs 0.42s; what sealing actually retires is
+    re-deserializing the bodies, a further 1.33s on the same archive.
+    """
+    for segment in sorted(entries):
+        entry = entries[segment]
+        try:
+            with open(os.path.join(root, segment), "rb") as handle:
+                payload = handle.read()
+        except OSError as exc:
+            errors.append("cold segment %s became unreadable: %s" %
+                          (segment, exc))
+            continue
+        if kblib.sha256_bytes(payload) != entry["segment_sha256"]:
+            errors.append("cold segment %s does not match the hash the "
+                          "manifest sealed; sealed bytes may not change "
+                          "(K12/07 fail-closed)" % segment)
+            continue
+        if payload.count(b"\n") != entry["records"]:
+            errors.append("cold segment %s holds %d records but the manifest "
+                          "sealed %d" %
+                          (segment, payload.count(b"\n"), entry["records"]))
+            continue
+        rows = by_segment.get(segment)
+        if not rows:
+            continue
+        try:
+            lines = payload.decode("utf-8").splitlines(keepends=True)
+        except UnicodeError as exc:
+            errors.append("cold segment %s is not valid UTF-8: %s" %
+                          (segment, exc))
+            continue
+        for row in rows:
+            raw = lines[row["line"] - 1]
+            if kblib.sha256_bytes(raw.encode("utf-8")) != row["record_sha256"]:
+                errors.append(
+                    "cold index receipt %s does not hash to the sealed record "
+                    "at %s line %d; a projection that no longer names its own "
+                    "record is an assertion, not evidence (K12/07 "
+                    "fail-closed)" % (row["receipt_id"], segment, row["line"]))
+
+
+def _cold_orphan_segment_errors(root, named, errors):
+    """A segment file no manifest row names is an interrupted seal.
+
+    Only ``segments/`` is swept.  Born-cold close evidence is written by
+    ``check_batch_close`` at close time and adopted into the manifest by
+    the next seal, so an unmanifested evidence file is a normal interval
+    state -- its integrity is bound by the close attestation that names
+    its path, bytes and hash.
+    """
+    segment_dir = os.path.join(root, kblib.RECEIPT_COLD_SEGMENT_PREFIX)
+    if not os.path.isdir(segment_dir):
+        return
+    for name in sorted(os.listdir(segment_dir)):
+        relative = "%s/%s" % (kblib.RECEIPT_COLD_SEGMENT_PREFIX, name)
+        if relative not in named:
+            errors.append("cold segment file %s is in no manifest row; an "
+                          "unreferenced segment is an interrupted seal, not "
+                          "spare evidence (K12/07 fail-closed)" % relative)
+
+
+def _cold_bound_seals(catalog, manifest_groups, index_groups, errors):
+    """Bind both cold registers to the seal receipt that wrote them.
+
+    Manifest and index are ordinary editable files with no producer of
+    their own; the seal receipt is a receipt, it never seals, and it
+    records the exact bytes of the rows one transaction appended.  That
+    makes the cold chain terminate where every other claim in this runtime
+    terminates -- in the hot receipt register -- instead of in a side table
+    that anyone may rewrite.
+
+    Returns the seal IDs whose rows are proven.  Rows of an unproven seal
+    are not merely reported: they never enter the catalog, so a forged
+    projection cannot resolve for a consumer inside the same run that
+    rejects it.
+    """
+    bound = set()
+    for seal_id in sorted(set(manifest_groups) | set(index_groups)):
+        entry = catalog.get(seal_id)
+        if entry is None:
+            errors.append("cold registers name seal receipt %s, which is "
+                          "absent from the hot catalog; the cold chain's root "
+                          "of trust is its seal receipt and seal receipts "
+                          "never seal (K12/07 fail-closed)" % seal_id)
+            continue
+        receipt = entry[1]
+        if (receipt.get("check") != "receipt_seal" or
+                receipt.get("result") != "pass" or
+                receipt.get("invalidated_by") is not None):
+            errors.append("cold registers name %s as a seal receipt, but that "
+                          "receipt is not a passing receipt_seal" % seal_id)
+            continue
+        proven = True
+        for kind, groups, field in (
+                ("manifest", manifest_groups, "manifest_rows_sha256"),
+                ("index", index_groups, "index_rows_sha256")):
+            recorded = receipt.get(field)
+            actual = _cold_group_sha256(groups.get(seal_id, []))
+            if recorded != actual:
+                proven = False
+                errors.append(
+                    "cold %s rows attributed to seal %s hash to %s but the "
+                    "seal receipt recorded %r; a cold register is evidence "
+                    "only while its seal receipt still binds its bytes "
+                    "(K12/07 fail-closed)" % (kind, seal_id, actual, recorded))
+        if proven:
+            bound.add(seal_id)
+    seen = set(manifest_groups) | set(index_groups)
+    for receipt_id, (_relative, receipt) in catalog.items():
+        if (receipt.get("tool") != "seal_receipts" or
+                receipt.get("check") != "receipt_seal" or
+                receipt.get("result") != "pass" or
+                receipt.get("invalidated_by") is not None):
+            continue
+        if receipt_id not in seen:
+            errors.append("seal receipt %s recorded a seal whose manifest and "
+                          "index rows are both gone; sealed rows are "
+                          "append-only (K12/07 fail-closed)" % receipt_id)
+    return bound
+
+
+def _cold_receipt_store(root, errors, catalog):
+    """Load and fully verify the K12/07 cold chain, fail-closed.
+
+    Sealing moves parse cost off the hot path.  It does not move integrity
+    off it.  Every consistency run re-reads every sealed segment and proves
+    its bytes against the manifest hash, proves each projection against the
+    exact sealed line it names, proves both registers against the seal
+    receipt that wrote them, refuses an unreferenced segment or an
+    unfinished seal transaction, and refuses a sealed ``receipt_id`` that
+    still has a hot twin.  Absence of the whole namespace means nothing is
+    sealed and is not an error.
+    """
+    store = {"manifest": [], "index": {}, "seals": []}
+    manifest_path = os.path.join(root, kblib.RECEIPT_COLD_MANIFEST_PATH)
+    index_path = os.path.join(root, kblib.RECEIPT_COLD_INDEX_PATH)
+    segment_dir = os.path.join(root, kblib.RECEIPT_COLD_SEGMENT_PREFIX)
+    # The journal is checked before anything else, and unconditionally: a
+    # seal that died between its begin row and its first segment byte
+    # leaves no manifest, no index and no segment at all, and that is
+    # exactly the interruption a namespace-presence short-circuit would
+    # have declared clean.
+    _cold_journal_errors(root, errors)
+    if (not os.path.exists(manifest_path) and
+            not os.path.exists(index_path) and
+            not os.path.isdir(segment_dir)):
+        catalog.cold = store["index"]
+        return store
+    for label, path in (("cold manifest", manifest_path),
+                        ("cold index", index_path)):
+        if not os.path.isfile(path) or os.path.islink(path):
+            errors.append("%s must exist as a regular file once the cold "
+                          "namespace exists" % label)
+            catalog.cold = store["index"]
+            return store
+    manifest_lines = _cold_register_lines(manifest_path, "cold manifest",
+                                          errors)
+    index_lines = _cold_register_lines(index_path, "cold index", errors)
+    if manifest_lines is None or index_lines is None:
+        catalog.cold = store["index"]
+        return store
+    manifest_rows, manifest_groups = _cold_register_rows(
+        manifest_lines, "cold manifest", errors)
+    index_rows, index_groups = _cold_register_rows(
+        index_lines, "cold index", errors)
+    bound = _cold_bound_seals(catalog, manifest_groups, index_groups, errors)
+    entries, named = _cold_manifest_entries(root, manifest_rows, bound, errors)
+    index, by_segment = _cold_index_rows(
+        index_rows, entries, bound, catalog, errors)
+    _cold_segment_errors(root, entries, by_segment, errors)
+    _cold_orphan_segment_errors(root, named, errors)
+    store["manifest"] = [entries[segment] for segment in sorted(entries)]
+    store["index"] = index
+    store["seals"] = sorted(bound)
+    catalog.cold = store["index"]
+    return store
 
 
 def _current_item_transition_evidence(item, catalog):
@@ -3055,7 +3480,8 @@ def standards_adoption_plan_errors(
             errors.append("%s receipt_id must be non-empty" % label)
         else:
             invalidated_ids.append(receipt_id)
-            if catalog is not None and receipt_id not in catalog:
+            if (catalog is not None and receipt_id not in catalog and
+                    receipt_id not in (getattr(catalog, "cold", None) or {})):
                 errors.append("%s names unknown receipt %s" %
                               (label, receipt_id))
         for field in ("predicate_ids", "dimension_ids", "boundary_ids",
@@ -4198,12 +4624,39 @@ def _terminal_proof_profile_binding_errors(receipt, receipt_id):
 
 
 def _require_receipt(catalog, receipt_id, label, errors, expected=None):
-    """Resolve one receipt and verify common pass/invalidation bindings."""
+    """Resolve one receipt and verify common pass/invalidation bindings.
+
+    A sealed receipt (K12/07 cold chain) satisfies an existence-only
+    consumer through its thin index projection, which this run has already
+    proved against the sealed record's bytes and against the seal receipt
+    that wrote it.  A consumer that supplies ``expected`` field bindings
+    needs the body, and a sealed body is not re-deserialized on the hot
+    path -- that deserialization is the one cost sealing buys out -- so
+    that combination fails closed here unless the caller went through an
+    explicit sealed branch instead of this resolver.
+    """
     if not _nonempty_string(receipt_id):
         errors.append("%s must identify a receipt" % label)
         return None
     entry = catalog.get(receipt_id)
     if entry is None:
+        cold = getattr(catalog, "cold", None) or {}
+        projection = cold.get(receipt_id)
+        if projection is not None:
+            if not expected:
+                if projection.get("result") != "pass":
+                    errors.append("%s references sealed receipt %s whose "
+                                  "sealed result is %r, not pass" %
+                                  (label, receipt_id,
+                                   projection.get("result")))
+                return None
+            errors.append(
+                "%s requires live field revalidation of receipt %s, but "
+                "that receipt is sealed (K12/07); a sealed body is "
+                "verified at seal time and only its consumers with an "
+                "explicit sealed branch may consume it" %
+                (label, receipt_id))
+            return None
         errors.append("%s references missing receipt %s" % (label, receipt_id))
         return None
     receipt = entry[1]
@@ -4440,7 +4893,153 @@ def batch_review_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     return errors
 
 
+def _compact_attestation_errors(attestation, attestation_id, item_id,
+                                root=None):
+    """Validate a compact-era reviewer attestation (K12/09, 1.9.0+).
+
+    A compact bundle keeps the authorization surface inline -- counts, the
+    per-type counts, the accepted-set fingerprint, and every
+    policy-exception disposition with its sealed decision facts -- and
+    externalizes the full candidate detail to one born-cold evidence file
+    that the hot path never deserializes.  What must therefore hold here:
+    the inline numbers are coherent with each other, the evidence file is
+    bound by path, byte size, record count and content hash, and when a
+    repository root is available the bound file actually exists at exactly
+    its sealed size (fail closed; the full hash is re-proven on
+    dereference and under ``seal_receipts.py --verify``).
+    """
+    errors = []
+    label = "%s declared reviewer attestation %s" % (item_id, attestation_id)
+    count = attestation.get("accepted_candidate_count")
+    if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+        errors.append("%s accepted_candidate_count must be a non-negative "
+                      "integer" % label)
+        count = None
+    accepted_types = attestation.get("accepted_candidate_types")
+    if not isinstance(accepted_types, list) or any(
+            not _nonempty_string(value) for value in accepted_types):
+        errors.append("%s accepted_candidate_types must be a string list" %
+                      label)
+        accepted_types = []
+    if len(accepted_types) != len(set(accepted_types)):
+        errors.append("%s repeats an accepted candidate type" % label)
+    type_counts = attestation.get("accepted_by_type_counts")
+    if not isinstance(type_counts, dict):
+        errors.append("%s accepted_by_type_counts must be a mapping" % label)
+        type_counts = {}
+    else:
+        bad_values = [key for key, value in type_counts.items()
+                      if not isinstance(value, int) or
+                      isinstance(value, bool) or value < 0]
+        if bad_values:
+            errors.append("%s accepted_by_type_counts values must be "
+                          "non-negative integers" % label)
+        if sorted(type_counts) != sorted(set(accepted_types)):
+            errors.append("%s accepted_by_type_counts keys must equal "
+                          "accepted_candidate_types" % label)
+        elif count is not None and not bad_values and \
+                sum(type_counts.values()) != count:
+            errors.append("%s accepted_by_type_counts sum to %d, expected "
+                          "accepted_candidate_count %d" %
+                          (label, sum(type_counts.values()), count))
+    set_sha = attestation.get("candidate_set_sha256")
+    if not isinstance(set_sha, str) or not SHA256_RE.fullmatch(set_sha):
+        errors.append("%s candidate_set_sha256 must be a sha256 fingerprint "
+                      "over the sorted accepted candidate IDs" % label)
+    evidence_path = attestation.get("candidate_evidence_path")
+    evidence_sha = attestation.get("candidate_evidence_sha256")
+    evidence_bytes = attestation.get("candidate_evidence_bytes")
+    evidence_records = attestation.get("candidate_evidence_records")
+    if (not _nonempty_string(evidence_path) or
+            not evidence_path.startswith(
+                kblib.RECEIPT_COLD_EVIDENCE_PREFIX + "/") or
+            not evidence_path.endswith(".jsonl")):
+        errors.append("%s candidate_evidence_path must be a .jsonl file "
+                      "under %s" %
+                      (label, kblib.RECEIPT_COLD_EVIDENCE_PREFIX))
+        evidence_path = None
+    if not isinstance(evidence_sha, str) or not SHA256_RE.fullmatch(
+            evidence_sha):
+        errors.append("%s candidate_evidence_sha256 must be a sha256 "
+                      "fingerprint" % label)
+    if (not isinstance(evidence_bytes, int) or
+            isinstance(evidence_bytes, bool) or evidence_bytes < 0):
+        errors.append("%s candidate_evidence_bytes must be a non-negative "
+                      "integer" % label)
+        evidence_bytes = None
+    if (not isinstance(evidence_records, int) or
+            isinstance(evidence_records, bool) or evidence_records < 0):
+        errors.append("%s candidate_evidence_records must be a non-negative "
+                      "integer" % label)
+    elif count is not None and evidence_records != count:
+        errors.append("%s candidate_evidence_records=%d does not equal "
+                      "accepted_candidate_count=%d" %
+                      (label, evidence_records, count))
+    if root is not None and evidence_path is not None:
+        full = os.path.join(root, evidence_path)
+        try:
+            descriptor = os.lstat(full)
+        except OSError:
+            errors.append("%s candidate evidence file %s is missing "
+                          "(K12/07 fail-closed)" % (label, evidence_path))
+            descriptor = None
+        if descriptor is not None:
+            if (os.path.islink(full) or
+                    not stat.S_ISREG(descriptor.st_mode)):
+                errors.append("%s candidate evidence file %s must be a "
+                              "regular file" % (label, evidence_path))
+            elif (evidence_bytes is not None and
+                  descriptor.st_size != evidence_bytes):
+                errors.append("%s candidate evidence file %s is %d bytes "
+                              "on disk but the attestation sealed %d "
+                              "(K12/07 fail-closed)" %
+                              (label, evidence_path, descriptor.st_size,
+                               evidence_bytes))
+    dispositions = attestation.get("candidate_dispositions")
+    if not isinstance(dispositions, list):
+        errors.append("%s candidate_dispositions must be a list carrying "
+                      "exactly the policy-exception dispositions" % label)
+        dispositions = []
+    for index, disposition in enumerate(dispositions):
+        disposition_label = "%s candidate_dispositions[%d]" % (
+            item_id, index)
+        if not isinstance(disposition, dict):
+            errors.append("%s must be a mapping" % disposition_label)
+            continue
+        candidate_id = disposition.get("candidate_id")
+        candidate_type = disposition.get("candidate_type")
+        if (not _nonempty_string(candidate_id) or
+                not candidate_id.startswith("candidate-sha256:") or
+                not SHA256_RE.fullmatch(candidate_id.replace(
+                    "candidate-sha256:", "sha256:", 1))):
+            errors.append("%s has invalid stable candidate_id" %
+                          disposition_label)
+        if not _nonempty_string(candidate_type) or ":" not in candidate_type:
+            errors.append("%s has invalid candidate_type" % disposition_label)
+        accepted_by = disposition.get("accepted_by")
+        if (not isinstance(accepted_by, str) or
+                not accepted_by.startswith("policy-exception:")):
+            errors.append(
+                "%s a compact attestation carries only policy-exception "
+                "dispositions inline; ordinary dispositions live in the "
+                "bound candidate evidence file" % disposition_label)
+            continue
+        decision_id = accepted_by.split(":", 1)[1]
+        sealed = disposition.get("policy_exception")
+        if not _nonempty_string(decision_id):
+            errors.append("%s has empty policy-exception decision" %
+                          disposition_label)
+        elif not isinstance(sealed, dict):
+            errors.append("%s policy-exception disposition seals no "
+                          "decision facts" % disposition_label)
+        else:
+            errors.extend(_sealed_policy_exception_errors(
+                sealed, decision_id, candidate_type, disposition_label))
+    return errors
+
+
 def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
+                              root=None,
                               queue_revision, queue_state_revision,
                               required_queue_sha256,
                               coverage_ledger_sha256,
@@ -4743,7 +5342,14 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
             "merged_snapshot_sha256": merged_snapshot_sha256,
         },
     )
-    if isinstance(attestation, dict):
+    if (isinstance(attestation, dict) and
+            receipt_version in COMPACT_CLOSE_EVIDENCE_VERSIONS):
+        if not _nonempty_string(attestation.get("details")):
+            errors.append("%s declared reviewer attestation %s has no "
+                          "review statement" % (item_id, attestation_id))
+        errors.extend(_compact_attestation_errors(
+            attestation, attestation_id, item_id, root=root))
+    elif isinstance(attestation, dict):
         if not _nonempty_string(attestation.get("details")):
             errors.append("%s declared reviewer attestation %s has no "
                           "review statement" % (item_id, attestation_id))
@@ -8860,8 +9466,111 @@ def _closed_delta_apply_errors(item, transition, catalog, queue):
     return errors
 
 
+def _closed_bundle_seal_state(item, catalog):
+    """Classify one closed item's evidence trio against the cold index.
+
+    The trio -- batch-close gate, pre-close Queue consistency snapshot, and
+    Coverage delta application -- is sealed together or not at all, because
+    a half-sealed bundle can neither replay the hot revalidation nor claim
+    the sealed short-circuit.  Returns ``"hot"``, ``"sealed"``, or
+    ``"mixed"``.
+    """
+    cold = getattr(catalog, "cold", None) or {}
+    trio = [item.get("close_gate_receipt"),
+            item.get("queue_consistency_receipt"),
+            item.get("delta_apply_receipt")]
+    sealed = [receipt_id for receipt_id in trio
+              if _nonempty_string(receipt_id) and receipt_id in cold]
+    if not sealed:
+        return "hot"
+    if len(sealed) != len([r for r in trio if _nonempty_string(r)]):
+        return "mixed"
+    return "sealed"
+
+
+def _sealed_closed_bundle_errors(item, transition, catalog, queue):
+    """Validate one sealed close bundle through its thin projections.
+
+    Reading a projection is sound here only because ``_cold_receipt_store``
+    has already proved, this run, that each projection hashes to the exact
+    sealed record it names and that the seal receipt which produced it
+    still binds the whole index row set byte for byte.  Without those two
+    proofs a projection would be an editable side table asserting its own
+    correctness, and this function would be reading the claim instead of
+    the evidence.
+
+    Given them, the per-run obligation drops to identity: the projections
+    still name the receipts this item and its close transition bind, with
+    the identities their producers recorded.  Body-level bindings (snapshot
+    hashes, delta hashes, disposition schemas) were proven at seal time
+    against exactly the bytes still on disk, and sealing refuses any bundle
+    whose full frozen-history revalidation does not pass at that moment.
+    """
+    errors = []
+    item_id = item.get("id", "<unknown>")
+    cold = getattr(catalog, "cold", None) or {}
+    close_gate_id = item.get("close_gate_receipt")
+    consistency_id = item.get("queue_consistency_receipt")
+    delta_apply_id = item.get("delta_apply_receipt")
+    expectations = (
+        (close_gate_id, "%s sealed batch-close gate" % item_id, {
+            "tool": BATCH_CLOSE_TOOL,
+            "check": "batch_close_gate",
+            "target": item_id,
+            "batch_id": item_id,
+            "task_id": queue.get("task_id"),
+            "result": "pass",
+        }),
+        (consistency_id, "%s sealed Queue consistency gate" % item_id, {
+            "tool": TOOL,
+            "check": GATE_CHECK,
+            "queue_check_mode": "consistency",
+            "task_id": queue.get("task_id"),
+            "result": "pass",
+        }),
+        (delta_apply_id, "%s sealed delta application" % item_id, {
+            "tool": "apply_delta",
+            "check": "delta_apply",
+            "target": item_id,
+            "batch_id": item_id,
+            "task_id": queue.get("task_id"),
+            "result": "pass",
+        }),
+    )
+    for receipt_id, label, expected in expectations:
+        projection = cold.get(receipt_id)
+        if projection is None:
+            errors.append("%s projection is absent from the cold index" %
+                          label)
+            continue
+        for field, value in expected.items():
+            if projection.get(field) != value:
+                errors.append("%s projection has %s=%r, expected %r" %
+                              (label, field, projection.get(field), value))
+    close_projection = cold.get(close_gate_id) or {}
+    close_version = close_projection.get("tool_version")
+    if close_version not in SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS:
+        errors.append("%s sealed batch-close gate has unsupported producer "
+                      "era %r" % (item_id, close_version))
+    if transition is None:
+        return errors
+    if transition.get("queue_consistency_receipt") != consistency_id:
+        errors.append("%s close transition does not bind Queue consistency "
+                      "receipt %s" % (item_id, consistency_id))
+    if transition.get("close_gate_receipt") != close_gate_id:
+        errors.append("%s close transition does not bind batch-close gate "
+                      "receipt %s" % (item_id, close_gate_id))
+    if transition.get("evidence_receipt") != close_gate_id:
+        errors.append("%s close transition evidence_receipt must be the "
+                      "independent batch-close gate" % item_id)
+    if transition.get("delta_apply_receipt") != delta_apply_id:
+        errors.append("%s close transition does not bind delta application "
+                      "receipt %s" % (item_id, delta_apply_id))
+    return errors
+
+
 def _closed_gate_errors(item, transition, catalog, queue,
-                        accounted_versions=frozenset()):
+                        accounted_versions=frozenset(), root=None):
     """Revalidate the two independent pre-close gates from frozen history."""
     errors = []
     item_id = item.get("id", "<unknown>")
@@ -8912,6 +9621,7 @@ def _closed_gate_errors(item, transition, catalog, queue,
     errors.extend(close_gate_receipt_errors(
         catalog, close_gate_id,
         item_id=item_id,
+        root=root,
         task_id=queue.get("task_id"),
         queue_revision=transition.get("queue_revision"),
         queue_state_revision=transition.get("before_state_revision"),
@@ -9453,12 +10163,24 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
         if not _valid_timestamp(item.get("closed_at")):
             errors.append("%s closed state requires a timezone-aware closed_at" %
                           item_id)
-        errors.extend(_closed_gate_errors(
-            item, transition, catalog, queue, accounted_versions,
-        ))
-        errors.extend(_closed_delta_apply_errors(
-            item, transition, catalog, queue,
-        ))
+        seal_state = _closed_bundle_seal_state(item, catalog)
+        if seal_state == "mixed":
+            errors.append(
+                "%s close bundle is partially sealed; the batch-close "
+                "gate, Queue consistency snapshot, and delta application "
+                "seal together or not at all (K12/07)" % item_id)
+        elif seal_state == "sealed":
+            errors.extend(_sealed_closed_bundle_errors(
+                item, transition, catalog, queue,
+            ))
+        else:
+            errors.extend(_closed_gate_errors(
+                item, transition, catalog, queue, accounted_versions,
+                root=records.get("root"),
+            ))
+            errors.extend(_closed_delta_apply_errors(
+                item, transition, catalog, queue,
+            ))
 
     if state == "cancelled":
         if not _valid_timestamp(item.get("cancelled_at")):
@@ -10051,6 +10773,7 @@ def validate_runtime(root, allowed_open_delta=None,
     except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
         errors.append(str(exc))
         catalog = _receipt_catalog(root, errors)
+        _cold_receipt_store(root, errors, catalog)
         _bind_lock_receipts(writer_locks, catalog)
         _bind_lock_state_phases(writer_locks, {
             "coverage": None, "queue": None, "progress": None,
@@ -10207,6 +10930,7 @@ def validate_runtime(root, allowed_open_delta=None,
         errors.append("Progress required_queue_sha256 does not match current Queue bytes")
 
     catalog = _receipt_catalog(root, errors)
+    cold_store = _cold_receipt_store(root, errors, catalog)
     _bind_lock_receipts(writer_locks, catalog)
     _bind_lock_state_phases(writer_locks, {
         "coverage": coverage_sha,
@@ -10240,10 +10964,14 @@ def validate_runtime(root, allowed_open_delta=None,
     # current-use admission, handoff, reuse, and completion queries consume
     # this adoption-aware view, so history is never rewritten or made invalid
     # merely because it was produced under an older Standards identity.
-    current_catalog = {
+    current_catalog = _Catalog({
         receipt_id: entry for receipt_id, entry in catalog.items()
         if receipt_id not in invalidated_evidence_receipt_ids
-    }
+    })
+    # Sealed history is by definition not current evidence for any
+    # current-use gate; the cold index rides along for existence resolution
+    # only, and _require_receipt refuses field revalidation against it.
+    current_catalog.cold = catalog.cold
     errors.extend(_initial_queue_receipt_errors(
         progress, catalog, queue, queue_sha, coverage_sha,
     ))
@@ -10852,6 +11580,7 @@ def validate_runtime(root, allowed_open_delta=None,
         "queue_sha256": queue_sha, "progress_sha256": progress_sha,
         "remaining": remaining, "items_by_id": items_by_id,
         "receipt_catalog": catalog,
+        "cold_receipts": cold_store,
         "current_receipt_catalog": current_catalog,
         "invalidated_evidence_receipt_ids":
             sorted(invalidated_evidence_receipt_ids),
@@ -11198,6 +11927,7 @@ def _batch_close_recovery_inventory(result):
         candidate_errors.extend(close_gate_receipt_errors(
             catalog, receipt_id,
             item_id=batch,
+            root=result.get("root"),
             task_id=(result.get("queue") or {}).get("task_id"),
             queue_revision=(result.get("queue") or {}).get("queue_revision"),
             queue_state_revision=(result.get("queue") or {}).get(

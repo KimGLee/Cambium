@@ -2075,6 +2075,49 @@ RECEIPT_IDENTITY_FIELDS = ("task_id", "standards_version",
 RUNTIME_STATE_PREFIX = ".cambium/state"
 RUNTIME_QUEUE_PATH = ".cambium/state/required_queue.yaml"
 
+# ---------------------------------------------------------------------------
+# Receipt cold chain (K12/07 Receipt Sealing).
+#
+# ``.cambium/receipts/cold/`` is the one namespace the hot receipt catalog
+# never deserializes.  It holds sealed segments (rows moved verbatim out of
+# hot registers by ``seal_receipts.py``), born-cold close evidence (full
+# candidate detail written once per ``check_batch_close`` run), and three
+# append-only registers that make the cold side resolvable and recoverable:
+# ``manifest.jsonl`` (one entry per segment, binding bytes, hash, record
+# count and seal identity), ``index.jsonl`` (one thin projection per sealed
+# receipt), and ``journal.jsonl`` (one ``begin`` and one ``complete`` row
+# per seal transaction).
+#
+# Sealing moves parse cost off the hot path.  It does NOT move integrity
+# off it: manifest, index and journal are ordinary editable files, so every
+# consistency run re-hashes every segment, proves each projection against
+# the exact sealed line it names, and proves both registers against the
+# seal receipt that produced them.  A projection nothing checks is an
+# assertion, not evidence.  What sealing retires is the re-deserialization
+# of sealed bodies -- measured on a 65 MB adopter archive, hashing costs
+# 0.42s per run and re-parsing the same records would cost a further 1.33s.
+#
+# A consumer that needs live field revalidation of a sealed body fails
+# closed instead of silently passing, because sealing records that exactly
+# that revalidation already ran clean at seal time.
+# ---------------------------------------------------------------------------
+RECEIPT_COLD_PREFIX = ".cambium/receipts/cold"
+RECEIPT_COLD_SEGMENT_PREFIX = ".cambium/receipts/cold/segments"
+RECEIPT_COLD_EVIDENCE_PREFIX = ".cambium/receipts/cold/close-evidence"
+RECEIPT_COLD_MANIFEST_PATH = ".cambium/receipts/cold/manifest.jsonl"
+RECEIPT_COLD_INDEX_PATH = ".cambium/receipts/cold/index.jsonl"
+RECEIPT_COLD_JOURNAL_PATH = ".cambium/receipts/cold/journal.jsonl"
+
+# The thin projection a sealed receipt keeps resolvable without its body.
+# Identity and era fields only: enough for existence checks, identity
+# expectations, and producer-era accounting -- never enough to re-derive a
+# binding that only the sealed body carries, which is the point.
+RECEIPT_COLD_PROJECTION_FIELDS = (
+    "tool", "tool_version", "check", "gate_id", "result", "target",
+    "batch_id", "task_id", "standards_version", "selected_profile_manifest",
+    "queue_check_mode", "checked_at",
+)
+
 # Receipts are produced one per finding, so a large scan may build thousands of
 # them from one unchanged Queue file.  The stat signature keys the cache, so an
 # in-process rewrite of the Queue is observed rather than served from cache.
