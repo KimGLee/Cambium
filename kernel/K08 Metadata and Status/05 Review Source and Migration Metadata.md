@@ -11,6 +11,8 @@
 
 Stable mathematical concepts do not need frequent `last_verified` updates; protocols, prices, products, and security requirements do.
 
+Both fields record completed events. A value later than the freshness run's reference date cannot serve as evidence at that earlier boundary: `Tools/check_freshness.py` reports it as a candidate and does not compute `review_by` from that future baseline.
+
 `first_seen` records the date an emerging topic or source signal first entered the knowledge base; it is not the same as the source's publication date.
 
 ## Freshness And Review Due

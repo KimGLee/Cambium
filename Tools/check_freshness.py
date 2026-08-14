@@ -23,6 +23,8 @@ Method:
   both are missing, the file's modification time is used as the most recent
   substantive modification date (K08/05) and the page is flagged "pending
   first verification" with its computed due date;
+- a selected `last_verified` / `last_reviewed` baseline later than `--as-of`
+  is a candidate rather than future evidence of present freshness;
 - `review_by` = baseline + interval; --as-of (default: today) >= review_by
   counts as overdue;
 - when every scanned file is skipped for lack of a resolvable volatility,
@@ -54,7 +56,7 @@ import compose_vocab
 import profile_admission
 
 TOOL = "check_freshness"
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.4.0"
 
 # Re-verification interval (days) per volatility tier.
 INTERVAL_DAYS = {"fast": 120, "slow": 365, "stable": None}
@@ -190,7 +192,8 @@ def main():
 
     counts = {"files": 0, "excluded": 0, "skipped_lifecycle": 0,
               "unparseable": 0, "skipped_no_volatility": 0, "stable": 0,
-              "fresh": 0, "overdue": 0, "pending_first_verification": 0}
+              "fresh": 0, "overdue": 0, "future_baseline": 0,
+              "pending_first_verification": 0}
     candidates = []  # (prio_rank, -overdue_days, rel, details)
 
     for full, rel in kblib.iter_md_files(root, args.scope):
@@ -226,9 +229,6 @@ def main():
             counts["skipped_no_volatility"] += 1
             continue
         interval = INTERVAL_DAYS[volatility]
-        if interval is None:
-            counts["stable"] += 1
-            continue
 
         priority = str(fm.get("priority") or "")
         prio_rank = PRIORITY_ORDER.get(priority, len(PRIORITY_ORDER))
@@ -244,6 +244,21 @@ def main():
         if baseline is None:
             baseline = parse_date(fm.get("last_reviewed"))
             baseline_field = "last_reviewed"
+        if baseline is not None and baseline > as_of:
+            counts["future_baseline"] += 1
+            details = (
+                "future-dated freshness baseline: %s=%s is later than "
+                "as_of=%s; a completed review or verification event cannot "
+                "provide evidence for an earlier reference date "
+                "(volatility=%s, priority=%s)"
+                % (baseline_field, baseline.isoformat(), as_of.isoformat(),
+                   volatility, prio_disp)
+            )
+            candidates.append((prio_rank, 0, rel_disp, details))
+            continue
+        if interval is None:
+            counts["stable"] += 1
+            continue
         if baseline is None:
             pending_first = True
             baseline = datetime.date.fromtimestamp(os.path.getmtime(full))
@@ -272,7 +287,8 @@ def main():
         else:
             counts["fresh"] += 1
 
-    # Sort: priority (P0 first) > days overdue (largest first) > pending > path
+    # Sort: priority (P0 first) > days overdue (largest first) > invalid
+    # future baseline > pending first verification > path.
     candidates.sort(key=lambda c: (c[0], c[1], c[2]))
 
     receipts = []
@@ -331,7 +347,8 @@ def main():
           "%d retired/merged)" % (as_of.isoformat(), counts["files"],
                                   counts["excluded"],
                                   counts["skipped_lifecycle"]))
-    print("  overdue=%(overdue)d pending_first_verification="
+    print("  overdue=%(overdue)d future_baseline=%(future_baseline)d "
+          "pending_first_verification="
           "%(pending_first_verification)d fresh=%(fresh)d "
           "stable_no_due_date=%(stable)d "
           "skipped_no_volatility=%(skipped_no_volatility)d "
