@@ -762,6 +762,53 @@ Do not ship the shortcut form (copy out, compute, copy back with state-file
 hash checks alone); it reads as safe exactly until a concurrent writer,
 receipt append, or archive move lands between the copies.
 
+## Concurrent Sealing Protocol
+
+Receipt sealing ships with a deliberately narrow operating boundary: a declared
+maintenance window with a single writer, stated in K12/07 and enforced socially
+rather than mechanically. The receipt append mutex makes the ordinary accident —
+a checker or writer running beside a seal — fail loudly instead of dropping a
+receipt, and that is all it claims. The following are known and accepted at that
+boundary. None of them blocks the current version; each is listed so that a
+later version widening the boundary knows what it has to close, and so that
+nobody rediscovers them as surprises.
+
+- **Intra-process concurrency.** Mutex acquisition is re-entrant through a
+  module-level counter, which is what lets a writer append its own receipts
+  while holding it. The cost is that threads, and forked children sharing the
+  interpreter state, are not separated from each other.
+- **Bypassing appenders.** The mutex binds only writers that go through
+  `kblib.write_receipts`. Anything appending bytes to a register directly is
+  unaffected. The rewrite's tail-preservation is the second line of defence
+  here, and it is a mitigation, not an exclusion.
+- **Marker aliasing.** `receipt-append.free` / `.held` are ordinary paths under
+  `.cambium/tmp/` and are not themselves checked for symlink or hardlink
+  aliasing before use.
+- **Cross-host writers.** Reclaiming an abandoned mutex rests on the recorded
+  pid being absent from *this* host. That is sound for a crashed local writer
+  and says nothing about a writer elsewhere.
+- **Cold-path containment is detection, not prevention.** The symlink-component
+  and hard-link checks over `cold/` are evaluated once per consistency run.
+  They catch a stale working copy or an ordinary mistake; they do not defend
+  against a party who can change the filesystem between the check and its use.
+- **Coordinated tampering.** The journal binds the pending record by hash and
+  the cold registers are bound by the seal receipt, so editing any one of them
+  alone fails closed. An edit to journal and pending together, by someone who
+  can also write the receipt register, is not defended — consistent with the
+  standing trust boundary that a party controlling the repository, the tools,
+  and all evidence can fabricate an internally consistent history.
+- **Recovery scope.** `--reconcile` deterministically finishes the publication
+  paths the sealing writer implements. Other interruptions are required only to
+  fail closed and preserve recoverable evidence; the operator runbook in
+  `Tools/README.md` covers them, and restoring the pre-seal `.cambium/` copy is
+  always a valid answer.
+
+Widening this boundary means a real concurrent protocol: an epoch or cutover
+that appenders participate in rather than a marker they cooperate with, with the
+exclusion property stated as an invariant and tested against genuine racing
+writers. That is a separate change with its own acceptance criteria, not an
+incremental hardening of the above.
+
 ## Machine-readable Review Rulings
 
 A K12/12 substantive review currently ends in prose. Its findings, their

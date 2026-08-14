@@ -1973,6 +1973,12 @@ def _cold_path_within_root(root, relative, errors):
     ``cold`` itself -- moves the whole archive outside the repository while
     every per-file check still passes, and the sealed bytes then live
     somewhere the repository snapshot does not cover.
+
+    This is containment detection for an ordinary mistake or a stale
+    working copy, evaluated once per run.  It is not a defence against a
+    party who can change the filesystem between the check and its use;
+    that boundary is stated in K12/07 and the remaining hardening is
+    registered in ROADMAP.md.
     """
     root_real = os.path.realpath(root)
     current = root_real
@@ -2064,6 +2070,10 @@ def _cold_manifest_entries(root, rows, bound, errors):
             errors.append("cold segment %s must be a regular file" % segment)
             continue
         if descriptor.st_nlink != 1:
+            # Detection at validation time, not prevention: a second name
+            # for sealed bytes is a second writer for them, and this run
+            # refuses to vouch for the segment.  It does not stop a party
+            # who can create links from doing so between runs.
             errors.append("cold segment %s has %d hard links; a second name "
                           "for sealed bytes is a second writer for them "
                           "(K12/07 fail-closed)" %

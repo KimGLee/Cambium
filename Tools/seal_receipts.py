@@ -27,13 +27,35 @@ Rows this version never seals: the global transition history, Standards
 adoptions, contract and operational amendments, this tool's own receipts,
 and any receipt bound to a batch that is not terminally closed.
 
-Concurrency and interruption.  The plan is computed from a clean full
-validation, and every byte it was computed from is compared again inside
-the writer lock; any drift aborts before the first write.  Publication is
-journalled: a ``begin`` row and a pending record land before the first
-segment byte and a ``complete`` row lands after the last hot rewrite, so a
-process that dies mid-transaction leaves a state that fails closed and can
-be finished deterministically with ``--reconcile``.
+SUPPORTED OPERATING BOUNDARY -- read before ``--apply``.
+
+Sealing is a MAINTENANCE-WINDOW operation, not a concurrent one.  It is the
+only operation in this runtime that removes bytes from a register, and this
+version does not attempt to be safe against arbitrary concurrent writers.
+``--apply`` may be run only during a declared quiet window, and the operator
+is responsible for confirming beforehand that no other Cambium or adopter
+writer, checker, or receipt appender is running anywhere against this
+repository.
+
+The receipt append mutex (:func:`kblib.receipt_append_mutex`) is retained as
+a guard against accidental concurrent operation.  It makes the common
+mistake fail loudly instead of corrupting evidence.  It is NOT a proof of
+mutual exclusion under arbitrary concurrency, and this tool does not claim
+one: it is re-entrant per process, so it does not separate threads or
+forked children of one process; it binds only writers that go through
+``kblib.write_receipts``; and it does not defend its own marker paths
+against aliasing.  Read it as a seatbelt, not as a concurrency protocol.
+
+Interruption.  The plan is computed from a clean full validation and every
+byte it was computed from is compared again inside the writer lock, so
+drift aborts before the first write.  Publication is journalled: a
+``begin`` row and a hash-bound pending record land before the first segment
+byte, and ``complete`` lands only after every postcondition is re-proved.
+``--reconcile --apply`` is AUTOMATIC RECOVERY OVER THE IMPLEMENTED PATHS --
+the publication steps this tool itself performs.  Any other interruption is
+required only to fail closed and preserve recoverable evidence; finishing
+it is an operator task, and the runbook is in ``Tools/README.md`` under
+"Sealing maintenance window and recovery runbook".
 
 Scope (v1 seal classes):
   close-bundles   rows in shared registers whose ``batch_id``/``target``
@@ -744,12 +766,16 @@ def _require_unchanged(root, planned, by_file, before_tree):
 def apply_seal(root, result, by_file, receipts_path, before_tree=None):
     """Seal under both locks, planning only once appends are excluded.
 
-    The receipt append mutex is taken before the plan is read, not after.
-    A seal removes bytes from a register, so a receipt appended between the
-    read and the rewrite is dropped -- and dropped invisibly, because the
-    post-seal validation reads the evidence set the row is now missing
-    from.  Comparing hashes on either side of that window narrows it and
-    cannot close it; excluding the appender does.  Lock order is always
+    Maintenance-window operation: the caller is responsible for having
+    established that no other writer, checker or appender is running.
+
+    The receipt append mutex is taken before the plan is read, not after,
+    because a receipt appended between the read and the rewrite would be
+    dropped -- and dropped invisibly, since the post-seal validation reads
+    the evidence set the row is now missing from.  Taking it early makes
+    the ordinary version of that mistake fail rather than corrupt; it does
+    not make the tool safe to run beside an active writer, and nothing here
+    should be read as claiming that.  Lock order is always
     runtime_write_lock then receipt_append_mutex.
     """
     if before_tree is None:
@@ -1004,15 +1030,20 @@ def reconcile(root, apply_it):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Seal verified frozen receipt history (K12/07)")
+        description="Seal verified frozen receipt history (K12/07). "
+                    "--apply is a maintenance-window operation: run it only "
+                    "with no other Cambium or adopter writer, checker or "
+                    "receipt appender active against this repository.")
     parser.add_argument("root")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--verify", action="store_true",
                         help="re-prove every sealed segment, projection and "
                              "seal-receipt binding, then exit")
     parser.add_argument("--reconcile", action="store_true",
-                        help="finish an interrupted seal transaction from "
-                             "its journal and pending record")
+                        help="finish an interrupted seal over the "
+                             "publication paths this tool implements; other "
+                             "interruptions fail closed and are resolved by "
+                             "the runbook in Tools/README.md")
     parser.add_argument("--receipts", default=SEAL_RECEIPTS_PATH)
     args = parser.parse_args(argv)
     root = os.path.realpath(os.path.abspath(args.root))
@@ -1049,6 +1080,10 @@ def main(argv=None):
     if not args.apply:
         print("dry run; add --apply to seal %d receipt(s)" % total)
         return 0
+    print("[MAINTENANCE] --apply assumes a quiet window: no other Cambium or "
+          "adopter writer, checker or receipt appender may be running. The "
+          "append mutex guards against the accident, not against arbitrary "
+          "concurrency.")
     receipt = apply_seal(root, result, by_file, args.receipts, before_tree)
     if receipt is None:
         print("nothing sealed")

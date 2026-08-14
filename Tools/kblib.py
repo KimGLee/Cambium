@@ -2259,11 +2259,25 @@ def validate_receipt_output_path(path):
 # runtime has to survive refuse ``unlink``: a lock directory acquired there
 # can be created but never released.  Renaming one marker file between
 # ``.free`` and ``.held`` is atomic on every filesystem in play and needs no
-# deletion.  An abandoned mutex is deliberately NOT broken automatically --
-# the same fail-closed rule the writer lock follows -- because a premature
-# break is exactly the silent-loss bug this exists to prevent; recovery is
-# an operator renaming ``.held`` back to ``.free`` after proving no writer
-# remains.
+# deletion.
+#
+# WHAT THIS IS AND IS NOT.  Sealing is a maintenance-window operation
+# (``seal_receipts.py``), and this mutex is the guard that makes the common
+# accident -- running a checker or a writer beside a seal -- fail loudly
+# instead of silently dropping a receipt.  It is NOT a proof of mutual
+# exclusion under arbitrary concurrency, and nothing in this runtime should
+# be read as claiming one:
+#
+#   * acquisition is re-entrant through a module-level counter, so it does
+#     not separate threads or forked children of a single process;
+#   * it binds only appenders that go through :func:`write_receipts`;
+#   * the marker paths themselves are not defended against aliasing;
+#   * an abandoned mutex is reclaimed on proof that its recorded pid is
+#     gone, which is sound for a crashed local writer and says nothing
+#     about a writer on another host.
+#
+# The supported operating boundary is a declared quiet window with a single
+# writer.  Remaining hardening is registered in ROADMAP.md.
 #
 # Lock order is always runtime_write_lock -> receipt_append_mutex.  Nothing
 # acquires them the other way round, and re-entrant acquisition inside one
@@ -2310,7 +2324,11 @@ def _receipt_mutex_record(note):
 @contextmanager
 def receipt_append_mutex(root, note="receipt-append", timeout=60.0,
                          poll_interval=0.02):
-    """Hold the one mutex every receipt append and every seal rewrite takes."""
+    """Guard receipt appends against a maintenance-window seal.
+
+    A cooperating-writer seatbelt, not a concurrency protocol: see the
+    section comment above for exactly what it does and does not exclude.
+    """
     global _RECEIPT_APPEND_DEPTH
     if _RECEIPT_APPEND_DEPTH > 0:
         _RECEIPT_APPEND_DEPTH += 1
@@ -2582,11 +2600,13 @@ def write_receipts(path, receipts, exclusive=False):
     :func:`runtime_write_lock` for the full transaction.
 
     Every managed append also takes :func:`receipt_append_mutex` for its
-    duration.  Two appends never needed to exclude each other, but a seal
-    rewrites a register, and an append landing inside that rewrite's window
-    is lost with no trace in the evidence set the post-seal validation
-    reads.  The mutex is the shared protocol both sides take; it is
-    re-entrant, so a writer already holding it appends normally.
+    duration.  Two appends never needed to exclude each other, but a
+    maintenance-window seal rewrites a register, and an append landing
+    inside that rewrite's window is lost with no trace in the evidence set
+    the post-seal validation reads.  The mutex is the guard both sides
+    take against that accident; it is re-entrant, so a writer already
+    holding it appends normally.  It is not a general concurrency
+    protocol -- see its own section comment for the boundary.
     """
     if not path:
         return
