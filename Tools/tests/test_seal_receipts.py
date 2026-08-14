@@ -724,5 +724,20 @@ class SealReceiptsTests(UpdateQueueTests):
         self.assertIn("nothing sealable", completed.stdout)
 
 
+def load_tests(loader, standard_tests, pattern):
+    """Collect this module's seal tests without replaying its fixture tests.
+
+    ``SealReceiptsTests`` inherits ``UpdateQueueTests`` for its transaction
+    fixture and helpers.  Default discovery also collects the imported base
+    class and every inherited ``test_*`` method, so the update-queue suite ran
+    twice here in addition to its canonical run in ``test_update_queue.py``.
+    Only methods declared by this subclass are seal-specific coverage.
+    """
+    names = [
+        name for name in loader.getTestCaseNames(SealReceiptsTests)
+        if name in SealReceiptsTests.__dict__]
+    return loader.suiteClass(SealReceiptsTests(name) for name in names)
+
+
 if __name__ == "__main__":
     unittest.main()
