@@ -25,6 +25,7 @@ What sealing is NOT: deletion, redaction, or a second chance.  A sealed row
 that later goes missing or changes fails every consistency run closed.
 Rows this version never seals: the global transition history, Standards
 adoptions, contract and operational amendments, this tool's own receipts,
+the Standards-revalidation aggregate a recorded Queue transition consumed,
 and any receipt bound to a batch that is not terminally closed.
 
 SUPPORTED OPERATING BOUNDARY -- read before ``--apply``.
@@ -82,7 +83,7 @@ import kblib
 import check_queue
 
 TOOL = "seal_receipts"
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.3.0"
 SEAL_RECEIPTS_PATH = ".cambium/receipts/seal-receipts.jsonl"
 COLD_PENDING_PREFIX = ".cambium/receipts/cold/pending"
 RECEIPTS_ROOT = ".cambium/receipts"
@@ -153,15 +154,52 @@ def _closed_bundle_trios(result, closed):
     return trio_ids
 
 
+def _transition_bound_aggregates(catalog, transition_id):
+    """Aggregates a transition binds that a later replay reads field by field.
+
+    A transition receipt is not the only thing a transition binds.  The
+    Standards-revalidation aggregate it consumed is re-read on every run to
+    replay which plan bindings that batch already discharged, and that
+    replay needs the *body*: the consumed keys live in
+    ``revalidation_bindings`` and the retraction test reads
+    ``invalidated_by``, neither of which a cold projection carries.
+
+    Sealing these was the defect this rule exists to prevent.  It left the
+    transitions hot and moved what they bind, so the replay stopped
+    resolving them and reopened bindings a Queue transition had legitimately
+    discharged -- on batches by then closed, which
+    ``--require-revalidation`` refuses, so nothing could ever discharge them
+    again.  ``check_queue`` now also resolves these through an explicit
+    sealed branch, which repairs an archive already in that state; keeping
+    them hot is what stops a new seal from depending on the repair.
+
+    Deliberately narrow.  The other receipt IDs a transition names --
+    ``evidence_receipt``, the close bundle, and the ``revalidation_receipts``
+    an ``invalidation`` record lists -- have existence-only or
+    identity-only consumers that the projection already serves through
+    ``_require_receipt``.  Keeping those hot would give up sealing for
+    references that are not broken; what draws this boundary correctly is
+    the reachability assertion in the tests, not a wider guess here.
+    """
+    entry = catalog.get(transition_id)
+    transition = entry[1] if entry is not None else None
+    if not isinstance(transition, dict):
+        return ()
+    value = transition.get("standards_revalidation_receipt")
+    return {value} if isinstance(value, str) else ()
+
+
 def _hot_reference_ids(result):
     """Receipt IDs that must stay hot because live consumers bind them.
 
     Activation and confirmation gates, batch-review wrappers, transition
-    evidence of every item, and anything referenced by a batch that is not
-    terminally closed.  Close-bundle trios of closed batches are NOT here:
-    their consumers have the K12/07 sealed branch.
+    evidence of every item, the aggregates those transitions bind (see
+    :func:`_transition_bound_aggregates`), and anything referenced by a
+    batch that is not terminally closed.  Close-bundle trios of closed
+    batches are NOT here: their consumers have the K12/07 sealed branch.
     """
     keep = set()
+    catalog = result.get("receipt_catalog") or {}
     for item_id, item in (result.get("items_by_id") or {}).items():
         state = item.get("state")
         for field in ("activation_receipt", "confirmation_receipt"):
@@ -174,6 +212,7 @@ def _hot_reference_ids(result):
         for value in item.get("transition_receipts") or []:
             if isinstance(value, str):
                 keep.add(value)
+                keep.update(_transition_bound_aggregates(catalog, value))
         if state != "closed":
             for field in ("close_gate_receipt", "queue_consistency_receipt",
                           "delta_apply_receipt"):

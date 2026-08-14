@@ -35,7 +35,7 @@ import check_profile
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.17.0"
+TOOL_VERSION = "1.18.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -104,6 +104,49 @@ INVALIDATION_FIELDS = frozenset((
     "delta_archive_path", "delta_sha256", "batch_receipts",
     "delta_gate_receipts", "revalidation_receipts",
 ))
+# The named fields through which a Queue item, one of its invalidation
+# records, or a transition receipt references another receipt by ID.
+#
+# This exists because a defect was not one missing field: sealing protected
+# a hand-written list of fields while consumers resolved receipt IDs from
+# wherever they liked, and nothing compared the two.  A closed structural
+# inventory is what makes that comparison possible -- the reachability
+# assertion in the tests walks these names, so it asks the schema what a
+# reference is instead of guessing from the shape of a string.  Adding a
+# reference to a record without adding it here is caught: a paired test
+# asserts the item and invalidation groups stay subsets of
+# ``QUEUE_ITEM_FIELDS`` and ``INVALIDATION_FIELDS``.
+#
+# The transition group is the transition receipt's own writer contract in
+# ``update_queue.py``: ``evidence_receipt`` always, the aggregate on a
+# consuming transition, the close trio on a close, and a deep copy of the
+# invalidation record on a rollback.
+RECEIPT_REFERENCE_FIELDS = {
+    "item": {
+        "scalar": ("activation_receipt", "confirmation_receipt",
+                   "queue_consistency_receipt", "close_gate_receipt",
+                   "delta_apply_receipt"),
+        "list": ("transition_receipts", "batch_receipts"),
+        "nested": (("invalidation_history", "invalidation"),),
+    },
+    "invalidation": {
+        "scalar": ("transition_receipt", "delta_apply_receipt"),
+        "list": ("batch_receipts", "delta_gate_receipts",
+                 "revalidation_receipts"),
+        "nested": (),
+    },
+    "transition": {
+        "scalar": ("evidence_receipt", "standards_revalidation_receipt",
+                   "queue_consistency_receipt", "close_gate_receipt",
+                   "delta_apply_receipt"),
+        "list": (),
+        "nested": (("invalidation", "invalidation"),),
+    },
+}
+# K00/12 gives the `standards-revalidation` Gate these lifecycle cells.  The
+# producer's own admission and the recovery vocabulary that names a batch for
+# it read the same constant, so the two cannot drift apart.
+STANDARDS_REVALIDATION_STATES = ("queued", "open")
 # A rollback taken after the delta was applied additionally names the
 # application it undoes and the byte-exact Coverage restore that undid it.
 # The three appear together or not at all: a pre-apply rollback never touched
@@ -325,7 +368,7 @@ POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset(("1.8.0", "1.9.0"))
 # produced it; a version whose protocol did not exclude concurrent appenders
 # or bind its registers to a receipt cannot be certified after the fact.
 SEAL_TOOL = "seal_receipts"
-SUPPORTED_SEAL_TOOL_VERSIONS = frozenset(("1.2.0",))
+SUPPORTED_SEAL_TOOL_VERSIONS = frozenset(("1.2.0", "1.3.0"))
 
 COMPACT_CLOSE_EVIDENCE_VERSIONS = frozenset(("1.9.0",))
 SEALED_POLICY_EXCEPTION_FIELDS = frozenset((
@@ -1766,11 +1809,76 @@ class _Catalog(dict):
     through every historical-validation signature.
     """
 
-    __slots__ = ("cold",)
+    __slots__ = ("cold", "root", "_sealed_segments", "_sealed_bodies")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.cold = {}
+        self.root = None
+        self._sealed_segments = {}
+        self._sealed_bodies = {}
+
+    def resolve_sealed(self, receipt_id):
+        """Return one sealed body, re-proving its bytes at the read.
+
+        This is a sealed branch, not a hole in sealing.  Existence and
+        identity consumers are served by the projection through
+        :func:`_require_receipt` and never come here; a consumer that must
+        replay a *body* -- today the Standards-revalidation consumption
+        replay, whose consumed keys live in ``revalidation_bindings`` and
+        whose retraction test reads ``invalidated_by``, neither of which a
+        projection carries -- has exactly two honest options under K12/07,
+        an explicit sealed branch or failing closed.  Silently skipping an
+        unresolvable reference is the third option, and taking it is what
+        reopened bindings a Queue transition had already discharged.
+
+        What sealing buys out is deserializing *every* sealed body on the
+        hot path (1.33s of the measured 1.75s).  This resolves one body per
+        asking consumer, lazily and memoized, from a segment whose bytes
+        ``_cold_verified_records`` has already re-hashed against the
+        manifest this run.  The line is re-proved against the projection's
+        own ``record_sha256`` here anyway: this returns evidence or it
+        returns nothing, and it does not inherit trust from the caller.
+        """
+        if receipt_id in self._sealed_bodies:
+            return self._sealed_bodies[receipt_id]
+        self._sealed_bodies[receipt_id] = None
+        row = self.cold.get(receipt_id)
+        if not isinstance(row, dict) or not isinstance(self.root, str):
+            return None
+        segment = row.get("segment")
+        line_number = row.get("line")
+        if not _nonempty_string(segment) or not isinstance(line_number, int) \
+                or isinstance(line_number, bool) or line_number < 1:
+            return None
+        if segment not in self._sealed_segments:
+            try:
+                with open(os.path.join(self.root, segment), "rb") as handle:
+                    self._sealed_segments[segment] = \
+                        handle.read().splitlines(keepends=True)
+            except OSError:
+                self._sealed_segments[segment] = []
+        lines = self._sealed_segments[segment]
+        if line_number > len(lines):
+            return None
+        raw = lines[line_number - 1]
+        if kblib.sha256_bytes(raw) != row.get("record_sha256"):
+            return None
+        try:
+            body = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeError):
+            return None
+        if not isinstance(body, dict) or body.get("receipt_id") != receipt_id:
+            return None
+        self._sealed_bodies[receipt_id] = (segment, body)
+        return self._sealed_bodies[receipt_id]
+
+    def resolve(self, receipt_id):
+        """Resolve hot first, then through the sealed branch above."""
+        entry = self.get(receipt_id)
+        if entry is not None:
+            return entry
+        return self.resolve_sealed(receipt_id)
 
 
 def _receipt_catalog(root, errors):
@@ -1788,6 +1896,7 @@ def _receipt_catalog(root, errors):
     relative_dir = ".cambium/receipts"
     receipt_dir = os.path.join(root, relative_dir)
     catalog = _Catalog()
+    catalog.root = root
     if not os.path.exists(receipt_dir):
         return catalog
     if not os.path.isdir(receipt_dir) or os.path.islink(receipt_dir):
@@ -2592,11 +2701,84 @@ def standards_revalidation_requirements(root, progress):
     return by_batch
 
 
+def standards_revalidation_producer_eligibility(result, batch_id):
+    """Why ``--require-revalidation <batch_id>`` would refuse, or ``None``.
+
+    One predicate with two callers: this producer's own admission, and the
+    resume vocabulary that names a batch for it.  They were separate before,
+    and the recovery action outlived what the producer would accept -- a
+    closed batch was named for an aggregate the tool refuses outright, so
+    the recommendation could never be followed and nothing behind it was
+    ever reported.  Sharing the predicate is what makes "the tool would run
+    this" a checkable claim rather than a parallel guess.
+    """
+    if (result.get("progress") or {}).get("task_state") != "active":
+        return ("Standards revalidation requires task_state=active; "
+                "resume the recorded task before producing the "
+                "state-bound aggregate")
+    item = (result.get("items_by_id") or {}).get(batch_id)
+    if item is None:
+        return "requested batch %s does not exist" % batch_id
+    if item.get("state") not in STANDARDS_REVALIDATION_STATES:
+        return ("Standards revalidation batch %s is %s, expected "
+                "queued or open" % (batch_id, item.get("state")))
+    if item.get("state") == "open" and \
+            item.get("hold_state") != "revalidation-required":
+        return ("open Standards revalidation batch must have "
+                "hold_state=revalidation-required")
+    return None
+
+
+def _unresolvable_consumed_aggregate_errors(items_by_id, catalog):
+    """Fail closed when a recorded consumption's aggregate resolves nowhere.
+
+    The replay below reads each consumed aggregate's body.  When the body
+    is neither hot nor reachable through the sealed branch, the replay has
+    no way to know which bindings that transition discharged -- and the
+    quiet answer, dropping the transition and reporting its bindings as
+    outstanding again, is indistinguishable from a batch that never
+    revalidated at all.  It also cannot be acted on: the batch that
+    recorded the consumption is closed by then, and
+    ``--require-revalidation`` refuses a closed batch (K00/12 gives
+    `standards-revalidation` the lifecycle cells `queued, open`).  So the
+    run says the evidence became unreachable, rather than silently
+    rewriting a discharged obligation into a permanent one.
+    """
+    errors = []
+    resolve = getattr(catalog, "resolve", None)
+    if not callable(resolve):
+        resolve = catalog.get
+    for batch_id in sorted(items_by_id):
+        item = items_by_id[batch_id]
+        if not isinstance(item, dict):
+            continue
+        for transition in _ordered_item_transitions(item, catalog):
+            receipt_id = transition.get("standards_revalidation_receipt")
+            if not _nonempty_string(receipt_id) or \
+                    resolve(receipt_id) is not None:
+                continue
+            errors.append(
+                "batch %s transition %s consumed Standards revalidation "
+                "aggregate %s, which resolves neither in the hot register "
+                "nor through the K12/07 cold chain; a recorded consumption "
+                "whose evidence became unreachable is not a revalidation "
+                "that never happened" %
+                (batch_id, transition.get("receipt_id"), receipt_id))
+    return errors
+
+
 def _consumed_standards_revalidation_keys(item, catalog):
     consumed = set()
     transitions = _ordered_item_transitions(item, catalog)
     if not transitions:
         return consumed
+    # Sealing must not un-replay a consumption a Queue transition recorded.
+    # This replay reads the aggregate's body, so it takes the K12/07 sealed
+    # branch (`_Catalog.resolve`) rather than the hot map alone; a reduced
+    # test context that passes a plain dict keeps the historical behavior.
+    resolve = getattr(catalog, "resolve", None)
+    if not callable(resolve):
+        resolve = catalog.get
     # The `evidence_receipt` fallback applies to a transition the replayed
     # hold machine recognizes as a discharge, not to the adjacent
     # `revalidation-required -> none` edge alone.
@@ -2608,7 +2790,7 @@ def _consumed_standards_revalidation_keys(item, catalog):
                 transition.get("before_state") == transition.get("after_state")
                 and transition.get("receipt_id") in discharges):
             receipt_id = transition.get("evidence_receipt")
-        receipt_entry = catalog.get(receipt_id) if _nonempty_string(
+        receipt_entry = resolve(receipt_id) if _nonempty_string(
             receipt_id) else None
         receipt = receipt_entry[1] if receipt_entry is not None else None
         # Producer-era rule: a consumed aggregate is a historical fact a Queue
@@ -11654,6 +11836,7 @@ def validate_runtime(root, allowed_open_delta=None,
         "_standards_revalidation_requirements":
             standards_revalidation_requirements_by_batch,
     }
+    errors.extend(_unresolvable_consumed_aggregate_errors(items_by_id, catalog))
     standards_revalidation_barriers = {}
     standards_revalidation_outstanding = {}
     for batch_id, item in items_by_id.items():
@@ -12715,22 +12898,10 @@ def main(argv=None):
                 for error in close_recovery.get("errors", []))
 
     if not errors and args.require_revalidation:
-        item = result.get("items_by_id", {}).get(args.require_revalidation)
-        if result.get("progress", {}).get("task_state") != "active":
-            errors.append("Standards revalidation requires task_state=active; "
-                          "resume the recorded task before producing the "
-                          "state-bound aggregate")
-        elif item is None:
-            errors.append("requested batch %s does not exist" %
-                          args.require_revalidation)
-        elif item.get("state") not in ("queued", "open"):
-            errors.append("Standards revalidation batch %s is %s, expected "
-                          "queued or open" %
-                          (args.require_revalidation, item.get("state")))
-        elif (item.get("state") == "open" and
-              item.get("hold_state") != "revalidation-required"):
-            errors.append("open Standards revalidation batch must have "
-                          "hold_state=revalidation-required")
+        ineligible = standards_revalidation_producer_eligibility(
+            result, args.require_revalidation)
+        if ineligible:
+            errors.append(ineligible)
         else:
             supplied, supplied_errors = _parse_boundary_gate_arguments(
                 args.boundary_gate_receipt)

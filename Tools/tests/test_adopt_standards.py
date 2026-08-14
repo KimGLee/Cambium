@@ -22,8 +22,10 @@ import check_batch_close
 import check_profile
 import check_queue
 import kblib
+import seal_receipts
 import update_queue
 from profile_fixture import install_loadable_profile
+from test_update_queue import UpdateQueueTests
 
 
 class AdoptStandardsTests(unittest.TestCase):
@@ -2669,6 +2671,276 @@ class AdoptStandardsTests(unittest.TestCase):
             check_queue.accounted_standards_versions(
                 {"contract": {"standards_version": "3.0.0"},
                  "standards_adoptions": []}))
+
+    # ------------------------------------------------------------------
+    # Sealing must not un-replay a consumption a Queue transition recorded.
+    #
+    # The failure these pin: sealing kept every item's transition receipts
+    # hot but moved the aggregates those transitions bind.  The consumption
+    # replay resolves that aggregate through the catalog, the catalog never
+    # reads the cold namespace, so the replay quietly found nothing and
+    # reported bindings the transition had discharged as outstanding again
+    # -- on batches by then closed, which `--require-revalidation` refuses.
+    # Zero errors were reported the whole time.
+    # ------------------------------------------------------------------
+
+    # Borrowed from the Queue suite, which drives the same fixture: this
+    # file can adopt and revalidate but has no hand-built close bundle, and
+    # `check_batch_close.py` itself needs scaffolding this fixture lacks.
+    append_receipt = UpdateQueueTests.append_receipt
+    queue_gate = UpdateQueueTests.queue_gate
+    close_gate = UpdateQueueTests.close_gate
+
+    # Named fields whose consumers may resolve a sealed receipt.  Each entry
+    # is a promise that a declared sealed branch handles that field; the
+    # reachability assertion below is what keeps the promise a closed set
+    # rather than a hand-written guess that drifts.
+    SEALED_BRANCH_FIELDS = frozenset((
+        # the closed-bundle identity branch (_sealed_closed_bundle_errors)
+        "close_gate_receipt", "queue_consistency_receipt",
+        "delta_apply_receipt",
+        # identity comparison and existence-only resolution
+        # (_require_receipt with no `expected`)
+        "evidence_receipt", "revalidation_receipts",
+        # the body branch added with this rule (_Catalog.resolve_sealed)
+        "standards_revalidation_receipt",
+    ))
+
+    def reachable_receipt_references(self, result):
+        """``(field, receipt_id)`` pairs reached through the declared schema.
+
+        Walks `check_queue.RECEIPT_REFERENCE_FIELDS` -- the named structural
+        inventory of how a record references a receipt -- rather than
+        sweeping values for anything that looks like an ID.  A sweep would
+        answer a different question: it finds strings that happen to be
+        receipt IDs, while the defect was about *fields* whose consumers
+        resolve one.  Walking the schema also means a new reference field
+        that nobody registered is invisible here and caught by the paired
+        inventory test instead, which is where that failure belongs.
+        """
+        inventory = check_queue.RECEIPT_REFERENCE_FIELDS
+        catalog = result["receipt_catalog"]
+        found = []
+
+        def visit(record, group):
+            spec = inventory[group]
+            for field in spec["scalar"]:
+                value = record.get(field)
+                if isinstance(value, str) and value:
+                    found.append((field, value))
+            for field in spec["list"]:
+                for value in record.get(field) or []:
+                    if isinstance(value, str) and value:
+                        found.append((field, value))
+            for field, child_group in spec["nested"]:
+                child = record.get(field)
+                for nested in (child if isinstance(child, list) else [child]):
+                    if isinstance(nested, dict):
+                        visit(nested, child_group)
+
+        for item in (result.get("queue") or {}).get("required_queue") or []:
+            visit(item, "item")
+            for receipt_id in item.get("transition_receipts") or []:
+                entry = catalog.get(receipt_id)
+                if entry is not None:
+                    visit(entry[1], "transition")
+        return found
+
+    def seal(self, *arguments):
+        return subprocess.run(
+            [sys.executable, str(TOOLS / "seal_receipts.py"),
+             str(self.root), *arguments],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False)
+
+    def closed_b1_that_consumed_an_aggregate(self):
+        """Drive B1 through a real revalidation and out to `closed`."""
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        self.lifecycle_boundary_plan(invalidated_gate)
+        aggregate = self.revalidation_aggregate(self.link_gate_receipt())
+        cleared_at = self.clear_b1_hold(aggregate)
+        self.merge_and_apply_b1(self.seconds_after(cleared_at, 1))
+        gate = self.queue_gate()
+        close_gate = self.close_gate("B1", gate)
+        result = check_queue.validate_runtime(self.root)
+        applied = next(entry for entry in result["applied_delta_receipts"]
+                       if entry.get("batch") == "B1")
+        completed = self.run_tool(
+            "update_queue.py", "--id", "B1", "--transition", "closed",
+            "--gate-receipt", gate, "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", applied["selected_receipt"],
+            "--expected-state-revision",
+            str(result["queue"]["state_revision"]),
+            "--expected-sha256", result["queue_sha256"],
+            "--actor-role", "integrator",
+            "--at", self.seconds_after(cleared_at, 3), "--apply")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        final = check_queue.validate_runtime(self.root)
+        self.assertEqual([], final["errors"])
+        self.assertEqual("closed", final["items_by_id"]["B1"]["state"])
+        # The premise of every test below: this consumption really happened.
+        self.assertEqual([], check_queue.outstanding_standards_revalidation(
+            final, "B1"))
+        return aggregate["receipt_id"], final
+
+    def seal_ignoring_the_rule(self, result):
+        """Reproduce an archive sealed by the protocol that had no rule.
+
+        The repair has to work on instances already in this state, so it is
+        tested against a real archive built the way 1.2.0 built one, not
+        against a hand-placed cold row.
+        """
+        with mock.patch.object(seal_receipts, "_transition_bound_aggregates",
+                               return_value=()):
+            by_file = seal_receipts.plan_seal(str(self.root), result)
+            seal_receipts.apply_seal(str(self.root), result, by_file,
+                                     seal_receipts.SEAL_RECEIPTS_PATH)
+        return by_file
+
+    def test_a_consumed_revalidation_aggregate_is_never_sealed(self):
+        aggregate_id, before = self.closed_b1_that_consumed_an_aggregate()
+        planned = {receipt_id for rows in
+                   seal_receipts.plan_seal(str(self.root), before).values()
+                   for receipt_id, _ in rows}
+        self.assertNotIn(aggregate_id, planned)
+        self.assertTrue(planned, "the seal must still be sealing something")
+
+        completed = self.seal("--apply")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        after = check_queue.validate_runtime(self.root)
+        self.assertEqual([], after["errors"])
+        self.assertIn(aggregate_id, after["receipt_catalog"])
+        self.assertNotIn(aggregate_id, after["receipt_catalog"].cold)
+        self.assertEqual([], check_queue.outstanding_standards_revalidation(
+            after, "B1"))
+
+    def test_an_archive_sealed_before_the_rule_still_replays(self):
+        aggregate_id, before = self.closed_b1_that_consumed_an_aggregate()
+        self.seal_ignoring_the_rule(before)
+
+        after = check_queue.validate_runtime(self.root)
+        catalog = after["receipt_catalog"]
+        self.assertNotIn(aggregate_id, catalog,
+                         "the fixture must really have sealed it")
+        self.assertIn(aggregate_id, catalog.cold)
+        # The projection alone cannot answer this: the consumed keys are in
+        # `revalidation_bindings` and the retraction test reads
+        # `invalidated_by`, and the projection carries neither.
+        self.assertNotIn("revalidation_bindings", catalog.cold[aggregate_id])
+        body = catalog.resolve_sealed(aggregate_id)[1]
+        self.assertTrue(body.get("revalidation_bindings"))
+
+        self.assertEqual([], after["errors"])
+        self.assertEqual([], check_queue.outstanding_standards_revalidation(
+            after, "B1"))
+
+    def test_a_sealed_body_whose_bytes_drifted_does_not_resolve(self):
+        aggregate_id, before = self.closed_b1_that_consumed_an_aggregate()
+        self.seal_ignoring_the_rule(before)
+        catalog = check_queue.validate_runtime(self.root)["receipt_catalog"]
+        segment = self.root / catalog.cold[aggregate_id]["segment"]
+        payload = segment.read_bytes()
+        # A same-length edit: the projection still names this line, and only
+        # re-proving the record's own hash at the read can tell.
+        segment.write_bytes(payload.replace(b'"result": "pass"',
+                                            b'"result": "PASS"', 1))
+        fresh = check_queue._receipt_catalog(str(self.root), [])
+        fresh.cold = catalog.cold
+        self.assertIsNone(fresh.resolve_sealed(aggregate_id))
+
+    def test_an_unresolvable_consumed_aggregate_fails_the_run_closed(self):
+        aggregate_id, before = self.closed_b1_that_consumed_an_aggregate()
+        self.seal_ignoring_the_rule(before)
+        catalog = check_queue.validate_runtime(self.root)["receipt_catalog"]
+        (self.root / catalog.cold[aggregate_id]["segment"]).unlink()
+
+        after = check_queue.validate_runtime(self.root)
+        self.assertTrue(any(
+            aggregate_id in error and
+            "resolves neither in the hot register" in error
+            for error in after["errors"]), after["errors"])
+        # The replay cannot know what it cannot read, so B1's bindings do
+        # come back as outstanding here -- that is exactly the reading this
+        # rule refuses to let pass unremarked.  The guarantee is that the
+        # run is not clean while it says so, and that recovery is routed to
+        # the unreachable evidence rather than to a revalidation the closed
+        # batch could never run.
+        self.assertIn(
+            "B1", after.get("standards_revalidation_outstanding") or {})
+        self.assertEqual("repair-runtime",
+                         check_queue._resume_next_action(after,
+                                                         after["errors"]))
+
+    def test_the_reference_inventory_matches_the_record_schemas(self):
+        """The inventory may not drift from the records it describes."""
+        inventory = check_queue.RECEIPT_REFERENCE_FIELDS
+        item_fields = (set(inventory["item"]["scalar"]) |
+                       set(inventory["item"]["list"]) |
+                       {field for field, _ in inventory["item"]["nested"]})
+        self.assertLessEqual(item_fields, check_queue.QUEUE_ITEM_FIELDS)
+        invalidation_fields = (set(inventory["invalidation"]["scalar"]) |
+                               set(inventory["invalidation"]["list"]))
+        # An invalidation record's schema is both halves: a rollback taken
+        # after the delta was applied additionally names the application it
+        # undoes, and that name is a receipt reference like any other.
+        self.assertLessEqual(
+            invalidation_fields,
+            check_queue.INVALIDATION_FIELDS |
+            check_queue.INVALIDATION_APPLIED_ROLLBACK_FIELDS)
+
+    def test_consumption_is_identical_across_the_seal(self):
+        """Sealing is a parse-cost move; it may not change an answer."""
+        _, before = self.closed_b1_that_consumed_an_aggregate()
+        consumed_before = check_queue._consumed_standards_revalidation_keys(
+            before["items_by_id"]["B1"], before["receipt_catalog"])
+        self.assertTrue(consumed_before, "the premise: something was consumed")
+
+        completed = self.seal("--apply")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        after = check_queue.validate_runtime(self.root)
+        self.assertTrue(after["receipt_catalog"].cold, "nothing sealed")
+        self.assertEqual(
+            consumed_before,
+            check_queue._consumed_standards_revalidation_keys(
+                after["items_by_id"]["B1"], after["receipt_catalog"]))
+
+    def test_consumption_survives_an_archive_sealed_before_the_rule(self):
+        _, before = self.closed_b1_that_consumed_an_aggregate()
+        consumed_before = check_queue._consumed_standards_revalidation_keys(
+            before["items_by_id"]["B1"], before["receipt_catalog"])
+        self.seal_ignoring_the_rule(before)
+        after = check_queue.validate_runtime(self.root)
+        self.assertEqual(
+            consumed_before,
+            check_queue._consumed_standards_revalidation_keys(
+                after["items_by_id"]["B1"], after["receipt_catalog"]))
+
+    def test_every_sealed_reference_a_named_field_makes_has_a_branch(self):
+        """The closed-set assertion whose absence let this ship.
+
+        `_hot_reference_ids` enumerates protected fields by hand while
+        consumers resolve receipt IDs from their own fields, so the defect
+        was never one missing field -- it was that nothing compared the two
+        sets.  Every reference the declared schema reaches that lands on a
+        sealed receipt must sit at a field with a declared sealed branch.
+        """
+        self.closed_b1_that_consumed_an_aggregate()
+        completed = self.seal("--apply")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        cold = result["receipt_catalog"].cold
+        self.assertTrue(cold, "nothing sealed; the assertion is vacuous")
+
+        references = self.reachable_receipt_references(result)
+        self.assertTrue(references, "the schema walk reached nothing")
+        sealed = [(field, receipt_id) for field, receipt_id in references
+                  if receipt_id in cold]
+        self.assertTrue(sealed, "no sealed reference was reached at all")
+        self.assertEqual(
+            [], [pair for pair in sealed
+                 if pair[0] not in self.SEALED_BRANCH_FIELDS],
+            "a record references a sealed receipt at a field no sealed "
+            "branch covers")
 
 
 if __name__ == "__main__":
