@@ -39,7 +39,7 @@ import coverage_delta
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.20.0"
+TOOL_VERSION = "1.20.1"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -4159,10 +4159,13 @@ def standards_adoption_plan_errors(
         ]
         if _nonempty_string(boundary_id):
             boundary_runtime_gate_ids[boundary_id] = runtime_gate_ids
-        if owner_projection_era and not validate_current:
-            # A 1.6+ historical plan already froze this projection in its
-            # required_gate_ids.  Reuse those recorded owners rather than
-            # re-projecting through a future kernel's capability table.
+        if not validate_current:
+            # Every historical producer froze its boundary-level additions
+            # in required_gate_ids.  Pre-1.6 plans combine those recorded
+            # gates with their raw affected-gate union; 1.6+ plans store only
+            # projected owners there.  Reuse the recorded values in both
+            # eras instead of dropping part of the old contract or
+            # re-projecting it through a future capability table.
             boundary_gate_ids.update(runtime_gate_ids)
         targets = boundary.get("target_ids") or []
         if boundary.get("target_kind") == "batch":
