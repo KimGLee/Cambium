@@ -1027,6 +1027,134 @@ class AdoptStandardsTests(unittest.TestCase):
             "boundary_gate_reruns": required,
         })
 
+    def test_pre_1_6_history_replays_raw_and_recorded_gate_union(self):
+        """Atlas's 1.5 plan keeps raw leaves plus its immediate Gate.
+
+        Pre-1.6 plans recorded semantic leaves directly.  Their global rerun
+        union was the raw affected Gate union plus every Gate explicitly
+        recorded on a boundary; Queue consistency can therefore be present
+        even when it was not named by the predicate's affected leaves.  That
+        sealed producer-era shape must replay, while new admission remains on
+        the projected owner contract.
+        """
+        self.pause()
+        raw_leaves = ["frontmatter-vocabulary", "page-contract"]
+        legacy_required = sorted((
+            *raw_leaves, "required-queue-consistency"))
+        current_plan = self.capability_boundary_plan(
+            "audit-fixture-initial-queue",
+            sorted((*raw_leaves, "required-queue-consistency")),
+            ["batch-close", "required-queue-consistency"])
+        self.assertEqual([], self.plan_errors(current_plan))
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+
+        # The fixture writer can only emit today's 1.6 shape.  Re-form its
+        # newly written, otherwise complete transaction as bytes an immutable
+        # 1.5 producer would have left behind.
+        plan_path = self.root / self.PLAN
+        legacy_plan = self.load(self.PLAN)
+        legacy_plan["changed_predicates"][0][
+            "affected_gate_ids"] = raw_leaves
+        legacy_plan["invalidation_boundaries"][0][
+            "required_gate_ids"] = legacy_required
+        legacy_plan["boundary_gate_reruns"] = legacy_required
+        plan_path.write_text(
+            kblib.canonical_yaml(legacy_plan), encoding="utf-8")
+        legacy_plan_sha = kblib.sha256_file(plan_path)
+
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = self.load(check_queue.PROGRESS_PATH)
+        record = progress["standards_adoptions"][-1]
+        record["plan_sha256"] = legacy_plan_sha
+        record["boundary_gate_reruns"] = legacy_required
+        progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+        legacy_progress_sha = kblib.sha256_file(progress_path)
+
+        receipt_path = self.root / self.RECEIPTS
+        receipts = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for receipt in receipts:
+            if receipt.get("tool") == adopt_standards.TOOL:
+                receipt["tool_version"] = "1.5.0"
+                receipt["plan_sha256"] = legacy_plan_sha
+                receipt["after_progress_sha256"] = legacy_progress_sha
+                receipt["boundary_gate_reruns"] = legacy_required
+            if receipt.get("receipt_id") in record["immediate_gate_receipts"]:
+                receipt["progress_ledger_sha256"] = legacy_progress_sha
+        receipt_path.write_text(
+            "".join(json.dumps(receipt, separators=(",", ":")) + "\n"
+                    for receipt in receipts), encoding="utf-8")
+
+        replay = check_queue.validate_runtime(self.root)
+        self.assertEqual([], replay["errors"])
+        self.assertEqual([], check_queue.standards_adoption_plan_errors(
+            self.root, legacy_plan, catalog=replay["receipt_catalog"],
+            queue=replay["queue"], progress=replay["progress"],
+            validate_current=False, producer_tool_version="1.5.0"))
+
+        bindings = check_queue.standards_revalidation_requirements(
+            self.root, replay["progress"],
+            catalog=replay["receipt_catalog"])["B1"]
+        self.assertEqual([
+            ("frontmatter-vocabulary", "frontmatter-vocabulary",
+             "batch-close"),
+            ("page-contract", "page-contract", "batch-close"),
+            ("required-queue-consistency", "required-queue-consistency",
+             "required-queue-consistency"),
+        ], sorted((
+            row["affected_gate_id"], row["required_gate_id"],
+            row["mapped_owner_gate_id"]
+        ) for row in bindings))
+
+    def test_1_6_history_keeps_its_recorded_owner_projection(self):
+        """A future capability edit cannot reinterpret a sealed 1.6 plan."""
+        self.pause()
+        plan = self.capability_boundary_plan(
+            "audit-fixture-initial-queue", ["frontmatter-vocabulary"],
+            ["batch-close"])
+        registry = (self.root /
+                    "kernel/K00 Standards Control/12 Control Registry.md")
+        registry.write_text(
+            registry.read_text(encoding="utf-8").replace(
+                "| frontmatter-vocabulary | semantic-leaf | batch-close ",
+                "| frontmatter-vocabulary | semantic-leaf | batch-review "),
+            encoding="utf-8")
+        runtime = check_queue.validate_runtime(self.root)
+
+        historical = check_queue.standards_adoption_plan_errors(
+            self.root, plan, catalog=runtime["receipt_catalog"],
+            queue=runtime["queue"], progress=runtime["progress"],
+            validate_current=False, producer_tool_version="1.6.0")
+        self.assertEqual([], historical)
+
+        current = check_queue.standards_adoption_plan_errors(
+            self.root, plan, catalog=runtime["receipt_catalog"],
+            queue=runtime["queue"], progress=runtime["progress"],
+            validate_current=True, producer_tool_version="1.6.0")
+        self.assertTrue(any(
+            "required_gate_ids adds owner Gate(s) not projected" in error and
+            "batch-close" in error for error in current), current)
+        self.assertTrue(any(
+            "boundary_gate_reruns must equal the exact affected-gate union"
+            in error and "batch-review" in error for error in current),
+            current)
+
+    def test_current_plan_rejects_an_unprojected_extra_owner(self):
+        """Current required Gate IDs must equal, not widen, owner closure."""
+        self.pause()
+        plan = self.capability_boundary_plan(
+            "audit-fixture-initial-queue", ["frontmatter-vocabulary"],
+            ["batch-close", "batch-review"])
+        errors = self.plan_errors(plan)
+        self.assertTrue(any(
+            "required_gate_ids adds owner Gate(s) not projected" in error and
+            "batch-review" in error for error in errors), errors)
+        self.assertTrue(any(
+            "boundary_gate_reruns must equal the exact affected-gate union"
+            in error and "batch-close" in error for error in errors), errors)
+
     def adoption_consistency_receipt(self):
         """Return the after-image consistency receipt the adoption recorded."""
         records = self.load(check_queue.PROGRESS_PATH)["standards_adoptions"]

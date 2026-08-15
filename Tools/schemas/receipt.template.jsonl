@@ -117,7 +117,7 @@
 # check_links 1.5.0 / wiki-link-integrity; check_vocab 1.8.0 /
 # frontmatter-vocabulary and priority-quota-distribution;
 # check_residual_content 1.2.0 /
-# registered-residual-content; check_queue 1.20.0 / its registered
+# registered-residual-content; check_queue 1.20.1 / its registered
 # Required-Queue modes; check_batch_close 1.10.0 / batch-close; check_proof
 # 1.17.0 / terminal-proof; and adopt_standards 1.6.0 /
 # standards-adoption. Deterministic producers not shown above -- among them
