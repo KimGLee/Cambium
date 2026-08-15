@@ -54,20 +54,24 @@ class RegisterAmendmentTests(unittest.TestCase):
         }
 
     def command(self, operation, *operation_args, apply=False, shas=None,
-                actor_role="worker", approval_reference="user:fixture-approval"):
+                actor_role="worker", approval_reference="user:fixture-approval",
+                decision_mode="auto"):
         shas = shas or self.shas()
         args = [
             sys.executable, str(TOOLS / "register_amendment.py"),
             str(self.root), "--operation", operation,
             "--date", time.strftime("%Y-%m-%d", time.gmtime()),
             "--summary", "Approved fixture Amendment",
-            "--approval-reference", approval_reference,
             "--expected-coverage-sha256", shas["coverage"],
             "--expected-progress-sha256", shas["progress"],
             "--expected-queue-sha256", shas["queue"],
             "--actor-role", actor_role,
             *operation_args,
         ]
+        if approval_reference is not None:
+            args.extend(["--approval-reference", approval_reference])
+        if decision_mode != "auto":
+            args.extend(["--decision-mode", decision_mode])
         if apply:
             args.append("--apply")
         return subprocess.run(
@@ -158,6 +162,35 @@ class RegisterAmendmentTests(unittest.TestCase):
         self.assertEqual(1, len(records))
         return records[0]
 
+    def install_delegated_authority(self, *change_classes):
+        """Re-anchor the copied origin fixture with a delegated contract.
+
+        This is fixture construction, not a production mutation: the initial
+        Queue receipt is the copied runtime's origin anchor, so both sides are
+        rebuilt before the first validation in this test.
+        """
+        progress = self.load(check_queue.PROGRESS_PATH)
+        progress["contract"]["amendment_authority"] = {
+            "schema_version": 1,
+            "authority_id": "AUTH-FIXTURE",
+            "mode": "delegated-integrator",
+            "allowed_change_classes": sorted(change_classes),
+        }
+        self.write_yaml(check_queue.PROGRESS_PATH, progress)
+        receipt_path = self.root / \
+            ".cambium/receipts/task-transitions.jsonl"
+        receipts = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        origin = next(record for record in receipts
+                      if record["receipt_id"] ==
+                      progress["initial_queue_receipt"])
+        origin["contract_sha256"] = check_queue._contract_sha256(progress)
+        origin["after_progress_sha256"] = kblib.sha256_file(
+            self.root / check_queue.PROGRESS_PATH)
+        receipt_path.write_text(
+            "".join(json.dumps(record) + "\n" for record in receipts),
+            encoding="utf-8")
+
     def prepare_scope_registration(self):
         plan_relative, plan_path, _ = self.cross_plan("scope-replan")
         expected = self.shas()
@@ -181,10 +214,19 @@ class RegisterAmendmentTests(unittest.TestCase):
         self.assertEqual("approved", record["status"])
         self.assertIs(record["writeback_done"], False)
         self.assertEqual("user:fixture-approval", record["approval_reference"])
+        self.assertEqual("explicit-user", record["decision_mode"])
+        self.assertIsNone(record["authority_id"])
+        self.assertIsNone(record["authority_sha256"])
+        self.assertTrue(record["change_classes"])
+        self.assertRegex(record["amendment_impact_sha256"],
+                         r"^sha256:[0-9a-f]{64}$")
         receipt = self.receipt()
         self.assertEqual(record["registration_receipt"], receipt["receipt_id"])
         self.assertEqual("register_amendment", receipt["tool"])
         self.assertEqual(register_amendment.TOOL_VERSION, receipt["tool_version"])
+        for field in ("decision_mode", "authority_id", "authority_sha256",
+                      "change_classes", "amendment_impact_sha256"):
+            self.assertEqual(record[field], receipt[field])
         self.assertEqual("amendment_registration", receipt["check"])
         self.assertEqual(before["coverage"],
                          receipt["before_coverage_sha256"])
@@ -230,6 +272,31 @@ class RegisterAmendmentTests(unittest.TestCase):
         self.assertEqual(record["plan_sha256"], receipt["plan_sha256"])
         self.assertEqual("s1", receipt["scope_version_before"])
         self.assertEqual("s2", receipt["scope_version_after"])
+
+    def test_contract_delegation_registers_without_a_fresh_user_prompt(self):
+        self.install_delegated_authority(
+            "batch-add", "required-object-add")
+        self.assertEqual([], check_queue.validate_runtime(
+            self.root)["errors"])
+        plan_relative, _, _ = self.cross_plan("scope-replan")
+
+        completed = self.command(
+            "scope-replan", "--plan", plan_relative,
+            approval_reference=None, apply=True,
+            actor_role="integrator")
+
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        progress = self.load(check_queue.PROGRESS_PATH)
+        record = progress["amendments"][-1]
+        self.assertEqual("contract-delegated", record["decision_mode"])
+        self.assertEqual("AUTH-FIXTURE", record["authority_id"])
+        self.assertEqual("contract:AUTH-FIXTURE",
+                         record["approval_reference"])
+        self.assertEqual(
+            ["batch-add", "required-object-add"],
+            record["change_classes"])
+        self.assertEqual([], check_queue.validate_runtime(
+            self.root)["errors"])
 
     def test_registration_transaction_runs_profile_load_producer_once(self):
         producer = check_queue.check_profile.evaluate_profile_load
@@ -322,6 +389,16 @@ class RegisterAmendmentTests(unittest.TestCase):
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("only actor-role integrator", completed.stdout)
         self.assertEqual(before, self.shas())
+
+    def test_user_only_contract_without_fresh_approval_is_refused(self):
+        plan_relative, _, _ = self.cross_plan("scope-replan")
+
+        completed = self.command(
+            "scope-replan", "--plan", plan_relative,
+            approval_reference=None)
+
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("fresh user decision required", completed.stdout)
 
     def test_stale_any_state_sha_fails_closed(self):
         plan_relative, _, _ = self.cross_plan("scope-replan")
@@ -442,9 +519,8 @@ class RegisterAmendmentTests(unittest.TestCase):
         self.assertEqual(1, again.returncode, again.stdout)
         self.assertIn("not pending", again.stdout)
 
-    def test_historical_registration_survives_a_writer_version_bump(self):
-        """K12/10 producer-era identity for registration receipts: a sealed
-        row is not re-judged against the current writer constant."""
+    def test_unknown_historical_registration_version_fails_closed(self):
+        """Producer-era handling is closed, not a license for any version."""
         first_plan, _, _ = self.cross_plan("scope-replan")
         self.command("scope-replan", "--plan", first_plan,
                      apply=True, actor_role="integrator")
@@ -454,8 +530,10 @@ class RegisterAmendmentTests(unittest.TestCase):
             '"tool_version": "%s"' % register_amendment.TOOL_VERSION,
             '"tool_version": "0.9.0"')
         receipts_path.write_text(text, encoding="utf-8")
-        self.assertEqual([], check_queue.validate_runtime(
-            str(self.root))["errors"])
+        errors = check_queue.validate_runtime(str(self.root))["errors"]
+        self.assertTrue(any(
+            "unsupported register_amendment producer version '0.9.0'" in error
+            for error in errors), "\n".join(errors))
 
     def test_rejects_unknown_schema_instead_of_legacy_guessing(self):
         plan_relative, _, _ = self.cross_plan("scope-replan")

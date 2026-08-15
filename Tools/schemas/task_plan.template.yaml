@@ -81,6 +81,14 @@ contract_after:
   # Optional register of bounded policy exceptions (K13/02); usually absent
   # at planning. Granted later through apply_contract_amendment.py.
   policy_exceptions: []
+  # Safe initial authority. To delegate routine scope growth, make the mode
+  # delegated-integrator and list only the desired registered classes, e.g.
+  # required-object-add and batch-add. Unknown classes fail closed.
+  amendment_authority:
+    schema_version: 1
+    authority_id: "AUTH-001"
+    mode: user-only
+    allowed_change_classes: []
 
 # The complete initial Coverage inventory and the compiler's batch inputs.
 # Record shapes are owned by K02/01; `batch_specs` shape by K13/08.

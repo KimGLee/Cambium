@@ -117,8 +117,10 @@ class ApplyAmendmentTests(unittest.TestCase):
 
     def make_plan(self, operation, proposal, affected_pages,
                   affected_batches, cancel_batch_id=None):
-        amendment_id = ("A-CANCEL-001" if operation == "cancel-batch"
-                        else "A-SCOPE-001")
+        amendment_id = {
+            "cancel-batch": "A-CANCEL-001",
+            "gap-routing-reconciliation": "A-GAP-001",
+        }.get(operation, "A-SCOPE-001")
         proposal_rel = ".cambium/deltas/amendments/%s.coverage.yaml" % amendment_id
         proposal_path = self.write_yaml(proposal_rel, proposal)
         queue = self.load(check_queue.QUEUE_PATH)
@@ -189,6 +191,64 @@ class ApplyAmendmentTests(unittest.TestCase):
         page["deferred_reason"] = "removed by approved scope Amendment"
         page["reentry_condition"] = "a successor Amendment restores scope"
         return coverage
+
+    def test_gap_routing_reconciliation_registers_applies_and_replays_cleanly(self):
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage["open_gaps"] = [{
+            "id": "G-ROUTE-001",
+            "page": "Topics/A.md",
+            "type": "review-gap",
+            "next_batch": "B1",
+        }]
+        self.write_yaml(check_queue.COVERAGE_PATH, coverage)
+
+        # This fixture is still at the initial Queue origin.  Re-anchor the
+        # fixture-only origin receipt to the added before-image gap so the
+        # production registration begins from a clean runtime.
+        coverage_sha = kblib.sha256_file(
+            self.root / check_queue.COVERAGE_PATH)
+        origin_path = self.root / \
+            ".cambium/receipts/task-transitions.jsonl"
+        origin_records = [json.loads(line) for line in origin_path.read_text(
+            encoding="utf-8").splitlines()]
+        for record in origin_records:
+            if record.get("receipt_id") == "audit-fixture-initial-queue":
+                record["before_coverage_sha256"] = coverage_sha
+                record["after_coverage_sha256"] = coverage_sha
+        origin_path.write_text(
+            "".join(json.dumps(record) + "\n" for record in origin_records),
+            encoding="utf-8")
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+
+        proposal = copy.deepcopy(coverage)
+        proposal["updated_at"] = "2026-08-15T00:00:00Z"
+        proposal["open_gaps"][0]["next_batch"] = "B2"
+        plan_rel, plan = self.make_plan(
+            "gap-routing-reconciliation", proposal,
+            ["Topics/A.md"], ["B1", "B2"])
+        before_queue = self.load(check_queue.QUEUE_PATH)
+
+        self.add_progress_amendment(plan)
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        completed = self.command(
+            plan_rel, self.shas(), "--actor-role", "integrator", "--apply")
+
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual(
+            "B2", result["coverage"]["open_gaps"][0]["next_batch"])
+        self.assertEqual(
+            before_queue["queue_revision"] + 1,
+            result["queue"]["queue_revision"])
+        self.assertEqual(
+            before_queue["state_revision"],
+            result["queue"]["state_revision"])
+        amendment = result["progress"]["amendments"][-1]
+        self.assertEqual("gap-routing-reconciliation",
+                         amendment["operation"])
+        self.assertEqual("verified", amendment["status"])
+        self.assertIs(amendment["writeback_done"], True)
 
     def open_b2(self):
         coverage = self.load(check_queue.COVERAGE_PATH)

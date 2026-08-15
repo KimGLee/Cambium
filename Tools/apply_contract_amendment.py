@@ -5,20 +5,20 @@ Once the Queue is materialized the Task Contract fingerprint is frozen, and
 K13/06 until now offered exactly one disposition for a non-scope contract
 change: pause or cancel the task and carry the change into a successor.  This
 writer is the guarded alternative that clause called for.  It consumes one
-operator-confirmed restricted-YAML plan, rewrites an allowlisted contract
-field, advances the Queue revision exactly once, and appends the amendment row
-and commit receipt that let `check_queue`'s contract anchor chain follow the
-change instead of failing closed on it.
+operator-confirmed restricted-YAML plan, rewrites one or both allowlisted
+contract fields, advances the Queue revision exactly once, and appends the
+amendment row and commit receipt that let `check_queue`'s contract anchor
+chain follow the change instead of failing closed on it.
 
-The allowlist is deliberately small.  `policy_exceptions` is the field this
-writer exists for: a bounded, task-scoped policy exception is current
-authorization, and current authorization lives in the contract -- not in the
-amendment log, whose rows are history ("historical registration evidence
-never authorizes", K13/06), and not in a batch-close disposition, which
-speaks only for one snapshot.  Scope belongs to the replan machinery;
-standards identity to K13/15; objective and completion semantics to a
-successor task.  A field outside the allowlist is refused here and stays on
-the successor path.
+The allowlist is deliberately small.  `policy_exceptions` is a bounded,
+task-scoped current authorization, and `amendment_authority` is the closed
+delegation for routine operational Amendment change classes.  Both live in
+the contract -- not in the amendment log, whose rows are history
+("historical registration evidence never authorizes", K13/06), and not in a
+batch-close disposition, which speaks only for one snapshot.  Scope belongs
+to the replan machinery; standards identity to K13/15; objective and
+completion semantics to a successor task.
+A field outside the allowlist is refused here and stays on the successor path.
 
 There is no pending phase.  Like the Standards adoption transaction this
 writer prepares, validates the complete after-image, and commits under the
@@ -38,9 +38,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
+import amendment_policy
 
 TOOL = "apply_contract_amendment"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 CHECK = "contract_amendment"
 PLAN_PREFIX = check_queue.CONTRACT_AMENDMENT_PLAN_PREFIX
 RECEIPT_PATH = ".cambium/receipts/contract-amendments.jsonl"
@@ -53,13 +54,14 @@ _RECEIPT_SEQ = itertools.count(1)
 
 # The only contract fields this writer may change.  Extending this tuple is a
 # governance change under K13/06, not an edit.
-AMENDABLE_FIELDS = ("policy_exceptions",)
+AMENDABLE_FIELDS = ("policy_exceptions", "amendment_authority")
 
-PLAN_FIELDS = {
+PLAN_FIELDS_V1 = {
     "schema_version", "amendment_id", "task_id", "date", "summary",
     "approval_reference", "before", "contract_version_after",
     "policy_exceptions_after",
 }
+PLAN_FIELDS_V2 = PLAN_FIELDS_V1.union(("amendment_authority_after",))
 BEFORE_FIELDS = {"coverage_sha256", "queue_sha256", "progress_sha256"}
 
 STATE_NAMES = ("coverage", "queue", "progress")
@@ -111,9 +113,11 @@ def _validate_plan_shape(plan):
             "amendment plan still carries the template's %s sentinel; every "
             "one of them is an answer this transaction will not invent"
             % SENTINEL)
-    _closed(plan, PLAN_FIELDS, "amendment plan")
-    if plan["schema_version"] != 1:
-        raise Refusal("amendment plan schema_version must be 1")
+    schema_version = plan.get("schema_version")
+    if schema_version not in (1, 2):
+        raise Refusal("amendment plan schema_version must be 1 or 2")
+    _closed(plan, (PLAN_FIELDS_V2 if schema_version == 2 else PLAN_FIELDS_V1),
+            "amendment plan")
     for field in ("amendment_id", "task_id", "date", "summary",
                   "approval_reference", "contract_version_after"):
         value = plan[field]
@@ -134,6 +138,14 @@ def _validate_plan_shape(plan):
         raise Refusal(
             "amendment plan policy_exceptions_after is not the K13/02 "
             "shape:\n  %s" % "\n  ".join(shape_errors[:8]))
+    if schema_version == 2:
+        authority_errors = amendment_policy.amendment_authority_errors(
+            plan["amendment_authority_after"],
+            "amendment_authority_after")
+        if authority_errors:
+            raise Refusal(
+                "amendment plan amendment_authority_after is not the K13/02 "
+                "shape:\n  %s" % "\n  ".join(authority_errors[:8]))
 
 
 def _current_effective_policy(root, contract):
@@ -312,6 +324,9 @@ def _build_after(documents, plan, receipt_id, now):
     contract = copy.deepcopy(contract_before)
     contract["policy_exceptions"] = copy.deepcopy(
         plan["policy_exceptions_after"])
+    if plan.get("schema_version") == 2:
+        contract["amendment_authority"] = copy.deepcopy(
+            plan["amendment_authority_after"])
     contract["contract_version"] = plan["contract_version_after"]
     progress["contract"] = contract
 
@@ -369,6 +384,19 @@ def prepare(root, plan_relative):
             % "\n  ".join(current["errors"][:5]))
 
     contract_before = documents["progress"]["contract"]
+    if plan.get("schema_version") == 2:
+        changed = []
+        if contract_before.get("policy_exceptions", []) != plan.get(
+                "policy_exceptions_after"):
+            changed.append("policy_exceptions")
+        if contract_before.get("amendment_authority") != plan.get(
+                "amendment_authority_after"):
+            changed.append("amendment_authority")
+        if not changed:
+            raise Refusal(
+                "schema_version 2 contract amendment changes no amendable field")
+    else:
+        changed = ["policy_exceptions"]
     policy, policy_fingerprint = _current_effective_policy(
         root, contract_before)
     _require_policy_authorization(
@@ -376,7 +404,7 @@ def prepare(root, plan_relative):
     commit_receipt = kblib.make_receipt(
         TOOL, TOOL_VERSION, CHECK, plan["amendment_id"], "pass",
         "amended Task Contract field(s) %s from plan %s"
-        % (", ".join(AMENDABLE_FIELDS), plan_relative), next(_RECEIPT_SEQ),
+        % (", ".join(changed), plan_relative), next(_RECEIPT_SEQ),
         identity={
             "task_id": plan["task_id"],
             "standards_version": contract_before.get("standards_version"),
@@ -404,6 +432,7 @@ def prepare(root, plan_relative):
         "after_coverage_sha256": kblib.sha256_bytes(raw["coverage"]),
         "after_required_queue_sha256": kblib.sha256_bytes(queue_text),
         "policy_fingerprint": policy_fingerprint,
+        "changed_contract_fields": changed,
     })
 
     progress_text = kblib.canonical_yaml(progress)
@@ -428,6 +457,7 @@ def prepare(root, plan_relative):
         "before_coverage_sha256": kblib.sha256_bytes(raw["coverage"]),
         "after_coverage_sha256": kblib.sha256_bytes(raw["coverage"]),
         "policy_fingerprint": policy_fingerprint,
+        "changed_contract_fields": changed,
     })
 
     proposed = check_queue.validate_runtime(
@@ -461,6 +491,7 @@ def prepare(root, plan_relative):
         "row": row,
         "policy_fingerprint": policy_fingerprint,
         "contract_before": contract_before,
+        "changed_contract_fields": changed,
     }
 
 
@@ -576,6 +607,12 @@ def _report(prepared):
           % (row["contract_version_before"], row["contract_version_after"]))
     print("  policy exceptions after: %d"
           % len(plan["policy_exceptions_after"]))
+    if plan.get("schema_version") == 2:
+        authority = plan["amendment_authority_after"]
+        print("  amendment authority after: %s (%s)"
+              % (authority["authority_id"], authority["mode"]))
+    print("  changed contract fields: %s"
+          % ", ".join(prepared["changed_contract_fields"]))
     print("  queue_revision: %s -> %s"
           % (row["queue_revision_before"], row["queue_revision_after"]))
     for name in WRITTEN_NAMES:

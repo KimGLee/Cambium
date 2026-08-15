@@ -51,9 +51,10 @@ import check_proof
 import check_queue
 import compile_queue
 import kblib
+import amendment_policy
 
 TOOL = "apply_task_plan"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 CHECK = "task_plan"
 PLAN_PREFIX = ".cambium/deltas/task-plans"
 RECEIPT_PATH = ".cambium/receipts/task-plans.jsonl"
@@ -68,7 +69,12 @@ COVERAGE_AFTER_FIELDS = {"pages", "batch_specs"}
 
 # Owned by K13/02; this tool supplies values for exactly this closed set and
 # never adds a field.  Kept in step with check_queue's own contract field set.
-CONTRACT_FIELDS = set(check_queue.CONTRACT_FIELDS)
+CONTRACT_FIELDS = set(check_queue.CONTRACT_FIELDS).union((
+    "amendment_authority",
+))
+CONTRACT_OPTIONAL_FIELDS = set(check_queue.CONTRACT_OPTIONAL_FIELDS).union((
+    "amendment_authority",
+))
 
 STATE_NAMES = ("coverage", "queue", "progress")
 # Only these are written; the Queue is read for its before-image and left
@@ -132,7 +138,15 @@ def _validate_plan_shape(plan):
                 "values" % field)
     _closed(plan["contract_after"], CONTRACT_FIELDS,
             "task plan contract_after",
-            optional=check_queue.CONTRACT_OPTIONAL_FIELDS)
+            optional=CONTRACT_OPTIONAL_FIELDS)
+    authority = plan["contract_after"].get("amendment_authority")
+    if authority is not None:
+        authority_errors = amendment_policy.amendment_authority_errors(
+            authority, "task plan contract_after.amendment_authority")
+        if authority_errors:
+            raise Refusal(
+                "task plan amendment authority is not the K13/02 shape:\n  %s"
+                % "\n  ".join(authority_errors[:8]))
     _closed(plan["coverage_after"], COVERAGE_AFTER_FIELDS,
             "task plan coverage_after")
     for field in sorted(COVERAGE_AFTER_FIELDS):

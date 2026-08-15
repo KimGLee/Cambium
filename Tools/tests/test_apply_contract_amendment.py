@@ -1,4 +1,4 @@
-"""The guarded writer for a frozen Task Contract's one amendable field.
+"""The guarded writer for a frozen Task Contract's bounded amendable fields.
 
 K13/06 acknowledged this gap in so many words: with no guarded writer for a
 non-scope Contract change, the operator must pause or cancel the task and
@@ -13,10 +13,11 @@ therefore does not merely check the field changed -- it checks the runtime
 validates *afterward with no allowance*, which is only possible if the commit
 receipt is a well-formed anchor event continuing the chain.
 
-Placement is the other half.  An exception lives in the contract because it
-is current authorization: the amendment row is history, and K13/06 says
-history never authorizes.  The row born in any state but verified is pinned
-as an error, because this writer has no pending phase to be interrupted in.
+Placement is the other half.  An exception and operational delegation live in
+the contract because they are current authorization: the amendment row is
+history, and K13/06 says history never authorizes.  The row born in any state
+but verified is pinned as an error, because this writer has no pending phase
+to be interrupted in.
 """
 
 import contextlib
@@ -137,6 +138,22 @@ class ContractAmendmentTests(TaskPlanTransactionTests):
         plan.update(overrides)
         return plan
 
+    def delegated_authority(self, **overrides):
+        value = {
+            "schema_version": 1,
+            "authority_id": "AUTH-SCOPE-GROWTH",
+            "mode": "delegated-integrator",
+            "allowed_change_classes": [
+                "batch-add",
+                "queued-batch-update",
+                "required-object-add",
+                "required-object-promote",
+                "required-object-reroute",
+            ],
+        }
+        value.update(overrides)
+        return value
+
     def write_amendment(self, plan):
         path = self.root / AMENDMENT_RELATIVE
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -215,6 +232,80 @@ class ContractAmendmentTests(TaskPlanTransactionTests):
         self.assertEqual([], contract["policy_exceptions"])
         self.assertEqual(
             [], check_queue.validate_runtime(str(self.root))["errors"])
+
+    def test_contract_writer_can_grant_and_revoke_amendment_delegation(self):
+        self.materialize()
+        grant = self.amendment_plan(
+            schema_version=2,
+            policy_exceptions_after=[],
+            amendment_authority_after=self.delegated_authority(),
+            summary="delegate routine operational Amendment growth")
+        self.write_amendment(grant)
+        self.assertEqual(0, self.run_amendment(apply=True), self.printed)
+        contract = self.document(check_queue.PROGRESS_PATH)["contract"]
+        self.assertEqual("delegated-integrator",
+                         contract["amendment_authority"]["mode"])
+        self.assertEqual([], check_queue.validate_runtime(
+            str(self.root))["errors"])
+
+        revoke = self.amendment_plan(
+            schema_version=2,
+            amendment_id="CA-002",
+            contract_version_after="c3",
+            policy_exceptions_after=[],
+            amendment_authority_after={
+                "schema_version": 1,
+                "authority_id": "AUTH-SCOPE-GROWTH",
+                "mode": "user-only",
+                "allowed_change_classes": [],
+            },
+            summary="revoke delegated operational Amendment authority")
+        path = self.root / \
+            ".cambium/deltas/contract-amendments/CA-002.yaml"
+        path.write_text(kblib.canonical_yaml(revoke), encoding="utf-8")
+        self.assertEqual(0, apply_contract_amendment.main([
+            str(self.root), "--plan",
+            ".cambium/deltas/contract-amendments/CA-002.yaml",
+            "--actor-role", "integrator", "--apply",
+        ]))
+        contract = self.document(check_queue.PROGRESS_PATH)["contract"]
+        self.assertEqual("user-only", contract["amendment_authority"]["mode"])
+        self.assertEqual([], check_queue.validate_runtime(
+            str(self.root))["errors"])
+
+    def test_contract_writer_rejects_malformed_amendment_delegation(self):
+        self.materialize()
+        plan = self.amendment_plan(
+            schema_version=2,
+            policy_exceptions_after=[],
+            amendment_authority_after=self.delegated_authority(
+                allowed_change_classes=["future-class"]))
+
+        message = self.amendment_error(plan)
+
+        self.assertIn("amendment_authority_after", message)
+        self.assertIn("future-class", message)
+
+    def test_contract_writer_refuses_a_v2_noop(self):
+        self.materialize()
+        authority = self.delegated_authority()
+        first = self.amendment_plan(
+            schema_version=2, policy_exceptions_after=[],
+            amendment_authority_after=authority)
+        self.write_amendment(first)
+        self.assertEqual(0, self.run_amendment(apply=True), self.printed)
+
+        second = self.amendment_plan(
+            schema_version=2, amendment_id="CA-002",
+            contract_version_after="c3", policy_exceptions_after=[],
+            amendment_authority_after=authority)
+        relative = ".cambium/deltas/contract-amendments/CA-002.yaml"
+        path = self.root / relative
+        path.write_text(kblib.canonical_yaml(second), encoding="utf-8")
+        with self.assertRaises(apply_contract_amendment.Refusal) as caught:
+            apply_contract_amendment.prepare(str(self.root), relative)
+
+        self.assertIn("changes no amendable field", str(caught.exception))
 
     # ---- refusals -------------------------------------------------------
 

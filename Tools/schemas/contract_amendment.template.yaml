@@ -9,10 +9,10 @@
 # closed.
 #
 # What this transaction is for: once the Queue is materialized the Task
-# Contract fingerprint is frozen, and the only field this writer may change is
-# `policy_exceptions` -- the contract's register of bounded, task-scoped
-# policy exceptions. Scope changes stay with the replan machinery, Standards
-# identity with K13/15, and any other contract change with a successor task.
+# Contract fingerprint is frozen, and this writer may change exactly two
+# fields: `policy_exceptions` and the closed `amendment_authority` delegation.
+# Scope changes stay with the replan machinery, Standards identity with
+# K13/15, and any other contract change with a successor task.
 #
 # An exception is current authorization with a declared end. Its baseline
 # fingerprint binds it to the policy bytes it was judged against, so a
@@ -20,7 +20,7 @@
 # silently covered by it.
 # =============================================================================
 
-schema_version: 1
+schema_version: 2
 
 # Unique within Progress amendments; never reused, including after withdrawal
 # of unrelated operational amendments.
@@ -75,3 +75,13 @@ policy_exceptions_after:
     scope_ref: TODO(amendment)
     rationale: TODO(amendment)
     approval_reference: TODO(amendment)
+
+# The COMPLETE after-image of the optional operational Amendment delegation.
+# user-only + [] revokes delegation.  delegated-integrator may name only the
+# registered classes implemented by amendment_policy.py; this template stays
+# conservative so copying it never grants authority accidentally.
+amendment_authority_after:
+  schema_version: 1
+  authority_id: "AUTH-001"
+  mode: user-only
+  allowed_change_classes: []

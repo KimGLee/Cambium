@@ -1914,6 +1914,21 @@ class CheckQueueTests(QueueFixture):
         proposal = kblib.load_yaml_file(self.coverage_path)
         proposal["scope_version"] = "s2"
         proposal["updated_at"] = "2026-08-04T01:00:00Z"
+        proposal["batch_specs"].append({
+            "id": "B3", "family": "Core", "order_hint": 3,
+            "source_route": "R03", "execution_mode": "concurrent-worker",
+            "depends_on": ["B2"], "confirmation_required": False,
+            "work_spec_path": None, "work_spec_sha256": None,
+        })
+        proposal["pages"].append({
+            "path": "Topics/C.md", "coverage_disposition": "required",
+            "canonical_owner": "Topics/C.md", "type": "concept",
+            "priority": "P1", "tier": "M",
+            "authoring_status": "drafted",
+            "prerequisites": ["Topics/B.md"], "batch": "B3",
+            "next_batch": "B3", "deferred_reason": None,
+            "reentry_condition": None, "gate_receipts": [],
+        })
         proposal_path = self.root / proposal_relative
         proposal_path.parent.mkdir(parents=True, exist_ok=True)
         proposal_path.write_text(kblib.canonical_yaml(proposal),
@@ -1922,7 +1937,8 @@ class CheckQueueTests(QueueFixture):
         plan = {
             "schema_version": 1, "amendment_id": "A-SCOPE",
             "operation": "scope-replan",
-            "affected_pages": [], "affected_batches": [],
+            "affected_pages": ["Topics/C.md"],
+            "affected_batches": ["B3"],
             "scope_version_before": "s1", "scope_version_after": "s2",
             "queue_revision_before": 1, "queue_revision_after": 2,
             "state_revision_before": 0, "state_revision_after": 0,
@@ -2004,6 +2020,44 @@ class CheckQueueTests(QueueFixture):
         errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
         self.assertIn("amendment_id='WRONG', expected 'A-R1'", errors)
         self.assertIn("actor_role='worker', expected 'integrator'", errors)
+
+    def test_replan_protocol_compatibility_stays_fail_closed(self):
+        queue = self.queue()
+        queue["queue_revision"] = 2
+        self.write_queue(queue)
+        self.add_replan_amendment(
+            "A-R1", 1, 2, kblib.sha256_file(self.queue_path),
+            "audit-replan-r1",
+        )
+
+        registration_path = self.root / \
+            ".cambium/receipts/amendment-registrations.jsonl"
+        registration = json.loads(registration_path.read_text(
+            encoding="utf-8").strip())
+        registration["tool_version"] = \
+            check_queue.REGISTER_AMENDMENT_TOOL_VERSION
+        registration_path.write_text(json.dumps(registration) + "\n",
+                                     encoding="utf-8")
+        current_errors = "\n".join(
+            check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("current registration decision_mode is invalid",
+                      current_errors)
+        self.assertIn("current registration change_classes must be",
+                      current_errors)
+
+        registration["tool_version"] = "9.9.9"
+        registration_path.write_text(json.dumps(registration) + "\n",
+                                     encoding="utf-8")
+        replan_path = self.root / ".cambium/receipts/replans.jsonl"
+        replan = json.loads(replan_path.read_text(encoding="utf-8").strip())
+        replan["tool_version"] = "9.9.9"
+        replan_path.write_text(json.dumps(replan) + "\n", encoding="utf-8")
+        unknown_errors = "\n".join(
+            check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("unsupported register_amendment producer version '9.9.9'",
+                      unknown_errors)
+        self.assertIn("unsupported compile_queue producer version '9.9.9'",
+                      unknown_errors)
 
     def test_verified_queue_replan_registration_bridges_execution_state_and_time(self):
         queue = self.queue()

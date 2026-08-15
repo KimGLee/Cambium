@@ -24,9 +24,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
+import batch_settlement
+import coverage_delta
 import kblib
 
-TOOL, TOOL_VERSION = "apply_delta", "1.4.0"
+TOOL, TOOL_VERSION = "apply_delta", "1.5.0"
 
 # These fields are owned by Coverage reconciliation / Queue compilation, not
 # by a worker-produced page delta.  Their presence is an operation-wide error
@@ -193,64 +195,12 @@ def _delta_policy_errors(delta):
 
 def _gap_key(gap):
     """Return the stable identity used for open-gap reconciliation."""
-    if isinstance(gap, dict) and isinstance(gap.get("id"), str) and \
-            gap["id"].strip():
-        return ("id", gap["id"])
-    if isinstance(gap, dict):
-        return ("page-type", gap.get("page"), gap.get("type"))
-    if isinstance(gap, str):
-        return ("id", gap)
-    return None
+    return coverage_delta.gap_key(gap)
 
 
 def _merge_coverage_sections(text, delta):
     """Apply canonical non-page Coverage sections declared by a delta."""
-    coverage = kblib.parse_yaml_subset(text)
-    if not isinstance(coverage, dict):
-        raise ValueError("Coverage Ledger top level must be a mapping")
-    result = copy.deepcopy(coverage)
-    gaps = result.get("open_gaps")
-    if not isinstance(gaps, list):
-        raise ValueError("Coverage open_gaps must be an explicit list")
-    indexed = {}
-    for index, gap in enumerate(gaps):
-        key = _gap_key(gap)
-        if key is None or key[0] == "page-type" and (not key[1] or not key[2]):
-            raise ValueError("Coverage open_gaps[%d] has no stable id or page+type" %
-                             index)
-        if key in indexed:
-            raise ValueError("Coverage repeats open gap identity %r" % (key,))
-        indexed[key] = gap
-
-    additions = delta.get("open_gaps_added") or []
-    closures = delta.get("open_gaps_closed") or []
-    close_keys = [_gap_key(selector) for selector in closures]
-    if len(close_keys) != len(set(close_keys)):
-        raise ValueError("open_gaps_closed repeats a gap identity")
-    add_keys = [_gap_key(gap) for gap in additions]
-    if len(add_keys) != len(set(add_keys)):
-        raise ValueError("open_gaps_added repeats a gap identity")
-    overlap = set(close_keys).intersection(add_keys)
-    if overlap:
-        raise ValueError("one delta cannot close and add the same gap: %r" %
-                         sorted(overlap))
-    for key in close_keys:
-        if key not in indexed:
-            raise ValueError("open_gaps_closed references absent gap %r" % (key,))
-        indexed.pop(key)
-    page_paths = {page.get("path") for page in result.get("pages", [])
-                  if isinstance(page, dict)}
-    for gap, key in zip(additions, add_keys):
-        if key in indexed:
-            raise ValueError("open_gaps_added already exists: %r" % (key,))
-        if gap.get("page") not in page_paths:
-            raise ValueError("open gap page is absent from Coverage: %s" %
-                             gap.get("page"))
-        indexed[key] = copy.deepcopy(gap)
-    result["open_gaps"] = list(indexed.values())
-    if delta.get("generated_at") is not None:
-        result["updated_at"] = delta["generated_at"]
-    return kblib.canonical_yaml(result)
+    return coverage_delta.project_coverage_text(text, delta)
 
 
 def _build_plan(lines, delta, force=False):
@@ -376,7 +326,7 @@ def pre_apply_coverage_archive_path(batch, queue_state_revision):
 
 def _prepare_receipt(result, batch, delta_path, delta_sha,
                      before_coverage_sha, after_coverage_sha, actor_role,
-                     before_coverage_archive):
+                     before_coverage_archive, settlement=None):
     receipt = kblib.make_receipt(
         TOOL, TOOL_VERSION, "delta_apply", batch, "pass",
         "canonical Coverage delta applied and Queue post-check passed", 1,
@@ -399,6 +349,8 @@ def _prepare_receipt(result, batch, delta_path, delta_sha,
         "queue_revision": result["queue"].get("queue_revision"),
         "queue_state_revision": result["queue"].get("state_revision"),
     })
+    if settlement is not None:
+        receipt.update(batch_settlement.transition_binding(settlement))
     return receipt
 
 
@@ -430,7 +382,10 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
         )
         if not os.path.isfile(ledger_path) or not os.path.isfile(delta_path):
             raise ValueError("canonical ledger and delta must be regular files")
-        current = check_queue.validate_runtime(root)
+        current = check_queue.validate_runtime(
+            root,
+            allowed_open_delta=(args.delta if args.preflight else None),
+        )
     except (OSError, ValueError, kblib.YamlSubsetError) as exc:
         print("[FAIL] canonical runtime cannot be loaded: %s" % exc)
         return 1
@@ -465,7 +420,9 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
     if item is None:
         print("[FAIL] delta batch %s is absent from Required Queue" % batch)
         return 1
-    if item.get("state") != "merge-ready":
+    allowed_states = (("open", "merge-ready") if args.preflight
+                      else ("merge-ready",))
+    if item.get("state") not in allowed_states:
         print("[FAIL] batch %s is %s, expected merge-ready" %
               (batch, item.get("state")))
         return 1
@@ -478,10 +435,10 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
         print("[FAIL] batch %s is held (hold_state=%s); canonical delta apply "
               "requires hold_state=none" % (batch, item.get("hold_state")))
         return 1
-    if item.get("delta_path") != expected_delta:
+    if not args.preflight and item.get("delta_path") != expected_delta:
         print("[FAIL] batch delta_path does not match %s" % expected_delta)
         return 1
-    if item.get("delta_sha256") != planned_delta_sha:
+    if not args.preflight and item.get("delta_sha256") != planned_delta_sha:
         print("[FAIL] delta bytes do not match the SHA frozen at merge-ready")
         return 1
     delta_manifest = [page.get("path") for page in delta.get("pages", [])]
@@ -497,6 +454,18 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
     except kblib.YamlSubsetError as exc:
         print("[FAIL] merged Coverage does not parse: %s" % exc)
         return 1
+    settlement = batch_settlement.delta_settlement_report(
+        current["coverage"], parsed_new, delta, current["queue"], batch)
+    if settlement["errors"]:
+        for error in settlement["errors"]:
+            print("[FAIL] routed-gap settlement: %s" % error)
+        return 1
+    if args.preflight:
+        print("[PASS] routed-gap preflight clean: obligations=%d "
+              "prospective_unsettled=0 coverage_after=%s" %
+              (settlement["obligation_count_before"],
+               kblib.sha256_bytes(new_text)))
+        return 0
 
     before_coverage_sha = planned_coverage_sha
     before_queue_sha = current.get("queue_sha256")
@@ -506,7 +475,7 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
         batch, current["queue"].get("state_revision"))
     receipt = _prepare_receipt(
         current, batch, expected_delta, planned_delta_sha, before_coverage_sha,
-        after_coverage_sha, args.actor_role, archive_relative,
+        after_coverage_sha, args.actor_role, archive_relative, settlement,
     )
     receipt_relative = args.receipts or (
         ".cambium/receipts/%s.jsonl" % receipt["receipt_id"]
@@ -612,6 +581,17 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
                     raise ValueError(
                         "Queue state revision changed after validation; the "
                         "pre-apply Coverage archive key is no longer current")
+                locked_settlement = batch_settlement.delta_settlement_report(
+                    locked["coverage"], parsed_new, delta, locked["queue"],
+                    batch)
+                if locked_settlement["errors"]:
+                    raise ValueError(
+                        "routed-gap settlement changed under lock: %s" %
+                        "; ".join(locked_settlement["errors"]))
+                if (batch_settlement.transition_binding(locked_settlement) !=
+                        batch_settlement.transition_binding(settlement)):
+                    raise ValueError(
+                        "routed-gap settlement binding changed under lock")
 
                 with open(ledger_path, encoding="utf-8") as handle:
                     old_text = handle.read()
@@ -804,6 +784,10 @@ def main(argv=None):
     parser.add_argument("delta")
     parser.add_argument("--root", help="adopting repository root (canonical mode)")
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument(
+        "--preflight", action="store_true",
+        help="plan canonical Coverage and routed-gap settlement without writes; "
+             "allows an open batch")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
                         default="worker")
@@ -811,6 +795,13 @@ def main(argv=None):
     parser.add_argument("--expected-queue-sha256")
     parser.add_argument("--receipts")
     args = parser.parse_args(argv)
+
+    if args.preflight and args.apply:
+        print("[FAIL] --preflight and --apply are mutually exclusive")
+        return 1
+    if args.preflight and args.root is None:
+        print("[FAIL] --preflight requires canonical --root mode")
+        return 1
 
     if args.root is None:
         detached_paths = [("ledger", args.ledger), ("delta", args.delta)]

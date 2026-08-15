@@ -5,7 +5,9 @@ The compiler reads only declared Coverage assignments and top-level
 ``batch_specs``.  It does not inspect backlinks, page prose, or semantic
 similarity.  By default it prints a proposal.  ``--apply`` materializes an
 initial Queue; ``--apply-replan`` performs an Amendment-bound structural write
-without rewriting lifecycle history.
+without rewriting lifecycle history.  A replan also re-derives its registered
+change-class/authority binding from live state and the exact proposal bytes
+under the shared writer lock.
 """
 
 import argparse
@@ -17,12 +19,13 @@ import uuid
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
+import amendment_policy
 
 QUEUE_PATH = ".cambium/state/required_queue.yaml"
 COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
 PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
 REPLAN_PROPOSAL_PREFIX = ".cambium/deltas/replans"
-TOOL_VERSION = "1.4.0"
+TOOL_VERSION = "1.5.0"
 PRIORITY = {"P0": 0, "P1": 1, "P2": 2}
 STRUCTURAL_FIELDS = (
     "family", "order", "record_count", "manifest", "source_route",
@@ -644,7 +647,7 @@ def _changed_batch_ids(diff):
 
 def _pending_replan_amendment(progress, amendment_id, queue, diff,
                               diff_text, proposal_path, proposal_sha,
-                              affected_pages):
+                              affected_pages, impact):
     """Return one exact, approved authorization for this same-scope replan."""
     amendments = progress.get("amendments")
     if not isinstance(amendments, list):
@@ -686,6 +689,8 @@ def _pending_replan_amendment(progress, amendment_id, queue, diff,
                 "%s=%r expected=%r" %
                 (amendment_id, field, amendment.get(field), value)
             )
+    amendment_policy.require_decision_binding(
+        progress.get("contract") or {}, impact, amendment)
     return amendment
 
 
@@ -847,7 +852,7 @@ def _restore_state(paths, before_text, names):
 
 def _commit_state(root, paths, before_text, after_text, write_names,
                   receipt_path, prepare_receipt, commit_receipt,
-                  abort_receipt, operation, authority):
+                  abort_receipt, operation, authority, lock_validator=None):
     """Publish one guarded state transaction and preserve crash evidence.
 
     Per-file replacement cannot be atomic across three files.  The shared
@@ -880,6 +885,8 @@ def _commit_state(root, paths, before_text, after_text, write_names,
                 raise ValueError(barrier)
             check_queue.require_runtime_authority_current(
                 root, authority, "runtime authority changed under lock")
+            if lock_validator is not None:
+                lock_validator(locked)
         outcomes = {
             "prepare": "not-attempted",
             "commit": "not-attempted",
@@ -1056,10 +1063,12 @@ def main(argv=None):
             if barrier:
                 raise ValueError(barrier)
         proposal_coverage_path = None
+        proposal_coverage_file = None
         proposal_coverage_text = coverage_text
         proposal_coverage = coverage
         proposal_coverage_sha = current_coverage_sha
         affected_pages = []
+        amendment_impact = None
         if existing:
             if not args.coverage_proposal:
                 raise ValueError(
@@ -1067,12 +1076,23 @@ def main(argv=None):
                     ".cambium/deltas/replans/; never pre-edit canonical Coverage"
                 )
             proposal_coverage_path = args.coverage_proposal
-            _, proposal_coverage_text, proposal_coverage = \
+            proposal_coverage_file, proposal_coverage_text, proposal_coverage = \
                 _load_replan_proposal(root, proposal_coverage_path)
             proposal_coverage_sha = kblib.sha256_bytes(
                 proposal_coverage_text)
             affected_pages = validate_same_scope_proposal(
                 coverage, proposal_coverage)
+            amendment_impact = amendment_policy.derive_amendment_impact(
+                coverage, proposal_coverage, queue)
+            # A proposal-only run is also the diagnostic that explains why a
+            # removal needs a different Amendment writer.  Do not suppress
+            # that diff merely because it cannot be applied as queue-replan;
+            # enforce the operation boundary only on the write path.
+            if (args.apply_replan and
+                    amendment_impact["writer_operation"] != "queue-replan"):
+                raise ValueError(
+                    "Coverage proposal requires %s, not queue-replan" %
+                    amendment_impact["writer_operation"])
         elif args.coverage_proposal:
             raise ValueError("--coverage-proposal is only valid for a non-empty Queue")
         proposal, changed = compile_document(queue, proposal_coverage)
@@ -1151,7 +1171,7 @@ def main(argv=None):
             amendment = _pending_replan_amendment(
                 progress, args.amendment_id, queue, diff, diff_text,
                 proposal_coverage_path, proposal_coverage_sha,
-                affected_pages)
+                affected_pages, amendment_impact)
             replanned = _build_replanned_queue(queue, proposal, diff)
             replanned_text = kblib.canonical_yaml(replanned)
             final_coverage_text = kblib.canonical_yaml(proposal_coverage)
@@ -1270,6 +1290,26 @@ def main(argv=None):
                 "receipt_id": prepare_receipt.get("receipt_id"),
                 "receipt_path": args.receipts,
             }
+
+            def revalidate_delegated_decision(locked):
+                with open(proposal_coverage_file, "rb") as handle:
+                    live_proposal_raw = handle.read()
+                if kblib.sha256_bytes(live_proposal_raw) != proposal_coverage_sha:
+                    raise ValueError(
+                        "Coverage proposal changed after transaction planning")
+                live_proposal = kblib.parse_yaml_subset(
+                    live_proposal_raw.decode("utf-8"))
+                locked_impact = amendment_policy.derive_amendment_impact(
+                    locked["coverage"], live_proposal, locked["queue"])
+                locked_amendment = next(
+                    (entry for entry in locked["progress"].get("amendments", [])
+                     if isinstance(entry, dict) and
+                     entry.get("id") == args.amendment_id), None)
+                if locked_amendment is None:
+                    raise ValueError("pending Amendment disappeared under lock")
+                amendment_policy.require_decision_binding(
+                    locked["progress"].get("contract") or {},
+                    locked_impact, locked_amendment)
             _commit_state(
                 root,
                 {
@@ -1290,6 +1330,7 @@ def main(argv=None):
                 ("coverage", "queue", "progress"),
                 receipt_path, prepare_receipt, receipt, abort_receipt,
                 operation, authority,
+                lock_validator=revalidate_delegated_decision,
             )
         except (OSError, ValueError, kblib.YamlSubsetError,
                 kblib.RuntimeStateLockedError) as exc:
