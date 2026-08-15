@@ -64,6 +64,40 @@ receipt publications. Historical replay checks that a sealed 1.17 receipt kept
 a canonical digest; it does not reinterpret that completed decision against
 today's repository.
 
+## Standards-adoption Boundary Authority
+
+A current raw receipt proves only its registered Gate. It does not acquire
+Standards-adoption authority merely because an adoption plan names that Gate as
+affected. The
+[[kernel/K00 Standards Control/12 Control Registry#Standards Revalidation Capability Registry\|Standards Revalidation Capability Registry]]
+is the sole leaf-to-owner projection:
+
+- a `semantic-leaf` receipt is member evidence for its registered owner and
+  MUST be enumerated by that owner's binding protocol; it MUST NOT be supplied
+  directly as authorization for an adoption boundary;
+- a `native-owner` receipt authorizes only its ordinary transition, at the
+  lifecycle position registered in K00/12; making the same receipt early does
+  not discharge that transition;
+- `required-queue-consistency`, the sole `immediate-owner`, remains in
+  `boundary_gate_reruns` when a current boundary projects it and is the only raw
+  Gate receipt a post-adoption revalidation aggregate may consume directly;
+- `profile-load` is consumed only as the candidate after-image admission; and
+- `mechanism-only`, `unsupported`, and `advisory` receipts never become
+  blocking boundary authorization.
+
+An owner receipt does not erase its leaves. Its owner contract binds the exact
+member receipt IDs, scope, and fingerprints required for that native decision;
+a prose assertion that the members were checked is not an owner chain. A
+revalidation aggregate may record native owners deferred to their transitions,
+but it neither manufactures those owner receipts nor upgrades a raw leaf into
+one.
+
+These rules apply to new current authorization. A transition that already
+consumed an aggregate is replayed under that aggregate's producer era, including
+the leaf/owner protocol that era recorded. Historical raw receipts and sealed
+aggregates stay immutable and are not rejected for lacking fields or owner
+links introduced later.
+
 ## Recording Authority
 
 The actor recording a `manual-attestation` receipt MUST hold the authority for the decision it attests. Where the Gate's owner module names that actor, the naming governs: Batch Review gives the `batch-review` gate to the integrator, and Batch-close Closed List requires distinct integrator and reviewer labels on the close bundle. Where no owner module names one, the authority is the actor bound to `gatekeeper` in the selected profile's `Role Registry`; a profile-registered extension gate instead uses the pass-authority Role ID that gate declares. One actor MAY hold several roles.

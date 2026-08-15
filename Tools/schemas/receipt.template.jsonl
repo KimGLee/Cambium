@@ -68,6 +68,21 @@
 #                                   require-maintenance-complete, or resume-status
 #                                   (the complete set, bound to checker version;
 #                                   `check_queue.py` argparse is its owner)
+# A current `require-revalidation:<batch-id>` aggregate uses
+# `mapping_protocol_version: owner-projection-v1`. It records the original
+# `required_gate_ids` plus `mapped_owner_gate_ids`, `immediate_gate_ids`,
+# `native_owner_gate_ids`, and `deferred_native_owner_gate_ids`. The
+# `due_gate_ids`, `deferred_to_later_transition_gate_ids`, and
+# `unrepeatable_passed_gate_ids` partition the mapped owner set at the target
+# batch state. `boundary_gate_receipts` contains exactly the due owner receipts;
+# a raw semantic-leaf receipt is never accepted there. Each
+# `revalidation_bindings` row binds `affected_gate_id`, `required_gate_id`,
+# `mapped_owner_gate_id`, `owner_claim_edge`, `mapping_protocol_version`,
+# `claim_disposition`, `gate_receipt_id`, and the adoption/boundary/invalidated-
+# evidence identities from which that claim was derived. A native-owner row is
+# deferred to its ordinary transition rather than satisfied early by the
+# aggregate. Producer-era replay preserves aggregates written before this
+# projection and never rewrites their binding shape.
 # A successful `consistency` receipt also carries
 # `repository_snapshot_sha256`: a path-sensitive SHA-256 over every regular
 # repository file except the root `.git/` and `.cambium/` namespaces. The
@@ -102,9 +117,9 @@
 # check_links 1.5.0 / wiki-link-integrity; check_vocab 1.8.0 /
 # frontmatter-vocabulary and priority-quota-distribution;
 # check_residual_content 1.2.0 /
-# registered-residual-content; check_queue 1.19.0 / its registered
+# registered-residual-content; check_queue 1.20.0 / its registered
 # Required-Queue modes; check_batch_close 1.10.0 / batch-close; check_proof
-# 1.17.0 / terminal-proof; and adopt_standards 1.5.0 /
+# 1.17.0 / terminal-proof; and adopt_standards 1.6.0 /
 # standards-adoption. Deterministic producers not shown above -- among them
 # check_corpus_plan and record_corpus_acceptance -- follow the same rule. Every receipt
 # created by one of these producer versions carries that exact Gate ID. The
@@ -113,9 +128,10 @@
 # receipts and fails closed on a version mismatch.
 # Every registered Gate producer additionally binds the current Required Queue
 # identity -- `task_id`, `standards_version`, `selected_profile_manifest` --
-# read from `.cambium/state/required_queue.yaml`, because a Standards
-# revalidation boundary consumes a Gate receipt only when those three equal the
-# live Queue values. `adopt_standards.py` binds the planned post-adoption
+# read from `.cambium/state/required_queue.yaml`. Equality is necessary for
+# current authorization but does not make a raw semantic leaf into a Standards-
+# revalidation boundary owner; that projection is owned by K00/12's capability
+# registry. `adopt_standards.py` binds the planned post-adoption
 # identity, since its receipts are built before the state write and consumed
 # after it. A run outside any Cambium runtime (no `.cambium/state/`) omits the
 # three fields rather than writing null: an omitted field claims nothing, while
@@ -295,14 +311,18 @@
 # Closed history may replay apply_delta/1.4.0; a new apply requires 1.5.0.
 # Queue transition history similarly accepts update_queue/1.2.0 while current
 # transitions are produced as update_queue/1.3.0 receipts.
-# `adopt_standards.py` 1.4.0 validates the candidate Profile after-image with
+# `adopt_standards.py` 1.6.0 validates the candidate Profile after-image with
 # full `profile-load` before writing state and binds its Profile tree, typed
-# dependency graph, and root-owned profile-load inputs in the plan, adoption
-# receipts, Progress record, and lock intent. A `profile-load` invalidation
-# boundary targets exactly `selected_profile_manifest_after`; admission is not
-# batch-scoped, while any downstream Gates named by the boundary retain their
-# declared rerun boundaries. Sealed pre-1.4 history may omit the root-input
-# fingerprint, just as sealed pre-1.3 history may omit the typed contract.
+# dependency graph, root-owned profile-load inputs, and 1.5-era upstream
+# identity pair in the plan, adoption receipts, Progress record, and lock
+# intent. A `profile-load` invalidation boundary targets exactly
+# `selected_profile_manifest_after`; admission is not batch-scoped. Current
+# changed-predicate leaves project through K00/12 to owner Gate IDs: Queue
+# consistency is immediate, while native owners remain required at their
+# ordinary transitions. Sealed pre-1.5 history may omit the upstream pair,
+# sealed pre-1.4 history may omit the root-input fingerprint, and sealed
+# pre-1.3 history may omit the typed contract. Replay selects the producer-era
+# contract and never projects today's fields backward onto immutable history.
 # Existing receipt IDs remain valid append-only protocol references after generator-format changes; never rewrite historical IDs.
 # =============================================================================
 {"receipt_id": "audit-check_links-20260721T000000Z-4f9c2a7d6e8b4a10b3c5d7e9f1023456-0001", "check": "link-missing", "target": "Topics/Example Topic.md:42", "result": "fail", "details": "[[Example Dependency]] has no matching target (missing)", "checked_at": "2026-07-21T00:00:00Z", "tool": "check_links", "tool_version": "1.5.0", "gate_id": "wiki-link-integrity", "invalidated_by": null}
