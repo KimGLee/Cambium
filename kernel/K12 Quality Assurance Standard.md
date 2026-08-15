@@ -28,7 +28,7 @@ This page is the stable entry for the Quality Assurance standard. The detailed r
 | [[kernel/K12 Quality Assurance/14 Batch Review\|Batch Review]] | `Batch Review` |
 | [[kernel/K12 Quality Assurance/15 Terminal Audit and Convergence\|Terminal Audit and Convergence]] | `Terminal Audit`, `Terminal Findings And Convergence` |
 | [[kernel/K12 Quality Assurance/16 Terminal Proof Contract\|Terminal Proof Contract]] | `Terminal Proof Contract`, `Terminal Completion Gate`, `Evidence Trust Boundary` |
-| [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract\|Gate Receipt Payload Contract]] | `Purpose`, `Gate Receipt Payload`, `Recording Authority`, `Consumption And Rejection`, `Related` |
+| [[kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract\|Gate Receipt Payload Contract]] | `Purpose`, `Gate Receipt Payload`, `Recording Authority`, `Standards-adoption Boundary Authority`, `Consumption And Rejection`, `Related` |
 | [[kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map\|Cross-page and Control-plane Dimension Map]] | `Purpose`, `Item Map`, `Gate Receipt Dimensions`, `Reverse Check`; this half files the layers above one page and the control-plane Gates |
 | [[kernel/K12 Quality Assurance/19 Incremental Audit Planning\|Incremental Audit Planning]] | `Incremental Audit Planning`, `Incremental By Default` |
 | `Audit Dimension Registry` + `Registered Scan Registry` + `Routing And Gate Registry` | profile-owned QA dimensions, scans, and extension gates |

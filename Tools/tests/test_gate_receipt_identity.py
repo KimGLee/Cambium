@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -44,6 +45,173 @@ QUEUE_EXHAUSTED = check_queue.QUEUE_EXHAUSTED_GATE
 
 
 class DeterministicGateReceiptIdentityTests(unittest.TestCase):
+    def test_revalidation_owner_projection_is_frozen_by_adoption_era(self):
+        """Current policy may bridge legacy leaves, not rewrite 1.6 owners.
+
+        A pre-1.6 adoption stored raw Gate IDs and therefore needs the current
+        compatibility mapping.  Starting with 1.6, the admitted boundary
+        stores the projected owner closure; a future capability-table change
+        must replay that recorded owner instead of silently moving an
+        outstanding claim to a different transition.
+        """
+        class Catalog:
+            def __init__(self, rows):
+                self.rows = rows
+
+            def resolve(self, receipt_id):
+                row = self.rows.get(receipt_id)
+                return ("hot", row) if row is not None else None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plans = root / check_queue.STANDARDS_ADOPTION_PLAN_PREFIX
+            plans.mkdir(parents=True)
+            legacy_path = plans / "SA-LEGACY.yaml"
+            current_path = plans / "SA-CURRENT.yaml"
+
+            def plan(adoption_id, required_gate_id):
+                return {
+                    "adoption_id": adoption_id,
+                    "changed_predicates": [{
+                        "predicate_id": "PRED-PAGE-CONTRACT",
+                        "affected_gate_ids": ["page-contract"],
+                    }],
+                    "invalidated_evidence": [],
+                    "invalidation_boundaries": [{
+                        "boundary_id": "INV-B1",
+                        "predicate_ids": ["PRED-PAGE-CONTRACT"],
+                        "target_kind": "batch",
+                        "target_ids": ["B1"],
+                        "required_gate_ids": [required_gate_id],
+                    }],
+                }
+
+            kblib.atomic_write_yaml(
+                legacy_path, plan("SA-LEGACY", "page-contract"))
+            kblib.atomic_write_yaml(
+                current_path, plan("SA-CURRENT", "batch-close"))
+            progress = {"standards_adoptions": [
+                {
+                    "id": "SA-LEGACY",
+                    "plan_path": str(legacy_path.relative_to(root)),
+                    "plan_sha256": "legacy-plan",
+                    "adopted_at": "2026-08-15T00:00:00Z",
+                    "verification_receipt": "adopt-legacy",
+                },
+                {
+                    "id": "SA-CURRENT",
+                    "plan_path": str(current_path.relative_to(root)),
+                    "plan_sha256": "current-plan",
+                    "adopted_at": "2026-08-15T00:01:00Z",
+                    "verification_receipt": "adopt-current",
+                },
+            ]}
+            catalog = Catalog({
+                "adopt-legacy": {
+                    "tool": check_queue.STANDARDS_ADOPTION_TOOL,
+                    "tool_version": "1.5.0",
+                },
+                "adopt-current": {
+                    "tool": check_queue.STANDARDS_ADOPTION_TOOL,
+                    "tool_version": "1.6.0",
+                },
+            })
+            # Simulate a future 1.7 runtime changing the leaf owner.  Only the
+            # 1.5 compatibility bridge may observe this current mapping.
+            capabilities = {
+                "page-contract": {
+                    "role": "semantic-leaf",
+                    "owner": "batch-review",
+                    "claim_edge": "project-to-owner",
+                },
+                "batch-review": {
+                    "role": "native-owner",
+                    "owner": "batch-review",
+                    "claim_edge": "native-transition",
+                },
+                "batch-close": {
+                    "role": "native-owner",
+                    "owner": "batch-close",
+                    "claim_edge": "native-transition",
+                },
+            }
+            with mock.patch.object(
+                    check_queue, "STANDARDS_ADOPTION_TOOL_VERSION", "1.7.0"):
+                requirements = check_queue.standards_revalidation_requirements(
+                    root, progress, capabilities=capabilities,
+                    catalog=catalog)["B1"]
+
+        by_adoption = {row["adoption_id"]: row for row in requirements}
+        self.assertEqual("batch-review",
+                         by_adoption["SA-LEGACY"]["mapped_owner_gate_id"])
+        self.assertEqual("page-contract",
+                         by_adoption["SA-LEGACY"]["required_gate_id"])
+        self.assertEqual("batch-close",
+                         by_adoption["SA-CURRENT"]["mapped_owner_gate_id"])
+        self.assertEqual("batch-close",
+                         by_adoption["SA-CURRENT"]["required_gate_id"])
+
+    def test_revalidation_capabilities_project_semantic_leaves_to_owners(self):
+        """A changed leaf creates its native composite owner's claim.
+
+        Receipt identity and adoption capability are deliberately separate
+        registries.  The former says what a receipt is; this projection says
+        which Gate may actually own a Standards-revalidation boundary.  In
+        particular, neither page-contract leaf may ask the aggregate for one
+        raw per-page receipt.
+        """
+        root = TOOLS_DIR.parent
+        gates, gate_errors = check_queue.standards_gate_registry(root)
+        self.assertEqual([], gate_errors)
+        capabilities, capability_errors = \
+            check_queue.standards_gate_capability_registry(
+                root, gate_registry=gates)
+        self.assertEqual([], capability_errors)
+
+        for leaf in ("frontmatter-vocabulary", "page-contract"):
+            with self.subTest(leaf=leaf):
+                self.assertEqual("semantic-leaf",
+                                 capabilities[leaf]["role"])
+                self.assertEqual("batch-close",
+                                 capabilities[leaf]["owner"])
+                self.assertEqual("project-to-owner",
+                                 capabilities[leaf]["claim_edge"])
+                self.assertEqual("inherit-owner-scope",
+                                 capabilities[leaf]["scope_protocol"])
+                self.assertEqual("owner-member-chain",
+                                 capabilities[leaf]["binding_protocol"])
+
+        immediate, native, projection_errors = \
+            check_queue.project_adoption_gate_ids(
+                ["frontmatter-vocabulary", "page-contract",
+                 "required-queue-consistency"], capabilities)
+        self.assertEqual([], projection_errors)
+        self.assertEqual(["required-queue-consistency"], immediate)
+        self.assertEqual(["batch-close"], native)
+
+    def test_mechanism_and_unsupported_gates_have_no_boundary_capability(self):
+        """Mechanisms can carry claims but cannot manufacture one."""
+        root = TOOLS_DIR.parent
+        gates, gate_errors = check_queue.standards_gate_registry(root)
+        self.assertEqual([], gate_errors)
+        capabilities, capability_errors = \
+            check_queue.standards_gate_capability_registry(
+                root, gate_registry=gates)
+        self.assertEqual([], capability_errors)
+
+        for gate_id, role in (
+                ("standards-adoption", "mechanism-only"),
+                ("standards-revalidation", "mechanism-only"),
+                ("runtime-card-synchronization", "unsupported")):
+            with self.subTest(gate_id=gate_id):
+                self.assertEqual(role, capabilities[gate_id]["role"])
+                _immediate, _native, errors = \
+                    check_queue.project_adoption_gate_ids(
+                        [gate_id], capabilities)
+                self.assertTrue(any(
+                    "cannot be used as an adoption boundary Gate" in error
+                    and role in error for error in errors), errors)
+
     def test_producer_constants_match_stable_gate_registry(self):
         repository_root = TOOLS_DIR.parent
         registry, errors = check_queue.standards_gate_registry(repository_root)

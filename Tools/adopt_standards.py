@@ -19,7 +19,7 @@ import check_queue
 import kblib
 
 TOOL = "adopt_standards"
-TOOL_VERSION = "1.5.0"
+TOOL_VERSION = "1.6.0"
 GATE_ID = "standards-adoption"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -388,17 +388,22 @@ def _prepare_result(root, plan_relative):
     plan_path = os.path.relpath(plan_file, root).replace(os.sep, "/")
     plan_sha = kblib.sha256_bytes(plan_raw)
     transaction_id = "txn-%s-%s" % (plan["adoption_id"], uuid.uuid4().hex)
-    gate_stub = kblib.make_receipt(
-        check_queue.TOOL, check_queue.TOOL_VERSION, "required_queue",
-        check_queue.QUEUE_PATH, "pass",
-        "post-adoption required Queue consistency", 90)
-    immediate_receipts = [gate_stub["receipt_id"]]
     # Commit id/time are known before serializing Progress, avoiding a
     # self-referential after-Progress hash while retaining an exact reference.
     commit_stub = _make_receipt(
         GATE_CHECK, plan["adoption_id"],
         "pass", "Standards adoption commit", 2,
         identity=_plan_identity(plan))
+    # The immediate consistency receipt is produced against the committed
+    # after-image.  Allocate it after the commit identity so its timestamp is
+    # never earlier than ``record.adopted_at``; the same receipt can then
+    # discharge the aggregate's immediate owner claim without an impossible
+    # second Queue run while every batch is held for revalidation.
+    gate_stub = kblib.make_receipt(
+        check_queue.TOOL, check_queue.TOOL_VERSION, "required_queue",
+        check_queue.QUEUE_PATH, "pass",
+        "post-adoption required Queue consistency", 90)
+    immediate_receipts = [gate_stub["receipt_id"]]
     record = {
         "id": plan["adoption_id"],
         "adopted_at": commit_stub["checked_at"],
@@ -732,6 +737,8 @@ def main(argv=None):
         return 1
     print("[PASS] Standards adoption %s committed; transaction_id=%s" % (
         plan["adoption_id"], prepared["transaction_id"]))
+    print("immediate_gate_receipt=%s" % prepared["gate"]["receipt_id"])
+    print("verification_receipt=%s" % prepared["commit"]["receipt_id"])
     return 0
 
 

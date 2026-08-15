@@ -39,7 +39,7 @@ import coverage_delta
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.19.0"
+TOOL_VERSION = "1.20.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -444,16 +444,54 @@ AMENDMENT_COMMON_FIELDS = frozenset((
     "id", "date", "summary", "status", "writeback_done",
 ))
 STANDARDS_ADOPTION_TOOL = "adopt_standards"
-STANDARDS_ADOPTION_TOOL_VERSION = "1.5.0"
+STANDARDS_ADOPTION_TOOL_VERSION = "1.6.0"
 STANDARDS_ADOPTION_PROFILE_CONTRACT_MIN_VERSION = (1, 3, 0)
 # The 1.5 producer records where the adopted revision came from: the
 # distribution has no version numbers by design, so upstream/downstream
 # comparability is the adoption record's job, not a prose convention's.
 STANDARDS_ADOPTION_UPSTREAM_MIN_VERSION = (1, 5, 0)
 STANDARDS_ADOPTION_PROFILE_INPUT_MIN_VERSION = (1, 4, 0)
+STANDARDS_ADOPTION_OWNER_PROJECTION_MIN_VERSION = (1, 6, 0)
 STANDARDS_ADOPTION_PLAN_PREFIX = ".cambium/deltas/standards-adoptions"
 STANDARDS_GATE_REGISTRY_PATH = \
     "kernel/K00 Standards Control/12 Control Registry.md"
+STANDARDS_REVALIDATION_CAPABILITY_PROTOCOL = "owner-projection-v1"
+STANDARDS_REVALIDATION_CAPABILITY_HEADING = \
+    "Standards Revalidation Capability Registry"
+STANDARDS_REVALIDATION_CAPABILITY_ROLES = frozenset((
+    "special-owner", "immediate-owner", "native-owner", "semantic-leaf",
+    "mechanism-only", "unsupported", "advisory",
+))
+STANDARDS_REVALIDATION_CAPABILITY_EDGES = frozenset((
+    "after-image-admission", "adoption-commit", "native-transition",
+    "project-to-owner", "mechanism-input-only", "advisory-only", "none",
+))
+STANDARDS_REVALIDATION_SCOPE_PROTOCOLS = frozenset((
+    "profile-after-image", "runtime-after-image", "native-owner-scope",
+    "inherit-owner-scope", "diagnostic-scope", "none",
+))
+STANDARDS_REVALIDATION_BINDING_PROTOCOLS = frozenset((
+    "profile-fingerprints", "runtime-state-fingerprints",
+    "native-owner-receipt", "owner-member-chain", "not-authorizing",
+))
+STANDARDS_REVALIDATION_ROLE_CONTRACTS = {
+    "special-owner": (
+        "after-image-admission", "profile-after-image",
+        "profile-fingerprints"),
+    "immediate-owner": (
+        "adoption-commit", "runtime-after-image",
+        "runtime-state-fingerprints"),
+    "native-owner": (
+        "native-transition", "native-owner-scope",
+        "native-owner-receipt"),
+    "semantic-leaf": (
+        "project-to-owner", "inherit-owner-scope", "owner-member-chain"),
+    "mechanism-only": (
+        "mechanism-input-only", "none", "not-authorizing"),
+    "unsupported": ("none", "none", "not-authorizing"),
+    "advisory": (
+        "advisory-only", "diagnostic-scope", "not-authorizing"),
+}
 READ_SET_BOUNDARY_OWNER_PATH = \
     "kernel/K00 Standards Control/15 Read Set Loading Boundaries.md"
 READ_SET_PATH_PREFIX = "kernel/Read Sets/"
@@ -665,6 +703,222 @@ def standards_gate_registry(root):
         errors.append("Stable Gate ID Registry has no gate rows")
     errors.extend(gate_registry_producer_errors(registry))
     return registry, errors
+
+
+def standards_revalidation_capabilities(root, gate_registry=None):
+    """Parse the closed Gate leaf-to-owner capability registry in K00/12.
+
+    The Stable Gate ID Registry answers which receipt identifies a Gate and
+    where its producer can run.  It does *not* answer whether a raw receipt is
+    allowed to authorize a Standards-adoption boundary.  Keeping that second
+    question in its own closed table prevents a semantic leaf from becoming a
+    boundary authority merely because both happen to use the word ``Gate``.
+
+    Every stable Gate occurs exactly once.  The role fixes the remaining four
+    cells, and every semantic leaf points to a real native owner.  This makes
+    the planner -> owner -> transition path machine-checkable before an
+    adoption writes state.
+    """
+    errors = []
+    capabilities = {}
+    if gate_registry is None:
+        gate_registry, gate_errors = standards_gate_registry(root)
+        errors.extend(gate_errors)
+    try:
+        path = kblib.repository_path(
+            root, STANDARDS_GATE_REGISTRY_PATH, must_exist=True,
+            reject_symlink=True)
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    except (OSError, UnicodeError, ValueError) as exc:
+        return {}, errors + [
+            "Standards revalidation capability registry is unsafe or "
+            "unreadable: %s" % exc]
+
+    inside = False
+    seen_section = 0
+    expected_header = [
+        "Gate ID", "Role", "Owner", "Claim edge", "Scope protocol",
+        "Binding protocol",
+    ]
+    for line in text.splitlines():
+        heading = re.match(r"^(#{2,3})\s+(.*?)\s*#*\s*$", line)
+        if heading:
+            is_registry = heading.group(2).strip() == \
+                STANDARDS_REVALIDATION_CAPABILITY_HEADING
+            if is_registry:
+                seen_section += 1
+            inside = is_registry and seen_section == 1
+            continue
+        if not inside or not line.lstrip().startswith("|"):
+            continue
+        cells = [cell.strip().strip("`")
+                 for cell in line.strip().strip("|").split("|")]
+        if cells == expected_header:
+            continue
+        if cells and all(re.fullmatch(r":?-+:?", cell) for cell in cells):
+            continue
+        if len(cells) != 6:
+            errors.append(
+                "Standards Revalidation Capability Registry row must have "
+                "six cells")
+            continue
+        gate_id, role, owner, edge, scope, binding = cells
+        if not all(_nonempty_string(value) for value in cells):
+            errors.append(
+                "Standards Revalidation Capability Registry row has an "
+                "empty cell")
+            continue
+        if gate_id in capabilities:
+            errors.append(
+                "Standards Revalidation Capability Registry repeats %s" %
+                gate_id)
+            continue
+        if role not in STANDARDS_REVALIDATION_CAPABILITY_ROLES:
+            errors.append(
+                "Gate ID %s has unknown Standards revalidation Role %s" %
+                (gate_id, role))
+            continue
+        if edge not in STANDARDS_REVALIDATION_CAPABILITY_EDGES:
+            errors.append(
+                "Gate ID %s has unknown Standards revalidation Claim edge "
+                "%s" % (gate_id, edge))
+            continue
+        if scope not in STANDARDS_REVALIDATION_SCOPE_PROTOCOLS:
+            errors.append(
+                "Gate ID %s has unknown Standards revalidation Scope "
+                "protocol %s" % (gate_id, scope))
+            continue
+        if binding not in STANDARDS_REVALIDATION_BINDING_PROTOCOLS:
+            errors.append(
+                "Gate ID %s has unknown Standards revalidation Binding "
+                "protocol %s" % (gate_id, binding))
+            continue
+        expected_contract = STANDARDS_REVALIDATION_ROLE_CONTRACTS[role]
+        if (edge, scope, binding) != expected_contract:
+            errors.append(
+                "Gate ID %s Role %s requires Claim edge / Scope protocol / "
+                "Binding protocol %s / %s / %s, found %s / %s / %s" % (
+                    gate_id, role, *expected_contract, edge, scope, binding))
+            continue
+        capabilities[gate_id] = {
+            "role": role,
+            "owner": owner,
+            "claim_edge": edge,
+            "scope_protocol": scope,
+            "binding_protocol": binding,
+        }
+
+    if seen_section != 1:
+        errors.append(
+            "K00/12 must contain exactly one Standards Revalidation "
+            "Capability Registry")
+    stable_ids = set(gate_registry or {})
+    capability_ids = set(capabilities)
+    missing = sorted(stable_ids - capability_ids)
+    extra = sorted(capability_ids - stable_ids)
+    if missing:
+        errors.append(
+            "Standards Revalidation Capability Registry omits stable Gate "
+            "ID(s): %s" % ", ".join(missing))
+    if extra:
+        errors.append(
+            "Standards Revalidation Capability Registry names unknown Gate "
+            "ID(s): %s" % ", ".join(extra))
+    for gate_id, capability in sorted(capabilities.items()):
+        role = capability["role"]
+        owner = capability["owner"]
+        if role in ("special-owner", "immediate-owner", "native-owner"):
+            if owner != gate_id:
+                errors.append(
+                    "Standards revalidation owner Gate %s must own itself, "
+                    "not %s" % (gate_id, owner))
+        elif role == "semantic-leaf":
+            owner_capability = capabilities.get(owner)
+            if owner == gate_id or not isinstance(owner_capability, dict) or \
+                    owner_capability.get("role") != "native-owner":
+                errors.append(
+                    "Standards revalidation semantic leaf %s must project "
+                    "to a distinct native owner; found %s" %
+                    (gate_id, owner))
+        elif owner != "none":
+            errors.append(
+                "Standards revalidation Gate %s Role %s must use Owner none, "
+                "not %s" % (gate_id, role, owner))
+    return capabilities, errors
+
+
+def standards_gate_capability_registry(root, gate_registry=None):
+    """Public spelling for the Gate capability registry.
+
+    The longer internal name predates the registry's canonical heading.  Keep
+    one implementation and expose the name used by callers that reason about
+    Gate identity and Gate authority as two different registries.
+    """
+    return standards_revalidation_capabilities(root, gate_registry)
+
+
+def standards_revalidation_owner(gate_id, capabilities):
+    """Return the blocking owner of one semantic Gate, or ``None``.
+
+    ``None`` is reserved for advisory/mechanism-only Gates that intentionally
+    create no blocking claim.  Unsupported and unknown Gates raise a value
+    error so a new plan cannot convert an absent capability into a waiver.
+    """
+    capability = capabilities.get(gate_id)
+    if not isinstance(capability, dict):
+        raise ValueError("Gate ID %s has no Standards revalidation capability"
+                         % gate_id)
+    role = capability.get("role")
+    if role in ("special-owner", "immediate-owner", "native-owner"):
+        return gate_id
+    if role == "semantic-leaf":
+        return capability.get("owner")
+    if role == "advisory":
+        return None
+    if role == "mechanism-only":
+        raise ValueError(
+            "Gate ID %s has Role mechanism-only and cannot be used as an "
+            "adoption boundary Gate" % gate_id)
+    raise ValueError(
+        "Gate ID %s has Role unsupported and cannot be used as an adoption "
+        "boundary Gate" % gate_id)
+
+
+def projected_revalidation_owners(gate_ids, capabilities):
+    """Project semantic Gate IDs to the exact sorted blocking owner set."""
+    owners = set()
+    errors = []
+    for gate_id in sorted({value for value in gate_ids
+                           if _nonempty_string(value)}):
+        try:
+            owner = standards_revalidation_owner(gate_id, capabilities)
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        if owner is not None:
+            owners.add(owner)
+    return sorted(owners), errors
+
+
+def project_adoption_gate_ids(gate_ids, capabilities):
+    """Return the immediate and native owner closure for affected Gate IDs.
+
+    Profile admission is evaluated against the writable after-image before an
+    adoption commits, so it deliberately belongs to neither runtime list.
+    Advisory observations likewise create no blocking owner.  Any unsupported
+    or mechanism-only input remains an explicit error.
+    """
+    owners, errors = projected_revalidation_owners(gate_ids, capabilities)
+    immediate = []
+    native = []
+    for gate_id in owners:
+        role = (capabilities.get(gate_id) or {}).get("role")
+        if role == "immediate-owner":
+            immediate.append(gate_id)
+        elif role == "native-owner":
+            native.append(gate_id)
+    return immediate, native, errors
 
 
 def producer_module(tool):
@@ -933,6 +1187,51 @@ def partition_boundary_gates_by_lifecycle(gate_ids, state, registry):
         elif state in position:
             due.append(gate_id)
         elif position & reachable:
+            deferred.append(gate_id)
+        else:
+            passed.append(gate_id)
+    return due, deferred, passed
+
+
+def partition_revalidation_owner_claims(owner_gate_ids, state, registry,
+                                        capabilities):
+    """Partition owner Gates by their *claim edge*, not producer availability.
+
+    K00/12 Lifecycle says where a producer accepts an invocation.  A native
+    transition Gate may accept one while the batch is queued/open/merge-ready,
+    but a Standards hold must not demand it in the source state: the receipt
+    belongs to the transition itself, after the hold has cleared.  Conflating
+    those two facts made ``required-queue-admission`` due while its own
+    producer refused a held batch and made semantic leaf checks block content
+    before the lifecycle allowed content to be repaired.
+
+    Immediate owners are the only raw receipts due in the aggregate.  Native
+    owners at their position or ahead are deferred to their mandatory edge;
+    an owner whose edge the batch already passed is unrepeatable here and a
+    current plan is refused before it can create such a claim.
+    """
+    due, deferred, passed = [], [], []
+    known_state = state in kblib.BATCH_LIFECYCLE_TRANSITIONS
+    reachable = kblib.reachable_batch_states(state)
+    for gate_id in sorted({value for value in owner_gate_ids
+                           if _nonempty_string(value)}):
+        capability = capabilities.get(gate_id) or {}
+        role = capability.get("role")
+        if role == "immediate-owner":
+            due.append(gate_id)
+            continue
+        if role != "native-owner":
+            # A malformed projection is due so the exact receipt set cannot
+            # silently shrink.  The capability error reported alongside it
+            # explains why no receipt can satisfy the claim.
+            due.append(gate_id)
+            continue
+        position = registered_gate_position(gate_id, registry)
+        if position is None or not known_state:
+            passed.append(gate_id)
+        elif position == QUEUE_EXHAUSTED_GATE:
+            (passed if state in TERMINAL_STATES else deferred).append(gate_id)
+        elif state in position or position & reachable:
             deferred.append(gate_id)
         else:
             passed.append(gate_id)
@@ -2646,9 +2945,14 @@ def invalidated_receipt_consumers(root, queue, catalog):
     return consumers
 
 
-def standards_revalidation_requirements(root, progress):
+def standards_revalidation_requirements(root, progress, capabilities=None,
+                                        catalog=None):
     """Return immutable per-batch boundary bindings from all adoption plans."""
     by_batch = {}
+    if capabilities is None:
+        gate_registry, _gate_errors = standards_gate_registry(root)
+        capabilities, _capability_errors = \
+            standards_revalidation_capabilities(root, gate_registry)
     records = progress.get("standards_adoptions")
     if not isinstance(records, list):
         return by_batch
@@ -2662,11 +2966,43 @@ def standards_revalidation_requirements(root, progress):
             plan = kblib.load_yaml_file(path)
         except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError):
             continue
+        producer_tool_version = None
+        receipt_id = record.get("verification_receipt")
+        if catalog is not None and _nonempty_string(receipt_id):
+            resolve = getattr(catalog, "resolve", None)
+            if not callable(resolve):
+                resolve = catalog.get
+            entry = resolve(receipt_id)
+            receipt = entry[1] if entry is not None else None
+            if isinstance(receipt, dict) and \
+                    receipt.get("tool") == STANDARDS_ADOPTION_TOOL:
+                producer_tool_version = receipt.get("tool_version")
+        owner_projection_era = \
+            _standards_adoption_owner_projection_required(
+                producer_tool_version)
+        # Pre-1.6 plans stored raw leaf Gates, so their only safe forward
+        # bridge is the current closed mapping.  A 1.6+ plan stores owner Gates
+        # in required_gate_ids; once its producer is historical those recorded
+        # owners, not a future capability table, remain authoritative.  The
+        # running producer may still materialize leaf-to-owner audit rows from
+        # the same table it just admitted.
+        use_live_leaf_projection = (not owner_projection_era or
+                                    producer_tool_version ==
+                                    STANDARDS_ADOPTION_TOOL_VERSION)
         boundaries = {
             row.get("boundary_id"): row
             for row in plan.get("invalidation_boundaries", [])
             if isinstance(row, dict) and
             _nonempty_string(row.get("boundary_id"))
+        }
+        affected_by_predicate = {
+            row.get("predicate_id"): [
+                gate_id for gate_id in row.get("affected_gate_ids") or []
+                if _nonempty_string(gate_id)
+            ]
+            for row in plan.get("changed_predicates", [])
+            if isinstance(row, dict) and
+            _nonempty_string(row.get("predicate_id"))
         }
         invalidated_by_boundary = {}
         for invalidated in plan.get("invalidated_evidence", []):
@@ -2712,7 +3048,72 @@ def standards_revalidation_requirements(root, progress):
                     for dimension in invalidated.get("dimension_ids") or []
                     if _nonempty_string(dimension)
                 })
-                for gate_id in boundary.get("required_gate_ids") or []:
+                plan_required_gate_ids = [
+                    gate_id for gate_id in
+                    boundary.get("required_gate_ids") or []
+                    if _nonempty_string(gate_id)
+                ]
+                affected_gate_ids = sorted({
+                    gate_id
+                    for predicate_id in boundary.get("predicate_ids") or []
+                    for gate_id in affected_by_predicate.get(predicate_id, [])
+                })
+                binding_specs = []
+                represented_required = set()
+
+                def add_binding_spec(affected_gate_id):
+                    mapped_owner = affected_gate_id
+                    owner_claim_edge = None
+                    mapping_error = None
+                    try:
+                        projected = standards_revalidation_owner(
+                            affected_gate_id, capabilities or {})
+                        if projected is None:
+                            # Advisory observations are intentionally absent
+                            # from the runtime boundary owner closure.
+                            return
+                        mapped_owner = projected
+                    except ValueError as exc:
+                        mapping_error = str(exc)
+                    if mapped_owner in plan_required_gate_ids:
+                        required_gate_id = mapped_owner
+                    elif affected_gate_id in plan_required_gate_ids:
+                        # Producer-era bridge: an old plan stores the raw leaf
+                        # in required_gate_ids.  Keep that immutable key while
+                        # moving its live claim to the current composite owner.
+                        required_gate_id = affected_gate_id
+                    else:
+                        required_gate_id = mapped_owner
+                        mapping_error = mapping_error or (
+                            "Standards revalidation owner %s for affected "
+                            "Gate %s is absent from boundary %s" % (
+                                mapped_owner, affected_gate_id, boundary_id))
+                    owner_capability = (capabilities or {}).get(mapped_owner)
+                    if isinstance(owner_capability, dict):
+                        owner_claim_edge = owner_capability.get("claim_edge")
+                        if owner_capability.get("role") == "special-owner":
+                            # Profile admission is completed against the
+                            # writable after-image by the adoption writer.  It
+                            # never becomes a post-admission batch obligation.
+                            return
+                    represented_required.add(required_gate_id)
+                    binding_specs.append((
+                        affected_gate_id, required_gate_id, mapped_owner,
+                        owner_claim_edge, mapping_error))
+
+                for gate_id in affected_gate_ids:
+                    if use_live_leaf_projection:
+                        add_binding_spec(gate_id)
+                # A malformed or historical boundary may name a requirement
+                # not reachable from its changed-predicate rows.  Preserve it
+                # as an explicit binding so the aggregate cannot silently
+                # shrink the recorded obligation.
+                for gate_id in plan_required_gate_ids:
+                    if gate_id not in represented_required:
+                        add_binding_spec(gate_id)
+
+                for (affected_gate_id, required_gate_id, mapped_owner,
+                     owner_claim_edge, mapping_error) in binding_specs:
                     binding = {
                         "adoption_id": plan.get("adoption_id"),
                         "plan_sha256": record.get("plan_sha256"),
@@ -2720,7 +3121,14 @@ def standards_revalidation_requirements(root, progress):
                         "boundary_id": boundary_id,
                         "predicate_ids": sorted(
                             boundary.get("predicate_ids") or []),
-                        "required_gate_id": gate_id,
+                        "affected_gate_id": affected_gate_id,
+                        "affected_gate_ids": affected_gate_ids,
+                        "required_gate_id": required_gate_id,
+                        "mapped_owner_gate_id": mapped_owner,
+                        "owner_claim_edge": owner_claim_edge,
+                        "mapping_protocol_version":
+                            STANDARDS_REVALIDATION_CAPABILITY_PROTOCOL,
+                        "mapping_error": mapping_error,
                         "required_dimension_ids": relevant_dimensions,
                         "superseded_invalidated_receipt_ids":
                             relevant_invalidated,
@@ -2730,7 +3138,8 @@ def standards_revalidation_requirements(root, progress):
         by_batch[batch_id] = sorted(
             by_batch[batch_id], key=lambda row: (
                 row.get("adoption_id", ""), row.get("boundary_id", ""),
-                row.get("required_gate_id", "")))
+                row.get("required_gate_id", ""),
+                row.get("affected_gate_id", "")))
     return by_batch
 
 
@@ -2863,7 +3272,8 @@ def outstanding_standards_revalidation(result, batch_id):
         # the historical standalone behavior instead of requiring a private
         # field.  ``validate_runtime`` always supplies the derived map once.
         requirements = standards_revalidation_requirements(
-            result.get("root"), result.get("progress") or {})
+            result.get("root"), result.get("progress") or {},
+            catalog=historical_receipt_catalog(result))
     raw = requirements.get(batch_id, [])
     item = (result.get("items_by_id") or {}).get(batch_id) or {}
     # Consumption is replayed from the immutable historical catalog: the
@@ -2960,10 +3370,20 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
     })
     registry, registry_errors = standards_gate_registry(result.get("root"))
     errors.extend(registry_errors)
+    capabilities, capability_errors = standards_revalidation_capabilities(
+        result.get("root"), registry)
+    errors.extend(capability_errors)
+    for row in outstanding:
+        if _nonempty_string(row.get("mapping_error")):
+            errors.append(row["mapping_error"])
+    mapped_owner_gate_ids = sorted({
+        row.get("mapped_owner_gate_id") for row in outstanding
+        if _nonempty_string(row.get("mapped_owner_gate_id"))
+    })
     item = (result.get("items_by_id") or {}).get(batch_id) or {}
     due_gate_ids, deferred_gate_ids, unrepeatable_gate_ids = \
-        partition_boundary_gates_by_lifecycle(
-            required_gate_ids, item.get("state"), registry)
+        partition_revalidation_owner_claims(
+            mapped_owner_gate_ids, item.get("state"), registry, capabilities)
     if sorted(gate_receipts) != due_gate_ids:
         errors.append("boundary gate receipt IDs must be exactly %r" %
                       due_gate_ids)
@@ -2988,7 +3408,7 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
         if registered:
             declared = {
                 dimension for row in outstanding
-                if row.get("required_gate_id") == gate_id
+                if row.get("mapped_owner_gate_id") == gate_id
                 for dimension in row.get("required_dimension_ids") or []
             }
             admissible = sorted(declared & registered)
@@ -3023,7 +3443,7 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
         receipt_time = _timestamp_value(receipt.get("checked_at"))
         relevant_times = [_timestamp_value(row.get("adopted_at"))
                           for row in outstanding
-                          if row.get("required_gate_id") == gate_id]
+                          if row.get("mapped_owner_gate_id") == gate_id]
         if receipt_time is None or any(
                 value is None or receipt_time < value for value in relevant_times):
             errors.append("Gate ID %s receipt %s predates its adoption" %
@@ -3031,17 +3451,38 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
         resolved[gate_id] = receipt_id
     bindings = []
     for row in outstanding:
+        owner_gate_id = row.get("mapped_owner_gate_id")
+        if owner_gate_id in due_gate_ids:
+            disposition = "satisfied-immediate"
+        elif owner_gate_id in deferred_gate_ids:
+            disposition = "deferred-to-native-transition"
+        else:
+            disposition = "unrepeatable-passed"
         binding = {
             "adoption_id": row.get("adoption_id"),
             "plan_sha256": row.get("plan_sha256"),
             "boundary_id": row.get("boundary_id"),
             "predicate_ids": row.get("predicate_ids"),
+            "affected_gate_id": row.get("affected_gate_id"),
             "required_gate_id": row.get("required_gate_id"),
-            "gate_receipt_id": resolved.get(row.get("required_gate_id")),
+            "mapped_owner_gate_id": owner_gate_id,
+            "owner_claim_edge": row.get("owner_claim_edge"),
+            "mapping_protocol_version": row.get(
+                "mapping_protocol_version"),
+            "claim_disposition": disposition,
+            "gate_receipt_id": resolved.get(owner_gate_id),
             "superseded_invalidated_receipt_ids":
                 row.get("superseded_invalidated_receipt_ids"),
         }
         bindings.append(binding)
+    immediate_gate_ids = sorted(
+        gate_id for gate_id in mapped_owner_gate_ids
+        if (capabilities.get(gate_id) or {}).get("role") == "immediate-owner")
+    native_owner_gate_ids = sorted(
+        gate_id for gate_id in mapped_owner_gate_ids
+        if (capabilities.get(gate_id) or {}).get("role") == "native-owner")
+    deferred_native_owner_gate_ids = sorted(
+        set(native_owner_gate_ids) & set(deferred_gate_ids))
     context = {
         "gate_id": "standards-revalidation",
         "batch_id": batch_id,
@@ -3055,6 +3496,13 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
             row.get("boundary_id") for row in outstanding
             if _nonempty_string(row.get("boundary_id"))}),
         "required_gate_ids": required_gate_ids,
+        "mapped_owner_gate_ids": mapped_owner_gate_ids,
+        "immediate_gate_ids": immediate_gate_ids,
+        "native_owner_gate_ids": native_owner_gate_ids,
+        "deferred_native_owner_gate_ids":
+            deferred_native_owner_gate_ids,
+        "mapping_protocol_version":
+            STANDARDS_REVALIDATION_CAPABILITY_PROTOCOL,
         "target_batch_state": item.get("state"),
         # The partition of `required_gate_ids` this aggregate was made under.
         # Each Gate ID appears in exactly one of the three, and the three
@@ -3371,6 +3819,18 @@ def _standards_adoption_upstream_required(producer_tool_version):
         STANDARDS_ADOPTION_UPSTREAM_MIN_VERSION
 
 
+def _standards_adoption_owner_projection_required(producer_tool_version):
+    """Return whether this producer era stored projected boundary owners."""
+    match = re.fullmatch(
+        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
+        str(producer_tool_version),
+    )
+    if match is None:
+        return True
+    return tuple(int(part) for part in match.groups()) >= \
+        STANDARDS_ADOPTION_OWNER_PROJECTION_MIN_VERSION
+
+
 def standards_adoption_plan_errors(
         root, plan, catalog=None, queue=None, progress=None,
         validate_current=True,
@@ -3382,7 +3842,7 @@ def standards_adoption_plan_errors(
     pre-1.4 plans are not reinterpreted under fields their producers did not
     promise.
     """
-    # A plan being admitted is always judged by the running 1.4 producer;
+    # A plan being admitted is always judged by the running producer;
     # ``producer_tool_version`` is an era selector only for sealed replay.
     profile_contract_required = validate_current or \
         _standards_adoption_profile_contract_required(producer_tool_version)
@@ -3390,6 +3850,8 @@ def standards_adoption_plan_errors(
         _standards_adoption_profile_inputs_required(producer_tool_version)
     upstream_required = validate_current or \
         _standards_adoption_upstream_required(producer_tool_version)
+    owner_projection_era = validate_current or \
+        _standards_adoption_owner_projection_required(producer_tool_version)
     optional_fields = []
     if not profile_contract_required:
         optional_fields.append("profile_contract_fingerprint_after")
@@ -3545,8 +4007,18 @@ def standards_adoption_plan_errors(
                     errors.append("Standards adoption %s path %r is unsafe or "
                                   "missing: %s" % (field, relative, path_error))
 
+    gate_registry = {}
+    revalidation_capabilities = {}
+    if validate_current and root is not None:
+        gate_registry, gate_registry_errors = standards_gate_registry(root)
+        errors.extend(gate_registry_errors)
+        revalidation_capabilities, capability_errors = \
+            standards_revalidation_capabilities(root, gate_registry)
+        errors.extend(capability_errors)
+
     predicates = plan.get("changed_predicates")
     predicate_ids = []
+    predicate_projected_owners = {}
     boundary_gate_ids = set()
     registered_gate_ids = set()
     if not isinstance(predicates, list):
@@ -3584,11 +4056,26 @@ def standards_adoption_plan_errors(
                 errors.append("%s affected_gate_ids must be sorted" % label)
             registered_gate_ids.update(value for value in affected
                                        if _nonempty_string(value))
-            boundary_gate_ids.update(
-                value for value in affected
-                if (_nonempty_string(value) and
-                    (not profile_contract_required or
-                     value != "profile-load")))
+            if validate_current and root is not None:
+                projected, projection_errors = projected_revalidation_owners(
+                    affected, revalidation_capabilities)
+                errors.extend("%s: %s" % (label, error)
+                              for error in projection_errors)
+                if _nonempty_string(predicate_id):
+                    predicate_projected_owners[predicate_id] = set(projected)
+                boundary_gate_ids.update(
+                    value for value in projected
+                    if (not profile_contract_required or
+                        value != "profile-load"))
+            elif not owner_projection_era:
+                # Historical plans are replayed under their recorded raw Gate
+                # union.  They predate owner projection and cannot be
+                # rewritten merely because the current kernel gained it.
+                boundary_gate_ids.update(
+                    value for value in affected
+                    if (_nonempty_string(value) and
+                        (not profile_contract_required or
+                         value != "profile-load")))
     if len(predicate_ids) != len(set(predicate_ids)):
         errors.append("Standards adoption repeats predicate_id")
     if predicate_ids != sorted(predicate_ids):
@@ -3640,13 +4127,43 @@ def standards_adoption_plan_errors(
             if _nonempty_string(value)
         ]
         registered_gate_ids.update(required_gate_ids)
+        if validate_current and root is not None:
+            allowed_required_gate_ids = set().union(*(
+                predicate_projected_owners.get(predicate_id, set())
+                for predicate_id in referenced
+            )) if referenced else set()
+            extra_required_gate_ids = sorted(
+                set(required_gate_ids) - allowed_required_gate_ids)
+            if extra_required_gate_ids:
+                errors.append(
+                    "%s required_gate_ids adds owner Gate(s) not projected "
+                    "by its predicate_ids: %s" % (
+                        label, ", ".join(extra_required_gate_ids)))
+            for gate_id in required_gate_ids:
+                capability = revalidation_capabilities.get(gate_id) or {}
+                if capability.get("role") not in (
+                        "special-owner", "immediate-owner", "native-owner"):
+                    errors.append(
+                        "%s required_gate_ids names %s, which is not a "
+                        "Standards revalidation boundary owner" %
+                        (label, gate_id))
+                if gate_id == "profile-load" and \
+                        boundary.get("target_kind") != "profile-load":
+                    errors.append(
+                        "%s may require profile-load only on target_kind "
+                        "profile-load; after-image admission cannot be moved "
+                        "onto a batch boundary" % label)
         runtime_gate_ids = [
             value for value in required_gate_ids
             if not profile_contract_required or value != "profile-load"
         ]
         if _nonempty_string(boundary_id):
             boundary_runtime_gate_ids[boundary_id] = runtime_gate_ids
-        boundary_gate_ids.update(runtime_gate_ids)
+        if owner_projection_era and not validate_current:
+            # A 1.6+ historical plan already froze this projection in its
+            # required_gate_ids.  Reuse those recorded owners rather than
+            # re-projecting through a future kernel's capability table.
+            boundary_gate_ids.update(runtime_gate_ids)
         targets = boundary.get("target_ids") or []
         if boundary.get("target_kind") == "batch":
             affected_batches.update(targets)
@@ -3741,16 +4258,36 @@ def standards_adoption_plan_errors(
     # that same predicate.  Otherwise a plan can look complete in its union
     # while silently dropping the Gate from every enforcement edge.
     if profile_contract_required:
-        predicate_affected_gates = {
-            predicate.get("predicate_id"): {
-                gate_id for gate_id in predicate.get("affected_gate_ids", [])
-                if _nonempty_string(gate_id)
+        if validate_current:
+            predicate_affected_gates = {
+                predicate.get("predicate_id"): set(
+                    predicate_projected_owners.get(
+                        predicate.get("predicate_id"), set()))
+                for predicate in predicates
+                if (isinstance(predicate, dict) and
+                    _nonempty_string(predicate.get("predicate_id")) and
+                    isinstance(predicate.get("affected_gate_ids"), list))
             }
-            for predicate in predicates
-            if (isinstance(predicate, dict) and
-                _nonempty_string(predicate.get("predicate_id")) and
-                isinstance(predicate.get("affected_gate_ids"), list))
-        }
+        elif not owner_projection_era:
+            # Historical plans retain their recorded raw Gate closure.  They
+            # are replayed under their producer era, not retroactively
+            # rewritten to the current leaf-to-owner projection.
+            predicate_affected_gates = {
+                predicate.get("predicate_id"): {
+                    gate_id for gate_id in
+                    predicate.get("affected_gate_ids") or []
+                    if _nonempty_string(gate_id) and gate_id != "profile-load"
+                }
+                for predicate in predicates
+                if (isinstance(predicate, dict) and
+                    _nonempty_string(predicate.get("predicate_id")) and
+                    isinstance(predicate.get("affected_gate_ids"), list))
+            }
+        else:
+            # Current-era owner closure is already recorded in each boundary;
+            # historical replay does not reinterpret semantic leaves through
+            # a later capability table.
+            predicate_affected_gates = {}
         boundary_gates_by_predicate = {
             predicate_id: set() for predicate_id in predicate_affected_gates
         }
@@ -3854,6 +4391,36 @@ def standards_adoption_plan_errors(
                 boundary_reached_batches.setdefault(
                     boundary_id, set()).update(scoped)
 
+    # Any route by which a boundary reaches a terminal batch is equally
+    # impossible to discharge.  Checking only target_kind=batch left an
+    # alternate path through invalidated-evidence revalidation_scope_ids:
+    # the plan admitted a post-admission claim whose producer rejects the
+    # closed/cancelled target forever.  Admission therefore judges the exact
+    # direct-target plus evidence-scope union derived above.  Historical
+    # replay remains producer-era fact and is never rejected retroactively.
+    if validate_current and queue is not None:
+        terminal_states = {
+            item.get("id"): item.get("state")
+            for item in queue.get("required_queue", [])
+            if isinstance(item, dict) and
+            item.get("state") in TERMINAL_STATES
+        }
+        for index, boundary in enumerate(boundaries):
+            if not isinstance(boundary, dict):
+                continue
+            boundary_id = boundary.get("boundary_id")
+            if not boundary_runtime_gate_ids.get(boundary_id):
+                continue
+            terminal = sorted(
+                set(boundary_reached_batches.get(boundary_id, set())) &
+                set(terminal_states))
+            if terminal:
+                errors.append(
+                    "invalidation_boundaries[%d] boundary %s creates "
+                    "post-admission owner claims on terminal batch(es) %s; "
+                    "route the impact to a non-terminal successor instead" %
+                    (index, boundary_id, ", ".join(terminal)))
+
     # K12/10: a boundary is only ever claimed at a Queue batch's next
     # transition, either because it targets that batch or because invalidated
     # evidence puts the batch in its revalidation scope.  A boundary that
@@ -3934,10 +4501,19 @@ def standards_adoption_plan_errors(
                 (target, READ_SET_BOUNDARY_OWNER_PATH))
 
     if predicate_set:
-        if not boundary_ids:
-            errors.append("changed predicates require invalidation boundaries")
-        if covered_predicates != predicate_set:
-            errors.append("every changed predicate must occur in an invalidation boundary")
+        blocking_predicate_set = (set(
+            predicate_id for predicate_id, owners in
+            predicate_projected_owners.items() if owners)
+            if validate_current else
+            (set(covered_predicates) if owner_projection_era else predicate_set))
+        if blocking_predicate_set and not boundary_ids:
+            errors.append(
+                "changed predicates with blocking owner Gates require "
+                "invalidation boundaries")
+        if not blocking_predicate_set.issubset(covered_predicates):
+            errors.append(
+                "every changed predicate with a blocking owner Gate must "
+                "occur in an invalidation boundary")
     elif invalidated or boundaries:
         errors.append("no-op adoption requires empty invalidated_evidence and "
                       "invalidation_boundaries")
@@ -3950,8 +4526,7 @@ def standards_adoption_plan_errors(
                       "union %r" % expected_boundary_gates)
 
     if validate_current and root is not None:
-        registry, registry_errors = standards_gate_registry(root)
-        errors.extend(registry_errors)
+        registry = gate_registry
         unknown_gates = sorted(registered_gate_ids - set(registry))
         if unknown_gates:
             errors.append("Standards adoption names unregistered Gate ID(s): %s" %
@@ -3992,25 +4567,26 @@ def standards_adoption_plan_errors(
                 dead = {}
                 for batch_id in reached:
                     due, deferred, passed = \
-                        partition_boundary_gates_by_lifecycle(
-                            gate_ids, states[batch_id], registry)
+                        partition_revalidation_owner_claims(
+                            gate_ids, states[batch_id], registry,
+                            revalidation_capabilities)
                     if due or deferred:
-                        dead = {}
-                        break
-                    dead[batch_id] = passed
-                if not dead:
-                    continue
-                errors.append(
-                    "invalidation_boundaries[%d] boundary %s requires Gate "
-                    "ID(s) %s, and every Queue batch it reaches (%s) has "
-                    "already left every one of their producing positions and "
-                    "cannot return to one; nothing ahead of those batches can "
-                    "claim any of them, so the boundary records protection "
-                    "nothing will ever apply" % (
-                        index, boundary_id,
-                        ", ".join(sorted(set(gate_ids))),
-                        ", ".join("%s batch %s" % (states[batch_id], batch_id)
-                                  for batch_id in reached)))
+                        if passed:
+                            dead[batch_id] = passed
+                        continue
+                    if passed:
+                        dead[batch_id] = passed
+                if dead:
+                    errors.append(
+                        "invalidation_boundaries[%d] boundary %s reaches "
+                        "Queue batch(es) that already passed Standards "
+                        "revalidation owner edge(s): %s; roll back before "
+                        "that edge or route the impact to a successor" % (
+                            index, boundary_id,
+                            ", ".join("%s (%s: %s)" % (
+                                batch_id, states[batch_id],
+                                "/".join(dead[batch_id]))
+                                for batch_id in sorted(dead))))
 
     if validate_current and root is not None and queue is not None and \
             catalog is not None:
@@ -12124,7 +12700,8 @@ def validate_runtime(root, allowed_open_delta=None,
     # batch helper made a corpus with N batches parse every historical
     # adoption plan roughly 2N times.
     standards_revalidation_requirements_by_batch = \
-        standards_revalidation_requirements(root, progress)
+        standards_revalidation_requirements(
+            root, progress, catalog=catalog)
     standards_barrier_context = {
         "root": root, "queue": queue, "coverage": coverage,
         "progress": progress, "items_by_id": items_by_id,
