@@ -24,6 +24,31 @@ This leaf owns the mode vocabulary and the two-layer composition; it does not re
 
 `Tools/compose_page_contract.py` compiles the base and the selected profile's differences into `Tools/page_contract.yaml`, a generated artifact and never a rule owner. `Tools/check_page_contract.py` validates pages against the compiled contract: presence and non-emptiness, value shape (scalar, list, date, path, url), condition relations, derived/projection persistence, and unknown-field closure — a field that is neither in the compiled contract nor a registered vocabulary or profile extension field is a violation, not open metadata. Controlled-value legality stays owned by the `frontmatter-vocabulary` gate; this contract never re-checks enums.
 
+## Missingness Has One Owner
+
+This applicability contract alone decides whether an absent frontmatter block
+or field is legal, advisory debt, or a violation. `check_page_contract` emits
+that finding from the composed page context. `check_vocab` judges only a value
+that is present against its controlled vocabulary; it MUST NOT create a second
+missing-field candidate or infer applicability from the field name. Consumers
+therefore receive one stable finding from one predicate owner, rather than
+asking a reviewer to dispose of the same absence once as schema debt and again
+as vocabulary debt.
+
+Adding a vocabulary field does not make it required. Adding or changing a
+missingness rule requires an applicability-base or Profile Metadata Contract
+change, followed by composition; filling pages merely because a vocabulary
+knows a field remains forbidden.
+
 ## Enablement
 
-The checker ships advisory: violations are candidates that support migration planning, and no existing gate consumes them. Promotion to a blocking gate is a separate governance decision under [[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]], taken only after the official profiles and synthetic fixtures pass; the strict mode fails closed on the current schema and adds no `allow_legacy` or missing-field-guess branch. Legal absence (`optional`, `user-owned`) and true absence (`required`, met `conditional`) stay distinguishable in every mode, and pages are never bulk-filled merely to turn candidates green.
+The checker remains advisory over the whole corpus: its candidates support
+migration planning, while K12/09 consumes only the current batch manifest's
+page-contract slice at close. Promotion of the corpus-wide backlog to a
+blocking gate is a separate governance decision under
+[[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]], taken
+only after the official profiles and synthetic fixtures pass; strict mode
+fails closed on the current schema and adds no `allow_legacy` or
+missing-field-guess branch. Legal absence (`optional`, `user-owned`) and true
+absence (`required`, met `conditional`) stay distinguishable in every mode,
+and pages are never bulk-filled merely to turn candidates green.
