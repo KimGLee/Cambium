@@ -32,17 +32,36 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import check_profile
+import amendment_policy
+import batch_settlement
+import candidate_lifecycle
+import coverage_delta
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.18.0"
+TOOL_VERSION = "1.19.0"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
 REGISTER_AMENDMENT_TOOL = "register_amendment"
-REGISTER_AMENDMENT_TOOL_VERSION = "1.1.0"
+REGISTER_AMENDMENT_TOOL_VERSION = "1.2.0"
+# These exact legacy protocols remain replayable.  1.0.0 is the first
+# registration shape; 1.1.0 adds withdrawal.  Neither may claim the
+# delegated-authority fields introduced by the current 1.2.0 shape below.
+SUPPORTED_REGISTER_AMENDMENT_TOOL_VERSIONS = frozenset((
+    "1.0.0", "1.1.0", "1.2.0",
+))
+APPLY_AMENDMENT_TOOL_VERSION = "1.2.0"
+SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS = frozenset(("1.1.0", "1.2.0"))
+COMPILE_QUEUE_TOOL_VERSION = "1.5.0"
+# 1.3.0 produced the original registered queue-replan commit shape.  Its
+# bindings are still validated field by field; unknown protocols fail closed.
+SUPPORTED_COMPILE_QUEUE_TOOL_VERSIONS = frozenset((
+    "1.3.0", "1.4.0", "1.5.0",
+))
 OPERATIONAL_AMENDMENT_OPERATIONS = frozenset((
     "queue-replan", "scope-replan", "cancel-batch",
+    "gap-routing-reconciliation",
 ))
 
 QUEUE_PATH = ".cambium/state/required_queue.yaml"
@@ -240,14 +259,18 @@ GENERIC_WRITER_TOOLS = frozenset((
     "apply_contract_amendment", "apply_task_plan", "seal_receipts",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.9.0"
+BATCH_CLOSE_TOOL_VERSION = "1.10.0"
+UPDATE_QUEUE_TOOL_VERSION = "1.3.0"
+SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS = frozenset(("1.2.0", "1.3.0"))
+APPLY_DELTA_TOOL_VERSION = "1.5.0"
+SUPPORTED_APPLY_DELTA_TOOL_VERSIONS = frozenset(("1.4.0", "1.5.0"))
 # Batch-close has a finite historical protocol catalog because its 1.4 era
 # sealed a different Closed List shape.  A current action still accepts only
 # BATCH_CLOSE_TOOL_VERSION; this set is used only while replaying an already
 # recorded closed edge.  Other historical receipts are judged through
 # :func:`accounted_standards_versions` instead of an unbounded version list.
 SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((
-    BATCH_CLOSE_TOOL_VERSION, "1.8.0", "1.7.0", "1.6.0", "1.5.0",
+    BATCH_CLOSE_TOOL_VERSION, "1.9.0", "1.8.0", "1.7.0", "1.6.0", "1.5.0",
     *LEGACY_CLOSED_LIST_VERSIONS,
 ))
 CORPUS_PLAN_TOOL = "check_corpus_plan"
@@ -256,6 +279,7 @@ CORPUS_PLAN_TOOL_VERSION = "1.7.0"
 # Batch-close 1.7 is the first protocol that consumes corpus-plan 1.7; older
 # supported bundles retain their 1.6 child identity during historical replay.
 HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
+    "1.9.0": "1.7.0",
     "1.8.0": "1.7.0",
     "1.7.0": "1.7.0",
     "1.6.0": "1.6.0",
@@ -340,14 +364,16 @@ CONTRACT_FIELDS = frozenset((
     "selected_card_paths", "selected_profile_route_ids",
     "selected_read_sets", "loaded_module_paths", "minimum_run_until",
     "checkpoint_at", "hard_stop_at", "completion_gate",
-    "policy_exceptions",
+    "policy_exceptions", "amendment_authority",
 ))
 # Optional so that contracts sealed before the field existed stay valid:
 # requiring it would strand every live runtime behind a hand migration the
 # anchor chain itself forbids (editing contract bytes outside a chained
 # writer breaks the chain's binding to the current contract).  Absent means
 # exactly what an explicit empty list means.
-CONTRACT_OPTIONAL_FIELDS = frozenset(("policy_exceptions",))
+CONTRACT_OPTIONAL_FIELDS = frozenset((
+    "policy_exceptions", "amendment_authority",
+))
 POLICY_EXCEPTION_FIELDS = frozenset((
     "decision_id", "policy_id", "baseline_policy_fingerprint", "limit",
     "scope_kind", "scope_ref", "rationale", "approval_reference",
@@ -358,7 +384,9 @@ POLICY_EXCEPTION_SCOPE_KINDS = frozenset(("task", "repository-snapshot"))
 # is never re-judged against members its era lacked, and it is never allowed
 # to carry evidence its era could not have produced.  A 1.7 bundle claiming a
 # policy-exception disposition is a forgery, not history.
-POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset(("1.8.0", "1.9.0"))
+POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset((
+    "1.8.0", "1.9.0", "1.10.0",
+))
 # Producer eras whose close bundles externalize full candidate detail to a
 # born-cold evidence file and keep only counts, the accepted-set fingerprint,
 # and the policy-exception dispositions inline (K12/09 compact evidence).
@@ -370,7 +398,8 @@ POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset(("1.8.0", "1.9.0"))
 SEAL_TOOL = "seal_receipts"
 SUPPORTED_SEAL_TOOL_VERSIONS = frozenset(("1.2.0", "1.3.0"))
 
-COMPACT_CLOSE_EVIDENCE_VERSIONS = frozenset(("1.9.0",))
+COMPACT_CLOSE_EVIDENCE_VERSIONS = frozenset(("1.9.0", "1.10.0"))
+CANDIDATE_CONTINUATION_VERSIONS = frozenset(("1.10.0",))
 SEALED_POLICY_EXCEPTION_FIELDS = frozenset((
     "decision_id", "policy_id", "limit", "scope_kind", "scope_ref",
     "policy_fingerprint", "pages", "total",
@@ -1643,6 +1672,10 @@ def _progress_shape_errors(progress):
         errors.extend(_policy_exception_errors(
             contract.get("policy_exceptions"),
             "Progress contract.policy_exceptions"))
+    if isinstance(contract, dict) and "amendment_authority" in contract:
+        errors.extend(amendment_policy.amendment_authority_errors(
+            contract.get("amendment_authority"),
+            "Progress contract.amendment_authority"))
     if isinstance(contract, dict):
         for field in ("contract_version", "objective", "scope_version",
                       "standards_version",
@@ -4398,7 +4431,7 @@ def _bind_lock_receipts(writer_locks, catalog):
                     "abort": "fail",
                 }[phase]
                 for field, expected in (
-                        ("tool_version", "1.1.0"),
+                        ("tool_version", APPLY_AMENDMENT_TOOL_VERSION),
                         ("check", "amendment_transaction"),
                         ("invalidated_by", None),
                         ("result", expected_result)):
@@ -5062,23 +5095,19 @@ def batch_reference_settlement_errors(result, item):
     item_id = item.get("id")
     coverage = result.get("coverage") or {}
 
-    gaps = coverage.get("open_gaps")
-    if isinstance(gaps, list):
-        stranded = sorted(
-            str(gap.get("id") or gap.get("page"))
-            for gap in gaps
-            if isinstance(gap, dict) and gap.get("next_batch") == item_id
-        )
-        if stranded:
-            errors.append(
-                "K13/08 settlement: %d open gap(s) still route to this batch "
-                "and would be stranded on a terminal batch: %s; the Delta "
-                "must close each one or re-route it to a named later batch "
-                "(routing, not manifest membership, decides which gaps the "
-                "batch owes)" %
-                (len(stranded), ", ".join(stranded[:8]) +
-                 ("..." if len(stranded) > 8 else ""))
-            )
+    try:
+        report = batch_settlement.current_settlement_report(coverage, item_id)
+    except ValueError as exc:
+        return ["K13/08 settlement cannot inspect Coverage: %s" % exc]
+    if report["errors"]:
+        errors.append(
+            "K13/08 settlement: %d open gap(s) still route to this batch "
+            "and would be stranded on a terminal batch: %s; the Delta must "
+            "close each one or re-route it to a named later batch (routing, "
+            "not manifest membership, decides which gaps the batch owes)" %
+            (report["unsettled_count"],
+             ", ".join(report["unsettled_ids"][:8]) +
+             ("..." if report["unsettled_count"] > 8 else "")))
 
     # The batch_specs row is deliberately NOT settled here.  Its row is
     # harmless at close and becomes harmful only when a later replan tries to
@@ -5086,6 +5115,61 @@ def batch_reference_settlement_errors(result, item):
     # replan side (compile_queue treats a terminal item's spec row as history
     # rather than a proposal), which is where the incident actually occurred.
     return errors
+
+
+SETTLEMENT_BINDING_FIELDS = (
+    "routed_gap_obligation_count",
+    "routed_gap_obligation_set_sha256",
+    "routed_gap_obligation_record_set_sha256",
+    "prospective_unsettled_count",
+    "prospective_unsettled_set_sha256",
+)
+
+
+def _settlement_binding_errors(receipt, label):
+    """Validate the current routed-gap receipt protocol shape."""
+    errors = []
+    if receipt.get("settlement_protocol") != batch_settlement.PROTOCOL:
+        errors.append("%s has unsupported settlement_protocol %r" %
+                      (label, receipt.get("settlement_protocol")))
+    for field in ("routed_gap_obligation_count",
+                  "prospective_unsettled_count"):
+        value = receipt.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            errors.append("%s has invalid %s" % (label, field))
+    if receipt.get("prospective_unsettled_count") != 0:
+        errors.append("%s does not bind a settled prospective Coverage" % label)
+    for field in (
+            "routed_gap_obligation_set_sha256",
+            "routed_gap_obligation_record_set_sha256",
+            "prospective_unsettled_set_sha256"):
+        if not SHA256_RE.fullmatch(str(receipt.get(field) or "")):
+            errors.append("%s has invalid %s" % (label, field))
+    return errors
+
+
+def _close_settlement_binding_errors(receipt, label):
+    errors = []
+    if receipt.get("settlement_protocol") != batch_settlement.PROTOCOL:
+        errors.append("%s has unsupported settlement_protocol %r" %
+                      (label, receipt.get("settlement_protocol")))
+    if receipt.get("current_unsettled_count") != 0:
+        errors.append("%s does not bind zero current routed gaps" % label)
+    if not SHA256_RE.fullmatch(str(
+            receipt.get("current_unsettled_set_sha256") or "")):
+        errors.append("%s has invalid current_unsettled_set_sha256" % label)
+    return errors
+
+
+def _latest_merge_transition(item, catalog):
+    for receipt_id in reversed(item.get("transition_receipts") or []):
+        entry = catalog.get(receipt_id)
+        receipt = entry[1] if isinstance(entry, tuple) else None
+        if (isinstance(receipt, dict) and
+                receipt.get("before_state") == "open" and
+                receipt.get("after_state") == "merge-ready"):
+            return receipt_id, receipt
+    return None, None
 
 
 def substantive_review_errors(result, item):
@@ -5236,7 +5320,7 @@ def _candidate_evidence_binding_errors(root, label, relative, expected_sha,
 
 
 def _compact_attestation_errors(attestation, attestation_id, item_id,
-                                root=None):
+                                root=None, receipt_version=None):
     """Validate a compact-era reviewer attestation (K12/09, 1.9.0+).
 
     A compact bundle keeps the authorization surface inline -- counts, the
@@ -5361,6 +5445,9 @@ def _compact_attestation_errors(attestation, attestation_id, item_id,
         else:
             errors.extend(_sealed_policy_exception_errors(
                 sealed, decision_id, candidate_type, disposition_label))
+    if receipt_version in CANDIDATE_CONTINUATION_VERSIONS:
+        errors.extend(candidate_lifecycle.continuation_attestation_errors(
+            attestation, label))
     return errors
 
 
@@ -5427,6 +5514,9 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                 label, receipt_id, receipt_version, protocol,
                 sorted(allowed_versions))
         )
+    if receipt_version == BATCH_CLOSE_TOOL_VERSION:
+        errors.extend(_close_settlement_binding_errors(
+            receipt, "%s receipt %s" % (label, receipt_id)))
     for field, value in (
             ("work_spec_path", work_spec_path),
             ("work_spec_sha256", work_spec_sha256)):
@@ -5674,7 +5764,8 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
             errors.append("%s declared reviewer attestation %s has no "
                           "review statement" % (item_id, attestation_id))
         errors.extend(_compact_attestation_errors(
-            attestation, attestation_id, item_id, root=root))
+            attestation, attestation_id, item_id, root=root,
+            receipt_version=receipt_version))
     elif isinstance(attestation, dict):
         if not _nonempty_string(attestation.get("details")):
             errors.append("%s declared reviewer attestation %s has no "
@@ -6947,7 +7038,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
             "first task activation Queue transition", errors,
             expected={
                 "tool": "update_queue",
-                "tool_version": "1.2.0",
+                "tool_version": ANY_PRODUCER_ERA_VERSION,
                 "check": "queue_transition",
                 "target": batch_id,
                 "task_id": task_id,
@@ -6964,6 +7055,13 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                 "evidence_receipt": activation.get("evidence_receipt"),
             },
         )
+        if (isinstance(opening, dict) and
+                opening.get("tool_version") not in
+                SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS):
+            errors.append(
+                "first task activation Queue transition has unsupported "
+                "update_queue producer version %r" %
+                opening.get("tool_version"))
         if activation.get("queue_state_revision") != 1:
             errors.append("first task activation must bind Queue "
                           "state_revision 1")
@@ -7413,6 +7511,52 @@ def _operational_amendment_registration_errors(
     )
     if receipt is None:
         return errors
+    receipt_version = receipt.get("tool_version")
+    if receipt_version not in SUPPORTED_REGISTER_AMENDMENT_TOOL_VERSIONS:
+        errors.append(
+            "%s registration receipt has unsupported register_amendment "
+            "producer version %r" % (label, receipt_version))
+    authority_fields = (
+        "decision_mode", "authority_id", "authority_sha256",
+        "change_classes", "amendment_impact_sha256",
+    )
+    if receipt_version == REGISTER_AMENDMENT_TOOL_VERSION:
+        for field in authority_fields:
+            if receipt.get(field) != amendment.get(field):
+                errors.append(
+                    "%s registration receipt %s=%r, expected %r" %
+                    (label, field, receipt.get(field), amendment.get(field)))
+        if amendment.get("decision_mode") not in (
+                "contract-delegated", "explicit-user"):
+            errors.append(
+                "%s current registration decision_mode is invalid" % label)
+        classes = amendment.get("change_classes")
+        if (not isinstance(classes, list) or not classes or
+                classes != sorted(set(classes))):
+            errors.append(
+                "%s current registration change_classes must be a non-empty "
+                "sorted unique list" % label)
+        for field in ("amendment_impact_sha256",):
+            if not SHA256_RE.fullmatch(str(amendment.get(field) or "")):
+                errors.append("%s current registration has invalid %s" %
+                              (label, field))
+        if amendment.get("decision_mode") == "contract-delegated":
+            if (not _nonempty_string(amendment.get("authority_id")) or
+                    not SHA256_RE.fullmatch(str(
+                        amendment.get("authority_sha256") or ""))):
+                errors.append(
+                    "%s delegated registration must bind authority id/hash" %
+                    label)
+        elif (amendment.get("authority_id") is not None or
+              amendment.get("authority_sha256") is not None):
+            errors.append(
+                "%s explicit-user registration must not claim contract "
+                "authority" % label)
+    elif any(field in amendment or field in receipt
+             for field in authority_fields):
+        errors.append(
+            "%s legacy registration era must not claim delegated-authority "
+            "fields" % label)
     if not _valid_timestamp(receipt.get("checked_at")):
         errors.append("%s registration receipt has invalid checked_at" % label)
     elif amendment.get("date") != receipt.get("checked_at")[:10]:
@@ -7522,9 +7666,14 @@ CONTRACT_AMENDMENT_ROW_FIELDS = frozenset((
     "coverage_sha256_before", "required_queue_sha256_before",
     "progress_sha256_before", "after_coverage_sha256",
     "after_required_queue_sha256", "policy_fingerprint",
+    "changed_contract_fields",
+))
+CONTRACT_AMENDMENT_ROW_OPTIONAL_FIELDS = frozenset((
+    "changed_contract_fields",
 ))
 CONTRACT_AMENDMENT_PLAN_PREFIX = ".cambium/deltas/contract-amendments"
-CONTRACT_AMENDMENT_TOOL_VERSIONS = frozenset(("1.0.0",))
+CONTRACT_AMENDMENT_TOOL_VERSION = "1.1.0"
+CONTRACT_AMENDMENT_TOOL_VERSIONS = frozenset(("1.0.0", "1.1.0"))
 
 
 def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
@@ -7541,9 +7690,12 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
     """
     errors = []
     errors.extend(_closed_mapping_errors(
-        amendment, label, CONTRACT_AMENDMENT_ROW_FIELDS))
+        amendment, label, CONTRACT_AMENDMENT_ROW_FIELDS,
+        CONTRACT_AMENDMENT_ROW_OPTIONAL_FIELDS))
+    required_fields = (CONTRACT_AMENDMENT_ROW_FIELDS -
+                       CONTRACT_AMENDMENT_ROW_OPTIONAL_FIELDS)
     if set(amendment) - CONTRACT_AMENDMENT_ROW_FIELDS or \
-            set(CONTRACT_AMENDMENT_ROW_FIELDS) - set(amendment):
+            required_fields - set(amendment):
         return errors
     if (amendment.get("status") != "verified" or
             amendment.get("writeback_done") is not True):
@@ -7639,13 +7791,32 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
     if not SHA256_RE.fullmatch(str(after_progress or "")):
         errors.append("%s commit receipt has invalid after_progress_sha256" %
                       label)
-    if receipt.get("tool_version") not in \
+    receipt_version = receipt.get("tool_version")
+    if receipt_version not in \
             CONTRACT_AMENDMENT_TOOL_VERSIONS:
         errors.append(
             "%s commit receipt has unsupported producer tool_version %r; "
             "known contract-amendment eras: %s" %
             (label, receipt.get("tool_version"),
              ", ".join(sorted(CONTRACT_AMENDMENT_TOOL_VERSIONS))))
+    if receipt_version == CONTRACT_AMENDMENT_TOOL_VERSION:
+        changed = amendment.get("changed_contract_fields")
+        if (not isinstance(changed, list) or not changed or
+                changed != sorted(set(changed)) or
+                set(changed) - {"policy_exceptions", "amendment_authority"}):
+            errors.append(
+                "%s current-era changed_contract_fields must be a non-empty "
+                "sorted subset of policy_exceptions/amendment_authority" %
+                label)
+        elif receipt.get("changed_contract_fields") != changed:
+            errors.append(
+                "%s commit receipt does not bind changed_contract_fields" %
+                label)
+    elif "changed_contract_fields" in amendment or \
+            "changed_contract_fields" in receipt:
+        errors.append(
+            "%s legacy contract-amendment era must not claim "
+            "changed_contract_fields" % label)
     if receipt.get("task_id") != task_id:
         errors.append(
             "%s commit receipt has task_id=%r, expected %r" %
@@ -7703,7 +7874,8 @@ def _cross_ledger_amendment_errors(
         if (isinstance(amendment, dict) and
                 amendment.get("operation") is not None and
                 amendment.get("operation") not in
-                ("scope-replan", "cancel-batch", "queue-replan")):
+                ("scope-replan", "cancel-batch", "queue-replan",
+                 "gap-routing-reconciliation")):
             # Fail closed here, at the walk itself: a row claiming an
             # operation no validator owns would otherwise be skipped by
             # every specialized check below, making an unknown operation
@@ -7711,12 +7883,14 @@ def _cross_ledger_amendment_errors(
             errors.append(
                 "Progress amendments[%d] declares unknown operation %r; "
                 "known operations are scope-replan, cancel-batch, "
-                "queue-replan, contract-amendment" %
+                "queue-replan, gap-routing-reconciliation, "
+                "contract-amendment" %
                 (index, amendment.get("operation")))
             continue
         if (not isinstance(amendment, dict) or
                 amendment.get("operation") not in
-                ("scope-replan", "cancel-batch")):
+                ("scope-replan", "cancel-batch",
+                 "gap-routing-reconciliation")):
             continue
         label = "Progress amendments[%d]" % index
         status = amendment.get("status")
@@ -7738,9 +7912,16 @@ def _cross_ledger_amendment_errors(
                               (label, field))
         scope_before = amendment.get("scope_version_before")
         scope_after = amendment.get("scope_version_after")
-        if (_nonempty_string(scope_before) and
-                _nonempty_string(scope_after) and
-                scope_before == scope_after):
+        if (operation == "gap-routing-reconciliation" and
+                _nonempty_string(scope_before) and
+                scope_after != scope_before):
+            errors.append(
+                "%s gap-routing-reconciliation must preserve scope_version" %
+                label)
+        elif (operation != "gap-routing-reconciliation" and
+              _nonempty_string(scope_before) and
+              _nonempty_string(scope_after) and
+              scope_before == scope_after):
             errors.append("%s cross-Ledger Amendment must change scope_version" %
                           label)
         queue_before = amendment.get("queue_revision_before")
@@ -7756,8 +7937,11 @@ def _cross_ledger_amendment_errors(
                 isinstance(state_after, bool)):
             errors.append("%s state revision edge must use non-negative integers" %
                           label)
-        elif (operation == "scope-replan" and state_after != state_before):
-            errors.append("%s scope-replan must preserve state_revision" % label)
+        elif (operation in ("scope-replan",
+                            "gap-routing-reconciliation") and
+              state_after != state_before):
+            errors.append("%s %s must preserve state_revision" %
+                          (label, operation))
         elif (operation == "cancel-batch" and
               state_after != state_before + 1):
             errors.append("%s cancel-batch must increment state_revision by one" %
@@ -7768,9 +7952,10 @@ def _cross_ledger_amendment_errors(
             errors.append("%s coverage_proposal_sha256 must be sha256:<64 "
                           "lowercase hex>" % label)
         cancel_id = amendment.get("cancel_batch_id")
-        if operation == "scope-replan":
+        if operation in ("scope-replan", "gap-routing-reconciliation"):
             if cancel_id is not None:
-                errors.append("%s scope-replan cancel_batch_id must be null" % label)
+                errors.append("%s %s cancel_batch_id must be null" %
+                              (label, operation))
         elif (not _nonempty_string(cancel_id) or
               amendment.get("affected_batches") != [cancel_id]):
             errors.append("%s cancel-batch must bind exactly cancel_batch_id" %
@@ -7894,7 +8079,7 @@ def _cross_ledger_amendment_errors(
             "%s verification" % label, errors,
             expected={
                 "tool": "apply_amendment",
-                "tool_version": "1.1.0",
+                "tool_version": ANY_PRODUCER_ERA_VERSION,
                 "check": "amendment_transaction",
                 "target": amendment.get("id"),
                 "transaction_phase": "commit",
@@ -7917,6 +8102,12 @@ def _cross_ledger_amendment_errors(
                 "state_revision_after": state_after,
             },
         )
+        if (receipt is not None and receipt.get("tool_version") not in
+                SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS):
+            errors.append(
+                "%s verification receipt has unsupported apply_amendment "
+                "producer version %r" %
+                (label, receipt.get("tool_version")))
         if not _nonempty_string(transaction_id):
             errors.append("%s verified transaction_id must be non-empty" % label)
         if receipt is not None and not SHA256_RE.fullmatch(
@@ -7950,7 +8141,8 @@ def _pending_cross_ledger_amendments(progress):
         for amendment in amendments
         if (isinstance(amendment, dict) and
             amendment.get("operation") in
-            ("scope-replan", "cancel-batch", "queue-replan") and
+            ("scope-replan", "cancel-batch", "queue-replan",
+             "gap-routing-reconciliation") and
             amendment.get("status") == "approved" and
             amendment.get("writeback_done") is False)
     ]
@@ -8254,6 +8446,11 @@ def _queue_replan_amendment_errors(
                           "the repository" % (label, receipt_id))
         if receipt is None:
             continue
+        if receipt.get("tool_version") not in \
+                SUPPORTED_COMPILE_QUEUE_TOOL_VERSIONS:
+            errors.append(
+                "%s receipt has unsupported compile_queue producer version "
+                "%r" % (label, receipt.get("tool_version")))
 
         errors.extend(_registration_execution_bridge_errors(
             amendment, label, historical_catalog, receipt,
@@ -9733,7 +9930,7 @@ def _closed_delta_apply_errors(item, transition, catalog, queue):
         catalog, receipt_id, "%s delta application" % item_id, errors,
         expected={
             "tool": "apply_delta",
-            "tool_version": "1.4.0",
+            "tool_version": ANY_PRODUCER_ERA_VERSION,
             "check": "delta_apply",
             "target": item_id,
             "task_id": queue.get("task_id"),
@@ -9749,6 +9946,29 @@ def _closed_delta_apply_errors(item, transition, catalog, queue):
                       "repository" % (item_id, receipt_id))
     if receipt is None:
         return errors
+    if receipt.get("tool_version") not in SUPPORTED_APPLY_DELTA_TOOL_VERSIONS:
+        errors.append("%s delta application receipt %s has unsupported "
+                      "apply_delta producer version %r" %
+                      (item_id, receipt_id, receipt.get("tool_version")))
+    if receipt.get("tool_version") == APPLY_DELTA_TOOL_VERSION:
+        errors.extend(_settlement_binding_errors(
+            receipt, "%s delta application receipt %s" %
+            (item_id, receipt_id)))
+        _, merge_transition = _latest_merge_transition(item, catalog)
+        if (not isinstance(merge_transition, dict) or
+                merge_transition.get("tool") != "update_queue" or
+                merge_transition.get("tool_version") !=
+                UPDATE_QUEUE_TOOL_VERSION):
+            errors.append(
+                "%s current delta application has no current-era frozen "
+                "merge-ready settlement" % item_id)
+        else:
+            for field in SETTLEMENT_BINDING_FIELDS:
+                if receipt.get(field) != merge_transition.get(field):
+                    errors.append(
+                        "%s delta application settlement %s does not match "
+                        "the frozen merge-ready transition" %
+                        (item_id, field))
     if receipt.get("delta_sha256") != item.get("delta_sha256"):
         errors.append("%s delta application receipt does not bind frozen "
                       "delta_sha256" % item_id)
@@ -10221,18 +10441,43 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             if current is None:
                 continue
             producer = (current.get("tool"), current.get("tool_version"))
-            allowed_producers = {("update_queue", "1.2.0")}
+            allowed_producers = {
+                ("update_queue", version)
+                for version in SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS
+            }
             if current.get("after_state") == "cancelled":
                 # Cancellation changes all three canonical state documents;
                 # the cross-Ledger transaction is therefore a truthful
                 # producer for this edge.  Other lifecycle edges remain
                 # update_queue-owned.
-                allowed_producers.add(("apply_amendment", "1.1.0"))
+                allowed_producers.update(
+                    ("apply_amendment", version)
+                    for version in SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS
+                )
             if producer not in allowed_producers:
                 errors.append("%s transition receipt %s has unsupported "
                               "producer %r/%r" %
                               (item_id, receipt_id,
                                producer[0], producer[1]))
+            if (producer == ("update_queue", UPDATE_QUEUE_TOOL_VERSION) and
+                    current.get("before_state") == "open" and
+                    current.get("after_state") == "merge-ready"):
+                errors.extend(_settlement_binding_errors(
+                    current, "%s merge-ready transition %s" %
+                    (item_id, receipt_id)))
+                if current.get("delta_path") != \
+                        ".cambium/deltas/%s.yaml" % item_id:
+                    errors.append(
+                        "%s merge-ready transition %s has noncanonical "
+                        "delta_path" % (item_id, receipt_id))
+                for field in (
+                        "delta_sha256",
+                        "settlement_coverage_sha256_before",
+                        "settlement_prospective_coverage_sha256"):
+                    if not SHA256_RE.fullmatch(str(current.get(field) or "")):
+                        errors.append(
+                            "%s merge-ready transition %s has invalid %s" %
+                            (item_id, receipt_id, field))
             if (current.get("before_state") not in STATES or
                     current.get("after_state") not in STATES):
                 errors.append("%s transition receipt %s has invalid lifecycle "
@@ -10548,7 +10793,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                 "%s cancellation Amendment commit" % item_id, errors,
                 expected={
                     "tool": "apply_amendment",
-                    "tool_version": "1.1.0",
+                    "tool_version": ANY_PRODUCER_ERA_VERSION,
                     "check": "amendment_transaction",
                     "target": amendment_id,
                     "transaction_phase": "commit",
@@ -10563,7 +10808,6 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             else:
                 for field, value in {
                     "tool": "apply_amendment",
-                    "tool_version": "1.1.0",
                     "check": "queue_transition",
                     "after_state": "cancelled",
                     "amendment_id": amendment_id,
@@ -10572,7 +10816,13 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                         errors.append("%s cancellation transition %s=%r, "
                                       "expected %r" %
                                       (item_id, field,
-                                       transition.get(field), value))
+                                      transition.get(field), value))
+                if transition.get("tool_version") not in \
+                        SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS:
+                    errors.append(
+                        "%s cancellation transition has unsupported "
+                        "apply_amendment producer version %r" %
+                        (item_id, transition.get("tool_version")))
 
     timestamp_bindings = []
     opening = next((entry for entry in transition_history
@@ -10581,6 +10831,15 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
     latest_merge = next((entry for entry in reversed(transition_history)
                          if entry.get("before_state") == "open" and
                          entry.get("after_state") == "merge-ready"), None)
+    if (latest_merge is not None and state in ("merge-ready", "closed") and
+            latest_merge.get("tool") == "update_queue" and
+            latest_merge.get("tool_version") == UPDATE_QUEUE_TOOL_VERSION):
+        if latest_merge.get("delta_path") != item.get("delta_path"):
+            errors.append("%s latest merge-ready transition does not bind "
+                          "current delta_path" % item_id)
+        if latest_merge.get("delta_sha256") != item.get("delta_sha256"):
+            errors.append("%s latest merge-ready transition does not bind "
+                          "current delta_sha256" % item_id)
     closing = next((entry for entry in reversed(transition_history)
                     if entry.get("after_state") == "closed"), None)
     cancelling = next((entry for entry in reversed(transition_history)
@@ -10827,8 +11086,15 @@ def _delta_gap_key(value):
 
 
 def _delta_handoff_errors(relative, delta, item, coverage_records,
-                          coverage, catalog):
-    """Validate a worker Delta enough to resume at the admission boundary."""
+                          coverage, queue, catalog):
+    """Return structural errors, repairable settlement blockers, and report.
+
+    A syntactically or evidentially malformed managed Delta is a runtime
+    error.  A well-formed open Delta that has not yet settled every gap routed
+    to its batch is ordinary authoring work: it is reported as ``incomplete``
+    and the merge-ready writer refuses it, but unrelated runtime readers are
+    not wedged while the worker repairs the exact Delta bytes.
+    """
     item_id = item.get("id")
     errors = []
     expected_path = ".cambium/deltas/%s.yaml" % item_id
@@ -10930,7 +11196,17 @@ def _delta_handoff_errors(relative, delta, item, coverage_records,
         if isinstance(gap, dict) and gap.get("page") not in coverage_records:
             errors.append("open gap page is absent from Coverage: %s" %
                           gap.get("page"))
-    return errors
+    settlement_errors = []
+    settlement = None
+    if not errors:
+        try:
+            prospective = coverage_delta.project_open_gaps(coverage, delta)
+            settlement = batch_settlement.delta_settlement_report(
+                coverage, prospective, delta, queue, item_id)
+            settlement_errors = list(settlement.get("errors") or [])
+        except (TypeError, ValueError) as exc:
+            errors.append("cannot project routed-gap settlement: %s" % exc)
+    return errors, settlement_errors, settlement
 
 
 def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
@@ -10938,7 +11214,7 @@ def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
     """Classify unconsumed apply receipts for one merge-ready batch."""
     batch_id = item.get("id")
     expected = {
-        "tool_version": "1.4.0",
+        "tool_version": APPLY_DELTA_TOOL_VERSION,
         "task_id": queue.get("task_id"),
         "actor_role": "integrator",
         "coverage_ledger_path": COVERAGE_PATH,
@@ -10949,6 +11225,13 @@ def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
         "queue_revision": queue.get("queue_revision"),
         "queue_state_revision": queue.get("state_revision"),
     }
+    _, merge_transition = _latest_merge_transition(item, catalog)
+    if (isinstance(merge_transition, dict) and
+            merge_transition.get("tool") == "update_queue" and
+            merge_transition.get("tool_version") ==
+            UPDATE_QUEUE_TOOL_VERSION):
+        for field in SETTLEMENT_BINDING_FIELDS:
+            expected[field] = merge_transition.get(field)
     compatible = []
     stale = []
     for receipt_id in sorted(catalog):
@@ -10970,6 +11253,13 @@ def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
             continue
         mismatches = [field for field, value in expected.items()
                       if receipt.get(field) != value]
+        if receipt.get("tool_version") == APPLY_DELTA_TOOL_VERSION:
+            if not (isinstance(merge_transition, dict) and
+                    merge_transition.get("tool_version") ==
+                    UPDATE_QUEUE_TOOL_VERSION):
+                mismatches.append("merge_ready_settlement")
+            mismatches.extend(_settlement_binding_errors(
+                receipt, "delta application %s" % receipt_id))
         before_coverage = receipt.get("before_coverage_sha256")
         if (not isinstance(before_coverage, str) or
                 not SHA256_RE.fullmatch(before_coverage)):
@@ -11640,19 +11930,28 @@ def validate_runtime(root, allowed_open_delta=None,
                         continue
                     state = item.get("state")
                     if state == "open":
-                        handoff_errors = _delta_handoff_errors(
+                        structural_errors, settlement_errors, settlement = \
+                            _delta_handoff_errors(
                             relative, delta, item, records, coverage,
-                            current_catalog,
+                            queue, current_catalog,
                         )
-                        delta_record["handoff_status"] = (
-                            "candidate" if not handoff_errors else "invalid"
-                        )
+                        handoff_errors = structural_errors + settlement_errors
+                        if structural_errors:
+                            delta_record["handoff_status"] = "invalid"
+                        elif settlement_errors:
+                            delta_record["handoff_status"] = "incomplete"
+                        else:
+                            delta_record["handoff_status"] = "candidate"
                         delta_record["handoff_errors"] = handoff_errors
-                        if relative != allowed_open_delta:
-                            errors.extend(
-                                "open delta %s is not an admissible handoff: %s" %
-                                (relative, error) for error in handoff_errors
-                            )
+                        if settlement is not None:
+                            delta_record["routed_gap_settlement"] = settlement
+                        # ``allowed_open_delta`` lets a preflight inspect an
+                        # incomplete handoff; it never legalizes malformed
+                        # paths, evidence, or Delta structure.
+                        errors.extend(
+                            "open delta %s is not an admissible handoff: %s" %
+                            (relative, error) for error in structural_errors
+                        )
                     elif state in ("queued", "cancelled"):
                         errors.append("unapplied delta %s exists for %s batch %s" %
                                       (relative, state, batch_id))
@@ -12393,6 +12692,17 @@ def _resume_recommendation(result, errors):
     if task_state == "completion-candidate":
         return ("preserve the frozen candidate and run the Terminal Audit; "
                 "do not activate new work or initialize a new task")
+    incomplete_deltas = sorted(
+        (entry for entry in result.get("managed_deltas", [])
+         if entry.get("state") == "open" and
+         entry.get("handoff_status") == "incomplete"),
+        key=lambda entry: ((items.get(entry.get("batch")) or {}).get(
+            "order", sys.maxsize), entry.get("batch") or ""),
+    )
+    if incomplete_deltas:
+        return ("repair routed-gap settlement in the managed Delta for batch "
+                "%s before batch review or merge-ready admission" %
+                incomplete_deltas[0].get("batch"))
     actionable_revalidation = _actionable_revalidation_batches(result)
     if actionable_revalidation:
         return ("run the current boundary gates for batch %s, aggregate them "
@@ -12475,6 +12785,16 @@ def _resume_next_action(result, errors):
         return "resume-paused-task"
     if task_state == "blocked":
         return "resolve-blocked-task"
+    incomplete_deltas = sorted(
+        (entry for entry in result.get("managed_deltas", [])
+         if entry.get("state") == "open" and
+         entry.get("handoff_status") == "incomplete"),
+        key=lambda entry: ((items.get(entry.get("batch")) or {}).get(
+            "order", sys.maxsize), entry.get("batch") or ""),
+    )
+    if incomplete_deltas:
+        return "repair-delta-settlement:%s" % \
+            incomplete_deltas[0].get("batch")
     actionable_revalidation = _actionable_revalidation_batches(result)
     if actionable_revalidation:
         return "run-standards-revalidation:%s" % actionable_revalidation[0]

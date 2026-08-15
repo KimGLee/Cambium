@@ -36,7 +36,7 @@ import time
 from types import MappingProxyType
 import uuid
 
-LIB_VERSION = "1.7.0"
+LIB_VERSION = "1.8.0"
 
 # ---------------------------------------------------------------------------
 # Restricted YAML subset parser
@@ -3075,6 +3075,24 @@ def canonical_yaml(data):
     return text
 
 
+def canonical_json_bytes(value):
+    """Return the one canonical JSON byte representation used by protocols.
+
+    This helper is deliberately small and shared.  Set commitments in the
+    amendment, close-candidate and routed-gap protocols must not grow local
+    near-equivalent serializers whose whitespace or Unicode choices drift.
+    Protocol values use string mapping keys and do not admit non-finite
+    floats; ``json.dumps`` enforces the latter through ``allow_nan=False``.
+    """
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
 def sha256_bytes(data):
     """Return the canonical ``sha256:<hex>`` spelling for bytes or text."""
     if isinstance(data, str):
@@ -3650,7 +3668,7 @@ def atomic_write_yaml(path, data):
 def make_queue_receipt(action, target, result, details, seq=1, **fields):
     """Build a normal audit receipt with Queue before/after metadata."""
     receipt = make_receipt(
-        "update_queue", "1.2.0", action, target, result, details, seq
+        "update_queue", "1.3.0", action, target, result, details, seq
     )
     receipt.update(fields)
     return receipt

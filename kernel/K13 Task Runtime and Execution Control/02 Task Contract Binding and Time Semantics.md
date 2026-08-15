@@ -60,6 +60,31 @@ empty. Its sole writer after materialization is the
 Contract Amendment transaction; the policy each exception excepts keeps its
 own owner, and consumption is judged where the policy is consumed.
 
+The contract MAY also carry `amendment_authority`, a closed delegation record
+with `schema_version: 1`, a stable nonempty `authority_id`, `mode`, and a sorted
+unique `allowed_change_classes` list. Absence is equivalent to
+`mode: user-only` with an empty list. `user-only` MUST carry an empty list;
+`delegated-integrator` may name only these current operational classes:
+
+```text
+batch-add
+queued-batch-update
+required-object-add
+required-object-promote
+required-object-reroute
+```
+
+The block authorizes the integrator to register exactly those mechanically
+derived effects without another user interruption. It does not authorize
+Standards/Profile changes, Required-object demotion, batch retirement, open
+Work-Spec mutation, gap settlement, arbitrary metadata edits, or a writer
+operation whose ordinary lifecycle checks fail. The authority record and the
+complete derived impact are fingerprinted into registration evidence and
+re-derived under the executing writer's lock. The local record is an
+authorization assertion, not proof of an operating-system identity or a
+cryptographic signature. After Queue materialization its sole writer is the
+K13/06 Contract Amendment transaction.
+
 ## Time And Stop Semantics
 
 Time fields MUST use explicit semantics; they cannot all be written as an ambiguous "deadline":

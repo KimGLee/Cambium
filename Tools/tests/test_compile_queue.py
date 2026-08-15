@@ -20,6 +20,8 @@ import check_queue
 import compile_queue
 import kblib
 import register_amendment
+import batch_settlement
+import candidate_lifecycle
 from profile_fixture import install_loadable_profile
 
 
@@ -392,6 +394,17 @@ class CompileQueueTests(unittest.TestCase):
                 "candidate_evidence_bytes": 0,
                 "candidate_evidence_records": 0,
                 "candidate_dispositions": [],
+                "candidate_protocol":
+                    candidate_lifecycle.CANDIDATE_PROTOCOL,
+                "candidate_baseline_protocol":
+                    candidate_lifecycle.BASELINE_NONE,
+                "candidate_baseline_receipt": None,
+                "carried_candidate_count": 0,
+                "carried_candidate_set_sha256":
+                    candidate_lifecycle.candidate_set_sha256([]),
+                "fresh_candidate_count": 0,
+                "fresh_candidate_set_sha256":
+                    candidate_lifecycle.candidate_set_sha256([]),
             },
             {
                 "receipt_id": "audit-global-review-1", "result": "pass",
@@ -435,6 +448,9 @@ class CompileQueueTests(unittest.TestCase):
                     "audit-review-attestation-1",
                 "global_review_receipt": "audit-global-review-1",
                 "closed_list_evidence": closed_list_evidence,
+                **batch_settlement.close_binding(
+                    batch_settlement.current_settlement_report(
+                        self.load(check_queue.COVERAGE_PATH), "B1")),
             },
         ))
         receipt_path = self.root / ".cambium/receipts/history.jsonl"

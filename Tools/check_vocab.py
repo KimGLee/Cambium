@@ -25,11 +25,12 @@ Method:
   subset parser (kblib.parse_yaml_subset);
 - values of controlled fields must be in the vocabulary: unknown value ->
   result=fail;
-- a field missing or empty -> result=candidate (whether absence is allowed is
-  a human call: K08/01 says "use the applicable fields", K08/05 says pages
-  without frontmatter default to unassessed);
-- a file without any frontmatter -> one candidate; frontmatter beyond the
-  subset grammar and thus unparseable -> one candidate.
+- missing/empty controlled fields and pages without frontmatter are diagnostic
+  counts only.  Applicability and required presence belong to the compiled
+  page contract; this value checker must not turn a legal absence into a
+  repository-wide human decision;
+- frontmatter beyond the subset grammar is a failure because no controlled
+  value can be proved legal from bytes the producer cannot parse.
 
 Scope semantics: --scope may be a directory or a single .md file (note-close
 self-check, K00/05). After explicit exclusions are applied, an empty effective
@@ -53,7 +54,7 @@ import compose_vocab
 import profile_admission
 
 TOOL = "check_vocab"
-TOOL_VERSION = "1.7.0"
+TOOL_VERSION = "1.8.0"
 GATE_ID = "frontmatter-vocabulary"
 # Every K00/12 Gate this producer binds, with the check each receipt writes;
 # the registry guard compares its rows against this mapping.
@@ -234,12 +235,6 @@ def main(argv=None, *, authorized_admission=None):
         fm_text = kblib.extract_frontmatter(text)
         if fm_text is None:
             counts["no_frontmatter"] += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                "frontmatter-missing", rel_disp, "candidate",
-                "file has no frontmatter; per K08/05 it defaults to "
-                "authoring_status=unassessed, whether frontmatter must be "
-                "added is a human call", seq, root=args.vault_root))
             continue
         try:
             fm = kblib.parse_yaml_subset(fm_text)
@@ -247,16 +242,16 @@ def main(argv=None, *, authorized_admission=None):
             counts["unparseable"] += 1
             seq += 1
             receipts.append(_make_receipt(
-                "frontmatter-unparseable", rel_disp, "candidate",
+                "frontmatter-unparseable", rel_disp, "fail",
                 "frontmatter is beyond the restricted YAML subset grammar and "
-                "cannot be judged deterministically: %s" % exc, seq,
+                "its controlled values cannot be proved legal: %s" % exc, seq,
                 root=args.vault_root))
             continue
         if not isinstance(fm, dict):
             counts["unparseable"] += 1
             seq += 1
             receipts.append(_make_receipt(
-                "frontmatter-unparseable", rel_disp, "candidate",
+                "frontmatter-unparseable", rel_disp, "fail",
                 "top level of frontmatter is not a mapping", seq,
                 root=args.vault_root))
             continue
@@ -275,13 +270,6 @@ def main(argv=None, *, authorized_admission=None):
             value = effective.get(field)
             if field not in effective or value is None or value == "" or value == []:
                 counts["missing_field"] += 1
-                seq += 1
-                receipts.append(_make_receipt(
-                    "vocab-field-missing",
-                    "%s#%s" % (rel_disp, field), "candidate",
-                    "controlled field %s is missing or empty; whether absence "
-                    "is allowed is a human call (owner: %s)"
-                    % (field, spec["owner"]), seq, root=args.vault_root))
                 continue
             for v in (value if isinstance(value, list) else [value]):
                 sval = str(v)
@@ -313,8 +301,9 @@ def main(argv=None, *, authorized_admission=None):
         _summary = _make_receipt(
             GATE_CHECK,
             (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
-            "no illegal controlled-vocabulary values found (unknown_value=0; "
-            "candidates counted separately)", seq, root=args.vault_root)
+            "no illegal controlled-vocabulary values found "
+            "(unknown_value=0; missingness belongs to the page contract)",
+            seq, root=args.vault_root)
         _summary["priority_shares"] = priority_shares
         receipts.append(_summary)
 
@@ -336,7 +325,7 @@ def main(argv=None, *, authorized_admission=None):
 
     print("check_vocab: scanned %(files)d file(s)" % counts)
     print("  no_frontmatter=%(no_frontmatter)d unparseable=%(unparseable)d "
-          "unknown_value(fail)=%(unknown_value)d missing_field(candidate)=%(missing_field)d "
+          "unknown_value(fail)=%(unknown_value)d missing_field(diagnostic)=%(missing_field)d "
           "ok_values=%(ok_values)d" % counts)
     for r in receipts:
         if r["result"] == "fail":

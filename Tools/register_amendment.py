@@ -9,6 +9,11 @@ atomically replaces only Progress with the row that activates it.  Scope
 and cancellation registrations consume the exact plan later consumed by
 ``apply_amendment.py``.  A same-scope Queue replan derives its bindings
 deterministically from the current state and Coverage proposal.
+
+Before publication the tool derives a closed impact from those exact bytes.
+It either binds a matching Task Contract ``amendment_authority`` delegation or
+requires a fresh explicit-user approval reference; downstream writers derive
+and compare the same binding again under their writer lock.
 """
 
 import argparse
@@ -19,15 +24,19 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import apply_amendment
+import amendment_policy
 import check_queue
 import compile_queue
 import kblib
 
 
 TOOL = "register_amendment"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 RECEIPT_PATH = ".cambium/receipts/amendments.jsonl"
-OPERATIONS = ("scope-replan", "cancel-batch", "queue-replan")
+OPERATIONS = (
+    "scope-replan", "cancel-batch", "queue-replan",
+    "gap-routing-reconciliation",
+)
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
 
 
@@ -167,6 +176,12 @@ def _validate_cross_plan(root, runtime, operation, plan_relative):
                 "found=%r expected=%r" %
                 (changed_batches, plan["affected_batches"])
             )
+    elif operation == "gap-routing-reconciliation":
+        compiled, _ = compile_queue.compile_document(queue, proposal)
+        structural = apply_amendment._structural_changes(queue, compiled)
+        if changed_specs or structural:
+            raise ValueError(
+                "gap-routing-reconciliation may not change Queue structure")
     else:
         cancel_id = plan["cancel_batch_id"]
         if proposed_pages.keys() != current_pages.keys():
@@ -246,7 +261,19 @@ def _validate_cross_plan(root, runtime, operation, plan_relative):
             "resolved_path": proposal_file,
         },
     ]
-    return record, bindings, artifacts
+    impact = amendment_policy.derive_amendment_impact(
+        coverage, proposal, queue)
+    if impact["writer_operation"] != operation:
+        raise ValueError(
+            "--operation=%s does not match derived writer operation %s" %
+            (operation, impact["writer_operation"])
+        )
+    if impact["affected_pages"] != record["affected_pages"]:
+        raise ValueError(
+            "derived authority impact affected_pages does not match the "
+            "registered plan"
+        )
+    return record, bindings, artifacts, impact, proposal
 
 
 def _validate_queue_replan(root, runtime, amendment_id, proposal_relative):
@@ -316,7 +343,19 @@ def _validate_queue_replan(root, runtime, amendment_id, proposal_relative):
         "sha256": proposal_sha,
         "resolved_path": proposal_file,
     }]
-    return record, bindings, artifacts
+    impact = amendment_policy.derive_amendment_impact(
+        coverage, proposal, queue)
+    if impact["writer_operation"] != "queue-replan":
+        raise ValueError(
+            "--operation=queue-replan does not match derived writer operation %s" %
+            impact["writer_operation"]
+        )
+    if impact["affected_pages"] != record["affected_pages"]:
+        raise ValueError(
+            "derived authority impact affected_pages does not match the "
+            "registered replan"
+        )
+    return record, bindings, artifacts, impact, proposal
 
 
 def _revalidate_artifacts(root, artifacts):
@@ -367,12 +406,14 @@ def _prepare(root, args, expected):
         if expected[name] != before_sha[name]:
             raise ValueError("expected %s SHA does not match current bytes" % name)
 
-    if args.operation in ("scope-replan", "cancel-batch"):
+    if args.operation in (
+            "scope-replan", "cancel-batch",
+            "gap-routing-reconciliation"):
         if not args.plan:
             raise ValueError("%s requires --plan" % args.operation)
         if args.amendment_id or args.coverage_proposal:
             raise ValueError("cross-Ledger registration derives id/proposal from --plan")
-        record, bindings, artifacts = _validate_cross_plan(
+        record, bindings, artifacts, impact, proposal = _validate_cross_plan(
             root, runtime, args.operation, args.plan
         )
     else:
@@ -380,19 +421,28 @@ def _prepare(root, args, expected):
             raise ValueError("queue-replan does not consume --plan")
         if not args.coverage_proposal:
             raise ValueError("queue-replan requires --coverage-proposal")
-        record, bindings, artifacts = _validate_queue_replan(
+        record, bindings, artifacts, impact, proposal = _validate_queue_replan(
             root, runtime, args.amendment_id, args.coverage_proposal
         )
 
     progress = runtime["progress"]
     _check_no_pending_or_duplicate(progress, record["id"])
+    decision = amendment_policy.resolve_authority(
+        progress.get("contract") or {}, impact,
+        requested_mode=getattr(args, "decision_mode", "auto"),
+        approval_reference=getattr(args, "approval_reference", None),
+    )
     record.update({
         "date": args.date,
         "summary": args.summary,
-        "approval_reference": args.approval_reference,
+        "approval_reference": decision["approval_reference"],
         "status": "approved",
         "writeback_done": False,
     })
+    record.update({field: copy.deepcopy(decision[field]) for field in (
+        "decision_mode", "authority_id", "authority_sha256",
+        "change_classes", "amendment_impact_sha256",
+    )})
     receipt = kblib.make_receipt(
         TOOL, TOOL_VERSION, "amendment_registration", record["id"], "pass",
         "registered approved %s Amendment" % args.operation, 1,
@@ -408,10 +458,14 @@ def _prepare(root, args, expected):
         "actor_role": "integrator",
         "amendment_id": record["id"],
         "operation": args.operation,
-        "approval_reference": args.approval_reference,
+        "approval_reference": record["approval_reference"],
         "summary": args.summary,
         "contract_sha256": check_queue._contract_sha256(progress),
     })
+    receipt.update({field: copy.deepcopy(record[field]) for field in (
+        "decision_mode", "authority_id", "authority_sha256",
+        "change_classes", "amendment_impact_sha256",
+    )})
     receipt.update(copy.deepcopy(bindings))
     receipt["state_revision_before"] = (
         record.get("queue_state_revision_before")
@@ -456,6 +510,8 @@ def _prepare(root, args, expected):
         "record": record,
         "receipt": receipt,
         "artifacts": artifacts,
+        "impact": impact,
+        "proposal": proposal,
         "authority": authority,
     }
 
@@ -623,6 +679,12 @@ def _apply(root, prepared, receipt_path):
                 root, authority, "runtime authority changed under lock")
             _require_current_schema(locked)
             _revalidate_artifacts(root, prepared["artifacts"])
+            if "impact" in prepared:
+                locked_impact = amendment_policy.derive_amendment_impact(
+                    locked["coverage"], prepared["proposal"], locked["queue"])
+                amendment_policy.require_decision_binding(
+                    (locked["progress"].get("contract") or {}),
+                    locked_impact, prepared["record"])
 
         receipt_before = kblib.receipt_append_observation(
             receipt_path, [prepared["receipt"]]
@@ -694,6 +756,13 @@ def main(argv=None):
     parser.add_argument("--date")
     parser.add_argument("--summary")
     parser.add_argument("--approval-reference")
+    parser.add_argument(
+        "--decision-mode",
+        choices=("auto", "contract-delegated", "explicit-user"),
+        default="auto",
+        help="derive delegated authority by default; explicit-user requires "
+             "--approval-reference",
+    )
     parser.add_argument("--expected-coverage-sha256", required=True)
     parser.add_argument("--expected-progress-sha256", required=True)
     parser.add_argument("--expected-queue-sha256", required=True)
@@ -710,6 +779,8 @@ def main(argv=None):
             ("--coverage-proposal", args.coverage_proposal),
             ("--date", args.date), ("--summary", args.summary),
             ("--approval-reference", args.approval_reference),
+            ("--decision-mode", (args.decision_mode
+                                  if args.decision_mode != "auto" else None)),
         ) if value]
         if conflicting:
             print("[FAIL] --withdraw takes no registration argument(s): %s" %
@@ -724,19 +795,26 @@ def main(argv=None):
             return 1
         for label, value in (("operation", args.operation),
                              ("date", args.date),
-                             ("summary", args.summary),
-                             ("approval-reference", args.approval_reference)):
+                             ("summary", args.summary)):
             if not value:
                 print("[FAIL] registration requires --%s" % label)
                 return 1
         if not DATE_RE.fullmatch(args.date):
             print("[FAIL] --date must use YYYY-MM-DD")
             return 1
-        for label, value in (("summary", args.summary),
-                             ("approval-reference", args.approval_reference)):
+        for label, value in (("summary", args.summary),):
             if not _nonempty(value):
                 print("[FAIL] --%s must be a non-empty string" % label)
                 return 1
+        if (args.approval_reference is not None and
+                not _nonempty(args.approval_reference)):
+            print("[FAIL] --approval-reference must be a non-empty string")
+            return 1
+        if (args.decision_mode == "explicit-user" and
+                not _nonempty(args.approval_reference)):
+            print("[FAIL] --decision-mode explicit-user requires a non-empty "
+                  "--approval-reference")
+            return 1
     expected = {
         "coverage": args.expected_coverage_sha256,
         "progress": args.expected_progress_sha256,
@@ -764,6 +842,10 @@ def main(argv=None):
           ("withdrawal" if args.withdraw else "registration",
            prepared["record"]["id"],
            prepared["record"].get("operation") or args.operation))
+    if not args.withdraw:
+        print("decision_mode=%s change_classes=%s" %
+              (prepared["record"]["decision_mode"],
+               ",".join(prepared["record"]["change_classes"])))
     for name in ("coverage", "queue", "progress"):
         print("%s_sha256=%s -> %s" %
               (name, prepared["before_sha"][name],

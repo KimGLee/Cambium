@@ -285,6 +285,38 @@ class TaskPlanTransactionTests(unittest.TestCase):
                            ("progress", check_queue.PROGRESS_PATH)):
             self.assertEqual(before[name], self.state_sha(path), name)
 
+    def test_initial_plan_can_freeze_safe_amendment_authority(self):
+        plan = self.plan()
+        plan["contract_after"]["amendment_authority"] = {
+            "schema_version": 1,
+            "authority_id": "AUTH-INITIAL",
+            "mode": "user-only",
+            "allowed_change_classes": [],
+        }
+        self.write_plan(plan)
+
+        self.assertEqual(0, self.run_tool(apply=True), self.printed)
+
+        contract = self.document(check_queue.PROGRESS_PATH)["contract"]
+        self.assertEqual(plan["contract_after"]["amendment_authority"],
+                         contract["amendment_authority"])
+        self.assertEqual([], check_queue.validate_runtime(
+            str(self.root), allow_unmaterialized_queue=True)["errors"])
+
+    def test_initial_plan_rejects_malformed_amendment_authority(self):
+        plan = self.plan()
+        plan["contract_after"]["amendment_authority"] = {
+            "schema_version": 1,
+            "authority_id": "AUTH-INITIAL",
+            "mode": "delegated-integrator",
+            "allowed_change_classes": ["future-class"],
+        }
+
+        message = self.prepare_error(plan)
+
+        self.assertIn("amendment authority", message)
+        self.assertIn("future-class", message)
+
     def test_apply_fills_what_init_state_left_empty(self):
         self.write_plan(self.plan())
         self.assertEqual(0, self.run_tool(apply=True))

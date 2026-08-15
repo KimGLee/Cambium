@@ -6,6 +6,9 @@ appends a durable prepare receipt, replaces the three canonical documents one
 at a time, and rolls all three back on an ordinary failure.  A process crash
 can interrupt those replacements; the surviving lock owner metadata and
 prepare receipt bind every before/planned-after fingerprint for recovery.
+The registered change-class/authority binding is re-derived before planning
+and again under that same lock; a registration never authorizes different
+proposal bytes merely because its Amendment id still matches.
 """
 
 import argparse
@@ -19,12 +22,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import compile_queue
 import kblib
+import amendment_policy
 
 TOOL = "apply_amendment"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 PLAN_PREFIX = ".cambium/deltas/amendments"
 RECEIPT_PATH = ".cambium/receipts/amendments.jsonl"
-OPERATIONS = ("scope-replan", "cancel-batch")
+OPERATIONS = (
+    "scope-replan", "cancel-batch", "gap-routing-reconciliation",
+)
 PLAN_FIELDS = (
     "schema_version", "amendment_id", "operation", "affected_pages",
     "affected_batches", "scope_version_before", "scope_version_after",
@@ -93,15 +99,21 @@ def _validate_plan(plan):
     if not _nonempty(plan.get("amendment_id")):
         raise ValueError("plan amendment_id must be a non-empty string")
     if plan.get("operation") not in OPERATIONS:
-        raise ValueError("plan operation must be scope-replan or cancel-batch")
+        raise ValueError("plan operation must be one of %s" %
+                         ", ".join(OPERATIONS))
     _canonical_list(plan.get("affected_pages"), "affected_pages")
     _canonical_list(plan.get("affected_batches"), "affected_batches")
     before_scope = plan.get("scope_version_before")
     after_scope = plan.get("scope_version_after")
     if not _nonempty(before_scope) or not _nonempty(after_scope):
         raise ValueError("scope versions must be non-empty strings")
-    if before_scope == after_scope:
-        raise ValueError("an Amendment must change scope_version")
+    if (plan["operation"] == "gap-routing-reconciliation" and
+            before_scope != after_scope):
+        raise ValueError(
+            "gap-routing-reconciliation must preserve scope_version")
+    if (plan["operation"] != "gap-routing-reconciliation" and
+            before_scope == after_scope):
+        raise ValueError("a scope/cancel Amendment must change scope_version")
     for field in ("queue_revision_before", "queue_revision_after",
                   "state_revision_before", "state_revision_after"):
         value = plan.get(field)
@@ -111,11 +123,14 @@ def _validate_plan(plan):
         raise ValueError("queue_revision_before must be at least 1")
     if plan["queue_revision_after"] != plan["queue_revision_before"] + 1:
         raise ValueError("queue_revision_after must increment by exactly one")
-    if plan["operation"] == "scope-replan":
+    if plan["operation"] in (
+            "scope-replan", "gap-routing-reconciliation"):
         if plan["state_revision_after"] != plan["state_revision_before"]:
-            raise ValueError("scope-replan must preserve state_revision")
+            raise ValueError("%s must preserve state_revision" %
+                             plan["operation"])
         if plan.get("cancel_batch_id") is not None:
-            raise ValueError("scope-replan cancel_batch_id must be null")
+            raise ValueError("%s cancel_batch_id must be null" %
+                             plan["operation"])
     else:
         cancel_id = plan.get("cancel_batch_id")
         if not _nonempty(cancel_id):
@@ -473,6 +488,15 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
         progress, plan, plan_path=plan_relative, plan_sha=plan_sha)
     current_pages, proposed_pages, changed_specs = \
         _validate_coverage_proposal(coverage, proposal, plan)
+    impact = amendment_policy.derive_amendment_impact(
+        coverage, proposal, queue)
+    if impact["writer_operation"] != plan["operation"]:
+        raise ValueError(
+            "plan operation %s does not match derived writer operation %s" %
+            (plan["operation"], impact["writer_operation"])
+        )
+    amendment_policy.require_decision_binding(
+        progress.get("contract") or {}, impact, amendment)
 
     proposal_relative = os.path.relpath(proposal_file, root).replace(os.sep, "/")
     transaction_id = "txn-%s-%s" % (plan["amendment_id"], uuid.uuid4().hex)
@@ -506,6 +530,22 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
             raise ValueError("affected_batches does not exactly match replan; "
                              "found=%r expected=%r" %
                              (changed_batches, plan["affected_batches"]))
+    elif plan["operation"] == "gap-routing-reconciliation":
+        compile_base = copy.deepcopy(queue)
+        compiled, _ = compile_queue.compile_document(compile_base, proposal)
+        changed_batches = _structural_changes(queue, compiled)
+        if changed_batches:
+            raise ValueError(
+                "gap-routing-reconciliation may not change Queue structure: %s" %
+                ", ".join(changed_batches))
+        queue_new = copy.deepcopy(queue)
+        queue_new["queue_revision"] = plan["queue_revision_after"]
+        queue_new["state_revision"] = plan["state_revision_after"]
+        if plan["affected_batches"] != impact["affected_batches"]:
+            raise ValueError(
+                "affected_batches does not match gap-routing impact; "
+                "found=%r expected=%r" %
+                (impact["affected_batches"], plan["affected_batches"]))
     else:
         if proposed_pages.keys() != current_pages.keys():
             raise ValueError("cancel-batch may not add or remove Coverage pages")
@@ -625,6 +665,8 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
             previous_transaction_commit_receipt,
         "registration_receipt": registration_receipt,
         "task_id": queue.get("task_id"),
+        "impact": impact,
+        "proposal": proposal,
         "authority": authority,
     }
 
@@ -703,6 +745,21 @@ def _commit_transaction(root, prepared, receipt_path):
                 locked, "apply_amendment", "apply")
             if barrier:
                 raise ValueError(barrier)
+            if kblib.sha256_file(prepared["plan_file"]) != prepared["plan_sha"]:
+                raise ValueError("Amendment plan changed after transaction planning")
+            if kblib.sha256_file(
+                    prepared["proposal_file"]) != prepared["proposal_sha"]:
+                raise ValueError(
+                    "Coverage proposal changed after transaction planning")
+            locked_amendment = _find_amendment(
+                locked["progress"], prepared["plan"],
+                plan_path=prepared["plan_path"],
+                plan_sha=prepared["plan_sha"])
+            locked_impact = amendment_policy.derive_amendment_impact(
+                locked["coverage"], prepared["proposal"], locked["queue"])
+            amendment_policy.require_decision_binding(
+                locked["progress"].get("contract") or {},
+                locked_impact, locked_amendment)
         final_receipts = ([prepared["transition"]]
                           if prepared["transition"] else []) + [
                               prepared["commit"]]

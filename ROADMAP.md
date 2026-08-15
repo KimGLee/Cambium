@@ -842,6 +842,63 @@ reported zero errors. Three things about the shape of that defect are not closed
   let the seal carry what its readers actually need, and would make "this field
   is not in the projection" a planning-time answer rather than a runtime one.
 
+## Workflow Progression MVP Boundaries
+
+Three workflow debts are closed together because each was making ordinary
+batch progress ask for a semantic decision after the relevant decision had
+already been made. Their implementations share existing state, receipt, and
+writer transactions; none introduces a parallel control plane.
+
+### Batch-close candidate continuation
+
+`exact-carry-v1` keeps the complete repository scan on every close and reuses
+only the review disposition of an exact unchanged observation. The sole
+baseline is the immediately preceding successful close, resolved through the
+same verified hot/cold receipt catalog. A row carries only when its prior
+disposition was `accept-while-unchanged`, its stable ID, complete observation
+hash, and producer version still match, and it is not manifest-local
+page-contract debt. A disappearance breaks continuity; legacy evidence grants
+no carry; a producer or detail change is fresh; and a type selector expands
+only the exact rows present in the current fresh set. Priority quota continues
+to use its bounded policy-exception path.
+
+This is intentionally not scan caching, a global candidate ledger, semantic
+equivalence, a time-to-live policy, or revival across a disappearance interval.
+Those mechanisms can be proposed later if exact carry proves too conservative;
+they are not required to stop stable advisory debt becoming every batch's new
+manual ticket.
+
+### Delegated operational Amendments
+
+The Task Contract may carry a closed `amendment_authority`. Its safe state is
+absent or `user-only`; `delegated-integrator` names only registered bounded
+change classes. The registration writer derives the complete impact from the
+proposed Coverage and live Queue, binds the exact class set and authority
+fingerprint, and every consuming writer derives it again under lock. The first
+delegatable set is limited to Required-object addition/promotion/rerouting,
+batch addition, and queued-batch update. Unknown effects, removal/demotion,
+terminal-history changes, and unsupported metadata changes fail closed or
+require an explicit user decision through an implemented writer.
+
+Delegation never authorizes its own expansion. Changing or revoking the
+allowlist remains a confirmed Contract Amendment. This MVP does not infer
+semantic scope from prose, create a generic arbitrary-diff capability, or let
+an Agent edit Queue/Coverage directly.
+
+### Routed-gap settlement before freeze
+
+Every gap routed to a batch is now an explicit obligation before that batch
+enters `merge-ready`. A read-only Delta preflight computes the prospective
+Coverage after-image; the transition binds the obligation set and proves that
+none remains routed to the batch, then apply and close re-prove the same facts.
+A newly created gap may target only an existing actionable later batch. An
+existing gap reroute uses the controlled Amendment path before freeze.
+
+The close gate is therefore a verifier, not the first place unfinished routing
+is discovered. This MVP does not edit a frozen Delta, treat
+`merge-ready -> open` as routine bookkeeping, reopen terminal history, or
+invent a successor batch when none exists.
+
 ## Machine-readable Review Rulings
 
 A K12/12 substantive review currently ends in prose. Its findings, their

@@ -67,8 +67,9 @@ One guidance MAY bump multiple versions. When only a research lead is added and 
 ### Operational Amendment Registration
 
 An approved decision is not executable merely because an Agent can append an
-`approved` row to Progress. The three operational forms supported by the
-current runtime -- `queue-replan`, `scope-replan`, and `cancel-batch` -- MUST
+`approved` row to Progress. The four operational forms supported by the
+current runtime -- `queue-replan`, `scope-replan`, `cancel-batch`, and
+`gap-routing-reconciliation` -- MUST
 first be registered by `Tools/register_amendment.py`. That writer consumes the
 exact staged plan or Coverage proposal, derives rather than guesses the
 affected structure, compare-and-swaps all three canonical state fingerprints,
@@ -76,11 +77,24 @@ and appends only the pending Progress row plus its
 `registration_receipt`. Registration changes no task state, Queue revision,
 Queue lifecycle, Coverage bytes, or scope version.
 
-The caller supplies one explicit `approval_reference`; it identifies the
-approval inside the local trust domain but is not a cryptographic signature.
-Only the integrator may apply registration, and only one operational Amendment
-may be pending at a time. Directly inserting or editing an executable pending
-row is forbidden.
+Registration derives a closed change-class set, affected objects/batches, and
+writer operation from the exact current and proposed state. If every class is
+allowed by the live Task Contract `amendment_authority`, the row records
+`decision_mode: contract-delegated`, the authority ID and fingerprint, and a
+contract-derived approval reference. Otherwise registration requires a fresh
+explicit user `approval_reference` and records `decision_mode: explicit-user`
+with null authority identity. A forbidden or unsupported effect is refused;
+an approval string never bypasses a writer or lifecycle boundary.
+
+Both modes bind the sorted change classes and a fingerprint of the complete
+derived impact. Registration rechecks staged bytes and derives that binding
+under its lock; `apply_amendment.py` and `compile_queue.py --apply-replan`
+derive it again from locked state before writing. A changed proposal, revoked
+or changed delegation, different operation, or different impact therefore
+requires a new registration. These local references are audit assertions, not
+cryptographic signatures. Only the integrator may apply registration, and
+only one operational Amendment may be pending at a time. Directly inserting
+or editing an executable pending row is forbidden.
 
 A pending registration whose execution can no longer validate — its planned
 final state fails the deterministic checks, or the approval is rescinded — is
@@ -116,15 +130,16 @@ past authorization only; validators resolve it from immutable history, while
 the transaction commit receipt names the registration it consumed. Historical
 registration evidence never authorizes a new replan or cancellation.
 
-The baseline transaction writer covers scope/disposition replans and
-cancellation. It MUST NOT be bypassed by directly editing a materialized Task
-Contract.
+The baseline transaction writer covers scope/disposition replans,
+cancellation, and gap-route reconciliation. It MUST NOT be bypassed by
+directly editing a materialized Task Contract.
 
 ### Contract Amendment
 
-`Tools/apply_contract_amendment.py` is the guarded writer for the one
-non-scope Contract change the runtime supports: the contract's
-`policy_exceptions` register (field shape owned by
+`Tools/apply_contract_amendment.py` is the guarded writer for the two
+non-scope Contract authorization fields the runtime supports: the contract's
+`policy_exceptions` register and `amendment_authority` delegation (field
+shapes owned by
 [[kernel/K13 Task Runtime and Execution Control/02 Task Contract Binding and Time Semantics|K13/02]]).
 It consumes one confirmed restricted-YAML plan under
 `.cambium/deltas/contract-amendments/`, has no pending phase -- it validates
@@ -133,12 +148,15 @@ nothing -- and lands one `verified` `contract-amendment` row whose commit
 receipt is an anchor event: the contract fingerprint chain follows the change
 instead of failing closed on it. It advances `contract_version` and the Queue
 revision exactly once, changes no scope, no batch structure, and no lifecycle.
-An exception is current authorization *because it is contract state*; the
-amendment row is history, and historical evidence never authorizes. The
-writer resolves the effective policy at prepare and again in the commit
-lock: each exception must carry the current effective-policy fingerprint,
-and the effective ceilings -- exception where granted, standing quota where
-not -- must jointly stay under 100 per K00/07. It refuses while a batch is `merge-ready` (the revision bump would
+An exception or delegation is current authorization *because it is contract
+state*; the amendment row is history, and historical evidence never
+authorizes. For a policy-exception change the writer resolves the effective
+policy at prepare and again in the commit lock: each exception must carry the
+current effective-policy fingerprint, and the effective ceilings -- exception
+where granted, standing quota where not -- must jointly stay under 100 per
+K00/07. For a delegation change it validates the closed class vocabulary and
+records the exact changed Contract-field set in the row and receipt. It
+refuses while a batch is `merge-ready` (the revision bump would
 strand its sealed delta bindings): grant before merge, or roll back first.
 Extending the amendable field allowlist is a governance change under this
 module.
@@ -147,4 +165,4 @@ A Contract change outside that allowlist keeps the prior disposition: the
 operator MUST pause or cancel the current task, preserve its runtime history,
 and carry the approved change into a successor task.
 
-Queue edits follow K13/08. A same-scope replan stages a full Coverage proposal under `.cambium/deltas/replans/`; after registration, `compile_queue.py --apply-replan` binds it, its diff, the registered Amendment, the consumed registration receipt, and all three state fingerprints before writing state. Scope/disposition changes, including cancellation, register the exact `amendment_plan` before using `apply_amendment.py`. Both paths write back Progress and preserve terminal history; editing Queue alone never amends scope.
+Queue edits follow K13/08. A same-scope replan stages a full Coverage proposal under `.cambium/deltas/replans/`; after registration, `compile_queue.py --apply-replan` binds it, its diff, the registered Amendment, the consumed registration receipt, and all three state fingerprints before writing state. Scope/disposition changes, cancellation, and standalone gap-route reconciliation register the exact `amendment_plan` before using `apply_amendment.py`; gap-route reconciliation preserves Queue structure and remains explicit-user in the current delegation vocabulary. Both paths write back Progress and preserve terminal history; editing Queue alone never amends scope.

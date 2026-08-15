@@ -194,9 +194,7 @@ class QuotaExceptionLifecycleTests(CheckBatchCloseTests):
             str(self.root))["errors"])
         self.prepare_applied_batch()
 
-        closed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing",
-            "--accept-candidate-type", "check_vocab:vocab-field-missing")
+        closed = self.batch_close()
         self.assertEqual(0, closed.returncode, closed.stdout)
         self.assertEqual(
             [], check_queue.validate_runtime(str(self.root))["errors"],
@@ -225,9 +223,7 @@ class QuotaExceptionLifecycleTests(CheckBatchCloseTests):
     def test_an_uncovered_excess_refuses_and_a_late_grant_names_why(self):
         """No exception -> close refuses; grant at merge-ready -> finding 7."""
         self.prepare_applied_batch()
-        refused = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing",
-            "--accept-candidate-type", "check_vocab:vocab-field-missing")
+        refused = self.batch_close()
         self.assertEqual(1, refused.returncode, refused.stdout)
         self.assertIn("no valid contract policy exception", refused.stdout)
 
@@ -244,9 +240,7 @@ class QuotaExceptionLifecycleTests(CheckBatchCloseTests):
         code, output = self.register_exception(limit=20)
         self.assertEqual(0, code, output)
         self.prepare_applied_batch()
-        refused = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing",
-            "--accept-candidate-type", "check_vocab:vocab-field-missing")
+        refused = self.batch_close()
         self.assertEqual(1, refused.returncode, refused.stdout)
         self.assertIn("no valid contract policy exception", refused.stdout)
 
@@ -370,7 +364,13 @@ class QuotaExceptionLifecycleTests(CheckBatchCloseTests):
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(kblib.canonical_yaml(plan), encoding="utf-8")
-        prepared = apply_contract_amendment.prepare(str(self.root), relative)
+        # ``main`` canonicalizes the repository root before calling
+        # ``prepare``.  Mirror that boundary here: on macOS TemporaryDirectory
+        # may spell the path through /var while managed_repository_path
+        # resolves it through /private/var, and mixing those spellings makes
+        # os.path.relpath manufacture a forbidden ``..`` plan path.
+        prepared = apply_contract_amendment.prepare(
+            str(self.root.resolve()), relative)
         # The race: the plan file changes after prepare bound its bytes.
         path.write_text(path.read_text(encoding="utf-8") + "# moved\n",
                         encoding="utf-8")
@@ -395,9 +395,7 @@ class QuotaExceptionLifecycleTests(CheckBatchCloseTests):
         code, output = self.register_exception()
         self.assertEqual(0, code, output)
         self.prepare_applied_batch()
-        closed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing",
-            "--accept-candidate-type", "check_vocab:vocab-field-missing")
+        closed = self.batch_close()
         self.assertEqual(0, closed.returncode, closed.stdout)
         self.close_the_batch()
         receipt_file = self.root / ".cambium/receipts/batch-close.jsonl"

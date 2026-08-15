@@ -10,6 +10,11 @@
 # fingerprints in Progress plus a registration receipt. `apply_amendment.py`
 # then consumes that exact registered authorization. The plan is a transaction
 # input, not canonical runtime state.
+#
+# Decision authority is not copied into this plan. At registration the writer
+# derives a closed impact from these bytes and current state, then either binds
+# the Task Contract's amendment_authority or requires an explicit user approval
+# reference. Every downstream writer re-derives that same impact under lock.
 # =============================================================================
 
 schema_version: 1

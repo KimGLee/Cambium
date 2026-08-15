@@ -20,8 +20,9 @@ import check_corpus_plan
 import kblib
 import update_task
 import apply_delta
+import batch_settlement
 
-TOOL_VERSION = "1.5.0"
+TOOL_VERSION = "1.6.0"
 # The lifecycle map moved to `kblib` so `check_queue` can read it without
 # importing this writer, which imports it.  The name stays here because it is
 # this tool's transition guard and every existing reference reads it here.
@@ -432,13 +433,22 @@ def _transition_item(item, args, result):
             policy_errors.append("canonical Coverage source bytes are unavailable")
         else:
             try:
-                apply_delta._merge_coverage_sections(
-                    coverage_source, delta_data)
-                _, planned, rejected, _ = apply_delta._build_plan(
+                page_text, planned, rejected, _ = apply_delta._build_plan(
                     coverage_source.splitlines(True), delta_data, force=False)
+                prospective_text = apply_delta._merge_coverage_sections(
+                    page_text, delta_data)
                 if rejected or len(planned) != len(item.get("manifest") or []):
                     policy_errors.append(
                         "delta does not apply exactly to the frozen manifest")
+                prospective_coverage = kblib.parse_yaml_subset(prospective_text)
+                settlement = batch_settlement.delta_settlement_report(
+                    result["coverage"], prospective_coverage, delta_data,
+                    result["queue"], item["id"])
+                policy_errors.extend(settlement["errors"])
+                if not settlement["errors"]:
+                    args.merge_ready_settlement_report = settlement
+                    args.merge_ready_prospective_coverage_sha256 = \
+                        kblib.sha256_bytes(prospective_text)
             except (KeyError, TypeError, ValueError,
                     kblib.YamlSubsetError) as exc:
                 policy_errors.append("delta apply policy failed: %s" % exc)
@@ -514,7 +524,7 @@ def _transition_item(item, args, result):
                 "merge-ready -> closed requires --delta-apply-receipt")
         _receipt(result, args.delta_apply_receipt, "delta application", expected={
             "tool": "apply_delta",
-            "tool_version": "1.4.0",
+            "tool_version": "1.5.0",
             "check": "delta_apply",
             "target": item["id"],
             "task_id": result["queue"].get("task_id"),
@@ -889,6 +899,19 @@ def main(argv=None):
         actor_role=args.actor_role,
     )
     receipt["checked_at"] = args.at
+    if args.transition == "merge-ready":
+        settlement = getattr(args, "merge_ready_settlement_report", None)
+        if settlement is None:
+            print("[FAIL] merge-ready transition has no routed-gap settlement")
+            return 1
+        receipt.update(batch_settlement.transition_binding(settlement))
+        receipt.update({
+            "delta_path": args.delta_path,
+            "delta_sha256": target.get("delta_sha256"),
+            "settlement_coverage_sha256_before": before_coverage_sha,
+            "settlement_prospective_coverage_sha256": getattr(
+                args, "merge_ready_prospective_coverage_sha256", None),
+        })
     if args.standards_revalidation_receipt:
         receipt["standards_revalidation_receipt"] = \
             args.standards_revalidation_receipt
@@ -1116,6 +1139,49 @@ def main(argv=None):
                             "batch-close gate changed before write: %s" %
                             "; ".join(locked_close_errors)
                         )
+                if args.transition == "merge-ready":
+                    locked_item = current.get("items_by_id", {}).get(args.id)
+                    if locked_item is None or locked_item.get("state") != "open":
+                        raise ValueError(
+                            "batch is no longer the validated open item")
+                    locked_delta_path = kblib.managed_repository_path(
+                        root, args.delta_path, ".cambium/deltas",
+                        suffixes=(".yaml",), must_exist=True)
+                    with open(locked_delta_path, encoding="utf-8") as handle:
+                        locked_delta_text = handle.read()
+                    locked_delta = kblib.parse_yaml_subset(locked_delta_text)
+                    if kblib.sha256_bytes(locked_delta_text) != \
+                            target.get("delta_sha256"):
+                        raise ValueError("delta changed after merge-ready planning")
+                    locked_page_text, locked_planned, locked_rejected, _ = \
+                        apply_delta._build_plan(
+                            old_coverage_text.splitlines(True), locked_delta,
+                            force=False)
+                    if (locked_rejected or
+                            len(locked_planned) != len(
+                                locked_item.get("manifest") or [])):
+                        raise ValueError(
+                            "delta no longer applies exactly to the manifest")
+                    locked_prospective_text = \
+                        apply_delta._merge_coverage_sections(
+                            locked_page_text, locked_delta)
+                    locked_prospective = kblib.parse_yaml_subset(
+                        locked_prospective_text)
+                    locked_settlement = \
+                        batch_settlement.delta_settlement_report(
+                            current["coverage"], locked_prospective,
+                            locked_delta, current["queue"], args.id)
+                    if locked_settlement["errors"]:
+                        raise ValueError(
+                            "routed-gap settlement changed under lock: %s" %
+                            "; ".join(locked_settlement["errors"]))
+                    if (batch_settlement.transition_binding(
+                            locked_settlement) !=
+                            batch_settlement.transition_binding(
+                                getattr(args,
+                                        "merge_ready_settlement_report"))):
+                        raise ValueError(
+                            "routed-gap settlement binding changed under lock")
                 if args.transition == "closed":
                     locked_projection = _project_closed_coverage(
                         current["coverage"], queue_new, args.id

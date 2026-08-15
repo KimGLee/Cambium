@@ -14,6 +14,11 @@ binds that authorization receipt, its Amendment, deterministic diff, and all
 live-state SHAs; terminal history remains and in-flight structure cannot
 change.
 
+A `batch_specs` row for a terminal item is no longer live compiler authority.
+The compiler ignores its edit or absence and preserves the sealed Queue item;
+retiring stale compiler input therefore cannot become a remove conflict or
+turn an otherwise unrelated replan into cancellation.
+
 Coverage `batch_specs` explicitly provides each proposed Work Spec path/hash
 pair. The compiler copies and validates it; it never guesses whether a batch
 is simple or complex. Missing or partial Work Spec fields fail closed; Queue
@@ -35,4 +40,6 @@ this page only owns the close transition's required evidence.
 binds the registered Amendment and authorization receipt, complete Coverage
 proposal, revisions, and three state SHAs. These writers share the recovery
 lock and durable prepare/outcome evidence; uncertain recovery retains the
-lock. `render_queue.py` writes only a human view.
+lock. Registration authority and its lock-time re-derivation are owned by
+[[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|K13/06]].
+`render_queue.py` writes only a human view.

@@ -158,7 +158,7 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
 
     def test_control_field_rejects_entire_delta_without_any_write(self):
         before = (self.root / check_queue.COVERAGE_PATH).read_bytes()
-        with self.assertRaisesRegex(AssertionError, "worker-forbidden"):
+        with self.assertRaisesRegex(AssertionError, "control field"):
             self.make_merge_ready({"next_batch": None})
         self.assertEqual(before,
                          (self.root / check_queue.COVERAGE_PATH).read_bytes())
