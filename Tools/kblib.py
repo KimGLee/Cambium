@@ -3015,6 +3015,19 @@ def load_yaml_file(path):
 
 _YAML_RESERVED = frozenset(("true", "false", "yes", "no", "null", "~"))
 
+# YAML 1.2 `c-indicator`: a plain scalar may not begin with any of these.
+# Two groups, because the spec treats them differently.  The first group is
+# unconditional -- a plain scalar starting with one of these characters is
+# not a plain scalar at all, whatever follows.  The restricted parser here
+# is more forgiving than a conformant one, so a value like an npm scope
+# (`@scope/name`) round-trips internally while a real YAML reader rejects
+# the same bytes; quoting is decided against the stricter grammar, not
+# against what this parser happens to accept.
+_YAML_INDICATORS = frozenset(",[]{}#&*!|>'\"%@`")
+# The second group may begin a plain scalar as long as a non-space follows,
+# which is what keeps ordinary values like `--check` and `-1x` unquoted.
+_YAML_INDICATORS_IF_ALONE = frozenset("-?:")
+
 
 def _yaml_scalar(value):
     if value is None:
@@ -3033,13 +3046,15 @@ def _yaml_scalar(value):
     # token.  This keeps canonical output round-trippable under that parser.
     if any(ord(ch) < 32 for ch in value):
         raise ValueError("YAML strings must not contain control characters")
+    head = value[:1]
     safe_bare = (
         value != "" and value == value.strip() and
         value.lower() not in _YAML_RESERVED and
         not re.fullmatch(r"-?\d+(?:\.\d+)?", value) and
-        not value.startswith(("[", "- ")) and
-        ": " not in value and " #" not in value and
-        not value.startswith("#")
+        head not in _YAML_INDICATORS and
+        not (head in _YAML_INDICATORS_IF_ALONE and
+             (len(value) == 1 or value[1].isspace())) and
+        ": " not in value and " #" not in value
     )
     if safe_bare:
         return value

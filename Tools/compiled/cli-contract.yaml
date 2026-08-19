@@ -2392,7 +2392,7 @@ tools:
         default: .
         default_type: str
         choices: null
-        nargs: ?
+        nargs: "?"
         action: store
         type: null
         help: "vault root directory (default: current directory)"
