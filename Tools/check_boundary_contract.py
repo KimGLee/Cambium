@@ -52,7 +52,6 @@ Usage: python3 check_boundary_contract.py <vault_root>
        [--scope SUBPATH] [--exclude SUBPATH] [--strict] [--receipts PATH]
 """
 
-import argparse
 import os
 import sys
 
@@ -66,6 +65,73 @@ TOOL_VERSION = "1.1.0"
 GATE_ID = "boundary-contract"
 # The `Check` cell K00/12 registers for this Gate.
 GATE_CHECK = "boundary-contract-summary"
+
+# ---------------------------------------------------------------------------
+# `--json` projection
+#
+# A check's structured result already exists: it is the set of receipts the
+# run produced.  `--json` adds one projection of those same objects -- the
+# exact receipt dicts, serialized through `kblib.canonical_json_bytes`, with
+# no field whitelist -- onto stdout, and moves every human-readable line to
+# stderr for that run.  Serializing the receipt itself is what keeps the
+# projection honest: `Tools/schemas/receipt.template.jsonl` guarantees only
+# the base fields, and each producer's extension fields are discoverable from
+# the receipt, so a whitelist here could only lose evidence.
+#
+# Without the flag nothing below runs and every byte this tool writes is
+# unchanged.  The flag never changes the exit code and never changes what is
+# appended to the receipts file.  A run rejected before it produced any
+# receipt leaves stdout empty and states the reason on stderr, which is the
+# settled shape for a refused invocation.
+# ---------------------------------------------------------------------------
+
+_JSON_STDOUT = None
+_JSON_RECEIPTS = None
+
+
+def _json_begin(enabled):
+    """Reserve stdout for the projection and send human output to stderr."""
+    global _JSON_STDOUT, _JSON_RECEIPTS
+    _JSON_STDOUT = None
+    _JSON_RECEIPTS = None
+    if enabled:
+        _JSON_STDOUT = sys.stdout
+        sys.stdout = sys.stderr
+
+
+def _json_enabled():
+    """True while `--json` owns stdout for this run."""
+    return _JSON_STDOUT is not None
+
+
+def _json_record(receipts):
+    """Hold the exact receipt objects this run produced."""
+    global _JSON_RECEIPTS
+    if _JSON_STDOUT is not None:
+        _JSON_RECEIPTS = list(receipts)
+
+
+def _json_finish(answered):
+    """Restore stdout, emitting the recorded receipts when the run answered."""
+    global _JSON_STDOUT, _JSON_RECEIPTS
+    stream = _JSON_STDOUT
+    receipts = _JSON_RECEIPTS
+    _JSON_STDOUT = None
+    _JSON_RECEIPTS = None
+    if stream is None:
+        return
+    sys.stdout = stream
+    if answered and receipts is not None:
+        stream.write(
+            kblib.canonical_json_bytes(receipts).decode("utf-8") + "\n")
+        stream.flush()
+
+
+JSON_FLAG_HELP = ("write the receipts this run produced to stdout as one "
+                  "canonical JSON array and move the human-readable summary "
+                  "to stderr; receipts written and the exit code are "
+                  "unchanged")
+
 
 ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
 SCOPE_SLOT = "Profile Scope"
@@ -356,7 +422,10 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
               "whether a boundary is drawn correctly remain owned by their "
               "own gates.")
 
-    if receipts_path:
+    if receipts_path or _json_enabled():
+        # The receipt set is this run's structured result, so `--json` builds
+        # it even with no receipts file to append to.  Neither destination
+        # changes what the receipts say.
         receipts = []
         seq = 1
         for row in findings.rows:
@@ -388,7 +457,9 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                     if artifact_snapshot is not None else None),
             })
         receipts.append(summary)
-        kblib.write_receipts(receipts_path, receipts)
+        if receipts_path:
+            kblib.write_receipts(receipts_path, receipts)
+        _json_record(receipts)
 
     if fails:
         return 1
@@ -396,7 +467,18 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    """CLI entry point; `--json` projects the produced receipts onto stdout."""
+    try:
+        code = _main(argv)
+    except BaseException:
+        _json_finish(False)
+        raise
+    _json_finish(True)
+    return code
+
+
+def _main(argv=None):
+    parser = kblib.ArgumentParser(
         description="Validate page boundary blocks against the K08/09 page "
                     "boundary contract (gate: boundary-contract; advisory "
                     "by default).")
@@ -420,7 +502,9 @@ def main(argv=None):
     parser.add_argument("--receipts",
                         help="JSONL path to append machine-readable "
                              "receipts to")
+    parser.add_argument("--json", action="store_true", help=JSON_FLAG_HELP)
     args = parser.parse_args(argv)
+    _json_begin(args.json)
     return run(args.vault_root, args.profile, args.contract, args.scope,
                args.exclude, args.strict, args.receipts)
 

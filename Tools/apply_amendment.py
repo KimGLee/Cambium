@@ -11,7 +11,7 @@ and again under that same lock; a registration never authorizes different
 proposal bytes merely because its Amendment id still matches.
 """
 
-import argparse
+import contextlib
 import copy
 import os
 import sys
@@ -52,6 +52,60 @@ AMENDMENT_BINDINGS = {
     "coverage_proposal_sha256": "coverage_proposal_sha256",
     "cancel_batch_id": "cancel_batch_id",
 }
+
+
+# ---------------------------------------------------------------------------
+# `--json` output (machine-readable receipts)
+#
+# Purely additive: without the flag not one byte of this tool's behaviour
+# moves.  With it, everything written for a person goes to stderr and stdout
+# carries this run's receipt objects, serialized verbatim as one canonical
+# JSON array.
+#
+# Nothing is filtered or renamed.  `schemas/receipt.template.jsonl` guarantees
+# only the base fields every receipt carries; extension fields differ per
+# producer and are discoverable from the receipt itself, which is why that
+# template says in its own text that its examples are "not the complete set".
+# A field allowlist here would silently drop exactly the fields a caller came
+# for.
+#
+# This tool's receipts are written from inside its transaction helpers, well
+# below `main`, so the run collects them where they are handed to the receipt
+# writer rather than threading an accumulator through every frame.
+# ---------------------------------------------------------------------------
+JSON_HELP = ("write this run's receipt objects to stdout as one canonical "
+             "JSON array and move the human-readable report to stderr; "
+             "receipt writing, verdicts, and exit codes are unchanged")
+
+_JSON_RECEIPTS = []
+
+
+def _record_receipts(receipts):
+    """Remember the exact receipt objects handed to the receipt writer."""
+    _JSON_RECEIPTS.extend(receipts)
+    return receipts
+
+
+def emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    The one canonical serializer is `kblib.canonical_json_bytes`; this module
+    owns no serializer of its own.  A run that produced no receipt writes
+    nothing, which keeps the already-settled rejection shape (empty stdout,
+    one line of reason on stderr, exit 1) intact.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
+
+
+def _run_reporting_json(runner):
+    """Run `runner`, reserving stdout for JSON and giving stderr the prose."""
+    with contextlib.redirect_stdout(sys.stderr):
+        exit_code = runner()
+    emit_json_receipts(_JSON_RECEIPTS)
+    return exit_code
 
 
 def _nonempty(value):
@@ -784,7 +838,7 @@ def _commit_transaction(root, prepared, receipt_path):
                 root, authority,
                 "runtime authority changed before prepare receipt")
             outcome, append_error, _ = kblib.write_receipts_observed(
-                receipt_path, [prepared["prepare"]]
+                receipt_path, _record_receipts([prepared["prepare"]])
             )
             outcomes["prepare"] = outcome
             if append_error is not None:
@@ -817,7 +871,8 @@ def _commit_transaction(root, prepared, receipt_path):
                 root, authority,
                 "runtime authority changed before final receipts")
             outcome, append_error, _ = kblib.write_receipts_observed(
-                receipt_path, final_receipts, before=final_before
+                receipt_path, _record_receipts(final_receipts),
+                before=final_before
             )
             outcomes["final"] = outcome
             outcomes["commit"] = (
@@ -856,7 +911,8 @@ def _commit_transaction(root, prepared, receipt_path):
             abort_error = None
             if outcomes["prepare"] in ("present", "uncertain"):
                 outcomes["abort"], abort_error, _ = (
-                    kblib.write_receipts_observed(receipt_path, [abort])
+                    kblib.write_receipts_observed(
+                        receipt_path, _record_receipts([abort]))
                 )
             attempted = [
                 value for key, value in outcomes.items()
@@ -894,19 +950,40 @@ def _commit_transaction(root, prepared, receipt_path):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Apply one approved cross-Ledger Amendment transaction")
-    parser.add_argument("root")
+    parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--plan", required=True,
                         help=".cambium/deltas/amendments/*.yaml plan")
-    parser.add_argument("--expected-coverage-sha256", required=True)
-    parser.add_argument("--expected-progress-sha256", required=True)
-    parser.add_argument("--expected-queue-sha256", required=True)
+    parser.add_argument("--expected-coverage-sha256", required=True,
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Coverage; planning is "
+                             "refused when the live bytes differ")
+    parser.add_argument("--expected-progress-sha256", required=True,
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Progress; planning is "
+                             "refused when the live bytes differ")
+    parser.add_argument("--expected-queue-sha256", required=True,
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Queue; planning is "
+                             "refused when the live bytes differ")
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
-                        default="worker")
-    parser.add_argument("--receipts", default=RECEIPT_PATH)
-    parser.add_argument("--apply", action="store_true")
+                        default="worker",
+                        help="declared caller role; only integrator may "
+                             "apply an Amendment transaction")
+    parser.add_argument("--receipts", default=RECEIPT_PATH,
+                        help="receipt JSONL path under .cambium/receipts")
+    parser.add_argument("--apply", action="store_true",
+                        help="write the transaction; omit for a dry run")
+    parser.add_argument("--json", action="store_true", help=JSON_HELP)
     args = parser.parse_args(argv)
+    if not args.json:
+        return _run(args)
+    return _run_reporting_json(lambda: _run(args))
+
+
+def _run(args):
+    """This tool's own run; `main` above owns only argument parsing."""
     root = os.path.realpath(os.path.abspath(args.root))
     expected = {
         "coverage": args.expected_coverage_sha256,

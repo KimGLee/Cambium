@@ -51,7 +51,6 @@ Usage: python3 Tools/apply_profile_adoption.py <root> --plan <path>
        [--apply] [--json] [--receipts PATH]
 """
 
-import argparse
 import json
 import os
 import re
@@ -995,7 +994,7 @@ def prepare(root, plan_argument, receipts_argument):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Apply one no-runtime R09 Profile adoption (initial "
                     "adoption or pre-runtime profile revision) from a "
                     "restricted-YAML plan")
@@ -1027,13 +1026,16 @@ def main(argv=None):
 
     def say(message):
         if args.json:
-            lines.append(message)
+            # Scheme A: JSON owns stdout, the human summary goes to stderr as
+            # it is produced. It is not buffered into the payload -- five of
+            # the six JSON exits keep the two apart, and this was the one that
+            # did not.
+            print(message, file=sys.stderr)
         else:
             print(message)
 
     def emit(exit_code):
         if args.json:
-            report["output"] = lines
             print(json.dumps(report, ensure_ascii=False, sort_keys=True,
                              indent=2))
         return exit_code

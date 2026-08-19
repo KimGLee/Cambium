@@ -37,7 +37,6 @@ same current acceptance plus bounded reuse by the immediately following close
 when the exact observation and producer version remain unchanged.
 """
 
-import argparse
 import contextlib
 import hashlib
 import io
@@ -77,6 +76,68 @@ MAX_CHECK_SECONDS = 60
 IDENTITY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]*\Z")
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+# ---------------------------------------------------------------------------
+# `--json` projection
+#
+# A check's structured result already exists: it is the set of receipts the
+# run produced.  `--json` adds one projection of those same objects -- the
+# exact receipt dicts, serialized through `kblib.canonical_json_bytes`, with
+# no field whitelist -- onto stdout, and moves every human-readable line to
+# stderr for that run.  Serializing the receipt itself is what keeps the
+# projection honest: `Tools/schemas/receipt.template.jsonl` guarantees only
+# the base fields, and each producer's extension fields are discoverable from
+# the receipt, so a whitelist here could only lose evidence.
+#
+# Without the flag nothing below runs and every byte this tool writes is
+# unchanged.  The flag never changes the exit code and never changes what is
+# appended to the receipts file.  A run rejected before it produced any
+# receipt leaves stdout empty and states the reason on stderr, which is the
+# settled shape for a refused invocation.
+# ---------------------------------------------------------------------------
+
+_JSON_STDOUT = None
+_JSON_RECEIPTS = None
+
+
+def _json_begin(enabled):
+    """Reserve stdout for the projection and send human output to stderr."""
+    global _JSON_STDOUT, _JSON_RECEIPTS
+    _JSON_STDOUT = None
+    _JSON_RECEIPTS = None
+    if enabled:
+        _JSON_STDOUT = sys.stdout
+        sys.stdout = sys.stderr
+
+
+def _json_record(receipts):
+    """Hold the exact receipt objects this run produced."""
+    global _JSON_RECEIPTS
+    if _JSON_STDOUT is not None:
+        _JSON_RECEIPTS = list(receipts)
+
+
+def _json_finish(answered):
+    """Restore stdout, emitting the recorded receipts when the run answered."""
+    global _JSON_STDOUT, _JSON_RECEIPTS
+    stream = _JSON_STDOUT
+    receipts = _JSON_RECEIPTS
+    _JSON_STDOUT = None
+    _JSON_RECEIPTS = None
+    if stream is None:
+        return
+    sys.stdout = stream
+    if answered and receipts is not None:
+        stream.write(
+            kblib.canonical_json_bytes(receipts).decode("utf-8") + "\n")
+        stream.flush()
+
+
+JSON_FLAG_HELP = ("write the receipts this run produced to stdout as one "
+                  "canonical JSON array and move the human-readable summary "
+                  "to stderr; receipts written and the exit code are "
+                  "unchanged")
+
 
 
 def _make_receipt(tool, tool_version, check, target, result, details, seq,
@@ -268,6 +329,12 @@ def _receipting_result(command, label, returncode, stdout, receipts):
                 if receipt.get("result") == "fail"]
     candidates = [receipt for receipt in receipts
                   if receipt.get("result") == "candidate"]
+    # 0 and 2 are the two codes a checker may exit while still having reached a
+    # verdict; 1 is a failure or unreliable evidence.  A usage error also exits
+    # 1 (kblib.ArgumentParser), so a mis-typed command can no longer arrive here
+    # wearing the HOLD code.  Nothing below rests on that alone: the receipts
+    # this checker actually wrote are cross-checked against the code just after,
+    # and a run that exits 2 without candidate receipts is reported either way.
     valid_exit = returncode in (0, 2)
     expected_exit = 2 if candidates and not failures else (1 if failures else 0)
     errors = []
@@ -1287,6 +1354,10 @@ def _append_receipts(path, receipts):
     before = kblib.receipt_append_observation(path, receipts)
     outcome, error, _ = kblib.write_receipts_observed(
         path, receipts, before=before)
+    # Recorded before the durability verdict is raised: these are the receipt
+    # objects this run produced, and a `--json` caller that sees the failure
+    # exit still learns exactly what was attempted.
+    _json_record(receipts)
     if error is not None or outcome != "present":
         raise ReceiptPublicationUncertain(
             "receipt append outcome=%s error=%s" % (outcome, error))
@@ -1324,7 +1395,18 @@ def _print_candidates(candidates):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    """CLI entry point; `--json` projects the produced receipts onto stdout."""
+    try:
+        code = _main(argv)
+    except BaseException:
+        _json_finish(False)
+        raise
+    _json_finish(True)
+    return code
+
+
+def _main(argv=None):
+    parser = kblib.ArgumentParser(
         description="Run and publish the K12/09 batch-close evidence bundle")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--batch", required=True, help="merge-ready batch ID")
@@ -1334,8 +1416,12 @@ def main(argv=None):
                         help="declared reviewer label (must differ from integrator)")
     parser.add_argument("--review-attestation", required=True,
                         help="reviewer's explicit global-review statement")
-    parser.add_argument("--accept-candidate-id", action="append", default=[])
-    parser.add_argument("--accept-candidate-type", action="append", default=[])
+    parser.add_argument("--accept-candidate-id", action="append", default=[],
+                        help="accept this exact current candidate for this "
+                        "close only")
+    parser.add_argument("--accept-candidate-type", action="append", default=[],
+                        help="accept every current candidate of this exact "
+                        "tool:check type for this close only")
     parser.add_argument("--accept-while-unchanged-id", action="append",
                         default=[], help="accept this exact current candidate "
                         "and permit reuse while its observation is unchanged")
@@ -1344,7 +1430,9 @@ def main(argv=None):
                         "and permit those rows to be reused while unchanged")
     parser.add_argument("--receipts", default=DEFAULT_RECEIPTS,
                         help="repository-relative close evidence JSONL")
+    parser.add_argument("--json", action="store_true", help=JSON_FLAG_HELP)
     args = parser.parse_args(argv)
+    _json_begin(args.json)
 
     root = os.path.realpath(os.path.abspath(args.root))
     invocation_errors = []

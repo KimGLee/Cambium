@@ -33,7 +33,6 @@ Usage: python3 render_structure_projection.py <vault_root>
        [--profile PROFILE_DIR] [--check | --apply]
 """
 
-import argparse
 import os
 import sys
 
@@ -252,13 +251,21 @@ def iter_derived_targets(registry):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Render derived Structure Registry coverage "
                     "projections (K01/05 derived roles).")
-    parser.add_argument("vault_root")
-    parser.add_argument("--profile")
-    parser.add_argument("--check", action="store_true")
-    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("vault_root", help="vault root directory")
+    parser.add_argument("--profile",
+                        help="profile directory override; default is the "
+                             "selected_profile_manifest of the active "
+                             "Standards state")
+    parser.add_argument("--check", action="store_true",
+                        help="exit 2 when any owned block is stale or "
+                             "missing; the default report never fails on "
+                             "staleness")
+    parser.add_argument("--apply", action="store_true",
+                        help="rewrite the stale owned blocks atomically; "
+                             "omit to only report what would render")
     args = parser.parse_args(argv)
     root = os.path.abspath(args.vault_root)
 

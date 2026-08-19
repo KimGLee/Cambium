@@ -1,0 +1,1 @@
+{"mcpServers":{"cambium":{"args":["<CAMBIUM_DISTRIBUTION_ROOT>/Tools/mcp_server.py"],"command":"python3","cwd":"<CAMBIUM_DISTRIBUTION_ROOT>","env":{"CAMBIUM_INTERFACE_SOURCE_HASH":"sha256:65ce7f831b0a67b3a98cbc036b2081defc6d1f805fe615fbb538a608d0ae7221","CAMBIUM_WORKSPACE_ROOT":"<CAMBIUM_WORKSPACE_ROOT>"}}}}

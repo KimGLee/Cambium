@@ -51,7 +51,6 @@ Usage: python3 Tools/profile_onboarding_status.py <root>
        [--profile-id <id>] [--json]
 """
 
-import argparse
 import json
 import os
 import sys
@@ -484,7 +483,7 @@ def print_human(view):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Read-only onboarding status projector: derives the "
                     "adoption/onboarding state of one root and exactly one "
                     "next_action token; writes nothing and owns no ledger")

@@ -228,6 +228,24 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
         self.assertEqual(before, coverage.read_bytes())
         self.assertFalse(Path(str(coverage) + ".bak").exists())
 
+    def test_preflight_and_apply_cannot_be_requested_together(self):
+        coverage = self.root / check_queue.COVERAGE_PATH
+        before = coverage.read_bytes()
+        # Planning writes nothing and applying writes the ledger; naming both
+        # is a contradiction the parser's own mutually exclusive group
+        # refuses, before any path is bound or any input is read.
+        completed = subprocess.run(
+            [sys.executable, str(TOOLS / "apply_delta.py"),
+             check_queue.COVERAGE_PATH, ".cambium/deltas/B1.yaml",
+             "--root", str(self.root), "--preflight", "--apply"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("not allowed with argument", completed.stdout)
+        self.assertEqual(before, coverage.read_bytes())
+        self.assert_no_write_debris()
+
     def test_detached_receipt_cannot_overwrite_runtime_state(self):
         coverage_copy = self.root / "coverage-copy.yaml"
         delta_copy = self.root / "delta-copy.yaml"

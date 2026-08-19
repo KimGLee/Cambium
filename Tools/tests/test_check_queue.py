@@ -3212,7 +3212,12 @@ class CheckQueueTests(QueueFixture):
         missing = subprocess.run(
             base, text=True, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, check=False)
-        self.assertEqual(2, missing.returncode, missing.stdout)
+        # 1, not argparse's stock 2: a missing required option is a usage
+        # error, and 2 is reserved here for HOLD (no failure, candidates
+        # remain).  Sharing one code made "you typed it wrong" and "clean but
+        # not quiet" indistinguishable to every caller.  See
+        # kblib.ArgumentParser.
+        self.assertEqual(1, missing.returncode, missing.stdout)
         self.assertIn("--completion-semantics", missing.stdout)
         completed = subprocess.run(
             base[:-1] + ["--completion-semantics", "maintenance", "--apply"],

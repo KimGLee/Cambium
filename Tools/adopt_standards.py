@@ -8,7 +8,7 @@ evidence, preserves unrelated state exactly, and rolls ordinary failures back
 to the three frozen before images.
 """
 
-import argparse
+import contextlib
 import copy
 import os
 import sys
@@ -32,6 +32,60 @@ LOAD_FIELDS = (
     "selected_profile_route_ids", "selected_read_sets",
     "loaded_module_paths",
 )
+
+
+# ---------------------------------------------------------------------------
+# `--json` output (machine-readable receipts)
+#
+# Purely additive: without the flag not one byte of this tool's behaviour
+# moves.  With it, everything written for a person goes to stderr and stdout
+# carries this run's receipt objects, serialized verbatim as one canonical
+# JSON array.
+#
+# Nothing is filtered or renamed.  `schemas/receipt.template.jsonl` guarantees
+# only the base fields every receipt carries; extension fields differ per
+# producer and are discoverable from the receipt itself, which is why that
+# template says in its own text that its examples are "not the complete set".
+# A field allowlist here would silently drop exactly the fields a caller came
+# for.
+#
+# This tool's receipts are written from inside its transaction helpers, well
+# below `main`, so the run collects them where they are handed to the receipt
+# writer rather than threading an accumulator through every frame.
+# ---------------------------------------------------------------------------
+JSON_HELP = ("write this run's receipt objects to stdout as one canonical "
+             "JSON array and move the human-readable report to stderr; "
+             "receipt writing, verdicts, and exit codes are unchanged")
+
+_JSON_RECEIPTS = []
+
+
+def _record_receipts(receipts):
+    """Remember the exact receipt objects handed to the receipt writer."""
+    _JSON_RECEIPTS.extend(receipts)
+    return receipts
+
+
+def emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    The one canonical serializer is `kblib.canonical_json_bytes`; this module
+    owns no serializer of its own.  A run that produced no receipt writes
+    nothing, which keeps the already-settled rejection shape (empty stdout,
+    one line of reason on stderr, exit 1) intact.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
+
+
+def _run_reporting_json(runner):
+    """Run `runner`, reserving stdout for JSON and giving stderr the prose."""
+    with contextlib.redirect_stdout(sys.stderr):
+        exit_code = runner()
+    emit_json_receipts(_JSON_RECEIPTS)
+    return exit_code
 
 
 def _make_receipt(check, target, result, details, seq, identity=None):
@@ -614,7 +668,8 @@ def _commit_transaction(prepared, receipt_path):
         commit_before = None
         try:
             prepare_outcome, error, _ = kblib.write_receipts_observed(
-                receipt_path, [prepared["prepare"]], before=prepare_before)
+                receipt_path, _record_receipts([prepared["prepare"]]),
+                before=prepare_before)
             if error is not None:
                 raise error
             # The prepare record is an intentional append.  Observe the final
@@ -648,7 +703,8 @@ def _commit_transaction(prepared, receipt_path):
             # The gate was computed from these exact after bytes during
             # preparation and is consumed only after the locked revalidation.
             final_outcome, error, _ = kblib.write_receipts_observed(
-                receipt_path, final_receipts, before=final_before)
+                receipt_path, _record_receipts(final_receipts),
+                before=final_before)
             if error is not None:
                 raise error
             # The append is itself an external I/O boundary.  A Profile
@@ -674,7 +730,7 @@ def _commit_transaction(prepared, receipt_path):
             abort_error = None
             if prepare_outcome in ("present", "uncertain"):
                 abort_outcome, abort_error, _ = kblib.write_receipts_observed(
-                    receipt_path, [abort])
+                    receipt_path, _record_receipts([abort]))
             fully_reconciled = (
                 not rollback_failures and
                 commit_outcome == "absent" and
@@ -695,16 +751,28 @@ def _commit_transaction(prepared, receipt_path):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Adopt one approved Standards/Profile revision")
-    parser.add_argument("root")
+    parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--plan", required=True,
                         help=".cambium/deltas/standards-adoptions/*.yaml")
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
-                        default="worker")
-    parser.add_argument("--receipts", default=RECEIPT_PATH)
-    parser.add_argument("--apply", action="store_true")
+                        default="worker",
+                        help="declared caller role; only integrator may "
+                             "apply a Standards adoption")
+    parser.add_argument("--receipts", default=RECEIPT_PATH,
+                        help="receipt JSONL path under .cambium/receipts")
+    parser.add_argument("--apply", action="store_true",
+                        help="write the transaction; omit for a dry run")
+    parser.add_argument("--json", action="store_true", help=JSON_HELP)
     args = parser.parse_args(argv)
+    if not args.json:
+        return _run(args)
+    return _run_reporting_json(lambda: _run(args))
+
+
+def _run(args):
+    """This tool's own run; `main` above owns only argument parsing."""
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         receipt_path = kblib.managed_repository_path(

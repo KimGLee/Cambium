@@ -44,6 +44,8 @@ The core distribution tools are `check_links`, `check_vocab`, `check_moc`,
 `check_boundary_contract`, `render_boundary_projection`,
 `render_structure_projection`, `project_page_state`,
 `check_residual_content`, `scaffold_profile`, `profile_onboarding_status`, `profile_contract`, `profile_admission`, `stamp_cards`, `run_gates`,
+`compile_cli_contract`, `render_interface_projection`, `render_host_configs`,
+`mcp_server`,
 `amendment_policy`, `batch_settlement`, `candidate_lifecycle`,
 `coverage_delta`, `maintenance_candidates`, and `kblib`.
 `check_freshness` and `duplicate_check` are maintenance-run tools.
@@ -91,6 +93,10 @@ with Cambium; a script absent from both is not part of the distribution.
 | `profile_contract.py` | Shared library and sole typed Profile-contract linker, not a command. It parses the exact machine-active Audit Dimension and Registered Scan sections into a source-addressable intermediate representation; resolves Profile-owned files and heading fragments under lexical and real-path containment; rejects ambiguous, missing, symlinked, or multiply linked dependencies; and emits a canonical dependency-graph fingerprint only when the whole contract is authorized. `check_profile.py` and every runtime consumer reached through `profile_admission.py` consume this same result instead of independently reinterpreting those Markdown cells. It can compile the one required scan command for a caller, but it neither executes a verifier nor scans repository content | imported by the scripts above; no command-line entry point |
 | `profile_admission.py` | Shared consumer adapter, not a command. It selects the explicit or K00/03-approved Profile, performs exactly one complete `profile-load`, exposes the authorized immutable Profile snapshot and typed slot paths/text, and rechecks Profile-tree, root-input, and active-selection currency before a consumer emits a pass result or writes an artifact. Profile-dependent tools use this view instead of reopening the manifest or slot files under a later revision | imported by the Profile-dependent scripts above; no command-line entry point |
 | `stamp_cards.py` | Kernel route and Runtime Card verification (K00/03 Write-back Checklist): checks the shared `kernel-runtime-routes` registry identity, exact R01-R13 coverage across both indexes and the on-disk Read Set/Card pairs, filename prefixes, source boundaries, `source_hash`, that every `compiled_from` equals K00/03 active `standards_version`, that every `python3`-prefixed command span in the layer supplies the required arguments its tool declares, that every Card and Read Set carries the H2 sequence registered for it in K00/14 `Card And Read Set Skeleton`, that every kernel leaf module is named by some Read Set loading boundary registered in K00/15, that every kernel leaf module satisfies the K00/03 size budget as amended by the K00/16 register, and that every row of the K00/12 `Stable Gate ID Registry` agrees with the producer it names; defaults to `kernel/Cards`; missing, empty, incomplete, or malformed layers fail closed; `--check` is read-only; `--set-version` must equal the active version and stamps every Card including the Index | `python3 Tools/stamp_cards.py . --check` |
+| `compile_cli_contract.py` | Persistent CLI invocation-contract compiler 1.0.0: derives `Tools/compiled/cli-contract.yaml` from the `argparse` declaration each `Tools/*.py` CLI builds for itself, so the calling contract has one source rather than a prose restatement that can drift. Each tool is imported with `parse_args` patched to raise the instant its parser is complete, so no tool behaviour runs and no tool signature changes; per argument it records `option_strings` (empty for a positional), `dest`, `required`, the evaluated `default`, `choices`, `nargs`, `action`, `type` name and `help`, plus each `add_mutually_exclusive_group` and the receipt extension fields that tool's own source writes onto a `make_*receipt(...)` result. The artifact is machine-generated and must not be hand-edited; it registers no K00/12 Gate ID because it depends on no selected profile and `run_gates` could therefore never sweep it, which is why `make check` runs it directly. `--check` exits 2 when the artifact is stale or hand-edited, 1 only when the evidence itself is unreliable | `python3 Tools/compile_cli_contract.py . --check` |
+| `render_interface_projection.py` | Agent-facing form projection 1.0.0: projects `Tools/compiled/cli-contract.yaml` into the interface shapes an agent runtime actually reads, so a protocol-shaped tool list is a derived view of the one compiled contract rather than a second declaration of it. `FORMS` is a registry, not a special case: each entry names its own output and builder, `--form` selects one, and an argument-free run writes or checks every registered form. The `mcp` form writes `Tools/compiled/mcp-tools.json` -- per tool a `name`, the argparse `description`, and an `inputSchema` whose properties are keyed by `dest` (an undeclared `type` projects as `string`, which is what argv carries; `choices` becomes `enum`, `required` becomes the `required` array, an empty `option_strings` is the positional), plus `stdio` and `streamable-http` and no other transport branch. Every projected field is bound in the tool's own `FIELD_SOURCES` table to the upstream field or rule it comes from, and a field no source covers fails the run; `--sources` prints that table. The artifact carries the sha256 of the contract bytes it was projected from and that contract's own manifest hash, so one upstream change invalidates every form at once and no two forms are ever compared with each other. It is machine-generated and must not be hand-edited, and it registers no K00/12 Gate ID for the same reason its upstream does not. `--check` exits 2 when an artifact is stale or hand-edited, and 1 when the evidence is unreliable -- including when the compiled contract changes underneath the run | `python3 Tools/render_interface_projection.py . --check` |
+| `render_host_configs.py` | MCP server registration and corpus binding 1.0.0: renders the one server definition body this tool declares (`command`, `args`, `cwd`, `env`, and the dsh-only connection-resilience superset) into the configuration file each supported host actually reads. Registration -- where the server is and how it starts -- is once per machine; binding -- which corpus this run governs, carried as `CAMBIUM_WORKSPACE_ROOT` -- is once per corpus. `HOSTS` is a registry with one builder and one output file per host: Claude Code (`<corpus>/.mcp.json`), Kimi Code (`<corpus>/.kimi-code/mcp.json`), Codex (`<corpus>/.codex/config.toml`, loaded only for a trusted project), dsh's per-corpus `.env` (binding only) and dsh's `$DSH_HOME/profiles/<name>/` rows (registration only). The five products are templates rendered under `Tools/compiled/host-configs/` for an adopter's corpus repository; this distribution registers no MCP server with itself and writes none of these files at its own root. Every product carries `CAMBIUM_INTERFACE_SOURCE_HASH`, the sha256 of the `compiled/mcp-tools.json` bytes it was rendered against, so one upstream change makes all five stale at once. Every rendered field is bound in the tool's own `FIELD_SOURCES` table -- the server name included, because the name is spelled into those paths -- and a field no source covers fails the run; `--sources` prints that table. `--distribution-root` and `--workspace-root` substitute the two placeholders for an onboarding flow writing a bound copy. It is machine-generated and must not be hand-edited, and it registers no K00/12 Gate ID for the same reason its upstream does not. `--check` exits 2 when a product is stale or hand-edited, and 1 when the evidence is unreliable | `python3 Tools/render_host_configs.py . --check` |
+| `mcp_server.py` | Stdio MCP server 1.0.0: the entry point every product under `compiled/host-configs/` names in its `args`, and the only layer-3 file in the distribution -- how an operation is called, how its arguments get in, and how its result gets back out. JSON-RPC 2.0, one message per line, answering `initialize`, `notifications/initialized`, `tools/list`, `tools/call` and `ping`; every other request receives `-32601`, and every other notification receives nothing, because JSON-RPC 2.0 permits no response to one. It speaks the MCP legacy era at revision `2025-11-25` (the current `2026-07-28` revision has no `initialize` at all), so a modern client's `server/discover` probe gets `-32601` -- not a modern error -- and falls back to the handshake this server does implement. `tools/list` is `compiled/mcp-tools.json` projected verbatim, never recomputed; the artifact is loaded, checked and pinned during `initialize`, and a projection that is missing, unparseable, self-inconsistent, listing a script that is not present, or hashing to something other than the `CAMBIUM_INTERFACE_SOURCE_HASH` this server was registered against fails `initialize` rather than starting on an empty tool table. `tools/call` runs the interpreter that started the server on `Tools/<tool>.py <args> --json` as a child process and never imports a tool, so every gate, lock, receipt and exit code keeps the meaning the process boundary gives it; a tool that declares no `--json` reports on stdout instead, and that stream is carried through as text rather than dropped. The verdict is read from the exit code and from nothing else -- `0` clean, `1` a failure or evidence the tool judged unreliable (one code covering two outcomes, which this layer does not split), `2` HOLD -- and travels as `exit_code`/`verdict` in `structuredContent`; `isError` is set for any non-zero exit and is not the verdict channel, so a HOLD is never rendered as a success or as a failure. An exit code outside that set is reported `unreadable`, and stdout that will not parse is reported `unparseable` with the raw bytes attached and nothing inferred from them. It refuses only calls for which no argv can be formed -- an undeclared argument, a value that cannot be rendered onto argv, or a missing positional that would rebind a later one -- and leaves every other rejection to the tool. `CAMBIUM_WORKSPACE_ROOT` is read from the environment, becomes the child's working directory, and has no working-directory fallback: unset, relative, or un-substituted refuses `initialize` naming the variable. It declares no `argparse` parser and no `main()`, so it is not a compiled tool and never appears in its own tool list, and it imports nothing from this distribution -- not `kblib`, and no judgment module -- which `Tools/tests/test_mcp_server.py` asserts statically on the source bytes | started by a host: `python3 Tools/mcp_server.py` |
 | `check_freshness.py` | Freshness check 1.3.0: computes review_by from volatility and last_verified (fallback: last_reviewed, then file modification time per K08/05, flagged pending first verification); `--defaults` accepts a flat mapping or `Tools/vocab.yaml` / a profile's `vocabulary-extensions.yaml` (their `volatility_defaults`); canonical `Tools/vocab.yaml` is consumed only through the current admitted Profile and immutable artifact bytes, while explicit flat defaults remain standalone inputs; an all-skip run reports NOTHING CHECKED as a candidate, not a pass | `python3 Tools/check_freshness.py . --as-of 2026-07-21 --defaults profiles/<your-profile-id>/vocabulary-extensions.yaml --exclude Cards --receipts Tools/receipts/fresh.jsonl` |
 | `duplicate_check.py` | Cross-file duplicate paragraph candidate detection; full vault by default; `--exclude` is repeatable and defaults to the single component `legacy`, the conventional name for a frozen-snapshot area that a vault need not have; compiled Cards and profile skeletons should be excluded from corpus-duplication review; supports `--receipts` and exits 2 when candidates exist | `python3 Tools/duplicate_check.py . --exclude _template --exclude Cards --receipts Tools/receipts/dup.jsonl` |
 | `maintenance_candidates.py` | Shared library, not a command: the pure K00/08 maintenance-candidate set algebra `check_queue.py` uses for `--require-maintenance-complete` and `--resume-status`. It validates the closed candidate record fields, the four `source_kinds` (`freshness`, `watermark`, `needs-rereview`, `candidate-pool`), the selected/deferred partition against Coverage and the budget manifest, deferral age, and re-entry disposition, and it computes the stable `candidate-sha256:` identity and candidate-state fingerprint. It performs no writes, produces no receipts, and never decides whether the source scans found the right candidates | imported by `check_queue.py`; no command-line entry point |
@@ -689,6 +695,153 @@ closed; the parser never applies last-value-wins semantics.
 
 ## Generated artifacts
 
+`compiled/cli-contract.yaml` is a **generated artifact**, produced by
+`compile_cli_contract.py` from the `argparse` declaration every `Tools/*.py`
+CLI builds for itself. It is the machine-readable statement of how these
+tools are called: per argument the `option_strings` (empty exactly for a
+positional), `dest`, `required`, evaluated `default`, `choices`, `nargs`,
+`action`, `type` name and `help`, plus each mutually exclusive group and the
+receipt extension fields derived from that tool's own source. `choices` is
+recorded as a canonically ordered set, because several tools build it from a
+Python set whose iteration order is not stable between processes. Do not edit
+it by hand; regenerate with `python3 Tools/compile_cli_contract.py .` and
+verify with `python3 Tools/compile_cli_contract.py . --check`, which `make
+check` runs. It carries no Gate ID: it depends on no selected profile, and
+`run_gates` cannot start before a profile is selected.
+
+`compiled/mcp-tools.json` is a **generated artifact**, produced by
+`render_interface_projection.py` from `compiled/cli-contract.yaml`. It is the
+same interface statement in the shape a Model Context Protocol runtime reads:
+per tool a `name`, the tool's own argparse `description`, and an `inputSchema`
+whose properties are keyed by `dest`. The mapping is mechanical -- an
+undeclared argparse `type` projects as `string`, which is what argv carries;
+`choices` becomes `enum`; the arguments argparse marks required become the
+`required` array; an argument with empty `option_strings` is the positional,
+which is the upstream artifact's own stated rule. `additionalProperties` is
+`false` because argparse rejects an option it did not declare. Two transports
+are declared, `stdio` and `streamable-http`; there is no `sse` and no
+`websocket` branch, and their absence is structural rather than a key marking
+them unsupported. Values the compiled contract carries but JSON Schema has no
+place for -- the exact option spellings, the argparse action and `nargs`, and
+each mutually exclusive group -- travel verbatim under `x-cambium-cli` and
+`x-cambium-mutually-exclusive` rather than being dropped or restated.
+
+It is JSON, not the restricted YAML subset, because its payload already is
+JSON Schema; serialization goes through `kblib.canonical_json_bytes`. It
+carries `source_hash`, the sha256 of the exact `cli-contract.yaml` bytes it
+was projected from, and `source_manifest_hash`, that contract's own
+fingerprint of the tool sources behind it. Every form binds that same
+upstream, so one upstream change invalidates all of them at once and no two
+generated forms are ever compared with each other. Do not edit it by hand,
+and do not treat it as the basis for revising a tool: it is downstream of each
+tool's argparse block, so a change starts there, then
+`python3 Tools/compile_cli_contract.py .`, then
+`python3 Tools/render_interface_projection.py .`. Verify with
+`python3 Tools/render_interface_projection.py . --check`, which `make check`
+runs directly after its upstream; like that upstream it carries no Gate ID,
+because it depends on no selected profile.
+
+`compiled/host-configs/` holds five **generated artifacts**, produced by
+`render_host_configs.py` from one MCP server definition body declared in that
+tool. They answer a different question from the two artifacts above: not what
+the server offers, but where it is, how it starts, and which corpus it
+governs.
+
+Registration and binding are two things. *Registration* -- `command`, `args`,
+`cwd`, and dsh's connection-resilience block -- says where the server is and
+how to start it, and is installed once per machine. *Binding* -- the
+`CAMBIUM_WORKSPACE_ROOT` environment variable -- says which corpus this run
+governs, and must be written once per corpus. Three of the four hosts write
+both halves into one file, which makes the distinction easy to miss; `dsh`
+separates them by force, its registration living in a profile under
+`$DSH_HOME` and its binding in a `.env` beside the corpus. That separation is
+why the tool models two halves and lets each host recombine them.
+`CAMBIUM_WORKSPACE_ROOT` is the contract path for the binding: MCP's
+2026-07-28 revision named server configuration as the migration direction when
+it deprecated roots.
+
+| Product | Copy to | Carries | Host |
+|---|---|---|---|
+| `claude-code.mcp.json` | `<corpus>/.mcp.json` | registration + binding | Claude Code |
+| `kimi-code.mcp.json` | `<corpus>/.kimi-code/mcp.json` | registration + binding | Kimi Code |
+| `codex.config.toml` | `<corpus>/.codex/config.toml` | registration + binding | Codex |
+| `dsh.env` | `<corpus>/.env` | binding only | dsh |
+| `dsh-profile-patch.yaml` | `$DSH_HOME/profiles/<name>/` | registration only | dsh |
+
+**These are templates for an adopter's corpus repository, not files for this
+one.** They are rendered under names that carry their destination, so no path
+in this repository is one a host would load, and this distribution registers
+no MCP server with itself. An adopter copies them, or an onboarding flow
+renders a bound copy directly with `--distribution-root` and
+`--workspace-root`, which substitute the two placeholders. A placeholder is
+not a valid absolute path on any of these hosts, so an un-substituted copy
+fails at launch rather than resolving to something.
+
+Claude Code and Kimi Code are separate entries writing separate files even
+though their JSON shapes agree today: one shared file would be a claim that
+they will keep agreeing, and nothing in either host holds them to it. The
+three fields `dsh` accepts and the others do not -- `toolCallTimeoutMs`,
+`failOnStartupError`, `reconnect.*` -- are a superset, not a disagreement, so
+the products that cannot carry them drop them rather than encoding a different
+intent.
+
+`cwd` is a fallback and nothing more. All four hosts start a stdio server in
+the session's own working directory, and **none of their plugin-packaging
+documentation mentions a `cwd` or an environment field at all**; what this
+registration rests on is the absolute path inside `args`, and what binds the
+server to a corpus is `CAMBIUM_WORKSPACE_ROOT`, never an inherited working
+directory.
+
+The server name is `cambium`, and the shape it must satisfy is the
+*intersection* of the four hosts rather than the union: lowercase letters and
+digits joined by single hyphens, no spaces, first and last character
+alphanumeric, no consecutive hyphens, and inside `^[a-z0-9][a-z0-9_-]{0,63}$`.
+The tool checks its own declared name against both and exits 1 if it fails, so
+the constraint is executable rather than a remark. No skills ship with this
+registration, and no `SKILL.md` may sit at the root of what is packaged: Kimi
+Code reads such a root as a single-skill bundle and stops looking. That rule
+is checked against the rendered tree and against every rendered document, not
+merely written here.
+
+### First contact is manual, in all three interactive hosts
+
+Installing this configuration cannot be finished by a repository on its own
+behalf, and that is the hosts' security model rather than a gap in this line:
+
+- Claude Code asks a person to trust the workspace before it loads a
+  project-level `.mcp.json`; a repository that was just cloned cannot approve
+  itself.
+- Codex reads a project-level `.codex/config.toml` only while the project is
+  trusted, and only a person grants that trust.
+- Kimi Code ships no non-interactive registration command at all; the entry
+  point is `/mcp-config` inside its TUI.
+
+Plan for one human step per host on first contact. An onboarding flow can
+write the files; it cannot approve them.
+
+Every product carries `CAMBIUM_INTERFACE_SOURCE_HASH`, the sha256 of the exact
+`compiled/mcp-tools.json` bytes it was rendered against, in the environment
+the server is launched with -- so a server can refuse a tool list it was not
+registered against, and so one upstream change makes all five products stale
+at once. It travels as an environment value rather than a comment because two
+of the five formats are JSON, and a provenance field only three products could
+carry would bind only three. JSON and YAML are serialized through the shared
+`kblib` canonical renderers; TOML and dotenv have no `kblib` renderer to
+share, so this tool carries small deterministic emitters for them and re-reads
+every product through a parser for its own format before writing it.
+
+The stdio entry point these products name, `Tools/mcp_server.py`, is shipped:
+a host holding a registration now has something to connect to. It is the only
+layer-3 file in the distribution and it is not a tool -- it declares no
+`argparse` parser and no `main()`, so `compile_cli_contract` does not see it,
+it never appears in the tool list it serves, and the compiled contract stays
+at 40 tools. `render_host_configs` prints a note on every run while that file
+is absent, and falls silent once it is present. Do not edit these products
+by hand; regenerate with `python3 Tools/render_host_configs.py .` and verify
+with `python3 Tools/render_host_configs.py . --check`, which `make check` runs
+directly after `render_interface_projection --check`. Like both upstreams they
+carry no Gate ID, because they depend on no selected profile.
+
 `vocab.yaml` is a **generated artifact**, produced by `compose_vocab.py` from
 `kernel/K08 Metadata and Status/vocabulary-base.yaml` plus the
 `vocabulary-extensions.yaml` of the profile selected by K00/03 active state.
@@ -743,6 +896,126 @@ edit only the Card, and never cite a Card as standards text when adjudicating a
 conflict. A profile may add a supplemental route, but it cannot replace or
 disable the kernel Card layer.
 
+
+## The stdio server (layer 3)
+
+`mcp_server.py` is the file the five host configuration products name in
+their `args`, and the only place in this distribution where layer 3 lives:
+how an operation is called, how its arguments get in, and how its result
+gets back out. Nothing above it changes because it exists -- it registers
+no Gate ID, writes no state, mints no receipt, and holds no rule of its
+own.
+
+It is not a tool. It declares no `argparse` parser and defines no `main()`,
+so `compile_cli_contract.discover_tools` does not see it, the compiled
+contract stays at 40 tools, and the transport never advertises itself as a
+callable operation. It also imports nothing from this distribution -- not a
+check, not an applier, not `kblib`; every import is standard library. That
+is the executable form of "layer 3 only carries": a module that cannot
+reach a judgment module cannot make a judgment, and
+`Tools/tests/test_mcp_server.py` asserts the import set statically on the
+source bytes so the property survives later edits.
+
+### Protocol
+
+JSON-RPC 2.0, one message per line, on stdin and stdout. Answered:
+`initialize`, `notifications/initialized`, `tools/list`, `tools/call`,
+`ping`. Every other *request* receives `-32601 Method not found`. Every
+other *notification* receives nothing and is reported on stderr, because
+JSON-RPC 2.0 permits no response to a notification at all -- the one place
+where answering with an error is not available, and a rule of the base
+protocol rather than a choice made here.
+
+The MCP specification's current revision is `2026-07-28`, and that revision
+has no `initialize`: it is stateless and carries version and capabilities
+as per-request `_meta`. The handshake belongs to what `2026-07-28` calls
+the *legacy* era, whose latest revision is `2025-11-25`, and that is what
+this server speaks and what the host products are written for. The
+compatibility direction holds: `2026-07-28` says a modern stdio client
+probes with `server/discover` and falls back to `initialize` on any error
+that is not a recognized modern error, so answering that probe with
+`-32601` is the correct behaviour rather than a gap. Version negotiation
+follows the `2025-11-25` rule verbatim -- echo a supported version, else
+answer with the latest this server supports -- and the supported list names
+only revisions whose wire shape was actually read.
+
+### The tool list is the artifact
+
+`tools/list` returns `compiled/mcp-tools.json` projected verbatim. Nothing
+is recomputed, no parser is introspected, and no schema is adjusted on the
+way past. The artifact is read, checked and pinned during `initialize`, and
+a failure there fails `initialize` rather than starting with an empty tool
+table: a server advertising an interface it cannot honour is worse than one
+that did not start. The checks are existence and agreement only -- the
+artifact is what it claims to be, `tool_count` matches the list it carries,
+every listed tool resolves to a script that is present, and, when the host
+passed `CAMBIUM_INTERFACE_SOURCE_HASH`, the bytes hash to the value this
+server was registered against. That last one is the refusal
+`render_host_configs` carries that variable for.
+
+### Execution is a subprocess, always
+
+`tools/call` runs the interpreter that started the server on
+`Tools/<tool>.py <args> --json` as a child process; it never imports a tool and calls a function. Every gate, lock,
+receipt write and exit code in this distribution is expressed at the
+process boundary, and a tool reached through an import runs inside the
+server's interpreter state. The subprocess is the conservative form because
+it is the same form the commands in this README produce. `--json` is
+appended whenever the tool declares it, so receipts arrive on stdout and
+the human-readable report on stderr; the flag is owned by this layer, and a
+caller-supplied `json` argument changes nothing and is reported back as
+ignored. Not every tool declares it -- several emit no receipts and write
+their whole report to stdout -- and neither stream is discarded on that
+account: when `--json` was requested stdout is the receipt array and stderr
+the report, and when it was not, stdout is carried through as text
+alongside stderr. The child's stdin is `/dev/null`, because the server's
+own stdin is the protocol stream.
+
+### The seam
+
+A refusal by the kernel must reach the caller as that refusal, a failure
+must not be dressed up as a refusal, and telling the two apart is done by
+reading a field, never by reading prose:
+
+- `0` -- clean success.
+- `1` -- a failure, or evidence the tool judged unreliable. One code
+  covering two outcomes; this layer does not split it, because only the
+  tool knows which it meant.
+- `2` -- HOLD. No failure, but something a person must read.
+
+`isError` is a two-valued field and there are more than two outcomes, so it
+is not the verdict channel and no reader should treat it as one. The
+verdict travels as `exit_code` and `verdict` in `structuredContent` and as
+the first line of the text content; `isError` is set for any non-zero exit
+for one narrow reason, so that no host renders a held or failed run as a
+clean one. A HOLD is labelled `hold` and is never labelled a success or a
+failure anywhere in the payload. An exit code outside `{0, 1, 2}` is
+reported `unreadable` with the raw code attached, and a `--json` run whose
+stdout will not parse is reported `unparseable`, carrying the raw bytes
+verbatim with nothing inferred from them. Saying "I could not read this" is
+always available; guessing a result never is.
+
+This layer refuses only calls for which no argv can be formed at all: an
+undeclared argument name, a value whose type cannot be rendered onto argv,
+and a missing positional that would silently rebind a later positional's
+value onto an earlier parameter. It does not check `enum` membership, does
+not check that required arguments are present, and does not check any path
+-- every one of those is a judgment the tool already makes, and leaving it
+there is how the kernel's refusal stays the kernel's refusal.
+
+### The binding
+
+`CAMBIUM_WORKSPACE_ROOT` names the corpus a session governs and is read
+from the environment only. There is no working-directory fallback: cwd
+inheritance is undocumented best-effort in all four hosts, and a binding
+may not rest on one. Unset, blank, relative, un-substituted, or naming
+something that is not a directory refuses `initialize` with a message
+naming the variable the host has to set. The bound root becomes the child
+process's working directory, so a repository-relative argument such as `.`
+resolves against the corpus. Caller-supplied arguments are never rewritten
+to point at it: choosing a caller's paths for them would be this layer
+deciding what may run, and each tool already owns that question through its
+own containment checks.
 
 ## Sealing maintenance window and recovery runbook
 

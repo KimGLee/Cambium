@@ -1,0 +1,39 @@
+# Generated artifact -- do not edit. Every value here is rendered by Tools/render_host_configs.py from one server definition; a hand edit is reported by --check as a HOLD.
+#
+# destination: <corpus>/.codex/config.toml
+# carries: registration, binding
+# server name: cambium
+# server entry point: Tools/mcp_server.py (under the distribution root)
+# source: Tools/compiled/mcp-tools.json
+# source_hash: sha256:65ce7f831b0a67b3a98cbc036b2081defc6d1f805fe615fbb538a608d0ae7221
+# regenerate: python3 Tools/render_host_configs.py .
+# verify: python3 Tools/render_host_configs.py . --check
+#
+# First contact is manual. Codex reads a project-level .codex/config.toml
+# only while the project is trusted, and only a person grants that trust.
+#
+# cwd is a fallback only. All four hosts start a stdio server in the
+# session's own working directory, and none of them document a cwd or an
+# environment field in their plugin packaging contract at all. What this
+# registration rests on is the absolute path inside args, and what binds
+# the server to a corpus is CAMBIUM_WORKSPACE_ROOT -- never an inherited
+# working directory.
+#
+# CAMBIUM_INTERFACE_SOURCE_HASH is the sha256 of the compiled tool
+# projection this file was rendered against. It is carried so a server can
+# refuse a tool list it was not registered against, and so one upstream
+# change makes every host product stale at once.
+#
+# <CAMBIUM_DISTRIBUTION_ROOT> and <CAMBIUM_WORKSPACE_ROOT> still to be
+# substituted. A placeholder is not a valid absolute path on any of these
+# hosts, so an un-substituted copy fails at launch instead of resolving to
+# something.
+
+[mcp_servers.cambium]
+args = ["<CAMBIUM_DISTRIBUTION_ROOT>/Tools/mcp_server.py"]
+command = "python3"
+cwd = "<CAMBIUM_DISTRIBUTION_ROOT>"
+
+[mcp_servers.cambium.env]
+CAMBIUM_INTERFACE_SOURCE_HASH = "sha256:65ce7f831b0a67b3a98cbc036b2081defc6d1f805fe615fbb538a608d0ae7221"
+CAMBIUM_WORKSPACE_ROOT = "<CAMBIUM_WORKSPACE_ROOT>"

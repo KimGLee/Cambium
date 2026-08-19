@@ -10,7 +10,7 @@ change-class/authority binding from live state and the exact proposal bytes
 under the shared writer lock.
 """
 
-import argparse
+import contextlib
 import copy
 import os
 import sys
@@ -40,6 +40,60 @@ COVERAGE_TOP_LEVEL_FIELDS = frozenset((
     "maintenance_candidates", "pages", "open_gaps",
 ))
 BATCH_SPEC_FIELDS = check_queue.COVERAGE_BATCH_SPEC_FIELDS
+
+
+# ---------------------------------------------------------------------------
+# `--json` output (machine-readable receipts)
+#
+# Purely additive: without the flag not one byte of this tool's behaviour
+# moves.  With it, everything written for a person goes to stderr and stdout
+# carries this run's receipt objects, serialized verbatim as one canonical
+# JSON array.
+#
+# Nothing is filtered or renamed.  `schemas/receipt.template.jsonl` guarantees
+# only the base fields every receipt carries; extension fields differ per
+# producer and are discoverable from the receipt itself, which is why that
+# template says in its own text that its examples are "not the complete set".
+# A field allowlist here would silently drop exactly the fields a caller came
+# for.
+#
+# This tool's receipts are written from inside its transaction helpers, well
+# below `main`, so the run collects them where they are handed to the receipt
+# writer rather than threading an accumulator through every frame.
+# ---------------------------------------------------------------------------
+JSON_HELP = ("write this run's receipt objects to stdout as one canonical "
+             "JSON array and move the human-readable report to stderr; "
+             "receipt writing, verdicts, and exit codes are unchanged")
+
+_JSON_RECEIPTS = []
+
+
+def _record_receipts(receipts):
+    """Remember the exact receipt objects handed to the receipt writer."""
+    _JSON_RECEIPTS.extend(receipts)
+    return receipts
+
+
+def emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    The one canonical serializer is `kblib.canonical_json_bytes`; this module
+    owns no serializer of its own.  A run that produced no receipt writes
+    nothing, which keeps the already-settled rejection shape (empty stdout,
+    one line of reason on stderr, exit 1) intact.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
+
+
+def _run_reporting_json(runner):
+    """Run `runner`, reserving stdout for JSON and giving stderr the prose."""
+    with contextlib.redirect_stdout(sys.stderr):
+        exit_code = runner()
+    emit_json_receipts(_JSON_RECEIPTS)
+    return exit_code
 
 
 def _load(root, relative):
@@ -906,7 +960,7 @@ def _commit_state(root, paths, before_text, after_text, write_names,
                     root, authority,
                     "runtime authority changed before prepare receipt")
                 outcome, append_error, _ = kblib.write_receipts_observed(
-                    receipt_path, [prepare_receipt]
+                    receipt_path, _record_receipts([prepare_receipt])
                 )
                 outcomes["prepare"] = outcome
                 if append_error is not None:
@@ -936,7 +990,8 @@ def _commit_state(root, paths, before_text, after_text, write_names,
                 root, authority,
                 "runtime authority changed before commit receipt")
             outcome, append_error, _ = kblib.write_receipts_observed(
-                receipt_path, [commit_receipt], before=commit_before
+                receipt_path, _record_receipts([commit_receipt]),
+                before=commit_before
             )
             outcomes["commit"] = outcome
             if append_error is not None:
@@ -966,7 +1021,7 @@ def _commit_state(root, paths, before_text, after_text, write_names,
                 abort_receipt["rollback_failures"] = rollback_failures
                 outcomes["abort"], abort_error, _ = (
                     kblib.write_receipts_observed(
-                        receipt_path, [abort_receipt]
+                        receipt_path, _record_receipts([abort_receipt])
                     )
                 )
             attempted = [
@@ -1005,8 +1060,8 @@ def _commit_state(root, paths, before_text, after_text, write_names,
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Compile Required Queue from explicit Coverage assignments")
-    parser.add_argument("root")
+    parser = kblib.ArgumentParser(description="Compile Required Queue from explicit Coverage assignments")
+    parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--output", help="repository-relative proposal path")
     write_mode = parser.add_mutually_exclusive_group()
     write_mode.add_argument("--apply", action="store_true",
@@ -1019,18 +1074,45 @@ def main(argv=None):
     )
     parser.add_argument("--replan-diff",
                         help="existing .cambium/tmp/*.yaml diff to consume")
-    parser.add_argument("--amendment-id")
-    parser.add_argument("--expected-queue-revision", type=int)
-    parser.add_argument("--expected-state-revision", type=int)
-    parser.add_argument("--expected-sha256")
-    parser.add_argument("--expected-coverage-sha256")
-    parser.add_argument("--expected-progress-sha256")
+    parser.add_argument("--amendment-id",
+                        help="registered Amendment id authorizing the replan; "
+                             "required with --apply-replan")
+    parser.add_argument("--expected-queue-revision", type=int,
+                        help="compare-and-swap guard: the queue_revision the "
+                             "caller read from the current Queue; the write is "
+                             "refused when the live value differs")
+    parser.add_argument("--expected-state-revision", type=int,
+                        help="compare-and-swap guard: the state_revision the "
+                             "caller read from the current Queue; the replan "
+                             "is refused when the live value differs")
+    parser.add_argument("--expected-sha256",
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Queue; the write is "
+                             "refused when the live bytes differ")
+    parser.add_argument("--expected-coverage-sha256",
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Coverage; the replan is "
+                             "refused when the live bytes differ")
+    parser.add_argument("--expected-progress-sha256",
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Progress; the replan is "
+                             "refused when the live bytes differ")
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
-                        default="worker")
+                        default="worker",
+                        help="declared caller role; only integrator may apply "
+                             "a Queue write or replan")
     parser.add_argument("--receipts",
-                        default=".cambium/receipts/queue-structure.jsonl")
+                        default=".cambium/receipts/queue-structure.jsonl",
+                        help="receipt JSONL path under .cambium/receipts")
+    parser.add_argument("--json", action="store_true", help=JSON_HELP)
     args = parser.parse_args(argv)
+    if not args.json:
+        return _run(args)
+    return _run_reporting_json(lambda: _run(args))
 
+
+def _run(args):
+    """This tool's own run; `main` above owns only argument parsing."""
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         queue_path, queue = _load(root, QUEUE_PATH)

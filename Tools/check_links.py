@@ -44,10 +44,9 @@ and get no heading/lifecycle verification.
 Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
 
 Usage: python3 check_links.py <vault_root> [--scope SUBPATH]
-       [--exclude COMPONENT ...] [--receipts PATH]
+       [--exclude COMPONENT ...] [--receipts PATH] [--json]
 """
 
-import argparse
 import os
 import re
 import sys
@@ -62,6 +61,68 @@ GATE_ID = "wiki-link-integrity"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
 GATE_CHECK = "link-check-summary"
+
+# ---------------------------------------------------------------------------
+# `--json` projection
+#
+# A check's structured result already exists: it is the set of receipts the
+# run produced.  `--json` adds one projection of those same objects -- the
+# exact receipt dicts, serialized through `kblib.canonical_json_bytes`, with
+# no field whitelist -- onto stdout, and moves every human-readable line to
+# stderr for that run.  Serializing the receipt itself is what keeps the
+# projection honest: `Tools/schemas/receipt.template.jsonl` guarantees only
+# the base fields, and each producer's extension fields are discoverable from
+# the receipt, so a whitelist here could only lose evidence.
+#
+# Without the flag nothing below runs and every byte this tool writes is
+# unchanged.  The flag never changes the exit code and never changes what is
+# appended to the receipts file.  A run rejected before it produced any
+# receipt leaves stdout empty and states the reason on stderr, which is the
+# settled shape for a refused invocation.
+# ---------------------------------------------------------------------------
+
+_JSON_STDOUT = None
+_JSON_RECEIPTS = None
+
+
+def _json_begin(enabled):
+    """Reserve stdout for the projection and send human output to stderr."""
+    global _JSON_STDOUT, _JSON_RECEIPTS
+    _JSON_STDOUT = None
+    _JSON_RECEIPTS = None
+    if enabled:
+        _JSON_STDOUT = sys.stdout
+        sys.stdout = sys.stderr
+
+
+def _json_record(receipts):
+    """Hold the exact receipt objects this run produced."""
+    global _JSON_RECEIPTS
+    if _JSON_STDOUT is not None:
+        _JSON_RECEIPTS = list(receipts)
+
+
+def _json_finish(answered):
+    """Restore stdout, emitting the recorded receipts when the run answered."""
+    global _JSON_STDOUT, _JSON_RECEIPTS
+    stream = _JSON_STDOUT
+    receipts = _JSON_RECEIPTS
+    _JSON_STDOUT = None
+    _JSON_RECEIPTS = None
+    if stream is None:
+        return
+    sys.stdout = stream
+    if answered and receipts is not None:
+        stream.write(
+            kblib.canonical_json_bytes(receipts).decode("utf-8") + "\n")
+        stream.flush()
+
+
+JSON_FLAG_HELP = ("write the receipts this run produced to stdout as one "
+                  "canonical JSON array and move the human-readable summary "
+                  "to stderr; receipts written and the exit code are "
+                  "unchanged")
+
 
 LINK_RE = re.compile(r"\[\[([^\[\]]+?)\]\]")
 
@@ -138,7 +199,18 @@ def lifecycle_cache_get(cache, by_path, key):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Wiki link missing/ambiguous/heading check")
+    """CLI entry point; `--json` projects the produced receipts onto stdout."""
+    try:
+        code = _main()
+    except BaseException:
+        _json_finish(False)
+        raise
+    _json_finish(True)
+    return code
+
+
+def _main():
+    ap = kblib.ArgumentParser(description="Wiki link missing/ambiguous/heading check")
     ap.add_argument("vault_root", help="vault root directory")
     ap.add_argument("--scope", help="only scan .md files under this subpath (the index still covers the whole vault)")
     ap.add_argument("--exclude", action="append", default=[],
@@ -148,7 +220,9 @@ def main():
                          "but exact full-path links into them still resolve "
                          "(excluded means not audited, not nonexistent)")
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
+    ap.add_argument("--json", action="store_true", help=JSON_FLAG_HELP)
     args = ap.parse_args()
+    _json_begin(args.json)
 
     excludes = set(args.exclude)
 
@@ -176,6 +250,7 @@ def main():
             "result", 1, root=args.vault_root)]
         print("check_links: scanned 0 file(s) — FAIL: effective scan set is empty")
         kblib.write_receipts(args.receipts, receipts)
+        _json_record(receipts)
         return kblib.exit_code(receipts)
     by_path, by_base = build_index(all_files)
     # Excluded files (e.g. frozen legacy snapshots) are indexed as resolution
@@ -279,6 +354,7 @@ def main():
         print("  Conclusion: all link checks passed (K09/05: missing=0, ambiguous=0).")
 
     kblib.write_receipts(args.receipts, receipts)
+    _json_record(receipts)
     return kblib.exit_code(receipts)
 
 

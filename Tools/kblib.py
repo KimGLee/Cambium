@@ -22,8 +22,11 @@ Provides:
    receipts (field definitions in Tools/schemas/receipt.template.jsonl), plus
    the shared exit-code convention:
    0 = all pass; 1 = at least one fail; 2 = no fail but candidates.
+4. ArgumentParser: an argparse.ArgumentParser subclass that keeps a usage
+   error off the reserved HOLD code 2 by exiting 1 instead.
 """
 
+import argparse
 from contextlib import contextmanager
 import errno
 import hashlib
@@ -31,6 +34,7 @@ import json
 import os
 import re
 import stat
+import sys
 import tempfile
 import time
 from types import MappingProxyType
@@ -2695,6 +2699,37 @@ def exit_code(receipts):
     return 0
 
 
+class ArgumentParser(argparse.ArgumentParser):
+    """An ``argparse.ArgumentParser`` whose usage errors exit 1, not 2.
+
+    Stock argparse spends code 2 on "you typed the command wrong", but this
+    distribution has already spent 2 on the HOLD verdict above: no failure,
+    yet candidates remain.  Sharing one code makes those two outcomes
+    indistinguishable to every consumer downstream of the process boundary --
+    a misspelled flag reads as a clean-but-not-quiet run, and a run_gates
+    registry row whose command no longer matches its tool is reported as an
+    empty HOLD instead of the wiring defect it is.
+
+    Overriding ``error`` is enough to move all five usage-error paths at once,
+    because argparse funnels every one of them through it: mutually exclusive
+    conflicts, a missing ``required=`` option, a value outside ``choices``, a
+    custom ``type`` callable that raises, and an unrecognized flag.  The
+    non-error exits argparse owns are untouched -- ``--help`` and ``--version``
+    still exit 0 through ``exit`` directly.
+
+    The message text and its destination are unchanged from the base class, so
+    a caller reading stderr sees exactly what it saw before; only the status
+    moves.  This class does not decide any tool's verdict: the exit it raises
+    is argparse's own, taken before a tool has looked at a single input, and
+    every verdict-bearing exit still happens in the tool, off ``exit_code``.
+    """
+
+    def error(self, message):
+        """Exit 1 (usage error) rather than argparse's default 2 (HOLD here)."""
+        self.print_usage(sys.stderr)
+        self.exit(1, "%s: error: %s\n" % (self.prog, message))
+
+
 # ---------------------------------------------------------------------------
 # Canonical runtime-state helpers
 # ---------------------------------------------------------------------------
@@ -2980,6 +3015,19 @@ def load_yaml_file(path):
 
 _YAML_RESERVED = frozenset(("true", "false", "yes", "no", "null", "~"))
 
+# YAML 1.2 `c-indicator`: a plain scalar may not begin with any of these.
+# Two groups, because the spec treats them differently.  The first group is
+# unconditional -- a plain scalar starting with one of these characters is
+# not a plain scalar at all, whatever follows.  The restricted parser here
+# is more forgiving than a conformant one, so a value like an npm scope
+# (`@scope/name`) round-trips internally while a real YAML reader rejects
+# the same bytes; quoting is decided against the stricter grammar, not
+# against what this parser happens to accept.
+_YAML_INDICATORS = frozenset(",[]{}#&*!|>'\"%@`")
+# The second group may begin a plain scalar as long as a non-space follows,
+# which is what keeps ordinary values like `--check` and `-1x` unquoted.
+_YAML_INDICATORS_IF_ALONE = frozenset("-?:")
+
 
 def _yaml_scalar(value):
     if value is None:
@@ -2998,13 +3046,15 @@ def _yaml_scalar(value):
     # token.  This keeps canonical output round-trippable under that parser.
     if any(ord(ch) < 32 for ch in value):
         raise ValueError("YAML strings must not contain control characters")
+    head = value[:1]
     safe_bare = (
         value != "" and value == value.strip() and
         value.lower() not in _YAML_RESERVED and
         not re.fullmatch(r"-?\d+(?:\.\d+)?", value) and
-        not value.startswith(("[", "- ")) and
-        ": " not in value and " #" not in value and
-        not value.startswith("#")
+        head not in _YAML_INDICATORS and
+        not (head in _YAML_INDICATORS_IF_ALONE and
+             (len(value) == 1 or value[1].isspace())) and
+        ": " not in value and " #" not in value
     )
     if safe_bare:
         return value
