@@ -170,6 +170,25 @@ SOURCE_HASH_PLACEHOLDER = "<CAMBIUM_INTERFACE_SOURCE_HASH>"
 # The stdio entry point, resolved under the distribution root. It is named
 # here as a path rather than assembled in a builder so that all five
 # products name the same one.
+# -- how `dsh` registers, which is not how the other three register --------
+#
+# The other three hosts take a server map: a name, and under it a command.
+# `dsh` has no server map. Its profile is an ordered list of Cordis plugin
+# entries, and one MCP server is one entry of the plugin
+# `@deepseek-ai/dsh-mcp-client`, whose own config carries the transport,
+# the namespace, and the command. The plugin is not in any shipped profile,
+# so the patch must insert the entry rather than override a row that is
+# already there -- and a patch entry with `insert` and no `id` appends at
+# the top level, which is the placement this registration wants.
+DSH_PLUGIN_NAME = "@deepseek-ai/dsh-mcp-client"
+DSH_ENTRY_ID = "cambium-mcp"
+# The transport arm of that plugin's discriminated union. `stdio` is the
+# only arm a local subprocess server can take; the other arm is a URL.
+DSH_TRANSPORT = "stdio"
+# `serverName` is required, is the namespace every tool of this server is
+# published under, and must match /^[A-Za-z0-9_-]{1,32}$/.
+DSH_SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+
 SERVER_COMMAND = "python3"
 SERVER_ENTRY_POINT = "Tools/mcp_server.py"
 
@@ -206,7 +225,11 @@ MCP_SERVER = {
             # A stdio server that died three times in a row died for a
             # reason a retry will not fix.
             "maxAttempts": 3,
-            "delayMs": 1000,
+            # `dsh-mcp-client` names the backoff pair `initialDelayMs` and
+            # `maxDelayMs`; there is no `delayMs` in its schema, and a name
+            # it does not accept is a load-time validation failure.
+            "initialDelayMs": 1000,
+            "maxDelayMs": 30000,
         },
     },
 }
@@ -281,9 +304,12 @@ MANUAL_STEPS = {
         "under $DSH_HOME/profiles/<name>/.",
     "dsh-profile-patch":
         "This is the registration half only, and it is installed once per "
-        "machine rather than once per corpus. Merge these rows into the "
-        "profile; the corpus binding travels separately in that corpus's "
-        ".env.",
+        "machine rather than once per corpus. It is a loader patch list: "
+        "append its entry to the profile's own cordis.patch.yml, or pass "
+        "this file to --patch. The corpus binding travels separately in "
+        "that corpus's .env, which dsh reads from the invoking directory "
+        "and forwards to this server through the ordinary parent "
+        "environment.",
 }
 
 HEADER_WIDTH = 72
@@ -333,7 +359,9 @@ _RESILIENCE_SOURCE = {
         "Tools/render_host_configs.py: MCP_SERVER['resilience']['reconnect']",
     "reconnect.maxAttempts":
         "Tools/render_host_configs.py: MCP_SERVER['resilience']['reconnect']",
-    "reconnect.delayMs":
+    "reconnect.initialDelayMs":
+        "Tools/render_host_configs.py: MCP_SERVER['resilience']['reconnect']",
+    "reconnect.maxDelayMs":
         "Tools/render_host_configs.py: MCP_SERVER['resilience']['reconnect']",
 }
 
@@ -389,11 +417,28 @@ FIELD_SOURCES.update({
         _SERVER_SOURCE["env.%s" % SOURCE_HASH_ENV],
 })
 FIELD_SOURCES.update(_header_paths("dsh-profile-patch", True))
+_DSH_ENTRY = "dsh-profile-patch.document[].insert[]"
+FIELD_SOURCES.update({
+    "%s.id" % _DSH_ENTRY:
+        "Tools/render_host_configs.py: DSH_ENTRY_ID -- the Cordis entry id "
+        "this registration inserts into the profile tree",
+    "%s.name" % _DSH_ENTRY:
+        "Tools/render_host_configs.py: DSH_PLUGIN_NAME -- the plugin that "
+        "connects one MCP server; dsh has no server map",
+    "%s.config.transport" % _DSH_ENTRY:
+        "Tools/render_host_configs.py: DSH_TRANSPORT -- the stdio arm of "
+        "that plugin's discriminated config union",
+    "%s.config.serverName" % _DSH_ENTRY:
+        "Tools/render_host_configs.py: SERVER_NAME, checked against "
+        "DSH_SERVER_NAME_RE -- the namespace this server's tools publish "
+        "under, and dsh's equivalent of the other hosts' map key",
+})
 FIELD_SOURCES.update(_server_paths(
-    "dsh-profile-patch.document.mcpServers.%s" % SERVER_NAME,
+    "%s.config" % _DSH_ENTRY,
     ("command", "args[]", "cwd"),
     ("toolCallTimeoutMs", "failOnStartupError",
-     "reconnect.enabled", "reconnect.maxAttempts", "reconnect.delayMs")))
+     "reconnect.enabled", "reconnect.maxAttempts",
+     "reconnect.initialDelayMs", "reconnect.maxDelayMs")))
 
 
 class RenderError(Exception):
@@ -584,10 +629,20 @@ def build_dsh_profile_patch(host, context):
     one product that is installed once per machine rather than once per
     corpus.
     """
-    body = server_body(context, include_env=False, include_resilience=True)
+    if not DSH_SERVER_NAME_RE.match(SERVER_NAME):
+        raise RenderError(
+            "dsh rejects serverName %r: it must match %s"
+            % (SERVER_NAME, DSH_SERVER_NAME_RE.pattern))
+    config = {"transport": DSH_TRANSPORT, "serverName": SERVER_NAME}
+    config.update(
+        server_body(context, include_env=False, include_resilience=True))
     return {
         "header": header_lines(host, context),
-        "document": {"mcpServers": {SERVER_NAME: body}},
+        "document": [{"insert": [{
+            "id": DSH_ENTRY_ID,
+            "name": DSH_PLUGIN_NAME,
+            "config": config,
+        }]}],
     }
 
 
@@ -718,10 +773,35 @@ def render_dotenv(product):
     return "\n".join(lines) + "\n"
 
 
+def yaml_body_lines(document):
+    """The document as YAML lines, mapping or top-level sequence.
+
+    `kblib.canonical_yaml` renders a mapping. A dsh patch list is a
+    top-level sequence of mappings, so each element is rendered through
+    that same canonical renderer and then indented under its own `- `,
+    which keeps one serializer responsible for every scalar and every
+    nested level rather than growing a second YAML writer here.
+    """
+    if isinstance(document, dict):
+        return kblib.canonical_yaml(document).rstrip("\n").split("\n")
+    if not isinstance(document, list):
+        raise RenderError(
+            "a YAML product must be a mapping or a sequence of mappings")
+    lines = []
+    for element in document:
+        if not isinstance(element, dict):
+            raise RenderError(
+                "a top-level YAML sequence must hold mappings")
+        rendered = kblib.canonical_yaml(element).rstrip("\n").split("\n")
+        lines.append("- %s" % rendered[0])
+        lines.extend("  %s" % line for line in rendered[1:])
+    return lines
+
+
 def render_yaml(product):
     """YAML through the shared canonical renderer, with a comment header."""
     lines = comment_block(product["header"])
-    body = kblib.canonical_yaml(product["document"]).rstrip("\n").split("\n")
+    body = yaml_body_lines(product["document"])
     if body:
         lines.append("")
         lines.extend(body)
@@ -824,7 +904,9 @@ HOSTS = {
     },
     "dsh-profile-patch": {
         "output": "dsh-profile-patch.yaml",
-        "destination": "$DSH_HOME/profiles/<name>/ (merge these rows)",
+        "destination":
+            "$DSH_HOME/profiles/<name>/cordis.patch.yml (append this entry) "
+            "or dsh --patch <path>",
         "carries": ("registration",),
         "format": "yaml",
         "build": build_dsh_profile_patch,

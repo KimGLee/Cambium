@@ -144,6 +144,22 @@ class DefinitionReachesEveryProductTests(unittest.TestCase):
     def server(self, document, key="mcpServers"):
         return document[key][renderer.SERVER_NAME]
 
+    def dsh_config(self):
+        """The dsh registration body, reached the way dsh reaches it.
+
+        dsh has no server map. Its product is a loader patch list whose
+        one entry inserts a `dsh-mcp-client` plugin row, and the server
+        lives in that row's `config`. Reaching it through the same shape
+        dsh parses is the point: a test that indexed a `mcpServers` key
+        would pass against a document dsh rejects.
+        """
+        entry, = self.patch[0]["insert"]
+
+        self.assertEqual(entry["name"], renderer.DSH_PLUGIN_NAME)
+        self.assertEqual(entry["config"]["transport"], renderer.DSH_TRANSPORT)
+        self.assertEqual(entry["config"]["serverName"], renderer.SERVER_NAME)
+        return entry["config"]
+
     def test_the_command_and_entry_point_are_the_declared_ones(self):
         body = self.server(self.claude)
 
@@ -157,7 +173,7 @@ class DefinitionReachesEveryProductTests(unittest.TestCase):
              for key in renderer.REGISTRATION_FIELDS},
             {key: self.server(self.kimi)[key]
              for key in renderer.REGISTRATION_FIELDS},
-            {key: self.server(self.patch)[key]
+            {key: self.dsh_config()[key]
              for key in renderer.REGISTRATION_FIELDS},
         ]
         if tomllib is not None:
@@ -177,7 +193,7 @@ class DefinitionReachesEveryProductTests(unittest.TestCase):
         self.assertTrue(product_path("kimi-code").is_file())
 
     def test_the_resilience_superset_reaches_dsh_and_nothing_else(self):
-        body = self.server(self.patch)
+        body = self.dsh_config()
         resilience = renderer.MCP_SERVER[renderer.RESILIENCE_FIELD]
 
         for key, value in resilience.items():
@@ -189,7 +205,7 @@ class DefinitionReachesEveryProductTests(unittest.TestCase):
     def test_dsh_receives_registration_and_binding_in_two_files(self):
         binding = renderer.parse_dotenv(
             product_path("dsh-env").read_text(encoding="utf-8"))
-        registration = self.server(self.patch)
+        registration = self.dsh_config()
 
         self.assertIn(renderer.WORKSPACE_ENV, binding)
         self.assertNotIn(renderer.ENV_FIELD, registration)
@@ -244,7 +260,16 @@ class ProductShapeTests(unittest.TestCase):
         document = kblib.parse_yaml_subset(
             product_path("dsh-profile-patch").read_text(encoding="utf-8"))
 
-        self.assertIn(renderer.SERVER_NAME, document["mcpServers"])
+        # A loader patch list is a top-level sequence, and dsh throws on
+        # anything else. The entry carries `insert` with no `id`, which is
+        # what appends the plugin row at the top level of the profile tree.
+        self.assertIsInstance(document, list)
+        self.assertEqual(len(document), 1)
+        self.assertEqual(set(document[0]), {"insert"})
+        entry, = document[0]["insert"]
+        self.assertEqual(entry["id"], renderer.DSH_ENTRY_ID)
+        self.assertEqual(entry["name"], renderer.DSH_PLUGIN_NAME)
+        self.assertEqual(entry["config"]["serverName"], renderer.SERVER_NAME)
 
     def test_every_product_ends_with_exactly_one_newline(self):
         for host in renderer.HOSTS:
