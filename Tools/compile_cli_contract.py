@@ -367,8 +367,9 @@ def _is_receipt_factory(node):
         func, "id", "")
     if not isinstance(name, str):
         return False
-    return (name.startswith(RECEIPT_FACTORY_PREFIX) and
-            name.endswith(RECEIPT_FACTORY_SUFFIX))
+    bare = name[1:] if name.startswith("_") else name
+    return (bare.startswith(RECEIPT_FACTORY_PREFIX) and
+            bare.endswith(RECEIPT_FACTORY_SUFFIX))
 
 
 def receipt_extensions(source_text):
@@ -393,6 +394,14 @@ def receipt_extensions(source_text):
                 if isinstance(target, ast.Name):
                     receipt_names.add(target.id)
     if not receipt_names:
+        # A factory call that is never bound to a name -- appended straight
+        # into a list, passed on as an argument -- leaves nothing to trace
+        # writes onto. Reporting "complete" here would assert that the tool
+        # adds no extension field, which is exactly the claim this scan
+        # cannot support. Say so.
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and _is_receipt_factory(node):
+                return [], "partial"
         return [], "complete"
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
@@ -425,6 +434,15 @@ def receipt_extensions(source_text):
                 if isinstance(index, ast.Constant) and isinstance(
                         index.value, str):
                     keys.add(index.value)
+                else:
+                    dynamic = True
+    for node in ast.walk(tree):
+        # Extensions passed at the factory call itself, e.g.
+        # make_pass_receipt(result, repository_snapshot_sha256=...).
+        if isinstance(node, ast.Call) and _is_receipt_factory(node):
+            for keyword in node.keywords:
+                if keyword.arg:
+                    keys.add(keyword.arg)
                 else:
                     dynamic = True
     keys.difference_update(RECEIPT_BASE_FIELDS)

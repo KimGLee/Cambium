@@ -58,7 +58,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:a3356e7b4d1471af3148bd780b782c2554b8c0787e420cb997b7e62202aec083
+source_hash: sha256:38fc0738b3cdb1ecd8297a1cd2758e0ec396a03b94b4a3ec04af2881fbe08416
 receipt_shape:
   base_fields:
     - receipt_id
@@ -170,6 +170,7 @@ tools:
       - gate_id
       - governance_revision_ref
       - governance_revision_sha256
+      - identity
       - immediate_gate_receipts
       - immediate_gate_reruns
       - invalidated_evidence_receipt_ids
@@ -431,6 +432,7 @@ tools:
       - before_progress_sha256
       - before_required_queue_sha256
       - changed_contract_fields
+      - identity
       - plan_path
       - plan_sha256
       - policy_fingerprint
@@ -653,6 +655,7 @@ tools:
       - branch
       - change_summary
       - changed_predicate_ids
+      - identity
       - k00_03_sha256_after
       - k00_03_sha256_before
       - plan_path
@@ -731,6 +734,7 @@ tools:
         help: write this run's receipt objects to stdout as one canonical JSON array and move the human-readable report to stderr; receipt writing, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
+      - identity
       - transaction_phase
     receipt_extensions_extraction: complete
   - tool: check_batch_close
@@ -860,6 +864,9 @@ tools:
         help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
+      - accepted_by_type_counts
+      - accepted_candidate_count
+      - accepted_candidate_types
       - after_coverage_sha256
       - after_progress_sha256
       - after_required_queue_sha256
@@ -867,16 +874,43 @@ tools:
       - before_coverage_sha256
       - before_progress_sha256
       - before_required_queue_sha256
+      - candidate_baseline_protocol
+      - candidate_baseline_receipt
       - candidate_count
+      - candidate_dispositions
+      - candidate_protocol
       - candidate_set_sha256
       - candidate_type_counts
+      - carried_candidate_count
+      - carried_candidate_set_sha256
+      - closed_list_evidence
+      - corpus_plan_receipt
+      - corpus_plan_required
+      - corpus_plan_triggers
+      - coverage_ledger_sha256
+      - delta_apply_receipt
+      - delta_sha256
+      - fresh_candidate_count
+      - fresh_candidate_set_sha256
       - gate_id
+      - global_review_receipt
       - integrator_id
       - merged_snapshot_sha256
+      - progress_ledger_sha256
+      - queue_consistency_receipt
+      - queue_revision
+      - queue_state_revision
+      - repository_snapshot_sha256
+      - required_queue_sha256
+      - reviewer_attestation_receipt
       - reviewer_id
+      - root
+      - seq
       - source_command
       - task_id
-    receipt_extensions_extraction: complete
+      - work_spec_path
+      - work_spec_sha256
+    receipt_extensions_extraction: partial
   - tool: check_boundary_contract
     module: Tools/check_boundary_contract.py
     source_hash: sha256:81450450580a51ff9d53420b6f5dd456dc5fd64a15bb2adabe28f82bc0266640
@@ -976,6 +1010,7 @@ tools:
       - profile_contract_fingerprint
       - profile_load_inputs_sha256
       - profile_snapshot_sha256
+      - root
       - selected_profile_manifest
     receipt_extensions_extraction: complete
   - tool: check_corpus_plan
@@ -1029,6 +1064,9 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions:
       - gate_id
+      - repository_snapshot_sha256
+      - root
+      - seq
     receipt_extensions_extraction: partial
   - tool: check_freshness
     module: Tools/check_freshness.py
@@ -1113,7 +1151,7 @@ tools:
         help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable report to stderr; receipts written, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions: []
-    receipt_extensions_extraction: complete
+    receipt_extensions_extraction: partial
   - tool: check_links
     module: Tools/check_links.py
     source_hash: sha256:1b2f6da42c83f52263b86b75aa9fca8401fde460088485736e2bee0f095ec53f
@@ -1176,6 +1214,7 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions:
       - gate_id
+      - root
     receipt_extensions_extraction: complete
   - tool: check_moc
     module: Tools/check_moc.py
@@ -1227,7 +1266,7 @@ tools:
         help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable report to stderr; receipts written, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions: []
-    receipt_extensions_extraction: complete
+    receipt_extensions_extraction: partial
   - tool: check_page_contract
     module: Tools/check_page_contract.py
     source_hash: sha256:9ea05d77f7b4f7596c9bca9ba3b367fbd2efa84927874761e74eeed38dbd11fb
@@ -1327,6 +1366,7 @@ tools:
       - profile_contract_fingerprint
       - profile_load_inputs_sha256
       - profile_snapshot_sha256
+      - root
       - selected_profile_manifest
     receipt_extensions_extraction: complete
   - tool: check_profile
@@ -1414,6 +1454,7 @@ tools:
     receipt_extensions:
       - dimension
       - gate_id
+      - identity
     receipt_extensions_extraction: complete
   - tool: check_proof
     module: Tools/check_proof.py
@@ -1499,7 +1540,13 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions:
       - gate_id
-    receipt_extensions_extraction: complete
+      - profile_contract_fingerprint
+      - profile_load_inputs_sha256
+      - profile_snapshot_sha256
+      - repository_snapshot_sha256
+      - terminal_proof_path
+      - terminal_proof_sha256
+    receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
     source_hash: sha256:f4ace1d0bf867cee2fd21d1ae44f09c419bb2897c6a95472d18fbdb8dfa823f5
@@ -1668,6 +1715,7 @@ tools:
       - hub_page_candidates
       - last_reconciled_guidance_id
       - maintenance_candidate_state
+      - maintenance_context
       - managed_deltas
       - next_action
       - objective
@@ -1681,8 +1729,10 @@ tools:
       - remaining_required_work_units
       - repository_snapshot_sha256
       - required_queue_sha256
+      - runtime_errors
       - selected_profile_manifest
       - standards_revalidation_barriers
+      - standards_revalidation_context
       - standards_revalidation_outstanding
       - standards_version
       - task_id
@@ -1774,6 +1824,7 @@ tools:
     receipt_extensions:
       - config_fingerprint
       - gate_id
+      - root
       - scan_id
     receipt_extensions_extraction: partial
   - tool: check_structure
@@ -1833,6 +1884,7 @@ tools:
       - profile_contract_fingerprint
       - profile_load_inputs_sha256
       - profile_snapshot_sha256
+      - root
       - selected_profile_manifest
     receipt_extensions_extraction: complete
   - tool: check_vocab
@@ -1941,10 +1993,15 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions:
       - gate_id
+      - policy_fingerprint
+      - priority_share
+      - priority_shares
+      - quota_exceeded
+      - root
     receipt_extensions_extraction: partial
   - tool: compile_cli_contract
     module: Tools/compile_cli_contract.py
-    source_hash: sha256:cc758ac7e8310e09ab327be431b3e1631b1d0edb6d47e299aea9cbfa081e57a7
+    source_hash: sha256:854927972194cac2c0aaca339e4222fc3cbbfc9897d71c476fd8b9e7cf5bee7a
     description: Compile the machine-readable CLI invocation contract from every Tools/*.py argparse declaration.
     arguments:
       - dest: root
@@ -2383,7 +2440,7 @@ tools:
         help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable report to stderr; receipts written, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions: []
-    receipt_extensions_extraction: complete
+    receipt_extensions_extraction: partial
   - tool: init_state
     module: Tools/init_state.py
     source_hash: sha256:cb8cf12d1442c341d58539f3cd0998f883bebe88fabc7d2b09ae551f818f7e80
@@ -2674,6 +2731,9 @@ tools:
       - capability_decisions
       - decision_scope_id
       - gate_id
+      - repository_snapshot_sha256
+      - root
+      - seq
       - structural_check_receipt
     receipt_extensions_extraction: partial
   - tool: register_amendment
@@ -3262,6 +3322,7 @@ tools:
       - manifest_rows_sha256
       - queue_revision
       - queue_state_revision
+      - root
       - sealed_records
       - sealed_segments
     receipt_extensions_extraction: complete
@@ -3545,20 +3606,31 @@ tools:
           - transition
           - hold_state
     receipt_extensions:
+      - actor_role
       - after_coverage_sha256
+      - after_hold_state
       - after_progress_sha256
       - after_required_queue_sha256
+      - after_state
+      - after_state_revision
+      - before_coverage_sha256
+      - before_hold_state
       - before_progress_sha256
+      - before_required_queue_sha256
+      - before_state
+      - before_state_revision
       - close_gate_receipt
       - delta_apply_receipt
       - delta_path
       - delta_sha256
+      - evidence_receipt
       - invalidation
       - queue_consistency_receipt
       - queue_revision
       - settlement_coverage_sha256_before
       - settlement_prospective_coverage_sha256
       - standards_revalidation_receipt
+      - task_id
     receipt_extensions_extraction: partial
   - tool: update_task
     module: Tools/update_task.py
@@ -3732,6 +3804,7 @@ tools:
       - evidence_receipt
       - first_open_batch_id
       - first_open_transition_receipt
+      - identity
       - planned_after_progress_sha256
       - queue_revision
       - queue_state_revision
