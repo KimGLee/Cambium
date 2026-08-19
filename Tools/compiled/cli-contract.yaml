@@ -60,7 +60,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:f6a93bbe24b3a9359607784e276208c4e46db6f1983d8aa086a95d33e41b9034
+source_hash: sha256:c1433d175c4636cbaf91ee43b2169d61389dcc8c5c51bb34f5cf4cb903337c29
 receipt_shape:
   base_fields:
     - receipt_id
@@ -3044,7 +3044,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: render_host_configs
     module: Tools/render_host_configs.py
-    source_hash: sha256:e47e18bad251822ef011336dd89b65bc5652a27fe5fdb2e2c7e40cfc93056754
+    source_hash: sha256:814c7752666f2e16fc8d6267268de219a6cc0c8bf4e4056168aa4c652b1e988f
     description: Render the Cambium MCP server's registration and corpus binding into the configuration file each supported host reads.
     arguments:
       - dest: root

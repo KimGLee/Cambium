@@ -18,6 +18,7 @@ declaration of the configuration.
 import json
 import os
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -127,7 +128,7 @@ class ShippedProductTests(unittest.TestCase):
                 text = product_path(host).read_text(encoding="utf-8")
 
                 self.assertIn(renderer.NOTICE.split(".")[0], text)
-                self.assertIn(renderer.REGENERATE, text)
+                self.assertIn(renderer.BASE_INVOCATION, text)
 
 
 class DefinitionReachesEveryProductTests(unittest.TestCase):
@@ -270,6 +271,15 @@ class ProductShapeTests(unittest.TestCase):
         self.assertEqual(entry["id"], renderer.DSH_ENTRY_ID)
         self.assertEqual(entry["name"], renderer.DSH_PLUGIN_NAME)
         self.assertEqual(entry["config"]["serverName"], renderer.SERVER_NAME)
+
+    def test_an_unbound_header_stays_the_short_command(self):
+        # No substitution happened, so no flag belongs in the command; a
+        # header that grew one would churn every distribution artifact.
+        header = product_path("codex").read_text(encoding="utf-8")
+        line = next(l for l in header.splitlines() if l.startswith("# verify:"))
+
+        self.assertNotIn("--distribution-root", line)
+        self.assertNotIn("--workspace-root", line)
 
     def test_every_product_ends_with_exactly_one_newline(self):
         for host in renderer.HOSTS:
@@ -576,6 +586,42 @@ class SubstitutionTests(unittest.TestCase):
             with self.subTest(host=host):
                 self.assertIn(renderer.WORKSPACE_PLACEHOLDER, text)
 
+
+
+    def test_a_bound_header_reproduces_itself(self):
+        """The header's own commands must work on the file carrying them.
+
+        A bound render substitutes real paths, so the bare command names
+        neither the file that exists nor the file it would write: running
+        `regenerate` puts the placeholders back, and `--check` calls the
+        substituted bytes stale. The header therefore has to echo the run.
+        """
+        out = os.path.join(self.workspace, "bound")
+        distribution = os.path.join(self.workspace, "a dir")  # a real space
+        corpus = os.path.join(self.workspace, "corpus")
+        code = renderer.main([self.workspace, "--projection",
+                              self.projection_path, "--output-dir", out,
+                              "--distribution-root", distribution,
+                              "--workspace-root", corpus])
+        self.assertEqual(code, 0)
+
+        header = Path(out, "codex.config.toml").read_text(encoding="utf-8")
+        verify = next(line.split(": ", 1)[1] for line in header.splitlines()
+                      if line.startswith("# verify: "))
+
+        self.assertIn("--distribution-root", verify)
+        self.assertIn("--workspace-root", verify)
+        # A path with a space must survive being read back as a command.
+        self.assertIn(distribution, shlex.split(verify))
+        self.assertIn(corpus, shlex.split(verify))
+
+        # Replay the header's own command: everything after `python3
+        # <tool> <root>`, with this test's root and fixture paths.
+        replayed = renderer.main(
+            [self.workspace] + shlex.split(verify)[3:] +
+            ["--projection", self.projection_path, "--output-dir", out])
+
+        self.assertEqual(replayed, 0, "the header's own verify reported stale")
 
 if __name__ == "__main__":
     unittest.main()

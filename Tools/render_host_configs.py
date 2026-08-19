@@ -100,6 +100,7 @@ check` runs it directly, after its own upstream.
 import json
 import os
 import re
+import shlex
 import sys
 import textwrap
 
@@ -259,8 +260,32 @@ NOTICE = (
     "Tools/%s.py from one server definition; a hand edit is reported by "
     "--check as a HOLD." % TOOL
 )
-REGENERATE = "python3 Tools/%s.py ." % TOOL
-VERIFY = "python3 Tools/%s.py . --check" % TOOL
+BASE_INVOCATION = "python3 Tools/%s.py ." % TOOL
+# Which flag substituted which placeholder. A header that named the bare
+# command would be wrong for every bound render: re-running it would put
+# the placeholders back, and `--check` would call the substituted file
+# stale. The header therefore echoes the run that produced the file.
+PLACEHOLDER_FLAGS = (
+    (DISTRIBUTION_PLACEHOLDER, "--distribution-root"),
+    (WORKSPACE_PLACEHOLDER, "--workspace-root"),
+)
+
+
+def invocation(context, check=False):
+    """The command that reproduces this file, with this run's roots.
+
+    A placeholder left unsubstituted contributes no flag, so an unbound
+    render still prints the short form it is actually reproduced by.
+    """
+    parts = [BASE_INVOCATION]
+    if check:
+        parts.append("--check")
+    bound = dict(context["bindings"])
+    for placeholder, flag in PLACEHOLDER_FLAGS:
+        replacement = bound.get(placeholder, placeholder)
+        if replacement != placeholder:
+            parts.append("%s %s" % (flag, shlex.quote(replacement)))
+    return " ".join(parts)
 
 CWD_NOTE = (
     "cwd is a fallback only. All four hosts start a stdio server in the "
@@ -368,7 +393,8 @@ _RESILIENCE_SOURCE = {
 _HEADER_SOURCE = (
     "Tools/render_host_configs.py: header_lines() -- NOTICE, the HOSTS row's "
     "own destination and carried halves, SERVER_ENTRY_POINT, the upstream "
-    "path and its sha256, REGENERATE, VERIFY, MANUAL_STEPS[host], CWD_NOTE, "
+    "path and its sha256, the regenerate/verify commands this run "
+    "reproduces itself with, MANUAL_STEPS[host], CWD_NOTE, "
     "SOURCE_HASH_NOTE and PLACEHOLDER_NOTE_TEMPLATE over the placeholders "
     "this run left unsubstituted, wrapped at HEADER_WIDTH"
 )
@@ -563,8 +589,8 @@ def header_lines(host, context):
                      % SERVER_ENTRY_POINT)
     lines.append("source: %s" % context["source"])
     lines.append("source_hash: %s" % context["source_hash"])
-    lines.append("regenerate: %s" % REGENERATE)
-    lines.append("verify: %s" % VERIFY)
+    lines.append("regenerate: %s" % invocation(context))
+    lines.append("verify: %s" % invocation(context, check=True))
     paragraphs = [MANUAL_STEPS[host]]
     if registers:
         paragraphs.append(CWD_NOTE)
@@ -1175,8 +1201,9 @@ def main(argv=None):
                 stale += 1
                 continue
             if existing != text:
-                print("%s --check: %s is stale or hand-edited; regenerate it "
-                      "with `%s`" % (TOOL, output, REGENERATE))
+                print("%s --check: %s is stale or hand-edited; regenerate "
+                      "it with `%s`"
+                      % (TOOL, output, invocation(context)))
                 stale += 1
                 continue
             print("%s --check: %s is current (%s, %s)"
