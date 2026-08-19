@@ -60,7 +60,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:cfcf7a1354cc44232a4864afd2622ac7428a18175ac5fca4a99d4363d605166a
+source_hash: sha256:0b2c3b4de65284a28b89d3c46768d711ce75903cf274598b215deec5d8d4f5da
 receipt_shape:
   base_fields:
     - receipt_id
@@ -594,7 +594,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: apply_profile_adoption
     module: Tools/apply_profile_adoption.py
-    source_hash: sha256:e4b32e4e6244aa9639d15197961323b552598e655e0a79b6a110399a3f34d4f3
+    source_hash: sha256:7ab4234eeafc78d056749da95e73d8e01c830ddc8d2903df1792f04cda03faf4
     description: Apply one no-runtime R09 Profile adoption (initial adoption or pre-runtime profile revision) from a restricted-YAML plan
     arguments:
       - dest: root

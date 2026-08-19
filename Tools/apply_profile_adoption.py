@@ -1026,13 +1026,16 @@ def main(argv=None):
 
     def say(message):
         if args.json:
-            lines.append(message)
+            # Scheme A: JSON owns stdout, the human summary goes to stderr as
+            # it is produced. It is not buffered into the payload -- five of
+            # the six JSON exits keep the two apart, and this was the one that
+            # did not.
+            print(message, file=sys.stderr)
         else:
             print(message)
 
     def emit(exit_code):
         if args.json:
-            report["output"] = lines
             print(json.dumps(report, ensure_ascii=False, sort_keys=True,
                              indent=2))
         return exit_code
