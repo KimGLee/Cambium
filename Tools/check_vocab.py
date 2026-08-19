@@ -41,10 +41,10 @@ Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
 
 Usage: python3 check_vocab.py <vault_root> [--scope SUBPATH]
        [--vocab Tools/vocab.yaml] [--quota-p0 N] [--quota-p1 N]
-       [--receipts PATH]
+       [--receipts PATH] [--json]
 """
 
-import argparse
+import contextlib
 import os
 import sys
 
@@ -65,6 +65,25 @@ GATE_CHECKS = {
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
 GATE_CHECK = "vocab-check-summary"
+
+
+def _emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    ``--json`` publishes the receipts themselves, not a projection of them:
+    ``Tools/schemas/receipt.template.jsonl`` says in its own text that its
+    examples are "not the complete set", so a field whitelist here would
+    silently drop this tool's extension fields (``priority_shares``, the
+    admitted-profile evidence). Serialization goes through the shared
+    ``kblib.canonical_json_bytes``; this module owns no serializer. A run
+    that produced no receipt writes nothing, which leaves the settled
+    rejection shape -- empty stdout, one line of reason on stderr, exit 1 --
+    exactly as it was.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
 
 
 def _make_receipt(check, target, result, details, seq, root=None):
@@ -105,7 +124,7 @@ def load_vocab(path, text=None):
 
 
 def main(argv=None, *, authorized_admission=None):
-    ap = argparse.ArgumentParser(description="Frontmatter controlled-vocabulary check")
+    ap = kblib.ArgumentParser(description="Frontmatter controlled-vocabulary check")
     ap.add_argument("vault_root", help="vault root directory")
     ap.add_argument("--scope", help="only scan .md files under this subpath")
     ap.add_argument("--vocab", default=None,
@@ -129,7 +148,34 @@ def main(argv=None, *, authorized_admission=None):
                          "compliance receipt so its consumers can bind the "
                          "policy identity, never re-derive it")
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
+    ap.add_argument(
+        "--json", action="store_true",
+        help="write this run's receipt objects to stdout as one canonical "
+             "JSON array and move the human summary to stderr; receipt "
+             "writing and exit codes are unchanged")
     args = ap.parse_args(argv)
+
+    if not args.json:
+        return _run(args, None, authorized_admission)
+    produced = []
+    with contextlib.redirect_stdout(sys.stderr):
+        code = _run(args, produced, authorized_admission)
+    _emit_json_receipts(produced)
+    return code
+
+
+def _run(args, produced, authorized_admission):
+    """Execute one already-parsed invocation; ``produced`` collects receipts.
+
+    Every exit that owns receipts routes through :func:`_finish` below, so the
+    ``--json`` view and the JSONL append always describe the same objects.
+    """
+
+    def _finish(receipts):
+        if produced is not None:
+            produced.extend(receipts)
+        return kblib.exit_code(receipts)
+
     priority_shares = {}
 
     vocab_path = args.vocab or os.path.join(
@@ -178,7 +224,7 @@ def main(argv=None, *, authorized_admission=None):
             print("check_vocab: FAIL — composed vocabulary is not current: %s"
                   % details)
             kblib.write_receipts(args.receipts, receipts)
-            return kblib.exit_code(receipts)
+            return _finish(receipts)
     try:
         vocab = load_vocab(
             vocab_path,
@@ -198,7 +244,7 @@ def main(argv=None, *, authorized_admission=None):
         print("check_vocab: FAIL — composed vocabulary at %s is not usable: %s"
               % (vocab_path, exc))
         kblib.write_receipts(args.receipts, receipts)
-        return kblib.exit_code(receipts)
+        return _finish(receipts)
 
     receipts = []
     seq = 0
@@ -227,7 +273,7 @@ def main(argv=None, *, authorized_admission=None):
             "result", 1, root=args.vault_root)]
         print("check_vocab: scanned 0 file(s) — FAIL: effective scan set is empty")
         kblib.write_receipts(args.receipts, receipts)
-        return kblib.exit_code(receipts)
+        return _finish(receipts)
     for full, rel in scan_files:
         rel_disp = rel.replace(os.sep, "/")
         counts["files"] += 1
@@ -416,7 +462,7 @@ def main(argv=None, *, authorized_admission=None):
             receipt.update(evidence)
 
     kblib.write_receipts(args.receipts, receipts)
-    return kblib.exit_code(receipts)
+    return _finish(receipts)
 
 
 if __name__ == "__main__":

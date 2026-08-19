@@ -644,8 +644,39 @@ class UpdateQueueTests(unittest.TestCase):
         completed = self.command(
             "--id", "B1", "--transition", "cancelled",
         )
-        self.assertEqual(2, completed.returncode, completed.stdout)
+        # 1, not argparse's stock 2: a value outside `choices` is a usage
+        # error, and 2 is reserved here for HOLD (no failure, candidates
+        # remain).  Sharing one code made "you typed it wrong" and "clean but
+        # not quiet" indistinguishable to every caller.  See
+        # kblib.ArgumentParser.
+        self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("invalid choice: 'cancelled'", completed.stdout)
+        for relative, content in before.items():
+            self.assertEqual(content, (self.root / relative).read_bytes())
+
+    def test_lifecycle_and_hold_are_one_required_exclusive_choice(self):
+        before = {
+            relative: (self.root / relative).read_bytes()
+            for relative in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+                             check_queue.PROGRESS_PATH)
+        }
+        # One write per run, and never an empty one: a lifecycle move and a
+        # hold move are separate transitions, and a run naming neither has
+        # nothing to write.  Both halves are the parser's own required
+        # mutually exclusive group, so each is refused before the tool reads
+        # any state -- the two messages below are producible by no other
+        # argparse declaration.
+        both = self.command(
+            "--id", "B1", "--transition", "open", "--hold-state", "paused",
+        )
+        self.assertEqual(1, both.returncode, both.stdout)
+        self.assertIn("not allowed with argument", both.stdout)
+        neither = self.command("--id", "B1")
+        self.assertEqual(1, neither.returncode, neither.stdout)
+        self.assertIn(
+            "one of the arguments --transition --hold-state is required",
+            neither.stdout,
+        )
         for relative, content in before.items():
             self.assertEqual(content, (self.root / relative).read_bytes())
 

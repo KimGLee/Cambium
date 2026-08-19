@@ -77,7 +77,6 @@ Usage: python3 check_profile.py <profile_dir> [--root VAULT_ROOT]
        [--receipts PATH]
 """
 
-import argparse
 from collections.abc import Mapping
 import contextlib
 from dataclasses import dataclass
@@ -734,7 +733,7 @@ def validate_corpus_planning_slot(path, target, add, text=None):
 def main(argv=None, *, _evaluation_out=None,
          _receipt_identity=_LIVE_RUNTIME_RECEIPT_IDENTITY,
          _write_receipts=True):
-    ap = argparse.ArgumentParser(
+    ap = kblib.ArgumentParser(
         description="Profile manifest completeness and unfilled-template check")
     ap.add_argument("profile_dir", help="the profile directory to check "
                                         "(e.g. profiles/<profile-id>)")

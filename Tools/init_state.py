@@ -5,7 +5,6 @@ Initialization never invents Required work.  It refuses any existing runtime
 namespace and is a dry run unless ``--apply`` is present.
 """
 
-import argparse
 import ctypes
 import errno
 import json
@@ -548,7 +547,7 @@ def build_documents(args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Initialize empty Cambium runtime state")
+    parser = kblib.ArgumentParser(description="Initialize empty Cambium runtime state")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--task-id", required=True,
                         help="non-empty task identity stamped on the Queue, "

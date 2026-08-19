@@ -22,8 +22,11 @@ Provides:
    receipts (field definitions in Tools/schemas/receipt.template.jsonl), plus
    the shared exit-code convention:
    0 = all pass; 1 = at least one fail; 2 = no fail but candidates.
+4. ArgumentParser: an argparse.ArgumentParser subclass that keeps a usage
+   error off the reserved HOLD code 2 by exiting 1 instead.
 """
 
+import argparse
 from contextlib import contextmanager
 import errno
 import hashlib
@@ -31,6 +34,7 @@ import json
 import os
 import re
 import stat
+import sys
 import tempfile
 import time
 from types import MappingProxyType
@@ -2693,6 +2697,37 @@ def exit_code(receipts):
     if "candidate" in results:
         return 2
     return 0
+
+
+class ArgumentParser(argparse.ArgumentParser):
+    """An ``argparse.ArgumentParser`` whose usage errors exit 1, not 2.
+
+    Stock argparse spends code 2 on "you typed the command wrong", but this
+    distribution has already spent 2 on the HOLD verdict above: no failure,
+    yet candidates remain.  Sharing one code makes those two outcomes
+    indistinguishable to every consumer downstream of the process boundary --
+    a misspelled flag reads as a clean-but-not-quiet run, and a run_gates
+    registry row whose command no longer matches its tool is reported as an
+    empty HOLD instead of the wiring defect it is.
+
+    Overriding ``error`` is enough to move all five usage-error paths at once,
+    because argparse funnels every one of them through it: mutually exclusive
+    conflicts, a missing ``required=`` option, a value outside ``choices``, a
+    custom ``type`` callable that raises, and an unrecognized flag.  The
+    non-error exits argparse owns are untouched -- ``--help`` and ``--version``
+    still exit 0 through ``exit`` directly.
+
+    The message text and its destination are unchanged from the base class, so
+    a caller reading stderr sees exactly what it saw before; only the status
+    moves.  This class does not decide any tool's verdict: the exit it raises
+    is argparse's own, taken before a tool has looked at a single input, and
+    every verdict-bearing exit still happens in the tool, off ``exit_code``.
+    """
+
+    def error(self, message):
+        """Exit 1 (usage error) rather than argparse's default 2 (HOLD here)."""
+        self.print_usage(sys.stderr)
+        self.exit(1, "%s: error: %s\n" % (self.prog, message))
 
 
 # ---------------------------------------------------------------------------

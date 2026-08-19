@@ -8,7 +8,7 @@ a batch also projects its Coverage ``next_batch`` route in that same guarded
 transaction; all written state is restored if any replacement fails.
 """
 
-import argparse
+import contextlib
 import copy
 import os
 import sys
@@ -27,6 +27,28 @@ TOOL_VERSION = "1.6.0"
 # importing this writer, which imports it.  The name stays here because it is
 # this tool's transition guard and every existing reference reads it here.
 TRANSITIONS = kblib.BATCH_LIFECYCLE_TRANSITIONS
+
+
+def _emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    ``--json`` publishes the receipts themselves, not a projection of them:
+    ``Tools/schemas/receipt.template.jsonl`` says in its own text that its
+    examples are "not the complete set", and this tool's per-transition
+    bindings (settlement, delta, invalidation) are exactly what a whitelist
+    would drop. Order matches the JSONL append order, so an induced task
+    transition precedes the Queue transition it accompanied. Serialization
+    goes through the shared ``kblib.canonical_json_bytes``; this module owns
+    no serializer. Only a run that actually applied the transition writes
+    here: a dry run plans a receipt but publishes none, so its stdout stays
+    empty and the plan stays on stderr. That also leaves the settled
+    rejection shape -- empty stdout, one line of reason on stderr, exit 1 --
+    exactly as it was.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
 
 
 def _nonempty(value):
@@ -324,12 +346,8 @@ def _transition_item(item, args, result):
     after = args.transition or before
     if before in ("closed", "cancelled"):
         raise ValueError("%s item is immutable; create a successor batch" % before)
-    if args.transition is not None and args.hold_state is not None:
-        raise ValueError("lifecycle and hold transitions are separate writes")
     if args.transition and after not in TRANSITIONS.get(before, frozenset()):
         raise ValueError("illegal transition %s -> %s" % (before, after))
-    if not args.transition and args.hold_state is None:
-        raise ValueError("provide --transition or --hold-state")
     now = args.at
 
     def require_standards_revalidation():
@@ -734,15 +752,16 @@ def _transition_item(item, args, result):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Apply one Required Queue transition")
+    parser = kblib.ArgumentParser(description="Apply one Required Queue transition")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--id", required=True,
                         help="Required Queue batch id to transition")
-    parser.add_argument("--transition", choices=("open", "merge-ready", "closed"),
-                        help="target lifecycle state; exclusive with "
-                             "--hold-state")
-    parser.add_argument("--hold-state", choices=tuple(check_queue.HOLDS),
-                        help="target hold state; exclusive with --transition")
+    write = parser.add_mutually_exclusive_group(required=True)
+    write.add_argument("--transition", choices=("open", "merge-ready", "closed"),
+                       help="target lifecycle state; exclusive with "
+                            "--hold-state")
+    write.add_argument("--hold-state", choices=tuple(check_queue.HOLDS),
+                       help="target hold state; exclusive with --transition")
     parser.add_argument("--expected-state-revision", type=int,
                         help="compare-and-swap guard: the state_revision the "
                              "caller read from the current Queue; the write is "
@@ -789,7 +808,25 @@ def main(argv=None):
                         help="receipt JSONL path under .cambium/receipts")
     parser.add_argument("--apply", action="store_true",
                         help="write the transition; omit for a dry run")
+    parser.add_argument(
+        "--json", action="store_true",
+        help="write the applied transition receipt(s) to stdout as one "
+             "canonical JSON array and move the human report to stderr; a "
+             "dry run publishes no receipt and so writes nothing there; "
+             "receipt writing and exit codes are unchanged")
     args = parser.parse_args(argv)
+
+    if not args.json:
+        return _run(args, None)
+    produced = []
+    with contextlib.redirect_stdout(sys.stderr):
+        code = _run(args, produced)
+    _emit_json_receipts(produced)
+    return code
+
+
+def _run(args, produced):
+    """Execute one already-parsed invocation; ``produced`` collects receipts."""
     if args.at is None:
         args.at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     if not check_queue._valid_timestamp(args.at):
@@ -1401,6 +1438,13 @@ def main(argv=None):
             kblib.RuntimeStateLockedError) as exc:
         print("[FAIL] transition write failed; restoration attempted: %s" % exc)
         return 1
+    if produced is not None:
+        # Append order, so the induced task transition -- when there was one --
+        # precedes the Queue transition it accompanied, exactly as the JSONL
+        # files record them.
+        if task_receipt is not None:
+            produced.append(task_receipt)
+        produced.append(receipt)
     print("[PASS] transition applied; state_revision=%d sha256=%s" %
           (queue_new["state_revision"], after_sha))
     return 0

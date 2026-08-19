@@ -7,7 +7,6 @@ it never infers a capability, dependency, gap, or acceptance result from
 prose, links, or semantic similarity.
 """
 
-import argparse
 import json
 import os
 import re
@@ -2231,7 +2230,7 @@ def _receipts_for(result, *, repository_snapshot_sha256=None):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Validate explicit Corpus Planning artifacts")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument(

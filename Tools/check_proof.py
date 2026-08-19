@@ -111,7 +111,6 @@ Usage: python3 check_proof.py <proof.yaml> [--ledger coverage_ledger.yaml]
        [--template PATH] [--receipts PATH]
 """
 
-import argparse
 import json
 import os
 from pathlib import Path
@@ -127,6 +126,68 @@ import check_queue
 TOOL = "check_proof"
 TOOL_VERSION = "1.17.0"
 GATE_ID = "terminal-proof"
+
+# ---------------------------------------------------------------------------
+# `--json` projection
+#
+# A check's structured result already exists: it is the set of receipts the
+# run produced.  `--json` adds one projection of those same objects -- the
+# exact receipt dicts, serialized through `kblib.canonical_json_bytes`, with
+# no field whitelist -- onto stdout, and moves every human-readable line to
+# stderr for that run.  Serializing the receipt itself is what keeps the
+# projection honest: `Tools/schemas/receipt.template.jsonl` guarantees only
+# the base fields, and each producer's extension fields are discoverable from
+# the receipt, so a whitelist here could only lose evidence.
+#
+# Without the flag nothing below runs and every byte this tool writes is
+# unchanged.  The flag never changes the exit code and never changes what is
+# appended to the receipts file.  A run rejected before it produced any
+# receipt leaves stdout empty and states the reason on stderr, which is the
+# settled shape for a refused invocation.
+# ---------------------------------------------------------------------------
+
+_JSON_STDOUT = None
+_JSON_RECEIPTS = None
+
+
+def _json_begin(enabled):
+    """Reserve stdout for the projection and send human output to stderr."""
+    global _JSON_STDOUT, _JSON_RECEIPTS
+    _JSON_STDOUT = None
+    _JSON_RECEIPTS = None
+    if enabled:
+        _JSON_STDOUT = sys.stdout
+        sys.stdout = sys.stderr
+
+
+def _json_record(receipts):
+    """Hold the exact receipt objects this run produced."""
+    global _JSON_RECEIPTS
+    if _JSON_STDOUT is not None:
+        _JSON_RECEIPTS = list(receipts)
+
+
+def _json_finish(answered):
+    """Restore stdout, emitting the recorded receipts when the run answered."""
+    global _JSON_STDOUT, _JSON_RECEIPTS
+    stream = _JSON_STDOUT
+    receipts = _JSON_RECEIPTS
+    _JSON_STDOUT = None
+    _JSON_RECEIPTS = None
+    if stream is None:
+        return
+    sys.stdout = stream
+    if answered and receipts is not None:
+        stream.write(
+            kblib.canonical_json_bytes(receipts).decode("utf-8") + "\n")
+        stream.flush()
+
+
+JSON_FLAG_HELP = ("write the receipts this run produced to stdout as one "
+                  "canonical JSON array and move the human-readable summary "
+                  "to stderr; receipts written and the exit code are "
+                  "unchanged")
+
 
 
 def _make_receipt(tool, tool_version, check, target, result, details, seq):
@@ -1626,7 +1687,18 @@ def _validate_terminal_coverage_state(proof, progress_ledger, coverage_ledger,
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Terminal Proof completeness and zero-condition check")
+    """CLI entry point; `--json` projects the produced receipts onto stdout."""
+    try:
+        code = _main()
+    except BaseException:
+        _json_finish(False)
+        raise
+    _json_finish(True)
+    return code
+
+
+def _main():
+    ap = kblib.ArgumentParser(description="Terminal Proof completeness and zero-condition check")
     ap.add_argument("proof", help="path to the terminal proof YAML file")
     ap.add_argument("--ledger", help="Coverage Ledger YAML; with --root this "
                     "must be exactly .cambium/state/coverage_ledger.yaml")
@@ -1641,7 +1713,9 @@ def main():
                     "fields must exist and selected routes, Cards, and kernel "
                     "Read Sets must agree with the canonical route indexes")
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
+    ap.add_argument("--json", action="store_true", help=JSON_FLAG_HELP)
     args = ap.parse_args()
+    _json_begin(args.json)
 
     receipt_output = args.receipts
     if receipt_output:
@@ -1678,6 +1752,7 @@ def main():
             TOOL, TOOL_VERSION, "proof-unreadable", args.proof, "fail",
             "cannot read/parse proof: %s" % exc, seq))
         kblib.write_receipts(receipt_output, receipts)
+        _json_record(receipts)
         print("check_proof: cannot read or parse %s: %s" % (args.proof, exc))
         return 1
     if not isinstance(proof, dict):
@@ -2784,6 +2859,7 @@ def main():
                   "is not Terminal Completion Gate evidence.")
 
     kblib.write_receipts(receipt_output, receipts)
+    _json_record(receipts)
     return kblib.exit_code(receipts)
 
 

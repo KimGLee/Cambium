@@ -14,7 +14,6 @@ namespace drift still fails closed.  A fully restored failure clears the lock,
 while an unproven rollback deliberately keeps its recovery journal.
 """
 
-import argparse
 import errno
 import json
 import os
@@ -927,7 +926,7 @@ def _apply_plan(root, plan, lease, transaction_id):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Project Ledger-owned state onto page frontmatter")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--page", action="append", default=None,

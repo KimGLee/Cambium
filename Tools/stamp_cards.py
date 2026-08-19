@@ -69,7 +69,6 @@ Exit codes:
   2 = structurally valid but stale hash/version in --check mode
 """
 
-import argparse
 import ast
 import hashlib
 import os
@@ -784,7 +783,7 @@ def route_id_of(value, label, failures):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Stamp kernel Runtime Cards")
+    ap = kblib.ArgumentParser(description="Stamp kernel Runtime Cards")
     ap.add_argument("root", help="repository root")
     ap.add_argument(
         "--cards-dir",

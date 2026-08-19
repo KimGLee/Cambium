@@ -531,7 +531,7 @@ def render(contract):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Compile the machine-readable CLI invocation contract "
                     "from every Tools/*.py argparse declaration.")
     parser.add_argument(

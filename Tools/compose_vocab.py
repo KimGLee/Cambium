@@ -39,7 +39,6 @@ Only the python3 standard library is used; YAML parsing goes through
 Tools/kblib.py parse_yaml_subset (restricted subset only).
 """
 
-import argparse
 import hashlib
 import json
 import os
@@ -568,7 +567,7 @@ def first_diff_key(expected, actual, path=""):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Deterministically compose the vocabulary artifact "
         "from the kernel base and the selected profile's extensions."
     )

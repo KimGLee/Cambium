@@ -58,7 +58,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:ff91471b4cc7ba628fc8b1f183c1779d7130bba006d724154729ce783a405986
+source_hash: sha256:a3356e7b4d1471af3148bd780b782c2554b8c0787e420cb997b7e62202aec083
 receipt_shape:
   base_fields:
     - receipt_id
@@ -77,7 +77,7 @@ tool_count: 38
 tools:
   - tool: adopt_standards
     module: Tools/adopt_standards.py
-    source_hash: sha256:a4c60b9925d283a0d485ee474409b71ce96fe02279485427c39707031872cefc
+    source_hash: sha256:38a3854317419437b0fe116051a5511a346f12f35e0fa1a4f38459d60afcd2a7
     description: Adopt one approved Standards/Profile revision
     arguments:
       - dest: root
@@ -136,6 +136,17 @@ tools:
         action: store_true
         type: null
         help: write the transaction; omit for a dry run
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write this run's receipt objects to stdout as one canonical JSON array and move the human-readable report to stderr; receipt writing, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - actor_role
@@ -200,7 +211,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_amendment
     module: Tools/apply_amendment.py
-    source_hash: sha256:e488eda4a65f684fe05d71e6f815619bc6900c4ceb6af23fb90ca78b7447c9ae
+    source_hash: sha256:a6f51c35c0ba5194563e69d314a10bd2c4fd9f51f0e16dd2cc46a8d516c1a563
     description: Apply one approved cross-Ledger Amendment transaction
     arguments:
       - dest: root
@@ -292,6 +303,17 @@ tools:
         action: store_true
         type: null
         help: write the transaction; omit for a dry run
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write this run's receipt objects to stdout as one canonical JSON array and move the human-readable report to stderr; receipt writing, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - actor_role
@@ -323,7 +345,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: apply_contract_amendment
     module: Tools/apply_contract_amendment.py
-    source_hash: sha256:d1ff6f4be2fc64f0153cd11b9be3eabe5670f476c4fa0ffc12815c1a3e6c77dd
+    source_hash: sha256:9f5a41e9590aaa7736f9448b30f0212446c45075f26b9a6e408399f11f0af8bf
     description: Amend the frozen Task Contract from one confirmed plan.
     arguments:
       - dest: root
@@ -382,6 +404,17 @@ tools:
         action: store_true
         type: null
         help: write the transaction; omit for a dry run
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write this run's receipt objects to stdout as one canonical JSON array and move the human-readable report to stderr; receipt writing, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - actor_role
@@ -407,7 +440,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_delta
     module: Tools/apply_delta.py
-    source_hash: sha256:30e9da00652933d10e96a2fa75a2a2aec0b39f8fbf1f36ce7c28131a03982848
+    source_hash: sha256:04d51b5ba2858fd05764e8609b2783358b991a02d244aa74c0f403635cf06ecb
     description: Deterministic Coverage Delta application
     arguments:
       - dest: ledger
@@ -520,7 +553,22 @@ tools:
         action: store
         type: null
         help: receipt JSONL destination; canonical mode defaults to a new .cambium/receipts/<receipt_id>.jsonl and refuses an existing path
-    mutually_exclusive_groups: []
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write this run's receipt objects to stdout as one canonical JSON array and move the human-readable report to stderr; receipt writing, verdicts, and exit codes are unchanged
+    mutually_exclusive_groups:
+      - required: false
+        dests:
+          - apply
+          - preflight
     receipt_extensions:
       - actor_role
       - after_coverage_sha256
@@ -542,7 +590,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: apply_profile_adoption
     module: Tools/apply_profile_adoption.py
-    source_hash: sha256:b17f3b960a6a2b4ed297ac5f85273d1ac220768f17eccccc49bbde7d378036ea
+    source_hash: sha256:e4b32e4e6244aa9639d15197961323b552598e655e0a79b6a110399a3f34d4f3
     description: Apply one no-runtime R09 Profile adoption (initial adoption or pre-runtime profile revision) from a restricted-YAML plan
     arguments:
       - dest: root
@@ -624,7 +672,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_task_plan
     module: Tools/apply_task_plan.py
-    source_hash: sha256:546602a962b6095b7b582a1f3f5f48661231e6e194880f05f4a9ba9b18a49994
+    source_hash: sha256:aa08bd9afb8973bf363e03db2cb8ea3cd6d0bbb083250f899add1f495408da6c
     description: Materialize a task runtime from one confirmed plan.
     arguments:
       - dest: root
@@ -670,13 +718,24 @@ tools:
         action: store_true
         type: null
         help: write the transaction; omit for a dry run
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write this run's receipt objects to stdout as one canonical JSON array and move the human-readable report to stderr; receipt writing, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - transaction_phase
     receipt_extensions_extraction: complete
   - tool: check_batch_close
     module: Tools/check_batch_close.py
-    source_hash: sha256:fa0c7e2fedb557f476cf72be859586ed6d2edfda7adadfde0aaba9dd90eb78e7
+    source_hash: sha256:9881abf97e40b145b92008cd25c564a3bdfcc59712fc2e0728c9aa2638822645
     description: Run and publish the K12/09 batch-close evidence bundle
     arguments:
       - dest: root
@@ -788,6 +847,17 @@ tools:
         action: store
         type: null
         help: repository-relative close evidence JSONL
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - after_coverage_sha256
@@ -809,7 +879,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_boundary_contract
     module: Tools/check_boundary_contract.py
-    source_hash: sha256:0fe1eccbc7f769a51cf8e4c765c2cbbdf89a74904e848d8803d1816c645e5c70
+    source_hash: sha256:81450450580a51ff9d53420b6f5dd456dc5fd64a15bb2adabe28f82bc0266640
     description: "Validate page boundary blocks against the K08/09 page boundary contract (gate: boundary-contract; advisory by default)."
     arguments:
       - dest: vault_root
@@ -888,6 +958,17 @@ tools:
         action: store
         type: null
         help: JSONL path to append machine-readable receipts to
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - compiled_page_contract_sha256
@@ -899,7 +980,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_corpus_plan
     module: Tools/check_corpus_plan.py
-    source_hash: sha256:5d454c6bef29a1dc28b122db7867b23f81d0619aff9649b655717583de3a9734
+    source_hash: sha256:fbddceb7aa48f421c933af3caea43d451c793d624618247e47a146efeba49b43
     description: Validate explicit Corpus Planning artifacts
     arguments:
       - dest: root
@@ -951,7 +1032,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_freshness
     module: Tools/check_freshness.py
-    source_hash: sha256:d910625ac3246a54d181d05f176bb3523421ac793b7849d063a67e811aab9854
+    source_hash: sha256:0c7dd48a9af2c6eaba6c3a070001cc1711d003c67a957f10c16be4326412bb77
     description: Freshness / review_by overdue candidate check
     arguments:
       - dest: vault_root
@@ -1019,12 +1100,23 @@ tools:
         action: store
         type: null
         help: JSONL path to append machine-readable receipts to
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable report to stderr; receipts written, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
   - tool: check_links
     module: Tools/check_links.py
-    source_hash: sha256:d8589f9b4d0fc554a4cf4870e1a05e2c1db3e905e2a024dfbd59b16c141fd988
+    source_hash: sha256:1b2f6da42c83f52263b86b75aa9fca8401fde460088485736e2bee0f095ec53f
     description: Wiki link missing/ambiguous/heading check
     arguments:
       - dest: vault_root
@@ -1070,13 +1162,24 @@ tools:
         action: store
         type: null
         help: JSONL path to append machine-readable receipts to
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - gate_id
     receipt_extensions_extraction: complete
   - tool: check_moc
     module: Tools/check_moc.py
-    source_hash: sha256:571c1d65d53babb9e121511bc7ce43b09cf2cc8462475578380164e2ac380e08
+    source_hash: sha256:a5c095355fcf30b9099f59e22c69cb5c236a37ca28671471c8c4abed4e288a86
     description: MOC Module Index consistency candidate detection
     arguments:
       - dest: root
@@ -1111,12 +1214,23 @@ tools:
         action: store
         type: null
         help: JSONL path to append a machine-readable receipt to
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable report to stderr; receipts written, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
   - tool: check_page_contract
     module: Tools/check_page_contract.py
-    source_hash: sha256:2393abb3468fbba2351aa12da39d151290836922f655aef91086130c0f604815
+    source_hash: sha256:9ea05d77f7b4f7596c9bca9ba3b367fbd2efa84927874761e74eeed38dbd11fb
     description: "Validate pages against the compiled frontmatter page contract (gate: page-contract; advisory by default)."
     arguments:
       - dest: vault_root
@@ -1195,6 +1309,17 @@ tools:
         action: store
         type: null
         help: JSONL path to append machine-readable receipts to
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - compiled_page_contract_sha256
@@ -1206,7 +1331,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_profile
     module: Tools/check_profile.py
-    source_hash: sha256:4a90f4d68d2d925e30f25ddc76d067b55c7ce059b867b0c0b292fa22139e4dfc
+    source_hash: sha256:07af5b7f9dcf2ee6ad3e32c2f1485abeeaea27fa83f6a5467d493f7d749a61ac
     description: Profile manifest completeness and unfilled-template check
     arguments:
       - dest: profile_dir
@@ -1292,7 +1417,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_proof
     module: Tools/check_proof.py
-    source_hash: sha256:b5635cf2e56ef324b6f79821f1e90a61758bf19deffea80bb83185b599d5eab0
+    source_hash: sha256:644a925c631d7fd25cb85b3a62209796e89927b1444de98074a902b8377a1934
     description: Terminal Proof completeness and zero-condition check
     arguments:
       - dest: proof
@@ -1360,13 +1485,24 @@ tools:
         action: store
         type: null
         help: JSONL path to append machine-readable receipts to
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - gate_id
     receipt_extensions_extraction: complete
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:cd3168d1e984e54dcdaa35f9059adc1aedd321d36a796e46bc53392fb696ef78
+    source_hash: sha256:f4ace1d0bf867cee2fd21d1ae44f09c419bb2897c6a95472d18fbdb8dfa823f5
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -1500,6 +1636,17 @@ tools:
         action: store
         type: null
         help: repository-relative JSONL receipt path
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write this run's receipt object to stdout as one canonical JSON array and move the human report to stderr; receipt writing and exit codes are unchanged
     mutually_exclusive_groups:
       - required: false
         dests:
@@ -1544,7 +1691,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_residual_content
     module: Tools/check_residual_content.py
-    source_hash: sha256:bf2654df74111127b2401ad34ca46f36e3e31ebc92d13897c7c1bf8059abafa8
+    source_hash: sha256:e0f5f427b82286505fa05b4c3bfcc6fbb7e2c911543b49983308e72966578bfa
     description: Find profile-configured residual content outside accepted roots.
     arguments:
       - dest: vault_root
@@ -1612,6 +1759,17 @@ tools:
         action: store_true
         type: null
         help: execute the registered controls through the production classifier without scanning repository content
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write this run's receipt objects to stdout as one canonical JSON array and move the human summary to stderr; receipt writing and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - config_fingerprint
@@ -1620,7 +1778,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_structure
     module: Tools/check_structure.py
-    source_hash: sha256:72221704c72f63edda475576039020e4b72802e5951596cb049ce05fb25588aa
+    source_hash: sha256:0b5a64dbc630ca2e624d5b73dc96dbf6684420eb1025cf9f9d0f1895ae144b80
     description: "Validate the selected profile's Structure Registry against the vault (gate: structure-registry)."
     arguments:
       - dest: vault_root
@@ -1655,6 +1813,17 @@ tools:
         action: store
         type: null
         help: JSONL path to append machine-readable receipts to
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable summary to stderr; receipts written and the exit code are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - coverage_ledger_sha256
@@ -1668,7 +1837,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_vocab
     module: Tools/check_vocab.py
-    source_hash: sha256:8b862f93eb4268af372bfc0920a468e756963819b20717a3f4f7c561cdaa3435
+    source_hash: sha256:c7ff4d89f0802f17e58849957703be04204c0397a0622a14bbd7d521be8351fd
     description: Frontmatter controlled-vocabulary check
     arguments:
       - dest: vault_root
@@ -1758,13 +1927,24 @@ tools:
         action: store
         type: null
         help: JSONL path to append machine-readable receipts to
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write this run's receipt objects to stdout as one canonical JSON array and move the human summary to stderr; receipt writing and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - gate_id
     receipt_extensions_extraction: partial
   - tool: compile_cli_contract
     module: Tools/compile_cli_contract.py
-    source_hash: sha256:d185ebf019eb823404d22bc448696772a448d545a3efd88787291a9c79cab545
+    source_hash: sha256:cc758ac7e8310e09ab327be431b3e1631b1d0edb6d47e299aea9cbfa081e57a7
     description: Compile the machine-readable CLI invocation contract from every Tools/*.py argparse declaration.
     arguments:
       - dest: root
@@ -1804,7 +1984,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: compile_queue
     module: Tools/compile_queue.py
-    source_hash: sha256:79d3653faa96152d9031996360ec180a865bfa2edb181119bc641caadb9c7eaf
+    source_hash: sha256:2ffc82053c285581b674b9127491d1593fa4fc22046536767599de54a95ce7bb
     description: Compile Required Queue from explicit Coverage assignments
     arguments:
       - dest: root
@@ -1962,6 +2142,17 @@ tools:
         action: store
         type: null
         help: receipt JSONL path under .cambium/receipts
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write this run's receipt objects to stdout as one canonical JSON array and move the human-readable report to stderr; receipt writing, verdicts, and exit codes are unchanged
     mutually_exclusive_groups:
       - required: false
         dests:
@@ -1996,7 +2187,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: compose_page_contract
     module: Tools/compose_page_contract.py
-    source_hash: sha256:cc235be1ae29e1f172249a81fec6fa6b8688099d94a9ca71fe14b7c98622225e
+    source_hash: sha256:98b335a9c9d6486ce1b7413a4ba057bb2dade2ca976fb9d0ae506a267d1eee17
     description: Compose the effective frontmatter page contract from the kernel bases and the selected profile's Metadata Contract.
     arguments:
       - dest: root
@@ -2081,7 +2272,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: compose_vocab
     module: Tools/compose_vocab.py
-    source_hash: sha256:34f4689759cf3d086dd3de0ab4625ff95ba8e7ed5cf192f3e183b495e8df94ab
+    source_hash: sha256:3ce870bb000813eedf466e11e639e059c7196a5dae33dd7f504541cb91a3f978
     description: Deterministically compose the vocabulary artifact from the kernel base and the selected profile's extensions.
     arguments:
       - dest: base
@@ -2133,7 +2324,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: duplicate_check
     module: Tools/duplicate_check.py
-    source_hash: sha256:0dd7137cd4c02125374d92b2d842a52f3ee71968292371ca6a7b6d4cebc077e7
+    source_hash: sha256:7ab6088f75112e9db7b12c3660c1f5d7c66b58a020de8a9b346d6ada0b189d53
     description: Cross-file duplicate paragraph candidate detection (for maintenance runs and governance tasks)
     arguments:
       - dest: vault
@@ -2179,12 +2370,23 @@ tools:
         action: store
         type: null
         help: JSONL path to append machine-readable receipts to (shared convention, Tools/schemas/receipt.template.jsonl)
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable report to stderr; receipts written, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
   - tool: init_state
     module: Tools/init_state.py
-    source_hash: sha256:09e5bec0add368a2065f892a77218bb911ebf0be5fefb361aa24499c66a1bc18
+    source_hash: sha256:cb8cf12d1442c341d58539f3cd0998f883bebe88fabc7d2b09ae551f818f7e80
     description: Initialize empty Cambium runtime state
     arguments:
       - dest: root
@@ -2325,7 +2527,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: profile_onboarding_status
     module: Tools/profile_onboarding_status.py
-    source_hash: sha256:0d529746ab035972eb4ab3768c47e93ec3079e84ffc0dd1b0cb91079bce64181
+    source_hash: sha256:cde3d167db14066a1b1325f16666451dc473bc83f88e47927edcce0f7510c6c8
     description: "Read-only onboarding status projector: derives the adoption/onboarding state of one root and exactly one next_action token; writes nothing and owns no ledger"
     arguments:
       - dest: root
@@ -2365,7 +2567,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: project_page_state
     module: Tools/project_page_state.py
-    source_hash: sha256:d17ad8705df1ca83ccdee9b508e4efccb09781cc1c2bc92aca3bce43f826b802
+    source_hash: sha256:588cf84b7ab691e21b6861a88760b74aae2326a085606319a3b31963c700de0a
     description: Project Ledger-owned state onto page frontmatter
     arguments:
       - dest: root
@@ -2405,7 +2607,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: record_corpus_acceptance
     module: Tools/record_corpus_acceptance.py
-    source_hash: sha256:0158db3fddb273f618b42cdbd43d336dd11fe6ce049d9579f2e29273632f559b
+    source_hash: sha256:daf0221fda93476856e57f0047a0f95ebd6b6bb421c3705cdb4e388555548521
     description: Record a Profile-authorized Corpus Planning semantic decision as machine-readable JSONL
     arguments:
       - dest: root
@@ -2476,7 +2678,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: register_amendment
     module: Tools/register_amendment.py
-    source_hash: sha256:539b90d21e879acaa433a6e5cbb8d4b0d5e1cdb2b43a22f0d103142d0dcff37d
+    source_hash: sha256:25a6b771547db2e44b3032f77b714c7f7c191857669ff278c500a8ae9e3baef8
     description: Register one approved current-protocol Amendment
     arguments:
       - dest: root
@@ -2674,6 +2876,17 @@ tools:
         action: store_true
         type: null
         help: write the registration; omit for a dry run
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the published receipt to stdout as one canonical JSON array and move the human report to stderr; a dry run publishes no receipt and so writes nothing there; receipt writing and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - actor_role
@@ -2696,7 +2909,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: render_boundary_projection
     module: Tools/render_boundary_projection.py
-    source_hash: sha256:c6b4cf7f46b2b1852c474e69cf50886a35c5c518ea7b02d6398857fe1e619364
+    source_hash: sha256:fc3bff597fafd3babe80e0f32c80df2de406861d679f99b0b3481a326385f48b
     description: Render the K08/09 boundary projection blocks from page `boundary` frontmatter.
     arguments:
       - dest: vault_root
@@ -2769,7 +2982,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: render_queue
     module: Tools/render_queue.py
-    source_hash: sha256:1046e3525b57c960e3f4b19622edd82c8661e4ccb6916de97cff8c9f68a301b8
+    source_hash: sha256:d812bf79922b250ac343e42d6d34fba1ddfbf1e8277df48a41184b652731fa1b
     description: Render Required Queue human report
     arguments:
       - dest: root
@@ -2820,7 +3033,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: render_structure_projection
     module: Tools/render_structure_projection.py
-    source_hash: sha256:08b413ad65d168f9b7e44cefd9cb49c66be207d02a5041c846dec3f029081de8
+    source_hash: sha256:85ab09f2e199bbf2bd181ba1858e97091e21484f7d98392caa4fe2cf8aee377f
     description: Render derived Structure Registry coverage projections (K01/05 derived roles).
     arguments:
       - dest: vault_root
@@ -2871,7 +3084,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: run_gates
     module: Tools/run_gates.py
-    source_hash: sha256:870b35e2c5b1ebed86f20b5d7da314d3b673155376d353f98c3e71ff3ebba969
+    source_hash: sha256:aed6042ebb3dae1acc610b5d5c0a40c7b75ccca5b709c146a98aeafc44ba5a33
     description: Run the adopter verification set derived from the K00/12 Stable Gate ID Registry (deterministic, not-batch-scoped producers).
     arguments:
       - dest: root
@@ -2922,7 +3135,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: scaffold_profile
     module: Tools/scaffold_profile.py
-    source_hash: sha256:fd53752eed2ad2c0a8a46a9b01f34c2c800d098db6647af8f64f1bbd0734a127
+    source_hash: sha256:a32c77da94268b577b19891d1e1f229fcb24d36f0ccc7d694bd2b48d23fec361
     description: Scaffold a candidate profile from profiles/_template using the exact-copy whitelist in profiles/template-files.yaml
     arguments:
       - dest: root
@@ -2973,7 +3186,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: seal_receipts
     module: Tools/seal_receipts.py
-    source_hash: sha256:ea515c9e297965058ec73e5861d0a4d675649e313f593052ad6756a0ee1a7e59
+    source_hash: sha256:e0ce52e4ae9f1300260606ce0e3aba1437d6028c581f94b82d743b0d89904ed0
     description: "Seal verified frozen receipt history (K12/07). --apply is a maintenance-window operation: run it only with no other Cambium or adopter writer, checker or receipt appender active against this repository."
     arguments:
       - dest: root
@@ -3030,6 +3243,17 @@ tools:
         action: store
         type: null
         help: "repository-relative JSONL path for this tool's own seal receipts, which never seal (default: .cambium/receipts/seal-receipts.jsonl)"
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable report to stderr; receipts written, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - index_rows
@@ -3043,7 +3267,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: stamp_cards
     module: Tools/stamp_cards.py
-    source_hash: sha256:93912a8cb70b862a5ca0e9962d31e44f538e7456e27dc0da73a86f177b3a4437
+    source_hash: sha256:2dbad555d9b0e25dc2cd7570964b0ae875e368cf781665408a36958680ea9f4d
     description: Stamp kernel Runtime Cards
     arguments:
       - dest: root
@@ -3094,7 +3318,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: update_queue
     module: Tools/update_queue.py
-    source_hash: sha256:ddadbf595971b5924d57b58509991d53b3254a58868f15d3835b4a5bf76c1ce5
+    source_hash: sha256:9b029ff478565fd6bdb3c6c408d068c472780ab7e91cb484adfe47ab8076d3c4
     description: Apply one Required Queue transition
     arguments:
       - dest: root
@@ -3304,7 +3528,22 @@ tools:
         action: store_true
         type: null
         help: write the transition; omit for a dry run
-    mutually_exclusive_groups: []
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the applied transition receipt(s) to stdout as one canonical JSON array and move the human report to stderr; a dry run publishes no receipt and so writes nothing there; receipt writing and exit codes are unchanged
+    mutually_exclusive_groups:
+      - required: true
+        dests:
+          - transition
+          - hold_state
     receipt_extensions:
       - after_coverage_sha256
       - after_progress_sha256
@@ -3323,7 +3562,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: update_task
     module: Tools/update_task.py
-    source_hash: sha256:bbe06f8a0dfedb64c7c6780d0212f417f6f80ab4a8d66f2105ac803c18697fa3
+    source_hash: sha256:1078591b16b485f34184d41e486e033ccb56bdc1ae8e8aa146baaff2f61c6767
     description: Apply one canonical task-state transition
     arguments:
       - dest: root
@@ -3465,6 +3704,17 @@ tools:
         action: store_true
         type: null
         help: write the transition; omit for a dry run
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the applied transition receipt to stdout as one canonical JSON array and move the human report to stderr; a dry run publishes no receipt and so writes nothing there; receipt writing and exit codes are unchanged
     mutually_exclusive_groups: []
     receipt_extensions:
       - aborted_task_transition_receipt

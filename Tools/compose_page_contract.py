@@ -38,7 +38,6 @@ Exit codes: 0 = ok / check passed; 1 = conflict or input error;
             2 = --check mismatch.
 """
 
-import argparse
 import hashlib
 import os
 import re
@@ -447,7 +446,7 @@ def compilation_currency_errors(root, admission, expected_text, *, base_path,
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Compose the effective frontmatter page contract from "
                     "the kernel bases and the selected profile's Metadata "
                     "Contract.")

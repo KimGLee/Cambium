@@ -18,7 +18,7 @@ Usage:
       [--receipts .cambium/receipts/queue.jsonl]
 """
 
-import argparse
+import contextlib
 import datetime
 import importlib
 import json
@@ -12925,13 +12925,49 @@ def make_check_receipt(result, outcome, details, mode,
     return receipt
 
 
+def _emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    ``--json`` publishes the receipts themselves, not a projection of them:
+    ``Tools/schemas/receipt.template.jsonl`` says in its own text that its
+    examples are "not the complete set", and this tool's per-mode extension
+    fields (the whole ``resume-status`` block, the maintenance and Standards
+    revalidation contexts) are exactly the part a whitelist would drop.
+    Serialization goes through the shared ``kblib.canonical_json_bytes``;
+    this module owns no serializer. A run that produced no receipt writes
+    nothing, so the settled rejection shape -- empty stdout, one line of
+    reason on stderr, exit 1 -- is untouched.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
+
+
 def _write_receipt(root, relative_path, result, outcome, details, mode,
                    confirmation_receipt=None, runtime_errors=None,
                    maintenance_context=None,
                    standards_revalidation_context=None,
-                   hub_page_candidates=None):
+                   hub_page_candidates=None, build_unwritten=False):
+    """Append this run's receipt, and return the exact object appended.
+
+    Without ``--receipts`` there is no JSONL target and nothing is built, so
+    a run that asks for nothing pays for nothing -- unchanged. ``--json``
+    still needs the object itself, and passes ``build_unwritten=True`` to get
+    it; the receipt is then constructed and returned but never written, which
+    keeps ``--json`` a pure reader of what this invocation decided.
+    """
     if not relative_path:
-        return
+        if not build_unwritten:
+            return None
+        return make_check_receipt(
+            result, outcome, details, mode,
+            confirmation_receipt=confirmation_receipt,
+            runtime_errors=runtime_errors,
+            maintenance_context=maintenance_context,
+            standards_revalidation_context=standards_revalidation_context,
+            hub_page_candidates=hub_page_candidates,
+        )
     path = kblib.managed_repository_path(
         root, relative_path, ".cambium/receipts",
         suffixes=(".jsonl",), must_exist=False,
@@ -12945,6 +12981,7 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
         hub_page_candidates=hub_page_candidates,
     )
     kblib.write_receipts(path, [receipt])
+    return receipt
 
 
 def _maintenance_gate_inventory(result):
@@ -13731,7 +13768,7 @@ def required_queue_completion_errors(result):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Validate canonical Required Queue state")
+    parser = kblib.ArgumentParser(description="Validate canonical Required Queue state")
     parser.add_argument("root", help="adopting repository root")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--require-ready", metavar="BATCH_ID",
@@ -13763,8 +13800,24 @@ def main(argv=None):
                         help="watermark advance receipt ID supplied to "
                              "--require-maintenance-complete")
     parser.add_argument("--receipts", help="repository-relative JSONL receipt path")
+    parser.add_argument(
+        "--json", action="store_true",
+        help="write this run's receipt object to stdout as one canonical "
+             "JSON array and move the human report to stderr; receipt "
+             "writing and exit codes are unchanged")
     args = parser.parse_args(argv)
 
+    if not args.json:
+        return _run(args, None)
+    produced = []
+    with contextlib.redirect_stdout(sys.stderr):
+        code = _run(args, produced)
+    _emit_json_receipts(produced)
+    return code
+
+
+def _run(args, produced):
+    """Evaluate one already-parsed invocation; ``produced`` collects receipts."""
     result = validate_runtime(args.root)
     errors = list(result["errors"])
     candidates = []
@@ -13989,17 +14042,20 @@ def main(argv=None):
               if args.require_maintenance_complete else
               ("resume-status" if args.resume_status else "consistency")))))
     try:
-        _write_receipt(
+        receipt = _write_receipt(
             args.root, args.receipts, result, outcome, details, mode,
             hub_page_candidates=hub_page_candidates,
             confirmation_receipt=args.confirmation_receipt,
             runtime_errors=errors,
             maintenance_context=maintenance_context,
             standards_revalidation_context=revalidation_context,
+            build_unwritten=produced is not None,
         )
     except (OSError, ValueError) as exc:
         print("[FAIL] cannot write receipts: %s" % exc)
         return 1
+    if produced is not None and receipt is not None:
+        produced.append(receipt)
     return code
 
 

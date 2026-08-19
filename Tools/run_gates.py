@@ -36,7 +36,6 @@ adopter carries is what its governance needs, not what upstream has.
 Exit codes: 0 = all pass; 1 = failure; 2 = holds to read.
 """
 
-import argparse
 import os
 import subprocess
 import sys
@@ -300,7 +299,7 @@ def _run(command):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Run the adopter verification set derived from the "
                     "K00/12 Stable Gate ID Registry (deterministic, "
                     "not-batch-scoped producers).")
@@ -372,6 +371,14 @@ def main(argv=None):
             for line in output.strip().splitlines()[-5:]:
                 print("    " + line)
 
+    # Reading exit 2 as HOLD is load-bearing here: this sweep has no receipt to
+    # fall back on, so whatever the code says is what the run reports.  That is
+    # sound only because 2 now has exactly one meaning.  Until every tool built
+    # its parser through kblib.ArgumentParser, argparse also spent 2 on a usage
+    # error, so a registry row whose command had drifted from its tool printed
+    # an empty HOLD and left `failures` untouched -- the sweep stayed green over
+    # a gate that never ran.  Usage errors exit 1 now and land in the FAIL
+    # branch below, which is where a command that cannot run belongs.
     ran = {}
     for gate_id, kind, command in derived:
         if kind == "manual":

@@ -33,7 +33,6 @@ Usage: python3 render_structure_projection.py <vault_root>
        [--profile PROFILE_DIR] [--check | --apply]
 """
 
-import argparse
 import os
 import sys
 
@@ -252,7 +251,7 @@ def iter_derived_targets(registry):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Render derived Structure Registry coverage "
                     "projections (K01/05 derived roles).")
     parser.add_argument("vault_root", help="vault root directory")

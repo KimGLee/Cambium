@@ -16,7 +16,7 @@ requires a fresh explicit-user approval reference; downstream writers derive
 and compare the same binding again under their writer lock.
 """
 
-import argparse
+import contextlib
 import copy
 import os
 import re
@@ -38,6 +38,26 @@ OPERATIONS = (
     "gap-routing-reconciliation",
 )
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
+
+
+def _emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    ``--json`` publishes the receipts themselves, not a projection of them:
+    ``Tools/schemas/receipt.template.jsonl`` says in its own text that its
+    examples are "not the complete set", and this tool's registration
+    bindings are exactly what a whitelist would drop. Serialization goes
+    through the shared ``kblib.canonical_json_bytes``; this module owns no
+    serializer. Only a run that actually published a receipt writes here: a
+    dry run plans one but publishes nothing, so its stdout stays empty and
+    the plan stays on stderr where a human reads it. That also leaves the
+    settled rejection shape -- empty stdout, one line of reason on stderr,
+    exit 1 -- exactly as it was.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
 
 
 def _nonempty(value):
@@ -736,7 +756,7 @@ def _apply(root, prepared, receipt_path):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Register one approved current-protocol Amendment"
     )
     parser.add_argument("root", help="adopting repository root")
@@ -790,8 +810,25 @@ def main(argv=None):
                         help="receipt JSONL path under .cambium/receipts")
     parser.add_argument("--apply", action="store_true",
                         help="write the registration; omit for a dry run")
+    parser.add_argument(
+        "--json", action="store_true",
+        help="write the published receipt to stdout as one canonical JSON "
+             "array and move the human report to stderr; a dry run publishes "
+             "no receipt and so writes nothing there; receipt writing and "
+             "exit codes are unchanged")
     args = parser.parse_args(argv)
 
+    if not args.json:
+        return _run(args, None)
+    produced = []
+    with contextlib.redirect_stdout(sys.stderr):
+        code = _run(args, produced)
+    _emit_json_receipts(produced)
+    return code
+
+
+def _run(args, produced):
+    """Execute one already-parsed invocation; ``produced`` collects receipts."""
     if args.withdraw:
         conflicting = [name for name, value in (
             ("--operation", args.operation), ("--plan", args.plan),
@@ -884,6 +921,8 @@ def main(argv=None):
         print("[FAIL] Amendment %s: %s" %
               ("withdrawal" if args.withdraw else "registration", exc))
         return 1
+    if produced is not None:
+        produced.append(prepared["receipt"])
     print("[PASS] Amendment %s %s; receipt=%s" %
           (prepared["record"]["id"],
            "withdrawn" if args.withdraw else "registered",

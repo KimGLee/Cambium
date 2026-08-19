@@ -28,7 +28,6 @@ Usage: python3 render_boundary_projection.py <vault_root>
        [--scope SUBPATH] [--check | --apply]
 """
 
-import argparse
 import os
 import sys
 
@@ -111,7 +110,7 @@ def marker_pair(lines):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Render the K08/09 boundary projection blocks from "
                     "page `boundary` frontmatter.")
     parser.add_argument("vault_root", help="vault root directory")

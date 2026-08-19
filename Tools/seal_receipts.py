@@ -71,7 +71,7 @@ stay hot in v1: they carry activation gates and page evidence whose
 consumers still perform live field revalidation, and they are small.
 """
 
-import argparse
+import contextlib
 import json
 import os
 import re
@@ -101,6 +101,51 @@ PAGE_SNAPSHOT_RE = re.compile(r"page-contract-.*\.jsonl\Z")
 BATCH_FILE_RE = re.compile(
     r"(delta-apply-(?P<delta_batch>.+)|audit-[a-z_]+-[0-9TZ]+-[0-9a-f]+-[0-9]{4})"
     r"\.jsonl\Z")
+
+
+# ---------------------------------------------------------------------------
+# `--json` output (machine-readable receipts)
+#
+# Purely additive: without the flag not one byte of this tool's behaviour
+# moves.  With it, everything written for a person goes to stderr and stdout
+# carries exactly one canonical JSON array -- the receipt objects this run
+# handed to the receipt writer, serialized verbatim.
+#
+# Nothing is filtered or renamed.  `schemas/receipt.template.jsonl` guarantees
+# only the base fields every receipt carries; extension fields differ per
+# producer and are discoverable from the receipt itself, which is why that
+# template says its examples are "not the complete set".  A field allowlist
+# here would silently drop exactly the fields a caller came for.
+#
+# Serialization goes through `kblib.canonical_json_bytes`; this module owns no
+# serializer.  The flag changes no verdict, no exit code, and no receipt
+# write.  A run that writes no receipt -- a dry run, a --verify pass, or a
+# refusal -- emits the empty array; a usage error still exits through argparse
+# before any of this, leaving stdout empty and the reason on stderr.
+# ---------------------------------------------------------------------------
+JSON_HELP = ("write the receipts this run produced to stdout as one canonical "
+             "JSON array and move the human-readable report to stderr; "
+             "receipts written, verdicts, and exit codes are unchanged")
+
+_JSON_RECEIPTS = []
+
+
+def _record_receipts(receipts):
+    """Remember the exact receipt objects handed to the receipt writer."""
+    _JSON_RECEIPTS.extend(receipts)
+    return receipts
+
+
+def _run_reporting_json(runner):
+    """Run `runner`, reserving stdout for JSON and giving stderr the prose."""
+    stdout = sys.stdout
+    with contextlib.redirect_stdout(sys.stderr):
+        exit_code = runner()
+    stdout.write(kblib.canonical_json_bytes(_JSON_RECEIPTS).decode("utf-8"))
+    stdout.write("\n")
+    stdout.flush()
+    return exit_code
+
 
 
 # ---------------------------------------------------------------------------
@@ -636,7 +681,7 @@ def _publish(root, pending):
                   for line in _existing_lines(receipt_full) if line.strip())
     if not already:
         outcome, error, _ = kblib.write_receipts_observed(
-            receipt_full, [pending["receipt"]])
+            receipt_full, _record_receipts([pending["receipt"]]))
         if error is not None or outcome != "present":
             raise RuntimeError(
                 "seal receipt append outcome=%s error=%s" % (outcome, error))
@@ -1068,7 +1113,7 @@ def reconcile(root, apply_it):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Seal verified frozen receipt history (K12/07). "
                     "--apply is a maintenance-window operation: run it only "
                     "with no other Cambium or adopter writer, checker or "
@@ -1089,7 +1134,15 @@ def main(argv=None):
                         help="repository-relative JSONL path for this tool's "
                              "own seal receipts, which never seal "
                              "(default: %s)" % SEAL_RECEIPTS_PATH)
+    parser.add_argument("--json", action="store_true", help=JSON_HELP)
     args = parser.parse_args(argv)
+
+    if not args.json:
+        return _run(args)
+    return _run_reporting_json(lambda: _run(args))
+
+
+def _run(args):
     root = os.path.realpath(os.path.abspath(args.root))
 
     if args.verify:

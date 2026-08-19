@@ -43,7 +43,6 @@ Usage: python3 Tools/scaffold_profile.py <root> --profile-id <slug>
        [--apply] [--json]
 """
 
-import argparse
 import json
 import os
 import re
@@ -341,7 +340,7 @@ def apply_plan(root, profile_id, plan):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Scaffold a candidate profile from profiles/_template "
                     "using the exact-copy whitelist in %s" % MANIFEST_RELATIVE)
     parser.add_argument("root", help="repository root containing profiles/")

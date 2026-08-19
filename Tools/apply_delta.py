@@ -14,7 +14,7 @@ apply cannot be confused with a completed one.  Omitting ``--receipts`` names
 ``--receipts`` path that already exists is refused.
 """
 
-import argparse
+import contextlib
 import copy
 import json
 import os
@@ -44,6 +44,60 @@ CONTROL_FIELDS = frozenset((
 KNOWN_SCALAR_KEYS = frozenset((
     "authoring_status", "lifecycle", "volatility", "review_by",
 ))
+
+
+# ---------------------------------------------------------------------------
+# `--json` output (machine-readable receipts)
+#
+# Purely additive: without the flag not one byte of this tool's behaviour
+# moves.  With it, everything written for a person goes to stderr and stdout
+# carries this run's receipt objects, serialized verbatim as one canonical
+# JSON array.
+#
+# Nothing is filtered or renamed.  `schemas/receipt.template.jsonl` guarantees
+# only the base fields every receipt carries; extension fields differ per
+# producer and are discoverable from the receipt itself, which is why that
+# template says in its own text that its examples are "not the complete set".
+# A field allowlist here would silently drop exactly the fields a caller came
+# for.
+#
+# This tool's receipts are written from inside its transaction helpers, well
+# below `main`, so the run collects them where they are handed to the receipt
+# writer rather than threading an accumulator through every frame.
+# ---------------------------------------------------------------------------
+JSON_HELP = ("write this run's receipt objects to stdout as one canonical "
+             "JSON array and move the human-readable report to stderr; "
+             "receipt writing, verdicts, and exit codes are unchanged")
+
+_JSON_RECEIPTS = []
+
+
+def _record_receipts(receipts):
+    """Remember the exact receipt objects handed to the receipt writer."""
+    _JSON_RECEIPTS.extend(receipts)
+    return receipts
+
+
+def emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    The one canonical serializer is `kblib.canonical_json_bytes`; this module
+    owns no serializer of its own.  A run that produced no receipt writes
+    nothing, which keeps the already-settled rejection shape (empty stdout,
+    one line of reason on stderr, exit 1) intact.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
+
+
+def _run_reporting_json(runner):
+    """Run `runner`, reserving stdout for JSON and giving stderr the prose."""
+    with contextlib.redirect_stdout(sys.stderr):
+        exit_code = runner()
+    emit_json_receipts(_JSON_RECEIPTS)
+    return exit_code
 
 
 def _parse_delta_bytes(raw):
@@ -659,7 +713,7 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
                     "runtime authority changed before delta receipt")
                 receipt_attempted = True
                 kblib.write_receipts(
-                    receipt_path, [receipt], exclusive=True
+                    receipt_path, _record_receipts([receipt]), exclusive=True
                 )
                 check_queue.require_runtime_authority_current(
                     root, authority,
@@ -772,12 +826,12 @@ def _legacy_apply(args, delta, new_text, planned, rejected):
             "planned=%d rejected=%d applied=%s" %
             (len(planned), len(rejected), bool(wrote)), 1,
         )
-        kblib.write_receipts(args.receipts, [receipt])
+        kblib.write_receipts(args.receipts, _record_receipts([receipt]))
     return 0 if result == "pass" else (1 if result == "fail" else 2)
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Deterministic Coverage Delta application"
     )
     parser.add_argument("ledger",
@@ -787,9 +841,10 @@ def main(argv=None):
                         help="batch Coverage delta to apply; canonical mode "
                              "requires exactly .cambium/deltas/<batch>.yaml")
     parser.add_argument("--root", help="adopting repository root (canonical mode)")
-    parser.add_argument("--apply", action="store_true",
-                        help="write the merged Coverage; omit for a dry run")
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true",
+                      help="write the merged Coverage; omit for a dry run")
+    mode.add_argument(
         "--preflight", action="store_true",
         help="plan canonical Coverage and routed-gap settlement without writes; "
              "allows an open batch")
@@ -814,11 +869,15 @@ def main(argv=None):
                         help="receipt JSONL destination; canonical mode "
                              "defaults to a new .cambium/receipts/"
                              "<receipt_id>.jsonl and refuses an existing path")
+    parser.add_argument("--json", action="store_true", help=JSON_HELP)
     args = parser.parse_args(argv)
+    if not args.json:
+        return _run(args)
+    return _run_reporting_json(lambda: _run(args))
 
-    if args.preflight and args.apply:
-        print("[FAIL] --preflight and --apply are mutually exclusive")
-        return 1
+
+def _run(args):
+    """This tool's own run; `main` above owns only argument parsing."""
     if args.preflight and args.root is None:
         print("[FAIL] --preflight requires canonical --root mode")
         return 1

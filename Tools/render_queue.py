@@ -4,7 +4,6 @@
 The Markdown is a disposable projection and is never read as runtime input.
 """
 
-import argparse
 import os
 import sys
 
@@ -97,7 +96,7 @@ def render(result):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Render Required Queue human report")
+    parser = kblib.ArgumentParser(description="Render Required Queue human report")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--output", default=DEFAULT_OUTPUT,
                         help="repository-relative report path")

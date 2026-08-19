@@ -51,7 +51,6 @@ Usage: python3 Tools/apply_profile_adoption.py <root> --plan <path>
        [--apply] [--json] [--receipts PATH]
 """
 
-import argparse
 import json
 import os
 import re
@@ -995,7 +994,7 @@ def prepare(root, plan_argument, receipts_argument):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Apply one no-runtime R09 Profile adoption (initial "
                     "adoption or pre-runtime profile revision) from a "
                     "restricted-YAML plan")

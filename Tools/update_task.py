@@ -10,7 +10,7 @@ The default is a dry run.  ``--apply`` requires the integrator role and exact
 Progress and Required Queue fingerprints observed by the caller.
 """
 
-import argparse
+import contextlib
 import copy
 import os
 import sys
@@ -37,6 +37,26 @@ TERMINAL_BINDING_FIELDS = PROFILE_BINDING_FIELDS + (
 FINAL_CONTROL_STATUSES = frozenset((
     "verified", "deferred", "superseded", "not-applicable",
 ))
+
+
+def _emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    ``--json`` publishes the receipts themselves, not a projection of them:
+    ``Tools/schemas/receipt.template.jsonl`` says in its own text that its
+    examples are "not the complete set", and this tool's transition bindings
+    are exactly what a whitelist would drop. Serialization goes through the
+    shared ``kblib.canonical_json_bytes``; this module owns no serializer.
+    Only a run that actually applied the transition writes here: a dry run
+    plans a receipt but publishes none, so its stdout stays empty and the
+    plan stays on stderr. That also leaves the settled rejection shape --
+    empty stdout, one line of reason on stderr, exit 1 -- exactly as it was.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
+
 
 # ``planned -> paused/blocked`` is intentional: an admitted task may be
 # interrupted or encounter a blocker before its first batch is activated.
@@ -722,7 +742,7 @@ def build_task_transition(result, after_state, at, summary, evidence_receipt,
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Apply one canonical task-state transition")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument(
@@ -763,7 +783,25 @@ def main(argv=None):
                         help="receipt JSONL path under .cambium/receipts")
     parser.add_argument("--apply", action="store_true",
                         help="write the transition; omit for a dry run")
+    parser.add_argument(
+        "--json", action="store_true",
+        help="write the applied transition receipt to stdout as one canonical "
+             "JSON array and move the human report to stderr; a dry run "
+             "publishes no receipt and so writes nothing there; receipt "
+             "writing and exit codes are unchanged")
     args = parser.parse_args(argv)
+
+    if not args.json:
+        return _run(args, None)
+    produced = []
+    with contextlib.redirect_stdout(sys.stderr):
+        code = _run(args, produced)
+    _emit_json_receipts(produced)
+    return code
+
+
+def _run(args, produced):
+    """Execute one already-parsed invocation; ``produced`` collects receipts."""
     if args.at is None:
         args.at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -1050,6 +1088,8 @@ def main(argv=None):
         print("[FAIL] task transition write failed; restoration attempted: %s" %
               exc)
         return 1
+    if produced is not None:
+        produced.append(receipt)
     print("[PASS] task transition applied; task_state=%s progress_sha256=%s" %
           (args.transition, receipt["after_progress_sha256"]))
     return 0

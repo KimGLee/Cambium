@@ -29,10 +29,11 @@ Method and thresholds:
   make up > 60%); paragraph pairs within the same file.
 
 Usage: python3 duplicate_check.py [vault_path] [--scope SUBPATH]
-       [--exclude COMPONENT] (vault defaults to the current directory).
+       [--exclude COMPONENT] [--json] (vault defaults to the current
+       directory).
 """
 
-import argparse
+import contextlib
 import os
 import re
 import sys
@@ -51,6 +52,50 @@ JACCARD_THRESHOLD = 0.5
 CONTAINMENT_THRESHOLD = 0.7
 LINK_LINE_RATIO = 0.6  # paragraph is a link list when [[-leading lines exceed this ratio
 MAX_EXAMPLES_PER_PAIR = 3  # example paragraphs shown per file pair
+
+
+# ---------------------------------------------------------------------------
+# `--json` output (machine-readable receipts)
+#
+# Purely additive: without the flag not one byte of this tool's behaviour
+# moves.  With it, everything written for a person goes to stderr and stdout
+# carries exactly one canonical JSON array -- the receipt objects this run
+# handed to the receipt writer, serialized verbatim.
+#
+# Nothing is filtered or renamed.  `schemas/receipt.template.jsonl` guarantees
+# only the base fields every receipt carries; extension fields differ per
+# producer and are discoverable from the receipt itself, which is why that
+# template says its examples are "not the complete set".  A field allowlist
+# here would silently drop exactly the fields a caller came for.
+#
+# Serialization goes through `kblib.canonical_json_bytes`; this module owns no
+# serializer.  The flag changes no verdict, no exit code, and no receipt
+# write.  A run that writes no receipt -- a dry run, or a refusal -- emits the
+# empty array; a usage error still exits through argparse before any of this,
+# leaving stdout empty and the reason on stderr.
+# ---------------------------------------------------------------------------
+JSON_HELP = ("write the receipts this run produced to stdout as one canonical "
+             "JSON array and move the human-readable report to stderr; "
+             "receipts written, verdicts, and exit codes are unchanged")
+
+_JSON_RECEIPTS = []
+
+
+def _record_receipts(receipts):
+    """Remember the exact receipt objects handed to the receipt writer."""
+    _JSON_RECEIPTS.extend(receipts)
+    return receipts
+
+
+def _run_reporting_json(runner):
+    """Run `runner`, reserving stdout for JSON and giving stderr the prose."""
+    stdout = sys.stdout
+    with contextlib.redirect_stdout(sys.stderr):
+        exit_code = runner()
+    stdout.write(kblib.canonical_json_bytes(_JSON_RECEIPTS).decode("utf-8"))
+    stdout.write("\n")
+    stdout.flush()
+    return exit_code
 
 
 def iter_markdown_files(vault: Path, excludes):
@@ -147,7 +192,7 @@ def path_in_scope(path_str: str, scope: Path) -> bool:
 
 
 def main():
-    ap = argparse.ArgumentParser(
+    ap = kblib.ArgumentParser(
         description="Cross-file duplicate paragraph candidate detection "
                     "(for maintenance runs and governance tasks)")
     ap.add_argument("vault", nargs="?", default=".",
@@ -162,8 +207,15 @@ def main():
     ap.add_argument("--receipts",
                     help="JSONL path to append machine-readable receipts to "
                          "(shared convention, Tools/schemas/receipt.template.jsonl)")
+    ap.add_argument("--json", action="store_true", help=JSON_HELP)
     args = ap.parse_args()
 
+    if not args.json:
+        return _run(args)
+    return _run_reporting_json(lambda: _run(args))
+
+
+def _run(args):
     vault = Path(args.vault)
     excludes = args.exclude if args.exclude is not None else ["legacy"]
     excludes = [c.strip("/") for c in excludes if c.strip("/")]
@@ -187,7 +239,7 @@ def main():
             TOOL, TOOL_VERSION, "duplicate-check-summary",
             (args.scope or ".") + " @ " + str(vault.resolve()), "pass",
             "no cross-file similar paragraphs above the thresholds", 1))
-        kblib.write_receipts(args.receipts, receipts)
+        kblib.write_receipts(args.receipts, _record_receipts(receipts))
         return kblib.exit_code(receipts)
 
     scope_note = f" (scope: {args.scope})" if scope is not None else ""
@@ -208,7 +260,7 @@ def main():
             "%d similar paragraph pair(s) above thresholds (K03/03 split and "
             "duplication policy; candidates only, disposition is a human "
             "call)" % len(records), seq))
-    kblib.write_receipts(args.receipts, receipts)
+    kblib.write_receipts(args.receipts, _record_receipts(receipts))
     return kblib.exit_code(receipts)
 
 
