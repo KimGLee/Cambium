@@ -630,7 +630,9 @@ def main(argv=None):
     parser.add_argument("--receipts", default=RECEIPT_PATH,
                         help="receipt JSONL path under .cambium/receipts")
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
-                        default="worker")
+                        default="worker",
+                        help="declared caller role; only integrator may "
+                             "apply a contract amendment")
     parser.add_argument("--apply", action="store_true",
                         help="write the transaction; omit for a dry run")
     args = parser.parse_args(argv)

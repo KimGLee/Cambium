@@ -572,7 +572,9 @@ def main(argv=None):
         description="Deterministically compose the vocabulary artifact "
         "from the kernel base and the selected profile's extensions."
     )
-    parser.add_argument("--base", default=DEFAULT_BASE)
+    parser.add_argument("--base", default=DEFAULT_BASE,
+                        help="the kernel vocabulary base the extensions are "
+                             "appended to (default: %s)" % DEFAULT_BASE)
     parser.add_argument(
         "--extensions",
         default=None,
@@ -580,7 +582,10 @@ def main(argv=None):
         "flag is present it must name that same path"
         % EXTENSIONS_BASENAME,
     )
-    parser.add_argument("--output", default=DEFAULT_OUTPUT)
+    parser.add_argument("--output", default=DEFAULT_OUTPUT,
+                        help="composed vocabulary artifact to write, or to "
+                             "compare against under --check (default: %s)"
+                             % DEFAULT_OUTPUT)
     parser.add_argument(
         "--check",
         action="store_true",

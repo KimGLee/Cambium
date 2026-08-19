@@ -1073,8 +1073,10 @@ def main(argv=None):
                     "--apply is a maintenance-window operation: run it only "
                     "with no other Cambium or adopter writer, checker or "
                     "receipt appender active against this repository.")
-    parser.add_argument("root")
-    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("root", help="adopting repository root")
+    parser.add_argument("--apply", action="store_true",
+                        help="write the seal, or with --reconcile finish the "
+                             "interrupted one; omit for a dry run")
     parser.add_argument("--verify", action="store_true",
                         help="re-prove every sealed segment, projection and "
                              "seal-receipt binding, then exit")
@@ -1083,7 +1085,10 @@ def main(argv=None):
                              "publication paths this tool implements; other "
                              "interruptions fail closed and are resolved by "
                              "the runbook in Tools/README.md")
-    parser.add_argument("--receipts", default=SEAL_RECEIPTS_PATH)
+    parser.add_argument("--receipts", default=SEAL_RECEIPTS_PATH,
+                        help="repository-relative JSONL path for this tool's "
+                             "own seal receipts, which never seal "
+                             "(default: %s)" % SEAL_RECEIPTS_PATH)
     args = parser.parse_args(argv)
     root = os.path.realpath(os.path.abspath(args.root))
 

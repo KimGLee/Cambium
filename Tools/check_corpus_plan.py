@@ -2233,7 +2233,7 @@ def _receipts_for(result, *, repository_snapshot_sha256=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Validate explicit Corpus Planning artifacts")
-    parser.add_argument("root")
+    parser.add_argument("root", help="adopting repository root")
     parser.add_argument(
         "--profile",
         help="repository-relative Profile manifest or Profile directory; "

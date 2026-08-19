@@ -780,20 +780,40 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Deterministic Coverage Delta application"
     )
-    parser.add_argument("ledger")
-    parser.add_argument("delta")
+    parser.add_argument("ledger",
+                        help="Coverage ledger to merge into; canonical mode "
+                             "requires exactly %s" % check_queue.COVERAGE_PATH)
+    parser.add_argument("delta",
+                        help="batch Coverage delta to apply; canonical mode "
+                             "requires exactly .cambium/deltas/<batch>.yaml")
     parser.add_argument("--root", help="adopting repository root (canonical mode)")
-    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--apply", action="store_true",
+                        help="write the merged Coverage; omit for a dry run")
     parser.add_argument(
         "--preflight", action="store_true",
         help="plan canonical Coverage and routed-gap settlement without writes; "
              "allows an open batch")
-    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--force", action="store_true",
+                        help="legacy mode only: keep pages whose ledger "
+                             "batch/next_batch does not match the delta batch")
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
-                        default="worker")
-    parser.add_argument("--expected-coverage-sha256")
-    parser.add_argument("--expected-queue-sha256")
-    parser.add_argument("--receipts")
+                        default="worker",
+                        help="declared caller role; only integrator may "
+                             "apply canonical Coverage")
+    parser.add_argument("--expected-coverage-sha256",
+                        help="compare-and-swap guard for canonical --apply: "
+                             "sha256:<hex> the caller read from the current "
+                             "Coverage; the write is refused when the live "
+                             "bytes differ")
+    parser.add_argument("--expected-queue-sha256",
+                        help="compare-and-swap guard for canonical --apply: "
+                             "sha256:<hex> the caller read from the current "
+                             "Queue; the write is refused when the live bytes "
+                             "differ")
+    parser.add_argument("--receipts",
+                        help="receipt JSONL destination; canonical mode "
+                             "defaults to a new .cambium/receipts/"
+                             "<receipt_id>.jsonl and refuses an existing path")
     args = parser.parse_args(argv)
 
     if args.preflight and args.apply:

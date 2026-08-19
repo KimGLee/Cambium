@@ -453,13 +453,22 @@ def main(argv=None):
                     "Contract.")
     parser.add_argument("--root", default=REPO_ROOT,
                         help="vault root (default: this repository)")
-    parser.add_argument("--base", default=None)
-    parser.add_argument("--relationships", default=None)
-    parser.add_argument("--sources-role", dest="sources_role", default=None)
+    parser.add_argument("--base", default=None,
+                        help="applicability base to compile from (default: "
+                             "%s under --root)" % DEFAULT_BASE)
+    parser.add_argument("--relationships", default=None,
+                        help="relationship base to compile from (default: "
+                             "%s under --root)" % DEFAULT_RELATIONSHIPS)
+    parser.add_argument("--sources-role", dest="sources_role", default=None,
+                        help="sources-role base to compile from (default: "
+                             "%s under --root)" % DEFAULT_SOURCES_ROLE)
     parser.add_argument("--profile",
                         help="profile directory for a validation run; the "
                              "vault selection stays with K00/03")
-    parser.add_argument("--output", default=None)
+    parser.add_argument("--output", default=None,
+                        help="compiled page contract to write, or to compare "
+                             "against under --check (default: %s under "
+                             "--root)" % DEFAULT_OUTPUT)
     parser.add_argument("--check", action="store_true",
                         help="recompute and compare against the existing "
                              "output; exit 0 when byte-identical, 2 "

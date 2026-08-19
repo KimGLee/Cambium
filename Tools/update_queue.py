@@ -735,26 +735,60 @@ def _transition_item(item, args, result):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Apply one Required Queue transition")
-    parser.add_argument("root")
-    parser.add_argument("--id", required=True)
-    parser.add_argument("--transition", choices=("open", "merge-ready", "closed"))
-    parser.add_argument("--hold-state", choices=tuple(check_queue.HOLDS))
-    parser.add_argument("--expected-state-revision", type=int)
-    parser.add_argument("--expected-sha256")
+    parser.add_argument("root", help="adopting repository root")
+    parser.add_argument("--id", required=True,
+                        help="Required Queue batch id to transition")
+    parser.add_argument("--transition", choices=("open", "merge-ready", "closed"),
+                        help="target lifecycle state; exclusive with "
+                             "--hold-state")
+    parser.add_argument("--hold-state", choices=tuple(check_queue.HOLDS),
+                        help="target hold state; exclusive with --transition")
+    parser.add_argument("--expected-state-revision", type=int,
+                        help="compare-and-swap guard: the state_revision the "
+                             "caller read from the current Queue; the write is "
+                             "refused when the live value differs")
+    parser.add_argument("--expected-sha256",
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Queue; the write is "
+                             "refused when the live bytes differ")
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
-                        default="worker")
-    parser.add_argument("--gate-receipt")
-    parser.add_argument("--standards-revalidation-receipt")
-    parser.add_argument("--close-gate-receipt")
-    parser.add_argument("--confirmation-receipt")
-    parser.add_argument("--delta-path")
-    parser.add_argument("--delta-apply-receipt")
-    parser.add_argument("--batch-receipt", action="append", default=[])
-    parser.add_argument("--reason")
-    parser.add_argument("--at", default=None)
+                        default="worker",
+                        help="declared caller role; Queue transition planning "
+                             "and apply both require integrator")
+    parser.add_argument("--gate-receipt",
+                        help="gate receipt id: activation gate for queued -> "
+                             "open, Queue consistency gate for closed and for "
+                             "clearing revalidation-required")
+    parser.add_argument("--standards-revalidation-receipt",
+                        help="check_queue --require-revalidation receipt "
+                             "discharging an outstanding Standards "
+                             "revalidation; queued -> open or "
+                             "revalidation-required -> none only")
+    parser.add_argument("--close-gate-receipt",
+                        help="check_batch_close receipt id required by the "
+                             "closed transition")
+    parser.add_argument("--confirmation-receipt",
+                        help="confirmation receipt id required by queued -> "
+                             "open when the batch is confirmation_required")
+    parser.add_argument("--delta-path",
+                        help="repository-relative .cambium/deltas/<id>.yaml "
+                             "batch delta required by open -> merge-ready")
+    parser.add_argument("--delta-apply-receipt",
+                        help="apply_delta receipt id required by the closed "
+                             "transition and by merge-ready -> open reopen")
+    parser.add_argument("--batch-receipt", action="append", default=[],
+                        help="batch-review gate receipt id for open -> "
+                             "merge-ready; exactly one is accepted")
+    parser.add_argument("--reason",
+                        help="non-empty rationale required by merge-ready -> "
+                             "open and by any non-none hold")
+    parser.add_argument("--at", default=None,
+                        help="transition timestamp; defaults to now in UTC")
     parser.add_argument("--receipts",
-                        default=".cambium/receipts/queue-transitions.jsonl")
-    parser.add_argument("--apply", action="store_true")
+                        default=".cambium/receipts/queue-transitions.jsonl",
+                        help="receipt JSONL path under .cambium/receipts")
+    parser.add_argument("--apply", action="store_true",
+                        help="write the transition; omit for a dry run")
     args = parser.parse_args(argv)
     if args.at is None:
         args.at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())

@@ -13734,10 +13734,17 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Validate canonical Required Queue state")
     parser.add_argument("root", help="adopting repository root")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--require-ready", metavar="BATCH_ID")
-    group.add_argument("--require-revalidation", metavar="BATCH_ID")
-    group.add_argument("--require-complete", action="store_true")
-    group.add_argument("--require-maintenance-complete", action="store_true")
+    group.add_argument("--require-ready", metavar="BATCH_ID",
+                       help="prove BATCH_ID is queued and ready to activate")
+    group.add_argument("--require-revalidation", metavar="BATCH_ID",
+                       help="prove BATCH_ID may produce its Standards "
+                            "revalidation aggregate")
+    group.add_argument("--require-complete", action="store_true",
+                       help="build completion gate: prove no Required work "
+                            "remains")
+    group.add_argument("--require-maintenance-complete", action="store_true",
+                       help="maintenance completion gate: prove one bounded "
+                            "maintenance run is complete")
     group.add_argument("--resume-status", action="store_true",
                        help="show interruption-safe task and batch resume state")
     parser.add_argument("--confirmation-receipt",
@@ -13746,9 +13753,15 @@ def main(argv=None):
         "--boundary-gate-receipt", action="append", default=[],
         metavar="GATE_ID=RECEIPT_ID",
         help="current gate evidence supplied to --require-revalidation")
-    parser.add_argument("--budget-manifest-receipt")
-    parser.add_argument("--ledger-advance-receipt")
-    parser.add_argument("--watermark-advance-receipt")
+    parser.add_argument("--budget-manifest-receipt",
+                        help="closed budget-manifest receipt ID supplied to "
+                             "--require-maintenance-complete")
+    parser.add_argument("--ledger-advance-receipt",
+                        help="Coverage Ledger advance receipt ID supplied to "
+                             "--require-maintenance-complete")
+    parser.add_argument("--watermark-advance-receipt",
+                        help="watermark advance receipt ID supplied to "
+                             "--require-maintenance-complete")
     parser.add_argument("--receipts", help="repository-relative JSONL receipt path")
     args = parser.parse_args(argv)
 

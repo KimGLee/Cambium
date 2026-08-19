@@ -1,0 +1,3490 @@
+# Generated artifact -- do not edit directly.
+# Compiled by Tools/compile_cli_contract.py from the argparse
+#   declaration each Tools/*.py CLI builds for itself. Every value
+#   below is read back out of that parser; nothing here is written
+#   by hand, and a hand edit is reported by --check as a HOLD.
+# regenerate with: python3 Tools/compile_cli_contract.py .
+# verify with:     python3 Tools/compile_cli_contract.py . --check
+# `source_hash` covers the manifest of the 38 tool sources listed
+#   under source_files, each with its own sha256.
+# A positional argument is one whose `option_strings` is empty.
+# `choices` is the admissible SET in canonical order, not the
+#   declaration order: several tools build it from a Python set,
+#   whose iteration order is not stable between processes.
+# The auto-added -h/--help action is omitted: argparse translates
+#   its help text, which would make this artifact locale-dependent.
+
+schema_version: 1
+artifact: cli-invocation-contract
+generator: Tools/compile_cli_contract.py
+generator_version: 1.0.0
+derived_from: argparse-introspection
+source_files:
+  - Tools/adopt_standards.py
+  - Tools/apply_amendment.py
+  - Tools/apply_contract_amendment.py
+  - Tools/apply_delta.py
+  - Tools/apply_profile_adoption.py
+  - Tools/apply_task_plan.py
+  - Tools/check_batch_close.py
+  - Tools/check_boundary_contract.py
+  - Tools/check_corpus_plan.py
+  - Tools/check_freshness.py
+  - Tools/check_links.py
+  - Tools/check_moc.py
+  - Tools/check_page_contract.py
+  - Tools/check_profile.py
+  - Tools/check_proof.py
+  - Tools/check_queue.py
+  - Tools/check_residual_content.py
+  - Tools/check_structure.py
+  - Tools/check_vocab.py
+  - Tools/compile_cli_contract.py
+  - Tools/compile_queue.py
+  - Tools/compose_page_contract.py
+  - Tools/compose_vocab.py
+  - Tools/duplicate_check.py
+  - Tools/init_state.py
+  - Tools/profile_onboarding_status.py
+  - Tools/project_page_state.py
+  - Tools/record_corpus_acceptance.py
+  - Tools/register_amendment.py
+  - Tools/render_boundary_projection.py
+  - Tools/render_queue.py
+  - Tools/render_structure_projection.py
+  - Tools/run_gates.py
+  - Tools/scaffold_profile.py
+  - Tools/seal_receipts.py
+  - Tools/stamp_cards.py
+  - Tools/update_queue.py
+  - Tools/update_task.py
+source_hash: sha256:ff91471b4cc7ba628fc8b1f183c1779d7130bba006d724154729ce783a405986
+receipt_shape:
+  base_fields:
+    - receipt_id
+    - check
+    - target
+    - result
+    - details
+    - checked_at
+    - tool
+    - tool_version
+    - invalidated_by
+  conditional_fields:
+    - gate_id
+  extension_policy: derived-per-tool-from-source
+tool_count: 38
+tools:
+  - tool: adopt_standards
+    module: Tools/adopt_standards.py
+    source_hash: sha256:a4c60b9925d283a0d485ee474409b71ce96fe02279485427c39707031872cefc
+    description: Adopt one approved Standards/Profile revision
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: plan
+        option_strings:
+          - --plan
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: .cambium/deltas/standards-adoptions/*.yaml
+      - dest: actor_role
+        option_strings:
+          - --actor-role
+        required: false
+        default: worker
+        default_type: str
+        choices:
+          - integrator
+          - worker
+        nargs: null
+        action: store
+        type: null
+        help: declared caller role; only integrator may apply a Standards adoption
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/standards-adoptions.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: receipt JSONL path under .cambium/receipts
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the transaction; omit for a dry run
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - actor_role
+      - adoption_id
+      - after_contract_scope_version
+      - after_contract_sha256
+      - after_contract_version
+      - after_coverage_sha256
+      - after_progress_sha256
+      - after_queue_sha256
+      - before_contract_scope_version
+      - before_contract_sha256
+      - before_contract_version
+      - before_coverage_sha256
+      - before_progress_sha256
+      - before_queue_sha256
+      - boundary_gate_reruns
+      - changed_predicate_ids
+      - contract_version_after
+      - contract_version_before
+      - gate_id
+      - governance_revision_ref
+      - governance_revision_sha256
+      - immediate_gate_receipts
+      - immediate_gate_reruns
+      - invalidated_evidence_receipt_ids
+      - invalidation_boundary_ids
+      - loaded_module_paths_after
+      - loaded_module_paths_before
+      - plan_path
+      - plan_sha256
+      - preserved_coverage_projection_sha256
+      - preserved_progress_projection_sha256
+      - preserved_queue_projection_sha256
+      - profile_contract_fingerprint_after
+      - profile_load_inputs_sha256_after
+      - profile_snapshot_sha256_after
+      - queue_revision_after
+      - queue_revision_before
+      - selected_card_paths_after
+      - selected_card_paths_before
+      - selected_profile_manifest_after
+      - selected_profile_manifest_before
+      - selected_profile_route_ids_after
+      - selected_profile_route_ids_before
+      - selected_read_sets_after
+      - selected_read_sets_before
+      - selected_route_ids_after
+      - selected_route_ids_before
+      - standards_snapshot_sha256_after
+      - standards_version_after
+      - standards_version_before
+      - state_revision_after
+      - state_revision_before
+      - task_id
+      - task_state_after
+      - task_state_before
+      - transaction_id
+      - transaction_phase
+      - upstream_revision_id
+      - upstream_source_ref
+    receipt_extensions_extraction: complete
+  - tool: apply_amendment
+    module: Tools/apply_amendment.py
+    source_hash: sha256:e488eda4a65f684fe05d71e6f815619bc6900c4ceb6af23fb90ca78b7447c9ae
+    description: Apply one approved cross-Ledger Amendment transaction
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: plan
+        option_strings:
+          - --plan
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: .cambium/deltas/amendments/*.yaml plan
+      - dest: expected_coverage_sha256
+        option_strings:
+          - --expected-coverage-sha256
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard: sha256:<hex> the caller read from the current Coverage; planning is refused when the live bytes differ"
+      - dest: expected_progress_sha256
+        option_strings:
+          - --expected-progress-sha256
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard: sha256:<hex> the caller read from the current Progress; planning is refused when the live bytes differ"
+      - dest: expected_queue_sha256
+        option_strings:
+          - --expected-queue-sha256
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard: sha256:<hex> the caller read from the current Queue; planning is refused when the live bytes differ"
+      - dest: actor_role
+        option_strings:
+          - --actor-role
+        required: false
+        default: worker
+        default_type: str
+        choices:
+          - integrator
+          - worker
+        nargs: null
+        action: store
+        type: null
+        help: declared caller role; only integrator may apply an Amendment transaction
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/amendments.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: receipt JSONL path under .cambium/receipts
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the transaction; omit for a dry run
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - actor_role
+      - after_hold_state
+      - after_required_queue_sha256
+      - after_state
+      - after_state_revision
+      - amendment_id
+      - before_hold_state
+      - before_required_queue_sha256
+      - before_state
+      - before_state_revision
+      - coverage_proposal_path
+      - coverage_proposal_sha256
+      - operation
+      - plan_path
+      - plan_sha256
+      - previous_transaction_commit_receipt
+      - queue_revision
+      - queue_revision_after
+      - queue_revision_before
+      - registration_receipt
+      - state_revision_after
+      - state_revision_before
+      - task_id
+      - transaction_id
+      - transaction_phase
+      - transaction_sequence
+    receipt_extensions_extraction: partial
+  - tool: apply_contract_amendment
+    module: Tools/apply_contract_amendment.py
+    source_hash: sha256:d1ff6f4be2fc64f0153cd11b9be3eabe5670f476c4fa0ffc12815c1a3e6c77dd
+    description: Amend the frozen Task Contract from one confirmed plan.
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: plan
+        option_strings:
+          - --plan
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-relative path under .cambium/deltas/contract-amendments
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/contract-amendments.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: receipt JSONL path under .cambium/receipts
+      - dest: actor_role
+        option_strings:
+          - --actor-role
+        required: false
+        default: worker
+        default_type: str
+        choices:
+          - integrator
+          - worker
+        nargs: null
+        action: store
+        type: null
+        help: declared caller role; only integrator may apply a contract amendment
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the transaction; omit for a dry run
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - actor_role
+      - after_contract_scope_version
+      - after_contract_sha256
+      - after_contract_version
+      - after_coverage_sha256
+      - after_progress_sha256
+      - after_required_queue_sha256
+      - before_contract_scope_version
+      - before_contract_sha256
+      - before_contract_version
+      - before_coverage_sha256
+      - before_progress_sha256
+      - before_required_queue_sha256
+      - changed_contract_fields
+      - plan_path
+      - plan_sha256
+      - policy_fingerprint
+      - queue_revision_after
+      - queue_revision_before
+      - transaction_phase
+    receipt_extensions_extraction: complete
+  - tool: apply_delta
+    module: Tools/apply_delta.py
+    source_hash: sha256:30e9da00652933d10e96a2fa75a2a2aec0b39f8fbf1f36ce7c28131a03982848
+    description: Deterministic Coverage Delta application
+    arguments:
+      - dest: ledger
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: Coverage ledger to merge into; canonical mode requires exactly .cambium/state/coverage_ledger.yaml
+      - dest: delta
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: batch Coverage delta to apply; canonical mode requires exactly .cambium/deltas/<batch>.yaml
+      - dest: root
+        option_strings:
+          - --root
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root (canonical mode)
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the merged Coverage; omit for a dry run
+      - dest: preflight
+        option_strings:
+          - --preflight
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: plan canonical Coverage and routed-gap settlement without writes; allows an open batch
+      - dest: force
+        option_strings:
+          - --force
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: "legacy mode only: keep pages whose ledger batch/next_batch does not match the delta batch"
+      - dest: actor_role
+        option_strings:
+          - --actor-role
+        required: false
+        default: worker
+        default_type: str
+        choices:
+          - integrator
+          - worker
+        nargs: null
+        action: store
+        type: null
+        help: declared caller role; only integrator may apply canonical Coverage
+      - dest: expected_coverage_sha256
+        option_strings:
+          - --expected-coverage-sha256
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard for canonical --apply: sha256:<hex> the caller read from the current Coverage; the write is refused when the live bytes differ"
+      - dest: expected_queue_sha256
+        option_strings:
+          - --expected-queue-sha256
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard for canonical --apply: sha256:<hex> the caller read from the current Queue; the write is refused when the live bytes differ"
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: receipt JSONL destination; canonical mode defaults to a new .cambium/receipts/<receipt_id>.jsonl and refuses an existing path
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - actor_role
+      - after_coverage_sha256
+      - after_progress_sha256
+      - after_required_queue_sha256
+      - batch_id
+      - before_coverage_archive_path
+      - before_coverage_sha256
+      - before_progress_sha256
+      - before_required_queue_sha256
+      - coverage_ledger_path
+      - delta_path
+      - delta_sha256
+      - queue_revision
+      - queue_state_revision
+      - receipt_path
+      - required_queue_sha256
+      - task_id
+    receipt_extensions_extraction: partial
+  - tool: apply_profile_adoption
+    module: Tools/apply_profile_adoption.py
+    source_hash: sha256:b17f3b960a6a2b4ed297ac5f85273d1ac220768f17eccccc49bbde7d378036ea
+    description: Apply one no-runtime R09 Profile adoption (initial adoption or pre-runtime profile revision) from a restricted-YAML plan
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository root (no .cambium/ may exist anywhere under it)
+      - dest: plan
+        option_strings:
+          - --plan
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: root-relative adoption plan (schemas/profile_adoption_plan.template.yaml)
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: perform the transaction; without it the complete planned change is reported and nothing is written
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: emit the plan/result as one JSON document
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "transaction receipt JSONL destination (default: <plan>.receipts.jsonl beside the plan; never .cambium/)"
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - adoption_requirement
+      - branch
+      - change_summary
+      - changed_predicate_ids
+      - k00_03_sha256_after
+      - k00_03_sha256_before
+      - plan_path
+      - plan_sha256
+      - profile_contract_fingerprint_after
+      - profile_load_gate_id
+      - profile_load_inputs_sha256_after
+      - profile_load_receipt_id
+      - profile_snapshot_sha256_after
+      - selected_profile_manifest_after
+      - selected_profile_manifest_before
+      - standards_effective_date_after
+      - standards_status_after
+      - standards_version_after
+      - standards_version_before
+      - transaction_id
+    receipt_extensions_extraction: complete
+  - tool: apply_task_plan
+    module: Tools/apply_task_plan.py
+    source_hash: sha256:546602a962b6095b7b582a1f3f5f48661231e6e194880f05f4a9ba9b18a49994
+    description: Materialize a task runtime from one confirmed plan.
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: plan
+        option_strings:
+          - --plan
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-relative path under .cambium/deltas/task-plans
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/task-plans.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: receipt JSONL path under .cambium/receipts
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the transaction; omit for a dry run
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - transaction_phase
+    receipt_extensions_extraction: complete
+  - tool: check_batch_close
+    module: Tools/check_batch_close.py
+    source_hash: sha256:fa0c7e2fedb557f476cf72be859586ed6d2edfda7adadfde0aaba9dd90eb78e7
+    description: Run and publish the K12/09 batch-close evidence bundle
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: batch
+        option_strings:
+          - --batch
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: merge-ready batch ID
+      - dest: integrator
+        option_strings:
+          - --integrator
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: declared integrator label recorded in the evidence
+      - dest: reviewer
+        option_strings:
+          - --reviewer
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: declared reviewer label (must differ from integrator)
+      - dest: review_attestation
+        option_strings:
+          - --review-attestation
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: reviewer's explicit global-review statement
+      - dest: accept_candidate_id
+        option_strings:
+          - --accept-candidate-id
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: accept this exact current candidate for this close only
+      - dest: accept_candidate_type
+        option_strings:
+          - --accept-candidate-type
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: accept every current candidate of this exact tool:check type for this close only
+      - dest: accept_while_unchanged_id
+        option_strings:
+          - --accept-while-unchanged-id
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: accept this exact current candidate and permit reuse while its observation is unchanged
+      - dest: accept_while_unchanged_type
+        option_strings:
+          - --accept-while-unchanged-type
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: expand this current exact type set and permit those rows to be reused while unchanged
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/batch-close.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-relative close evidence JSONL
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - after_coverage_sha256
+      - after_progress_sha256
+      - after_required_queue_sha256
+      - batch_id
+      - before_coverage_sha256
+      - before_progress_sha256
+      - before_required_queue_sha256
+      - candidate_count
+      - candidate_set_sha256
+      - candidate_type_counts
+      - gate_id
+      - integrator_id
+      - merged_snapshot_sha256
+      - reviewer_id
+      - source_command
+      - task_id
+    receipt_extensions_extraction: complete
+  - tool: check_boundary_contract
+    module: Tools/check_boundary_contract.py
+    source_hash: sha256:0fe1eccbc7f769a51cf8e4c765c2cbbdf89a74904e848d8803d1816c645e5c70
+    description: "Validate page boundary blocks against the K08/09 page boundary contract (gate: boundary-contract; advisory by default)."
+    arguments:
+      - dest: vault_root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: vault root directory
+      - dest: profile
+        option_strings:
+          - --profile
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: profile directory override; default is the selected_profile_manifest of the active Standards state
+      - dest: contract
+        option_strings:
+          - --contract
+        required: false
+        default: Tools/page_contract.yaml
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: compiled contract path (default Tools/page_contract.yaml)
+      - dest: scope
+        option_strings:
+          - --scope
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: only scan .md files under this subpath (directory or single page)
+      - dest: exclude
+        option_strings:
+          - --exclude
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: subpath to exclude; repeatable
+      - dest: strict
+        option_strings:
+          - --strict
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: treat violations as failures except the B4 migration-tolerated case; the mode a governance decision promotes to a gate
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: JSONL path to append machine-readable receipts to
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - compiled_page_contract_sha256
+      - gate_id
+      - profile_contract_fingerprint
+      - profile_load_inputs_sha256
+      - profile_snapshot_sha256
+      - selected_profile_manifest
+    receipt_extensions_extraction: complete
+  - tool: check_corpus_plan
+    module: Tools/check_corpus_plan.py
+    source_hash: sha256:5d454c6bef29a1dc28b122db7867b23f81d0619aff9649b655717583de3a9734
+    description: Validate explicit Corpus Planning artifacts
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: profile
+        option_strings:
+          - --profile
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "repository-relative Profile manifest or Profile directory; default: selected Profile in Progress Ledger"
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: append JSONL receipts here
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write only the deterministic normalized result JSON to stdout
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - gate_id
+    receipt_extensions_extraction: partial
+  - tool: check_freshness
+    module: Tools/check_freshness.py
+    source_hash: sha256:d910625ac3246a54d181d05f176bb3523421ac793b7849d063a67e811aab9854
+    description: Freshness / review_by overdue candidate check
+    arguments:
+      - dest: vault_root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: vault root directory
+      - dest: scope
+        option_strings:
+          - --scope
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: only scan .md files under this subpath
+      - dest: as_of
+        option_strings:
+          - --as-of
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "reference date YYYY-MM-DD for overdue computation (default: today)"
+      - dest: defaults
+        option_strings:
+          - --defaults
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: optional domain -> volatility mapping file (restricted YAML subset); without it only pages with an explicit volatility declaration are checked
+      - dest: exclude
+        option_strings:
+          - --exclude
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: "skip files whose path contains this component (repeatable; default: none)"
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: JSONL path to append machine-readable receipts to
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: check_links
+    module: Tools/check_links.py
+    source_hash: sha256:d8589f9b4d0fc554a4cf4870e1a05e2c1db3e905e2a024dfbd59b16c141fd988
+    description: Wiki link missing/ambiguous/heading check
+    arguments:
+      - dest: vault_root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: vault root directory
+      - dest: scope
+        option_strings:
+          - --scope
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: only scan .md files under this subpath (the index still covers the whole vault)
+      - dest: exclude
+        option_strings:
+          - --exclude
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: path component to exclude (repeatable); files whose path contains the component are neither scanned for outgoing links nor used in basename disambiguation, but exact full-path links into them still resolve (excluded means not audited, not nonexistent)
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: JSONL path to append machine-readable receipts to
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - gate_id
+    receipt_extensions_extraction: complete
+  - tool: check_moc
+    module: Tools/check_moc.py
+    source_hash: sha256:571c1d65d53babb9e121511bc7ce43b09cf2cc8462475578380164e2ac380e08
+    description: MOC Module Index consistency candidate detection
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: scan root directory
+      - dest: exclude
+        option_strings:
+          - --exclude
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: path component to exclude (repeatable); no semantic directory name is excluded by default
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: JSONL path to append a machine-readable receipt to
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: check_page_contract
+    module: Tools/check_page_contract.py
+    source_hash: sha256:2393abb3468fbba2351aa12da39d151290836922f655aef91086130c0f604815
+    description: "Validate pages against the compiled frontmatter page contract (gate: page-contract; advisory by default)."
+    arguments:
+      - dest: vault_root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: vault root directory
+      - dest: profile
+        option_strings:
+          - --profile
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: profile directory override; default is the selected_profile_manifest of the active Standards state
+      - dest: contract
+        option_strings:
+          - --contract
+        required: false
+        default: Tools/page_contract.yaml
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: compiled contract path (default Tools/page_contract.yaml)
+      - dest: scope
+        option_strings:
+          - --scope
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: only scan .md files under this subpath (directory or single page)
+      - dest: exclude
+        option_strings:
+          - --exclude
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: subpath to exclude; repeatable
+      - dest: strict
+        option_strings:
+          - --strict
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: treat violations as failures; the mode a governance decision promotes to a gate
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: JSONL path to append machine-readable receipts to
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - compiled_page_contract_sha256
+      - gate_id
+      - profile_contract_fingerprint
+      - profile_load_inputs_sha256
+      - profile_snapshot_sha256
+      - selected_profile_manifest
+    receipt_extensions_extraction: complete
+  - tool: check_profile
+    module: Tools/check_profile.py
+    source_hash: sha256:4a90f4d68d2d925e30f25ddc76d067b55c7ce059b867b0c0b292fa22139e4dfc
+    description: Profile manifest completeness and unfilled-template check
+    arguments:
+      - dest: profile_dir
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: the profile directory to check (e.g. profiles/<profile-id>)
+      - dest: root
+        option_strings:
+          - --root
+        required: false
+        default: .
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "vault root that vault-relative bindings resolve against (default: this script's repository root)"
+      - dest: interface
+        option_strings:
+          - --interface
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "normative slot interface file (default: profiles/README.md under --root)"
+      - dest: defaults
+        option_strings:
+          - --defaults
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "machine-readable profile-form placeholder registry (default: Tools/schemas/execution_defaults.template.yaml under --root)"
+      - dest: execution_defaults
+        option_strings:
+          - --execution-defaults
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "kernel execution-default override registry (default: kernel/K00 Standards Control/execution-defaults-base.yaml under --root)"
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: JSONL path to append machine-readable receipts to
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write one deterministic JSON object (tool, root, result, findings each carrying a closed mechanical/semantic-unresolved category) to stdout instead of the human summary; receipts and exit codes are unchanged
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - dimension
+      - gate_id
+    receipt_extensions_extraction: complete
+  - tool: check_proof
+    module: Tools/check_proof.py
+    source_hash: sha256:b5635cf2e56ef324b6f79821f1e90a61758bf19deffea80bb83185b599d5eab0
+    description: Terminal Proof completeness and zero-condition check
+    arguments:
+      - dest: proof
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: path to the terminal proof YAML file
+      - dest: ledger
+        option_strings:
+          - --ledger
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: Coverage Ledger YAML; with --root this must be exactly .cambium/state/coverage_ledger.yaml
+      - dest: progress_ledger
+        option_strings:
+          - --progress-ledger
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: Progress Ledger YAML; required with --root and must be exactly .cambium/state/progress_ledger.yaml
+      - dest: template
+        option_strings:
+          - --template
+        required: false
+        default: Tools/schemas/terminal_proof.template.yaml
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: field-list template (default Tools/schemas/terminal_proof.template.yaml)
+      - dest: root
+        option_strings:
+          - --root
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: vault root; when given, path-valued proof fields must exist and selected routes, Cards, and kernel Read Sets must agree with the canonical route indexes
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: JSONL path to append machine-readable receipts to
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - gate_id
+    receipt_extensions_extraction: complete
+  - tool: check_queue
+    module: Tools/check_queue.py
+    source_hash: sha256:cd3168d1e984e54dcdaa35f9059adc1aedd321d36a796e46bc53392fb696ef78
+    description: Validate canonical Required Queue state
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: require_ready
+        option_strings:
+          - --require-ready
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: prove BATCH_ID is queued and ready to activate
+      - dest: require_revalidation
+        option_strings:
+          - --require-revalidation
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: prove BATCH_ID may produce its Standards revalidation aggregate
+      - dest: require_complete
+        option_strings:
+          - --require-complete
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: "build completion gate: prove no Required work remains"
+      - dest: require_maintenance_complete
+        option_strings:
+          - --require-maintenance-complete
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: "maintenance completion gate: prove one bounded maintenance run is complete"
+      - dest: resume_status
+        option_strings:
+          - --resume-status
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: show interruption-safe task and batch resume state
+      - dest: confirmation_receipt
+        option_strings:
+          - --confirmation-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: confirmation evidence supplied to --require-ready
+      - dest: boundary_gate_receipt
+        option_strings:
+          - --boundary-gate-receipt
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: current gate evidence supplied to --require-revalidation
+      - dest: budget_manifest_receipt
+        option_strings:
+          - --budget-manifest-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: closed budget-manifest receipt ID supplied to --require-maintenance-complete
+      - dest: ledger_advance_receipt
+        option_strings:
+          - --ledger-advance-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: Coverage Ledger advance receipt ID supplied to --require-maintenance-complete
+      - dest: watermark_advance_receipt
+        option_strings:
+          - --watermark-advance-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: watermark advance receipt ID supplied to --require-maintenance-complete
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-relative JSONL receipt path
+    mutually_exclusive_groups:
+      - required: false
+        dests:
+          - require_ready
+          - require_revalidation
+          - require_complete
+          - require_maintenance_complete
+          - resume_status
+    receipt_extensions:
+      - applied_delta_receipts
+      - batch_close_recovery
+      - batch_work_specs
+      - checkpoint
+      - checkpoint_binding
+      - confirmation_receipt
+      - coverage_ledger_sha256
+      - exclusions
+      - gate_id
+      - hub_page_candidates
+      - last_reconciled_guidance_id
+      - maintenance_candidate_state
+      - managed_deltas
+      - next_action
+      - objective
+      - pending_amendments
+      - pending_delta_applies
+      - pending_guidance
+      - progress_ledger_sha256
+      - queue_check_mode
+      - queue_revision
+      - queue_state_revision
+      - remaining_required_work_units
+      - repository_snapshot_sha256
+      - required_queue_sha256
+      - selected_profile_manifest
+      - standards_revalidation_barriers
+      - standards_revalidation_outstanding
+      - standards_version
+      - task_id
+      - task_state
+      - writer_locks
+    receipt_extensions_extraction: partial
+  - tool: check_residual_content
+    module: Tools/check_residual_content.py
+    source_hash: sha256:bf2654df74111127b2401ad34ca46f36e3e31ebc92d13897c7c1bf8059abafa8
+    description: Find profile-configured residual content outside accepted roots.
+    arguments:
+      - dest: vault_root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: knowledge-vault root to scan
+      - dest: scan_id
+        option_strings:
+          - --scan-id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: stable ID from the selected profile's scan registry
+      - dest: config
+        option_strings:
+          - --config
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: profile-owned restricted YAML scan configuration
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: optional JSONL receipt path
+      - dest: time_limit
+        option_strings:
+          - --time-limit
+        required: false
+        default: 55.0
+        default_type: float
+        choices: null
+        nargs: null
+        action: store
+        type: float
+        help: hard evidence-production budget in seconds (greater than 0 and at most 55)
+      - dest: positive_controls_only
+        option_strings:
+          - --positive-controls-only
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: execute the registered controls through the production classifier without scanning repository content
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - config_fingerprint
+      - gate_id
+      - scan_id
+    receipt_extensions_extraction: partial
+  - tool: check_structure
+    module: Tools/check_structure.py
+    source_hash: sha256:72221704c72f63edda475576039020e4b72802e5951596cb049ce05fb25588aa
+    description: "Validate the selected profile's Structure Registry against the vault (gate: structure-registry)."
+    arguments:
+      - dest: vault_root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: vault root directory
+      - dest: profile
+        option_strings:
+          - --profile
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: profile directory override; default is the selected_profile_manifest of the active Standards state
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: JSONL path to append machine-readable receipts to
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - coverage_ledger_sha256
+      - gate_id
+      - global_map_path
+      - global_map_sha256
+      - profile_contract_fingerprint
+      - profile_load_inputs_sha256
+      - profile_snapshot_sha256
+      - selected_profile_manifest
+    receipt_extensions_extraction: complete
+  - tool: check_vocab
+    module: Tools/check_vocab.py
+    source_hash: sha256:8b862f93eb4268af372bfc0920a468e756963819b20717a3f4f7c561cdaa3435
+    description: Frontmatter controlled-vocabulary check
+    arguments:
+      - dest: vault_root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: vault root directory
+      - dest: scope
+        option_strings:
+          - --scope
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: only scan .md files under this subpath
+      - dest: vocab
+        option_strings:
+          - --vocab
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: path to vocab.yaml (defaults to vocab.yaml next to this script)
+      - dest: exclude
+        option_strings:
+          - --exclude
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: subpath to exclude (repeatable; e.g. the compiled kernel/Cards artifacts, whose frontmatter is not governed by the K08 module's knowledge-page schema)
+      - dest: quota_p0
+        option_strings:
+          - --quota-p0
+        required: false
+        default: 15.0
+        default_type: float
+        choices: null
+        nargs: null
+        action: store
+        type: float
+        help: P0 priority quota in percent (default 15; kernel default; the selected profile manifest or task contract may override)
+      - dest: quota_p1
+        option_strings:
+          - --quota-p1
+        required: false
+        default: 35.0
+        default_type: float
+        choices: null
+        nargs: null
+        action: store
+        type: float
+        help: P1 priority quota in percent (default 35; kernel default; the selected profile manifest or task contract may override)
+      - dest: policy_fingerprint
+        option_strings:
+          - --policy-fingerprint
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: effective-policy fingerprint (kblib.effective_priority_policy) the quotas were resolved from; recorded on the priority-quota-compliance receipt so its consumers can bind the policy identity, never re-derive it
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: JSONL path to append machine-readable receipts to
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - gate_id
+    receipt_extensions_extraction: partial
+  - tool: compile_cli_contract
+    module: Tools/compile_cli_contract.py
+    source_hash: sha256:d185ebf019eb823404d22bc448696772a448d545a3efd88787291a9c79cab545
+    description: Compile the machine-readable CLI invocation contract from every Tools/*.py argparse declaration.
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository root whose Tools/ directory is compiled
+      - dest: check
+        option_strings:
+          - --check
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: recompute and compare against the existing output; exit 0 when byte-identical, 2 when it is stale or hand-edited
+      - dest: output
+        option_strings:
+          - --output
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "artifact path to write or verify (default: <root>/Tools/compiled/cli-contract.yaml)"
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: compile_queue
+    module: Tools/compile_queue.py
+    source_hash: sha256:79d3653faa96152d9031996360ec180a865bfa2edb181119bc641caadb9c7eaf
+    description: Compile Required Queue from explicit Coverage assignments
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: output
+        option_strings:
+          - --output
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-relative proposal path
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: materialize an initially empty Queue
+      - dest: apply_replan
+        option_strings:
+          - --apply-replan
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: apply a controlled structural diff to a non-empty Queue
+      - dest: coverage_proposal
+        option_strings:
+          - --coverage-proposal
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-contained .cambium/deltas/replans/*.coverage.yaml input
+      - dest: replan_diff
+        option_strings:
+          - --replan-diff
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: existing .cambium/tmp/*.yaml diff to consume
+      - dest: amendment_id
+        option_strings:
+          - --amendment-id
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: registered Amendment id authorizing the replan; required with --apply-replan
+      - dest: expected_queue_revision
+        option_strings:
+          - --expected-queue-revision
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: int
+        help: "compare-and-swap guard: the queue_revision the caller read from the current Queue; the write is refused when the live value differs"
+      - dest: expected_state_revision
+        option_strings:
+          - --expected-state-revision
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: int
+        help: "compare-and-swap guard: the state_revision the caller read from the current Queue; the replan is refused when the live value differs"
+      - dest: expected_sha256
+        option_strings:
+          - --expected-sha256
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard: sha256:<hex> the caller read from the current Queue; the write is refused when the live bytes differ"
+      - dest: expected_coverage_sha256
+        option_strings:
+          - --expected-coverage-sha256
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard: sha256:<hex> the caller read from the current Coverage; the replan is refused when the live bytes differ"
+      - dest: expected_progress_sha256
+        option_strings:
+          - --expected-progress-sha256
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard: sha256:<hex> the caller read from the current Progress; the replan is refused when the live bytes differ"
+      - dest: actor_role
+        option_strings:
+          - --actor-role
+        required: false
+        default: worker
+        default_type: str
+        choices:
+          - integrator
+          - worker
+        nargs: null
+        action: store
+        type: null
+        help: declared caller role; only integrator may apply a Queue write or replan
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/queue-structure.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: receipt JSONL path under .cambium/receipts
+    mutually_exclusive_groups:
+      - required: false
+        dests:
+          - apply
+          - apply_replan
+    receipt_extensions:
+      - actor_role
+      - affected_batches
+      - affected_pages
+      - after_coverage_sha256
+      - after_progress_sha256
+      - after_queue_revision
+      - after_required_queue_sha256
+      - amendment_id
+      - before_coverage_sha256
+      - before_progress_sha256
+      - before_queue_revision
+      - before_required_queue_sha256
+      - contract_scope_version
+      - contract_sha256
+      - contract_version
+      - coverage_proposal_path
+      - coverage_proposal_sha256
+      - failure
+      - queue_state_revision
+      - registration_receipt
+      - replan_diff_sha256
+      - rollback_failures
+      - task_id
+      - transaction_id
+      - transaction_phase
+    receipt_extensions_extraction: partial
+  - tool: compose_page_contract
+    module: Tools/compose_page_contract.py
+    source_hash: sha256:cc235be1ae29e1f172249a81fec6fa6b8688099d94a9ca71fe14b7c98622225e
+    description: Compose the effective frontmatter page contract from the kernel bases and the selected profile's Metadata Contract.
+    arguments:
+      - dest: root
+        option_strings:
+          - --root
+        required: false
+        default: .
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "vault root (default: this repository)"
+      - dest: base
+        option_strings:
+          - --base
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "applicability base to compile from (default: kernel/K08 Metadata and Status/applicability-base.yaml under --root)"
+      - dest: relationships
+        option_strings:
+          - --relationships
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "relationship base to compile from (default: kernel/K08 Metadata and Status/relationship-base.yaml under --root)"
+      - dest: sources_role
+        option_strings:
+          - --sources-role
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "sources-role base to compile from (default: kernel/K07 Sources and Accuracy/sources-role-base.yaml under --root)"
+      - dest: profile
+        option_strings:
+          - --profile
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: profile directory for a validation run; the vault selection stays with K00/03
+      - dest: output
+        option_strings:
+          - --output
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compiled page contract to write, or to compare against under --check (default: Tools/page_contract.yaml under --root)"
+      - dest: check
+        option_strings:
+          - --check
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: recompute and compare against the existing output; exit 0 when byte-identical, 2 otherwise
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: compose_vocab
+    module: Tools/compose_vocab.py
+    source_hash: sha256:34f4689759cf3d086dd3de0ab4625ff95ba8e7ed5cf192f3e183b495e8df94ab
+    description: Deterministically compose the vocabulary artifact from the kernel base and the selected profile's extensions.
+    arguments:
+      - dest: base
+        option_strings:
+          - --base
+        required: false
+        default: kernel/K08 Metadata and Status/vocabulary-base.yaml
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "the kernel vocabulary base the extensions are appended to (default: kernel/K08 Metadata and Status/vocabulary-base.yaml)"
+      - dest: extensions
+        option_strings:
+          - --extensions
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: the active profile's vocabulary-extensions.yaml. K00/03 selects the path; when this flag is present it must name that same path
+      - dest: output
+        option_strings:
+          - --output
+        required: false
+        default: Tools/vocab.yaml
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "composed vocabulary artifact to write, or to compare against under --check (default: Tools/vocab.yaml)"
+      - dest: check
+        option_strings:
+          - --check
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: recompute and compare against the existing output; exit 0 when values and provenance are identical, 2 otherwise
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: duplicate_check
+    module: Tools/duplicate_check.py
+    source_hash: sha256:0dd7137cd4c02125374d92b2d842a52f3ee71968292371ca6a7b6d4cebc077e7
+    description: Cross-file duplicate paragraph candidate detection (for maintenance runs and governance tasks)
+    arguments:
+      - dest: vault
+        option_strings: []
+        required: false
+        default: .
+        default_type: str
+        choices: null
+        nargs: ?
+        action: store
+        type: null
+        help: "vault root directory (default: current directory)"
+      - dest: scope
+        option_strings:
+          - --scope
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "subpath (relative to vault, or absolute): only report similar pairs with at least one side under it"
+      - dest: exclude
+        option_strings:
+          - --exclude
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: "skip files whose path contains this component (repeatable; default: legacy)"
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: JSONL path to append machine-readable receipts to (shared convention, Tools/schemas/receipt.template.jsonl)
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: init_state
+    module: Tools/init_state.py
+    source_hash: sha256:09e5bec0add368a2065f892a77218bb911ebf0be5fefb361aa24499c66a1bc18
+    description: Initialize empty Cambium runtime state
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: task_id
+        option_strings:
+          - --task-id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: non-empty task identity stamped on the Queue, Coverage Ledger and Progress Ledger
+      - dest: objective
+        option_strings:
+          - --objective
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: non-empty statement of the task outcome
+      - dest: exclusions
+        option_strings:
+          - --exclude
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: explicit out-of-scope item; repeatable
+      - dest: scope_version
+        option_strings:
+          - --scope-version
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: non-empty scope identity stamped on the Queue, Coverage Ledger and task contract
+      - dest: standards_version
+        option_strings:
+          - --standards-version
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: Standards version this runtime adopts; must equal the approved standards_version of the active K00/03 Standards Control
+      - dest: profile_manifest
+        option_strings:
+          - --profile-manifest
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-relative selected profile manifest; must equal the selected_profile_manifest of the active K00/03 Standards Control
+      - dest: contract_version
+        option_strings:
+          - --contract-version
+        required: false
+        default: c1
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: non-empty task-contract version recorded on the Progress Ledger contract
+      - dest: completion_semantics
+        option_strings:
+          - --completion-semantics
+        required: true
+        default: null
+        default_type: NoneType
+        choices:
+          - build
+          - maintenance
+        nargs: null
+        action: store
+        type: null
+        help: build requires completion-candidate plus Terminal Proof; maintenance closes directly through the bounded maintenance completion gate
+      - dest: concurrency_cap
+        option_strings:
+          - --concurrency-cap
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: int
+        help: explicit task-contract override of K13/10's concurrency cap; omit it to take the selected profile manifest's registered override, or the kernel default 3 when the manifest registers none
+      - dest: at
+        option_strings:
+          - --at
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "initial Coverage timestamp (default: current UTC)"
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: materialize .cambium/; omit for a dry run
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: profile_onboarding_status
+    module: Tools/profile_onboarding_status.py
+    source_hash: sha256:0d529746ab035972eb4ab3768c47e93ec3079e84ffc0dd1b0cb91079bce64181
+    description: "Read-only onboarding status projector: derives the adoption/onboarding state of one root and exactly one next_action token; writes nothing and owns no ledger"
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: the adopting repository root to project
+      - dest: profile_id
+        option_strings:
+          - --profile-id
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: target one candidate profile directory name under profiles/ for the full profile-load evaluation (defaults to the single candidate when exactly one exists)
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: emit the status view as one deterministic JSON object instead of the human summary
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: project_page_state
+    module: Tools/project_page_state.py
+    source_hash: sha256:d17ad8705df1ca83ccdee9b508e4efccb09781cc1c2bc92aca3bce43f826b802
+    description: Project Ledger-owned state onto page frontmatter
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: page
+        option_strings:
+          - --page
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: limit to these repository-relative pages (repeatable); default is every Ledger page
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: take the runtime writer lock and publish the projection; omit for a dry run
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: record_corpus_acceptance
+    module: Tools/record_corpus_acceptance.py
+    source_hash: sha256:0158db3fddb273f618b42cdbd43d336dd11fe6ce049d9579f2e29273632f559b
+    description: Record a Profile-authorized Corpus Planning semantic decision as machine-readable JSONL
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: plan
+        option_strings:
+          - --plan
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: closed restricted-YAML acceptance decision plan; one .yaml file directly under .cambium/deltas/corpus-plan-acceptances/
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/corpus-plan-acceptance.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "repository-relative JSONL path the receipts are appended to (default: .cambium/receipts/corpus-plan-acceptance.jsonl)"
+      - dest: actor_role
+        option_strings:
+          - --actor-role
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: declared authority Role ID; required with --apply and must equal the Profile/plan binding
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: append the structural and semantic receipts; default is dry-run
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - acceptance_id
+      - acceptance_plan_path
+      - acceptance_plan_sha256
+      - actor_role_id
+      - authority_role_id
+      - capability_decisions
+      - decision_scope_id
+      - gate_id
+      - structural_check_receipt
+    receipt_extensions_extraction: partial
+  - tool: register_amendment
+    module: Tools/register_amendment.py
+    source_hash: sha256:539b90d21e879acaa433a6e5cbb8d4b0d5e1cdb2b43a22f0d103142d0dcff37d
+    description: Register one approved current-protocol Amendment
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: operation
+        option_strings:
+          - --operation
+        required: false
+        default: null
+        default_type: NoneType
+        choices:
+          - cancel-batch
+          - gap-routing-reconciliation
+          - queue-replan
+          - scope-replan
+        nargs: null
+        action: store
+        type: null
+        help: Amendment operation being registered
+      - dest: plan
+        option_strings:
+          - --plan
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: .cambium/deltas/amendments/*.yaml plan
+      - dest: amendment_id
+        option_strings:
+          - --amendment-id
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: id for a queue-replan registration; cross-Ledger operations derive it from --plan instead
+      - dest: coverage_proposal
+        option_strings:
+          - --coverage-proposal
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: .cambium/deltas/replans/*.coverage.yaml proposal
+      - dest: withdraw
+        option_strings:
+          - --withdraw
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: retire the named pending registration instead of registering one (K13/06 withdrawal); requires --reason
+      - dest: reason
+        option_strings:
+          - --reason
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: nonempty withdrawal reason recorded on the row and its receipt
+      - dest: date
+        option_strings:
+          - --date
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: YYYY-MM-DD; must equal the UTC registration date
+      - dest: summary
+        option_strings:
+          - --summary
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: non-empty one-line rationale recorded on the row
+      - dest: approval_reference
+        option_strings:
+          - --approval-reference
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: explicit-user approval reference; required when --decision-mode is explicit-user
+      - dest: decision_mode
+        option_strings:
+          - --decision-mode
+        required: false
+        default: auto
+        default_type: str
+        choices:
+          - auto
+          - contract-delegated
+          - explicit-user
+        nargs: null
+        action: store
+        type: null
+        help: derive delegated authority by default; explicit-user requires --approval-reference
+      - dest: expected_coverage_sha256
+        option_strings:
+          - --expected-coverage-sha256
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard: sha256:<hex> the caller read from the current Coverage; registration is refused when the live bytes differ"
+      - dest: expected_progress_sha256
+        option_strings:
+          - --expected-progress-sha256
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard: sha256:<hex> the caller read from the current Progress; registration is refused when the live bytes differ"
+      - dest: expected_queue_sha256
+        option_strings:
+          - --expected-queue-sha256
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard: sha256:<hex> the caller read from the current Queue; registration is refused when the live bytes differ"
+      - dest: actor_role
+        option_strings:
+          - --actor-role
+        required: false
+        default: worker
+        default_type: str
+        choices:
+          - integrator
+          - worker
+        nargs: null
+        action: store
+        type: null
+        help: declared caller role; only integrator may register or withdraw an Amendment
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/amendments.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: receipt JSONL path under .cambium/receipts
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the registration; omit for a dry run
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - actor_role
+      - after_coverage_sha256
+      - after_progress_sha256
+      - after_required_queue_sha256
+      - amendment_id
+      - approval_reference
+      - before_coverage_sha256
+      - before_progress_sha256
+      - before_required_queue_sha256
+      - contract_sha256
+      - operation
+      - registration_receipt
+      - state_revision_after
+      - state_revision_before
+      - summary
+      - task_id
+      - withdrawal_reason
+    receipt_extensions_extraction: partial
+  - tool: render_boundary_projection
+    module: Tools/render_boundary_projection.py
+    source_hash: sha256:c6b4cf7f46b2b1852c474e69cf50886a35c5c518ea7b02d6398857fe1e619364
+    description: Render the K08/09 boundary projection blocks from page `boundary` frontmatter.
+    arguments:
+      - dest: vault_root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: vault root directory
+      - dest: profile
+        option_strings:
+          - --profile
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: profile directory override; default is the selected_profile_manifest of the active Standards state
+      - dest: contract
+        option_strings:
+          - --contract
+        required: false
+        default: Tools/page_contract.yaml
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: compiled contract path (default Tools/page_contract.yaml)
+      - dest: scope
+        option_strings:
+          - --scope
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: only scan .md files under this subpath
+      - dest: check
+        option_strings:
+          - --check
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: exit 2 when any owned block is stale; the default report never fails on staleness
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: rewrite the stale owned blocks atomically; omit to only report what would render
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: render_queue
+    module: Tools/render_queue.py
+    source_hash: sha256:1046e3525b57c960e3f4b19622edd82c8661e4ccb6916de97cff8c9f68a301b8
+    description: Render Required Queue human report
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: output
+        option_strings:
+          - --output
+        required: false
+        default: .cambium/reports/required_queue.md
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-relative report path
+      - dest: stdout
+        option_strings:
+          - --stdout
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: print the report to stdout and write nothing
+      - dest: check
+        option_strings:
+          - --check
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: compare existing report instead of writing
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: render_structure_projection
+    module: Tools/render_structure_projection.py
+    source_hash: sha256:08b413ad65d168f9b7e44cefd9cb49c66be207d02a5041c846dec3f029081de8
+    description: Render derived Structure Registry coverage projections (K01/05 derived roles).
+    arguments:
+      - dest: vault_root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: vault root directory
+      - dest: profile
+        option_strings:
+          - --profile
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: profile directory override; default is the selected_profile_manifest of the active Standards state
+      - dest: check
+        option_strings:
+          - --check
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: exit 2 when any owned block is stale or missing; the default report never fails on staleness
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: rewrite the stale owned blocks atomically; omit to only report what would render
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: run_gates
+    module: Tools/run_gates.py
+    source_hash: sha256:870b35e2c5b1ebed86f20b5d7da314d3b673155376d353f98c3e71ff3ebba969
+    description: Run the adopter verification set derived from the K00/12 Stable Gate ID Registry (deterministic, not-batch-scoped producers).
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository root
+      - dest: profile
+        option_strings:
+          - --profile
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: profile directory override; default is the live runtime's selected_profile_manifest
+      - dest: exclude
+        option_strings:
+          - --exclude
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: path prefix passed through to scanners that accept it (repeatable)
+      - dest: list
+        option_strings:
+          - --list
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: print the derived set and each command without running anything
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: scaffold_profile
+    module: Tools/scaffold_profile.py
+    source_hash: sha256:fd53752eed2ad2c0a8a46a9b01f34c2c800d098db6647af8f64f1bbd0734a127
+    description: Scaffold a candidate profile from profiles/_template using the exact-copy whitelist in profiles/template-files.yaml
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository root containing profiles/
+      - dest: profile_id
+        option_strings:
+          - --profile-id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: candidate profile slug matching [a-z0-9][a-z0-9_-]* (equals the directory name)
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: create the candidate; without it the plan is reported and nothing is written
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: emit the plan/result as one JSON document
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: seal_receipts
+    module: Tools/seal_receipts.py
+    source_hash: sha256:ea515c9e297965058ec73e5861d0a4d675649e313f593052ad6756a0ee1a7e59
+    description: "Seal verified frozen receipt history (K12/07). --apply is a maintenance-window operation: run it only with no other Cambium or adopter writer, checker or receipt appender active against this repository."
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the seal, or with --reconcile finish the interrupted one; omit for a dry run
+      - dest: verify
+        option_strings:
+          - --verify
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: re-prove every sealed segment, projection and seal-receipt binding, then exit
+      - dest: reconcile
+        option_strings:
+          - --reconcile
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: finish an interrupted seal over the publication paths this tool implements; other interruptions fail closed and are resolved by the runbook in Tools/README.md
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/seal-receipts.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "repository-relative JSONL path for this tool's own seal receipts, which never seal (default: .cambium/receipts/seal-receipts.jsonl)"
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - index_rows
+      - index_rows_sha256
+      - manifest_rows
+      - manifest_rows_sha256
+      - queue_revision
+      - queue_state_revision
+      - sealed_records
+      - sealed_segments
+    receipt_extensions_extraction: complete
+  - tool: stamp_cards
+    module: Tools/stamp_cards.py
+    source_hash: sha256:93912a8cb70b862a5ca0e9962d31e44f538e7456e27dc0da73a86f177b3a4437
+    description: Stamp kernel Runtime Cards
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository root
+      - dest: cards_dir
+        option_strings:
+          - --cards-dir
+        required: false
+        default: kernel/Cards
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "Card directory relative to <root> (default: kernel/Cards)"
+      - dest: set_version
+        option_strings:
+          - --set-version
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: also set every card's compiled_from value
+      - dest: check
+        option_strings:
+          - --check
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: verify only; never write
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: update_queue
+    module: Tools/update_queue.py
+    source_hash: sha256:ddadbf595971b5924d57b58509991d53b3254a58868f15d3835b4a5bf76c1ce5
+    description: Apply one Required Queue transition
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: id
+        option_strings:
+          - --id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: Required Queue batch id to transition
+      - dest: transition
+        option_strings:
+          - --transition
+        required: false
+        default: null
+        default_type: NoneType
+        choices:
+          - closed
+          - merge-ready
+          - open
+        nargs: null
+        action: store
+        type: null
+        help: target lifecycle state; exclusive with --hold-state
+      - dest: hold_state
+        option_strings:
+          - --hold-state
+        required: false
+        default: null
+        default_type: NoneType
+        choices:
+          - blocked
+          - confirmation-required
+          - none
+          - paused
+          - revalidation-required
+        nargs: null
+        action: store
+        type: null
+        help: target hold state; exclusive with --transition
+      - dest: expected_state_revision
+        option_strings:
+          - --expected-state-revision
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: int
+        help: "compare-and-swap guard: the state_revision the caller read from the current Queue; the write is refused when the live value differs"
+      - dest: expected_sha256
+        option_strings:
+          - --expected-sha256
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard: sha256:<hex> the caller read from the current Queue; the write is refused when the live bytes differ"
+      - dest: actor_role
+        option_strings:
+          - --actor-role
+        required: false
+        default: worker
+        default_type: str
+        choices:
+          - integrator
+          - worker
+        nargs: null
+        action: store
+        type: null
+        help: declared caller role; Queue transition planning and apply both require integrator
+      - dest: gate_receipt
+        option_strings:
+          - --gate-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "gate receipt id: activation gate for queued -> open, Queue consistency gate for closed and for clearing revalidation-required"
+      - dest: standards_revalidation_receipt
+        option_strings:
+          - --standards-revalidation-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: check_queue --require-revalidation receipt discharging an outstanding Standards revalidation; queued -> open or revalidation-required -> none only
+      - dest: close_gate_receipt
+        option_strings:
+          - --close-gate-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: check_batch_close receipt id required by the closed transition
+      - dest: confirmation_receipt
+        option_strings:
+          - --confirmation-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: confirmation receipt id required by queued -> open when the batch is confirmation_required
+      - dest: delta_path
+        option_strings:
+          - --delta-path
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-relative .cambium/deltas/<id>.yaml batch delta required by open -> merge-ready
+      - dest: delta_apply_receipt
+        option_strings:
+          - --delta-apply-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: apply_delta receipt id required by the closed transition and by merge-ready -> open reopen
+      - dest: batch_receipt
+        option_strings:
+          - --batch-receipt
+        required: false
+        default: []
+        default_type: list
+        choices: null
+        nargs: null
+        action: append
+        type: null
+        help: batch-review gate receipt id for open -> merge-ready; exactly one is accepted
+      - dest: reason
+        option_strings:
+          - --reason
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: non-empty rationale required by merge-ready -> open and by any non-none hold
+      - dest: at
+        option_strings:
+          - --at
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: transition timestamp; defaults to now in UTC
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/queue-transitions.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: receipt JSONL path under .cambium/receipts
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the transition; omit for a dry run
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - after_coverage_sha256
+      - after_progress_sha256
+      - after_required_queue_sha256
+      - before_progress_sha256
+      - close_gate_receipt
+      - delta_apply_receipt
+      - delta_path
+      - delta_sha256
+      - invalidation
+      - queue_consistency_receipt
+      - queue_revision
+      - settlement_coverage_sha256_before
+      - settlement_prospective_coverage_sha256
+      - standards_revalidation_receipt
+    receipt_extensions_extraction: partial
+  - tool: update_task
+    module: Tools/update_task.py
+    source_hash: sha256:bbe06f8a0dfedb64c7c6780d0212f417f6f80ab4a8d66f2105ac803c18697fa3
+    description: Apply one canonical task-state transition
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: transition
+        option_strings:
+          - --transition
+        required: true
+        default: null
+        default_type: NoneType
+        choices:
+          - active
+          - blocked
+          - cancelled
+          - complete
+          - completion-candidate
+          - paused
+        nargs: null
+        action: store
+        type: null
+        help: target task state in the Progress Ledger
+      - dest: checkpoint_summary
+        option_strings:
+          - --checkpoint-summary
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: non-empty reason required by paused, blocked and cancelled, and when leaving completion-candidate for anything but complete
+      - dest: queue_check_receipt
+        option_strings:
+          - --queue-check-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: Queue completion gate receipt id required by the completion-candidate transition
+      - dest: terminal_proof_receipt
+        option_strings:
+          - --terminal-proof-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: Terminal Proof receipt id required by complete under build completion_semantics
+      - dest: maintenance_completion_receipt
+        option_strings:
+          - --maintenance-completion-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: maintenance completion gate receipt id required by complete under maintenance completion_semantics
+      - dest: expected_progress_sha256
+        option_strings:
+          - --expected-progress-sha256
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard: sha256:<hex> the caller read from the current Progress; --apply is refused when the live bytes differ"
+      - dest: expected_queue_sha256
+        option_strings:
+          - --expected-queue-sha256
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compare-and-swap guard: sha256:<hex> the caller read from the current Queue; --apply is refused when the live bytes differ"
+      - dest: actor_role
+        option_strings:
+          - --actor-role
+        required: false
+        default: worker
+        default_type: str
+        choices:
+          - integrator
+          - worker
+        nargs: null
+        action: store
+        type: null
+        help: declared caller role; only integrator may apply a task-state write
+      - dest: at
+        option_strings:
+          - --at
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: transition timestamp; defaults to now in UTC
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/task-transitions.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: receipt JSONL path under .cambium/receipts
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the transition; omit for a dry run
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - aborted_task_transition_receipt
+      - actor_role
+      - after_coverage_sha256
+      - after_progress_sha256
+      - after_required_queue_sha256
+      - after_task_state
+      - before_coverage_sha256
+      - before_progress_sha256
+      - before_required_queue_sha256
+      - before_task_state
+      - completion_semantics
+      - contract_sha256
+      - evidence_receipt
+      - first_open_batch_id
+      - first_open_transition_receipt
+      - planned_after_progress_sha256
+      - queue_revision
+      - queue_state_revision
+      - task_id
+      - transaction_id
+    receipt_extensions_extraction: partial

@@ -697,13 +697,17 @@ def _commit_transaction(prepared, receipt_path):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Adopt one approved Standards/Profile revision")
-    parser.add_argument("root")
+    parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--plan", required=True,
                         help=".cambium/deltas/standards-adoptions/*.yaml")
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
-                        default="worker")
-    parser.add_argument("--receipts", default=RECEIPT_PATH)
-    parser.add_argument("--apply", action="store_true")
+                        default="worker",
+                        help="declared caller role; only integrator may "
+                             "apply a Standards adoption")
+    parser.add_argument("--receipts", default=RECEIPT_PATH,
+                        help="receipt JSONL path under .cambium/receipts")
+    parser.add_argument("--apply", action="store_true",
+                        help="write the transaction; omit for a dry run")
     args = parser.parse_args(argv)
     root = os.path.realpath(os.path.abspath(args.root))
     try:

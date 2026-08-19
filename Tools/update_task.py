@@ -724,23 +724,45 @@ def build_task_transition(result, after_state, at, summary, evidence_receipt,
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Apply one canonical task-state transition")
-    parser.add_argument("root")
+    parser.add_argument("root", help="adopting repository root")
     parser.add_argument(
         "--transition", required=True,
         choices=tuple(sorted({target for targets in TRANSITIONS.values()
                               for target in targets})),
+        help="target task state in the Progress Ledger",
     )
-    parser.add_argument("--checkpoint-summary")
-    parser.add_argument("--queue-check-receipt")
-    parser.add_argument("--terminal-proof-receipt")
-    parser.add_argument("--maintenance-completion-receipt")
-    parser.add_argument("--expected-progress-sha256")
-    parser.add_argument("--expected-queue-sha256")
+    parser.add_argument("--checkpoint-summary",
+                        help="non-empty reason required by paused, blocked "
+                             "and cancelled, and when leaving "
+                             "completion-candidate for anything but complete")
+    parser.add_argument("--queue-check-receipt",
+                        help="Queue completion gate receipt id required by "
+                             "the completion-candidate transition")
+    parser.add_argument("--terminal-proof-receipt",
+                        help="Terminal Proof receipt id required by complete "
+                             "under build completion_semantics")
+    parser.add_argument("--maintenance-completion-receipt",
+                        help="maintenance completion gate receipt id required "
+                             "by complete under maintenance "
+                             "completion_semantics")
+    parser.add_argument("--expected-progress-sha256",
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Progress; --apply is "
+                             "refused when the live bytes differ")
+    parser.add_argument("--expected-queue-sha256",
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Queue; --apply is refused "
+                             "when the live bytes differ")
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
-                        default="worker")
-    parser.add_argument("--at")
-    parser.add_argument("--receipts", default=RECEIPT_PATH)
-    parser.add_argument("--apply", action="store_true")
+                        default="worker",
+                        help="declared caller role; only integrator may apply "
+                             "a task-state write")
+    parser.add_argument("--at",
+                        help="transition timestamp; defaults to now in UTC")
+    parser.add_argument("--receipts", default=RECEIPT_PATH,
+                        help="receipt JSONL path under .cambium/receipts")
+    parser.add_argument("--apply", action="store_true",
+                        help="write the transition; omit for a dry run")
     args = parser.parse_args(argv)
     if args.at is None:
         args.at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())

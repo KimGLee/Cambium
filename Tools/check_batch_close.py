@@ -1334,8 +1334,12 @@ def main(argv=None):
                         help="declared reviewer label (must differ from integrator)")
     parser.add_argument("--review-attestation", required=True,
                         help="reviewer's explicit global-review statement")
-    parser.add_argument("--accept-candidate-id", action="append", default=[])
-    parser.add_argument("--accept-candidate-type", action="append", default=[])
+    parser.add_argument("--accept-candidate-id", action="append", default=[],
+                        help="accept this exact current candidate for this "
+                        "close only")
+    parser.add_argument("--accept-candidate-type", action="append", default=[],
+                        help="accept every current candidate of this exact "
+                        "tool:check type for this close only")
     parser.add_argument("--accept-while-unchanged-id", action="append",
                         default=[], help="accept this exact current candidate "
                         "and permit reuse while its observation is unchanged")

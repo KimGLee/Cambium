@@ -98,10 +98,11 @@ def render(result):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Render Required Queue human report")
-    parser.add_argument("root")
+    parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--output", default=DEFAULT_OUTPUT,
                         help="repository-relative report path")
-    parser.add_argument("--stdout", action="store_true")
+    parser.add_argument("--stdout", action="store_true",
+                        help="print the report to stdout and write nothing")
     parser.add_argument("--check", action="store_true",
                         help="compare existing report instead of writing")
     args = parser.parse_args(argv)

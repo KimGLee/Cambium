@@ -1006,7 +1006,7 @@ def _commit_state(root, paths, before_text, after_text, write_names,
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Compile Required Queue from explicit Coverage assignments")
-    parser.add_argument("root")
+    parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--output", help="repository-relative proposal path")
     write_mode = parser.add_mutually_exclusive_group()
     write_mode.add_argument("--apply", action="store_true",
@@ -1019,16 +1019,36 @@ def main(argv=None):
     )
     parser.add_argument("--replan-diff",
                         help="existing .cambium/tmp/*.yaml diff to consume")
-    parser.add_argument("--amendment-id")
-    parser.add_argument("--expected-queue-revision", type=int)
-    parser.add_argument("--expected-state-revision", type=int)
-    parser.add_argument("--expected-sha256")
-    parser.add_argument("--expected-coverage-sha256")
-    parser.add_argument("--expected-progress-sha256")
+    parser.add_argument("--amendment-id",
+                        help="registered Amendment id authorizing the replan; "
+                             "required with --apply-replan")
+    parser.add_argument("--expected-queue-revision", type=int,
+                        help="compare-and-swap guard: the queue_revision the "
+                             "caller read from the current Queue; the write is "
+                             "refused when the live value differs")
+    parser.add_argument("--expected-state-revision", type=int,
+                        help="compare-and-swap guard: the state_revision the "
+                             "caller read from the current Queue; the replan "
+                             "is refused when the live value differs")
+    parser.add_argument("--expected-sha256",
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Queue; the write is "
+                             "refused when the live bytes differ")
+    parser.add_argument("--expected-coverage-sha256",
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Coverage; the replan is "
+                             "refused when the live bytes differ")
+    parser.add_argument("--expected-progress-sha256",
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Progress; the replan is "
+                             "refused when the live bytes differ")
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
-                        default="worker")
+                        default="worker",
+                        help="declared caller role; only integrator may apply "
+                             "a Queue write or replan")
     parser.add_argument("--receipts",
-                        default=".cambium/receipts/queue-structure.jsonl")
+                        default=".cambium/receipts/queue-structure.jsonl",
+                        help="receipt JSONL path under .cambium/receipts")
     args = parser.parse_args(argv)
 
     root = os.path.realpath(os.path.abspath(args.root))
