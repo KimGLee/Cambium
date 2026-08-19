@@ -44,7 +44,7 @@ The core distribution tools are `check_links`, `check_vocab`, `check_moc`,
 `check_boundary_contract`, `render_boundary_projection`,
 `render_structure_projection`, `project_page_state`,
 `check_residual_content`, `scaffold_profile`, `profile_onboarding_status`, `profile_contract`, `profile_admission`, `stamp_cards`, `run_gates`,
-`compile_cli_contract`,
+`compile_cli_contract`, `render_interface_projection`,
 `amendment_policy`, `batch_settlement`, `candidate_lifecycle`,
 `coverage_delta`, `maintenance_candidates`, and `kblib`.
 `check_freshness` and `duplicate_check` are maintenance-run tools.
@@ -93,6 +93,7 @@ with Cambium; a script absent from both is not part of the distribution.
 | `profile_admission.py` | Shared consumer adapter, not a command. It selects the explicit or K00/03-approved Profile, performs exactly one complete `profile-load`, exposes the authorized immutable Profile snapshot and typed slot paths/text, and rechecks Profile-tree, root-input, and active-selection currency before a consumer emits a pass result or writes an artifact. Profile-dependent tools use this view instead of reopening the manifest or slot files under a later revision | imported by the Profile-dependent scripts above; no command-line entry point |
 | `stamp_cards.py` | Kernel route and Runtime Card verification (K00/03 Write-back Checklist): checks the shared `kernel-runtime-routes` registry identity, exact R01-R13 coverage across both indexes and the on-disk Read Set/Card pairs, filename prefixes, source boundaries, `source_hash`, that every `compiled_from` equals K00/03 active `standards_version`, that every `python3`-prefixed command span in the layer supplies the required arguments its tool declares, that every Card and Read Set carries the H2 sequence registered for it in K00/14 `Card And Read Set Skeleton`, that every kernel leaf module is named by some Read Set loading boundary registered in K00/15, that every kernel leaf module satisfies the K00/03 size budget as amended by the K00/16 register, and that every row of the K00/12 `Stable Gate ID Registry` agrees with the producer it names; defaults to `kernel/Cards`; missing, empty, incomplete, or malformed layers fail closed; `--check` is read-only; `--set-version` must equal the active version and stamps every Card including the Index | `python3 Tools/stamp_cards.py . --check` |
 | `compile_cli_contract.py` | Persistent CLI invocation-contract compiler 1.0.0: derives `Tools/compiled/cli-contract.yaml` from the `argparse` declaration each `Tools/*.py` CLI builds for itself, so the calling contract has one source rather than a prose restatement that can drift. Each tool is imported with `parse_args` patched to raise the instant its parser is complete, so no tool behaviour runs and no tool signature changes; per argument it records `option_strings` (empty for a positional), `dest`, `required`, the evaluated `default`, `choices`, `nargs`, `action`, `type` name and `help`, plus each `add_mutually_exclusive_group` and the receipt extension fields that tool's own source writes onto a `make_*receipt(...)` result. The artifact is machine-generated and must not be hand-edited; it registers no K00/12 Gate ID because it depends on no selected profile and `run_gates` could therefore never sweep it, which is why `make check` runs it directly. `--check` exits 2 when the artifact is stale or hand-edited, 1 only when the evidence itself is unreliable | `python3 Tools/compile_cli_contract.py . --check` |
+| `render_interface_projection.py` | Agent-facing form projection 1.0.0: projects `Tools/compiled/cli-contract.yaml` into the interface shapes an agent runtime actually reads, so a protocol-shaped tool list is a derived view of the one compiled contract rather than a second declaration of it. `FORMS` is a registry, not a special case: each entry names its own output and builder, `--form` selects one, and an argument-free run writes or checks every registered form. The `mcp` form writes `Tools/compiled/mcp-tools.json` -- per tool a `name`, the argparse `description`, and an `inputSchema` whose properties are keyed by `dest` (an undeclared `type` projects as `string`, which is what argv carries; `choices` becomes `enum`, `required` becomes the `required` array, an empty `option_strings` is the positional), plus `stdio` and `streamable-http` and no other transport branch. Every projected field is bound in the tool's own `FIELD_SOURCES` table to the upstream field or rule it comes from, and a field no source covers fails the run; `--sources` prints that table. The artifact carries the sha256 of the contract bytes it was projected from and that contract's own manifest hash, so one upstream change invalidates every form at once and no two forms are ever compared with each other. It is machine-generated and must not be hand-edited, and it registers no K00/12 Gate ID for the same reason its upstream does not. `--check` exits 2 when an artifact is stale or hand-edited, and 1 when the evidence is unreliable -- including when the compiled contract changes underneath the run | `python3 Tools/render_interface_projection.py . --check` |
 | `check_freshness.py` | Freshness check 1.3.0: computes review_by from volatility and last_verified (fallback: last_reviewed, then file modification time per K08/05, flagged pending first verification); `--defaults` accepts a flat mapping or `Tools/vocab.yaml` / a profile's `vocabulary-extensions.yaml` (their `volatility_defaults`); canonical `Tools/vocab.yaml` is consumed only through the current admitted Profile and immutable artifact bytes, while explicit flat defaults remain standalone inputs; an all-skip run reports NOTHING CHECKED as a candidate, not a pass | `python3 Tools/check_freshness.py . --as-of 2026-07-21 --defaults profiles/<your-profile-id>/vocabulary-extensions.yaml --exclude Cards --receipts Tools/receipts/fresh.jsonl` |
 | `duplicate_check.py` | Cross-file duplicate paragraph candidate detection; full vault by default; `--exclude` is repeatable and defaults to the single component `legacy`, the conventional name for a frozen-snapshot area that a vault need not have; compiled Cards and profile skeletons should be excluded from corpus-duplication review; supports `--receipts` and exits 2 when candidates exist | `python3 Tools/duplicate_check.py . --exclude _template --exclude Cards --receipts Tools/receipts/dup.jsonl` |
 | `maintenance_candidates.py` | Shared library, not a command: the pure K00/08 maintenance-candidate set algebra `check_queue.py` uses for `--require-maintenance-complete` and `--resume-status`. It validates the closed candidate record fields, the four `source_kinds` (`freshness`, `watermark`, `needs-rereview`, `candidate-pool`), the selected/deferred partition against Coverage and the budget manifest, deferral age, and re-entry disposition, and it computes the stable `candidate-sha256:` identity and candidate-state fingerprint. It performs no writes, produces no receipts, and never decides whether the source scans found the right candidates | imported by `check_queue.py`; no command-line entry point |
@@ -704,6 +705,38 @@ it by hand; regenerate with `python3 Tools/compile_cli_contract.py .` and
 verify with `python3 Tools/compile_cli_contract.py . --check`, which `make
 check` runs. It carries no Gate ID: it depends on no selected profile, and
 `run_gates` cannot start before a profile is selected.
+
+`compiled/mcp-tools.json` is a **generated artifact**, produced by
+`render_interface_projection.py` from `compiled/cli-contract.yaml`. It is the
+same interface statement in the shape a Model Context Protocol runtime reads:
+per tool a `name`, the tool's own argparse `description`, and an `inputSchema`
+whose properties are keyed by `dest`. The mapping is mechanical -- an
+undeclared argparse `type` projects as `string`, which is what argv carries;
+`choices` becomes `enum`; the arguments argparse marks required become the
+`required` array; an argument with empty `option_strings` is the positional,
+which is the upstream artifact's own stated rule. `additionalProperties` is
+`false` because argparse rejects an option it did not declare. Two transports
+are declared, `stdio` and `streamable-http`; there is no `sse` and no
+`websocket` branch, and their absence is structural rather than a key marking
+them unsupported. Values the compiled contract carries but JSON Schema has no
+place for -- the exact option spellings, the argparse action and `nargs`, and
+each mutually exclusive group -- travel verbatim under `x-cambium-cli` and
+`x-cambium-mutually-exclusive` rather than being dropped or restated.
+
+It is JSON, not the restricted YAML subset, because its payload already is
+JSON Schema; serialization goes through `kblib.canonical_json_bytes`. It
+carries `source_hash`, the sha256 of the exact `cli-contract.yaml` bytes it
+was projected from, and `source_manifest_hash`, that contract's own
+fingerprint of the tool sources behind it. Every form binds that same
+upstream, so one upstream change invalidates all of them at once and no two
+generated forms are ever compared with each other. Do not edit it by hand,
+and do not treat it as the basis for revising a tool: it is downstream of each
+tool's argparse block, so a change starts there, then
+`python3 Tools/compile_cli_contract.py .`, then
+`python3 Tools/render_interface_projection.py .`. Verify with
+`python3 Tools/render_interface_projection.py . --check`, which `make check`
+runs directly after its upstream; like that upstream it carries no Gate ID,
+because it depends on no selected profile.
 
 `vocab.yaml` is a **generated artifact**, produced by `compose_vocab.py` from
 `kernel/K08 Metadata and Status/vocabulary-base.yaml` plus the

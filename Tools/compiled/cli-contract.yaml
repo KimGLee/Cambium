@@ -5,7 +5,7 @@
 #   by hand, and a hand edit is reported by --check as a HOLD.
 # regenerate with: python3 Tools/compile_cli_contract.py .
 # verify with:     python3 Tools/compile_cli_contract.py . --check
-# `source_hash` covers the manifest of the 38 tool sources listed
+# `source_hash` covers the manifest of the 39 tool sources listed
 #   under source_files, each with its own sha256.
 # A positional argument is one whose `option_strings` is empty.
 # `choices` is the admissible SET in canonical order, not the
@@ -50,6 +50,7 @@ source_files:
   - Tools/record_corpus_acceptance.py
   - Tools/register_amendment.py
   - Tools/render_boundary_projection.py
+  - Tools/render_interface_projection.py
   - Tools/render_queue.py
   - Tools/render_structure_projection.py
   - Tools/run_gates.py
@@ -58,7 +59,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:38fc0738b3cdb1ecd8297a1cd2758e0ec396a03b94b4a3ec04af2881fbe08416
+source_hash: sha256:ae0ccd5c8c7977ef3ca46424cd5c4bb3f60f5e55e17f059bdc89ebb4feaa2b76
 receipt_shape:
   base_fields:
     - receipt_id
@@ -73,7 +74,7 @@ receipt_shape:
   conditional_fields:
     - gate_id
   extension_policy: derived-per-tool-from-source
-tool_count: 38
+tool_count: 39
 tools:
   - tool: adopt_standards
     module: Tools/adopt_standards.py
@@ -3038,6 +3039,84 @@ tools:
         type: null
         help: rewrite the stale owned blocks atomically; omit to only report what would render
     mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: render_interface_projection
+    module: Tools/render_interface_projection.py
+    source_hash: sha256:fa7602742ca8af6f5ddcccbf546d6b02c2455f4a90ae7f320181b829ddebfa43
+    description: Project the compiled CLI invocation contract into the agent-facing interface forms registered in this tool.
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository root holding the compiled CLI contract
+      - dest: form
+        option_strings:
+          - --form
+        required: false
+        default: null
+        default_type: NoneType
+        choices:
+          - mcp
+        nargs: null
+        action: store
+        type: null
+        help: "project only this form (default: every registered form)"
+      - dest: contract
+        option_strings:
+          - --contract
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compiled CLI contract to project (default: <root>/Tools/compiled/cli-contract.yaml)"
+      - dest: output
+        option_strings:
+          - --output
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: artifact path to write or verify; requires --form, because one path cannot hold two forms
+      - dest: check
+        option_strings:
+          - --check
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: recompute and compare against the existing artifacts; exit 0 when byte-identical, 2 when one is stale or hand-edited
+      - dest: sources
+        option_strings:
+          - --sources
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: print the declaration source of every projected field and exit without reading or writing any artifact
+    mutually_exclusive_groups:
+      - required: false
+        dests:
+          - check
+          - sources
     receipt_extensions: []
     receipt_extensions_extraction: complete
   - tool: render_queue

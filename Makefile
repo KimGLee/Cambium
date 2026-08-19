@@ -37,10 +37,15 @@ help:
 # here rather than in the K00/12 Stable Gate ID Registry on purpose: run_gates
 # needs a selected profile before it can start, and this artifact depends on
 # no profile at all, so a registry row for it could never be swept.
+#
+# render_interface_projection --check covers every agent-facing form projected
+# from that contract (today Tools/compiled/mcp-tools.json).  It runs directly
+# after its own upstream, and stays out of the registry for the same reason.
 check: check-test-shards
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_links.py .
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/stamp_cards.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/compile_cli_contract.py . --check
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/render_interface_projection.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_moc.py .
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_profile.py $(PROFILE)
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -c "import sys; sys.path.insert(0, 'Tools'); import check_batch_close as c; r = c._structural_check('.', {'queue': {'selected_profile_manifest': '$(PROFILE)/profile.md'}}); print('structural_errors =', len(r['errors'])); sys.exit(1 if r['errors'] else 0)"

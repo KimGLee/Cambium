@@ -1,0 +1,449 @@
+"""The agent-facing form projections and the generator that derives them.
+
+These cover the properties the artifact is only useful for having: that every
+value in it is a projection of `Tools/compiled/cli-contract.yaml` rather than a
+second declaration of the same interface, that two runs agree byte for byte
+across hash seeds, that `--check` separates a stale artifact (2, a HOLD) from
+unreliable evidence (1), that the upstream binding is a fingerprint of the
+bytes actually read, and that a field with no declaration source cannot reach
+the artifact at all.
+
+No flag, default, help string, or transport name is restated here. Every
+expectation is read either from the repository's own compiled contract or from
+a fixture built inside the test, so this file cannot drift into a second
+declaration of the projection.
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+TOOLS_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = TOOLS_DIR.parent
+SCRIPT = TOOLS_DIR / "render_interface_projection.py"
+
+sys.path.insert(0, str(TOOLS_DIR))
+import kblib  # noqa: E402
+import render_interface_projection as projector  # noqa: E402
+
+CONTRACT = REPO_ROOT / projector.DEFAULT_CONTRACT
+MCP_ARTIFACT = REPO_ROOT / projector.FORMS["mcp"]["output"]
+
+
+def run(*arguments, env=None):
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment.update(env or {})
+    return subprocess.run(
+        [sys.executable, str(SCRIPT)] + list(arguments),
+        capture_output=True, text=True, env=environment,
+        cwd=str(REPO_ROOT), check=False)
+
+
+def shipped_contract():
+    return kblib.parse_yaml_subset(CONTRACT.read_text(encoding="utf-8"))
+
+
+def fixture_contract(**overrides):
+    """One minimal compiled contract, owned entirely by this test file."""
+    data = {
+        "schema_version": projector.UPSTREAM_SCHEMA_VERSION,
+        "artifact": projector.UPSTREAM_ARTIFACT,
+        "source_hash": kblib.sha256_bytes(b"fixture manifest"),
+        "tool_count": 1,
+        "tools": [{
+            "tool": "sample",
+            "module": "Tools/sample.py",
+            "source_hash": kblib.sha256_bytes(b"fixture source"),
+            "description": "A fixture tool",
+            "arguments": [{
+                "dest": "root", "option_strings": [], "required": True,
+                "default": None, "default_type": "NoneType",
+                "choices": None, "nargs": None, "action": "store",
+                "type": None, "help": "where to look",
+            }],
+            "mutually_exclusive_groups": [],
+            "receipt_extensions": [],
+            "receipt_extensions_extraction": "complete",
+        }],
+    }
+    data.update(overrides)
+    return data
+
+
+class ShippedArtifactTests(unittest.TestCase):
+    """The artifacts in the tree must be what the contract currently states."""
+
+    def setUp(self):
+        self.artifact = json.loads(MCP_ARTIFACT.read_text(encoding="utf-8"))
+        self.contract = shipped_contract()
+
+    def test_check_accepts_the_shipped_artifacts(self):
+        result = run(".", "--check")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_every_registered_form_ships_its_artifact(self):
+        for name, form in projector.FORMS.items():
+            with self.subTest(form=name):
+                self.assertTrue((REPO_ROOT / form["output"]).is_file())
+
+    def test_every_contracted_tool_is_projected_under_its_own_name(self):
+        expected = [record["tool"] for record in self.contract["tools"]]
+
+        self.assertEqual([tool["name"] for tool in self.artifact["tools"]],
+                         expected)
+        self.assertEqual(self.artifact["tool_count"], len(expected))
+
+    def test_the_upstream_binding_is_the_bytes_that_were_read(self):
+        self.assertEqual(self.artifact["source_hash"],
+                         kblib.sha256_bytes(CONTRACT.read_bytes()))
+        self.assertEqual(self.artifact["source_manifest_hash"],
+                         self.contract["source_hash"])
+
+    def test_each_property_carries_its_argument_declaration_verbatim(self):
+        contracted = {record["tool"]: record for record in
+                      self.contract["tools"]}
+        for tool in self.artifact["tools"]:
+            record = contracted[tool["name"]]
+            properties = tool["inputSchema"]["properties"]
+            with self.subTest(tool=tool["name"]):
+                self.assertEqual(
+                    sorted(properties),
+                    sorted(argument["dest"] for argument in
+                           record["arguments"]))
+                for argument in record["arguments"]:
+                    schema = properties[argument["dest"]]
+                    extension = schema[projector.CLI_EXTENSION_KEY]
+                    self.assertEqual(extension["option_strings"],
+                                     argument["option_strings"])
+                    self.assertEqual(extension["action"], argument["action"])
+
+    def test_required_is_exactly_what_argparse_marks_required(self):
+        contracted = {record["tool"]: record for record in
+                      self.contract["tools"]}
+        for tool in self.artifact["tools"]:
+            record = contracted[tool["name"]]
+            expected = [argument["dest"] for argument in record["arguments"]
+                        if argument["required"]]
+            with self.subTest(tool=tool["name"]):
+                self.assertEqual(tool["inputSchema"].get("required", []),
+                                 expected)
+
+    def test_declared_choices_become_the_enum(self):
+        contracted = {record["tool"]: record for record in
+                      self.contract["tools"]}
+        seen = 0
+        for tool in self.artifact["tools"]:
+            record = contracted[tool["name"]]
+            for argument in record["arguments"]:
+                if not argument["choices"]:
+                    continue
+                schema = tool["inputSchema"]["properties"][argument["dest"]]
+                carrier = schema.get("items", schema)
+                with self.subTest(tool=tool["name"], dest=argument["dest"]):
+                    self.assertEqual(carrier["enum"], argument["choices"])
+                seen += 1
+        self.assertTrue(seen, "no shipped tool declares choices")
+
+    def test_a_tool_with_no_declared_description_omits_the_key(self):
+        contracted = {record["tool"]: record for record in
+                      self.contract["tools"]}
+        for tool in self.artifact["tools"]:
+            record = contracted[tool["name"]]
+            with self.subTest(tool=tool["name"]):
+                self.assertEqual("description" in tool,
+                                 bool(record["description"]))
+
+    def test_no_transport_branch_beyond_the_declared_ones_exists(self):
+        """An unsupported transport has no key at all, not a false one."""
+        self.assertEqual(self.artifact["transports"],
+                         list(projector.MCP_TRANSPORTS))
+
+        keys = set()
+        stack = [self.artifact]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                keys |= set(node)
+                stack.extend(node.values())
+            elif isinstance(node, list):
+                stack.extend(node)
+
+        for absent in ("sse", "websocket"):
+            self.assertNotIn(absent, keys)
+            self.assertNotIn(absent, self.artifact["transports"])
+
+    def test_the_artifact_announces_that_it_is_generated(self):
+        generated = self.artifact["generated"]
+
+        self.assertEqual(generated["notice"], projector.NOTICE)
+        self.assertEqual(generated["not_a_revision_basis"],
+                         projector.NOT_A_REVISION_BASIS)
+
+    def test_every_emitted_field_is_bound_to_a_declaration_source(self):
+        self.assertEqual(projector.unbound_field_paths(self.artifact), [])
+
+
+class DeterminismTests(unittest.TestCase):
+    def test_two_runs_agree_across_hash_seeds(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            first = os.path.join(workspace, "first.json")
+            second = os.path.join(workspace, "second.json")
+            run(".", "--form", "mcp", "--output", first,
+                env={"PYTHONHASHSEED": "0"})
+            run(".", "--form", "mcp", "--output", second,
+                env={"PYTHONHASHSEED": "12345"})
+
+            self.assertEqual(Path(first).read_bytes(),
+                             Path(second).read_bytes())
+
+
+class MappingTests(unittest.TestCase):
+    """Mapping rules the shipped tools do not happen to exercise."""
+
+    def schema(self, **argument):
+        record = dict({
+            "dest": "sample", "option_strings": ["--sample"],
+            "required": False, "default": None, "default_type": "NoneType",
+            "choices": None, "nargs": None, "action": "store", "type": None,
+            "help": None,
+        }, **argument)
+        return projector.property_schema(record)
+
+    def test_an_undeclared_type_projects_as_a_string(self):
+        self.assertEqual(self.schema()["type"],
+                         projector.DEFAULT_SCALAR_TYPE)
+
+    def test_a_custom_converter_projects_as_a_string_and_is_kept(self):
+        schema = self.schema(type="positive_int")
+
+        self.assertEqual(schema["type"], projector.DEFAULT_SCALAR_TYPE)
+        self.assertEqual(schema[projector.CLI_EXTENSION_KEY]["type"],
+                         "positive_int")
+
+    def test_a_zero_value_action_projects_as_a_boolean(self):
+        self.assertEqual(
+            self.schema(action="store_true", nargs=0, default=False,
+                        default_type="bool")["type"],
+            "boolean")
+
+    def test_a_repeated_argument_projects_as_an_array_of_its_element(self):
+        schema = self.schema(action="append", type="int")
+
+        self.assertEqual(schema["type"], "array")
+        self.assertEqual(schema["items"]["type"], "integer")
+
+    def test_one_or_more_projects_as_an_array_with_a_minimum(self):
+        schema = self.schema(nargs="+")
+
+        self.assertEqual(schema["type"], "array")
+        self.assertEqual(schema["minItems"], 1)
+        self.assertNotIn("maxItems", schema)
+
+    def test_a_fixed_count_projects_as_an_array_of_that_exact_length(self):
+        schema = self.schema(nargs=2)
+
+        self.assertEqual((schema["minItems"], schema["maxItems"]), (2, 2))
+
+    def test_a_suppressed_default_is_omitted_rather_than_recorded(self):
+        schema = self.schema(default="==SUPPRESS==",
+                             default_type="argparse.SUPPRESS")
+
+        self.assertNotIn("default", schema)
+
+    def test_a_positional_is_the_argument_with_no_option_strings(self):
+        schema = self.schema(option_strings=[], dest="root")
+
+        self.assertEqual(schema[projector.CLI_EXTENSION_KEY]["option_strings"],
+                         [])
+
+
+class FieldSourceTests(unittest.TestCase):
+    def test_a_field_with_no_declaration_source_is_reported(self):
+        artifact = {"invented_here": "a value nothing upstream states"}
+
+        self.assertEqual(projector.unbound_field_paths(artifact),
+                         ["invented_here"])
+
+    def test_the_source_table_is_printable_without_reading_an_artifact(self):
+        result = run(".", "--sources")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for path in projector.FIELD_SOURCES:
+            self.assertIn(path, result.stdout)
+
+
+class FixtureRunTests(unittest.TestCase):
+    """Exit codes, against a contract fixture this test owns end to end."""
+
+    def setUp(self):
+        self.workspace = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+        self.contract_path = os.path.join(self.workspace, "contract.yaml")
+        self.output = os.path.join(self.workspace, "mcp-tools.json")
+        self.write_contract()
+
+    def write_contract(self, **overrides):
+        with open(self.contract_path, "w", encoding="utf-8") as handle:
+            handle.write(kblib.canonical_yaml(fixture_contract(**overrides)))
+
+    def project(self, *extra):
+        return run(self.workspace, "--form", "mcp", "--contract",
+                   self.contract_path, "--output", self.output, *extra)
+
+    def test_write_then_check_passes(self):
+        self.assertEqual(self.project().returncode, 0)
+
+        result = self.project("--check")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_a_hand_edited_artifact_holds_with_2(self):
+        self.project()
+        text = Path(self.output).read_text(encoding="utf-8")
+        Path(self.output).write_text(text.replace("sample", "renamed", 1),
+                                     encoding="utf-8")
+
+        result = self.project("--check")
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+
+    def test_a_single_changed_byte_holds_with_2(self):
+        self.project()
+        raw = Path(self.output).read_bytes()
+        Path(self.output).write_bytes(raw[:-2] + b" " + raw[-2:])
+
+        result = self.project("--check")
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+
+    def test_a_missing_artifact_holds_with_2(self):
+        result = self.project("--check")
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+
+    def test_an_upstream_change_makes_the_artifact_stale_with_2(self):
+        self.project()
+        self.write_contract(source_hash=kblib.sha256_bytes(b"later manifest"))
+
+        result = self.project("--check")
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+
+    def test_a_missing_upstream_is_unreliable_evidence_with_1_not_2(self):
+        self.project()
+        os.unlink(self.contract_path)
+
+        result = self.project("--check")
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+
+    def test_an_unparseable_upstream_is_unreliable_evidence_with_1(self):
+        with open(self.contract_path, "w", encoding="utf-8") as handle:
+            handle.write("tools: [\n\tbroken\n")
+
+        result = self.project("--check")
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+
+    def test_a_foreign_artifact_is_unreliable_evidence_with_1(self):
+        self.write_contract(artifact="something-else")
+
+        result = self.project("--check")
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+
+    def test_an_unreadable_upstream_schema_version_is_unreliable_with_1(self):
+        self.write_contract(
+            schema_version=projector.UPSTREAM_SCHEMA_VERSION + 1)
+
+        result = self.project("--check")
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+
+    def test_an_upstream_changing_underneath_the_run_reports_1(self):
+        """Time-of-check / time-of-use: two upstreams, so no verdict."""
+        original = projector.read_contract
+
+        def moving_target(path):
+            contract, digest = original(path)
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.write("\n# a concurrent recompilation\n")
+            return contract, digest
+
+        projector.read_contract = moving_target
+        self.addCleanup(setattr, projector, "read_contract", original)
+
+        code = projector.main([self.workspace, "--form", "mcp", "--contract",
+                               self.contract_path, "--output", self.output,
+                               "--check"])
+
+        self.assertEqual(code, 1)
+
+    def test_the_artifact_is_valid_json(self):
+        self.project()
+
+        artifact = json.loads(Path(self.output).read_text(encoding="utf-8"))
+
+        self.assertEqual(artifact["artifact"], projector.ARTIFACT_KIND)
+        self.assertEqual(artifact["form"], "mcp")
+
+
+class FormRegistryTests(unittest.TestCase):
+    """A second form joins the run by being registered, and nowhere else."""
+
+    def setUp(self):
+        self.workspace = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
+        contract_path = os.path.join(
+            self.workspace, projector.DEFAULT_CONTRACT)
+        os.makedirs(os.path.dirname(contract_path))
+        with open(contract_path, "w", encoding="utf-8") as handle:
+            handle.write(kblib.canonical_yaml(fixture_contract()))
+
+        self.second = "Tools/compiled/fixture-form.json"
+        projector.FORMS["fixture"] = {
+            "output": self.second,
+            "build": projector.build_envelope,
+            "summary": "a second form, registered only for this test",
+        }
+        self.addCleanup(projector.FORMS.pop, "fixture", None)
+
+    def outputs(self):
+        return [os.path.join(self.workspace, form["output"])
+                for form in projector.FORMS.values()]
+
+    def test_an_argument_free_run_covers_every_registered_form(self):
+        self.assertEqual(projector.main([self.workspace]), 0)
+
+        for path in self.outputs():
+            self.assertTrue(os.path.isfile(path), path)
+
+    def test_check_covers_every_registered_form(self):
+        projector.main([self.workspace])
+
+        self.assertEqual(projector.main([self.workspace, "--check"]), 0)
+
+    def test_a_stale_second_form_holds_the_whole_run_with_2(self):
+        projector.main([self.workspace])
+        os.unlink(os.path.join(self.workspace, self.second))
+
+        self.assertEqual(projector.main([self.workspace, "--check"]), 2)
+
+    def test_one_form_can_be_selected_on_its_own(self):
+        self.assertEqual(
+            projector.main([self.workspace, "--form", "mcp"]), 0)
+
+        self.assertFalse(os.path.exists(
+            os.path.join(self.workspace, self.second)))
+
+
+if __name__ == "__main__":
+    unittest.main()
