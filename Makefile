@@ -41,11 +41,18 @@ help:
 # render_interface_projection --check covers every agent-facing form projected
 # from that contract (today Tools/compiled/mcp-tools.json).  It runs directly
 # after its own upstream, and stays out of the registry for the same reason.
+#
+# render_host_configs --check covers the five host configuration products under
+# Tools/compiled/host-configs/, which carry the sha256 of that projection, so
+# it runs directly after it and stays out of the registry for the same reason
+# again.  Those products are templates for an adopter's corpus repository; this
+# repository registers no MCP server with itself.
 check: check-test-shards
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_links.py .
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/stamp_cards.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/compile_cli_contract.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/render_interface_projection.py . --check
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/render_host_configs.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_moc.py .
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_profile.py $(PROFILE)
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -c "import sys; sys.path.insert(0, 'Tools'); import check_batch_close as c; r = c._structural_check('.', {'queue': {'selected_profile_manifest': '$(PROFILE)/profile.md'}}); print('structural_errors =', len(r['errors'])); sys.exit(1 if r['errors'] else 0)"

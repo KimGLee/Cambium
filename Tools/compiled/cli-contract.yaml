@@ -5,7 +5,7 @@
 #   by hand, and a hand edit is reported by --check as a HOLD.
 # regenerate with: python3 Tools/compile_cli_contract.py .
 # verify with:     python3 Tools/compile_cli_contract.py . --check
-# `source_hash` covers the manifest of the 39 tool sources listed
+# `source_hash` covers the manifest of the 40 tool sources listed
 #   under source_files, each with its own sha256.
 # A positional argument is one whose `option_strings` is empty.
 # `choices` is the admissible SET in canonical order, not the
@@ -50,6 +50,7 @@ source_files:
   - Tools/record_corpus_acceptance.py
   - Tools/register_amendment.py
   - Tools/render_boundary_projection.py
+  - Tools/render_host_configs.py
   - Tools/render_interface_projection.py
   - Tools/render_queue.py
   - Tools/render_structure_projection.py
@@ -59,7 +60,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:ae0ccd5c8c7977ef3ca46424cd5c4bb3f60f5e55e17f059bdc89ebb4feaa2b76
+source_hash: sha256:cfcf7a1354cc44232a4864afd2622ac7428a18175ac5fca4a99d4363d605166a
 receipt_shape:
   base_fields:
     - receipt_id
@@ -74,7 +75,7 @@ receipt_shape:
   conditional_fields:
     - gate_id
   extension_policy: derived-per-tool-from-source
-tool_count: 39
+tool_count: 40
 tools:
   - tool: adopt_standards
     module: Tools/adopt_standards.py
@@ -3039,6 +3040,110 @@ tools:
         type: null
         help: rewrite the stale owned blocks atomically; omit to only report what would render
     mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
+  - tool: render_host_configs
+    module: Tools/render_host_configs.py
+    source_hash: sha256:4a1fd2ff4d6ee4be7d361d99935f118887e8ab25625e600d040d3a94b7b0ef6c
+    description: Render the Cambium MCP server's registration and corpus binding into the configuration file each supported host reads.
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository root holding the compiled interface projection
+      - dest: host
+        option_strings:
+          - --host
+        required: false
+        default: null
+        default_type: NoneType
+        choices:
+          - claude-code
+          - codex
+          - dsh-env
+          - dsh-profile-patch
+          - kimi-code
+        nargs: null
+        action: store
+        type: null
+        help: "render only this host's product (default: every host)"
+      - dest: projection
+        option_strings:
+          - --projection
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "compiled interface projection to bind to (default: <root>/Tools/compiled/mcp-tools.json)"
+      - dest: output_dir
+        option_strings:
+          - --output-dir
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "directory to write or verify the products in (default: <root>/Tools/compiled/host-configs)"
+      - dest: distribution_root
+        option_strings:
+          - --distribution-root
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "absolute path of the Cambium checkout the server is launched from; substituted for <CAMBIUM_DISTRIBUTION_ROOT> (default: leave the placeholder)"
+      - dest: workspace_root
+        option_strings:
+          - --workspace-root
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: "absolute path of the corpus repository this registration is bound to; substituted for <CAMBIUM_WORKSPACE_ROOT> (default: leave the placeholder)"
+      - dest: check
+        option_strings:
+          - --check
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: re-render and compare against the existing products; exit 0 when byte-identical, 2 when one is stale or hand-edited
+      - dest: sources
+        option_strings:
+          - --sources
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: print the declaration source of every rendered field and exit without reading or writing any product
+    mutually_exclusive_groups:
+      - required: false
+        dests:
+          - check
+          - sources
     receipt_extensions: []
     receipt_extensions_extraction: complete
   - tool: render_interface_projection
