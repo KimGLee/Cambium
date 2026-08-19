@@ -105,6 +105,7 @@ They are reconciled rather than treated as interchangeable task lists.
 | [`profiles/_template/`](profiles/_template/) | A domain-neutral form to copy and fill; not a runnable or default profile |
 | [`profiles/examples/`](profiles/examples/) | Non-normative completed references; examples are not adoption starting points and cannot be selected in place |
 | [`Tools/`](Tools/) | Standard-library Python checks, schemas, receipts, and compiled-artifact generators |
+| [`Tools/compiled/`](Tools/compiled/) | Generated artifacts: the CLI invocation contract, its agent-facing MCP projection, and one registration file per supported host. Never hand-edited; `--check` recomputes and compares |
 | [`ROADMAP.md`](ROADMAP.md) | Non-normative implementation directions; not a statement of current capability |
 
 The included
@@ -169,6 +170,25 @@ tool-owned boundary projection blocks.
 They do not dispatch agents. Worker dispatch, workspace isolation, event
 delivery, and the integrator loop must still be supplied by the adopting
 runtime or a human operator.
+
+Those operations are now callable from an agent host without host-specific
+code. A compiled CLI invocation contract is derived by introspecting each
+tool's own parser rather than being maintained by hand; an agent-facing MCP
+projection is generated from that contract; a stdio server serves the
+projection; and one registration file per host is rendered from a single server
+definition. Every one of those artifacts is generated at build time, written
+into the repository, and guarded by `--check` recompute-and-compare, exactly as
+Runtime Cards and the composed vocabulary already are.
+
+That interface layer is deliberately thin, and the boundary is held
+mechanically rather than by convention. It does not decide whether an operation
+may run, whether a result counts, or whether evidence is kept — those remain
+kernel questions answered by the tools themselves. It must not re-implement any
+kernel rule, and a test asserts that the server imports only the standard
+library, so no judgment module can be reached from it. A kernel refusal reaches
+the caller unchanged: the layer never rewrites a refusal into an error, never
+presents a failure as a refusal, and reports a result it cannot parse as
+unparseable rather than inventing a verdict.
 
 The shipped Amendment interface first registers an approved operational
 decision against the exact current state, then consumes that authorization in
@@ -346,6 +366,61 @@ Copying, filling, validating, or recording a manifest path does not activate a
 profile by itself. The manifest becomes the selected profile for content work
 only when the complete R09 initial-adoption change closes. Validate the filled
 copy, not `_template`; the composed vocabulary does not exist before adoption.
+
+## Call Cambium From An Agent Host
+
+Cambium's operations are reachable from Claude Code, Codex, Kimi Code, and dsh
+without writing host-specific code. What each host reads is a generated file,
+never a hand-written one.
+
+Render the registration for your corpus. Both roots are absolute paths; leave
+either out and its placeholder stays in the product:
+
+```bash
+python3 Tools/render_host_configs.py . \
+  --distribution-root /absolute/path/to/corpus \
+  --workspace-root /absolute/path/to/corpus
+```
+
+The products land in `Tools/compiled/host-configs/`. Install the one your host
+reads:
+
+| Host | Destination | Carries |
+|---|---|---|
+| Claude Code | `<corpus>/.mcp.json` | registration + binding |
+| Kimi Code | `<corpus>/.kimi-code/mcp.json` | registration + binding |
+| Codex | `<corpus>/.codex/config.toml` | registration + binding |
+| dsh | `<corpus>/.env` | binding only |
+| dsh | `$DSH_HOME/profiles/<name>/cordis.patch.yml`, or `dsh --patch <path>` | registration only, once per machine |
+
+Registration and binding are two different questions — where the server is, and
+which corpus this session governs. Three hosts happen to answer both in one
+file; dsh separates them, which is what makes the distinction visible. The
+binding travels as `CAMBIUM_WORKSPACE_ROOT`, set by the host and read from the
+environment only. It is never inferred from an inherited working directory:
+every host starts a stdio server in the session's own directory, but none of
+them documents that behaviour, and an undocumented default is not something a
+governance binding may rest on.
+
+**First contact is manual on three of the four hosts.** Claude Code asks a
+person to trust the workspace before it loads a project-level `.mcp.json`;
+Codex reads a project-level `.codex/config.toml` only while the project is
+trusted; Kimi loads project-level MCP config only after the workspace is marked
+trusted. A repository that was just cloned cannot approve itself, and that is
+the point. Each approval is one time per corpus. dsh needs no approval because
+its registration lives in the operator's own profile rather than in the
+repository.
+
+Verify a rendered product before or after installing it:
+
+```bash
+python3 Tools/render_host_configs.py . --check
+```
+
+The server exposes exactly the operations the compiled projection declares. It
+decides nothing: it reads exit codes and receipts, passes a kernel refusal
+through unchanged, and reports an unparseable result as unparseable rather than
+guessing a verdict.
 
 ## Adopt A New Standards Version Into An Active Task
 

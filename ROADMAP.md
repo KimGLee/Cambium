@@ -18,12 +18,13 @@ bypass R09 adoption.
 | Execution | The kernel defines sequential work, concurrent disjoint batches, independent review contexts, and serial integration |
 | Persistent work state | `.cambium/` separates object-level Coverage, the canonical Required Queue, task-level Progress, and hash-bound restricted-YAML complex-batch Work Specs; standard-library tools initialize, compile, validate, transition, apply Amendment-bound cross-Ledger changes, recover interrupted-write evidence, and render Queue state |
 | Active-task Standards adoption | One restricted-YAML plan binds approved governance bytes, deterministic Kernel/Profile snapshots, old/new Contract/Standards/Profile/load set, changed predicates, and dimension/boundary-specific invalidated evidence. Current admission projects semantic leaf impacts to registered owner Gates: Queue consistency is the only raw immediate receipt, while review/close/completion owners remain mandatory at their native transitions. After required pre-rollbacks/holds, `adopt_standards.py` synchronizes all three runtime identities without changing lifecycle/holds; append-only receipts preserve producer-era history, filter invalidated-evidence receipt IDs from current use, recover interruption, and avoid a prose duplicate |
-| Runtime | No bundled orchestrator, scheduler, workspace manager, or host adapter |
-| OpenAI Plugin adapter | No Plugin manifest, Skills, MCP configuration, Hooks, or marketplace entry. The candidate design is a host-specific adapter over the host-neutral Core, not a replacement for the kernel, selected Profile, or adopter-owned state |
+| Runtime | No bundled orchestrator, scheduler, or workspace manager. The shipped agent interface below is a call surface, not a runtime: it dispatches nothing, schedules nothing, and owns no assignment state |
+| Agent interface | Shipped. `compile_cli_contract.py` derives the CLI invocation contract by introspecting each tool's own parser; `render_interface_projection.py` projects it into the agent-facing MCP tool list (40 operations); `mcp_server.py` serves that list over stdio at protocol `2025-11-25` and decides nothing — it reads exit codes and receipts and never infers a verdict; `render_host_configs.py` renders registration and corpus binding for Claude Code, Codex, Kimi Code, and dsh from one canonical server definition. All four artifacts are build-time generated with `--check` recompute-and-compare. Adopting an already-supported host is configuration only; supporting a new host adds one renderer |
+| OpenAI Plugin adapter | MCP configuration now ships through the host-neutral agent interface above. No Plugin manifest, Skills, Hooks, or marketplace entry. Measured while building that interface: the Agent Plugins shell cannot determine which corpus a session governs at handshake — it declares no roots, resolves an omitted `cwd` to the plugin root rather than the session workdir, and rejects `env_vars` whitelist forwarding. A per-corpus binding and that shell are not simultaneously available; Codex is therefore registered through its project-level `.codex/config.toml`. The candidate design remains a host-specific adapter over the host-neutral Core, not a replacement for the kernel, selected Profile, or adopter-owned state |
 | Corpus planning and impact inputs | A configured Profile explicitly binds restricted-YAML Global Map, Capability Matrix, and Gap Register artifacts; `check_corpus_plan.py` validates structure/reconciliation and emits deterministic JSON, while `record_corpus_acceptance.py` records the distinct Profile-authorized semantic decision as append-only JSONL; no duplicate Markdown report is persisted |
 | Automatic dependency propagation | The kernel defines semantic dependency invalidation and downstream `needs_rereview`, but no bundled compiler or change detector yet calculates an affected set from the explicit planning inputs |
 | Independent completeness and consistency evaluation | Current gates prove integrity within the declared Coverage, Queue, Delta, receipt, and snapshot boundaries. No bundled independent pass yet re-derives the expected corpus or impact set without trusting those declarations, or evaluates paraphrased cross-document contradictions as a general capability |
-| Tools | Deterministic checks, schemas, receipts, vocabulary/Card compilation, Corpus Planning validation/semantic acceptance/on-demand Agent projection, Required Queue and Work Spec control, guarded Amendment and active-task Standards-adoption transactions, and single-delta application |
+| Tools | Deterministic checks, schemas, receipts, vocabulary/Card compilation, Corpus Planning validation/semantic acceptance/on-demand Agent projection, Required Queue and Work Spec control, guarded Amendment and active-task Standards-adoption transactions, single-delta application, and the four agent-interface generators. The 27 receipt-producing tools carry `--json`: the receipt they already build is serialized to stdout while the human summary moves to stderr, and behaviour without the flag is unchanged. A tool that produces no receipt has nothing to serialize and carries no flag |
 | Page-level contract family | The composed frontmatter page contract (K08/06-08; `compose_page_contract.py` + advisory `page-contract` gate), Structure Registry resolution (K01/05-06; `structure-registry` gate) with marker-block coverage projections, and the page boundary contract (K08/09; advisory `boundary-contract` gate) with its tool-owned boundary projection — all deterministic, with advisory gates awaiting per-adopter promotion decisions under K12/10 |
 
 ## Profile Adoption Reform And Onboarding
@@ -194,6 +195,27 @@ currently shipped. The Plugin may package Skills, a local MCP adapter, and
 generated release resources, but it is not a new normative layer. The kernel,
 exactly one selected Profile, and the target repository's `.cambium/` state
 remain authoritative.
+
+The host-neutral half of this capability has since shipped separately, and it
+changes what remains here. Cambium is now callable from Claude Code, Codex,
+Kimi Code, and dsh through generated per-host configuration; the operation
+surface those hosts see is a build-time projection of the compiled CLI
+contract, not a hand-listed one. Several boundaries stated below are therefore
+already held by that interface rather than pending: the MCP surface is a closed
+set of typed operations with no arbitrary command runner and no second
+state-writing implementation, and registration is explicitly not adoption.
+What a Plugin would still add is packaging and distribution — a manifest,
+Skills, Hooks, and a marketplace entry — not the call surface itself.
+
+One measured constraint belongs on the record. The Agent Plugins shell cannot
+determine which corpus a session governs at handshake: it declares no roots, it
+resolves an omitted `cwd` to the plugin resource root rather than the session
+workdir (the native dialect and `config.toml` resolve to the workdir), and it
+rejects `env_vars` whitelist forwarding. All three channels were tested. A
+per-corpus binding and that shell are not simultaneously available, so Codex is
+registered through its project-level `.codex/config.toml` instead. A Plugin
+release that wants per-corpus governance must first close that gap upstream or
+carry the binding some other way; it cannot be assumed.
 
 OpenAI currently documents Plugins as an installable package that may combine
 Skills, MCP servers, Hooks, and assets. Its package contract is an evolving
@@ -956,6 +978,13 @@ assignment state and the deterministic integrator loop precede parallel worker
 automation; observability and recovery tests accompany every stage. This order
 protects the shared control plane while still making multi-context execution
 the intended scaling path.
+
+The host-neutral agent interface is complete and sits before the Plugin line
+rather than inside it: the compiled CLI contract, its projection, the MCP
+server, and the per-host configs are all host-neutral, so a Plugin release
+consumes them rather than reimplementing them. A new host is adopted by adding
+one renderer, which is why the per-host configuration piece is the acceptance
+test for the three before it rather than a fourth feature.
 
 Core stabilization precedes every state-writing Plugin capability. The
 Operation Capability Registry is standards-layer work that precedes the
