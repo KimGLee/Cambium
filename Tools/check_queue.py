@@ -11520,7 +11520,7 @@ def _coverage_property_state_errors(
                     "%s status must be %s" %
                     (legacy_label, LEGACY_PROPERTY_STATUS))
             try:
-                project_page_state._typed_owner_value(
+                project_page_state._typed_legacy_observation_value(
                     record.get("value"), property_rules[field], path)
             except (TypeError, ValueError) as exc:
                 errors.append("%s has invalid value: %s" % (legacy_label, exc))
