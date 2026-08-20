@@ -319,6 +319,39 @@ def _typed_owner_value(value, rule, relative):
     return value
 
 
+def _typed_legacy_observation_value(value, rule, relative):
+    """Validate one legacy observation of a claimed, unproved page value.
+
+    Current owner state is held to the domain its writers can produce: a
+    date proved by evidence, or a Gate's registered completion enum.  A
+    legacy observation instead records what an unmigrated page claimed, so
+    its enum domain is the field's full registered vocabulary
+    (``legacy_observation_values``), and a present-but-blank claim is
+    recorded as an explicit null rather than refused.  The narrower
+    ``allowed_values`` completion enum remains the domain Gate transitions
+    and current owner records are validated against.
+    """
+    field = rule["field"]
+    shape = _validate_value_rule(rule, field)
+    if value is None:
+        return None
+    if shape == "date":
+        return _date_value(value, field, relative)
+    if shape == "scalar-string-or-null":
+        if not isinstance(value, str):
+            raise ValueError(
+                "legacy observation %s for %s must be a string or null" %
+                (field, relative))
+        return value
+    observed_domain = (rule.get("legacy_observation_values") or
+                       rule["allowed_values"])
+    if not isinstance(value, str) or value not in observed_domain:
+        raise ValueError(
+            "legacy observation %s for %s must be one of %s, or null; "
+            "found %r" % (field, relative, ", ".join(observed_domain), value))
+    return value
+
+
 def _owner_value(row, rule, relative, semantic_fingerprint,
                  property_states):
     field = rule["field"]

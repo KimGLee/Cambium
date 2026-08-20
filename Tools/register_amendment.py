@@ -31,7 +31,7 @@ import kblib
 
 
 TOOL = "register_amendment"
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.4.0"
 RECEIPT_PATH = ".cambium/receipts/amendments.jsonl"
 OPERATIONS = (
     "scope-replan", "cancel-batch", "queue-replan",

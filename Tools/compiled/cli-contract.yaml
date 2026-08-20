@@ -64,7 +64,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:32442c746f8711513df36fab4e5840d25f77aeee5b1fe01d3ddaf4057739743c
+source_hash: sha256:44df7b2c0ed31b4d422d1643b8109a9333bb59796bbce381a316b51aa50fb4f2
 receipt_shape:
   base_fields:
     - receipt_id
@@ -218,7 +218,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_amendment
     module: Tools/apply_amendment.py
-    source_hash: sha256:7d0b77af449ad4e09c1ab1dc0bbf0e4390a15c1a6f56d4483728630716ef2743
+    source_hash: sha256:d541f4de5caa0b55c68817c406c820de856a675b030a716eaab10e47f3fad4d8
     description: Apply one approved cross-Ledger Amendment transaction
     arguments:
       - dest: root
@@ -1766,7 +1766,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:54ffdea3a5cf70527620eaa812a487c85e87abe2ecb88e767c961cc240c71343
+    source_hash: sha256:d18ef34e816126df65da6014fba19b4ec27bcbe05f0e91130afaf164f0993522
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -2801,7 +2801,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: metadata_execution_contract
     module: Tools/metadata_execution_contract.py
-    source_hash: sha256:0b1d5240bd5cfd6b4edc5cce2dc1af6840b0cb8a84226e6b972779a373c282c1
+    source_hash: sha256:9e2f84e80bc223a896b46d527b060c90323a21c016b198db9d81130cde9c952c
     description: Compile and load Cambium's closed metadata-execution authority contract. This module is deliberately the single authority boundary between metadata declarations and executable writers. A field rule is executable only when an installed writer capability declares the same ``(field, transition, adapter)`` operation, and every installed writer operation must be authorized by exactly one rule. Unknown keys, unknown adapters, orphan implementations, and partial evidence bindings fail closed.
     arguments:
       - dest: root
@@ -2904,7 +2904,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: project_page_state
     module: Tools/project_page_state.py
-    source_hash: sha256:c1386b4b3bcd1d3f56d9e0cf0246b956f13e5d09e1ca85a9d5a1eaf409cb859f
+    source_hash: sha256:77c500cfbb0435f78908f8ab680f3fa4858c2c4d54cb90ce53e5870ddcfa3de4
     description: Project metadata-contract owner state onto page frontmatter
     arguments:
       - dest: root
@@ -3221,7 +3221,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: register_amendment
     module: Tools/register_amendment.py
-    source_hash: sha256:771f56764acb33d78f7b4ad171b3937575e2f638e99dba4dacb3043e6ab17fa2
+    source_hash: sha256:917e0df2c028908b752e58894b61237807778e169e8e452d96d70458d0317fdc
     description: Register one approved current-protocol Amendment
     arguments:
       - dest: root

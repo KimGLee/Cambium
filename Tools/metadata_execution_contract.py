@@ -145,17 +145,28 @@ class AuthorizedProjectionRules(tuple):
         return value
 
 
-def profile_extension_enum_projection_rule(field, allowed_values):
+def profile_extension_enum_projection_rule(field, allowed_values,
+                                           legacy_observation_values=None):
     values = list(allowed_values)
     if (not isinstance(field, str) or FIELD_ID_RE.fullmatch(field) is None or
             not values or len(values) != len(set(values)) or
             any(not isinstance(value, str) or not value for value in values)):
         raise ValueError("Profile enum projection has invalid field or values")
+    observed = (list(legacy_observation_values)
+                if legacy_observation_values is not None else list(values))
+    if (not observed or len(observed) != len(set(observed)) or
+            any(not isinstance(value, str) or not value
+                for value in observed) or
+            not set(values).issubset(observed)):
+        raise ValueError(
+            "Profile enum projection legacy observation values must be a "
+            "unique superset of the completion enum")
     return {
         "field": field,
         "transition": "owner-to-page-projection",
         "value_shape": "enum",
         "allowed_values": values,
+        "legacy_observation_values": observed,
         "authority_class": "ledger-projection",
         "canonical_owner": (
             "coverage-ledger.pages[].property_state.%s" % field),
@@ -193,6 +204,7 @@ def compose_profile_projection_rules(contract, profile_contract):
              contract.rules_for_capability("project-page-state-v2")]
     kernel_fields = {rule.get("field") for rule in rules}
     values_by_field = {}
+    vocabulary_by_field = {}
     for gate in getattr(profile_contract, "extension_gates", ()):
         field = getattr(gate, "field_id", None)
         if field is None:
@@ -211,9 +223,18 @@ def compose_profile_projection_rules(contract, profile_contract):
                 raise ValueError(
                     "authorized Profile Gate has an invalid completion enum")
             values.append(value)
+        observed = vocabulary_by_field.setdefault(field, [])
+        for value in getattr(gate, "field_values", ()):
+            if not isinstance(value, str) or not value:
+                raise ValueError(
+                    "authorized Profile Gate has an invalid vocabulary value")
+            if value not in observed:
+                observed.append(value)
     for field in sorted(values_by_field):
         rules.append(profile_extension_enum_projection_rule(
-            field, values_by_field[field]))
+            field, values_by_field[field],
+            legacy_observation_values=(
+                vocabulary_by_field[field] or None)))
     fingerprint = getattr(
         profile_contract, "profile_contract_fingerprint", None)
     if fingerprint is None:

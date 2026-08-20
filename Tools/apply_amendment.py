@@ -28,7 +28,7 @@ import metadata_property_state
 import project_page_state
 
 TOOL = "apply_amendment"
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.4.0"
 PLAN_PREFIX = ".cambium/deltas/amendments"
 RECEIPT_PATH = ".cambium/receipts/amendments.jsonl"
 OPERATIONS = (

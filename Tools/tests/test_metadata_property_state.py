@@ -13,6 +13,7 @@ sys.path.insert(0, str(TOOLS))
 import kblib
 import metadata_execution_contract
 import metadata_property_state as state
+import project_page_state
 
 
 class MetadataPropertyStateTests(unittest.TestCase):
@@ -367,6 +368,79 @@ class MetadataPropertyStateTests(unittest.TestCase):
                 self.coverage, "Topics/A.md", "interview_status",
                 "invented", "audit-gate-1", self.fingerprint(),
                 ("draft", "interview-ready"))
+
+    def interview_gate_rule(self):
+        return state.gate_projection_rule(
+            "interview_status", ("interview-ready",),
+            legacy_observation_values=(
+                "not-required", "missing", "mapped", "interview-ready"))
+
+    def migration_rules(self):
+        _, core_rules = state._rules(self.root)
+        return tuple(core_rules) + (self.interview_gate_rule(),)
+
+    def test_removal_plan_observes_non_completion_vocabulary_value(self):
+        (self.root / "Topics/A.md").write_text(
+            "---\ntitle: A\nlast_reviewed: 2026-08-01\n"
+            "interview_status: mapped\n---\nBody A\n",
+            encoding="utf-8")
+        migration = state.build_legacy_property_removal_plan(
+            self.root, ["Topics/A.md"], rules=self.migration_rules())
+        record = migration["records"][0]
+        self.assertEqual(
+            {"status": "legacy-unverified", "value": "mapped"},
+            record["legacy_property_state"]["interview_status"])
+        self.assertEqual(
+            {"status": "legacy-unverified", "value": "2026-08-01"},
+            record["legacy_property_state"]["last_reviewed"])
+        after = migration["after_text_by_path"]["Topics/A.md"]
+        self.assertNotIn("interview_status:", after)
+        self.assertNotIn("last_reviewed:", after)
+
+    def test_removal_plan_observes_blank_claim_as_null(self):
+        (self.root / "Topics/A.md").write_text(
+            "---\ntitle: A\nlast_reviewed:\n"
+            "interview_status:\n---\nBody A\n",
+            encoding="utf-8")
+        migration = state.build_legacy_property_removal_plan(
+            self.root, ["Topics/A.md"], rules=self.migration_rules())
+        record = migration["records"][0]
+        self.assertEqual(
+            {"status": "legacy-unverified", "value": None},
+            record["legacy_property_state"]["interview_status"])
+        self.assertEqual(
+            {"status": "legacy-unverified", "value": None},
+            record["legacy_property_state"]["last_reviewed"])
+
+    def test_declared_legacy_rejects_value_outside_vocabulary(self):
+        (self.root / "Topics/A.md").write_text(
+            "---\ntitle: A\ninterview_status: mapped\n---\nBody A\n",
+            encoding="utf-8")
+        with self.assertRaises(ValueError) as caught:
+            state.build_legacy_property_removal_plan(
+                self.root, ["Topics/A.md"], rules=self.migration_rules(),
+                declared_legacy={"Topics/A.md": {
+                    "interview_status": {
+                        "status": "legacy-unverified",
+                        "value": "invented",
+                    },
+                }})
+        self.assertIn("must be one of", str(caught.exception))
+
+    def test_gate_rule_requires_vocabulary_superset(self):
+        with self.assertRaises(ValueError):
+            state.gate_projection_rule(
+                "interview_status", ("interview-ready",),
+                legacy_observation_values=("mapped", "missing"))
+
+    def test_current_owner_domain_stays_completion_only(self):
+        with self.assertRaises(ValueError):
+            project_page_state._typed_owner_value(
+                "mapped", self.interview_gate_rule(), "Topics/A.md")
+        self.assertEqual(
+            "mapped",
+            project_page_state._typed_legacy_observation_value(
+                "mapped", self.interview_gate_rule(), "Topics/A.md"))
 
 
 if __name__ == "__main__":

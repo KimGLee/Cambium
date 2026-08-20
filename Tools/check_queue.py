@@ -44,27 +44,31 @@ import metadata_property_state
 import project_page_state
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.21.0"
+TOOL_VERSION = "1.22.0"
 # 1.20.1 remains a producer-era identity for already-consumed maintenance
 # gates.  Current gate production and all live gate admission use 1.21.0;
 # historical consumption replays the older receipt's own promised shape.
-SUPPORTED_CHECK_QUEUE_TOOL_VERSIONS = frozenset(("1.20.1", "1.21.0"))
+SUPPORTED_CHECK_QUEUE_TOOL_VERSIONS = frozenset(("1.20.1", "1.21.0", "1.22.0"))
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
 REGISTER_AMENDMENT_TOOL = "register_amendment"
-REGISTER_AMENDMENT_TOOL_VERSION = "1.3.0"
+REGISTER_AMENDMENT_TOOL_VERSION = "1.4.0"
 # These exact legacy protocols remain replayable.  1.0.0 is the first
 # registration shape; 1.1.0 adds withdrawal.  Neither may claim the
 # delegated-authority fields introduced by 1.2.0.  The current 1.3.0 era adds
 # the Coverage-only ``property-state-migration`` operation; older rows remain
 # producer-era history and are never asked to satisfy that new operation.
+# 1.4.0 widens the legacy observation domain for Profile Gate vocabulary
+# fields from the completion enum to the field's registered vocabulary and
+# admits explicit null observations of present-but-blank claims; current
+# owner state and Gate transitions keep the narrower completion enum.
 SUPPORTED_REGISTER_AMENDMENT_TOOL_VERSIONS = frozenset((
-    "1.0.0", "1.1.0", "1.2.0", "1.3.0",
+    "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0",
 ))
-APPLY_AMENDMENT_TOOL_VERSION = "1.3.0"
+APPLY_AMENDMENT_TOOL_VERSION = "1.4.0"
 SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS = frozenset((
-    "1.1.0", "1.2.0", "1.3.0",
+    "1.1.0", "1.2.0", "1.3.0", "1.4.0",
 ))
 COMPILE_QUEUE_TOOL_VERSION = "1.5.0"
 # 1.3.0 produced the original registered queue-replan commit shape.  Its

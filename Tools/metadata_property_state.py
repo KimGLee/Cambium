@@ -97,10 +97,12 @@ def _rules(root):
     return contract, tuple(rules)
 
 
-def gate_projection_rule(field, allowed_values):
+def gate_projection_rule(field, allowed_values,
+                         legacy_observation_values=None):
     """Return the fixed Core projection protocol for one Profile enum."""
     return metadata_execution_contract.profile_extension_enum_projection_rule(
-        field, allowed_values)
+        field, allowed_values,
+        legacy_observation_values=legacy_observation_values)
 
 
 def profile_gate_projection_rules(root, extension_gates,
@@ -173,7 +175,7 @@ def _legacy_property_records(legacy, property_rules, path):
             raise ValueError(
                 "legacy_property_state.%s for %s must have status %s" %
                 (field, path, LEGACY_PROPERTY_STATUS))
-        value = project_page_state._typed_owner_value(
+        value = project_page_state._typed_legacy_observation_value(
             record.get("value"), property_rules[field], path)
         checked[field] = {
             "status": LEGACY_PROPERTY_STATUS,
@@ -310,7 +312,7 @@ def build_legacy_property_removal_plan(
         for field, rule in sorted(property_rules.items()):
             if field not in fields:
                 continue
-            value = project_page_state._typed_owner_value(
+            value = project_page_state._typed_legacy_observation_value(
                 fields[field], rule, path)
             observed[field] = {
                 "status": LEGACY_PROPERTY_STATUS,
