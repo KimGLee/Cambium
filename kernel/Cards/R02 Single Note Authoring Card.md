@@ -24,7 +24,26 @@ source_files:
   - kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
+readback_sources:
+  - kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
+  - kernel/K04 Content Depth/06 Examples Deep Dives and Failure Analysis.md
+  - kernel/K05 Terminology/01 Terminology Extraction.md
+  - kernel/K05 Terminology/02 Ownership and Term Structure.md
+  - kernel/K05 Terminology/03 Naming Context and Linking.md
+  - kernel/K05 Terminology/04 Terminology Acceptance.md
+  - kernel/K07 Sources and Accuracy/01 Source Hierarchy and Evidence Roles.md
+  - kernel/K07 Sources and Accuracy/02 Claims Sources and Classification.md
+  - kernel/K07 Sources and Accuracy/03 Official and Cross-source Verification.md
+  - kernel/K07 Sources and Accuracy/04 Evaluation and Source Quality.md
+  - kernel/K07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty.md
+  - kernel/K10 Writing and Formatting/02 Mathematics Tables and Code.md
+  - kernel/K10 Writing and Formatting/03 Diagrams and Assets.md
+  - kernel/K10 Writing and Formatting/04 Rendering and Formatting Review.md
+  - kernel/K12 Quality Assurance/02 Rendering Verification.md
+  - kernel/K12 Quality Assurance/11 Content-level Propagation.md
+  - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
 source_hash: '4f62184cb331'
+compiled_source_hash: '4f62184cb331'
 ---
 # R02 Single Note Authoring Card
 
@@ -42,6 +61,7 @@ Create, rewrite, or target one canonical note. Load [[kernel/Cards/R01 Core Boot
 - [ ] Resolve prerequisite, parent, key dependency, source, and terminology needs.
 - [ ] Apply the `Language Contract` values and any `Vocabulary Extensions` field the selected profile registers, without weakening kernel ownership or quality rules.
 - [ ] Fill frontmatter by the compiled applicability contract: required and met-conditional fields nonempty, no empty placeholders, no unregistered fields, and relationship fields only under their K08/08 name, direction, and shape, and any `boundary` block under its K08/09 schema with the marker-delimited projection left to `Tools/render_boundary_projection.py`. Never hand-fill a derived or projection value, and never write `learning_status` or another user-owned field to silence a check.
+- [ ] Treat machine-managed frontmatter as a projection of its declared owner state. Do not hand-update `last_content_modified`, `last_reviewed`, or a Profile Gate field while editing the page.
 
 ## During
 
@@ -51,6 +71,7 @@ Create, rewrite, or target one canonical note. Load [[kernel/Cards/R01 Core Boot
 - Support key, time-sensitive, and quantitative claims; distinguish reported claim, inference, synthesis, and recommendation.
 - If a reusable proper noun, metric, formula, table, code block, diagram, external claim, or substantive mechanism change appears, follow the matching Triggered route in R02 Read Set.
 - A substantive mechanism change marks direct downstream notes for propagation review.
+- A semantic content change is not a review event: the guarded writer records content-change evidence, advances `last_content_modified`, and invalidates any review or Gate evidence bound to the old semantic fingerprint. Projection-only frontmatter write-back does none of those things; only new accepted evidence can restore a current review or Gate value.
 
 ## M-tier Gate
 

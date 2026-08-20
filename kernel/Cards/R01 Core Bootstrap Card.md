@@ -17,7 +17,9 @@ source_files:
   - kernel/K00 Standards Control/15 Read Set Loading Boundaries.md
   - kernel/K00 Standards Control/17 Profile Dependency Closure.md
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
-source_hash: 'b3673ff67c7e'
+readback_sources: []
+source_hash: '070d1659df88'
+compiled_source_hash: '070d1659df88'
 ---
 # R01 Core Bootstrap Card
 

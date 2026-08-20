@@ -24,8 +24,12 @@ re-measure of K00/03's registered size (the Revision Write-back Checklist
 names that register as a synchronized snapshot location, and
 `stamp_cards --check` cannot exit 0 without it), then drives the existing
 producers against the new K00/03 state: `compose_vocab.py`,
-`compose_page_contract.py`, `stamp_cards.py --set-version <after>`, and
-`stamp_cards.py --check`.  Every to-be-touched file is backed up first under a
+`compose_page_contract.py`, `stamp_cards.py --set-version <after>
+--acknowledge-compiled`, and `stamp_cards.py --check`. The explicit semantic
+acknowledgement is authorized only because this transaction proves the K00/03
+after-image is limited to its four adoption cells, one Change Summary row, and
+the mechanical size re-measure; any other Standards change belongs to ordinary
+R09 regeneration/review. Every to-be-touched file is backed up first under a
 dot-prefixed staging directory (`.r09-adoption-<plan-id>/`) with a journal
 recording the plan SHA and step states, so an interrupted run is diagnosable
 and resumable.  Any failure restores the pre-transaction bytes of every
@@ -129,7 +133,8 @@ COMPOSER_STEPS = (
      lambda root, plan: ["--root", root]),
     ("stamp-set-version", "stamp_cards.py",
      lambda root, plan: [root, "--set-version",
-                         plan["standards_version_after"]]),
+                         plan["standards_version_after"],
+                         "--acknowledge-compiled"]),
     ("stamp-check", "stamp_cards.py",
      lambda root, plan: [root, "--check"]),
 )

@@ -22,7 +22,23 @@ source_files:
   - kernel/K12 Quality Assurance/18 Cross-page and Control-plane Dimension Map.md
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'fe1a14e292d6'
+readback_sources:
+  - kernel/K00 Standards Control/02 Task Routing.md
+  - kernel/K00 Standards Control/04 Control State and Scope.md
+  - kernel/K00 Standards Control/05 Core Principles.md
+  - kernel/K00 Standards Control/06 Completion Precedence and Task Contract.md
+  - kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
+  - kernel/K00 Standards Control/08 Maintenance Run Envelope.md
+  - kernel/K00 Standards Control/09 Default Constraints Snapshot.md
+  - kernel/K00 Standards Control/10 Batch Execution Checklist.md
+  - kernel/K00 Standards Control/13 Runtime Admission and Recovery.md
+  - kernel/K00 Standards Control/14 Card And Read Set Skeleton.md
+  - kernel/K00 Standards Control/15 Read Set Loading Boundaries.md
+  - kernel/K00 Standards Control/16 Leaf Module Size Register.md
+  - kernel/K12 Quality Assurance/02 Rendering Verification.md
+  - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
+source_hash: 'ab1b805c0380'
+compiled_source_hash: 'ab1b805c0380'
 ---
 # R09 Standards Governance Card
 
@@ -48,14 +64,14 @@ Modify kernel rules, Read Sets, Cards, versions, directories, ownership, tooling
 - Freeze the inputs needed for affected tasks to re-resolve their load set. K12/10 decides targeted invalidated evidence and gate reruns; R07/K13/15 executes the runtime transaction. R09 does not copy or reimplement either contract.
 - Use the registered `profile-load` producer as the sole linker for manifest, slot, scan-config, verifier, and predicate-owner authority. Do not replace it with a copy-time rewrite checklist or a consumer-specific Markdown parser.
 - Preserve the boundary between current authorization and historical verification: a Standards change may invalidate a Receipt for new execution without erasing the completed event it historically proves, and history must never be used as a fallback authorization source.
-- Regenerate affected kernel Cards from their source owners, then stamp hashes/version. Do not edit only a Card.
+- Regenerate affected kernel Cards from their source owners. Stamp observed hashes first; only after reviewing the regenerated guidance run `stamp_cards.py --acknowledge-compiled`. Do not acknowledge unchanged prose merely to clear a stale hash.
 
 ## Gate
 
 - [ ] Content conservation, owner uniqueness, routing, headings, tables, fences, links, MOCs, and coverage are verified.
 - [ ] Coverage reconciliation does not read a sequence position, checkbox, file existence, resolvable link, or `Related` reference as authoring completion.
 - [ ] The Revision Write-back Checklist is complete for every affected snapshot location.
-- [ ] `python3 Tools/stamp_cards.py . --check` exits 0; missing or stale Cards, an exceeded registered growth cap, and a K00/12 Stable Gate ID Registry row its producer contradicts each block governance close.
+- [ ] `python3 Tools/stamp_cards.py . --check` exits 0; observed and acknowledged semantic hashes agree, every Read Set leaf has one compiled/read-back disposition, and missing/stale Cards, an exceeded registered growth cap, or a contradictory K00/12 Gate row blocks close.
 - [ ] Every affected existing task has one validated agent-readable adoption plan or an explicit blocker; no persistent prose adoption report or direct Ledger edit was created.
 - [ ] Every candidate/after Profile has a passing `profile-load` snapshot and contract fingerprint, and the adoption writer revalidates that exact after-image inside its transaction.
 - [ ] Applicable rendering evidence and the governance Completion Gate pass.
