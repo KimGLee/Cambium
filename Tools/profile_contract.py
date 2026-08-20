@@ -269,6 +269,7 @@ class ExtensionGate:
     receipt_schema: str
     consumer_capability: str
     source: SourceCell
+    field_values: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -337,6 +338,7 @@ class ProfileContract:
                     "applicability": gate.applicability,
                     "field_id": gate.field_id,
                     "completion_values": list(gate.completion_values),
+                    "field_values": list(gate.field_values),
                     "judgment_item_id": gate.judgment_item_id,
                     "producer_kind": gate.producer_kind,
                     "producer_capability": gate.producer_capability,
@@ -2010,6 +2012,8 @@ def _parse_extension_gates(builder, text, source_path, profile_repo_dir,
             receipt_schema=receipt_schema,
             consumer_capability=consumer_capability,
             source=cells[0],
+            field_values=(tuple(vocabulary.get(field_id, ()))
+                          if field_id is not None else ()),
         ))
     return registration, tuple(parsed)
 
