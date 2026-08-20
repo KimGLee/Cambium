@@ -33,6 +33,19 @@
 # `check_residual_content.py` receipts:
 #   scan_id            : stable ID from the selected profile's Registered Scan Registry
 #   config_fingerprint : `sha256:<hex>` over the exact profile-owned config bytes; null when the config could not be read or validated
+# `check_freshness.py` 2.0.0 emits one page-level `freshness` candidate per
+# active candidate outcome and exactly one `freshness-check-summary` for every
+# completed scan. Page candidates carry `freshness_schema_version`, `scan_id`,
+# stable path-derived `candidate_id`, `candidate_kind`, typed reason fields,
+# `as_of`, effective volatility/source, baseline/review-by, and overdue days.
+# The summary carries the same schema/scan identity plus `scan_complete`, the
+# closed classification counts, page and scan finding counts, sorted
+# `candidate_records` / `candidate_ids`, `candidate_set_basis` and
+# `candidate_set_sha256`, normalized scope/exclusions, the exact defaults
+# source/fingerprint, and `input_snapshot_sha256` over the bytes and semantic
+# mtimes actually classified. A zero-file scan is a scan-level candidate with
+# `scan_finding_codes: ["nothing_checked"]`; it has no synthetic page record.
+# Only a completed scan with an empty candidate set has `result: pass`.
 # A passing `check_profile.py` 1.9.0 `profile-load` summary carries:
 #   selected_profile_manifest      : canonical `profiles/<id>/profile.md` identity
 #   profile_snapshot_sha256        : path-sensitive SHA-256 over the complete selected Profile directory

@@ -12,7 +12,8 @@ This module owns the bound a maintenance run declares before it starts, and what
 
 When a maintenance run starts, a budget envelope MUST be declared, choosing one of three: N pages, N batches, or N hours.
 
-- Candidate list = the `check_freshness` overdue list ∪ the watermark delta ∪ `needs_rereview` marks ∪ the candidates pool (duplicate / vocab / language); sort by priority, then truncate to the budget.
+- Candidate list = the complete `check_freshness` candidate set ∪ the watermark delta ∪ `needs_rereview` marks ∪ the candidates pool (duplicate / vocab / language). The freshness member is every `candidate` outcome from the run, not an overdue-only projection; its semantic classes and closed-world pass rule are owned by [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|K08/05]].
+- Fuse duplicate object paths before selection, retaining every contributing source kind. The fused list is ordered by priority, then canonical object path and stable candidate ID, and only then truncated to the budget. A producer's display order, age value, or candidate subtype cannot create a second budget order.
 - Candidates arising from changed pages within a batch are adjudicated in that batch (the author is present; lowest cost); candidates from existing pages always enter the pool, and neither block any gate nor surface as to-dos.
 - A candidate not selected by the budget for 3 consecutive maintenance runs is automatically demoted to log-only: the record is kept, but it does not count as a to-do, does not appear in gate output, and does not count toward any completion determination; it re-enters the pool when hit again by a new scan.
 - At maintenance-run start, output the deferred age distribution; items lingering more than 3 runs MUST be explicitly dispositioned: demotion, retirement, or a recorded retention rationale. "Deferred does not constitute a gap" is retained, but is not a basis for skipping checks.

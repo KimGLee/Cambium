@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic freshness (review_by) check.
+"""Deterministic, closed-world freshness (review_by) check.
 
 Invocation tier (v2.0): maintenance-run only; not part of per-batch checks
 (removed from the K12/05 per-batch checklist; run once at the start of a
@@ -11,31 +11,35 @@ Method:
 - skip pages whose `lifecycle` is retired / merged;
 - skip files whose path contains a component given via --exclude
   (repeatable; default: none);
-- volatility: an explicit frontmatter declaration always wins; when a
+- every active in-scope page receives exactly one typed outcome; malformed
+  frontmatter, invalid/future completed-event dates, and unresolved policy are
+  maintenance candidates rather than skipped observations;
+- volatility: an explicit valid frontmatter declaration always wins; when a
   domain -> volatility mapping is supplied via --defaults (a flat file, or
   Tools/vocab.yaml / a profile's vocabulary-extensions.yaml via their
   volatility_defaults section), pages without an explicit declaration fall
   back to the mapping through their `domain`; otherwise (no --defaults, or
-  domain missing / unmapped) the page is skipped and counted in the summary;
+  domain missing / unmapped) the page is an unresolved-policy candidate;
 - re-verification interval: fast = 120 days, slow = 365 days, stable = no
-  due date (never produces candidates);
+  recurring due date (stable still requires one completed verification or
+  review event and does not exempt invalid or future completed-event evidence);
 - baseline date is `last_verified`, falling back to `last_reviewed`; when
-  both are missing, the file's modification time is used as the most recent
-  substantive modification date (K08/05) and the page is flagged "pending
-  first verification" with its computed due date;
-- a selected `last_verified` / `last_reviewed` baseline later than `--as-of`
-  is a candidate rather than future evidence of present freshness;
+  both are missing, the file's UTC modification date is retained only as a
+  diagnostic and the page is flagged "pending first verification" (stable
+  has no recurring due date, but is not exempt from this first event);
+- every explicit non-empty `last_verified` / `last_reviewed` value is validated
+  before baseline selection or volatility applicability; malformed or future
+  completed events are candidates rather than freshness evidence;
 - `review_by` = baseline + interval; --as-of (default: today) >= review_by
   counts as overdue;
-- when every scanned file is skipped for lack of a resolvable volatility,
-  the run reports NOTHING CHECKED as a candidate result -- an all-skip run
-  is not evidence of freshness.
+- a zero-file scan reports NOTHING CHECKED as a candidate result.
 
-Result semantics: overdue and pending-first-verification pages are always
-result=candidate -- they only feed the maintenance-run candidate list and
-never change any status axis of a page. Output is sorted by priority (P0
-first), then days overdue (largest first); pending-first-verification items
-come after overdue items of the same priority.
+Result semantics: every actionable or incomplete freshness outcome is
+result=candidate -- it only feeds the maintenance-run candidate list and never
+changes any status axis of a page. Output is sorted by priority (P0 first),
+explicit candidate category, category severity, then path.  Every completed
+scan emits a typed summary receipt, including runs that also emitted page
+candidates.
 Exit codes: 0 = no candidates, 2 = candidates found; this script never
 produces fail.
 
@@ -47,21 +51,21 @@ Usage: python3 check_freshness.py <vault_root> [--scope SUBPATH]
 import contextlib
 import datetime
 import os
-import re
+import stat
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import compose_vocab
+import freshness_engine
+import maintenance_candidates
 import profile_admission
 
 TOOL = "check_freshness"
-TOOL_VERSION = "1.4.0"
+TOOL_VERSION = "2.0.0"
 
 # Re-verification interval (days) per volatility tier.
-INTERVAL_DAYS = {"fast": 120, "slow": 365, "stable": None}
-
-PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2}
+INTERVAL_DAYS = freshness_engine.INTERVAL_DAYS
 
 
 # ---------------------------------------------------------------------------
@@ -110,22 +114,19 @@ def _run_reporting_json(runner):
 
 
 def parse_date(value):
-    """Parse a frontmatter date value into a date; return None if unparseable."""
-    if value is None:
-        return None
-    s = str(value).strip().strip("\"'")
-    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
-    if not m:
-        return None
-    try:
-        return datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-    except ValueError:
-        return None
+    """Parse one strict ISO date for CLI compatibility."""
+    return freshness_engine.parse_iso_date(value)
 
 
-def load_frontmatter(path):
+def load_frontmatter(path, raw_bytes=None):
     """Return (frontmatter dict or None, whether parsing failed)."""
-    text = open(path, encoding="utf-8", errors="replace").read()
+    if raw_bytes is None:
+        with open(path, "rb") as handle:
+            raw_bytes = handle.read()
+    try:
+        text = raw_bytes.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return None, True
     fm_text = kblib.extract_frontmatter(text)
     if fm_text is None:
         return None, False
@@ -150,7 +151,8 @@ def load_defaults(path, text=None):
     value outside fast / slow / stable.
     """
     if text is None:
-        text = open(path, encoding="utf-8", errors="replace").read()
+        with open(path, "rb") as handle:
+            text = handle.read().decode("utf-8", errors="strict")
     try:
         mapping = kblib.parse_yaml_subset(text)
     except kblib.YamlSubsetError as exc:
@@ -171,9 +173,514 @@ def load_defaults(path, text=None):
     return result
 
 
+def _date_text(value):
+    return value.isoformat() if value is not None else None
+
+
+def _fingerprint(value):
+    return kblib.sha256_bytes(kblib.canonical_json_bytes(value))
+
+
+_SCOPE_PROBE_PREFIX = ".__cambium_freshness_scope_probe_v1_"
+
+
+def _utc_modified_on(mtime_ns):
+    """Map a filesystem timestamp to one host-timezone-independent date."""
+    # Keep the nanosecond-to-second boundary in integer arithmetic.  A float
+    # rounds some instants immediately before UTC midnight up to the following
+    # day, changing classification and scan identity across runtimes.
+    epoch_seconds = mtime_ns // 1_000_000_000
+    return datetime.datetime.fromtimestamp(
+        epoch_seconds,
+        tz=datetime.timezone.utc,
+    ).date()
+
+
+def _stable_external_file_snapshot(path):
+    """Read one standalone defaults file without following its final link."""
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise OSError("standalone defaults snapshots require O_NOFOLLOW")
+    listed = os.lstat(path)
+    if not stat.S_ISREG(listed.st_mode):
+        raise ValueError("standalone defaults must name a regular file")
+    descriptor = os.open(
+        path, os.O_RDONLY | nofollow | getattr(os, "O_CLOEXEC", 0))
+    try:
+        before = os.fstat(descriptor)
+        if (not stat.S_ISREG(before.st_mode) or
+                (listed.st_dev, listed.st_ino) !=
+                (before.st_dev, before.st_ino)):
+            raise OSError("standalone defaults identity changed before read")
+        chunks = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    named_after = os.lstat(path)
+    fields = lambda value: (
+        value.st_dev, value.st_ino, value.st_mode, value.st_nlink,
+        value.st_size, value.st_mtime_ns, value.st_ctime_ns,
+    )
+    if fields(before) != fields(after) or fields(after) != fields(named_after):
+        raise OSError("standalone defaults changed while being read")
+    data = b"".join(chunks)
+    return data, {
+        "dev": after.st_dev,
+        "ino": after.st_ino,
+        "mode": after.st_mode,
+        "nlink": after.st_nlink,
+        "size": after.st_size,
+        "mtime_ns": after.st_mtime_ns,
+        "ctime_ns": after.st_ctime_ns,
+        "sha256": kblib.sha256_bytes(data),
+    }
+
+
+def _directory_identity(path):
+    descriptor = os.stat(path, follow_symlinks=False)
+    if not stat.S_ISDIR(descriptor.st_mode):
+        raise ValueError("scope must name a directory or one Markdown file")
+    return {
+        "kind": "directory",
+        "dev": descriptor.st_dev,
+        "ino": descriptor.st_ino,
+    }
+
+
+def _is_markdown_path(path):
+    """Preserve the CLI's established case-insensitive Markdown suffix."""
+    return isinstance(path, str) and path.lower().endswith(".md")
+
+
+def _admit_scope(root, requested_scope):
+    """Return canonical scope spelling and identity, or fail closed.
+
+    ``repository_path`` owns lexical containment.  For a directory, a safely
+    missing child target lets ``repository_target_snapshot`` verify every
+    directory component with exact spelling and no symlink traversal without
+    duplicating that primitive's descriptor walk here.
+    """
+    if requested_scope is None or requested_scope == ".":
+        return ".", _directory_identity(root)
+
+    absolute = kblib.repository_path(
+        root, requested_scope, must_exist=True, reject_symlink=True)
+    if os.path.isdir(absolute):
+        # Select a child name observed missing in this directory.  The target
+        # primitive then proves every existing scope component by exact name
+        # and no-follow traversal.  No fixed repository name is reserved: if
+        # a concurrent creator wins the tiny selection window, fail closed.
+        entries = set(os.listdir(absolute))
+        counter = 0
+        while True:
+            probe_name = "%s%d__" % (_SCOPE_PROBE_PREFIX, counter)
+            if (probe_name not in entries and
+                    not os.path.lexists(os.path.join(absolute, probe_name))):
+                break
+            counter += 1
+        probe_path = requested_scope + "/" + probe_name
+        probe = kblib.repository_target_snapshot(
+            root, probe_path, singly_linked=True)
+        if probe.exists:
+            raise ValueError(
+                "scope changed while its canonical boundary was admitted")
+        if (probe.parent_repository_path != requested_scope or
+                probe.missing_components != (probe_name,)):
+            raise ValueError("cannot prove canonical scope boundary")
+        return requested_scope, _directory_identity(absolute)
+
+    if not _is_markdown_path(requested_scope):
+        raise ValueError("scope must name a directory or one Markdown file")
+    canonical = kblib.canonical_repository_file(
+        root, requested_scope, singly_linked=True)
+    descriptor = os.lstat(canonical)
+    return requested_scope, {
+        "kind": "file",
+        "dev": descriptor.st_dev,
+        "ino": descriptor.st_ino,
+    }
+
+
+def _scope_argument(scope):
+    return None if scope == "." else scope
+
+
+def _listed_markdown_paths(root, scope):
+    root = os.path.realpath(os.path.abspath(root))
+    scope_argument = _scope_argument(scope)
+    admitted_scope, _identity = _admit_scope(root, scope_argument)
+    base = (root if admitted_scope == "." else
+            kblib.repository_path(root, admitted_scope, must_exist=True,
+                                   reject_symlink=True))
+    if not os.path.isdir(base):
+        return ([admitted_scope]
+                if _is_markdown_path(admitted_scope) else [])
+
+    def raise_walk_error(error):
+        raise error
+
+    result = []
+    # This gate cannot use the convenience iterator's default ``onerror=None``:
+    # silently skipping one unreadable or concurrently removed directory would
+    # turn an incomplete observation into a closed-world expected set.  One
+    # walk therefore owns error propagation, hidden-directory policy, visible
+    # symlink rejection, and Markdown collection together.
+    for dirpath, dirnames, filenames in os.walk(
+            base, topdown=True, onerror=raise_walk_error,
+            followlinks=False):
+        visible_directories = sorted(
+            name for name in dirnames if not name.startswith("."))
+        for name in visible_directories:
+            candidate = os.path.join(dirpath, name)
+            descriptor = os.lstat(candidate)
+            if stat.S_ISLNK(descriptor.st_mode):
+                relative = os.path.relpath(
+                    candidate, root).replace(os.sep, "/")
+                raise ValueError(
+                    "Markdown scope contains symlink directory: %s" %
+                    relative)
+        dirnames[:] = visible_directories
+        for name in sorted(filenames):
+            if _is_markdown_path(name):
+                result.append(os.path.relpath(
+                    os.path.join(dirpath, name), root).replace(os.sep, "/"))
+    return sorted(result)
+
+
+def _is_excluded(path, exclude_components):
+    return any(component in path.split("/")
+               for component in exclude_components)
+
+
+def _page_record(target, *, excluded):
+    if excluded:
+        # Exclusion is decided entirely from a canonical path plus the closed
+        # exclude-component set.  Do not read or hash content outside the
+        # admitted scan surface.
+        return {"path": target, "excluded": True}
+    return {
+        "path": target.repository_path,
+        "excluded": False,
+        "dev": target.dev,
+        "ino": target.ino,
+        "mode": target.mode,
+        "nlink": target.nlink,
+        "size": target.size,
+        "mtime_ns": target.mtime_ns,
+        "ctime_ns": target.ctime_ns,
+        "content_sha256": target.sha256,
+        "modified_on": _utc_modified_on(target.mtime_ns).isoformat(),
+    }
+
+
+def _capture_scope(root, scope, exclude_components):
+    """Capture one closed expected set and exact non-excluded page bytes."""
+    snapshots = []
+    input_entries = []
+    records = []
+    for path in _listed_markdown_paths(root, scope):
+        excluded = _is_excluded(path, exclude_components)
+        if excluded:
+            # Validate exact spelling, regular-file shape, links, and every
+            # path component without opening the excluded object.
+            kblib.canonical_repository_file(
+                root, path, singly_linked=True)
+            record = _page_record(path, excluded=True)
+            records.append(record)
+            input_entries.append(record.copy())
+            snapshots.append(freshness_engine.PageSnapshot(
+                path=path,
+                frontmatter={},
+                modified_on=datetime.date.min,
+                excluded=True,
+            ))
+            continue
+
+        target = kblib.repository_target_snapshot(
+            root, path, singly_linked=True)
+        if not target.exists:
+            raise OSError("page disappeared before snapshot: %s" % path)
+        record = _page_record(target, excluded=False)
+        records.append(record)
+        input_entries.append({
+            "path": path,
+            "content_sha256": target.sha256,
+            "modified_on": record["modified_on"],
+            "excluded": False,
+        })
+        frontmatter, unparseable = load_frontmatter(
+            target.path, raw_bytes=target.data)
+        snapshots.append(freshness_engine.PageSnapshot(
+            path=path,
+            frontmatter=(None if unparseable else (frontmatter or {})),
+            frontmatter_error=unparseable,
+            modified_on=datetime.date.fromisoformat(record["modified_on"]),
+        ))
+    return snapshots, records, input_entries
+
+
+def _scope_currency_errors(root, scope, expected_scope_identity,
+                           expected_records, exclude_components):
+    """Revalidate set, canonical paths, exact bytes, identity, and UTC mtime."""
+    errors = []
+    try:
+        current_scope, current_identity = _admit_scope(
+            root, _scope_argument(scope))
+    except (OSError, ValueError) as exc:
+        return ["scope is no longer canonical/current: %s" % exc]
+    if current_scope != scope or current_identity != expected_scope_identity:
+        errors.append("scope identity changed")
+
+    expected_by_path = {
+        record["path"]: record for record in expected_records
+    }
+    try:
+        first_paths = _listed_markdown_paths(root, scope)
+    except (OSError, ValueError) as exc:
+        return errors + ["cannot enumerate final Markdown set: %s" % exc]
+    expected_paths = sorted(expected_by_path)
+    if first_paths != expected_paths:
+        errors.append(
+            "Markdown expected set changed: expected=%r observed=%r" %
+            (expected_paths, first_paths))
+
+    for path in first_paths:
+        expected = expected_by_path.get(path)
+        if expected is None:
+            continue
+        try:
+            excluded = _is_excluded(path, exclude_components)
+            if excluded != expected["excluded"]:
+                errors.append("exclusion classification changed: %s" % path)
+                continue
+            if excluded:
+                kblib.canonical_repository_file(
+                    root, path, singly_linked=True)
+                continue
+            target = kblib.repository_target_snapshot(
+                root, path, singly_linked=True)
+            if not target.exists:
+                errors.append("page disappeared: %s" % path)
+                continue
+            observed = _page_record(target, excluded=False)
+            if observed != expected:
+                errors.append("page bytes or identity changed: %s" % path)
+        except (OSError, ValueError) as exc:
+            errors.append("page is no longer canonical/current: %s: %s" %
+                          (path, exc))
+
+    # A second set read closes the window in which an entry could be added or
+    # removed while the individual final snapshots were being validated.
+    try:
+        second_paths = _listed_markdown_paths(root, scope)
+    except (OSError, ValueError) as exc:
+        errors.append("cannot re-enumerate final Markdown set: %s" % exc)
+    else:
+        if second_paths != first_paths:
+            errors.append(
+                "Markdown set changed during final validation: first=%r "
+                "second=%r" % (first_paths, second_paths))
+    try:
+        final_scope, final_identity = _admit_scope(
+            root, _scope_argument(scope))
+    except (OSError, ValueError) as exc:
+        errors.append("scope changed at final boundary: %s" % exc)
+    else:
+        if final_scope != scope or final_identity != expected_scope_identity:
+            errors.append("scope identity changed at final boundary")
+    return errors
+
+
+def _scan_bridge(run, *, scope, exclude_components, defaults_source_kind,
+                 defaults_source, defaults_fingerprint,
+                 input_snapshot_sha256):
+    candidate_records = sorted(({
+        "candidate_id": maintenance_candidates.candidate_id_for_path(
+            outcome.path),
+        "object_path": outcome.path,
+        "candidate_kind": outcome.kind,
+        "priority": outcome.priority or None,
+    } for outcome in run.candidates), key=lambda record: record["object_path"])
+    candidate_ids = sorted(
+        record["candidate_id"] for record in candidate_records
+    )
+    candidate_set_sha256 = _fingerprint({
+        "schema_version": 1,
+        "basis": "sorted-candidate-records-v1",
+        "candidate_records": candidate_records,
+    })
+    binding = {
+        "schema_version": 1,
+        "tool": TOOL,
+        "tool_version": TOOL_VERSION,
+        "as_of": run.as_of.isoformat(),
+        "scope": scope,
+        "exclude_components": exclude_components,
+        "defaults_source_kind": defaults_source_kind,
+        "defaults_source": defaults_source,
+        "defaults_fingerprint": defaults_fingerprint,
+        "input_snapshot_sha256": input_snapshot_sha256,
+        "candidate_set_sha256": candidate_set_sha256,
+    }
+    return {
+        "scan_id": "freshness-scan-" + _fingerprint(binding),
+        "candidate_ids": candidate_ids,
+        "candidate_records": candidate_records,
+        "candidate_set_basis": "sorted-candidate-records-v1",
+        "candidate_set_sha256": candidate_set_sha256,
+        "scope": scope,
+        "exclude_components": exclude_components,
+        "defaults_source_kind": defaults_source_kind,
+        "defaults_source": defaults_source,
+        "defaults_fingerprint": defaults_fingerprint,
+        "input_snapshot_sha256": input_snapshot_sha256,
+    }
+
+
+def _candidate_details(outcome, as_of):
+    """Render one typed engine outcome without re-deciding its semantics."""
+    priority = outcome.priority or "no-priority"
+    if outcome.kind == freshness_engine.FUTURE_BASELINE:
+        events = ", ".join(
+            "%s=%s" % (reason.field, _date_text(reason.date_value))
+            for reason in outcome.reasons
+            if reason.code == "future_completed_event_date"
+        )
+        return (
+            "future-dated completed event: %s is later than as_of=%s; "
+            "a completed review or verification event cannot provide "
+            "evidence for an earlier reference date (priority=%s)"
+            % (events, as_of.isoformat(), priority)
+        )
+    if outcome.kind == freshness_engine.INVALID_BASELINE:
+        events = ", ".join(
+            "%s=%r" % (reason.field, reason.raw_value)
+            for reason in outcome.reasons
+            if reason.code == "invalid_completed_event_date"
+        )
+        return (
+            "invalid completed-event date: %s; every explicit "
+            "last_verified / last_reviewed value must be YYYY-MM-DD and an "
+            "invalid value cannot fall back to another field (as_of=%s, "
+            "priority=%s)" % (events, as_of.isoformat(), priority)
+        )
+    if outcome.kind == freshness_engine.UNPARSEABLE_FRONTMATTER:
+        return (
+            "unparseable frontmatter prevents lifecycle, completed-event, "
+            "and volatility classification; this active-scope observation "
+            "cannot support a freshness pass (as_of=%s)" % as_of.isoformat()
+        )
+    if outcome.kind == freshness_engine.INVALID_VOLATILITY:
+        raw = outcome.reasons[0].raw_value if outcome.reasons else None
+        return (
+            "invalid explicit volatility=%r; expected fast / slow / stable; "
+            "an invalid explicit policy cannot fall back to a domain default "
+            "(as_of=%s, priority=%s)"
+            % (raw, as_of.isoformat(), priority)
+        )
+    if outcome.kind == freshness_engine.UNRESOLVED_VOLATILITY:
+        return (
+            "unresolved volatility: no valid explicit value and no domain "
+            "default match; the page cannot be classified as fresh "
+            "(as_of=%s, priority=%s)" % (as_of.isoformat(), priority)
+        )
+    if outcome.kind == freshness_engine.PENDING_FIRST_VERIFICATION:
+        interval = freshness_engine.INTERVAL_DAYS[outcome.volatility]
+        if interval is None:
+            state = "no recurring review deadline"
+            arithmetic = (
+                "diagnostic %s=%s; volatility=stable" %
+                (outcome.baseline_field, outcome.baseline.isoformat())
+            )
+        elif outcome.review_by is None:
+            state = "due date is outside the representable calendar"
+            arithmetic = (
+                "diagnostic %s=%s + %d days" %
+                (outcome.baseline_field, outcome.baseline.isoformat(),
+                 interval)
+            )
+        else:
+            state = (
+                "overdue %d days" % (as_of - outcome.review_by).days
+                if as_of >= outcome.review_by
+                else "due %s" % outcome.review_by.isoformat()
+            )
+            arithmetic = "%s=%s + %d days" % (
+                outcome.baseline_field, outcome.baseline.isoformat(),
+                interval)
+        return (
+            "pending first verification, %s: no last_verified / "
+            "last_reviewed; filesystem mtime is diagnostic only, not a "
+            "completed event (%s; K08/05; volatility=%s, priority=%s)"
+            % (state, arithmetic, outcome.volatility, priority)
+        )
+    if outcome.kind == freshness_engine.OVERDUE:
+        interval = freshness_engine.INTERVAL_DAYS[outcome.volatility]
+        return (
+            "overdue %d days: review_by=%s (%s=%s + %d days, "
+            "volatility=%s, priority=%s)"
+            % (outcome.overdue_days, outcome.review_by.isoformat(),
+               outcome.baseline_field, outcome.baseline.isoformat(),
+               interval, outcome.volatility, priority)
+        )
+    raise ValueError("cannot render non-candidate outcome %s" % outcome.kind)
+
+
+def _add_outcome_fields(receipt, outcome, as_of, bridge):
+    receipt.update({
+        "freshness_schema_version": 1,
+        "scan_id": bridge["scan_id"],
+        "candidate_id": maintenance_candidates.candidate_id_for_path(
+            outcome.path),
+        "candidate_kind": outcome.kind,
+        "reason_codes": [reason.code for reason in outcome.reasons],
+        "reasons": [reason.as_dict() for reason in outcome.reasons],
+        "as_of": as_of.isoformat(),
+        "priority": outcome.priority or None,
+        "volatility": outcome.volatility,
+        "volatility_source": outcome.volatility_source,
+        "baseline_field": outcome.baseline_field,
+        "baseline": _date_text(outcome.baseline),
+        "review_by": _date_text(outcome.review_by),
+        "overdue_days": outcome.overdue_days,
+    })
+    return receipt
+
+
+def _add_summary_fields(receipt, run, bridge):
+    receipt.update({
+        "freshness_schema_version": 1,
+        "scan_id": bridge["scan_id"],
+        "as_of": run.as_of.isoformat(),
+        "scan_complete": run.complete,
+        "discovered_count": run.discovered_count,
+        "files_count": run.files_count,
+        "candidate_count": run.candidate_count,
+        "page_candidate_count": run.page_candidate_count,
+        "scan_finding_codes": list(run.scan_finding_codes),
+        "candidate_ids": bridge["candidate_ids"],
+        "candidate_records": bridge["candidate_records"],
+        "candidate_set_basis": bridge["candidate_set_basis"],
+        "candidate_set_sha256": bridge["candidate_set_sha256"],
+        "classification_counts": run.counts,
+        "scope": bridge["scope"],
+        "exclude_components": bridge["exclude_components"],
+        "defaults_source_kind": bridge["defaults_source_kind"],
+        "defaults_source": bridge["defaults_source"],
+        "defaults_fingerprint": bridge["defaults_fingerprint"],
+        "input_snapshot_sha256": bridge["input_snapshot_sha256"],
+    })
+    return receipt
+
+
 def main():
     ap = kblib.ArgumentParser(
-        description="Freshness / review_by overdue candidate check")
+        description="Closed-world freshness / review_by candidate check")
     ap.add_argument("vault_root", help="vault root directory")
     ap.add_argument("--scope", help="only scan .md files under this subpath")
     ap.add_argument("--as-of", dest="as_of", default=None,
@@ -181,8 +688,8 @@ def main():
                          "(default: today)")
     ap.add_argument("--defaults", dest="defaults", default=None,
                     help="optional domain -> volatility mapping file "
-                         "(restricted YAML subset); without it only pages "
-                         "with an explicit volatility declaration are checked")
+                         "(restricted YAML subset); an active page with no "
+                         "explicit or defaulted volatility is a candidate")
     ap.add_argument("--exclude", action="append", default=[],
                     metavar="COMPONENT",
                     help="skip files whose path contains this component "
@@ -207,8 +714,15 @@ def _run(args):
         return 1
 
     defaults_map = None
+    defaults_source_kind = "none"
+    defaults_source = None
+    defaults_fingerprint = _fingerprint({
+        "schema_version": 1,
+        "volatility_defaults": None,
+    })
     defaults_admission = None
     defaults_snapshot = None
+    standalone_defaults_record = None
     if args.defaults:
         try:
             defaults_absolute = os.path.abspath(args.defaults)
@@ -219,6 +733,8 @@ def _run(args):
                     root, compose_vocab.DEFAULT_OUTPUT)),
             }
             if defaults_absolute in canonical_spellings:
+                defaults_source_kind = "canonical"
+                defaults_source = compose_vocab.DEFAULT_OUTPUT
                 defaults_admission, admission_errors = \
                     profile_admission.admit_profile(root)
                 if defaults_admission is None:
@@ -234,145 +750,98 @@ def _run(args):
                         "; ".join(artifact_errors))
                 defaults_map = load_defaults(
                     args.defaults, defaults_snapshot.read_text())
+                defaults_fingerprint = defaults_snapshot.sha256
             else:
-                defaults_map = load_defaults(args.defaults)
+                defaults_source_kind = "standalone"
+                defaults_source = "standalone"
+                defaults_bytes, standalone_defaults_record = \
+                    _stable_external_file_snapshot(args.defaults)
+                defaults_text = defaults_bytes.decode(
+                    "utf-8", errors="strict")
+                defaults_map = load_defaults(args.defaults, defaults_text)
+                defaults_fingerprint = kblib.sha256_bytes(defaults_bytes)
         except (OSError, ValueError) as exc:
             print("check_freshness: cannot load --defaults file: %s" % exc)
             return 1
 
-    exclude_components = [e.strip("/") for e in args.exclude if e.strip("/")]
+    exclude_components = sorted(set(
+        e.strip("/") for e in args.exclude if e.strip("/")))
+    try:
+        scope_value, scope_identity = _admit_scope(root, args.scope)
+        snapshots, page_records, input_entries = _capture_scope(
+            root, scope_value, exclude_components)
+    except (OSError, ValueError) as exc:
+        print("check_freshness: cannot establish canonical page snapshot: %s"
+              % exc)
+        return 1
 
-    counts = {"files": 0, "excluded": 0, "skipped_lifecycle": 0,
-              "unparseable": 0, "skipped_no_volatility": 0, "stable": 0,
-              "fresh": 0, "overdue": 0, "future_baseline": 0,
-              "pending_first_verification": 0}
-    candidates = []  # (prio_rank, -overdue_days, rel, details)
+    input_snapshot_sha256 = _fingerprint({
+        "schema_version": 1,
+        "files": sorted(input_entries, key=lambda entry: entry["path"]),
+    })
 
-    for full, rel in kblib.iter_md_files(root, args.scope):
-        rel_disp = rel.replace(os.sep, "/")
-
-        # ---- path-component exclusion (--exclude) ----
-        parts = rel_disp.split("/")
-        if any(comp in parts for comp in exclude_components):
-            counts["excluded"] += 1
-            continue
-
-        fm, unparseable = load_frontmatter(full)
-        fm = fm or {}
-        counts["files"] += 1
-        if unparseable:
-            counts["unparseable"] += 1
-
-        # ---- lifecycle skip: retired / merged pages are no longer kept fresh ----
-        lifecycle = str(fm.get("lifecycle") or "active")
-        if lifecycle in ("retired", "merged"):
-            counts["skipped_lifecycle"] += 1
-            continue
-
-        # ---- volatility: explicit declaration > --defaults mapping > skip ----
-        volatility = fm.get("volatility")
-        volatility = str(volatility) if volatility else None
-        if volatility not in INTERVAL_DAYS:
-            volatility = None
-            if defaults_map is not None:
-                domain = str(fm.get("domain") or "")
-                volatility = defaults_map.get(domain)
-        if volatility not in INTERVAL_DAYS:
-            counts["skipped_no_volatility"] += 1
-            continue
-        interval = INTERVAL_DAYS[volatility]
-
-        priority = str(fm.get("priority") or "")
-        prio_rank = PRIORITY_ORDER.get(priority, len(PRIORITY_ORDER))
-        prio_disp = priority or "no-priority"
-
-        # ---- baseline date: last_verified > last_reviewed > file
-        # modification time (K08/05: with no last_verified, the creation date
-        # or the date of the most recent substantive modification is used
-        # instead and the page is marked awaiting first verification) ----
-        pending_first = False
-        baseline = parse_date(fm.get("last_verified"))
-        baseline_field = "last_verified"
-        if baseline is None:
-            baseline = parse_date(fm.get("last_reviewed"))
-            baseline_field = "last_reviewed"
-        if baseline is not None and baseline > as_of:
-            counts["future_baseline"] += 1
-            details = (
-                "future-dated freshness baseline: %s=%s is later than "
-                "as_of=%s; a completed review or verification event cannot "
-                "provide evidence for an earlier reference date "
-                "(volatility=%s, priority=%s)"
-                % (baseline_field, baseline.isoformat(), as_of.isoformat(),
-                   volatility, prio_disp)
-            )
-            candidates.append((prio_rank, 0, rel_disp, details))
-            continue
-        if interval is None:
-            counts["stable"] += 1
-            continue
-        if baseline is None:
-            pending_first = True
-            baseline = datetime.date.fromtimestamp(os.path.getmtime(full))
-            baseline_field = "file-modified"
-
-        review_by = baseline + datetime.timedelta(days=interval)
-        if pending_first:
-            counts["pending_first_verification"] += 1
-            state = ("overdue %d days" % (as_of - review_by).days
-                     if as_of >= review_by else "due %s" % review_by.isoformat())
-            details = ("pending first verification, %s: no last_verified / "
-                       "last_reviewed; baseline %s=%s + %d days (K08/05; "
-                       "volatility=%s, priority=%s)"
-                       % (state, baseline_field, baseline.isoformat(),
-                          interval, volatility, prio_disp))
-            candidates.append((prio_rank, 1, rel_disp, details))
-        elif as_of >= review_by:
-            overdue_days = (as_of - review_by).days
-            counts["overdue"] += 1
-            details = ("overdue %d days: review_by=%s (%s=%s + %d days, "
-                       "volatility=%s, priority=%s)"
-                       % (overdue_days, review_by.isoformat(),
-                          baseline_field, baseline.isoformat(),
-                          interval, volatility, prio_disp))
-            candidates.append((prio_rank, -overdue_days, rel_disp, details))
-        else:
-            counts["fresh"] += 1
-
-    # Sort: priority (P0 first) > days overdue (largest first) > invalid
-    # future baseline > pending first verification > path.
-    candidates.sort(key=lambda c: (c[0], c[1], c[2]))
+    run = freshness_engine.evaluate_freshness(
+        snapshots,
+        freshness_engine.FreshnessPolicy(
+            as_of=as_of,
+            volatility_defaults=defaults_map,
+        ),
+    )
+    if not run.complete:
+        print("check_freshness: internal classification did not account for "
+              "every discovered page; refusing freshness evidence")
+        return 1
+    counts = run.counts
+    bridge = _scan_bridge(
+        run,
+        scope=scope_value,
+        exclude_components=exclude_components,
+        defaults_source_kind=defaults_source_kind,
+        defaults_source=defaults_source,
+        defaults_fingerprint=defaults_fingerprint,
+        input_snapshot_sha256=input_snapshot_sha256,
+    )
 
     receipts = []
     seq = 0
-    for _, _, rel_disp, details in candidates:
+    rendered_candidates = []
+    for outcome in run.candidates:
         seq += 1
-        receipts.append(kblib.make_receipt(
-            TOOL, TOOL_VERSION, "freshness", rel_disp, "candidate",
+        details = _candidate_details(outcome, as_of)
+        rendered_candidates.append((outcome, details))
+        receipt = kblib.make_receipt(
+            TOOL, TOOL_VERSION, "freshness", outcome.path, "candidate",
             details + "; enters the maintenance-run candidate list; "
-                      "does not change any status axis", seq))
-    all_skipped = (counts["files"] > 0
-                   and counts["skipped_no_volatility"] == counts["files"])
-    if not candidates:
-        seq += 1
-        if all_skipped:
-            # "Nothing was checked" must not read as "nothing is stale":
-            # every scanned file lacked a resolvable volatility, so the run
-            # produced no freshness evidence at all (K08/05).
-            receipts.append(kblib.make_receipt(
-                TOOL, TOOL_VERSION, "freshness-check-summary",
-                (args.scope or ".") + " @ " + os.path.abspath(args.vault_root),
-                "candidate",
-                "as_of=%s: all %d scanned file(s) were skipped for lack of a "
-                "resolvable volatility (no explicit field and no --defaults "
-                "match); this run checked nothing and is not evidence of "
-                "freshness" % (as_of.isoformat(), counts["files"]), seq))
-        else:
-            receipts.append(kblib.make_receipt(
-                TOOL, TOOL_VERSION, "freshness-check-summary",
-                (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
-                "as_of=%s no overdue or pending-first-verification pages"
-                % as_of.isoformat(), seq))
+                      "does not change any status axis", seq)
+        receipts.append(_add_outcome_fields(
+            receipt, outcome, as_of, bridge))
+
+    seq += 1
+    # Receipt targets are repository/vault-relative identities.  The exact
+    # observed inputs are already content-bound below; persisting a machine-
+    # local absolute checkout path would make otherwise identical evidence
+    # non-portable without strengthening its identity.
+    summary_target = scope_value
+    if run.nothing_checked:
+        summary_details = (
+            "as_of=%s: zero Markdown files were discovered; this run checked "
+            "nothing and is not evidence of freshness" % as_of.isoformat()
+        )
+    elif run.candidates:
+        summary_details = (
+            "as_of=%s scan_complete=true freshness_candidates=%d; a run with "
+            "candidates cannot emit passing freshness evidence"
+            % (as_of.isoformat(), len(run.candidates))
+        )
+    else:
+        summary_details = (
+            "as_of=%s scan_complete=true no freshness candidates"
+            % as_of.isoformat()
+        )
+    summary = kblib.make_receipt(
+        TOOL, TOOL_VERSION, "freshness-check-summary", summary_target,
+        run.result, summary_details, seq)
+    receipts.append(_add_summary_fields(summary, run, bridge))
 
     if defaults_admission is not None:
         currency_errors = compose_vocab.artifact_currency_errors(
@@ -395,28 +864,50 @@ def _run(args):
         for receipt in receipts:
             receipt.update(evidence)
 
-    print("check_freshness: as_of=%s checked %d files (plus %d excluded, "
-          "%d retired/merged)" % (as_of.isoformat(), counts["files"],
-                                  counts["excluded"],
-                                  counts["skipped_lifecycle"]))
+    if standalone_defaults_record is not None:
+        try:
+            _defaults_bytes, current_defaults_record = \
+                _stable_external_file_snapshot(args.defaults)
+        except (OSError, ValueError) as exc:
+            print("check_freshness: standalone --defaults changed during "
+                  "validation: %s" % exc)
+            return 1
+        if current_defaults_record != standalone_defaults_record:
+            print("check_freshness: standalone --defaults changed during "
+                  "validation; retry from a stable snapshot")
+            return 1
+
+    page_currency_errors = _scope_currency_errors(
+        root, scope_value, scope_identity, page_records,
+        exclude_components)
+    if page_currency_errors:
+        print("check_freshness: page snapshot changed during validation: %s"
+              % "; ".join(page_currency_errors))
+        return 1
+
+    print("check_freshness: as_of=%s observed %d in-scope files (%d "
+          "retired/merged) plus %d excluded" %
+          (as_of.isoformat(), run.files_count,
+           counts[freshness_engine.INACTIVE],
+           counts[freshness_engine.EXCLUDED]))
     print("  overdue=%(overdue)d future_baseline=%(future_baseline)d "
+          "invalid_baseline=%(invalid_baseline)d "
           "pending_first_verification="
           "%(pending_first_verification)d fresh=%(fresh)d "
           "stable_no_due_date=%(stable)d "
-          "skipped_no_volatility=%(skipped_no_volatility)d "
-          "unparseable_frontmatter=%(unparseable)d" % counts)
-    for _, _, rel_disp, details in candidates:
-        print("  [CANDIDATE] %s — %s" % (rel_disp, details))
-    if not candidates:
-        if all_skipped:
-            print("  Conclusion: NOTHING CHECKED — all %d file(s) skipped for "
-                  "lack of a resolvable volatility; supply --defaults (a "
-                  "profile's vocabulary-extensions.yaml, or a composed "
-                  "Tools/vocab.yaml) or add volatility frontmatter. This is "
-                  "not evidence of freshness." % counts["files"])
-        else:
-            print("  Conclusion: no maintenance-run candidates (overdue=0, "
-                  "pending_first_verification=0).")
+          "invalid_volatility=%(invalid_volatility)d "
+          "unresolved_volatility=%(unresolved_volatility)d "
+          "unparseable_frontmatter=%(unparseable_frontmatter)d" % counts)
+    for outcome, details in rendered_candidates:
+        print("  [CANDIDATE] %s — %s" % (outcome.path, details))
+    if run.nothing_checked:
+        print("  Conclusion: NOTHING CHECKED — zero Markdown files were "
+              "discovered. This is not evidence of freshness.")
+    elif run.candidates:
+        print("  Conclusion: %d maintenance-run freshness candidate(s); "
+              "no passing freshness summary." % len(run.candidates))
+    else:
+        print("  Conclusion: no maintenance-run freshness candidates.")
 
     kblib.write_receipts(args.receipts, _record_receipts(receipts))
     return kblib.exit_code(receipts)
