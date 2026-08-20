@@ -508,7 +508,9 @@ class CurrentPropertyStateTests(unittest.TestCase):
                 "last_reviewed",
                 invalidation="semantic-content-change-tombstone-v1"),
             check_queue.metadata_property_state.gate_projection_rule(
-                "readiness_state", ("accepted", "rejected")),
+                "readiness_state", ("accepted", "rejected"),
+                legacy_observation_values=(
+                    "missing", "mapped", "accepted", "rejected")),
         )
 
     @staticmethod
@@ -643,6 +645,33 @@ class CurrentPropertyStateTests(unittest.TestCase):
         self.assertTrue(any(
             "live legacy page must be adopted" in error
             for error in errors), errors)
+
+    def test_final_state_accepts_full_legacy_observation_domain(self):
+        """Post-write validation must not reapply current-owner rules.
+
+        The migration planner and declaration validator already preserve a
+        field's full vocabulary and an explicit blank date.  This is the
+        final runtime boundary that previously accepted the proposed state
+        and then rejected those same observations as if they were current
+        Gate/date owners.
+        """
+        (self.root / self.page_path).write_text(
+            "---\ntitle: A\n---\nBody\n", encoding="utf-8")
+        row = {
+            "path": self.page_path,
+            "property_state": {},
+            "legacy_property_state": {
+                "readiness_state": {
+                    "status": "legacy-unverified",
+                    "value": "mapped",
+                },
+                "last_reviewed": {
+                    "status": "legacy-unverified",
+                    "value": None,
+                },
+            },
+        }
+        self.assertEqual([], self.errors(row, {}))
 
     def test_content_event_closes_owner_evidence_and_machine_fields(self):
         text = (
