@@ -15,18 +15,16 @@ permissions:
   contents: read
 
 jobs:
-  verify:
-    name: verify (${{ matrix.python-version }}, ${{ matrix.shard }})
+  verify_check:
+    name: verify check (${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        # Exercise both ends of the supported interpreter range.
+        # Exercise deterministic checks at both ends of the supported range,
+        # once per interpreter rather than once per unit-test shard.
         python-version: ["3.10", "3.14"]
-        # Keep complete coverage while bounding the slowest job.  The Makefile
-        # checks that these three disjoint patterns still cover every test file.
-        shard: ["a-m", "n-r", "s-z"]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -38,8 +36,44 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Run required verification
-        run: make "ci-${{ matrix.shard }}"
+      - name: Run deterministic verification
+        run: make check
+
+      - name: Tracked and untracked non-ignored tree must be unchanged
+        if: ${{ always() }}
+        run: |
+          git status --porcelain=v1 --untracked-files=all > "$RUNNER_TEMP/worktree-status"
+          if test -s "$RUNNER_TEMP/worktree-status"; then
+            echo "Required verification modified tracked or untracked non-ignored files:"
+            cat "$RUNNER_TEMP/worktree-status"
+            exit 1
+          fi
+
+  verify_tests:
+    name: verify tests (${{ matrix.python-version }}, ${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # Exercise both ends of the supported interpreter range.
+        python-version: ["3.10", "3.14"]
+        # Keep complete coverage while bounding the slowest job.  The Makefile
+        # checks that these four disjoint patterns cover every test file once.
+        shard: ["a-b", "c-m", "n-r", "s-z"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run required unit tests
+        run: make "test-${{ matrix.shard }}"
 
       - name: Tracked and untracked non-ignored tree must be unchanged
         if: ${{ always() }}
@@ -55,16 +89,23 @@ jobs:
     name: ci-required
     if: ${{ always() }}
     needs:
-      - verify
+      - verify_check
+      - verify_tests
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - name: Require every matrix job to succeed
         env:
-          VERIFY_RESULT: ${{ needs.verify.result }}
+          CHECK_RESULT: ${{ needs.verify_check.result }}
+          TEST_RESULT: ${{ needs.verify_tests.result }}
         run: |
-          if test "$VERIFY_RESULT" != "success"; then
-            echo "verify matrix result: $VERIFY_RESULT"
+          if test "$CHECK_RESULT" != "success"; then
+            echo "verify check matrix result: $CHECK_RESULT"
             exit 1
           fi
-          echo "verify matrix result: success"
+          if test "$TEST_RESULT" != "success"; then
+            echo "verify test matrix result: $TEST_RESULT"
+            exit 1
+          fi
+          echo "verify check matrix result: success"
+          echo "verify test matrix result: success"
