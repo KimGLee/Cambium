@@ -5,7 +5,7 @@ route_id: R10
 
 ## Purpose
 
-Used for periodic knowledge base updates and freshness (Maintenance Run): within the declared budget envelope, absorb the `check_freshness` overdue list, watermark increments, `needs_rereview` propagation marks, and the candidates pool, and close the run with bounded Maintenance completion semantics.
+Used for periodic knowledge base updates and freshness (Maintenance Run): within the declared budget envelope, absorb the complete `check_freshness` candidate set, watermark increments, `needs_rereview` propagation marks, and the candidates pool, and close the run with bounded Maintenance completion semantics.
 
 ## Start
 
@@ -20,7 +20,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - [[kernel/K02 Knowledge Work Construction/04 Corpus Planning Runtime Audit and Gate Boundaries|Corpus Planning Runtime Audit and Gate Boundaries]]
 - [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]]
 
-Before starting, the budget envelope MUST be declared (N pages, N batches, or N hours — choose one of the three), and the candidate manifest merged from four sources: overdue re-verification list ∪ watermark increment ∪ `needs_rereview` marks ∪ candidates pool (duplicate / vocab / language). A candidate not selected by the budget for 3 consecutive maintenance runs is automatically demoted to log-only, and re-enters the pool when hit again by a new scan; at the start of a maintenance run, output the deferred age distribution, and items lingering more than 3 runs MUST be explicitly dispositioned. The owner of the rules above is [[kernel/K00 Standards Control/08 Maintenance Run Envelope|K00/08]]; this is an execution summary.
+Before starting, the budget envelope MUST be declared (N pages, N batches, or N hours — choose one of the three), and the candidate manifest merged from four sources: complete freshness candidate set ∪ watermark increment ∪ `needs_rereview` marks ∪ candidates pool (duplicate / vocab / language). Consume every freshness `candidate` outcome; do not filter the source back to overdue pages or treat an unresolved active page as absent. A candidate not selected by the budget for 3 consecutive maintenance runs is automatically demoted to log-only, and re-enters the pool when hit again by a new scan; at the start of a maintenance run, output the deferred age distribution, and items lingering more than 3 runs MUST be explicitly dispositioned. The owner of fusion, ordering, and deferral is [[kernel/K00 Standards Control/08 Maintenance Run Envelope|K00/08]]; freshness outcome semantics remain in [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|K08/05]]. This Read Set is an execution summary.
 
 Before any write, probe the adopting repository for `.cambium/`. If it exists,
 resume its recorded task through `check_queue.py --resume-status`; do not

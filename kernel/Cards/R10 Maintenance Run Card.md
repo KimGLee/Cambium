@@ -21,7 +21,7 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
-source_hash: 'dc1a2d87cb6d'
+source_hash: 'cd34fb9a50b7'
 ---
 # R10 Maintenance Run Card
 
@@ -40,11 +40,16 @@ Perform periodic freshness, re-verification, watermark, `needs_rereview`, or can
   or multi-batch run, with `completion_semantics: maintenance`. A bounded
   single-note run does not create an empty runtime namespace.
 - [ ] Choose exactly one budget envelope: N pages, N batches, or N hours.
-- [ ] Build the candidate manifest from overdue re-verification ∪ watermark delta ∪ `needs_rereview` marks ∪ the registered candidates pool.
+- [ ] Build the candidate manifest from the complete freshness candidate set
+  ∪ watermark delta ∪ `needs_rereview` marks ∪ the registered candidates
+  pool. Preserve every freshness `candidate` outcome; do not reduce the set
+  back to overdue pages or drop an active page whose policy is unresolved.
 - [ ] When persistent state applies, bind the manifest to the latest
   canonically consumed maintenance gate for the same Standards/Profile. `null`,
   an older gate, or a reused maintenance `run_id` cannot reset deferral age.
-- [ ] Sort by priority, truncate to the envelope, and record the exact selected/deferred partition rather than replacing it with a count.
+- [ ] Fuse duplicate object paths while retaining every contributing source;
+  order once by priority, canonical path, then stable candidate ID; truncate to
+  the envelope; record the exact selected/deferred partition, not only counts.
 - [ ] Output deferred age distribution. Explicitly disposition items lingering more than 3 runs.
 - [ ] For retirement of high-in-degree pages, count incoming-link retargeting against the page budget at `retargeted links ÷ 6`.
 - [ ] Resolve batch boundaries, selected content Cards, profile scans, source routes, and tier-specific review before editing.

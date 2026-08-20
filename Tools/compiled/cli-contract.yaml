@@ -60,7 +60,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:c1433d175c4636cbaf91ee43b2169d61389dcc8c5c51bb34f5cf4cb903337c29
+source_hash: sha256:30cab5ad97ad4ba7ac1145e6f5cd4717ae0890f6571d1434749c9fd119de6927
 receipt_shape:
   base_fields:
     - receipt_id
@@ -1072,8 +1072,8 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_freshness
     module: Tools/check_freshness.py
-    source_hash: sha256:0c7dd48a9af2c6eaba6c3a070001cc1711d003c67a957f10c16be4326412bb77
-    description: Freshness / review_by overdue candidate check
+    source_hash: sha256:2be93cc81feae2a1af130c61509d83f06a796844ae3493f4dec0e2a9a0a23867
+    description: Closed-world freshness / review_by candidate check
     arguments:
       - dest: vault_root
         option_strings: []
@@ -1117,7 +1117,7 @@ tools:
         nargs: null
         action: store
         type: null
-        help: optional domain -> volatility mapping file (restricted YAML subset); without it only pages with an explicit volatility declaration are checked
+        help: optional domain -> volatility mapping file (restricted YAML subset); an active page with no explicit or defaulted volatility is a candidate
       - dest: exclude
         option_strings:
           - --exclude
@@ -1152,7 +1152,38 @@ tools:
         type: null
         help: write the receipts this run produced to stdout as one canonical JSON array and move the human-readable report to stderr; receipts written, verdicts, and exit codes are unchanged
     mutually_exclusive_groups: []
-    receipt_extensions: []
+    receipt_extensions:
+      - as_of
+      - baseline
+      - baseline_field
+      - candidate_count
+      - candidate_id
+      - candidate_ids
+      - candidate_kind
+      - candidate_records
+      - candidate_set_basis
+      - candidate_set_sha256
+      - classification_counts
+      - defaults_fingerprint
+      - defaults_source
+      - defaults_source_kind
+      - discovered_count
+      - exclude_components
+      - files_count
+      - freshness_schema_version
+      - input_snapshot_sha256
+      - overdue_days
+      - page_candidate_count
+      - priority
+      - reason_codes
+      - reasons
+      - review_by
+      - scan_complete
+      - scan_finding_codes
+      - scan_id
+      - scope
+      - volatility
+      - volatility_source
     receipt_extensions_extraction: partial
   - tool: check_links
     module: Tools/check_links.py

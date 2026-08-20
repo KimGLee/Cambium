@@ -17,7 +17,7 @@ Current Read Sets:
 - [[kernel/Read Sets/R07 Long-running Execution Read Set|Long-running Execution]]: batch, checkpoint, resume, and Terminal Proof.
 - [[kernel/Read Sets/R08 Audit and Completion Read Set|Audit and Completion]]: task completion acceptance and Terminal Audit.
 - [[kernel/Read Sets/R09 Standards Governance Read Set|Standards Governance]]: control-plane rule or structure changes.
-- [[kernel/Read Sets/R10 Maintenance Run Read Set|Maintenance Run]]: periodic updates and freshness, digesting overdue re-review, watermark deltas, and needs_rereview within the budget envelope.
+- [[kernel/Read Sets/R10 Maintenance Run Read Set|Maintenance Run]]: periodic updates and freshness, digesting the complete freshness candidate set, watermark deltas, and `needs_rereview` within the budget envelope.
 - [[kernel/Read Sets/R11 Large-scale Work Admission Read Set|Large-scale Work Admission]]: the canonical Large-scale Pre-execution Gate.
 - [[kernel/Read Sets/R12 Targeted and Specialized Audit Read Set|Targeted and Specialized Audit]]: bounded review of changed, invalidated, overdue, sampled, or specialized-invariant scope.
 - [[kernel/Read Sets/R13 Corpus Planning Read Set|Corpus Planning]]: maintain corpus topology, capability coverage, and semantic-gap admission without taking over content work, Queue execution, or audit.

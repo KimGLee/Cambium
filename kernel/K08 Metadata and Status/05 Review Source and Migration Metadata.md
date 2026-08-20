@@ -11,6 +11,13 @@
 
 Stable mathematical concepts do not need frequent `last_verified` updates; protocols, prices, products, and security requirements do.
 
+Both fields record completed events. At the run's causal boundary `as_of`, each
+explicit non-empty value MUST be a valid `YYYY-MM-DD` no later than `as_of`
+(equality is valid); otherwise the page is a candidate. Validate both fields
+before baseline or volatility: invalid `last_verified` cannot fall back to
+`last_reviewed`, an invalid/future unselected field cannot be hidden by the
+selected one, and `stable` cannot exempt invalid/future evidence.
+
 `first_seen` records the date an emerging topic or source signal first entered the knowledge base; it is not the same as the source's publication date.
 
 ## Freshness And Review Due
@@ -21,11 +28,21 @@ Stable mathematical concepts do not need frequent `last_verified` updates; proto
 - `slow`: slow-changing content, such as methodology and system design patterns; re-verification interval 365 days.
 - `stable`: stable content, such as mathematics and classical foundational principles; no re-verification deadline.
 
-When not explicitly declared, the default value is taken from the domain dispatch table registered by the selected profile's `Vocabulary Extensions`; a single page MAY override it explicitly.
+An absent/blank page value uses its domain default from the selected Profile's `Vocabulary Extensions`; a page MAY validly override it. A non-empty value outside the vocabulary is a candidate, not a reason to use that default.
 
-`review_by` is not filled in by hand; `Tools/check_freshness.py` computes it as `last_verified + corresponding interval`. When a page has no `last_verified`, the creation date or the date of the most recent substantive modification is used instead, and the page is marked as awaiting first verification.
+`review_by` is derived, never written by hand: for non-stable policy, `Tools/check_freshness.py` adds the interval to the first available valid event (`last_verified`, then `last_reviewed`). Only absence/blankness permits fallback. If both events are absent, creation or substantive-modification time is diagnostic only and the page awaits first verification, including under `stable`.
 
-Overdue semantics: a past `review_by` means the page enters the maintenance-run candidate list (sorted by priority); it does not automatically change any of the page's status axes.
+Every active in-scope page MUST have one closed outcome. The candidate set is
+exactly: overdue; awaiting first verification; invalid or post-`as_of`
+explicit event; invalid explicit or unresolved fallback `volatility`; and
+unparseable frontmatter. Treat the last conservatively because lifecycle and
+facts are unprovable. Explicit exclusions and provably retired/merged pages
+are accounted outside the active set; no fallback, exemption, or skip may turn
+a candidate into a pass. A pass requires a completed scan, at least one
+discovered Markdown file, every active page classified, and this set empty.
+Zero discovery is a scan-level candidate. Candidates feed Maintenance without changing
+page status; [[kernel/K00 Standards Control/08 Maintenance Run Envelope|K00/08]]
+owns fusion, ordering, and budget truncation.
 
 Re-verification MUST answer: does this topic still deserve its current priority today? Upgrades and downgrades are recorded in the Coverage Ledger with the reason stated.
 
@@ -50,7 +67,7 @@ source_valid_until:
 - `evidence_roles` describes the evidence role the source plays, rather than simply repeating the source's authority level.
 - `claim_scope` states which component, execution / control setup, task, organization, or time range the conclusion applies to.
 - `supersedes` / `superseded_by` preserve the evolution relationship between conclusions.
-- `source_valid_until` records a real external validity boundary (a legal, contract, standard, or version expiry), per the split owned by [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority|Frontmatter Writer and Projection Authority]]; ordinary freshness stays derived from `last_verified` and `volatility`, and the legacy `review_due` field migrates under [[kernel/K08 Metadata and Status/08 Relationship Metadata Contract|Relationship Metadata Contract]] — a value synonymous with derived freshness is dropped, a genuine external validity date moves here. Stable foundational knowledge is not required to be re-reviewed frequently.
+- `source_valid_until` records a real external validity boundary (a legal, contract, standard, or version expiry), per the split owned by [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority|Frontmatter Writer and Projection Authority]]; ordinary freshness uses the valid baseline cascade and resolved volatility defined above. Legacy `review_due` migrates under [[kernel/K08 Metadata and Status/08 Relationship Metadata Contract|Relationship Metadata Contract]] — derived freshness is dropped; a genuine external validity date moves here. Stable knowledge needs no recurring re-review.
 
 ## Migration Rules
 

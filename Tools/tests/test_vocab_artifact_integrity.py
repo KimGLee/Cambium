@@ -50,7 +50,8 @@ def build_composable_tree(destination):
     tools.mkdir(parents=True)
     for name in (
             "compose_vocab.py", "kblib.py", "check_vocab.py",
-            "check_freshness.py",
+            "check_freshness.py", "freshness_engine.py",
+            "maintenance_candidates.py",
             "profile_admission.py", "check_profile.py",
             "profile_contract.py"):
         shutil.copy2(TOOLS / name, tools / name)
