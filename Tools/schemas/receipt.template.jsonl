@@ -33,7 +33,7 @@
 # `check_residual_content.py` receipts:
 #   scan_id            : stable ID from the selected profile's Registered Scan Registry
 #   config_fingerprint : `sha256:<hex>` over the exact profile-owned config bytes; null when the config could not be read or validated
-# `check_freshness.py` 2.0.0 emits one page-level `freshness` candidate per
+# `check_freshness.py` 2.1.0 emits one page-level `freshness` candidate per
 # active candidate outcome and exactly one `freshness-check-summary` for every
 # completed scan. Page candidates carry `freshness_schema_version`, `scan_id`,
 # stable path-derived `candidate_id`, `candidate_kind`, typed reason fields,
@@ -46,7 +46,7 @@
 # mtimes actually classified. A zero-file scan is a scan-level candidate with
 # `scan_finding_codes: ["nothing_checked"]`; it has no synthetic page record.
 # Only a completed scan with an empty candidate set has `result: pass`.
-# A passing `check_profile.py` 1.9.0 `profile-load` summary carries:
+# A passing `check_profile.py` 2.0.0 `profile-load` summary carries:
 #   selected_profile_manifest      : canonical `profiles/<id>/profile.md` identity
 #   profile_snapshot_sha256        : path-sensitive SHA-256 over the complete selected Profile directory
 #   profile_contract_fingerprint   : SHA-256 over the canonical typed dependency graph rooted at that manifest
@@ -63,7 +63,7 @@
 #   positive_control_fingerprint : `sha256:<64 lowercase hex>` over the exact
 #                                  verifier-owned control set
 # These shared evidence fields do not prescribe the verifier's control-input
-# representation. `check_batch_close.py` 1.7.0 requires the two final pass
+# representation. `check_batch_close.py` 1.11.0 requires the two final pass
 # summaries to agree exactly on tool, tool_version, check, scan_id,
 # config_fingerprint, and every positive_control_* field. Each scan_id must
 # also equal the admitted Registered Scan ID; when that row declares an
@@ -126,12 +126,12 @@
 # report is a receipt input or output.
 # Examples of current stable-Gate producer protocols -- not the complete set;
 # the Stable Gate ID Registry in K00/12 is the only complete enumeration of
-# registered Gate IDs and their producers: check_profile 1.9.0 / profile-load;
+# registered Gate IDs and their producers: check_profile 2.0.0 / profile-load;
 # check_links 1.5.0 / wiki-link-integrity; check_vocab 1.8.0 /
 # frontmatter-vocabulary and priority-quota-distribution;
 # check_residual_content 1.2.0 /
-# registered-residual-content; check_queue 1.20.1 / its registered
-# Required-Queue modes; check_batch_close 1.10.0 / batch-close; check_proof
+# registered-residual-content; check_queue 1.21.0 / its registered
+# Required-Queue modes; check_batch_close 1.11.0 / batch-close; check_proof
 # 1.17.0 / terminal-proof; and adopt_standards 1.6.0 /
 # standards-adoption. Deterministic producers not shown above -- among them
 # check_corpus_plan and record_corpus_acceptance -- follow the same rule. Every receipt
@@ -149,7 +149,7 @@
 # after it. A run outside any Cambium runtime (no `.cambium/state/`) omits the
 # three fields rather than writing null: an omitted field claims nothing, while
 # an explicit null would satisfy consumers that only test field presence.
-# Public R01 `check_queue.py` 1.14.0 admission reruns the complete
+# Public R01 `check_queue.py` 1.21.0 admission reruns the complete
 # `profile-load` closure. The lower-level runtime view used to construct a
 # corrective Standards adoption retains only the selected Profile's
 # identity/sentinel guard, so an invalid current Profile does not prevent a
@@ -211,9 +211,16 @@
 # `check_batch_close.py` is the sole close-bundle producer. Its successful
 # publication appends, in order, one distinct `closed_list_<member>` pass
 # receipt for every member of the current producer-era Closed List,
-# one `batch_global_review_attestation`, one distinct
-# `batch_global_review`, the canonical `check_queue` consistency receipt, and
-# one `batch_close_gate` aggregator. Every record binds task_id, batch_id, the
+# one `batch_global_review_attestation`, one `page_review_acceptance` pass
+# receipt for every exact manifest page, one distinct `batch_global_review`,
+# the canonical `check_queue` consistency receipt, and one `batch_close_gate`
+# aggregator. Each page child binds its target, the UTC date derived from its
+# own checked_at, the semantic content SHA after excluding every Core and
+# selected-Profile contract-managed projection, its declared reviewer/integrator and
+# attestation, the selected Profile's manifest/snapshot/typed-contract/input
+# identity, and the Metadata Execution Contract fingerprint. The aggregator
+# binds the unique sorted child IDs, count, and exact set fingerprint. Every
+# record binds task_id, batch_id, the
 # same merged_snapshot_sha256, and producer version as applicable. Member and
 # aggregator records bind declared integrator_id/reviewer_id labels; those
 # labels must be nonempty and different. The attestation additionally carries
@@ -225,8 +232,8 @@
 # three current state SHAs/revisions, Delta SHA/application receipt, Queue
 # consistency receipt, unchanged before/after state SHAs, the registered
 # gate_id=batch-close, explicit Work Spec binding, and Corpus Planning
-# applicability/child binding. Version 1.10.0 is the current producer;
-# versions 1.4.0 through 1.9.0 remain supported only while replaying already-
+# applicability/child binding. Version 1.11.0 is the current producer;
+# versions 1.4.0 through 1.10.0 remain supported only while replaying already-
 # closed producer-era history and cannot authorize a new close. Older JSONL
 # remains immutable but is not accepted as close authority. A failed run
 # appends only a failed batch_close_gate attempt; an uncertain append preserves
@@ -263,6 +270,22 @@
 # Queue transition receipts additionally carry before/after state, hold,
 # state revision, Queue fingerprint, task id, Queue revision, actor role, and
 # (for close) Coverage before/after fingerprints.
+# `record_gate_attestation.py` manual Profile Extension Gate receipts and
+# `record_gate_result.py` deterministic Gate results carry the exact
+# Gate/transition/Judgment/field/value, pass-authority role, producer and
+# receipt-schema capabilities, target page bytes and projection-neutral
+# semantic fingerprint, selected Profile manifest/tree/typed-contract/input
+# fingerprints, active K00 bytes, and the Metadata Execution Contract
+# fingerprint. A deterministic result additionally embeds the exact final pass
+# summary from its registered scan and binds the source receipt, complete pass
+# set, compiled shell-free command, staged tool/config/Python-runtime execution
+# inputs, and unchanged current repository snapshot by hash. The Integrator
+# refuses that result if any covered repository input changed before consumption.
+# `apply_metadata_transition.py` consumes only a matching receipt from the
+# current filtered catalog and emits a distinct Integrator receipt
+# that additionally binds the source Gate receipt plus Coverage, Queue,
+# Progress and page before/after fingerprints. Coverage points at the producer
+# receipt; the Integrator receipt proves the atomic owner/page publication.
 # `update_task.py` task-transition receipts additionally carry task id,
 # completion_semantics,
 # before/after task state, evidence receipt, actor/time, both Queue revisions,
@@ -317,13 +340,15 @@
 # `apply_contract_amendment.py` 1.1.0 rows and commit receipts additionally
 # bind `changed_contract_fields`; schema 2 plans may change the bounded policy
 # register, the operational Amendment delegation, or both in one transaction.
-# Canonical `apply_delta.py` 1.5.0 receipts bind batch, exact delta SHA, Queue
+# Canonical `apply_delta.py` 1.6.0 receipts bind batch, exact delta SHA, Queue
 # SHA, Coverage before/after SHA, and the routed-gap obligation/prospective-
 # settlement fingerprints proven before the Delta was frozen. A worker delta
 # receipt never authorizes Queue/compiler-owned control-field changes.
-# Closed history may replay apply_delta/1.4.0; a new apply requires 1.5.0.
+# Closed history may replay apply_delta/1.4.0 and 1.5.0; a new apply requires
+# 1.6.0.
 # Queue transition history similarly accepts update_queue/1.2.0 while current
-# transitions are produced as update_queue/1.3.0 receipts.
+# transitions are produced as update_queue/1.5.0 receipts. This receipt-protocol
+# version is deliberately independent from the update_queue CLI release.
 # `adopt_standards.py` 1.6.0 validates the candidate Profile after-image with
 # full `profile-load` before writing state and binds its Profile tree, typed
 # dependency graph, root-owned profile-load inputs, and 1.5-era upstream
@@ -339,4 +364,4 @@
 # Existing receipt IDs remain valid append-only protocol references after generator-format changes; never rewrite historical IDs.
 # =============================================================================
 {"receipt_id": "audit-check_links-20260721T000000Z-4f9c2a7d6e8b4a10b3c5d7e9f1023456-0001", "check": "link-missing", "target": "Topics/Example Topic.md:42", "result": "fail", "details": "[[Example Dependency]] has no matching target (missing)", "checked_at": "2026-07-21T00:00:00Z", "tool": "check_links", "tool_version": "1.5.0", "gate_id": "wiki-link-integrity", "invalidated_by": null}
-{"receipt_id": "audit-check_profile-20260811T000000Z-7a6b5c4d3e2f109876543210abcdef12-0001", "check": "profile-check-summary", "target": "profiles/example/profile.md", "result": "pass", "details": "profile_id=example; all interface slots and typed Profile dependencies are authorized", "checked_at": "2026-08-11T00:00:00Z", "tool": "check_profile", "tool_version": "1.9.0", "gate_id": "profile-load", "dimension": "guidance_and_contract", "selected_profile_manifest": "profiles/example/profile.md", "profile_snapshot_sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "profile_contract_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "profile_load_inputs_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "invalidated_by": null}
+{"receipt_id": "audit-check_profile-20260811T000000Z-7a6b5c4d3e2f109876543210abcdef12-0001", "check": "profile-check-summary", "target": "profiles/example/profile.md", "result": "pass", "details": "profile_id=example; all interface slots and typed Profile dependencies are authorized", "checked_at": "2026-08-11T00:00:00Z", "tool": "check_profile", "tool_version": "2.0.0", "gate_id": "profile-load", "dimension": "guidance_and_contract", "selected_profile_manifest": "profiles/example/profile.md", "profile_snapshot_sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "profile_contract_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "profile_load_inputs_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "invalidated_by": null}

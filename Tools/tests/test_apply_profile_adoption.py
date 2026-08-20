@@ -54,6 +54,7 @@ sys.path.insert(0, str(TOOLS))
 import apply_profile_adoption  # noqa: E402
 import check_profile  # noqa: E402
 import kblib  # noqa: E402
+import test_profile_onboarding_status as tpos  # noqa: E402
 import test_template_fill  # noqa: E402  (reused semantic fill + scan config)
 
 _BASE = None  # pristine adopting root, built once
@@ -73,6 +74,11 @@ def _build_base(target):
         shutil.copyfile(script, target / "Tools" / script.name)
     shutil.copytree(REPOSITORY / "Tools" / "schemas",
                     target / "Tools" / "schemas")
+    # Complete the minimal adopter from profile-load's producer-owned input
+    # and capability registry.  Keeping a second hand-written subset here
+    # caused new metadata contract inputs to look like path-spelling drift
+    # before the candidate Profile was evaluated.
+    tpos.copy_profile_load_fixture(target)
     profile = target / "profiles" / PROFILE_ID
     shutil.copytree(TEMPLATE, profile)
     for name in test_template_fill.ORIENTATION:
@@ -103,9 +109,10 @@ def _build_base(target):
 def setUpModule():
     global _BASE, _ADOPTED, _MODULE_TMP
     _MODULE_TMP = tempfile.TemporaryDirectory()
-    _BASE = Path(_MODULE_TMP.name) / "base"
+    temporary_root = Path(_MODULE_TMP.name).resolve()
+    _BASE = temporary_root / "base"
     _build_base(_BASE)
-    _ADOPTED = Path(_MODULE_TMP.name) / "adopted"
+    _ADOPTED = temporary_root / "adopted"
     shutil.copytree(_BASE, _ADOPTED)
     write_plan(_ADOPTED, initial_plan(_ADOPTED))
     code, out = run_tool(_ADOPTED, "--apply")
@@ -254,7 +261,7 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
     def clone(self, source=None):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        root = Path(self.tmp.name) / "repo"
+        root = Path(self.tmp.name).resolve() / "repo"
         shutil.copytree(source if source is not None else _BASE, root)
         return root
 

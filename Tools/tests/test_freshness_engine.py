@@ -62,6 +62,37 @@ class FreshnessEngineTests(unittest.TestCase):
         self.assertEqual(engine.FRESH, outcome.kind)
         self.assertEqual("last_reviewed", outcome.baseline_field)
 
+    def test_content_modified_after_review_is_a_rereview_candidate(self):
+        outcome = self.classify({
+            "volatility": "slow",
+            "last_content_modified": "2026-08-10",
+            "last_reviewed": "2026-08-09",
+        })
+        self.assertEqual(engine.MODIFIED_SINCE_REVIEW, outcome.kind)
+        self.assertEqual(
+            ["content_modified_since_review"],
+            [reason.code for reason in outcome.reasons])
+
+    def test_review_on_modification_date_closes_intermediate_state(self):
+        outcome = self.classify({
+            "volatility": "slow",
+            "last_content_modified": "2026-08-10",
+            "last_reviewed": "2026-08-10",
+        })
+        self.assertEqual(engine.FRESH, outcome.kind)
+        self.assertEqual("last_reviewed", outcome.baseline_field)
+
+    def test_invalid_content_modified_date_cannot_be_hidden(self):
+        outcome = self.classify({
+            "volatility": "slow",
+            "last_content_modified": "not-a-date",
+            "last_reviewed": "2026-08-10",
+        })
+        self.assertEqual(engine.INVALID_BASELINE, outcome.kind)
+        self.assertEqual(
+            ["last_content_modified"],
+            [reason.field for reason in outcome.reasons])
+
     def test_date_parser_rejects_prefixes_and_invalid_calendar_dates(self):
         for value in ("2026-08-14T00:00:00Z", "2026-02-30", 20260814):
             with self.subTest(value=value):

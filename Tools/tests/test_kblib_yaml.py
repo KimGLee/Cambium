@@ -64,6 +64,20 @@ class DocumentRoundTripTests(unittest.TestCase):
         self.assertEqual(
             kblib.parse_yaml_subset(kblib.canonical_yaml(document)), document)
 
+    def test_exact_empty_mappings_round_trip_in_every_supported_container(self):
+        document = {
+            "property_state": {},
+            "records": [{}, {"field": {}, "values": []}],
+        }
+
+        rendered = kblib.canonical_yaml(document)
+
+        self.assertIn("property_state: {}", rendered)
+        self.assertIn("- {}", rendered)
+        self.assertEqual(kblib.parse_yaml_subset(rendered), document)
+        self.assertEqual(kblib.parse_scalar("{}"), {})
+        self.assertEqual(kblib.parse_scalar("'{}'"), "{}")
+
     def test_every_rendered_value_is_quoted_or_starts_outside_the_set(self):
         document = {"k%d" % index: head + "tail"
                     for index, head in enumerate(ALWAYS)}

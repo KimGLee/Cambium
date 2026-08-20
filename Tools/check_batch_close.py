@@ -61,12 +61,15 @@ import check_vocab
 import batch_settlement
 import candidate_lifecycle
 import kblib
+import metadata_execution_contract
+import metadata_property_state
+import project_page_state
 import profile_admission
 import profile_contract
 
 
 TOOL = "check_batch_close"
-TOOL_VERSION = "1.10.0"
+TOOL_VERSION = "1.11.0"
 GATE_ID = "batch-close"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -157,6 +160,76 @@ def _make_receipt(tool, tool_version, check, target, result, details, seq,
 
 class ReceiptPublicationUncertain(RuntimeError):
     """Receipt bytes could not be proven complete and durable."""
+
+
+def _same_repository_target_snapshot(before, after):
+    """Compare one page namespace entry, identity, stat state, and bytes."""
+    return (
+        before.exists and after.exists and
+        before.repository_path == after.repository_path and
+        before.dev == after.dev and before.ino == after.ino and
+        before.mode == after.mode and before.nlink == after.nlink and
+        before.size == after.size and before.mtime_ns == after.mtime_ns and
+        before.ctime_ns == after.ctime_ns and before.data == after.data
+    )
+
+
+def _freeze_manifest_pages(root, manifest, projection_rules):
+    """Freeze every exact manifest page and bind its semantic content.
+
+    The full target snapshot is retained for the final publication CAS.  The
+    semantic digest excludes the fields authorized by the Core plus the same
+    typed Profile Gate contract used by the runtime, so writing a machine-
+    owned copy cannot invalidate the human review while a body or user-owned
+    frontmatter edit always does.
+    """
+    if (not isinstance(manifest, list) or
+            any(not isinstance(value, str) or not value.strip()
+                for value in manifest)):
+        raise ValueError("batch manifest must be an explicit page-path list")
+    if len(manifest) != len(set(manifest)):
+        raise ValueError("batch manifest page paths must be unique")
+    frozen = []
+    for relative in sorted(manifest):
+        snapshot = kblib.repository_target_snapshot(
+            root, relative, suffixes=".md", singly_linked=True)
+        if not snapshot.exists:
+            raise ValueError("manifest page does not exist: %s" % relative)
+        text = snapshot.read_text()
+        frozen.append({
+            "path": relative,
+            "snapshot": snapshot,
+            "semantic_content_sha256":
+                project_page_state.semantic_content_fingerprint(
+                    relative, text, projection_rules),
+        })
+    return tuple(frozen)
+
+
+def _assert_manifest_pages_unchanged(root, frozen, *, uncertain=False):
+    """Perform the exact page identity-and-bytes CAS before/after append."""
+    changed = []
+    for page in frozen:
+        relative = page["path"]
+        try:
+            current = kblib.repository_target_snapshot(
+                root, relative, suffixes=".md", singly_linked=True)
+        except (OSError, ValueError) as exc:
+            changed.append("%s (%s)" % (relative, exc))
+            continue
+        if not _same_repository_target_snapshot(page["snapshot"], current):
+            changed.append(relative)
+    if changed:
+        message = "manifest page changed before review evidence publication: %s" % \
+            ", ".join(changed)
+        if uncertain:
+            raise ReceiptPublicationUncertain(message)
+        raise ValueError(message)
+
+
+def _receipt_id_set_sha256(receipt_ids):
+    """Fingerprint an exact receipt-ID set with the shared set protocol."""
+    return candidate_lifecycle.candidate_set_sha256(receipt_ids)
 
 
 AUTHORITATIVE_STATE_FILES = (
@@ -1616,6 +1689,15 @@ def _main(argv=None):
             try:
                 profile_evaluation = _profile_evaluation(
                     root, runtime, authorized_profile_view=profile_view)
+                metadata_contract = \
+                    metadata_execution_contract.load_metadata_execution_contract(
+                        root)
+                projection_rules = \
+                    metadata_property_state.profile_gate_projection_rules(
+                        root, profile_view["_contract"].extension_gates,
+                        metadata_contract=metadata_contract,
+                        authorized_profile_contract=
+                            profile_view["_contract"])
                 active_standards_view = runtime.get(
                     "_active_standards_authorized_view") or {}
                 profile_consumer_admission, admission_errors = \
@@ -1826,6 +1908,15 @@ def _main(argv=None):
                 check_errors.append(str(exc))
             if after_checks != snapshot:
                 check_errors.append("repository content changed while the Closed List ran")
+            frozen_pages = ()
+            if not check_errors:
+                try:
+                    frozen_pages = _freeze_manifest_pages(
+                        root, item.get("manifest"), projection_rules)
+                except (OSError, UnicodeError, ValueError) as exc:
+                    check_errors.append(
+                        "manifest review evidence could not be frozen: %s" %
+                        exc)
             if check_errors:
                 details = "; ".join(check_errors)
                 failure = _failure_receipt(
@@ -1906,10 +1997,58 @@ def _main(argv=None):
             attestation.update(evidence_binding)
             records.append(attestation)
 
+            profile_bindings = {
+                field: profile_view[field]
+                for field in (
+                    "selected_profile_manifest",
+                    "profile_snapshot_sha256",
+                    "profile_contract_fingerprint",
+                    "profile_load_inputs_sha256",
+                )
+            }
+            page_review_receipts = []
+            page_semantic_fingerprints = {
+                page["path"]: page["semantic_content_sha256"]
+                for page in frozen_pages
+            }
+            page_sequence = len(check_queue.CLOSED_LIST_EVIDENCE_FIELDS) + 2
+            for offset, frozen_page in enumerate(frozen_pages):
+                page_review = _make_receipt(
+                    TOOL, TOOL_VERSION, "page_review_acceptance",
+                    frozen_page["path"], "pass",
+                    "declared reviewer accepted this exact semantic page "
+                    "content in the merged-snapshot review",
+                    page_sequence + offset, root=root)
+                checked_at = page_review.get("checked_at")
+                if (not isinstance(checked_at, str) or
+                        not checked_at.endswith("Z") or
+                        len(checked_at) < 10):
+                    raise ValueError(
+                        "page review receipt has no canonical UTC checked_at")
+                page_review.update({
+                    "task_id": runtime["queue"].get("task_id"),
+                    "batch_id": args.batch,
+                    "integrator_id": args.integrator,
+                    "reviewer_id": args.reviewer,
+                    "reviewer_attestation_receipt":
+                        attestation["receipt_id"],
+                    "reviewed_on": checked_at[:10],
+                    "semantic_content_sha256":
+                        frozen_page["semantic_content_sha256"],
+                    "metadata_execution_contract_fingerprint":
+                        metadata_contract.contract_fingerprint,
+                    "merged_snapshot_sha256": snapshot,
+                    **profile_bindings,
+                })
+                records.append(page_review)
+                page_review_receipts.append(page_review["receipt_id"])
+            page_review_receipts = sorted(page_review_receipts)
+
             global_review = _make_receipt(
                 TOOL, TOOL_VERSION, "batch_global_review", args.batch,
                 "pass", "declared reviewer attestation recorded for the Closed List merged-snapshot review",
-                len(check_queue.CLOSED_LIST_EVIDENCE_FIELDS) + 2, root=root)
+                (len(check_queue.CLOSED_LIST_EVIDENCE_FIELDS) + 2 +
+                 len(frozen_pages)), root=root)
             global_review.update({
                 "task_id": runtime["queue"].get("task_id"),
                 "batch_id": args.batch,
@@ -1939,7 +2078,8 @@ def _main(argv=None):
             aggregator = _make_receipt(
                 TOOL, TOOL_VERSION, GATE_CHECK, args.batch, "pass",
                 "Closed List checks passed and declared review attestation was recorded",
-                11, root=root)
+                len(check_queue.CLOSED_LIST_EVIDENCE_FIELDS) + 4 +
+                len(frozen_pages), root=root)
             aggregator["receipt_id"] = attempt_id
             aggregator.update({
                 "task_id": runtime["queue"].get("task_id"),
@@ -1971,6 +2111,13 @@ def _main(argv=None):
                 "reviewer_attestation_receipt": attestation["receipt_id"],
                 "global_review_receipt": global_review["receipt_id"],
                 "closed_list_evidence": evidence,
+                "page_review_receipts": page_review_receipts,
+                "page_review_receipt_count": len(page_review_receipts),
+                "page_review_receipt_set_sha256":
+                    _receipt_id_set_sha256(page_review_receipts),
+                "metadata_execution_contract_fingerprint":
+                    metadata_contract.contract_fingerprint,
+                **profile_bindings,
             })
             aggregator.update(batch_settlement.close_binding(
                 locked_settlement))
@@ -2001,8 +2148,21 @@ def _main(argv=None):
                 delta_apply_receipt=delta_apply_receipt,
                 work_spec_path=item.get("work_spec_path"),
                 work_spec_sha256=item.get("work_spec_sha256"),
+                manifest=item.get("manifest"),
                 selected_profile_manifest=runtime["queue"].get(
                     "selected_profile_manifest"),
+                profile_snapshot_sha256=profile_view.get(
+                    "profile_snapshot_sha256"),
+                profile_contract_fingerprint=profile_view.get(
+                    "profile_contract_fingerprint"),
+                profile_load_inputs_sha256=profile_view.get(
+                    "profile_load_inputs_sha256"),
+                metadata_execution_contract_fingerprint=
+                    metadata_contract.contract_fingerprint,
+                authorized_profile_contract=profile_view.get("_contract"),
+                authorized_metadata_contract=metadata_contract,
+                authorized_page_semantic_fingerprints=
+                    page_semantic_fingerprints,
                 corpus_plan_required=corpus_plan_check["required"],
                 corpus_plan_triggers=corpus_plan_check["triggers"],
                 corpus_plan_expected_binding=corpus_plan_check["binding"],
@@ -2013,7 +2173,30 @@ def _main(argv=None):
                     "generated close evidence is invalid: %s" %
                     "; ".join(pre_errors))
 
+            # This is the last potentially expensive step before append: the
+            # exact inodes and bytes whose semantic digests appear in the
+            # children must still be the objects frozen above.  Repository
+            # content hashing alone cannot prove inode identity.
+            try:
+                _assert_manifest_pages_unchanged(root, frozen_pages)
+            except ValueError as exc:
+                failure = _failure_receipt(
+                    attempt_id, root, args.batch, str(exc),
+                    kblib.repository_snapshot_sha256(root), runtime)
+                failure.update({
+                    "task_id": runtime["queue"].get("task_id"),
+                    "integrator_id": args.integrator,
+                    "reviewer_id": args.reviewer,
+                    "manifest_page_count": len(frozen_pages),
+                    "metadata_execution_contract_fingerprint":
+                        metadata_contract.contract_fingerprint,
+                })
+                _append_receipts(receipt_path, [failure])
+                print("[FAIL] %s" % exc)
+                return 1
             _append_receipts(receipt_path, records)
+            _assert_manifest_pages_unchanged(
+                root, frozen_pages, uncertain=True)
             _assert_authoritative_state_unchanged(root, state_anchor)
             _assert_work_spec_unchanged(root, item)
             after_publish = kblib.repository_snapshot_sha256(root)
@@ -2041,8 +2224,21 @@ def _main(argv=None):
                 delta_apply_receipt=delta_apply_receipt,
                 work_spec_path=item.get("work_spec_path"),
                 work_spec_sha256=item.get("work_spec_sha256"),
+                manifest=item.get("manifest"),
                 selected_profile_manifest=runtime["queue"].get(
                     "selected_profile_manifest"),
+                profile_snapshot_sha256=profile_view.get(
+                    "profile_snapshot_sha256"),
+                profile_contract_fingerprint=profile_view.get(
+                    "profile_contract_fingerprint"),
+                profile_load_inputs_sha256=profile_view.get(
+                    "profile_load_inputs_sha256"),
+                metadata_execution_contract_fingerprint=
+                    metadata_contract.contract_fingerprint,
+                authorized_profile_contract=profile_view.get("_contract"),
+                authorized_metadata_contract=metadata_contract,
+                authorized_page_semantic_fingerprints=
+                    page_semantic_fingerprints,
                 corpus_plan_required=corpus_plan_check["required"],
                 corpus_plan_triggers=corpus_plan_check["triggers"],
                 corpus_plan_expected_binding=corpus_plan_check["binding"],

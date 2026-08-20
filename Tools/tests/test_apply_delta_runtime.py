@@ -18,6 +18,8 @@ sys.path.insert(0, str(TOOLS))
 import apply_delta
 import check_queue
 import kblib
+import metadata_execution_contract
+import project_page_state
 from profile_fixture import install_loadable_profile
 
 
@@ -410,6 +412,18 @@ class CanonicalApplyDeltaTests(unittest.TestCase):
                          receipt["after_coverage_sha256"])
         self.assertEqual(queue_sha, receipt["required_queue_sha256"])
         self.assertEqual(operation["delta_sha256"], receipt["delta_sha256"])
+        self.assertEqual([], receipt["property_events"])
+        self.assertEqual(
+            operation["opening_transition_receipt"],
+            receipt["opening_transition_receipt"])
+        self.assertEqual(
+            operation["manifest_semantic_before_set_sha256"],
+            receipt["manifest_semantic_before_set_sha256"])
+        # The delta changes only machine-managed Coverage/projection fields.
+        # It must not manufacture a semantic content-change event or advance
+        # the user-facing intermediate timestamp.
+        self.assertNotIn(
+            "last_content_modified", page.get("property_state") or {})
         self.assert_no_write_debris()
 
     def test_canonical_apply_runs_profile_load_producer_once(self):
@@ -504,6 +518,143 @@ raise SystemExit(apply_delta.main(sys.argv[3:]))
         self.assertIn("rollback attempted", output)
         self.assertEqual(before, coverage_path.read_bytes())
         self.assertFalse(receipt_path.exists())
+        self.assert_no_write_debris()
+
+    def test_semantic_content_change_updates_date_and_invalidates_old_review(self):
+        page_path = self.root / "Topics/A.md"
+        page_path.write_text(
+            "---\ntitle: A\nlast_reviewed: 2026-08-01\n---\nBefore\n",
+            encoding="utf-8")
+        contract = metadata_execution_contract.load_metadata_execution_contract(
+            self.root)
+        rules = metadata_execution_contract.rules_for_capability(
+            contract, project_page_state.WRITER_CAPABILITY)
+        before_fingerprint = project_page_state.semantic_content_fingerprint(
+            "Topics/A.md", page_path.read_text(encoding="utf-8"), rules)
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage["pages"][0]["property_state"] = {
+            "last_reviewed": {
+                "value": "2026-08-01",
+                "evidence_receipt": "audit-review-before",
+                "content_fingerprint": before_fingerprint,
+            },
+        }
+        coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        initial_receipts = (
+            self.root / ".cambium/receipts/task-transitions.jsonl")
+        initial = json.loads(initial_receipts.read_text(encoding="utf-8"))
+        initial["before_coverage_sha256"] = kblib.sha256_file(coverage_path)
+        initial["after_coverage_sha256"] = kblib.sha256_file(coverage_path)
+        initial_receipts.write_text(
+            json.dumps(initial, separators=(",", ":")) + "\n",
+            encoding="utf-8")
+        profile_view, profile_errors = check_queue.profile_load_authorized_view(
+            self.root, coverage["selected_profile_manifest"])
+        self.assertEqual([], profile_errors)
+        attestation_id = "audit-review-before-attestation"
+        merged_snapshot = "sha256:" + "7" * 64
+        kblib.write_receipts(
+            self.root / ".cambium/receipts/fixture.jsonl",
+            [{
+                "receipt_id": attestation_id,
+                "tool": check_queue.BATCH_CLOSE_TOOL,
+                "tool_version": check_queue.BATCH_CLOSE_TOOL_VERSION,
+                "check": "batch_global_review_attestation",
+                "target": "B0",
+                "result": "pass",
+                "invalidated_by": None,
+                "task_id": coverage["task_id"],
+                "batch_id": "B0",
+                "integrator_id": "integrator-a",
+                "reviewer_id": "reviewer-b",
+                "merged_snapshot_sha256": merged_snapshot,
+                "details": "independent review accepted",
+            }, {
+                "receipt_id": "audit-review-before",
+                "tool": check_queue.BATCH_CLOSE_TOOL,
+                "tool_version": check_queue.BATCH_CLOSE_TOOL_VERSION,
+                "check": "page_review_acceptance",
+                "target": "Topics/A.md",
+                "result": "pass",
+                "invalidated_by": None,
+                "task_id": coverage["task_id"],
+                "batch_id": "B0",
+                "integrator_id": "integrator-a",
+                "reviewer_id": "reviewer-b",
+                "merged_snapshot_sha256": merged_snapshot,
+                "checked_at": "2026-08-01T00:00:00Z",
+                "reviewed_on": "2026-08-01",
+                "semantic_content_sha256": before_fingerprint,
+                "reviewer_attestation_receipt": attestation_id,
+                "selected_profile_manifest":
+                    profile_view["selected_profile_manifest"],
+                "profile_snapshot_sha256":
+                    profile_view["profile_snapshot_sha256"],
+                "profile_contract_fingerprint":
+                    profile_view["profile_contract_fingerprint"],
+                "profile_load_inputs_sha256":
+                    profile_view["profile_load_inputs_sha256"],
+                "metadata_execution_contract_fingerprint":
+                    contract.contract_fingerprint,
+            }],
+        )
+        self.make_merge_ready()
+        page_path.write_text(
+            "---\ntitle: A\nlast_reviewed: 2026-08-01\n---\nAfter\n",
+            encoding="utf-8")
+
+        code, output = self.invoke(self.apply_arguments())
+        self.assertEqual(0, code, output)
+        applied = self.load(check_queue.COVERAGE_PATH)["pages"][0][
+            "property_state"]
+        receipts = [json.loads(line) for line in
+                    (self.root / ".cambium/receipts/applied.jsonl").read_text(
+                        encoding="utf-8").splitlines()]
+        receipt = receipts[-1]
+        event = receipt["property_events"][0]
+        runtime = check_queue.validate_runtime(self.root)
+        self.assertEqual([], runtime["errors"])
+        opening = check_queue.current_opening_semantic_context(runtime, "B1")
+        self.assertEqual(
+            opening["opening_transition_receipt"],
+            receipt["opening_transition_receipt"])
+        self.assertEqual(
+            opening["manifest_semantic_before_set_sha256"],
+            receipt["manifest_semantic_before_set_sha256"])
+        self.assertEqual(
+            opening["before_semantic_fingerprints"]["Topics/A.md"],
+            event["before_semantic_content_sha256"])
+        self.assertEqual(receipt["checked_at"][:10],
+                         applied["last_content_modified"]["value"])
+        self.assertEqual(receipt["receipt_id"],
+                         applied["last_content_modified"][
+                             "evidence_receipt"])
+        self.assertIsNone(applied["last_reviewed"]["value"])
+        self.assertTrue(event["last_reviewed_invalidated"])
+        page_text = page_path.read_text(encoding="utf-8")
+        self.assertIn("last_content_modified: %s" %
+                      receipt["checked_at"][:10], page_text)
+        self.assertNotIn("last_reviewed:", page_text)
+
+    def test_receipt_failure_rolls_back_content_property_page_and_owner_state(self):
+        page_path = self.root / "Topics/A.md"
+        page_path.write_text(
+            "---\ntitle: A\n---\nChanged body\n", encoding="utf-8")
+        self.make_merge_ready()
+        before_page = page_path.read_bytes()
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        before_coverage = coverage_path.read_bytes()
+        with mock.patch.object(
+                apply_delta.kblib, "write_receipts",
+                side_effect=OSError("injected receipt failure")):
+            code, output = self.invoke(self.apply_arguments())
+        self.assertEqual(1, code, output)
+        self.assertEqual(before_coverage, coverage_path.read_bytes())
+        self.assertEqual(before_page, page_path.read_bytes())
+        self.assertNotIn(
+            "last_content_modified:", page_path.read_text(encoding="utf-8"))
         self.assert_no_write_debris()
 
     def test_concurrent_receipt_creator_is_not_overwritten_or_deleted(self):

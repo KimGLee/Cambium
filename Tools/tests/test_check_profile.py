@@ -27,6 +27,18 @@ EXECUTION_DEFAULTS = (
 PLACEHOLDER_DEFAULTS = (
     REPOSITORY / "Tools/schemas/execution_defaults.template.yaml"
 )
+sys.path.insert(0, str(REPOSITORY / "Tools"))
+import kblib  # noqa: E402
+import metadata_execution_contract  # noqa: E402
+import profile_contract  # noqa: E402
+
+
+def capability_implementation_paths():
+    document = kblib.parse_yaml_subset(
+        (REPOSITORY / "Tools/operation-capabilities.yaml").read_text(
+            encoding="utf-8"))
+    return metadata_execution_contract.capability_implementation_paths(
+        document)
 
 MANIFEST_HEAD = (
     "# Profile\n\n"
@@ -50,10 +62,31 @@ class ExecutionDefaultOverrideTests(unittest.TestCase):
                     (REPOSITORY / "profiles/README.md",
                      "profiles/README.md"),
                     (PLACEHOLDER_DEFAULTS,
-                     "Tools/schemas/execution_defaults.template.yaml")):
+                     "Tools/schemas/execution_defaults.template.yaml"),
+                    (REPOSITORY / "Tools/operation-capabilities.yaml",
+                     "Tools/operation-capabilities.yaml"),
+                    (REPOSITORY /
+                     "Tools/compiled/metadata-execution-contract.json",
+                     "Tools/compiled/metadata-execution-contract.json"),
+                    (REPOSITORY /
+                     "kernel/K08 Metadata and Status/metadata-authority-base.yaml",
+                     "kernel/K08 Metadata and Status/metadata-authority-base.yaml"),
+                    (REPOSITORY /
+                     profile_contract.KERNEL_APPLICABILITY_PATH,
+                     profile_contract.KERNEL_APPLICABILITY_PATH),
+                    (REPOSITORY /
+                     profile_contract.KERNEL_RELATIONSHIP_PATH,
+                     profile_contract.KERNEL_RELATIONSHIP_PATH),
+                    (REPOSITORY /
+                     "kernel/K00 Standards Control/12 Control Registry.md",
+                     "kernel/K00 Standards Control/12 Control Registry.md")):
                 target = root / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
+            for relative in capability_implementation_paths():
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(REPOSITORY / relative, target)
             profile_dir = root / "profiles/sample"
             profile_dir.mkdir(parents=True)
             (profile_dir / "profile.md").write_text(
@@ -61,7 +94,7 @@ class ExecutionDefaultOverrideTests(unittest.TestCase):
             registry = (
                 root /
                 "kernel/K00 Standards Control/execution-defaults-base.yaml")
-            registry.parent.mkdir(parents=True)
+            registry.parent.mkdir(parents=True, exist_ok=True)
             if execution_defaults is not None:
                 registry.write_text(execution_defaults, encoding="utf-8")
             else:
@@ -281,7 +314,20 @@ class ProfileCliFixture(unittest.TestCase):
             "Tools/schemas/execution_defaults.template.yaml")
         self._copy_repository_file(
             "kernel/K00 Standards Control/execution-defaults-base.yaml")
+        self._copy_repository_file("Tools/operation-capabilities.yaml")
+        self._copy_repository_file(
+            "Tools/compiled/metadata-execution-contract.json")
+        self._copy_repository_file(
+            "kernel/K08 Metadata and Status/metadata-authority-base.yaml")
+        self._copy_repository_file(
+            profile_contract.KERNEL_APPLICABILITY_PATH)
+        self._copy_repository_file(
+            profile_contract.KERNEL_RELATIONSHIP_PATH)
+        self._copy_repository_file(
+            "kernel/K00 Standards Control/12 Control Registry.md")
         self._copy_repository_file("Tools/check_residual_content.py")
+        for relative in capability_implementation_paths():
+            self._copy_repository_file(relative)
         self.original_profile = (
             self.root / "profiles/examples/minimal-notes")
         shutil.copytree(

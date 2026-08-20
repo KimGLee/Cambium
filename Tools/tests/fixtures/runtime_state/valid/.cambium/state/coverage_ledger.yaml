@@ -39,6 +39,7 @@ pages:
     deferred_reason: null
     reentry_condition: null
     gate_receipts: []
+    property_state: {}
   - path: Topics/B.md
     coverage_disposition: required
     canonical_owner: Topics/B.md
@@ -53,4 +54,5 @@ pages:
     deferred_reason: null
     reentry_condition: null
     gate_receipts: []
+    property_state: {}
 open_gaps: []

@@ -21,8 +21,11 @@ import kblib
 import update_task
 import apply_delta
 import batch_settlement
+import metadata_execution_contract
+import metadata_property_state
+import project_page_state
 
-TOOL_VERSION = "1.6.0"
+TOOL_VERSION = "1.7.0"
 # The lifecycle map moved to `kblib` so `check_queue` can read it without
 # importing this writer, which imports it.  The name stays here because it is
 # this tool's transition guard and every existing reference reads it here.
@@ -75,6 +78,94 @@ def _receipt(result, receipt_id, label, expected=None):
                              (label, receipt_id, field,
                               receipt.get(field), value))
     return receipt
+
+
+def _metadata_projection_context(result):
+    """Return the one Profile-composed metadata contract for this admission."""
+    view = result.get("_profile_authorized_view")
+    if not isinstance(view, dict):
+        raise ValueError("runtime has no authorized Profile view")
+    profile = view.get("_contract")
+    if (profile is None or
+            getattr(profile, "authorized", False) is not True):
+        raise ValueError("runtime Profile contract is not authorized")
+    contract = metadata_execution_contract.load_metadata_execution_contract(
+        result["root"])
+    rules = metadata_property_state.profile_gate_projection_rules(
+        result["root"], profile.extension_gates,
+        metadata_contract=contract,
+        authorized_profile_contract=profile)
+    return view, profile, contract, rules
+
+
+def _close_page_review_receipts(result, close_receipt_id):
+    """Resolve the already-validated exact page-review child set."""
+    catalog = check_queue.current_receipt_catalog(result)
+    aggregate_entry = catalog.get(close_receipt_id)
+    if aggregate_entry is None:
+        raise ValueError("batch-close aggregate is absent from current evidence")
+    aggregate = aggregate_entry[1]
+    ids = aggregate.get("page_review_receipts")
+    if not isinstance(ids, list) or ids != sorted(ids):
+        raise ValueError("batch-close page-review receipt set is not canonical")
+    receipts = []
+    for receipt_id in ids:
+        entry = catalog.get(receipt_id)
+        if entry is None:
+            raise ValueError(
+                "batch-close page-review receipt %s is unavailable" %
+                receipt_id)
+        receipts.append(entry[1])
+    return tuple(receipts)
+
+
+def _projection_signature(plan):
+    """Comparable exact plan identity for preflight/locked recomputation."""
+    return (
+        plan.contract_rule_fingerprint,
+        tuple((
+            page.relative,
+            page.snapshot.exists,
+            page.snapshot.sha256 if page.snapshot.exists else None,
+            page.after_data,
+            page.changes,
+        ) for page in plan.pages),
+    )
+
+
+def _projection_overrides(plan):
+    """Map a frozen projection plan to its exact proposed page after-images.
+
+    The outer close transaction updates Coverage before publishing page
+    copies.  Proposed-state validation therefore consumes these same staged
+    bytes; persisted validation receives no override and re-opens the live
+    pages after publication.  This preserves the owner/page invariant without
+    weakening the final filesystem boundary.
+    """
+    if plan is None:
+        return None
+    return {
+        page.relative: page.after_data.decode("utf-8")
+        for page in plan.pages
+    }
+
+
+def _opening_semantic_records(root, item, rules):
+    """Freeze the exact semantic before-set for one opening batch."""
+    manifest = item.get("manifest") if isinstance(item, dict) else None
+    if (not isinstance(manifest, list) or manifest != sorted(manifest) or
+            len(manifest) != len(set(manifest))):
+        raise ValueError(
+            "opening batch manifest must be a sorted unique page list")
+    return metadata_property_state.semantic_baseline_records(
+        root, manifest, rules=rules)
+
+
+def _require_opening_semantics_current(root, item, rules, expected, label):
+    """Re-capture an opening before-set at a transaction boundary."""
+    current = _opening_semantic_records(root, item, rules)
+    if current != expected:
+        raise ValueError("%s: batch manifest page bytes changed" % label)
 
 
 def _pre_apply_coverage_restore(result, apply_receipt):
@@ -542,7 +633,7 @@ def _transition_item(item, args, result):
                 "merge-ready -> closed requires --delta-apply-receipt")
         _receipt(result, args.delta_apply_receipt, "delta application", expected={
             "tool": "apply_delta",
-            "tool_version": "1.5.0",
+            "tool_version": check_queue.APPLY_DELTA_TOOL_VERSION,
             "check": "delta_apply",
             "target": item["id"],
             "task_id": result["queue"].get("task_id"),
@@ -584,8 +675,19 @@ def _transition_item(item, args, result):
             delta_apply_receipt=args.delta_apply_receipt,
             work_spec_path=item.get("work_spec_path"),
             work_spec_sha256=item.get("work_spec_sha256"),
+            manifest=item.get("manifest"),
             selected_profile_manifest=result["queue"].get(
                 "selected_profile_manifest"),
+            profile_snapshot_sha256=result["_profile_view"].get(
+                "profile_snapshot_sha256"),
+            profile_contract_fingerprint=result["_profile_view"].get(
+                "profile_contract_fingerprint"),
+            profile_load_inputs_sha256=result["_profile_view"].get(
+                "profile_load_inputs_sha256"),
+            metadata_execution_contract_fingerprint=result[
+                "_metadata_contract"].contract_fingerprint,
+            authorized_profile_contract=result["_profile_contract"],
+            authorized_metadata_contract=result["_metadata_contract"],
             corpus_plan_required=corpus_plan_required,
             corpus_plan_triggers=corpus_plan_triggers,
             corpus_plan_expected_binding=corpus_plan_expected_binding,
@@ -851,6 +953,8 @@ def _run(args, produced):
         authority = check_queue.runtime_authority_context(result)
         authority_kwargs = \
             check_queue.runtime_authority_validation_kwargs(authority)
+        (profile_view, profile_contract, metadata_contract,
+         projection_rules) = _metadata_projection_context(result)
     except (TypeError, ValueError) as exc:
         print("[FAIL] current runtime authority: %s" % exc)
         return 1
@@ -914,6 +1018,10 @@ def _run(args, produced):
     transition_context = dict(result)
     transition_context["root"] = root
     transition_context["coverage_text"] = before_coverage_text
+    transition_context["_profile_view"] = profile_view
+    transition_context["_profile_contract"] = profile_contract
+    transition_context["_metadata_contract"] = metadata_contract
+    transition_context["_projection_rules"] = projection_rules
     try:
         before_state, after_state = _transition_item(
             target, args, transition_context
@@ -922,12 +1030,37 @@ def _run(args, produced):
         print("[FAIL] %s" % exc)
         return 1
 
+    opening_semantic_records = ()
+    if args.transition == "open":
+        try:
+            opening_semantic_records = _opening_semantic_records(
+                root, target, projection_rules)
+        except (OSError, TypeError, UnicodeError, ValueError) as exc:
+            print("[FAIL] cannot freeze batch-opening page semantics: %s" %
+                  exc)
+            return 1
+
     coverage_restore = getattr(args, "coverage_restore", None)
     write_coverage = args.transition == "closed" or coverage_restore is not None
+    page_projection_plan = None
+    page_review_receipts = ()
+    page_review_paths = ()
     try:
         if args.transition == "closed":
             coverage_new = _project_closed_coverage(
                 result["coverage"], queue_new, args.id)
+            page_review_receipts = _close_page_review_receipts(
+                result, args.close_gate_receipt)
+            coverage_new, page_review_paths = \
+                metadata_property_state.apply_review_acceptance(
+                    coverage_new, root, page_review_receipts,
+                    rules=projection_rules,
+                    metadata_contract_fingerprint=
+                        metadata_contract.contract_fingerprint)
+            page_projection_plan = \
+                metadata_property_state.build_projection_plan(
+                    root, coverage_new, page_review_paths,
+                    rules=projection_rules)
             coverage_text = kblib.canonical_yaml(coverage_new)
         elif coverage_restore is not None:
             # Byte-exact restore, not a re-projection: the archived bytes are
@@ -970,6 +1103,29 @@ def _run(args, produced):
         actor_role=args.actor_role,
     )
     receipt["checked_at"] = args.at
+    if args.transition == "open":
+        receipt.update({
+            "semantic_content_protocol":
+                project_page_state.SEMANTIC_FINGERPRINT_PROTOCOL,
+            "manifest_semantic_before_records": [
+                dict(record) for record in opening_semantic_records
+            ],
+            "manifest_semantic_before_count":
+                len(opening_semantic_records),
+            "manifest_semantic_before_set_sha256":
+                metadata_property_state.semantic_baseline_set_sha256(
+                    opening_semantic_records),
+            "metadata_execution_contract_fingerprint":
+                metadata_contract.contract_fingerprint,
+            "selected_profile_manifest":
+                profile_view.get("selected_profile_manifest"),
+            "profile_snapshot_sha256":
+                profile_view.get("profile_snapshot_sha256"),
+            "profile_contract_fingerprint":
+                profile_view.get("profile_contract_fingerprint"),
+            "profile_load_inputs_sha256":
+                profile_view.get("profile_load_inputs_sha256"),
+        })
     if args.transition == "merge-ready":
         settlement = getattr(args, "merge_ready_settlement_report", None)
         if settlement is None:
@@ -994,6 +1150,11 @@ def _run(args, produced):
         receipt["delta_apply_receipt"] = args.delta_apply_receipt
         receipt["queue_consistency_receipt"] = args.gate_receipt
         receipt["close_gate_receipt"] = args.close_gate_receipt
+        receipt["page_review_receipts"] = sorted(
+            item["receipt_id"] for item in page_review_receipts)
+        receipt["page_review_receipt_count"] = len(page_review_receipts)
+        receipt["metadata_execution_contract_fingerprint"] = \
+            metadata_contract.contract_fingerprint
     history = target.get("transition_receipts")
     if history is None:
         history = []
@@ -1052,6 +1213,8 @@ def _run(args, produced):
             },
             extra_receipts=([receipt, task_receipt]
                             if task_receipt is not None else [receipt]),
+            page_projection_overrides=_projection_overrides(
+                page_projection_plan),
             **authority_kwargs,
         )
         if proposed["errors"]:
@@ -1159,6 +1322,13 @@ def _run(args, produced):
                         current.get("coverage") != result.get("coverage")):
                     raise ValueError(
                         "Queue, Coverage, or Progress changed after validation")
+                if args.transition == "open":
+                    locked_open_item = current.get(
+                        "items_by_id", {}).get(args.id)
+                    _require_opening_semantics_current(
+                        root, locked_open_item, projection_rules,
+                        opening_semantic_records,
+                        "opening semantic baseline changed under lock")
                 if args.transition == "closed":
                     locked_snapshot = kblib.repository_snapshot_sha256(root)
                     if locked_snapshot != getattr(
@@ -1198,8 +1368,19 @@ def _run(args, produced):
                         work_spec_path=locked_item.get("work_spec_path"),
                         work_spec_sha256=locked_item.get(
                             "work_spec_sha256"),
+                        manifest=locked_item.get("manifest"),
                         selected_profile_manifest=current["queue"].get(
                             "selected_profile_manifest"),
+                        profile_snapshot_sha256=profile_view.get(
+                            "profile_snapshot_sha256"),
+                        profile_contract_fingerprint=profile_view.get(
+                            "profile_contract_fingerprint"),
+                        profile_load_inputs_sha256=profile_view.get(
+                            "profile_load_inputs_sha256"),
+                        metadata_execution_contract_fingerprint=
+                            metadata_contract.contract_fingerprint,
+                        authorized_profile_contract=profile_contract,
+                        authorized_metadata_contract=metadata_contract,
                         corpus_plan_required=locked_corpus_required,
                         corpus_plan_triggers=locked_corpus_triggers,
                         corpus_plan_expected_binding=locked_corpus_binding,
@@ -1257,9 +1438,23 @@ def _run(args, produced):
                     locked_projection = _project_closed_coverage(
                         current["coverage"], queue_new, args.id
                     )
+                    locked_page_reviews = _close_page_review_receipts(
+                        current, args.close_gate_receipt)
+                    locked_projection, locked_review_paths = \
+                        metadata_property_state.apply_review_acceptance(
+                            locked_projection, root, locked_page_reviews,
+                            rules=projection_rules,
+                            metadata_contract_fingerprint=
+                                metadata_contract.contract_fingerprint)
+                    locked_page_plan = \
+                        metadata_property_state.build_projection_plan(
+                            root, locked_projection, locked_review_paths,
+                            rules=projection_rules)
                     if (locked_projection != coverage_new or
                             kblib.canonical_yaml(locked_projection) !=
-                            coverage_text):
+                            coverage_text or
+                            _projection_signature(locked_page_plan) !=
+                            _projection_signature(page_projection_plan)):
                         raise ValueError(
                             "Coverage close projection changed under lock")
                 elif coverage_restore is not None:
@@ -1272,10 +1467,23 @@ def _run(args, produced):
                             locked_restore[2] != coverage_restore[2]):
                         raise ValueError(
                             "pre-apply Coverage archive changed under lock")
+                if (args.transition == "closed" and
+                        kblib.repository_snapshot_sha256(root) != getattr(
+                            args, "close_repository_snapshot_sha256", None)):
+                    raise ValueError(
+                        "repository content changed during locked close "
+                        "projection planning")
 
             moved_delta = None
             attempted_receipts = []
+            page_transaction = None
+            state_written = False
             try:
+                if args.transition == "closed":
+                    page_transaction = project_page_state.stage_projection_plan(
+                        root, locked_page_plan, lock,
+                        transaction_id="queue-close-%s" %
+                        receipt["receipt_id"])
                 if delta_move:
                     check_queue.require_runtime_authority_current(
                         root, authority,
@@ -1309,6 +1517,9 @@ def _run(args, produced):
                         extra_receipts=([receipt, task_receipt]
                                         if task_receipt is not None
                                         else [receipt]),
+                        page_projection_overrides=_projection_overrides(
+                            locked_page_plan
+                            if args.transition == "closed" else None),
                         **authority_kwargs,
                     )
                     if proposed["errors"]:
@@ -1324,9 +1535,12 @@ def _run(args, produced):
                     old_coverage_text, old_queue_text, old_progress_text,
                     write_coverage=write_coverage,
                 )
+                state_written = True
                 check_queue.require_runtime_authority_current(
                     root, authority,
                     "runtime authority changed during state write")
+                if page_transaction is not None:
+                    page_transaction.publish()
                 post = check_queue.validate_runtime(
                     root,
                     extra_receipts=([receipt, task_receipt]
@@ -1336,14 +1550,12 @@ def _run(args, produced):
                 if post["errors"]:
                     raise ValueError("persisted state is invalid: %s" %
                                      "; ".join(post["errors"]))
-                if args.transition == "closed":
-                    after_write_snapshot = \
-                        kblib.repository_snapshot_sha256(root)
-                    if after_write_snapshot != getattr(
-                            args, "close_repository_snapshot_sha256", None):
-                        raise ValueError(
-                            "repository content changed while closing batch"
-                        )
+                if args.transition == "open":
+                    _require_opening_semantics_current(
+                        root, current.get("items_by_id", {}).get(args.id),
+                        projection_rules, opening_semantic_records,
+                        "opening semantic baseline changed before receipt "
+                        "publication")
                 if task_receipt is not None:
                     check_queue.require_runtime_authority_current(
                         root, authority,
@@ -1356,33 +1568,30 @@ def _run(args, produced):
                 check_queue.require_runtime_authority_current(
                     root, authority,
                     "runtime authority changed before Queue receipt")
+                if args.transition == "open":
+                    _require_opening_semantics_current(
+                        root, current.get("items_by_id", {}).get(args.id),
+                        projection_rules, opening_semantic_records,
+                        "opening semantic baseline changed before Queue receipt")
                 attempted_receipts.append(receipt_path)
                 kblib.write_receipts(receipt_path, [receipt])
                 check_queue.require_runtime_authority_current(
                     root, authority,
                     "runtime authority changed during Queue receipt")
+                if args.transition == "open":
+                    _require_opening_semantics_current(
+                        root, current.get("items_by_id", {}).get(args.id),
+                        projection_rules, opening_semantic_records,
+                        "opening semantic baseline changed during Queue receipt")
                 persisted = check_queue.validate_runtime(
                     root, **authority_kwargs)
                 if persisted["errors"]:
                     raise ValueError("persisted runtime state: %s" %
                                      "; ".join(persisted["errors"]))
+                if page_transaction is not None:
+                    page_transaction.commit()
             except Exception as write_error:
                 rollback_failures = []
-                try:
-                    _write_state(
-                        coverage_path, old_coverage_text,
-                        queue_path, old_queue_text,
-                        progress_path, old_progress_text,
-                        coverage_text, queue_text, progress_text,
-                        write_coverage=write_coverage,
-                    )
-                except Exception as exc:
-                    rollback_failures.append("state: %s" % exc)
-                if moved_delta and os.path.exists(moved_delta[1]):
-                    try:
-                        kblib.durable_replace(moved_delta[1], moved_delta[0])
-                    except OSError as exc:
-                        rollback_failures.append("delta archive: %s" % exc)
                 receipt_outcomes = {}
                 for path in attempted_receipts:
                     if path in receipt_outcomes:
@@ -1409,25 +1618,60 @@ def _run(args, produced):
                         "append-only receipt publication requires recovery: %s" %
                         ", ".join(unresolved_receipts)
                     )
-                expected_state = {
-                    coverage_path: before_coverage_sha,
-                    queue_path: before_sha,
-                    progress_path: before_progress_sha,
-                }
-                for path, expected_sha in expected_state.items():
-                    try:
-                        if kblib.sha256_file(path) != expected_sha:
+                # Once any append-only evidence may be durable, the proposed
+                # state and retained page before-images are recovery facts.
+                # Reverting state underneath a present receipt would create a
+                # second, contradictory history, so leave the writer lock and
+                # journal for reconciliation instead of guessing.
+                if not unresolved_receipts:
+                    page_restored = True
+                    if page_transaction is not None:
+                        try:
+                            page_transaction.rollback()
+                        except Exception as exc:
+                            page_restored = False
                             rollback_failures.append(
-                                "%s fingerprint not restored" %
-                                os.path.relpath(path, root))
-                    except OSError as exc:
-                        rollback_failures.append(
-                            "%s verification: %s" %
-                            (os.path.relpath(path, root), exc))
-                if moved_delta:
-                    if (not os.path.isfile(moved_delta[0]) or
-                            os.path.lexists(moved_delta[1])):
-                        rollback_failures.append("delta archive move not restored")
+                                "page projection: %s" % exc)
+                    if page_restored and state_written:
+                        try:
+                            _write_state(
+                                coverage_path, old_coverage_text,
+                                queue_path, old_queue_text,
+                                progress_path, old_progress_text,
+                                coverage_text, queue_text, progress_text,
+                                write_coverage=write_coverage,
+                            )
+                        except Exception as exc:
+                            rollback_failures.append("state: %s" % exc)
+                    if (page_restored and moved_delta and
+                            os.path.exists(moved_delta[1])):
+                        try:
+                            kblib.durable_replace(
+                                moved_delta[1], moved_delta[0])
+                        except OSError as exc:
+                            rollback_failures.append(
+                                "delta archive: %s" % exc)
+                    if page_restored:
+                        expected_state = {
+                            coverage_path: before_coverage_sha,
+                            queue_path: before_sha,
+                            progress_path: before_progress_sha,
+                        }
+                        for path, expected_sha in expected_state.items():
+                            try:
+                                if kblib.sha256_file(path) != expected_sha:
+                                    rollback_failures.append(
+                                        "%s fingerprint not restored" %
+                                        os.path.relpath(path, root))
+                            except OSError as exc:
+                                rollback_failures.append(
+                                    "%s verification: %s" %
+                                    (os.path.relpath(path, root), exc))
+                        if moved_delta:
+                            if (not os.path.isfile(moved_delta[0]) or
+                                    os.path.lexists(moved_delta[1])):
+                                rollback_failures.append(
+                                    "delta archive move not restored")
                 if rollback_failures:
                     raise ValueError(
                         "transition failed and rollback is incomplete: %s; %s" %

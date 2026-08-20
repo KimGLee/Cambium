@@ -301,8 +301,9 @@ class LayerBoundaryTests(unittest.TestCase):
         """Every tool the real artifact lists resolves to a real script."""
         loaded = mcp_server.load_projection(
             str(REPO_ROOT), {mcp_server.WORKSPACE_ENV: str(REPO_ROOT)})
-
-        self.assertEqual(len(loaded["listed"]), 40)
+        projection = json.loads(
+            (TOOLS / "compiled/mcp-tools.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(loaded["listed"]), len(projection["tools"]))
 
 
 # ---------------------------------------------------------------------------

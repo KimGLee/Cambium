@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Typed, fail-closed linker for one selected Cambium Profile.
 
-The Profile manifest names its slot files, but two of those files contain
+The Profile manifest names its slot files, but three of those files contain
 machine-active references of their own:
 
 * Audit Dimension Registry judgment items point at predicate-owner files and
   optional headings.
 * Registered Scan Registry rows point at verifier tools, optional Profile-owned
   configuration files, and judgment items.
+* Routing And Gate Registry extension rows bind a transition to one semantic
+  owner, pass-authority role, judgment item, producer, receipt schema, and
+  runtime consumer capability.
 
 This module is the one parser and resolver for that transitive contract.  It
 does not select a Profile, execute a verifier, write a receipt, or judge the
@@ -32,6 +35,14 @@ import kblib
 
 AUDIT_SLOT = "Audit Dimension Registry"
 SCAN_SLOT = "Registered Scan Registry"
+ROLE_SLOT = "Role Registry"
+VOCABULARY_SLOT = "Vocabulary Extensions"
+METADATA_SLOT = "Metadata Contract"
+ROUTING_SLOT = "Routing And Gate Registry"
+KERNEL_APPLICABILITY_PATH = (
+    "kernel/K08 Metadata and Status/applicability-base.yaml")
+KERNEL_RELATIONSHIP_PATH = (
+    "kernel/K08 Metadata and Status/relationship-base.yaml")
 PROFILE_FILE_SLOTS = (
     "Profile Scope",
     "Corpus Planning",
@@ -52,6 +63,8 @@ PROFILE_FILE_SLOTS = (
 EXTENSION_SECTION = "Extension Dimensions"
 JUDGMENT_SECTION = "Judgment Items"
 SCAN_SECTION = "Scan Registrations"
+EXTENSION_GATE_SECTION = "Extension Gates"
+EXTENSION_ROLE_SECTION = "Extension Roles"
 
 EXTENSION_HEADER = (
     "Dimension ID",
@@ -74,6 +87,25 @@ SCAN_HEADER = (
     "Candidate predicate/boundary",
     "Judgment Item ID reference",
 )
+EXTENSION_GATE_HEADER = (
+    "Gate ID",
+    "Kernel Gate ID or repo-relative owner path, optionally `#heading`",
+    "Blocked transition/action ID",
+    "Pass-authority Role ID reference",
+    "Applicability predicate",
+    "Vocabulary field ID or `None`",
+    "Registered completion value(s) or `None`",
+    "Judgment Item ID reference",
+    "Producer kind: `deterministic` or `manual-attestation`",
+    "Producer capability",
+    "Receipt schema",
+    "Consumer capability",
+)
+EXTENSION_ROLE_HEADER = (
+    "Role ID",
+    "Bound actor or system ID/name",
+    "Responsibility",
+)
 
 BASE_DIMENSIONS = frozenset((
     "structure_and_links",
@@ -92,10 +124,32 @@ EXTENSION_TARGETS = {
 EVIDENCE_ROLES = frozenset(("emits", "consumes", "triggers"))
 DIMENSION_ID_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
 STABLE_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
+PROFILE_GATE_ID_RE = re.compile(
+    r"P:([a-z0-9][a-z0-9_-]*):([a-z][a-z0-9]*(?:-[a-z0-9]+)*)\Z")
+FIELD_ID_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
+VOCABULARY_VALUE_RE = re.compile(r"[a-z0-9][a-z0-9_-]*\Z")
 REQUIRED_SCAN_RE = re.compile(r"(?<![A-Za-z0-9])K12/09\s+item\s+6(?![0-9])")
 TABLE_SEPARATOR_RE = re.compile(r":?-{3,}:?\Z")
 REGISTRATION_RE = re.compile(r"^\s*-\s+Registration:\s*(.*?)\s*$")
 SHELL_OPERATORS = frozenset((";", "&&", "||", "|", ">", ">>", "<"))
+KERNEL_ROLE_IDS = frozenset((
+    "proposer", "gatekeeper", "executor", "stopper",
+    "knowledge-host", "knowledge-host UI",
+))
+PRODUCER_KINDS = frozenset(("deterministic", "manual-attestation"))
+PRODUCER_CAPABILITY_BY_KIND = {
+    "deterministic": "registered-scan-v1",
+    "manual-attestation": "manual-attestation-v1",
+}
+RECEIPT_SCHEMA_BY_KIND = {
+    "deterministic": "deterministic-gate-result-v1",
+    "manual-attestation": "manual-gate-attestation-v1",
+}
+FIELD_GATE_CONSUMER_OPERATION = "typed-field-metadata-transition"
+NON_FIELD_GATE_CONSUMER_OPERATION = "non-field-transition"
+PROFILE_EXTENSION_ENUM_PROJECTION_OPERATION = \
+    "profile-extension-enum-owner-projection-v1"
+PROFILE_EXTENSION_ENUM_WRITER_CAPABILITY = "project-page-state-v2"
 
 
 class ProfileContractError(ValueError):
@@ -130,7 +184,11 @@ class Diagnostic:
 
 @dataclass(frozen=True)
 class ProfileDependency:
-    """A successfully linked Profile-owned file (and optional heading)."""
+    """A successfully linked contract file (and optional heading).
+
+    Predicate owners and scan configs are Profile-owned; an extension Gate's
+    semantic owner may instead be a canonical kernel file.
+    """
 
     kind: str
     owner_id: str
@@ -187,6 +245,33 @@ class RegisteredScan:
 
 
 @dataclass(frozen=True)
+class ExtensionGate:
+    """One fully linked Profile-owned extension Gate.
+
+    A row is runtime authority only as part of an authorized
+    :class:`ProfileContract`.  The producer reference is the unique registered
+    scan for deterministic Gates and the pass-authority role for manual
+    attestations.
+    """
+
+    gate_id: str
+    owner_gate_id: Optional[str]
+    owner_dependency: Optional[ProfileDependency]
+    transition_id: str
+    pass_authority_role_id: str
+    applicability: str
+    field_id: Optional[str]
+    completion_values: Tuple[str, ...]
+    judgment_item_id: str
+    producer_kind: str
+    producer_capability: str
+    producer_reference: Optional[str]
+    receipt_schema: str
+    consumer_capability: str
+    source: SourceCell
+
+
+@dataclass(frozen=True)
 class ProfileContract:
     root: str
     manifest_path: str
@@ -195,10 +280,13 @@ class ProfileContract:
     profile_repo_dir: str
     audit_registry_path: Optional[str]
     scan_registry_path: Optional[str]
+    routing_registry_path: Optional[str]
     extension_registration: Optional[str]
     extension_dimensions: Tuple[ExtensionDimension, ...]
     judgment_items: Tuple[JudgmentItem, ...]
     registered_scans: Tuple[RegisteredScan, ...]
+    extension_gate_registration: Optional[str]
+    extension_gates: Tuple[ExtensionGate, ...]
     dependency_edges: Tuple[DependencyEdge, ...]
     source_cells: Tuple[SourceCell, ...]
     diagnostics: Tuple[Diagnostic, ...]
@@ -221,7 +309,7 @@ class ProfileContract:
         if not self.authorized:
             return None
         value = {
-            "schema_version": 1,
+            "schema_version": 2,
             "manifest": self.manifest_repo_path,
             "profile_dir": self.profile_repo_dir,
             "edges": [
@@ -233,6 +321,30 @@ class ProfileContract:
                     "fragment": edge.fragment,
                 }
                 for edge in self.dependency_edges
+            ],
+            "extension_gates": [
+                {
+                    "gate_id": gate.gate_id,
+                    "owner_gate_id": gate.owner_gate_id,
+                    "owner_path": (
+                        gate.owner_dependency.path
+                        if gate.owner_dependency is not None else None),
+                    "owner_fragment": (
+                        gate.owner_dependency.heading
+                        if gate.owner_dependency is not None else None),
+                    "transition_id": gate.transition_id,
+                    "pass_authority_role_id": gate.pass_authority_role_id,
+                    "applicability": gate.applicability,
+                    "field_id": gate.field_id,
+                    "completion_values": list(gate.completion_values),
+                    "judgment_item_id": gate.judgment_item_id,
+                    "producer_kind": gate.producer_kind,
+                    "producer_capability": gate.producer_capability,
+                    "producer_reference": gate.producer_reference,
+                    "receipt_schema": gate.receipt_schema,
+                    "consumer_capability": gate.consumer_capability,
+                }
+                for gate in self.extension_gates
             ],
         }
         encoded = json.dumps(
@@ -613,6 +725,79 @@ class _Builder:
             path=path_value,
             fragment=heading,
         ))
+        return dependency
+
+    def repository_dependency(self, kind, owner_id, raw, source,
+                              profile_repo_dir, require_heading=False):
+        """Resolve a semantic owner anywhere in this repository.
+
+        Profile-local targets are read from the already-bound immutable
+        Profile snapshot.  Kernel targets are canonical root authority files,
+        so they are resolved directly and are retained as dependency edges.
+        """
+        literal = _literal(raw)
+        path_value, marker, heading = literal.partition("#")
+        path_value = path_value.strip()
+        heading = heading.strip() if marker else None
+        if marker and not heading:
+            self.add(
+                "extension-gate-owner-heading-empty", source.target,
+                "%s %r has an empty heading fragment" % (kind, literal),
+                source)
+            return None
+        if require_heading and not heading:
+            self.add(
+                "extension-gate-owner-heading-missing", source.target,
+                "%s %r must include a `#heading` fragment" % (kind, literal),
+                source)
+            return None
+        try:
+            _canonical_repository_relative_path(path_value)
+            absolute = _canonical_repository_file(
+                self.root, path_value, singly_linked=True)
+        except (OSError, ValueError) as exc:
+            self.add(
+                "extension-gate-owner-path-invalid", source.target,
+                "%s %r is not a canonical repository-relative regular file: "
+                "%s" % (kind, path_value, exc), source)
+            return None
+        try:
+            if path_value.startswith(profile_repo_dir + "/"):
+                target_text = self.read_profile_text(path_value)
+                self.scan_text_sentinel(
+                    target_text, path_value, "%s `%s`" % (kind, owner_id))
+            else:
+                target_text = _strict_read(absolute)
+        except (OSError, UnicodeError) as exc:
+            self.add(
+                "extension-gate-owner-unreadable", source.target,
+                "cannot read %s %r as strict UTF-8: %s" %
+                (kind, path_value, exc), source)
+            return None
+        if heading is not None:
+            if not path_value.lower().endswith(".md"):
+                self.add(
+                    "extension-gate-owner-heading-non-markdown", source.target,
+                    "%s %r has a heading fragment but does not name Markdown"
+                    % (kind, literal), source)
+                return None
+            matches = [
+                line_number for line_number, _level, title in
+                kblib.headings_of("\n".join(
+                    line for _number, line in
+                    _blank_fenced_lines(target_text)))
+                if title == heading
+            ]
+            if len(matches) != 1:
+                self.add(
+                    "extension-gate-owner-heading-count", source.target,
+                    "%s %r must resolve to exactly one Markdown heading; "
+                    "found %d" % (kind, literal, len(matches)), source)
+                return None
+        dependency = ProfileDependency(
+            kind, owner_id, path_value, absolute, heading, source)
+        self.edges.append(DependencyEdge(
+            kind=kind, owner_id=owner_id, path=path_value, fragment=heading))
         return dependency
 
 
@@ -1091,6 +1276,744 @@ def _parse_scans(builder, text, source_path, profile_repo_dir):
     return tuple(parsed)
 
 
+def _section_registration(builder, section, source_path, prefix):
+    check = ("extension-gates-registration"
+             if prefix == "extension-gates"
+             else "extension-gate-role-registry")
+    declarations = []
+    for line_number, line in section.lines:
+        match = REGISTRATION_RE.match(line)
+        if match:
+            declarations.append((line_number, match.group(1).strip()))
+    if len(declarations) != 1:
+        builder.add(
+            check, source_path,
+            "expected exactly one `- Registration:` declaration; found %d" %
+            len(declarations))
+        return None
+    line_number, raw = declarations[0]
+    source = SourceCell(
+        source_path, section.heading, line_number, 0, "Registration", raw)
+    builder.source_cells.append(source)
+    if builder.sentinel and builder.sentinel in raw:
+        builder.add(
+            "profile-contract-sentinel", source.target,
+            "%s registration contains the unfilled sentinel %r" %
+            (section.heading, builder.sentinel), source)
+        return None
+    if raw not in ("None", "Configured"):
+        builder.add(
+            check, source.target,
+            "Registration must be exactly `None` or `Configured`; found %r" %
+            raw, source)
+        return None
+    return raw
+
+
+def _extension_role_ids(builder, text, source_path):
+    """Return the closed Role IDs an extension Gate may reference.
+
+    Full Role Registry validation remains with ``check_profile``.  This linker
+    nevertheless parses the exact extension-role block it consumes, so a Gate
+    cannot become authorized merely because a similar token appears in prose.
+    """
+    role_ids = set()
+    kernel_sections = (
+        ("Process Roles",
+         ("Kernel role", "Bound actor or system ID/name"),
+         frozenset(("proposer", "gatekeeper", "executor", "stopper"))),
+        ("Knowledge Host",
+         ("Kernel role", "Binding"),
+         frozenset(("knowledge-host", "knowledge-host UI"))),
+    )
+    for heading, header, required_ids in kernel_sections:
+        matches = [item for item in _sections(text) if item.heading == heading]
+        if len(matches) != 1:
+            builder.add(
+                "extension-gate-role-registry", source_path,
+                "configured extension Gates require exactly one `## %s` "
+                "section; found %d" % (heading, len(matches)))
+            continue
+        groups = _table_groups(matches[0])
+        if (len(groups) != 1 or len(groups[0]) < 2 or
+                groups[0][0].cells != header):
+            builder.add(
+                "extension-gate-role-registry", source_path,
+                "`## %s` does not contain its closed Role Registry table" %
+                heading)
+            continue
+        found = set()
+        for row in groups[0][2:]:
+            if len(row.cells) != len(header) or not row.cells[1].strip():
+                continue
+            role_id = _literal(row.cells[0])
+            if role_id in required_ids:
+                found.add(role_id)
+        missing = sorted(required_ids.difference(found))
+        if missing:
+            builder.add(
+                "extension-gate-role-registry", source_path,
+                "`## %s` does not bind required Role ID(s): %s" %
+                (heading, ", ".join(missing)))
+        role_ids.update(found)
+    sections = [
+        item for item in _sections(text)
+        if item.heading == EXTENSION_ROLE_SECTION
+    ]
+    if len(sections) != 1:
+        builder.add(
+            "extension-gate-role-registry", source_path,
+            "expected exactly one `## Extension Roles` section; found %d" %
+            len(sections))
+        return frozenset(role_ids)
+    section = sections[0]
+    registration = _section_registration(
+        builder, section, source_path, "extension-gate-roles")
+    groups = _table_groups(section)
+    if len(groups) != 1 or len(groups[0]) < 2:
+        builder.add(
+            "extension-gate-role-registry", source_path,
+            "Extension Roles must contain exactly one complete Markdown table")
+        return frozenset(role_ids)
+    rows = groups[0]
+    if rows[0].cells != EXTENSION_ROLE_HEADER:
+        builder.add(
+            "extension-gate-role-registry",
+            "%s:%d" % (source_path, rows[0].line),
+            "Extension Roles table header is not the closed Role Registry "
+            "header")
+        return frozenset(role_ids)
+    separator = rows[1].cells
+    if len(separator) != len(EXTENSION_ROLE_HEADER) or not all(
+            TABLE_SEPARATOR_RE.fullmatch(cell.replace(" ", ""))
+            for cell in separator):
+        builder.add(
+            "extension-gate-role-registry",
+            "%s:%d" % (source_path, rows[1].line),
+            "Extension Roles table separator is not canonical")
+        return frozenset(role_ids)
+    data_rows = rows[2:]
+    if registration == "None" and data_rows:
+        builder.add(
+            "extension-gate-role-registry", source_path,
+            "Extension Roles `Registration: None` requires an empty table")
+    if registration == "Configured" and not data_rows:
+        builder.add(
+            "extension-gate-role-registry", source_path,
+            "Extension Roles `Registration: Configured` requires a data row")
+    seen = set()
+    for row_number, row in enumerate(data_rows, 1):
+        if len(row.cells) != len(EXTENSION_ROLE_HEADER):
+            builder.add(
+                "extension-gate-role-registry",
+                "%s:%d" % (source_path, row.line),
+                "Extension Roles row %d must contain exactly %d cells" %
+                (row_number, len(EXTENSION_ROLE_HEADER)))
+            continue
+        source = SourceCell(
+            source_path, EXTENSION_ROLE_SECTION, row.line, row_number,
+            EXTENSION_ROLE_HEADER[0], row.cells[0])
+        builder.source_cells.append(source)
+        role_id = _literal(row.cells[0])
+        if not STABLE_ID_RE.fullmatch(role_id):
+            builder.add(
+                "extension-gate-role-registry", source.target,
+                "extension Role ID %r must be lowercase kebab-case" % role_id,
+                source)
+            continue
+        if role_id in seen or role_id in KERNEL_ROLE_IDS:
+            builder.add(
+                "extension-gate-role-registry", source.target,
+                "extension Role ID %r is duplicated or collides with a "
+                "kernel Role ID" % role_id, source)
+            continue
+        seen.add(role_id)
+        role_ids.add(role_id)
+    return frozenset(role_ids)
+
+
+def _vocabulary_field_values(builder, text, source_path):
+    """Compile Profile vocabulary field/value declarations used by Gates."""
+    try:
+        document = kblib.parse_yaml_subset(text)
+    except (TypeError, ValueError) as exc:
+        builder.add(
+            "extension-gate-vocabulary-registry", source_path,
+            "cannot parse Vocabulary Extensions as restricted YAML: %s" % exc)
+        return {}
+    fields = document.get("fields") if isinstance(document, dict) else None
+    if not isinstance(fields, dict):
+        builder.add(
+            "extension-gate-vocabulary-registry", source_path,
+            "Vocabulary Extensions must expose a `fields` mapping")
+        return {}
+    compiled = {}
+    for field_id, declaration in fields.items():
+        if not isinstance(field_id, str) or not FIELD_ID_RE.fullmatch(field_id):
+            continue
+        if not isinstance(declaration, dict):
+            continue
+        values = declaration.get("values")
+        if not isinstance(values, list) or not all(
+                isinstance(value, str) and value for value in values):
+            continue
+        compiled[field_id] = tuple(values)
+    return compiled
+
+
+def _metadata_extension_fields(builder, text, source_path):
+    """Compile the Profile-owned page fields a typed Gate may project."""
+    try:
+        document = kblib.parse_yaml_subset(text)
+    except (TypeError, ValueError) as exc:
+        builder.add(
+            "extension-gate-metadata-contract", source_path,
+            "cannot parse Metadata Contract as restricted YAML: %s" % exc)
+        return {}
+    shape_errors = kblib.validate_metadata_contract_shape(
+        document, target=source_path)
+    for check, label, details in shape_errors:
+        builder.add(
+            "extension-gate-metadata-contract", label,
+            "%s: %s" % (check, details))
+    if shape_errors:
+        return {}
+    fields = {}
+    for entry in document.get("extension_fields", ()):
+        field_id = entry.get("field")
+        if (not isinstance(field_id, str) or
+                FIELD_ID_RE.fullmatch(field_id) is None):
+            continue
+        fields[field_id] = entry
+    return fields
+
+
+def _kernel_metadata_fields(builder, source_path, root_input_snapshots=None):
+    """Resolve the Kernel page-field namespace from one frozen root view."""
+    fields = set()
+    failed = False
+    for path, mapping_name in (
+            (KERNEL_APPLICABILITY_PATH, "fields"),
+            (KERNEL_RELATIONSHIP_PATH, "relationships")):
+        try:
+            snapshot = (root_input_snapshots or {}).get(path)
+            if snapshot is None:
+                snapshot = kblib.repository_file_snapshot(
+                    builder.root, path, singly_linked=True)
+            document = kblib.parse_yaml_subset(snapshot.read_text())
+            mapping = document.get(mapping_name) \
+                if isinstance(document, dict) else None
+            if not isinstance(mapping, dict):
+                raise ValueError("missing %s mapping" % mapping_name)
+            invalid = [
+                field for field in mapping
+                if (not isinstance(field, str) or
+                    FIELD_ID_RE.fullmatch(field) is None)
+            ]
+            if invalid:
+                raise ValueError(
+                    "invalid field identifier(s): %s" %
+                    ", ".join(map(str, invalid)))
+            overlap = fields.intersection(mapping)
+            if overlap:
+                raise ValueError(
+                    "duplicate Kernel field(s): %s" %
+                    ", ".join(sorted(overlap)))
+            fields.update(mapping)
+        except (OSError, TypeError, UnicodeError, ValueError) as exc:
+            builder.add(
+                "extension-gate-kernel-metadata-registry", source_path,
+                "cannot load frozen Kernel metadata field registry %s: %s" %
+                (path, exc))
+            failed = True
+    return None if failed else frozenset(fields)
+
+
+def _kernel_gate_ids(builder, root_input_snapshots=None):
+    """Read the canonical kernel Gate ID namespace for owner references."""
+    source_path = "kernel/K00 Standards Control/12 Control Registry.md"
+    try:
+        snapshot = ((root_input_snapshots or {}).get(source_path))
+        if snapshot is not None:
+            text = snapshot.read_text()
+        else:
+            absolute = _canonical_repository_file(
+                builder.root, source_path, singly_linked=True)
+            text = _strict_read(absolute)
+    except (OSError, UnicodeError, ValueError) as exc:
+        builder.add(
+            "extension-gate-owner-registry", source_path,
+            "cannot read the kernel Gate registry: %s" % exc)
+        return frozenset()
+    sections = [
+        item for item in _sections(text)
+        if item.heading == "Stable Gate ID Registry"
+    ]
+    if len(sections) != 1:
+        builder.add(
+            "extension-gate-owner-registry", source_path,
+            "expected exactly one Stable Gate ID Registry section; found %d" %
+            len(sections))
+        return frozenset()
+    groups = _table_groups(sections[0])
+    if len(groups) != 1 or len(groups[0]) < 2:
+        builder.add(
+            "extension-gate-owner-registry", source_path,
+            "Stable Gate ID Registry must contain exactly one table")
+        return frozenset()
+    rows = groups[0]
+    if not rows[0].cells or rows[0].cells[0] != "Gate ID":
+        builder.add(
+            "extension-gate-owner-registry", source_path,
+            "Stable Gate ID Registry has no canonical Gate ID column")
+        return frozenset()
+    gate_ids = []
+    for row in rows[2:]:
+        if len(row.cells) != len(rows[0].cells):
+            builder.add(
+                "extension-gate-owner-registry",
+                "%s:%d" % (source_path, row.line),
+                "Stable Gate ID Registry contains a malformed row")
+            continue
+        gate_id = _literal(row.cells[0])
+        if STABLE_ID_RE.fullmatch(gate_id):
+            gate_ids.append(gate_id)
+    return frozenset(gate_ids)
+
+
+def _completion_values(raw):
+    value = raw.strip()
+    literal = _literal(value)
+    if literal == "None":
+        return ()
+    # Accept either one code span per value (`` `a`, `b` ``) or one code span
+    # around the whole comma-delimited list (`` `a, b` ``), then normalize to
+    # the same typed tuple.
+    if value.startswith("`") and value.endswith("`") and value.count("`") == 2:
+        value = value[1:-1]
+    return tuple(
+        _literal(part.strip())
+        for part in value.split(",")
+        if part.strip()
+    )
+
+
+def _capability_registry(builder, source_path, root_input_snapshots=None):
+    """Load the canonical closed capability registry exactly once."""
+    try:
+        import metadata_execution_contract
+        capability_path = "Tools/operation-capabilities.yaml"
+        snapshot = ((root_input_snapshots or {}).get(capability_path))
+        if snapshot is None:
+            document = metadata_execution_contract.load_operation_capabilities(
+                root=builder.root)
+        else:
+            document = kblib.parse_yaml_subset(snapshot.read_text())
+            document = (
+                metadata_execution_contract
+                .validate_operation_capabilities_document(document))
+    except (AttributeError, ImportError, OSError, UnicodeError,
+            ValueError) as exc:
+        builder.add(
+            "extension-gate-capability-registry", source_path,
+            "the closed metadata capability registry is unavailable: %s" % exc)
+        return (
+            lambda _capability_id, _kind: False,
+            lambda _capability_id, _operation, _kind="consumer": False,
+        )
+    entries = {
+        (entry["capability_id"], entry["kind"]): entry
+        for entry in document["capabilities"]
+    }
+
+    def registered(capability_id, kind):
+        return (capability_id, kind) in entries
+
+    def supports(capability_id, operation, kind="consumer"):
+        entry = entries.get((capability_id, kind))
+        return bool(
+            entry is not None and
+            {"operation": operation} in entry["operations"])
+
+    return registered, supports
+
+
+def _capability_registered(builder, checker, capability_id, kind, source):
+    try:
+        result = checker(capability_id, kind)
+    except Exception as exc:
+        builder.add(
+            "extension-gate-capability-registry", source.target,
+            "closed capability lookup failed for %r (%s): %s" %
+            (capability_id, kind, exc), source)
+        return False
+    if not isinstance(result, bool):
+        builder.add(
+            "extension-gate-capability-registry", source.target,
+            "closed capability lookup for %r (%s) returned non-boolean %r" %
+            (capability_id, kind, result), source)
+        return False
+    return result
+
+
+def _capability_supports(builder, supports, capability_id, operation, source,
+                         *, kind="consumer"):
+    try:
+        result = supports(capability_id, operation, kind)
+    except Exception as exc:
+        builder.add(
+            "extension-gate-capability-registry", source.target,
+            "closed %s capability operation lookup failed for %r (%s): %s" %
+            (kind, capability_id, operation, exc), source)
+        return False
+    if not isinstance(result, bool):
+        builder.add(
+            "extension-gate-capability-registry", source.target,
+            "closed %s capability operation lookup for %r (%s) returned "
+            "non-boolean %r" %
+            (kind, capability_id, operation, result), source)
+        return False
+    return result
+
+
+def _parse_extension_gates(builder, text, source_path, profile_repo_dir,
+                           profile_id, role_text, role_path,
+                           vocabulary_text, vocabulary_path,
+                           metadata_text, metadata_path,
+                           judgments, scans, root_input_snapshots=None):
+    section = builder.section(
+        text, EXTENSION_GATE_SECTION, source_path, "extension-gates")
+    if section is None:
+        return None, ()
+    registration = _section_registration(
+        builder, section, source_path, "extension-gates")
+    rows = builder.table(
+        section, EXTENSION_GATE_HEADER, source_path, "extension-gates")
+    if registration == "None" and rows:
+        builder.add(
+            "extension-gates-none-with-rows", source_path,
+            "`Registration: None` requires an empty extension Gate table; "
+            "found %d data row(s)" % len(rows))
+    if registration == "Configured" and not rows:
+        builder.add(
+            "extension-gates-configured-empty", source_path,
+            "`Registration: Configured` requires at least one extension Gate")
+    if not rows:
+        return registration, ()
+
+    role_ids = (_extension_role_ids(builder, role_text, role_path)
+                if role_text is not None else frozenset(KERNEL_ROLE_IDS))
+    vocabulary = (_vocabulary_field_values(
+        builder, vocabulary_text, vocabulary_path)
+        if vocabulary_text is not None else {})
+    metadata_fields = (_metadata_extension_fields(
+        builder, metadata_text, metadata_path)
+        if metadata_text is not None else {})
+    kernel_metadata_fields = _kernel_metadata_fields(
+        builder, source_path, root_input_snapshots=root_input_snapshots)
+    if role_text is None:
+        builder.add(
+            "extension-gate-role-registry", source_path,
+            "configured extension Gates require a readable Role Registry")
+    if vocabulary_text is None:
+        builder.add(
+            "extension-gate-vocabulary-registry", source_path,
+            "configured extension Gates require readable Vocabulary Extensions")
+    if metadata_text is None:
+        builder.add(
+            "extension-gate-metadata-contract", source_path,
+            "configured extension Gates require a readable Metadata Contract")
+    kernel_gate_ids = None
+    checker, supports = _capability_registry(
+        builder, source_path, root_input_snapshots=root_input_snapshots)
+    judgment_by_id = {}
+    for item in judgments:
+        judgment_by_id.setdefault(item.judgment_item_id, []).append(item)
+    scan_by_judgment = {}
+    for scan in scans:
+        scan_by_judgment.setdefault(scan.judgment_item_id, []).append(scan)
+
+    parsed = []
+    seen_gate_ids = set()
+    seen_transitions = set()
+    for row_number, row in enumerate(rows, 1):
+        cells = builder.cells(
+            row, EXTENSION_GATE_HEADER, source_path,
+            EXTENSION_GATE_SECTION, row_number, "extension-gates")
+        if cells is None:
+            continue
+        gate_id = _literal(cells[0].raw)
+        owner_literal = _literal(cells[1].raw)
+        transition_id = _literal(cells[2].raw)
+        role_id = _literal(cells[3].raw)
+        field_literal = _literal(cells[5].raw)
+        field_id = None if field_literal == "None" else field_literal
+        completion_values = _completion_values(cells[6].raw)
+        judgment_id = _literal(cells[7].raw)
+        producer_kind = _literal(cells[8].raw)
+        producer_capability = _literal(cells[9].raw)
+        receipt_schema = _literal(cells[10].raw)
+        consumer_capability = _literal(cells[11].raw)
+        valid = True
+
+        gate_match = PROFILE_GATE_ID_RE.fullmatch(gate_id)
+        if gate_match is None or gate_match.group(1) != profile_id:
+            builder.add(
+                "extension-gate-id-invalid", cells[0].target,
+                "Gate ID %r must be `P:%s:<lowercase-kebab-name>`" %
+                (gate_id, profile_id), cells[0])
+            valid = False
+        if gate_id in seen_gate_ids:
+            builder.add(
+                "extension-gate-id-duplicate", cells[0].target,
+                "Gate ID %r is registered more than once" % gate_id,
+                cells[0])
+            valid = False
+        seen_gate_ids.add(gate_id)
+
+        if not STABLE_ID_RE.fullmatch(transition_id):
+            builder.add(
+                "extension-gate-transition-invalid", cells[2].target,
+                "blocked transition/action ID %r must be lowercase kebab-case"
+                % transition_id, cells[2])
+            valid = False
+        if transition_id in seen_transitions:
+            builder.add(
+                "extension-gate-transition-duplicate", cells[2].target,
+                "blocked transition/action ID %r is already owned by another "
+                "extension Gate" % transition_id, cells[2])
+            valid = False
+        seen_transitions.add(transition_id)
+
+        owner_gate_id = None
+        owner_dependency = None
+        if "/" in owner_literal or "#" in owner_literal:
+            owner_dependency = builder.repository_dependency(
+                "extension-gate-owner", gate_id, cells[1].raw, cells[1],
+                profile_repo_dir)
+            if owner_dependency is None:
+                valid = False
+        else:
+            if kernel_gate_ids is None:
+                kernel_gate_ids = _kernel_gate_ids(
+                    builder, root_input_snapshots=root_input_snapshots)
+            if (not STABLE_ID_RE.fullmatch(owner_literal) or
+                    owner_literal not in kernel_gate_ids):
+                builder.add(
+                    "extension-gate-owner-reference", cells[1].target,
+                    "owner Gate ID %r does not resolve in the kernel Stable "
+                    "Gate ID Registry" % owner_literal, cells[1])
+                valid = False
+            else:
+                owner_gate_id = owner_literal
+                builder.edges.append(DependencyEdge(
+                    kind="extension-gate-owner", owner_id=gate_id,
+                    target_id=owner_gate_id))
+
+        if role_id not in role_ids:
+            builder.add(
+                "extension-gate-role-reference", cells[3].target,
+                "pass-authority Role ID %r is not registered by this Profile"
+                % role_id, cells[3])
+            valid = False
+
+        if field_id is None:
+            if completion_values:
+                builder.add(
+                    "extension-gate-field-completion", cells[6].target,
+                    "completion values require a Vocabulary field ID",
+                    cells[6])
+                valid = False
+        else:
+            if not FIELD_ID_RE.fullmatch(field_id) or field_id not in vocabulary:
+                builder.add(
+                    "extension-gate-field-reference", cells[5].target,
+                    "Vocabulary field ID %r is not a registered Profile field"
+                    % field_id, cells[5])
+                valid = False
+            if kernel_metadata_fields is None:
+                valid = False
+            elif field_id in kernel_metadata_fields:
+                builder.add(
+                    "extension-gate-field-kernel-collision",
+                    cells[5].target,
+                    "typed Profile Gate field %r collides with the frozen "
+                    "Kernel metadata namespace" % field_id, cells[5])
+                valid = False
+            if field_id not in metadata_fields:
+                builder.add(
+                    "extension-gate-field-applicability", cells[5].target,
+                    "typed Gate field %r must be declared by this Profile's "
+                    "Metadata Contract extension_fields; kernel-managed and "
+                    "vocabulary-only fields cannot be projected by a Profile "
+                    "Gate" % field_id, cells[5])
+                valid = False
+            elif metadata_fields[field_id].get("shape") != "nonempty-string":
+                builder.add(
+                    "extension-gate-field-shape", cells[5].target,
+                    "typed Gate field %r must have Metadata Contract shape "
+                    "nonempty-string for enum projection" % field_id,
+                    cells[5])
+                valid = False
+            if not completion_values:
+                builder.add(
+                    "extension-gate-field-completion", cells[6].target,
+                    "a Vocabulary field Gate requires at least one registered "
+                    "completion value", cells[6])
+                valid = False
+            if len(set(completion_values)) != len(completion_values) or any(
+                    not VOCABULARY_VALUE_RE.fullmatch(value)
+                    for value in completion_values):
+                builder.add(
+                    "extension-gate-completion-invalid", cells[6].target,
+                    "completion values must be unique lowercase vocabulary "
+                    "tokens", cells[6])
+                valid = False
+            unknown_values = sorted(
+                set(completion_values).difference(vocabulary.get(field_id, ())))
+            if field_id in vocabulary and unknown_values:
+                builder.add(
+                    "extension-gate-completion-reference", cells[6].target,
+                    "completion value(s) are not registered for %s: %s" %
+                    (field_id, ", ".join(unknown_values)), cells[6])
+                valid = False
+            if not _capability_supports(
+                    builder, supports,
+                    PROFILE_EXTENSION_ENUM_WRITER_CAPABILITY,
+                    PROFILE_EXTENSION_ENUM_PROJECTION_OPERATION,
+                    cells[5], kind="writer"):
+                builder.add(
+                    "extension-gate-writer-capability", cells[5].target,
+                    "typed Profile Gate field %r requires installed writer "
+                    "%r operation %r" %
+                    (field_id, PROFILE_EXTENSION_ENUM_WRITER_CAPABILITY,
+                     PROFILE_EXTENSION_ENUM_PROJECTION_OPERATION),
+                    cells[5])
+                valid = False
+
+        judgment_matches = judgment_by_id.get(judgment_id, ())
+        if len(judgment_matches) != 1:
+            builder.add(
+                "extension-gate-judgment-reference", cells[7].target,
+                "Judgment Item reference %r must resolve exactly once; found "
+                "%d" % (judgment_id, len(judgment_matches)), cells[7])
+            valid = False
+
+        if producer_kind not in PRODUCER_KINDS:
+            builder.add(
+                "extension-gate-producer-kind", cells[8].target,
+                "producer kind must be `deterministic` or "
+                "`manual-attestation`; found %r" % producer_kind, cells[8])
+            valid = False
+        expected_capability = PRODUCER_CAPABILITY_BY_KIND.get(producer_kind)
+        if (not _capability_registered(
+                builder, checker, producer_capability, "producer", cells[9]) or
+                producer_capability != expected_capability):
+            builder.add(
+                "extension-gate-producer-capability", cells[9].target,
+                "producer capability %r is not the registered capability for "
+                "producer kind %r" % (producer_capability, producer_kind),
+                cells[9])
+            valid = False
+        expected_schema = RECEIPT_SCHEMA_BY_KIND.get(producer_kind)
+        if (not _capability_registered(
+                builder, checker, receipt_schema, "receipt-schema", cells[10]) or
+                receipt_schema != expected_schema):
+            builder.add(
+                "extension-gate-receipt-schema", cells[10].target,
+                "receipt schema %r is not the registered schema for producer "
+                "kind %r" % (receipt_schema, producer_kind), cells[10])
+            valid = False
+        consumer_operation = (
+            FIELD_GATE_CONSUMER_OPERATION if field_id is not None else
+            NON_FIELD_GATE_CONSUMER_OPERATION)
+        consumer_registered = _capability_registered(
+            builder, checker, consumer_capability, "consumer", cells[11])
+        consumer_supports_transition = _capability_supports(
+            builder, supports, consumer_capability,
+            consumer_operation, cells[11])
+        if not (consumer_registered and consumer_supports_transition):
+            builder.add(
+                "extension-gate-consumer-capability", cells[11].target,
+                "consumer capability %r is not registered with the "
+                "%r operation required by this Gate shape" %
+                (consumer_capability, consumer_operation),
+                cells[11])
+            valid = False
+
+        if (producer_kind == "deterministic" and field_id is not None and
+                len(completion_values) != 1):
+            builder.add(
+                "extension-gate-deterministic-completion", cells[6].target,
+                "a deterministic typed-field Gate must declare exactly one "
+                "completion value, so scan pass has one closed projection",
+                cells[6])
+            valid = False
+
+        producer_reference = None
+        if producer_kind == "manual-attestation":
+            producer_reference = role_id if role_id in role_ids else None
+        elif producer_kind == "deterministic":
+            producer_matches = scan_by_judgment.get(judgment_id, ())
+            if len(producer_matches) != 1:
+                builder.add(
+                    "extension-gate-producer-reference", cells[9].target,
+                    "deterministic Gate Judgment Item %r must be produced by "
+                    "exactly one Registered Scan; found %d" %
+                    (judgment_id, len(producer_matches)), cells[9])
+                valid = False
+            else:
+                producer_reference = producer_matches[0].scan_id
+
+        if not valid:
+            continue
+        builder.edges.extend((
+            DependencyEdge(
+                kind="extension-gate-transition", owner_id=gate_id,
+                target_id=transition_id),
+            DependencyEdge(
+                kind="extension-gate-role", owner_id=gate_id,
+                target_id=role_id),
+            DependencyEdge(
+                kind="extension-gate-judgment", owner_id=gate_id,
+                target_id=judgment_id),
+            DependencyEdge(
+                kind="extension-gate-producer-capability", owner_id=gate_id,
+                target_id=producer_capability),
+            DependencyEdge(
+                kind="extension-gate-producer", owner_id=gate_id,
+                target_id=producer_reference),
+            DependencyEdge(
+                kind="extension-gate-receipt-schema", owner_id=gate_id,
+                target_id=receipt_schema),
+            DependencyEdge(
+                kind="extension-gate-consumer-capability", owner_id=gate_id,
+                target_id=consumer_capability),
+        ))
+        if field_id is not None:
+            builder.edges.append(DependencyEdge(
+                kind="extension-gate-field", owner_id=gate_id,
+                target_id=field_id))
+        parsed.append(ExtensionGate(
+            gate_id=gate_id,
+            owner_gate_id=owner_gate_id,
+            owner_dependency=owner_dependency,
+            transition_id=transition_id,
+            pass_authority_role_id=role_id,
+            applicability=cells[4].raw.strip(),
+            field_id=field_id,
+            completion_values=completion_values,
+            judgment_item_id=judgment_id,
+            producer_kind=producer_kind,
+            producer_capability=producer_capability,
+            producer_reference=producer_reference,
+            receipt_schema=receipt_schema,
+            consumer_capability=consumer_capability,
+            source=cells[0],
+        ))
+    return registration, tuple(parsed)
+
+
 def _empty_contract(builder, manifest_path="", manifest_repo_path="",
                     profile_root="", profile_repo_dir=""):
     return ProfileContract(
@@ -1101,10 +2024,13 @@ def _empty_contract(builder, manifest_path="", manifest_repo_path="",
         profile_repo_dir=profile_repo_dir,
         audit_registry_path=None,
         scan_registry_path=None,
+        routing_registry_path=None,
         extension_registration=None,
         extension_dimensions=(),
         judgment_items=(),
         registered_scans=(),
+        extension_gate_registration=None,
+        extension_gates=(),
         dependency_edges=(),
         source_cells=tuple(builder.source_cells),
         diagnostics=tuple(builder.diagnostics),
@@ -1112,7 +2038,7 @@ def _empty_contract(builder, manifest_path="", manifest_repo_path="",
 
 
 def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
-                          profile_snapshot=None):
+                          profile_snapshot=None, root_input_snapshots=None):
     """Load and link the machine-active contract of one Profile manifest.
 
     The return value always contains deterministic diagnostics and any safely
@@ -1188,10 +2114,22 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
     scan_path, scan_text = _load_bound_slot(
         builder, manifest_text, manifest_absolute, manifest_relative,
         profile_root, SCAN_SLOT)
+    role_path, role_text = _load_bound_slot(
+        builder, manifest_text, manifest_absolute, manifest_relative,
+        profile_root, ROLE_SLOT)
+    vocabulary_path, vocabulary_text = _load_bound_slot(
+        builder, manifest_text, manifest_absolute, manifest_relative,
+        profile_root, VOCABULARY_SLOT)
+    metadata_path, metadata_text = _load_bound_slot(
+        builder, manifest_text, manifest_absolute, manifest_relative,
+        profile_root, METADATA_SLOT)
+    routing_path, routing_text = _load_bound_slot(
+        builder, manifest_text, manifest_absolute, manifest_relative,
+        profile_root, ROUTING_SLOT)
 
     # Bind every declared first-hop file, not only the two registries whose
     # contents this linker interprets transitively.  ``check_profile`` owns the
-    # exact 13-slot cardinality; this layer owns the canonical path and typed
+    # exact 14-slot cardinality; this layer owns the canonical path and typed
     # edge of each declared interface slot so the contract fingerprint cannot
     # omit the rest of the package graph.
     if audit_path is not None:
@@ -1200,10 +2138,27 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
     if scan_path is not None:
         builder.edges.append(DependencyEdge(
             kind="manifest-slot", owner_id=SCAN_SLOT, path=scan_path))
+    if role_path is not None:
+        builder.edges.append(DependencyEdge(
+            kind="manifest-slot", owner_id=ROLE_SLOT, path=role_path))
+    if vocabulary_path is not None:
+        builder.edges.append(DependencyEdge(
+            kind="manifest-slot", owner_id=VOCABULARY_SLOT,
+            path=vocabulary_path))
+    if metadata_path is not None:
+        builder.edges.append(DependencyEdge(
+            kind="manifest-slot", owner_id=METADATA_SLOT,
+            path=metadata_path))
+    if routing_path is not None:
+        builder.edges.append(DependencyEdge(
+            kind="manifest-slot", owner_id=ROUTING_SLOT, path=routing_path))
     bindings, duplicate_bindings = kblib.profile_slot_bindings(
         manifest_text, include_duplicates=True)
     for slot_name in PROFILE_FILE_SLOTS:
-        if slot_name in (AUDIT_SLOT, SCAN_SLOT):
+        if slot_name in (
+                AUDIT_SLOT, SCAN_SLOT, ROLE_SLOT, VOCABULARY_SLOT,
+                METADATA_SLOT,
+                ROUTING_SLOT):
             continue
         if slot_name in duplicate_bindings:
             source = _slot_source(
@@ -1257,6 +2212,8 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
     dimensions = ()
     judgments = ()
     scans = ()
+    gate_registration = None
+    gates = ()
     if audit_text is not None:
         registration, dimensions = _parse_extensions(
             builder, audit_text, audit_path)
@@ -1285,6 +2242,17 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
                 target_id=scan.judgment_item_id,
             ))
 
+    if routing_text is not None:
+        declared_profile_id, _identity_errors = kblib.profile_identity(
+            manifest_text, os.path.basename(profile_repo_dir))
+        gate_registration, gates = _parse_extension_gates(
+            builder, routing_text, routing_path, profile_repo_dir,
+            declared_profile_id or os.path.basename(profile_repo_dir),
+            role_text, role_path, vocabulary_text, vocabulary_path,
+            metadata_text, metadata_path,
+            judgments, scans,
+            root_input_snapshots=root_input_snapshots)
+
     edges = tuple(sorted(
         builder.edges,
         key=lambda edge: (
@@ -1299,10 +2267,13 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
         profile_repo_dir=profile_repo_dir,
         audit_registry_path=audit_path,
         scan_registry_path=scan_path,
+        routing_registry_path=routing_path,
         extension_registration=registration,
         extension_dimensions=tuple(dimensions),
         judgment_items=tuple(judgments),
         registered_scans=tuple(scans),
+        extension_gate_registration=gate_registration,
+        extension_gates=tuple(gates),
         dependency_edges=edges,
         source_cells=tuple(builder.source_cells),
         diagnostics=tuple(builder.diagnostics),
@@ -1358,6 +2329,7 @@ __all__ = (
     "DependencyEdge",
     "Diagnostic",
     "ExtensionDimension",
+    "ExtensionGate",
     "JudgmentItem",
     "ProfileContract",
     "ProfileContractError",

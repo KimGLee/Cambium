@@ -1,0 +1,95 @@
+schema_version: 1
+
+capabilities:
+  - capability_id: project-page-state-v2
+    kind: writer
+    capability_version: 2.0.0
+    implementation_paths:
+      - Tools/metadata_property_state.py
+      - Tools/project_page_state.py
+    operations:
+      - field: authoring_status
+        transition: owner-to-page-projection
+        source_adapter: coverage-row-value-v1
+      - field: coverage_disposition
+        transition: owner-to-page-projection
+        source_adapter: coverage-row-value-v1
+      - field: last_content_modified
+        transition: owner-to-page-projection
+        source_adapter: coverage-property-state-v1
+      - field: last_reviewed
+        transition: owner-to-page-projection
+        source_adapter: coverage-property-state-v1
+      - field: next_batch
+        transition: owner-to-page-projection
+        source_adapter: coverage-row-value-v1
+      - operation: profile-extension-enum-owner-projection-v1
+
+  - capability_id: metadata-transition-integrator-v1
+    kind: writer
+    capability_version: 1.0.0
+    implementation_paths:
+      - Tools/apply_delta.py
+      - Tools/apply_metadata_transition.py
+      - Tools/check_batch_close.py
+      - Tools/metadata_property_state.py
+      - Tools/update_queue.py
+    operations:
+      - field: last_content_modified
+        transition: semantic-content-change
+        source_adapter: content-change-event-v1
+      - field: last_reviewed
+        transition: review-completed
+        source_adapter: current-review-receipt-value-v1
+      - field: last_reviewed
+        transition: semantic-content-change
+        source_adapter: content-change-event-v1
+
+  - capability_id: metadata-transition-integrator-v1
+    kind: consumer
+    capability_version: 1.0.0
+    implementation_paths:
+      - Tools/apply_metadata_transition.py
+      - Tools/metadata_property_state.py
+    operations:
+      - operation: typed-field-metadata-transition
+
+  - capability_id: legacy-property-adoption-v1
+    kind: writer
+    capability_version: 1.0.0
+    implementation_paths:
+      - Tools/apply_amendment.py
+      - Tools/apply_task_plan.py
+      - Tools/metadata_property_state.py
+      - Tools/project_page_state.py
+      - Tools/register_amendment.py
+    operations:
+      - operation: legacy-property-adoption-v1
+
+  - capability_id: manual-attestation-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_paths:
+      - Tools/record_gate_attestation.py
+    operations: []
+
+  - capability_id: registered-scan-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_paths:
+      - Tools/record_gate_result.py
+    operations: []
+
+  - capability_id: manual-gate-attestation-v1
+    kind: receipt-schema
+    capability_version: 1.0.0
+    implementation_paths:
+      - Tools/metadata_gate_runtime.py
+    operations: []
+
+  - capability_id: deterministic-gate-result-v1
+    kind: receipt-schema
+    capability_version: 1.0.0
+    implementation_paths:
+      - Tools/metadata_gate_runtime.py
+    operations: []

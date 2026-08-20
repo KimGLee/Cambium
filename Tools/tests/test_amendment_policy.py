@@ -27,6 +27,7 @@ def page(path="Topics/A.md", disposition="required", batch="B1"):
         "deferred_reason": None,
         "reentry_condition": None,
         "gate_receipts": [],
+        "property_state": {},
     }
 
 
@@ -77,6 +78,48 @@ def authority(*classes):
 
 
 class AmendmentPolicyTests(unittest.TestCase):
+    def test_property_state_adoption_is_coverage_only_and_user_decided(self):
+        before = coverage()
+        before["pages"][0].pop("property_state")
+        after = copy.deepcopy(before)
+        after["pages"][0].update({
+            "property_state": {},
+            "legacy_property_state": {
+                "last_reviewed": {
+                    "status": "legacy-unverified",
+                    "value": "2026-07-31",
+                },
+            },
+        })
+
+        impact = amendment_policy.derive_amendment_impact(
+            before, after, queue())
+
+        self.assertEqual([], impact["forbidden_reasons"])
+        self.assertEqual("property-state-migration",
+                         impact["writer_operation"])
+        self.assertEqual(["property-state-adoption"],
+                         impact["change_classes"])
+        self.assertEqual(["Topics/A.md"], impact["affected_pages"])
+        self.assertEqual([], impact["affected_batches"])
+        with self.assertRaises(amendment_policy.UserDecisionRequired):
+            amendment_policy.resolve_authority(
+                {"amendment_authority": authority()}, impact)
+
+    def test_property_state_adoption_cannot_rewrite_current_owner(self):
+        before = coverage()
+        after = copy.deepcopy(before)
+        after["pages"][0]["property_state"] = {
+            "last_reviewed": {"invented": True},
+        }
+
+        impact = amendment_policy.derive_amendment_impact(
+            before, after, queue())
+
+        self.assertTrue(any(
+            "may only adopt one absent owner mapping" in reason
+            for reason in impact["forbidden_reasons"]), impact)
+
     def test_required_growth_derives_one_closed_scope_replan(self):
         before = coverage()
         after = copy.deepcopy(before)

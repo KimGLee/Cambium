@@ -96,6 +96,7 @@ class RegisterAmendmentTests(unittest.TestCase):
             "prerequisites": ["Topics/B.md"], "batch": "B3",
             "next_batch": "B3", "deferred_reason": None,
             "reentry_condition": None, "gate_receipts": [],
+            "property_state": {},
         })
         return coverage
 

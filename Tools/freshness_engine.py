@@ -22,6 +22,7 @@ INACTIVE = "inactive"
 UNPARSEABLE_FRONTMATTER = "unparseable_frontmatter"
 INVALID_BASELINE = "invalid_baseline"
 FUTURE_BASELINE = "future_baseline"
+MODIFIED_SINCE_REVIEW = "modified_since_review"
 INVALID_VOLATILITY = "invalid_volatility"
 UNRESOLVED_VOLATILITY = "unresolved_volatility"
 STABLE = "stable"
@@ -35,6 +36,7 @@ OUTCOME_KINDS = (
     UNPARSEABLE_FRONTMATTER,
     INVALID_BASELINE,
     FUTURE_BASELINE,
+    MODIFIED_SINCE_REVIEW,
     INVALID_VOLATILITY,
     UNRESOLVED_VOLATILITY,
     STABLE,
@@ -47,6 +49,7 @@ CANDIDATE_KINDS = frozenset((
     UNPARSEABLE_FRONTMATTER,
     INVALID_BASELINE,
     FUTURE_BASELINE,
+    MODIFIED_SINCE_REVIEW,
     INVALID_VOLATILITY,
     UNRESOLVED_VOLATILITY,
     PENDING_FIRST_VERIFICATION,
@@ -59,15 +62,18 @@ INVALID = "invalid"
 FUTURE = "future"
 
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
-_EVENT_FIELDS = ("last_verified", "last_reviewed")
+_EVENT_FIELDS = (
+    "last_content_modified", "last_verified", "last_reviewed",
+)
 _CANDIDATE_CATEGORY_ORDER = {
     OVERDUE: 0,
     FUTURE_BASELINE: 1,
     INVALID_BASELINE: 2,
-    PENDING_FIRST_VERIFICATION: 3,
-    INVALID_VOLATILITY: 4,
-    UNRESOLVED_VOLATILITY: 5,
-    UNPARSEABLE_FRONTMATTER: 6,
+    MODIFIED_SINCE_REVIEW: 3,
+    PENDING_FIRST_VERIFICATION: 4,
+    INVALID_VOLATILITY: 5,
+    UNRESOLVED_VOLATILITY: 6,
+    UNPARSEABLE_FRONTMATTER: 7,
 }
 
 
@@ -296,6 +302,21 @@ def classify_page(snapshot, policy):
             snapshot, FUTURE_BASELINE, frontmatter=frontmatter,
             reasons=temporal_reasons)
 
+    last_modified, last_verified, last_reviewed = events
+    if (last_modified.state == VALID and
+            (last_reviewed.state == ABSENT or
+             last_reviewed.value < last_modified.value)):
+        return _base_outcome(
+            snapshot, MODIFIED_SINCE_REVIEW, frontmatter=frontmatter,
+            baseline_field="last_content_modified",
+            baseline=last_modified.value,
+            reasons=(FreshnessReason(
+                code="content_modified_since_review",
+                field="last_content_modified",
+                date_value=last_modified.value,
+            ),),
+        )
+
     raw_volatility = frontmatter.get("volatility")
     volatility = None
     volatility_source = None
@@ -327,7 +348,6 @@ def classify_page(snapshot, policy):
             ),),
         )
 
-    last_verified, last_reviewed = events
     baseline_event = (
         last_verified if last_verified.state == VALID else last_reviewed
     )

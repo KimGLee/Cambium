@@ -34,7 +34,7 @@ source_files:
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K00 Standards Control/17 Profile Dependency Closure.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'f267dffea82b'
+source_hash: 'b3a1033e97d3'
 ---
 # R07 Long-running Execution Card
 

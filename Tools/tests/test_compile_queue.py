@@ -234,7 +234,11 @@ class CompileQueueTests(unittest.TestCase):
         preclose_coverage_sha = "sha256:" + "e" * 64
         progress_sha = "sha256:" + "f" * 64
         merged_snapshot_sha = "sha256:" + "7" * 64
-        batch_close_version = check_queue.BATCH_CLOSE_TOOL_VERSION
+        # This helper models already-closed history rather than producing a
+        # new close.  Pin it to the last historical producer era so later
+        # current-era fields do not silently turn old evidence into a new
+        # receipt shape.
+        batch_close_version = "1.10.0"
         queue_gate_version = check_queue.TOOL_VERSION
         evidence_relative = "%s/B1-fixture.jsonl" % (
             kblib.RECEIPT_COLD_EVIDENCE_PREFIX)
@@ -608,6 +612,7 @@ class CompileQueueTests(unittest.TestCase):
             "prerequisites": ["Topics/B.md"], "batch": "B3",
             "next_batch": "B3", "deferred_reason": None,
             "reentry_condition": None, "gate_receipts": [],
+            "property_state": {},
         })
         proposal_relative = (
             ".cambium/deltas/amendments/%s.coverage.yaml" % amendment_id)

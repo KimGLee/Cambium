@@ -61,6 +61,7 @@ class AdoptStandardsTests(unittest.TestCase):
             "| Lifecycle |\n"
             "|---|---|---|---|---|---|---|\n"
             "| profile-load | check_profile | %s | profile-check-summary | * | guidance_and_contract | not-batch-scoped |\n"
+            "| wiki-link-integrity | check_links | 1.5.0 | link-check-summary | * | * | not-batch-scoped |\n"
             "| required-queue-consistency | check_queue | %s | required_queue | consistency | * | not-batch-scoped |\n"
             "| required-queue-admission | check_queue | %s | required_queue | require-ready:* | * | queued |\n"
             "| batch-close | check_batch_close | %s | batch_close_gate | * | * | merge-ready |\n\n"
@@ -68,6 +69,7 @@ class AdoptStandardsTests(unittest.TestCase):
             "| Gate ID | Role | Owner | Claim edge | Scope protocol | Binding protocol |\n"
             "|---|---|---|---|---|---|\n"
             "| profile-load | special-owner | profile-load | after-image-admission | profile-after-image | profile-fingerprints |\n"
+            "| wiki-link-integrity | semantic-leaf | batch-close | project-to-owner | inherit-owner-scope | owner-member-chain |\n"
             "| required-queue-consistency | immediate-owner | required-queue-consistency | adoption-commit | runtime-after-image | runtime-state-fingerprints |\n"
             "| required-queue-admission | native-owner | required-queue-admission | native-transition | native-owner-scope | native-owner-receipt |\n"
             "| batch-close | native-owner | batch-close | native-transition | native-owner-scope | native-owner-receipt |\n" % (
@@ -2952,7 +2954,15 @@ class AdoptStandardsTests(unittest.TestCase):
         """Drive B1 through a real revalidation and out to `closed`."""
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         self.lifecycle_boundary_plan(invalidated_gate)
-        aggregate = self.revalidation_aggregate(self.link_gate_receipt())
+        link_receipt = self.link_gate_receipt()
+        # Produce one complete, legitimate attempt that no transition
+        # consumes, then consume a fresh attempt.  Current metadata property
+        # owners can correctly keep the entire close replay bundle hot; this
+        # independent historical aggregate gives the sealing assertions a
+        # cold candidate without weakening that owner-evidence guarantee.
+        historical = self.revalidation_aggregate(link_receipt)
+        aggregate = self.revalidation_aggregate(link_receipt)
+        self.assertNotEqual(historical["receipt_id"], aggregate["receipt_id"])
         cleared_at = self.clear_b1_hold(aggregate)
         self.merge_and_apply_b1(self.seconds_after(cleared_at, 1))
         gate = self.queue_gate()
@@ -3034,11 +3044,22 @@ class AdoptStandardsTests(unittest.TestCase):
         self.seal_ignoring_the_rule(before)
         catalog = check_queue.validate_runtime(self.root)["receipt_catalog"]
         segment = self.root / catalog.cold[aggregate_id]["segment"]
-        payload = segment.read_bytes()
-        # A same-length edit: the projection still names this line, and only
-        # re-proving the record's own hash at the read can tell.
-        segment.write_bytes(payload.replace(b'"result": "pass"',
-                                            b'"result": "PASS"', 1))
+        lines = segment.read_bytes().splitlines(keepends=True)
+        needle = ('"receipt_id": "%s"' % aggregate_id).encode("utf-8")
+        changed = 0
+        for index, line in enumerate(lines):
+            if needle not in line:
+                continue
+            # A same-length edit of this exact aggregate: the projection
+            # still names the line, and only re-proving the record's own hash
+            # at the read can tell.  Do not assume it is the segment's first
+            # row now that the fixture also carries independent history.
+            rewritten = line.replace(
+                b'"result": "pass"', b'"result": "PASS"', 1)
+            changed += int(rewritten != line)
+            lines[index] = rewritten
+        self.assertEqual(1, changed, "target aggregate was not mutated once")
+        segment.write_bytes(b"".join(lines))
         fresh = check_queue._receipt_catalog(str(self.root), [])
         fresh.cold = catalog.cold
         self.assertIsNone(fresh.resolve_sealed(aggregate_id))
@@ -3119,9 +3140,12 @@ class AdoptStandardsTests(unittest.TestCase):
         sets.  Every reference the declared schema reaches that lands on a
         sealed receipt must sit at a field with a declared sealed branch.
         """
-        self.closed_b1_that_consumed_an_aggregate()
-        completed = self.seal("--apply")
-        self.assertEqual(0, completed.returncode, completed.stdout)
+        _, before = self.closed_b1_that_consumed_an_aggregate()
+        # Current sealing correctly keeps both transition-bound aggregates
+        # and live property-owner close bundles hot.  Exercise the sealed
+        # reference consumers against the supported legacy archive shape,
+        # produced by the older protocol before the aggregate keep rule.
+        self.seal_ignoring_the_rule(before)
         result = check_queue.validate_runtime(self.root)
         cold = result["receipt_catalog"].cold
         self.assertTrue(cold, "nothing sealed; the assertion is vacuous")

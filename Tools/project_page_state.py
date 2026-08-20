@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Project Ledger-owned state fields onto page frontmatter (K08/07).
+"""Project contract-declared owner state onto page frontmatter (K08/07).
 
-The Coverage Ledger owns ``coverage_disposition``, ``authoring_status`` and
-``next_batch``.  Pages may carry those fields only as tool-written copies.
+The metadata execution contract, rather than this module, declares which
+fields this writer may project, where their canonical values live, which
+evidence they require, and how page copies reconcile.  Coverage remains the
+state owner; a page value is never promoted into authority by this tool.
 
 Dry runs build an immutable projection plan without taking the runtime writer
 lock.  ``--apply`` builds that plan once while holding the shared writer lock,
@@ -14,7 +16,9 @@ namespace drift still fails closed.  A fully restored failure clears the lock,
 while an unproven rollback deliberately keeps its recovery journal.
 """
 
+import datetime
 import errno
+import hashlib
 import json
 import os
 import re
@@ -24,12 +28,27 @@ import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import metadata_execution_contract
 
 TOOL = "project_page_state"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "2.0.0"
 COVERAGE_LEDGER_PATH = ".cambium/state/coverage_ledger.yaml"
-PROJECTION_FIELDS = ("coverage_disposition", "authoring_status", "next_batch")
+WRITER_CAPABILITY = "project-page-state-v2"
+ROW_VALUE_ADAPTER = "coverage-row-value-v1"
+PROPERTY_STATE_ADAPTER = "coverage-property-state-v1"
+PROPERTY_VALUE_ADAPTERS = frozenset((PROPERTY_STATE_ADAPTER,))
+EXISTING_COPY_POLICY = "existing-copy-exact-or-remove-v1"
+UPSERT_EXACT_OR_REMOVE_POLICY = "upsert-exact-or-remove-v1"
+CONTENT_CHANGE_TOMBSTONE_RULE = "semantic-content-change-tombstone-v1"
+CONTENT_CHANGE_REMOVE_OWNER_RULE = \
+    "remove-owner-and-page-copy-on-semantic-content-change-v1"
+VALUE_SHAPES = frozenset(("scalar-string-or-null", "date", "enum"))
+PROPERTY_STATE_FIELDS = frozenset((
+    "value", "evidence_receipt", "content_fingerprint",
+))
+SEMANTIC_FINGERPRINT_PROTOCOL = "cambium-semantic-page-v1"
 FRONTMATTER = re.compile(r"^(---\n)(.*?)(\n---\n)", re.S)
+SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 TEMP_PREFIX = ".cambium-page-state-"
 JOURNAL_NAME = "page-state-transaction.json"
 
@@ -53,11 +72,17 @@ class PageProjection:
 class ProjectionPlan:
     """One Ledger snapshot and every selected typed page target."""
 
-    __slots__ = ("ledger", "pages")
+    __slots__ = (
+        "ledger", "pages", "rules", "contract_rule_fingerprint",
+        "revalidate_contract",
+    )
 
-    def __init__(self, ledger, pages):
+    def __init__(self, ledger, pages, rules, revalidate_contract):
         self.ledger = ledger
         self.pages = tuple(pages)
+        self.rules = tuple(rules)
+        self.contract_rule_fingerprint = _rules_fingerprint(self.rules)
+        self.revalidate_contract = bool(revalidate_contract)
 
 
 class StagedProjection:
@@ -123,36 +148,288 @@ def _render_scalar(value):
     return rendered[len("value: "):].rstrip("\n")
 
 
-def project_page(text, row):
-    """Return ``(new_text, changes)`` for one page against its Ledger row."""
+def _rules_fingerprint(rules):
+    rendered = json.dumps(
+        list(rules), ensure_ascii=True, sort_keys=True,
+        separators=(",", ":")).encode("utf-8")
+    return "sha256:" + hashlib.sha256(rendered).hexdigest()
+
+
+def _projection_rules(root):
+    """Load this writer's rules through the sole contract API.
+
+    Keeping the dependency here is deliberate: page planning never parses the
+    generated JSON itself and cannot grow a second interpretation of the
+    compiler's envelope.
+    """
+    contract = metadata_execution_contract.load_metadata_execution_contract(
+        root)
+    raw_rules = metadata_execution_contract.rules_for_capability(
+        contract, WRITER_CAPABILITY)
+    if not isinstance(raw_rules, (list, tuple)) or not raw_rules:
+        raise ValueError(
+            "metadata execution contract authorizes no %s rules" %
+            WRITER_CAPABILITY)
+    rules = []
+    seen = set()
+    for index, rule in enumerate(raw_rules):
+        if not isinstance(rule, dict):
+            raise ValueError("field_rules[%d] must be a mapping" % index)
+        field = rule.get("field")
+        if not isinstance(field, str) or not field.strip():
+            raise ValueError(
+                "field_rules[%d] field must be a non-empty string" % index)
+        if field in seen:
+            raise ValueError(
+                "metadata execution contract repeats page projection for %s" %
+                field)
+        seen.add(field)
+        adapter = rule.get("source_adapter")
+        if adapter not in frozenset((ROW_VALUE_ADAPTER,)).union(
+                PROPERTY_VALUE_ADAPTERS):
+            raise ValueError(
+                "page projection field %s uses unsupported source adapter %r" %
+                (field, adapter))
+        _validate_value_rule(rule, field)
+        _reconcile_policy(rule, field)
+        rules.append(dict(rule))
+    return tuple(rules)
+
+
+def _reconcile_policy(rule, field):
+    """Resolve the two closed reconciliation protocols this writer ships."""
+    raw = rule.get("reconcile_policy")
+    if raw == EXISTING_COPY_POLICY:
+        return "if-present"
+    if raw == UPSERT_EXACT_OR_REMOVE_POLICY:
+        return "exact"
+    raise ValueError(
+        "page projection field %s has unsupported reconcile policy %r" %
+        (field, raw))
+
+
+def _validate_value_rule(rule, field):
+    shape = rule.get("value_shape")
+    if shape not in VALUE_SHAPES:
+        raise ValueError(
+            "page projection field %s has unsupported value_shape %r" %
+            (field, shape))
+    allowed = rule.get("allowed_values")
+    if shape == "enum":
+        if (not isinstance(allowed, list) or not allowed or
+                not all(isinstance(value, str) for value in allowed) or
+                len(allowed) != len(set(allowed))):
+            raise ValueError(
+                "page projection field %s enum has no closed "
+                "allowed_values" % field)
+    elif "allowed_values" in rule and allowed is not None:
+        raise ValueError(
+            "page projection field %s declares allowed_values outside enum" %
+            field)
+    return shape
+
+
+def semantic_content_fingerprint(relative, text, rules):
+    """Hash page semantics while excluding every contract-managed copy.
+
+    Frontmatter is canonicalized as data so key order and scalar quoting are
+    not treated as a substantive edit.  The body bytes and canonical path are
+    bound exactly.  The exclusion set is derived solely from ``rules``;
+    adding a new machine projection therefore cannot accidentally invalidate
+    its own review/content-change evidence.
+    """
     match = FRONTMATTER.match(text)
-    if not match:
-        return text, []
-    frontmatter = match.group(2)
-    fields = _frontmatter_mapping(text, str(row.get("path") or "<page>"))
+    projected = {
+        rule.get("field") for rule in rules if isinstance(rule, dict)
+    }
+    if match:
+        fields = _frontmatter_mapping(text, relative)
+        semantic_fields = {
+            name: value for name, value in fields.items()
+            if name not in projected
+        }
+        body = text[match.end():]
+    else:
+        # A legacy/body-only Markdown page still has semantic content even
+        # though there is no page-side projection surface yet.  Its owner
+        # state may therefore be bound and invalidated without fabricating a
+        # frontmatter block; applicability/write-back remains a separate
+        # contract decision.
+        semantic_fields = {}
+        body = text
+    canonical_frontmatter = json.dumps(
+        semantic_fields, ensure_ascii=False, sort_keys=True,
+        separators=(",", ":"))
+    material = (
+        SEMANTIC_FINGERPRINT_PROTOCOL + "\0" + relative + "\0" +
+        canonical_frontmatter + "\0" + body
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(material).hexdigest()
+
+
+def _property_states(row, rules, relative):
+    state = row.get("property_state")
+    if state is None:
+        return {}
+    if not isinstance(state, dict):
+        raise ValueError(
+            "Coverage property_state for %s must be a mapping" % relative)
+    allowed = {
+        rule.get("field") for rule in rules
+        if rule.get("source_adapter") in PROPERTY_VALUE_ADAPTERS
+    }
+    extra = sorted(set(state) - allowed)
+    if extra:
+        raise ValueError(
+            "Coverage property_state for %s has undeclared field(s): %s" %
+            (relative, ", ".join(extra)))
+    return state
+
+
+def _date_value(value, field, relative):
+    if not isinstance(value, str) or not re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+        raise ValueError(
+            "Coverage property_state.%s value for %s must be YYYY-MM-DD" %
+            (field, relative))
+    try:
+        datetime.date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(
+            "Coverage property_state.%s value for %s is not a calendar date" %
+            (field, relative)) from exc
+    return value
+
+
+def _typed_owner_value(value, rule, relative):
+    field = rule["field"]
+    shape = _validate_value_rule(rule, field)
+    if shape == "scalar-string-or-null":
+        if value is not None and not isinstance(value, str):
+            raise ValueError(
+                "Coverage owner value %s for %s must be a string or null" %
+                (field, relative))
+        return value
+    if shape == "date":
+        return _date_value(value, field, relative)
+    if not isinstance(value, str) or value not in rule["allowed_values"]:
+        raise ValueError(
+            "Coverage owner value %s for %s must be one of %s; found %r" %
+            (field, relative, ", ".join(rule["allowed_values"]), value))
+    return value
+
+
+def _owner_value(row, rule, relative, semantic_fingerprint,
+                 property_states):
+    field = rule["field"]
+    adapter = rule["source_adapter"]
+    if adapter == ROW_VALUE_ADAPTER:
+        if field not in row:
+            raise ValueError(
+                "Coverage row for %s has no canonical owner value for %s" %
+                (relative, field))
+        return True, _typed_owner_value(row[field], rule, relative)
+
+    record = property_states.get(field)
+    if record is None:
+        return False, None
+    if not isinstance(record, dict):
+        raise ValueError(
+            "Coverage property_state.%s for %s must be a mapping" %
+            (field, relative))
+    missing = sorted(PROPERTY_STATE_FIELDS - set(record))
+    extra = sorted(set(record) - PROPERTY_STATE_FIELDS)
+    if missing or extra:
+        details = []
+        if missing:
+            details.append("missing %s" % ", ".join(missing))
+        if extra:
+            details.append("undeclared %s" % ", ".join(extra))
+        raise ValueError(
+            "Coverage property_state.%s for %s is not closed (%s)" %
+            (field, relative, "; ".join(details)))
+    receipt = record.get("evidence_receipt")
+    if not isinstance(receipt, str) or not receipt.strip():
+        raise ValueError(
+            "Coverage property_state.%s for %s has no evidence_receipt" %
+            (field, relative))
+    fingerprint = record.get("content_fingerprint")
+    if not isinstance(fingerprint, str) or not SHA256_RE.fullmatch(
+            fingerprint):
+        raise ValueError(
+            "Coverage property_state.%s for %s has no valid "
+            "content_fingerprint" % (field, relative))
+    if fingerprint != semantic_fingerprint:
+        raise ValueError(
+            "Coverage property_state.%s for %s is bound to stale content "
+            "(%s, current %s)" %
+            (field, relative, fingerprint, semantic_fingerprint))
+    raw_value = record.get("value")
+    if raw_value is None:
+        if rule.get("invalidation_rule") != CONTENT_CHANGE_TOMBSTONE_RULE:
+            raise ValueError(
+                "Coverage property_state.%s for %s uses an unauthorized "
+                "null tombstone" % (field, relative))
+        return True, None
+    value = _typed_owner_value(raw_value, rule, relative)
+    return True, value
+
+
+def project_page(text, row, rules, authorized_owner_removals=()):
+    """Return ``(new_text, changes)`` for one page and compiled rule set."""
+    match = FRONTMATTER.match(text)
+    relative = str(row.get("path") or "<page>")
+    frontmatter = match.group(2) if match else ""
+    fields = _frontmatter_mapping(text, relative) if match else {}
+    fingerprint = semantic_content_fingerprint(relative, text, rules)
+    property_states = _property_states(row, rules, relative)
+    removal_fields = set(authorized_owner_removals)
     changes = []
-    for name in PROJECTION_FIELDS:
-        if name not in fields:
+    for rule in rules:
+        name = rule["field"]
+        reconcile = _reconcile_policy(rule, name)
+        owner_exists, owner_value = _owner_value(
+            row, rule, relative, fingerprint, property_states)
+        if not owner_exists:
+            if name in fields:
+                if name in removal_fields:
+                    if (rule.get("source_adapter") not in
+                            PROPERTY_VALUE_ADAPTERS or
+                            rule.get("invalidation_rule") !=
+                            CONTENT_CHANGE_REMOVE_OWNER_RULE):
+                        raise ValueError(
+                            "page projection removal of %s for %s is not "
+                            "authorized by its compiled invalidation rule" %
+                            (name, relative))
+                    frontmatter = re.sub(
+                        r"^%s:.*\n?" % re.escape(name), "", frontmatter,
+                        count=1, flags=re.M)
+                    changes.append((name, fields[name], None))
+                    continue
+                raise ValueError(
+                    "Coverage row for %s has no evidence-backed owner state "
+                    "for persisted %s" % (relative, name))
             continue
+        if name not in fields and reconcile == "if-present":
+            continue
+        page_value = fields.get(name)
         pattern = _field_pattern(name)
-        found = pattern.search(frontmatter)
-        if not found:
+        found = pattern.search(frontmatter) if name in fields else None
+        if name in fields and not found:
             raise ValueError(
                 "%s declares top-level %s but its source line cannot be "
-                "located" % (row.get("path") or "<page>", name)
-            )
-        page_value = fields[name]
-        owner_value = row.get(name)
+                "located" % (relative, name))
         if owner_value is None or owner_value == "":
-            frontmatter = re.sub(
-                r"^%s:.*\n?" % re.escape(name), "", frontmatter, count=1,
-                flags=re.M)
-            changes.append((name, page_value, None))
-        elif not isinstance(owner_value, str):
-            raise ValueError(
-                "Coverage %s for %s must be null or a string" %
-                (name, row.get("path") or "<page>")
-            )
+            if name in fields:
+                frontmatter = re.sub(
+                    r"^%s:.*\n?" % re.escape(name), "", frontmatter,
+                    count=1, flags=re.M)
+                changes.append((name, page_value, None))
+        elif name not in fields:
+            rendered = "%s: %s" % (name, _render_scalar(owner_value))
+            frontmatter = (frontmatter + "\n" + rendered
+                           if frontmatter else rendered)
+            changes.append((name, None, owner_value))
         elif page_value != owner_value:
             frontmatter = pattern.sub(
                 "%s: %s" % (name, _render_scalar(owner_value)),
@@ -160,18 +437,24 @@ def project_page(text, row):
             changes.append((name, page_value, owner_value))
     if not changes:
         return text, []
-    projected = match.group(1) + frontmatter + match.group(3) + \
-        text[match.end():]
-    _frontmatter_mapping(projected, str(row.get("path") or "<page>"))
+    if match:
+        projected = match.group(1) + frontmatter + match.group(3) + \
+            text[match.end():]
+    else:
+        # A property-state upsert is allowed to materialize the smallest
+        # valid frontmatter block.  Existing-copy-only rules still skip
+        # absent fields above, so this does not turn legacy row projections
+        # into implicit page creation.
+        projected = "---\n" + frontmatter + "\n---\n" + text
+    _frontmatter_mapping(projected, relative)
     return projected, changes
 
 
-def _ledger_rows(snapshot):
+def _ledger_rows(document, rules):
     """Load the closed page-path projection needed by this writer."""
-    ledger = kblib.parse_yaml_subset(snapshot.read_text())
-    if not isinstance(ledger, dict):
+    if not isinstance(document, dict):
         raise ValueError("Coverage Ledger must be a mapping")
-    pages = ledger.get("pages")
+    pages = document.get("pages")
     if not isinstance(pages, list):
         raise ValueError("Coverage Ledger pages must be an explicit list")
     rows = {}
@@ -184,6 +467,7 @@ def _ledger_rows(snapshot):
             raise ValueError("%s path must be a non-empty string" % label)
         if relative in rows:
             raise ValueError("Coverage repeats page path %s" % relative)
+        _property_states(row, rules, relative)
         rows[relative] = row
     return rows
 
@@ -231,10 +515,30 @@ def _restored_before_image(before, after):
     )
 
 
-def _build_plan(root, selected_pages):
-    """Read each authority exactly once and return one validated plan."""
+def _build_plan(root, selected_pages, ledger_override=None, rules=None,
+                authorized_owner_removals=None):
+    """Read each authority exactly once and return one validated plan.
+
+    ``ledger_override`` is a proposed complete Coverage mapping.  It lets the
+    Integrator derive page after-images from the same proposed owner state it
+    is about to transact, without publishing Coverage early.  The live Ledger
+    snapshot is still retained in the plan as the compare-and-swap before
+    image.
+    """
+    if (rules is not None and not isinstance(
+            rules, metadata_execution_contract.AuthorizedProjectionRules)):
+        raise ValueError(
+            "explicit projection rules must come from one authorized typed "
+            "Profile composition")
+    contract_bound = rules is None
+    active_rules = tuple(rules if rules is not None else
+                         _projection_rules(root))
+    if not active_rules:
+        raise ValueError("page projection requires at least one compiled rule")
     ledger = _ledger_snapshot(root)
-    rows = _ledger_rows(ledger)
+    document = (kblib.parse_yaml_subset(ledger.read_text())
+                if ledger_override is None else ledger_override)
+    rows = _ledger_rows(document, active_rules)
     selected = selected_pages if selected_pages else sorted(rows)
     unknown = [page for page in (selected_pages or []) if page not in rows]
     if unknown:
@@ -243,19 +547,71 @@ def _build_plan(root, selected_pages):
         raise ValueError("selected pages must not contain duplicates")
 
     pages = []
+    removals = authorized_owner_removals or {}
+    if (not isinstance(removals, dict) or
+            any(not isinstance(path, str) or not isinstance(fields, (list, tuple))
+                for path, fields in removals.items())):
+        raise TypeError(
+            "authorized_owner_removals must map page paths to field lists")
+    unknown_removal_paths = sorted(set(removals) - set(selected))
+    if unknown_removal_paths:
+        raise ValueError(
+            "authorized owner removals name unselected pages: %s" %
+            ", ".join(unknown_removal_paths))
+    rules_by_field = {rule.get("field"): rule for rule in active_rules}
+    for relative, fields in removals.items():
+        if (list(fields) != sorted(set(fields)) or
+                any(not isinstance(field, str) or not field
+                    for field in fields)):
+            raise ValueError(
+                "authorized owner removals for %s must be a sorted unique "
+                "field list" % relative)
+        for field in fields:
+            rule = rules_by_field.get(field)
+            if (not isinstance(rule, dict) or
+                    rule.get("source_adapter") not in
+                    PROPERTY_VALUE_ADAPTERS or
+                    rule.get("invalidation_rule") !=
+                    CONTENT_CHANGE_REMOVE_OWNER_RULE):
+                raise ValueError(
+                    "authorized owner removal %s/%s is outside the compiled "
+                    "semantic-content invalidation rules" %
+                    (relative, field))
     for relative in selected:
         snapshot = _page_snapshot(root, relative)
         if not snapshot.exists:
+            property_states = _property_states(
+                rows[relative], active_rules, relative)
+            if property_states:
+                raise ValueError(
+                    "Coverage has current property_state for unmaterialized "
+                    "page %s" % relative)
             pages.append(PageProjection(relative, snapshot, None, ()))
             continue
         text = snapshot.read_text()
-        new_text, changes = project_page(text, rows[relative])
+        new_text, changes = project_page(
+            text, rows[relative], active_rules,
+            authorized_owner_removals=removals.get(relative, ()))
         after_data = new_text.encode("utf-8")
         if changes:
             # The after-image must pass the same parser before staging.
             _frontmatter_mapping(new_text, relative)
         pages.append(PageProjection(relative, snapshot, after_data, changes))
-    return ProjectionPlan(ledger, pages)
+    return ProjectionPlan(
+        ledger, pages, active_rules, revalidate_contract=contract_bound)
+
+
+def build_projection_plan(root, selected_pages=None, ledger_override=None,
+                          rules=None, authorized_owner_removals=None):
+    """Public pure planning API for a caller that owns the writer lock.
+
+    This function performs no write and takes no lock.  A state Integrator may
+    pass a proposed Coverage mapping and explicit already-authorized rules,
+    then stage the returned page after-images inside its broader transaction.
+    """
+    return _build_plan(
+        root, selected_pages, ledger_override=ledger_override, rules=rules,
+        authorized_owner_removals=authorized_owner_removals)
 
 
 def _report_plan(plan, apply):
@@ -571,9 +927,11 @@ def _restore_staged(root, staged):
             if (not current.exists or
                     current.dev != staged.stage_dev or
                     current.ino != staged.stage_ino or
-                    current.mode != staged.stage_mode):
+                    current.mode != staged.stage_mode or
+                    current.data != staged.projection.after_data):
                 raise OSError(errno.EAGAIN,
-                              "published page identity changed before rollback",
+                              "published page identity or bytes changed before "
+                              "rollback",
                               staged.projection.relative)
             named = os.stat(basename, dir_fd=parent_fd,
                             follow_symlinks=False)
@@ -594,15 +952,18 @@ def _restore_staged(root, staged):
                 getattr(os, "O_CLOEXEC", 0), dir_fd=parent_fd)
             try:
                 held_after = os.fstat(held_after_fd)
+                held_after_data = _read_exact_descriptor(held_after_fd)
                 named_after = os.stat(basename, dir_fd=parent_fd,
                                       follow_symlinks=False)
                 if ((held_after.st_dev, held_after.st_ino) !=
                         (staged.stage_dev, staged.stage_ino) or
                         (named_after.st_dev, named_after.st_ino) !=
-                        (held_after.st_dev, held_after.st_ino)):
+                        (held_after.st_dev, held_after.st_ino) or
+                        held_after_data != staged.projection.after_data):
                     raise OSError(
                         errno.EAGAIN,
-                        "published page changed during rollback claim",
+                        "published page identity or bytes changed during "
+                        "rollback claim",
                         staged.projection.relative)
                 os.unlink(basename, dir_fd=parent_fd)
             finally:
@@ -729,6 +1090,8 @@ def _operation_evidence(transaction_id, plan, status):
         "action": "apply-page-state-projection",
         "transaction_id": transaction_id,
         "status": status,
+        "metadata_execution_rule_fingerprint":
+            plan.contract_rule_fingerprint,
         "coverage_ledger": {
             "path": COVERAGE_LEDGER_PATH,
             "before": _snapshot_evidence(plan.ledger),
@@ -760,7 +1123,19 @@ def _write_recovery_evidence(lease, operation):
     owner_path = os.path.join(lock_path, "owner.json")
     with open(owner_path, encoding="utf-8") as handle:
         owner = json.load(handle)
-    owner["operation"] = operation
+    outer = owner.get("operation")
+    if (isinstance(outer, dict) and
+            outer.get("tool") != TOOL and
+            operation.get("tool") == TOOL):
+        # A composite Integrator owns the lock and the state transaction.
+        # Preserve its recovery identity and nest this page subtransaction;
+        # replacing the outer operation would orphan Coverage/Queue rollback
+        # evidence the moment page staging begins.
+        outer = dict(outer)
+        outer["page_projection_transaction"] = operation
+        owner["operation"] = outer
+    else:
+        owner["operation"] = operation
     kblib.atomic_write_text(
         owner_path, json.dumps(owner, sort_keys=True) + "\n",
         validator=json.loads)
@@ -784,12 +1159,20 @@ def _remove_recovery_journal(lease):
         os.close(fd)
 
 
-def _revalidate_plan_inputs(root, plan):
-    current_ledger = _ledger_snapshot(root)
-    if not _same_target(plan.ledger, current_ledger):
-        raise OSError(errno.EAGAIN,
-                      "Coverage Ledger changed during projection",
-                      COVERAGE_LEDGER_PATH)
+def _revalidate_plan_inputs(root, plan, include_ledger=True):
+    if plan.revalidate_contract:
+        current_rules = _projection_rules(root)
+        current_fingerprint = _rules_fingerprint(current_rules)
+        if current_fingerprint != plan.contract_rule_fingerprint:
+            raise OSError(
+                errno.EAGAIN,
+                "metadata execution contract changed during projection")
+    if include_ledger:
+        current_ledger = _ledger_snapshot(root)
+        if not _same_target(plan.ledger, current_ledger):
+            raise OSError(errno.EAGAIN,
+                          "Coverage Ledger changed during projection",
+                          COVERAGE_LEDGER_PATH)
     for page in plan.pages:
         if page.snapshot.exists:
             continue
@@ -798,6 +1181,220 @@ def _revalidate_plan_inputs(root, plan):
             raise OSError(errno.EAGAIN,
                           "unmaterialized page changed during projection",
                           page.relative)
+
+
+def _verify_published_after_image(root, staged):
+    """Prove one live page still belongs exactly to this transaction."""
+    if not staged.published:
+        raise ValueError(
+            "%s has not been published" % staged.projection.relative)
+    parent_fd, basename = _open_parent(root, staged.projection.relative)
+    try:
+        named = os.stat(basename, dir_fd=parent_fd, follow_symlinks=False)
+        stage_data = _read_exact_descriptor(staged.stage_fd)
+        descriptor = os.fstat(staged.stage_fd)
+        if (not stat.S_ISREG(named.st_mode) or named.st_nlink != 1 or
+                (named.st_dev, named.st_ino, named.st_mode) !=
+                (staged.stage_dev, staged.stage_ino, staged.stage_mode) or
+                (descriptor.st_dev, descriptor.st_ino,
+                 descriptor.st_mode) !=
+                (staged.stage_dev, staged.stage_ino, staged.stage_mode) or
+                descriptor.st_nlink != 1 or
+                stage_data != staged.projection.after_data):
+            raise OSError(
+                errno.EAGAIN,
+                "published page no longer matches the transaction after-image",
+                staged.projection.relative)
+    finally:
+        os.close(parent_fd)
+
+
+class ProjectionTransaction:
+    """Prepared page subtransaction owned by an outer writer lock.
+
+    ``publish`` deliberately retains every original inode.  The outer
+    Integrator may therefore write/validate Coverage, Queue and receipts in
+    one recovery window, then call ``commit`` to discard the page backups or
+    ``rollback`` to restore them.  This object never acquires the lock and
+    never marks it reconciled; the outer transaction owns that decision.
+    """
+
+    __slots__ = (
+        "root", "plan", "lease", "transaction_id", "staged",
+        "operation", "state",
+    )
+
+    def __init__(self, root, plan, lease, transaction_id, staged, operation):
+        self.root = root
+        self.plan = plan
+        self.lease = lease
+        self.transaction_id = transaction_id
+        self.staged = staged
+        self.operation = operation
+        self.state = "staged"
+
+    def _record(self, status):
+        self.operation["status"] = status
+        self.operation["published"] = [
+            item.projection.relative for item in self.staged
+            if item.published
+        ]
+        _refresh_artifact_evidence(self.operation, self.staged)
+        _write_recovery_evidence(self.lease, self.operation)
+
+    def publish(self):
+        """Publish all page after-images, retaining rollback images.
+
+        The live Ledger may already be the outer transaction's proposed
+        after-image, so this phase revalidates the contract and page namespace
+        but leaves owner-state revalidation to that outer transaction.
+        """
+        if self.state != "staged":
+            raise ValueError(
+                "projection transaction cannot publish from %s" % self.state)
+        try:
+            _revalidate_plan_inputs(
+                self.root, self.plan, include_ledger=False)
+            self.state = "publishing"
+            for item in self.staged:
+                _publish_staged(self.root, item)
+                self._record("publishing")
+            _revalidate_plan_inputs(
+                self.root, self.plan, include_ledger=False)
+            self.state = "published"
+            self._record("published-awaiting-outer-commit")
+        except Exception as exc:
+            self.state = "publish-failed"
+            self.operation["failure"] = str(exc)
+            try:
+                self._record("rollback-required")
+            except Exception as evidence_error:
+                self.operation["recovery_evidence_failure"] = str(
+                    evidence_error)
+            raise
+
+    def rollback(self):
+        """Restore exact page before-images; never mark the outer lock clean."""
+        if self.state in (
+                "rolled-back", "committed", "commit-cleanup-failed"):
+            raise ValueError(
+                "projection transaction cannot rollback from %s" % self.state)
+        failures = []
+        claimed_ids = set()
+        for item in reversed(self.staged):
+            if not item.claimed:
+                continue
+            claimed_ids.add(id(item))
+            try:
+                _restore_staged(self.root, item)
+            except Exception as exc:
+                failures.append(
+                    "%s: %s" % (item.projection.relative, exc))
+            finally:
+                failures.extend(_cleanup_stage(
+                    item, remove_backup=not item.claimed,
+                    close_parent=True))
+        for item in self.staged:
+            if id(item) in claimed_ids:
+                continue
+            failures.extend(_cleanup_stage(
+                item, remove_backup=False, close_parent=True))
+        if failures:
+            self.state = "rollback-failed"
+            self.operation["rollback_failures"] = failures
+            try:
+                self._record("rollback-required")
+            except Exception as evidence_error:
+                failures.append("recovery evidence: %s" % evidence_error)
+            raise ValueError(
+                "page projection rollback is incomplete: %s" %
+                "; ".join(failures))
+        _remove_recovery_journal(self.lease)
+        self.state = "rolled-back"
+
+    def commit(self):
+        """Prove all after-images, then discard retained rollback images."""
+        if self.state != "published":
+            raise ValueError(
+                "projection transaction cannot commit from %s" % self.state)
+        try:
+            _revalidate_plan_inputs(
+                self.root, self.plan, include_ledger=False)
+            for item in self.staged:
+                _verify_published_after_image(self.root, item)
+        except Exception as exc:
+            self.operation["failure"] = str(exc)
+            self._record("rollback-required")
+            raise
+        self._record("committed-cleanup")
+        failures = []
+        for item in self.staged:
+            failures.extend(_cleanup_stage(item, remove_backup=True))
+        if failures:
+            self.state = "commit-cleanup-failed"
+            self.operation["cleanup_failures"] = failures
+            self._record("committed-cleanup-required")
+            raise ValueError(
+                "page projection committed but cleanup is incomplete: %s" %
+                "; ".join(failures))
+        _remove_recovery_journal(self.lease)
+        self.state = "committed"
+
+
+def stage_projection_plan(root, plan, lease, transaction_id=None):
+    """Stage a plan under an existing lease and return its transaction."""
+    transaction_id = transaction_id or (
+        "page-state-" + uuid.uuid4().hex)
+    journal_path = os.path.join(os.fspath(lease), JOURNAL_NAME)
+    if os.path.lexists(journal_path):
+        raise ValueError(
+            "page projection recovery journal already exists")
+    changed = [page for page in plan.pages if page.changed]
+    staged = []
+    operation = _operation_evidence(
+        transaction_id, plan, "planned")
+    try:
+        _write_recovery_evidence(lease, operation)
+        for page in changed:
+            staged.append(_stage_page(root, page))
+            operation["status"] = "staging"
+            _refresh_artifact_evidence(operation, staged)
+            _write_recovery_evidence(lease, operation)
+        _revalidate_plan_inputs(root, plan, include_ledger=True)
+        operation["status"] = "staged"
+        _refresh_artifact_evidence(operation, staged)
+        _write_recovery_evidence(lease, operation)
+        return ProjectionTransaction(
+            root, plan, lease, transaction_id, staged, operation)
+    except Exception as original:
+        failures = []
+        for item in staged:
+            failures.extend(_cleanup_stage(
+                item, remove_backup=False, close_parent=True))
+        if failures:
+            operation["status"] = "rollback-required"
+            operation["failure"] = str(original)
+            operation["rollback_failures"] = failures
+            _refresh_artifact_evidence(operation, staged)
+            try:
+                _write_recovery_evidence(lease, operation)
+            except Exception as evidence_error:
+                failures.append("recovery evidence: %s" % evidence_error)
+            raise ValueError(
+                "page projection staging failed and cleanup is incomplete: "
+                "%s; %s" % (original, "; ".join(failures)))
+        try:
+            _remove_recovery_journal(lease)
+        except Exception as cleanup_error:
+            operation["status"] = "rollback-required"
+            operation["failure"] = str(original)
+            operation["rollback_failures"] = [
+                "journal cleanup: %s" % cleanup_error]
+            _write_recovery_evidence(lease, operation)
+            raise ValueError(
+                "page projection staging failed and journal cleanup is "
+                "incomplete: %s; %s" % (original, cleanup_error))
+        raise
 
 
 def _publish_page(root, relative, snapshot, new_text):
@@ -820,114 +1417,45 @@ def _publish_page(root, relative, snapshot, new_text):
 
 
 def _apply_plan(root, plan, lease, transaction_id):
-    changed = [page for page in plan.pages if page.changed]
-    staged = []
-    publication_started = False
-    committed = False
-    operation = _operation_evidence(transaction_id, plan, "planned")
+    """CLI wrapper over the same subtransaction the Integrator composes."""
+    transaction = None
     try:
-        _write_recovery_evidence(lease, operation)
-        for page in changed:
-            staged.append(_stage_page(root, page))
-            # Persist each random artifact name before staging the next page.
-            # A hard exit can therefore always map every durable temporary
-            # inode that already exists back to its canonical page.
-            operation["status"] = "staging"
-            _refresh_artifact_evidence(operation, staged)
-            _write_recovery_evidence(lease, operation)
-        _revalidate_plan_inputs(root, plan)
-        operation["status"] = "staged"
-        _refresh_artifact_evidence(operation, staged)
-        _write_recovery_evidence(lease, operation)
-
-        for item in staged:
-            publication_started = True
-            _publish_staged(root, item)
-            operation["status"] = "publishing"
-            operation["published"] = [
-                candidate.projection.relative for candidate in staged
-                if candidate.published
-            ]
-            _refresh_artifact_evidence(operation, staged)
-            _write_recovery_evidence(lease, operation)
-
-        # A late Ledger or safely-missing target change invalidates the whole
-        # projection and enters the same exact rollback path.
-        _revalidate_plan_inputs(root, plan)
-        operation["status"] = "committed-cleanup"
-        _refresh_artifact_evidence(operation, staged)
-        _write_recovery_evidence(lease, operation)
-        committed = True
-        cleanup_failures = []
-        for item in staged:
-            cleanup_failures.extend(_cleanup_stage(item, remove_backup=True))
-        if cleanup_failures:
-            raise OSError(errno.EIO, "; ".join(cleanup_failures))
-        _remove_recovery_journal(lease)
-        return
+        transaction = stage_projection_plan(
+            root, plan, lease, transaction_id)
+        transaction.publish()
+        # Standalone projection keeps Coverage unchanged.  Re-prove that owner
+        # snapshot after page publication and before the commit point; the
+        # composite Integrator performs this check inside its broader state
+        # validation instead.
+        _revalidate_plan_inputs(root, plan, include_ledger=True)
+        transaction.commit()
     except Exception as original:
-        rollback_failures = []
-        claimed = [item for item in staged if item.claimed]
-        if publication_started and not committed:
-            for item in reversed(claimed):
-                if not item.claimed:
-                    continue
-                try:
-                    _restore_staged(root, item)
-                except Exception as exc:
-                    rollback_failures.append(
-                        "%s: %s" % (item.projection.relative, exc))
-                finally:
-                    rollback_failures.extend(_cleanup_stage(
-                        item, remove_backup=not item.claimed,
-                        close_parent=True))
-        if not committed:
-            claimed_ids = {id(item) for item in claimed}
-            for item in staged:
-                if id(item) in claimed_ids:
-                    continue
-                rollback_failures.extend(_cleanup_stage(
-                    item, remove_backup=False))
-
-        if committed:
-            operation["status"] = "committed-cleanup-required"
-            operation["failure"] = str(original)
-            operation["cleanup_failures"] = rollback_failures
-            try:
-                _write_recovery_evidence(lease, operation)
-            except Exception as evidence_error:
-                rollback_failures.append(
-                    "recovery evidence: %s" % evidence_error)
+        if transaction is None:
+            # Staging removes its journal only after proving that every staged
+            # artifact was cleaned.  Absence therefore authorizes the outer
+            # lock cleanup; presence deliberately retains recovery state.
+            if not os.path.exists(os.path.join(
+                    os.fspath(lease), JOURNAL_NAME)):
+                lease.mark_reconciled()
+            raise
+        if transaction.state == "commit-cleanup-failed":
             raise ValueError(
                 "projection committed but recovery cleanup is incomplete: "
-                "%s; %s" %
-                (original, "; ".join(rollback_failures) or "inspect journal"))
-
-        if not rollback_failures:
-            try:
-                _remove_recovery_journal(lease)
-            except Exception as exc:
-                rollback_failures.append("journal cleanup: %s" % exc)
-        if not rollback_failures:
-            lease.mark_reconciled()
-            raise
-
-        operation["status"] = "rollback-required"
-        operation["failure"] = str(original)
-        operation["rollback_failures"] = rollback_failures
-        _refresh_artifact_evidence(operation, staged)
+                "%s; inspect journal" % original)
         try:
-            _write_recovery_evidence(lease, operation)
-        except Exception as evidence_error:
-            rollback_failures.append("recovery evidence: %s" % evidence_error)
-        raise ValueError(
-            "projection failed and rollback is incomplete: %s; %s" %
-            (original, "; ".join(rollback_failures)))
+            transaction.rollback()
+        except Exception as rollback_error:
+            raise ValueError(
+                "projection failed and rollback is incomplete: %s; %s" %
+                (original, rollback_error)) from original
+        lease.mark_reconciled()
+        raise
 
 
 def main(argv=None):
     parser = kblib.ArgumentParser(
-        description="Project Ledger-owned state onto page frontmatter")
+        description="Project metadata-contract owner state onto page "
+                    "frontmatter")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--page", action="append", default=None,
                         help="limit to these repository-relative pages "

@@ -32,6 +32,7 @@ import contextlib
 import copy
 import importlib.util
 import io
+import json
 import subprocess
 import sys
 import tempfile
@@ -143,6 +144,7 @@ PAGE = {
     "batch": None,
     "next_batch": "%s-B0" % TASK_ID,
     "gate_receipts": [],
+    "property_state": {},
     "deferred_reason": None,
     "reentry_condition": None,
 }
@@ -164,7 +166,10 @@ class TaskPlanTransactionTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name) / "repo"
+        # macOS spells tempfile roots through /var while resolved children use
+        # /private/var.  Keep the fixture root in the same canonical namespace
+        # as the repository paths resolved by the production loaders.
+        self.root = Path(self.tmp.name).resolve() / "repo"
         install_loadable_profile(self.root, profile_id="sample")
         for relative, text in ((READ_SET, READ_SET_TEXT), (CARD, CARD_TEXT),
                                (OTHER_CARD, CARD_TEXT),
@@ -490,6 +495,87 @@ class TaskPlanTransactionTests(unittest.TestCase):
             "boundary may be crossed; the state it writes is consumed by "
             "gates that already exist")
         self.assertEqual(TASK_ID, record["task_id"])
+
+    def test_existing_page_properties_are_derived_as_legacy_not_asserted(self):
+        page_path = self.root / PAGE["path"]
+        page_path.parent.mkdir(parents=True, exist_ok=True)
+        page_path.write_text(
+            "---\ntitle: First\nlast_reviewed: 2026-07-31\n---\nBody\n",
+            encoding="utf-8")
+        self.write_plan(self.plan())
+
+        prepared = apply_task_plan.prepare(str(self.root), PLAN_RELATIVE)
+        coverage = kblib.parse_yaml_subset(
+            prepared["after_text"]["coverage"])
+        row = coverage["pages"][0]
+        self.assertEqual({}, row["property_state"])
+        self.assertEqual({
+            "last_reviewed": {
+                "status": "legacy-unverified",
+                "value": "2026-07-31",
+            },
+        }, row["legacy_property_state"])
+        adoption = prepared["property_adoption"]
+        self.assertEqual(1, adoption["count"])
+        self.assertEqual(
+            kblib.sha256_file(page_path),
+            adoption["records"][0]["before_page_sha256"])
+
+        self.assertEqual(0, self.run_tool(apply=True), self.printed)
+        receipt = json.loads((
+            self.root / apply_task_plan.RECEIPT_PATH).read_text(
+                encoding="utf-8").splitlines()[-1])
+        self.assertEqual(
+            adoption["records"], receipt["property_state_adoption_records"])
+        self.assertEqual(
+            adoption["set_sha256"],
+            receipt["property_state_adoption_set_sha256"])
+        self.assertEqual(
+            adoption["metadata_execution_contract_fingerprint"],
+            receipt["metadata_execution_contract_fingerprint"])
+        self.assertNotIn(
+            "last_reviewed",
+            kblib.parse_yaml_subset(kblib.extract_frontmatter(
+                page_path.read_text(encoding="utf-8"))),
+            "initial adoption must retire the unowned page-side copy in the "
+            "same transaction that records the legacy observation")
+
+    def test_property_adoption_page_snapshot_is_rechecked_under_lock(self):
+        page_path = self.root / PAGE["path"]
+        page_path.parent.mkdir(parents=True, exist_ok=True)
+        page_path.write_text(
+            "---\nlast_reviewed: 2026-07-31\n---\nBody\n",
+            encoding="utf-8")
+        self.write_plan(self.plan())
+        prepared = apply_task_plan.prepare(str(self.root), PLAN_RELATIVE)
+        before = {
+            relative: self.state_sha(relative)
+            for relative in (
+                check_queue.COVERAGE_PATH, check_queue.PROGRESS_PATH)
+        }
+        page_path.write_text(
+            "---\nlast_reviewed: 2026-08-01\n---\nBody\n",
+            encoding="utf-8")
+
+        with self.assertRaisesRegex(
+                apply_task_plan.Refusal,
+                "changed between planning and commit"):
+            apply_task_plan.commit(
+                prepared, self.root / apply_task_plan.RECEIPT_PATH)
+        for relative, fingerprint in before.items():
+            self.assertEqual(fingerprint, self.state_sha(relative))
+
+    def test_plan_cannot_supply_its_own_legacy_marker(self):
+        plan = self.plan()
+        plan["coverage_after"]["pages"][0]["legacy_property_state"] = {
+            "last_reviewed": {
+                "status": "legacy-unverified",
+                "value": "2026-07-31",
+            },
+        }
+        self.assertIn(
+            "may not claim legacy property observations",
+            self.prepare_error(plan))
 
     # ---- the refusals that keep it from becoming a back door ------------
 

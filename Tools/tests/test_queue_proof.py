@@ -1065,6 +1065,42 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
 
         self.rewrite_register_record(self.corpus_receipt_id, rebind)
 
+    def rebind_profile_execution_receipts(self, authorized_view):
+        """Re-take current runtime receipts against an authorized Profile edit.
+
+        Extension-dimension tests intentionally revise the selected Profile
+        after the completed-runtime fixture was built.  Current batch-close
+        1.11 evidence and queue transitions bind that exact Profile revision,
+        so update every already-profile-bound fixture receipt before testing
+        the Terminal Proof obligation introduced by the new registration.
+        """
+        fields = (
+            "selected_profile_manifest", "profile_snapshot_sha256",
+            "profile_contract_fingerprint", "profile_load_inputs_sha256",
+        )
+        rebound = 0
+        for register in sorted(
+                (self.root / ".cambium/receipts").rglob("*.jsonl")):
+            records = [
+                json.loads(line)
+                for line in register.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            changed = False
+            for record in records:
+                if not any(field in record for field in fields):
+                    continue
+                for field in fields:
+                    if field in record:
+                        record[field] = authorized_view[field]
+                rebound += 1
+                changed = True
+            if changed:
+                register.write_text("".join(
+                    json.dumps(record, sort_keys=True) + "\n"
+                    for record in records), encoding="utf-8")
+        self.assertGreater(rebound, 0)
+
     def rewrite_extension_dimensions(self, block):
         """Replace the selected profile's Extension Dimensions registration.
 
@@ -1091,6 +1127,7 @@ class TerminalProofCanonicalCliTests(unittest.TestCase):
             check_proof.check_queue.profile_load_authorized_view(
                 self.root, self.profile_manifest)
         if authorized_view is not None:
+            self.rebind_profile_execution_receipts(authorized_view)
             self.rebind_corpus_plan_receipt()
 
     def register_extension_dimension(self, targets="`review + receipt`"):

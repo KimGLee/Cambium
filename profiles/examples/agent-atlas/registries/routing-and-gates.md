@@ -30,6 +30,6 @@ Interface: [Routing And Gate Registry slot](../../../README.md#routing-and-gate-
 
 - Registration: Configured
 
-| Gate ID | Kernel Gate ID or repo-relative owner path, optionally `#heading` | Blocked transition/action | Pass-authority Role ID reference | Applicability predicate | Vocabulary field ID or `None` | Registered completion value(s) or `None` | Judgment Item ID reference |
-|---|---|---|---|---|---|---|---|
-| `P:agent-atlas:interview-readiness` | `kernel/K11 Expression Layer/07 Expression Migration Audit and Acceptance.md#Acceptance Criteria` | Promote `interview_status` to `interview-ready`. | `interview-reviewer` | Any registered Interview Card or bound canonical topic requesting readiness promotion. | `interview_status` | `interview-ready` | `agent-atlas-interview-readiness-acceptance` |
+| Gate ID | Kernel Gate ID or repo-relative owner path, optionally `#heading` | Blocked transition/action ID | Pass-authority Role ID reference | Applicability predicate | Vocabulary field ID or `None` | Registered completion value(s) or `None` | Judgment Item ID reference | Producer kind: `deterministic` or `manual-attestation` | Producer capability | Receipt schema | Consumer capability |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `P:agent-atlas:interview-readiness` | `kernel/K11 Expression Layer/07 Expression Migration Audit and Acceptance.md#Acceptance Criteria` | `interview-readiness-promotion` | `interview-reviewer` | Any registered Interview Card or bound canonical topic requesting readiness promotion. | `interview_status` | `interview-ready` | `agent-atlas-interview-readiness-acceptance` | `manual-attestation` | `manual-attestation-v1` | `manual-gate-attestation-v1` | `metadata-transition-integrator-v1` |

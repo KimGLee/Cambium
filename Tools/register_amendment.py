@@ -31,11 +31,11 @@ import kblib
 
 
 TOOL = "register_amendment"
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.3.0"
 RECEIPT_PATH = ".cambium/receipts/amendments.jsonl"
 OPERATIONS = (
     "scope-replan", "cancel-batch", "queue-replan",
-    "gap-routing-reconciliation",
+    "gap-routing-reconciliation", "property-state-migration",
 )
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
 
@@ -151,7 +151,8 @@ def _check_no_pending_or_duplicate(progress, amendment_id):
             )
 
 
-def _validate_cross_plan(root, runtime, operation, plan_relative):
+def _validate_cross_plan(
+        root, runtime, operation, plan_relative, profile_view):
     plan_file, plan_path, plan_raw, plan = _load_yaml(
         root, plan_relative, apply_amendment.PLAN_PREFIX,
         (".yaml", ".yml"),
@@ -179,6 +180,7 @@ def _validate_cross_plan(root, runtime, operation, plan_relative):
     current_pages, proposed_pages, changed_specs = \
         apply_amendment._validate_coverage_proposal(coverage, proposal, plan)
 
+    migration = None
     if operation == "scope-replan":
         compile_base = copy.deepcopy(queue)
         compile_base["scope_version"] = plan["scope_version_after"]
@@ -202,6 +204,19 @@ def _validate_cross_plan(root, runtime, operation, plan_relative):
         if changed_specs or structural:
             raise ValueError(
                 "gap-routing-reconciliation may not change Queue structure")
+    elif operation == "property-state-migration":
+        if proposed_pages.keys() != current_pages.keys():
+            raise ValueError(
+                "property-state-migration may not add or remove Coverage pages")
+        if changed_specs:
+            raise ValueError(
+                "property-state-migration may not change batch_specs")
+        if plan["affected_batches"]:
+            raise ValueError(
+                "property-state-migration affected_batches must be empty")
+        migration = apply_amendment._property_state_migration_plan(
+            root, current_pages, proposed_pages, plan["affected_pages"],
+            profile_view)
     else:
         cancel_id = plan["cancel_batch_id"]
         if proposed_pages.keys() != current_pages.keys():
@@ -265,6 +280,11 @@ def _validate_cross_plan(root, runtime, operation, plan_relative):
         "affected_batches": copy.deepcopy(plan["affected_batches"]),
         "cancel_batch_id": plan["cancel_batch_id"],
     }
+    if migration is not None:
+        migration_bindings = \
+            apply_amendment._property_state_migration_bindings(migration)
+        record.update(copy.deepcopy(migration_bindings))
+        bindings.update(copy.deepcopy(migration_bindings))
     artifacts = [
         {
             "relative": plan_path,
@@ -293,7 +313,7 @@ def _validate_cross_plan(root, runtime, operation, plan_relative):
             "derived authority impact affected_pages does not match the "
             "registered plan"
         )
-    return record, bindings, artifacts, impact, proposal
+    return record, bindings, artifacts, impact, proposal, migration
 
 
 def _validate_queue_replan(root, runtime, amendment_id, proposal_relative):
@@ -399,7 +419,10 @@ def _revalidate_artifacts(root, artifacts):
 
 def _prepare(root, args, expected):
     root = os.path.realpath(os.path.abspath(root))
-    runtime = check_queue.validate_runtime(root)
+    migration_admission = args.operation == "property-state-migration"
+    runtime = check_queue.validate_runtime(
+        root,
+        allow_legacy_property_state_for_migration=migration_admission)
     if runtime["errors"]:
         raise ValueError("current runtime is inconsistent: %s" %
                          "; ".join(runtime["errors"]))
@@ -428,13 +451,15 @@ def _prepare(root, args, expected):
 
     if args.operation in (
             "scope-replan", "cancel-batch",
-            "gap-routing-reconciliation"):
+            "gap-routing-reconciliation", "property-state-migration"):
         if not args.plan:
             raise ValueError("%s requires --plan" % args.operation)
         if args.amendment_id or args.coverage_proposal:
             raise ValueError("cross-Ledger registration derives id/proposal from --plan")
-        record, bindings, artifacts, impact, proposal = _validate_cross_plan(
-            root, runtime, args.operation, args.plan
+        record, bindings, artifacts, impact, proposal, migration = \
+            _validate_cross_plan(
+            root, runtime, args.operation, args.plan,
+            authority["profile_view"]
         )
     else:
         if args.plan:
@@ -444,6 +469,7 @@ def _prepare(root, args, expected):
         record, bindings, artifacts, impact, proposal = _validate_queue_replan(
             root, runtime, args.amendment_id, args.coverage_proposal
         )
+        migration = None
 
     progress = runtime["progress"]
     _check_no_pending_or_duplicate(progress, record["id"])
@@ -515,6 +541,7 @@ def _prepare(root, args, expected):
             check_queue.PROGRESS_PATH: (progress_text, progress_new),
         },
         extra_receipts=[receipt],
+        allow_legacy_property_state_for_migration=migration_admission,
         **authority_kwargs,
     )
     if planned["errors"]:
@@ -532,6 +559,7 @@ def _prepare(root, args, expected):
         "artifacts": artifacts,
         "impact": impact,
         "proposal": proposal,
+        "property_state_migration": migration,
         "authority": authority,
     }
 
@@ -548,7 +576,8 @@ def _prepare_withdrawal(root, args, expected):
     write-back still false.  The amendment ID is never reused.
     """
     root = os.path.realpath(os.path.abspath(root))
-    runtime = check_queue.validate_runtime(root)
+    runtime = check_queue.validate_runtime(
+        root, allow_legacy_property_state_for_migration=True)
     if runtime["errors"]:
         raise ValueError("current runtime is inconsistent: %s" %
                          "; ".join(runtime["errors"]))
@@ -579,6 +608,14 @@ def _prepare_withdrawal(root, args, expected):
             break
     if row is None:
         raise ValueError("Progress has no Amendment %s" % args.withdraw)
+    legacy_pages = [
+        page.get("path") for page in runtime["coverage"].get("pages", [])
+        if isinstance(page, dict) and "property_state" not in page
+    ]
+    if legacy_pages and row.get("operation") != "property-state-migration":
+        raise ValueError(
+            "a live legacy runtime may only withdraw its pending "
+            "property-state-migration Amendment")
     if not (row.get("status") == "approved" and
             row.get("writeback_done") is False):
         raise ValueError(
@@ -625,6 +662,7 @@ def _prepare_withdrawal(root, args, expected):
             check_queue.PROGRESS_PATH: (progress_text, progress_new),
         },
         extra_receipts=[receipt],
+        allow_legacy_property_state_for_migration=bool(legacy_pages),
         **authority_kwargs,
     )
     if planned["errors"]:
@@ -690,8 +728,14 @@ def _apply(root, prepared, receipt_path):
             _, locked_sha = _read_state(prepared["paths"])
             if locked_sha != prepared["before_sha"]:
                 raise ValueError("canonical state changed after registration planning")
+            migration_admission = (
+                prepared["record"].get("operation") ==
+                "property-state-migration")
             locked = check_queue.validate_runtime(
-                root, **authority_kwargs)
+                root,
+                allow_legacy_property_state_for_migration=
+                    migration_admission,
+                **authority_kwargs)
             if locked["errors"]:
                 raise ValueError("runtime changed before write: %s" %
                                  "; ".join(locked["errors"]))
@@ -705,6 +749,20 @@ def _apply(root, prepared, receipt_path):
                 amendment_policy.require_decision_binding(
                     (locked["progress"].get("contract") or {}),
                     locked_impact, prepared["record"])
+            if prepared.get("property_state_migration") is not None:
+                locked_pages = apply_amendment._map_by_id(
+                    locked["coverage"].get("pages"), "path",
+                    "Coverage pages")
+                proposed_pages = apply_amendment._map_by_id(
+                    prepared["proposal"].get("pages"), "path",
+                    "Coverage proposal pages")
+                locked_migration = \
+                    apply_amendment._property_state_migration_plan(
+                        root, locked_pages, proposed_pages,
+                        prepared["record"]["affected_pages"],
+                        authority["profile_view"])
+                apply_amendment._require_property_state_migration_binding(
+                    prepared["record"], locked_migration)
 
         receipt_before = kblib.receipt_append_observation(
             receipt_path, [prepared["receipt"]]
@@ -749,7 +807,11 @@ def _apply(root, prepared, receipt_path):
         if committed_sha != prepared["after_sha"]:
             raise ValueError("registered state differs from planned fingerprints")
         persisted = check_queue.validate_runtime(
-            root, **authority_kwargs)
+            root,
+            allow_legacy_property_state_for_migration=(
+                prepared["record"].get("operation") ==
+                "property-state-migration"),
+            **authority_kwargs)
         if persisted["errors"]:
             raise ValueError("persisted registration fails check_queue: %s" %
                              "; ".join(persisted["errors"]))

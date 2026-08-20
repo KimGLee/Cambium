@@ -1,0 +1,133 @@
+schema_version: 1
+contract_id: kernel-metadata-execution
+
+temporal_order:
+  - first_seen
+  - last_content_modified
+  - last_reviewed
+  - last_verified
+
+field_rules:
+  - field: coverage_disposition
+    transition: owner-to-page-projection
+    value_shape: scalar-string-or-null
+    authority_class: ledger-projection
+    canonical_owner: coverage-ledger.pages[].coverage_disposition
+    source_adapter: coverage-row-value-v1
+    writer_capability: project-page-state-v2
+    write_timing: batch-close-after-owner-update
+    reconcile_policy: existing-copy-exact-or-remove-v1
+    invalidation_rule: owner-value-change-v1
+    evidence_requirement: null
+
+  - field: authoring_status
+    transition: owner-to-page-projection
+    value_shape: scalar-string-or-null
+    authority_class: ledger-projection
+    canonical_owner: coverage-ledger.pages[].authoring_status
+    source_adapter: coverage-row-value-v1
+    writer_capability: project-page-state-v2
+    write_timing: batch-close-after-owner-update
+    reconcile_policy: existing-copy-exact-or-remove-v1
+    invalidation_rule: owner-value-change-v1
+    evidence_requirement: null
+
+  - field: next_batch
+    transition: owner-to-page-projection
+    value_shape: scalar-string-or-null
+    authority_class: ledger-projection
+    canonical_owner: coverage-ledger.pages[].next_batch
+    source_adapter: coverage-row-value-v1
+    writer_capability: project-page-state-v2
+    write_timing: batch-close-after-owner-update
+    reconcile_policy: existing-copy-exact-or-remove-v1
+    invalidation_rule: owner-value-change-v1
+    evidence_requirement: null
+
+  - field: last_reviewed
+    transition: review-completed
+    value_shape: date
+    authority_class: evidence-projection
+    canonical_owner: coverage-ledger.pages[].property_state.last_reviewed
+    source_adapter: current-review-receipt-value-v1
+    writer_capability: metadata-transition-integrator-v1
+    write_timing: review-evidence-acceptance
+    reconcile_policy: upsert-owner-property-state-v1
+    invalidation_rule: superseded-by-review-or-semantic-content-change-v1
+    evidence_requirement:
+      protocol: current-page-review-v1
+      result: pass
+      target_binding: exact-page-path
+      value_selector: checked-at-utc-date
+      content_binding: exact-page-content-sha256
+      invalidation: invalidated-by-null
+      change_scope: reviewed-content
+      excluded_change_classes: []
+
+  - field: last_reviewed
+    transition: semantic-content-change
+    value_shape: date
+    authority_class: evidence-projection
+    canonical_owner: coverage-ledger.pages[].property_state.last_reviewed
+    source_adapter: content-change-event-v1
+    writer_capability: metadata-transition-integrator-v1
+    write_timing: semantic-content-acceptance
+    reconcile_policy: tombstone-owner-property-state-v1
+    invalidation_rule: semantic-content-change-tombstone-v1
+    evidence_requirement:
+      protocol: semantic-content-change-v1
+      result: pass
+      target_binding: exact-page-path
+      value_selector: tombstone-null
+      content_binding: after-page-content-sha256
+      invalidation: current-content-fingerprint
+      change_scope: semantic-content
+      excluded_change_classes:
+        - projection-only
+        - tool-controlled-metadata-only
+
+  - field: last_reviewed
+    transition: owner-to-page-projection
+    value_shape: date
+    authority_class: ledger-projection
+    canonical_owner: coverage-ledger.pages[].property_state.last_reviewed
+    source_adapter: coverage-property-state-v1
+    writer_capability: project-page-state-v2
+    write_timing: after-owner-state-transition
+    reconcile_policy: upsert-exact-or-remove-v1
+    invalidation_rule: semantic-content-change-tombstone-v1
+    evidence_requirement: null
+
+  - field: last_content_modified
+    transition: semantic-content-change
+    value_shape: date
+    authority_class: evidence-projection
+    canonical_owner: coverage-ledger.pages[].property_state.last_content_modified
+    source_adapter: content-change-event-v1
+    writer_capability: metadata-transition-integrator-v1
+    write_timing: semantic-content-acceptance
+    reconcile_policy: upsert-owner-property-state-v1
+    invalidation_rule: superseded-by-later-semantic-content-change-v1
+    evidence_requirement:
+      protocol: semantic-content-change-v1
+      result: pass
+      target_binding: exact-page-path
+      value_selector: accepted-at-utc-date
+      content_binding: after-page-content-sha256
+      invalidation: current-content-fingerprint
+      change_scope: semantic-content
+      excluded_change_classes:
+        - projection-only
+        - tool-controlled-metadata-only
+
+  - field: last_content_modified
+    transition: owner-to-page-projection
+    value_shape: date
+    authority_class: ledger-projection
+    canonical_owner: coverage-ledger.pages[].property_state.last_content_modified
+    source_adapter: coverage-property-state-v1
+    writer_capability: project-page-state-v2
+    write_timing: after-owner-state-transition
+    reconcile_policy: upsert-exact-or-remove-v1
+    invalidation_rule: owner-property-state-change-v1
+    evidence_requirement: null

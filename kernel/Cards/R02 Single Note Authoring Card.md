@@ -24,7 +24,7 @@ source_files:
   - kernel/K12 Quality Assurance/01 Quality Dimensions and Single Note Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
-source_hash: '2d7a23851f9c'
+source_hash: '4f62184cb331'
 ---
 # R02 Single Note Authoring Card
 

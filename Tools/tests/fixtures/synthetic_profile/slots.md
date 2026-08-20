@@ -36,6 +36,13 @@ recorded as an intentional fixture exception before the batch closes.
 |---|---|---|---|---|---|
 | `test-profile-residuals` | `K12/09 item 6 — residual-content scan` | Run once from the repository root. | `python3 Tools/check_residual_content.py . --scan-id test-profile-residuals --config profiles/test-profile/scan-configs/residual-scan.yaml --time-limit 55` | A synthetic scratch heading outside the accepted root is a candidate. | `test-profile-residual-disposition` |
 
+## Extension Gates
+
+- Registration: None
+
+| Gate ID | Kernel Gate ID or repo-relative owner path, optionally `#heading` | Blocked transition/action ID | Pass-authority Role ID reference | Applicability predicate | Vocabulary field ID or `None` | Registered completion value(s) or `None` | Judgment Item ID reference | Producer kind: `deterministic` or `manual-attestation` | Producer capability | Receipt schema | Consumer capability |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+
 ## Priority Quota
 
 - Registration: None

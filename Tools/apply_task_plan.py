@@ -52,13 +52,17 @@ import check_queue
 import compile_queue
 import kblib
 import amendment_policy
+import metadata_execution_contract
+import metadata_property_state
+import project_page_state
 
 TOOL = "apply_task_plan"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 CHECK = "task_plan"
 PLAN_PREFIX = ".cambium/deltas/task-plans"
 RECEIPT_PATH = ".cambium/receipts/task-plans.jsonl"
 SENTINEL = "TODO(plan)"
+LEGACY_PROPERTY_ADOPTION_OPERATION = "legacy-property-adoption-v1"
 
 PLAN_FIELDS = {
     "schema_version", "plan_id", "task_id", "approval_reference",
@@ -211,6 +215,23 @@ def _validate_plan_shape(plan):
             "task plan coverage_after.pages is empty; a plan that materializes "
             "no Required object leaves the runtime exactly as init_state left "
             "it and has nothing to confirm")
+    for index, page in enumerate(plan["coverage_after"]["pages"]):
+        label = "task plan coverage_after.pages[%d]" % index
+        if not isinstance(page, dict):
+            raise Refusal("%s must be a mapping" % label)
+        if "property_state" not in page or not isinstance(
+                page.get("property_state"), dict):
+            raise Refusal(
+                "%s must carry an explicit property_state mapping; an empty "
+                "mapping is the current no-owner state" % label)
+        if page.get("property_state"):
+            raise Refusal(
+                "%s is a new runtime page and may not claim pre-existing "
+                "current property evidence" % label)
+        if "legacy_property_state" in page:
+            raise Refusal(
+                "%s is a new runtime page and may not claim legacy property "
+                "observations" % label)
 
 
 def _state_paths(root):
@@ -273,11 +294,88 @@ def _require_empty_skeleton(documents, plan):
                 % (name, recorded, plan["task_id"]))
 
 
-def _build_after(root, documents, plan):
+def _derive_property_state_adoption(root, pages, profile_view):
+    """Derive honest legacy observations from immutable page snapshots.
+
+    The operator confirms inventory and scope, not evidence it cannot prove.
+    Existing machine fields are therefore observed by the writer itself under
+    the same Core + typed-Profile rule set later used by ``check_queue``.  The
+    result records either an exact page SHA and explicit unverified values, or
+    an absent page and an empty owner state.  Nothing here manufactures a
+    review/content date or receipt.
+    """
+    try:
+        metadata_contract, rules = \
+            metadata_property_state.authorized_profile_projection_rules(
+                root, profile_view)
+        if not metadata_execution_contract.compiled_capability_supports(
+                metadata_contract, LEGACY_PROPERTY_ADOPTION_OPERATION,
+                LEGACY_PROPERTY_ADOPTION_OPERATION, kind="writer"):
+            raise ValueError(
+                "compiled metadata contract does not authorize the %s "
+                "writer operation" % LEGACY_PROPERTY_ADOPTION_OPERATION)
+    except (OSError, TypeError, UnicodeError, ValueError,
+            metadata_execution_contract.MetadataExecutionContractError) as exc:
+        raise Refusal(
+            "cannot compose the metadata rules used for initial property "
+            "adoption: %s" % exc)
+    indexed = {}
+    for index, row in enumerate(pages):
+        path = row.get("path") if isinstance(row, dict) else None
+        if (not isinstance(path, str) or not path.strip() or
+                path in indexed):
+            raise Refusal(
+                "coverage_after.pages[%d] has no unique page path" % index)
+        indexed[path] = row
+    try:
+        adoption = metadata_property_state.build_legacy_property_removal_plan(
+            root, sorted(indexed), rules=rules)
+    except (OSError, TypeError, UnicodeError, ValueError,
+            kblib.YamlSubsetError) as exc:
+        raise Refusal(
+            "cannot freeze initial property source pages: %s" % exc)
+    for record in adoption["records"]:
+        legacy = record["legacy_property_state"]
+        if legacy:
+            indexed[record["path"]][
+                check_queue.LEGACY_PROPERTY_STATE_FIELD] = \
+                copy.deepcopy(legacy)
+    adoption["metadata_execution_contract_fingerprint"] = \
+        metadata_contract.contract_fingerprint
+    adoption["metadata_execution_rule_fingerprint"] = \
+        adoption["plan"].contract_rule_fingerprint
+    adoption["operation_capability"] = \
+        LEGACY_PROPERTY_ADOPTION_OPERATION
+    return adoption
+
+
+def _require_property_sources_current(root, adoption):
+    """CAS every page/absence from which the migration was derived."""
+    for record in adoption["records"]:
+        path = record["path"]
+        snapshot = kblib.repository_target_snapshot(
+            root, path, suffixes=(".md", ".MD"), singly_linked=True)
+        current = snapshot.sha256 if snapshot.exists else None
+        if current != record["before_page_sha256"]:
+            raise Refusal(
+                "initial property source page %s changed between planning "
+                "and commit" % path)
+    current_metadata = \
+        metadata_execution_contract.load_metadata_execution_contract(root)
+    if current_metadata.contract_fingerprint != adoption[
+            "metadata_execution_contract_fingerprint"]:
+        raise Refusal(
+            "metadata execution contract changed between initial property "
+            "adoption planning and commit")
+
+
+def _build_after(root, documents, plan, profile_view):
     coverage = copy.deepcopy(documents["coverage"])
     progress = copy.deepcopy(documents["progress"])
     coverage["pages"] = copy.deepcopy(plan["coverage_after"]["pages"])
     coverage["batch_specs"] = copy.deepcopy(plan["coverage_after"]["batch_specs"])
+    adoption = _derive_property_state_adoption(
+        root, coverage["pages"], profile_view)
     contract = copy.deepcopy(progress.get("contract") or {})
     contract.update(copy.deepcopy(plan["contract_after"]))
     derived = _derive_load_sets(root, contract)
@@ -295,10 +393,11 @@ def _build_after(root, documents, plan):
         raise Refusal(
             "the Queue compiler rejects this plan's Coverage, so no runtime "
             "could be materialized from it: %s" % exc)
-    return coverage, queue, progress, derived
+    return coverage, queue, progress, derived, adoption
 
 
-def _validate_proposed(root, coverage, progress, documents):
+def _validate_proposed(root, coverage, progress, documents,
+                       property_adoption):
     """Validate the state this transaction writes, with the Queue untouched.
 
     A Coverage inventory whose batches have no Queue items is not a broken
@@ -320,6 +419,7 @@ def _validate_proposed(root, coverage, progress, documents):
             check_queue.COVERAGE_PATH: (texts["coverage"], coverage),
             check_queue.PROGRESS_PATH: (texts["progress"], progress),
         },
+        page_projection_overrides=property_adoption["after_text_by_path"],
         allow_unmaterialized_queue=True,
     )["errors"]
     return texts, errors
@@ -422,7 +522,9 @@ def prepare(root, plan_relative):
             "materializing a plan over it:\n  %s"
             % "\n  ".join(current["errors"][:5]))
 
-    coverage, queue, progress, derived = _build_after(root, documents, plan)
+    authority = check_queue.runtime_authority_context(current)
+    coverage, queue, progress, derived, property_adoption = _build_after(
+        root, documents, plan, authority["profile_view"])
 
     # The derivation must satisfy the checker that judges the same declaration,
     # rather than being trusted because this module wrote it.  K00/15 places
@@ -436,7 +538,8 @@ def prepare(root, plan_relative):
             "the derived load declaration does not satisfy the checker that "
             "judges it:\n  %s" % "\n  ".join(gaps[:10]))
 
-    texts, errors = _validate_proposed(root, coverage, progress, documents)
+    texts, errors = _validate_proposed(
+        root, coverage, progress, documents, property_adoption)
     if errors:
         raise Refusal(
             "the runtime this plan proposes does not validate:\n  %s"
@@ -457,6 +560,8 @@ def prepare(root, plan_relative):
         "queue": queue,
         "queue_revision": documents["queue"].get("queue_revision"),
         "derived": derived,
+        "property_adoption": property_adoption,
+        "authority": authority,
     }
 
 
@@ -478,7 +583,19 @@ def _lock_operation(prepared, commit, abort):
         "receipt_id": commit["receipt_id"],
         "receipt_path": RECEIPT_PATH,
         "transaction_phase": "commit",
+        "property_state_adoption_set_sha256":
+            prepared["property_adoption"]["set_sha256"],
+        "metadata_execution_contract_fingerprint":
+            prepared["property_adoption"][
+                "metadata_execution_contract_fingerprint"],
+        "metadata_execution_rule_fingerprint":
+            prepared["property_adoption"][
+                "metadata_execution_rule_fingerprint"],
+        "operation_capability": prepared["property_adoption"][
+            "operation_capability"],
     }
+    operation.update(check_queue.runtime_authority_lock_fields(
+        prepared["authority"]))
     for name in STATE_NAMES:
         operation["before_%s_sha256" % name] = prepared["before_sha"][name]
     for name in WRITTEN_NAMES:
@@ -508,7 +625,26 @@ def commit(prepared, receipt_path):
         "before_progress_sha256": prepared["before_sha"]["progress"],
         "after_coverage_sha256": prepared["after_sha"]["coverage"],
         "after_progress_sha256": prepared["after_sha"]["progress"],
+        "property_state_adoption_records": copy.deepcopy(
+            prepared["property_adoption"]["records"]),
+        "property_state_adoption_count":
+            prepared["property_adoption"]["count"],
+        "property_state_adoption_set_sha256":
+            prepared["property_adoption"]["set_sha256"],
+        "metadata_execution_contract_fingerprint":
+            prepared["property_adoption"][
+                "metadata_execution_contract_fingerprint"],
+        "metadata_execution_rule_fingerprint":
+            prepared["property_adoption"][
+                "metadata_execution_rule_fingerprint"],
+        "operation_capability": prepared["property_adoption"][
+            "operation_capability"],
     })
+    profile_view = prepared["authority"]["profile_view"]
+    for field in (
+            "selected_profile_manifest", "profile_snapshot_sha256",
+            "profile_contract_fingerprint", "profile_load_inputs_sha256"):
+        commit_receipt[field] = profile_view.get(field)
     abort_receipt = _receipt(
         plan, "abort", "fail",
         "initial task planning aborted and the empty skeleton restored", 2)
@@ -522,12 +658,40 @@ def commit(prepared, receipt_path):
                 if kblib.sha256_bytes(live) != prepared["before_sha"][name]:
                     raise Refusal(
                         "%s changed between planning and commit" % name)
+            check_queue.require_runtime_authority_current(
+                root, prepared["authority"],
+                "runtime authority changed before initial property adoption")
+            _require_property_sources_current(
+                root, prepared["property_adoption"])
         written = []
+        page_transaction = None
         try:
+            page_plan = prepared["property_adoption"]["plan"]
+            if any(page.changed for page in page_plan.pages):
+                page_transaction = project_page_state.stage_projection_plan(
+                    root, page_plan, lease,
+                    transaction_id="task-plan-property-%s" %
+                    commit_receipt["receipt_id"])
             for name in WRITTEN_NAMES:
                 kblib.atomic_write_text(
                     prepared["paths"][name], prepared["after_text"][name])
                 written.append(name)
+            check_queue.require_runtime_authority_current(
+                root, prepared["authority"],
+                "runtime authority changed during initial property adoption")
+            _require_property_sources_current(
+                root, prepared["property_adoption"])
+            if page_transaction is not None:
+                page_transaction.publish()
+            post = check_queue.validate_runtime(
+                root, extra_receipts=[commit_receipt],
+                allow_unmaterialized_queue=True,
+                **check_queue.runtime_authority_validation_kwargs(
+                    prepared["authority"]))
+            if post["errors"]:
+                raise Refusal(
+                    "initial property adoption after-image does not validate: "
+                    "%s" % "; ".join(post["errors"][:10]))
             before = kblib.receipt_append_observation(
                 receipt_path, [commit_receipt])
             outcome, error, _ = kblib.write_receipts_observed(
@@ -540,16 +704,53 @@ def commit(prepared, receipt_path):
                     "commit receipt append reported %r; the transaction is "
                     "uncertain and the lease is preserved for reconciliation"
                     % outcome)
-        except Exception:
+            persisted = check_queue.validate_runtime(
+                root, allow_unmaterialized_queue=True,
+                **check_queue.runtime_authority_validation_kwargs(
+                    prepared["authority"]))
+            if persisted["errors"]:
+                raise Refusal(
+                    "persisted initial property adoption does not validate: "
+                    "%s" % "; ".join(persisted["errors"][:10]))
+            if page_transaction is not None:
+                page_transaction.commit()
+        except Exception as original:
+            if (page_transaction is not None and
+                    page_transaction.state == "commit-cleanup-failed"):
+                raise ValueError(
+                    "initial property adoption committed but page recovery "
+                    "cleanup is incomplete; inspect the retained writer "
+                    "journal: %s" % original) from original
+            rollback_failures = []
+            if (page_transaction is not None and
+                    page_transaction.state not in
+                    ("rolled-back", "committed")):
+                try:
+                    page_transaction.rollback()
+                except Exception as exc:
+                    rollback_failures.append("page projection: %s" % exc)
             for name in reversed(written):
-                kblib.atomic_write_text(
-                    prepared["paths"][name],
-                    prepared["before_raw"][name].decode("utf-8"))
+                try:
+                    kblib.atomic_write_text(
+                        prepared["paths"][name],
+                        prepared["before_raw"][name].decode("utf-8"))
+                except Exception as exc:
+                    rollback_failures.append("%s: %s" % (name, exc))
+            if rollback_failures:
+                raise ValueError(
+                    "initial property adoption failed and rollback is "
+                    "incomplete: %s; %s" %
+                    (original, "; ".join(rollback_failures))) from original
             abort_before = kblib.receipt_append_observation(
                 receipt_path, [abort_receipt])
-            kblib.write_receipts_observed(
+            abort_outcome, abort_error, _ = kblib.write_receipts_observed(
                 receipt_path, _record_receipts([abort_receipt]),
                 before=abort_before)
+            if abort_error is not None or abort_outcome != "present":
+                raise ValueError(
+                    "initial property adoption rolled back but abort evidence "
+                    "is incomplete: outcome=%s error=%s" %
+                    (abort_outcome, abort_error)) from original
             lease.mark_reconciled()
             raise
     return commit_receipt

@@ -6,19 +6,33 @@
 
 ## Review Dates
 
+- `last_content_modified`: the most recent substantive page-content change
+  accepted by the Integrator. It is an event projection, not filesystem mtime.
 - `last_reviewed`: the most recent content quality review.
 - `last_verified`: the most recent verification of time-sensitive external facts.
 
 Stable mathematical concepts do not need frequent `last_verified` updates; protocols, prices, products, and security requirements do.
 
-Both fields record completed events. At the run's causal boundary `as_of`, each
-explicit non-empty value MUST be a valid `YYYY-MM-DD` no later than `as_of`
-(equality is valid); otherwise the page is a candidate. Validate both fields
-before baseline or volatility: invalid `last_verified` cannot fall back to
-`last_reviewed`, an invalid/future unselected field cannot be hidden by the
-selected one, and `stable` cannot exempt invalid/future evidence.
+`last_reviewed` and `last_verified` record completed evidence-backed events.
+At the run's causal boundary `as_of`, each explicit non-empty value MUST be a
+valid `YYYY-MM-DD` no later than `as_of` (equality is valid); otherwise the page
+is a candidate. Validate both fields before baseline or volatility: invalid
+`last_verified` cannot fall back to `last_reviewed`, an invalid/future
+unselected field cannot be hidden by the selected one, and `stable` cannot
+exempt invalid/future evidence. `last_content_modified` records the guarded
+content-change event described below; it is compared with review evidence but
+is not a substitute freshness baseline.
 
 `first_seen` records the date an emerging topic or source signal first entered the knowledge base; it is not the same as the source's publication date.
+
+`last_content_modified` is the intermediate state between intake and review.
+When the semantic content fingerprint changes, the guarded content-change
+event advances this date and invalidates review evidence bound to the prior
+fingerprint. Changes confined to machine-controlled projections do neither.
+Until new review evidence binds the current fingerprint, the old
+`last_reviewed` value has no current authority and the page is a re-review
+candidate; the tool must not manufacture a replacement date from mtime or the
+day it happened to run.
 
 ## Freshness And Review Due
 
@@ -33,7 +47,7 @@ An absent/blank page value uses its domain default from the selected Profile's `
 `review_by` is derived, never written by hand: for non-stable policy, `Tools/check_freshness.py` adds the interval to the first available valid event (`last_verified`, then `last_reviewed`). Only absence/blankness permits fallback. If both events are absent, creation or substantive-modification time is diagnostic only and the page awaits first verification, including under `stable`.
 
 Every active in-scope page MUST have one closed outcome. The candidate set is
-exactly: overdue; awaiting first verification; invalid or post-`as_of`
+exactly: content modified after its current review; overdue; awaiting first verification; invalid or post-`as_of`
 explicit event; invalid explicit or unresolved fallback `volatility`; and
 unparseable frontmatter. Treat the last conservatively because lifecycle and
 facts are unprovable. Explicit exclusions and provably retired/merged pages

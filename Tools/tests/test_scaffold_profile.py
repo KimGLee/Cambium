@@ -54,21 +54,14 @@ sys.path.insert(0, str(TOOLS))
 import kblib  # noqa: E402
 import scaffold_profile  # noqa: E402
 import test_template_fill  # noqa: E402  (reused semantic fill + scan config)
-
-# Root-owned files check_profile resolves relative to --root.
-INTERFACE_FILES = (
-    "profiles/README.md",
-    "kernel/K00 Standards Control/execution-defaults-base.yaml",
-    "Tools/schemas/execution_defaults.template.yaml",
-    "Tools/schemas/residual_scan_config.template.yaml",
-    "Tools/check_residual_content.py",
-)
+import test_profile_onboarding_status as onboarding_fixture  # noqa: E402
 
 
 def make_root(tmp):
     """A minimal repository the scaffolder and check_profile both accept."""
-    root = Path(tmp) / "repo"
-    for relative in INTERFACE_FILES + (
+    root = Path(tmp).resolve() / "repo"
+    onboarding_fixture.copy_profile_load_fixture(root)
+    for relative in (
             "kernel/K00 Standards Control/03 Standards Governance.md",
             "profiles/template-files.yaml"):
         target = root / relative

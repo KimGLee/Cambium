@@ -12,10 +12,18 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from Tools.tests.profile_fixture import install_loadable_profile
 
 TOOLS = Path(__file__).resolve().parents[1]
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+
+import metadata_execution_contract
+import metadata_property_state
+import project_page_state
+
 COMPOSER = TOOLS / "compose_page_contract.py"
 CHECKER = TOOLS / "check_page_contract.py"
 
@@ -50,6 +58,17 @@ fields:
   last_verified:
     mode: optional
     shape: date
+  last_content_modified:
+    mode: optional
+    shape: date
+  last_reviewed:
+    mode: conditional
+    shape: date
+    condition:
+      all:
+        - field: authoring_status
+          in:
+            - reviewed
   review_by:
     mode: derived
     shape: date
@@ -216,6 +235,18 @@ class PageContractTests(unittest.TestCase):
              "--profile", "profiles/test-profile",
              "--contract", str(root / "page_contract.yaml"), *args],
             text=True, capture_output=True, check=False)
+
+    def semantic_fingerprint(self, root, relative, text):
+        metadata_contract = \
+            metadata_execution_contract.load_metadata_execution_contract(
+                root)
+        rules = metadata_property_state.profile_gate_projection_rules(
+            root, (), metadata_contract=metadata_contract,
+            authorized_profile_contract=SimpleNamespace(
+                authorized=True, extension_gates=(),
+                profile_contract_fingerprint="sha256:" + "f" * 64))
+        return project_page_state.semantic_content_fingerprint(
+            relative, text, rules)
 
     # ---- composition ----
 
@@ -551,6 +582,93 @@ class PageContractTests(unittest.TestCase):
         result = self.check(root)
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("is stale", result.stdout)
+
+    def test_conditional_applicability_does_not_bypass_owner_authority(self):
+        """A false presence condition does not make a machine copy optional.
+
+        ``last_reviewed`` is not applicability-required while the page is
+        drafted, but once the evidence owner has a current value the page-side
+        projection must still reconcile to it.  This is the D-007 axis split:
+        applicability answers *when a field is owed*; authority answers *who
+        may write its current value*.
+        """
+        files = base_files()
+        page = (
+            "---\ntype: concept\nauthoring_status: drafted\n---\n"
+            "# P\n\nSubstantive content.\n")
+        files["Domain/Page.md"] = page
+        root = self.build(files)
+        self.compose(root)
+        fingerprint = self.semantic_fingerprint(
+            root, "Domain/Page.md", page)
+        ledger = {
+            "schema_version": 1,
+            "pages": [{
+                "path": "Domain/Page.md",
+                "coverage_disposition": "required",
+                "authoring_status": "drafted",
+                "property_state": {
+                    "last_reviewed": {
+                        "value": "2026-08-20",
+                        "evidence_receipt": "review-receipt-1",
+                        "content_fingerprint": fingerprint,
+                    },
+                },
+            }],
+        }
+        ledger_path = root / ".cambium/state/coverage_ledger.yaml"
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        import kblib
+        ledger_path.write_text(kblib.canonical_yaml(ledger),
+                               encoding="utf-8")
+
+        result = self.check(root)
+
+        self.assertEqual(2, result.returncode, result.stdout)
+        self.assertIn("last_reviewed", result.stdout)
+        self.assertIn("must equal current owner value", result.stdout)
+        self.assertNotIn("condition holds", result.stdout)
+
+    def test_property_owner_evidence_cannot_survive_semantic_drift(self):
+        original = (
+            "---\ntype: concept\nauthoring_status: reviewed\n"
+            "last_reviewed: 2026-08-20\n---\n"
+            "# P\n\nOriginal reviewed content.\n")
+        files = base_files()
+        files["Domain/Page.md"] = original
+        root = self.build(files)
+        self.compose(root)
+        fingerprint = self.semantic_fingerprint(
+            root, "Domain/Page.md", original)
+        ledger = {
+            "schema_version": 1,
+            "pages": [{
+                "path": "Domain/Page.md",
+                "coverage_disposition": "required",
+                "authoring_status": "reviewed",
+                "property_state": {
+                    "last_reviewed": {
+                        "value": "2026-08-20",
+                        "evidence_receipt": "review-receipt-1",
+                        "content_fingerprint": fingerprint,
+                    },
+                },
+            }],
+        }
+        ledger_path = root / ".cambium/state/coverage_ledger.yaml"
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        import kblib
+        ledger_path.write_text(kblib.canonical_yaml(ledger),
+                               encoding="utf-8")
+        (root / "Domain/Page.md").write_text(
+            original.replace("Original reviewed content.",
+                             "Content changed after review."),
+            encoding="utf-8")
+
+        result = self.check(root)
+
+        self.assertEqual(2, result.returncode, result.stdout)
+        self.assertIn("binds stale semantic content", result.stdout)
 
     # ---- section roles (K07/02, K09/04) ----
 

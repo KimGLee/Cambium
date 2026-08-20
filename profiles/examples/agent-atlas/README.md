@@ -85,7 +85,7 @@ The public Cambium distribution is intentionally uninstantiated: `kernel/K00 Sta
 
 | Validator | Tool version | Command | Expected result |
 |---|---|---|---|
-| `check_profile` | `1.9.0` | `python3 Tools/check_profile.py profiles/examples/agent-atlas` | exit 0 |
+| `check_profile` | `2.0.0` | `python3 Tools/check_profile.py profiles/examples/agent-atlas` | exit 0 |
 
 `check_corpus_plan.py` is deliberately absent from that table: this example's Corpus Planning slot is `configured` and binds three artifacts that a real adopter materializes, and the public example does not fabricate them. [Worked Planning](../worked-planning/README.md) is the example that carries filled planning artifacts.
 
