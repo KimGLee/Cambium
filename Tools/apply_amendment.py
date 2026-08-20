@@ -6,9 +6,12 @@ appends a durable prepare receipt, replaces the three canonical documents one
 at a time, and rolls all three back on an ordinary failure.  A process crash
 can interrupt those replacements; the surviving lock owner metadata and
 prepare receipt bind every before/planned-after fingerprint for recovery.
+The registered change-class/authority binding is re-derived before planning
+and again under that same lock; a registration never authorizes different
+proposal bytes merely because its Amendment id still matches.
 """
 
-import argparse
+import contextlib
 import copy
 import os
 import sys
@@ -19,12 +22,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import compile_queue
 import kblib
+import amendment_policy
 
 TOOL = "apply_amendment"
-TOOL_VERSION = "1.1.0"
+TOOL_VERSION = "1.2.0"
 PLAN_PREFIX = ".cambium/deltas/amendments"
 RECEIPT_PATH = ".cambium/receipts/amendments.jsonl"
-OPERATIONS = ("scope-replan", "cancel-batch")
+OPERATIONS = (
+    "scope-replan", "cancel-batch", "gap-routing-reconciliation",
+)
 PLAN_FIELDS = (
     "schema_version", "amendment_id", "operation", "affected_pages",
     "affected_batches", "scope_version_before", "scope_version_after",
@@ -46,6 +52,60 @@ AMENDMENT_BINDINGS = {
     "coverage_proposal_sha256": "coverage_proposal_sha256",
     "cancel_batch_id": "cancel_batch_id",
 }
+
+
+# ---------------------------------------------------------------------------
+# `--json` output (machine-readable receipts)
+#
+# Purely additive: without the flag not one byte of this tool's behaviour
+# moves.  With it, everything written for a person goes to stderr and stdout
+# carries this run's receipt objects, serialized verbatim as one canonical
+# JSON array.
+#
+# Nothing is filtered or renamed.  `schemas/receipt.template.jsonl` guarantees
+# only the base fields every receipt carries; extension fields differ per
+# producer and are discoverable from the receipt itself, which is why that
+# template says in its own text that its examples are "not the complete set".
+# A field allowlist here would silently drop exactly the fields a caller came
+# for.
+#
+# This tool's receipts are written from inside its transaction helpers, well
+# below `main`, so the run collects them where they are handed to the receipt
+# writer rather than threading an accumulator through every frame.
+# ---------------------------------------------------------------------------
+JSON_HELP = ("write this run's receipt objects to stdout as one canonical "
+             "JSON array and move the human-readable report to stderr; "
+             "receipt writing, verdicts, and exit codes are unchanged")
+
+_JSON_RECEIPTS = []
+
+
+def _record_receipts(receipts):
+    """Remember the exact receipt objects handed to the receipt writer."""
+    _JSON_RECEIPTS.extend(receipts)
+    return receipts
+
+
+def emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    The one canonical serializer is `kblib.canonical_json_bytes`; this module
+    owns no serializer of its own.  A run that produced no receipt writes
+    nothing, which keeps the already-settled rejection shape (empty stdout,
+    one line of reason on stderr, exit 1) intact.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
+
+
+def _run_reporting_json(runner):
+    """Run `runner`, reserving stdout for JSON and giving stderr the prose."""
+    with contextlib.redirect_stdout(sys.stderr):
+        exit_code = runner()
+    emit_json_receipts(_JSON_RECEIPTS)
+    return exit_code
 
 
 def _nonempty(value):
@@ -93,15 +153,21 @@ def _validate_plan(plan):
     if not _nonempty(plan.get("amendment_id")):
         raise ValueError("plan amendment_id must be a non-empty string")
     if plan.get("operation") not in OPERATIONS:
-        raise ValueError("plan operation must be scope-replan or cancel-batch")
+        raise ValueError("plan operation must be one of %s" %
+                         ", ".join(OPERATIONS))
     _canonical_list(plan.get("affected_pages"), "affected_pages")
     _canonical_list(plan.get("affected_batches"), "affected_batches")
     before_scope = plan.get("scope_version_before")
     after_scope = plan.get("scope_version_after")
     if not _nonempty(before_scope) or not _nonempty(after_scope):
         raise ValueError("scope versions must be non-empty strings")
-    if before_scope == after_scope:
-        raise ValueError("an Amendment must change scope_version")
+    if (plan["operation"] == "gap-routing-reconciliation" and
+            before_scope != after_scope):
+        raise ValueError(
+            "gap-routing-reconciliation must preserve scope_version")
+    if (plan["operation"] != "gap-routing-reconciliation" and
+            before_scope == after_scope):
+        raise ValueError("a scope/cancel Amendment must change scope_version")
     for field in ("queue_revision_before", "queue_revision_after",
                   "state_revision_before", "state_revision_after"):
         value = plan.get(field)
@@ -111,11 +177,14 @@ def _validate_plan(plan):
         raise ValueError("queue_revision_before must be at least 1")
     if plan["queue_revision_after"] != plan["queue_revision_before"] + 1:
         raise ValueError("queue_revision_after must increment by exactly one")
-    if plan["operation"] == "scope-replan":
+    if plan["operation"] in (
+            "scope-replan", "gap-routing-reconciliation"):
         if plan["state_revision_after"] != plan["state_revision_before"]:
-            raise ValueError("scope-replan must preserve state_revision")
+            raise ValueError("%s must preserve state_revision" %
+                             plan["operation"])
         if plan.get("cancel_batch_id") is not None:
-            raise ValueError("scope-replan cancel_batch_id must be null")
+            raise ValueError("%s cancel_batch_id must be null" %
+                             plan["operation"])
     else:
         cancel_id = plan.get("cancel_batch_id")
         if not _nonempty(cancel_id):
@@ -473,6 +542,15 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
         progress, plan, plan_path=plan_relative, plan_sha=plan_sha)
     current_pages, proposed_pages, changed_specs = \
         _validate_coverage_proposal(coverage, proposal, plan)
+    impact = amendment_policy.derive_amendment_impact(
+        coverage, proposal, queue)
+    if impact["writer_operation"] != plan["operation"]:
+        raise ValueError(
+            "plan operation %s does not match derived writer operation %s" %
+            (plan["operation"], impact["writer_operation"])
+        )
+    amendment_policy.require_decision_binding(
+        progress.get("contract") or {}, impact, amendment)
 
     proposal_relative = os.path.relpath(proposal_file, root).replace(os.sep, "/")
     transaction_id = "txn-%s-%s" % (plan["amendment_id"], uuid.uuid4().hex)
@@ -506,6 +584,22 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
             raise ValueError("affected_batches does not exactly match replan; "
                              "found=%r expected=%r" %
                              (changed_batches, plan["affected_batches"]))
+    elif plan["operation"] == "gap-routing-reconciliation":
+        compile_base = copy.deepcopy(queue)
+        compiled, _ = compile_queue.compile_document(compile_base, proposal)
+        changed_batches = _structural_changes(queue, compiled)
+        if changed_batches:
+            raise ValueError(
+                "gap-routing-reconciliation may not change Queue structure: %s" %
+                ", ".join(changed_batches))
+        queue_new = copy.deepcopy(queue)
+        queue_new["queue_revision"] = plan["queue_revision_after"]
+        queue_new["state_revision"] = plan["state_revision_after"]
+        if plan["affected_batches"] != impact["affected_batches"]:
+            raise ValueError(
+                "affected_batches does not match gap-routing impact; "
+                "found=%r expected=%r" %
+                (impact["affected_batches"], plan["affected_batches"]))
     else:
         if proposed_pages.keys() != current_pages.keys():
             raise ValueError("cancel-batch may not add or remove Coverage pages")
@@ -625,6 +719,8 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
             previous_transaction_commit_receipt,
         "registration_receipt": registration_receipt,
         "task_id": queue.get("task_id"),
+        "impact": impact,
+        "proposal": proposal,
         "authority": authority,
     }
 
@@ -703,6 +799,21 @@ def _commit_transaction(root, prepared, receipt_path):
                 locked, "apply_amendment", "apply")
             if barrier:
                 raise ValueError(barrier)
+            if kblib.sha256_file(prepared["plan_file"]) != prepared["plan_sha"]:
+                raise ValueError("Amendment plan changed after transaction planning")
+            if kblib.sha256_file(
+                    prepared["proposal_file"]) != prepared["proposal_sha"]:
+                raise ValueError(
+                    "Coverage proposal changed after transaction planning")
+            locked_amendment = _find_amendment(
+                locked["progress"], prepared["plan"],
+                plan_path=prepared["plan_path"],
+                plan_sha=prepared["plan_sha"])
+            locked_impact = amendment_policy.derive_amendment_impact(
+                locked["coverage"], prepared["proposal"], locked["queue"])
+            amendment_policy.require_decision_binding(
+                locked["progress"].get("contract") or {},
+                locked_impact, locked_amendment)
         final_receipts = ([prepared["transition"]]
                           if prepared["transition"] else []) + [
                               prepared["commit"]]
@@ -727,7 +838,7 @@ def _commit_transaction(root, prepared, receipt_path):
                 root, authority,
                 "runtime authority changed before prepare receipt")
             outcome, append_error, _ = kblib.write_receipts_observed(
-                receipt_path, [prepared["prepare"]]
+                receipt_path, _record_receipts([prepared["prepare"]])
             )
             outcomes["prepare"] = outcome
             if append_error is not None:
@@ -760,7 +871,8 @@ def _commit_transaction(root, prepared, receipt_path):
                 root, authority,
                 "runtime authority changed before final receipts")
             outcome, append_error, _ = kblib.write_receipts_observed(
-                receipt_path, final_receipts, before=final_before
+                receipt_path, _record_receipts(final_receipts),
+                before=final_before
             )
             outcomes["final"] = outcome
             outcomes["commit"] = (
@@ -799,7 +911,8 @@ def _commit_transaction(root, prepared, receipt_path):
             abort_error = None
             if outcomes["prepare"] in ("present", "uncertain"):
                 outcomes["abort"], abort_error, _ = (
-                    kblib.write_receipts_observed(receipt_path, [abort])
+                    kblib.write_receipts_observed(
+                        receipt_path, _record_receipts([abort]))
                 )
             attempted = [
                 value for key, value in outcomes.items()
@@ -837,19 +950,40 @@ def _commit_transaction(root, prepared, receipt_path):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Apply one approved cross-Ledger Amendment transaction")
-    parser.add_argument("root")
+    parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--plan", required=True,
                         help=".cambium/deltas/amendments/*.yaml plan")
-    parser.add_argument("--expected-coverage-sha256", required=True)
-    parser.add_argument("--expected-progress-sha256", required=True)
-    parser.add_argument("--expected-queue-sha256", required=True)
+    parser.add_argument("--expected-coverage-sha256", required=True,
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Coverage; planning is "
+                             "refused when the live bytes differ")
+    parser.add_argument("--expected-progress-sha256", required=True,
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Progress; planning is "
+                             "refused when the live bytes differ")
+    parser.add_argument("--expected-queue-sha256", required=True,
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Queue; planning is "
+                             "refused when the live bytes differ")
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
-                        default="worker")
-    parser.add_argument("--receipts", default=RECEIPT_PATH)
-    parser.add_argument("--apply", action="store_true")
+                        default="worker",
+                        help="declared caller role; only integrator may "
+                             "apply an Amendment transaction")
+    parser.add_argument("--receipts", default=RECEIPT_PATH,
+                        help="receipt JSONL path under .cambium/receipts")
+    parser.add_argument("--apply", action="store_true",
+                        help="write the transaction; omit for a dry run")
+    parser.add_argument("--json", action="store_true", help=JSON_HELP)
     args = parser.parse_args(argv)
+    if not args.json:
+        return _run(args)
+    return _run_reporting_json(lambda: _run(args))
+
+
+def _run(args):
+    """This tool's own run; `main` above owns only argument parsing."""
     root = os.path.realpath(os.path.abspath(args.root))
     expected = {
         "coverage": args.expected_coverage_sha256,

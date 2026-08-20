@@ -68,6 +68,21 @@
 #                                   require-maintenance-complete, or resume-status
 #                                   (the complete set, bound to checker version;
 #                                   `check_queue.py` argparse is its owner)
+# A current `require-revalidation:<batch-id>` aggregate uses
+# `mapping_protocol_version: owner-projection-v1`. It records the original
+# `required_gate_ids` plus `mapped_owner_gate_ids`, `immediate_gate_ids`,
+# `native_owner_gate_ids`, and `deferred_native_owner_gate_ids`. The
+# `due_gate_ids`, `deferred_to_later_transition_gate_ids`, and
+# `unrepeatable_passed_gate_ids` partition the mapped owner set at the target
+# batch state. `boundary_gate_receipts` contains exactly the due owner receipts;
+# a raw semantic-leaf receipt is never accepted there. Each
+# `revalidation_bindings` row binds `affected_gate_id`, `required_gate_id`,
+# `mapped_owner_gate_id`, `owner_claim_edge`, `mapping_protocol_version`,
+# `claim_disposition`, `gate_receipt_id`, and the adoption/boundary/invalidated-
+# evidence identities from which that claim was derived. A native-owner row is
+# deferred to its ordinary transition rather than satisfied early by the
+# aggregate. Producer-era replay preserves aggregates written before this
+# projection and never rewrites their binding shape.
 # A successful `consistency` receipt also carries
 # `repository_snapshot_sha256`: a path-sensitive SHA-256 over every regular
 # repository file except the root `.git/` and `.cambium/` namespaces. The
@@ -99,12 +114,12 @@
 # Examples of current stable-Gate producer protocols -- not the complete set;
 # the Stable Gate ID Registry in K00/12 is the only complete enumeration of
 # registered Gate IDs and their producers: check_profile 1.9.0 / profile-load;
-# check_links 1.5.0 / wiki-link-integrity; check_vocab 1.7.0 /
+# check_links 1.5.0 / wiki-link-integrity; check_vocab 1.8.0 /
 # frontmatter-vocabulary and priority-quota-distribution;
 # check_residual_content 1.2.0 /
-# registered-residual-content; check_queue 1.16.0 / its registered
-# Required-Queue modes; check_batch_close 1.8.0 / batch-close; check_proof
-# 1.17.0 / terminal-proof; and adopt_standards 1.5.0 /
+# registered-residual-content; check_queue 1.20.1 / its registered
+# Required-Queue modes; check_batch_close 1.10.0 / batch-close; check_proof
+# 1.17.0 / terminal-proof; and adopt_standards 1.6.0 /
 # standards-adoption. Deterministic producers not shown above -- among them
 # check_corpus_plan and record_corpus_acceptance -- follow the same rule. Every receipt
 # created by one of these producer versions carries that exact Gate ID. The
@@ -113,9 +128,10 @@
 # receipts and fails closed on a version mismatch.
 # Every registered Gate producer additionally binds the current Required Queue
 # identity -- `task_id`, `standards_version`, `selected_profile_manifest` --
-# read from `.cambium/state/required_queue.yaml`, because a Standards
-# revalidation boundary consumes a Gate receipt only when those three equal the
-# live Queue values. `adopt_standards.py` binds the planned post-adoption
+# read from `.cambium/state/required_queue.yaml`. Equality is necessary for
+# current authorization but does not make a raw semantic leaf into a Standards-
+# revalidation boundary owner; that projection is owned by K00/12's capability
+# registry. `adopt_standards.py` binds the planned post-adoption
 # identity, since its receipts are built before the state write and consumed
 # after it. A run outside any Cambium runtime (no `.cambium/state/`) omits the
 # three fields rather than writing null: an omitted field claims nothing, while
@@ -136,6 +152,49 @@
 #                             gate_receipts
 # Page receipts may be valid historical evidence. They never authorize the
 # lifecycle edge without this current wrapper, and invalidated IDs are rejected.
+# Receipt cold chain (K12/07): `.cambium/receipts/cold/` is never scanned
+# by the hot catalog.  `cold/manifest.jsonl` binds each sealed segment's
+# exact bytes/hash/record count and seal identity; `cold/index.jsonl` keeps
+# one thin projection per sealed receipt (identity + era fields +
+# record_sha256 + segment position); `cold/journal.jsonl` records one
+# begin/complete pair per seal transaction.  Every row of all three names
+# the `seal_receipt` that wrote it.
+#   seal_receipts.py receipt (check: receipt_seal), the cold chain's root
+#   of trust -- it is never sealed:
+#     sealed_segments        : segment paths this transaction wrote
+#     sealed_records         : projections appended
+#     manifest_rows          : manifest rows appended
+#     index_rows             : index rows appended
+#     manifest_rows_sha256   : sha256 of those manifest lines, as written
+#     index_rows_sha256      : sha256 of those index lines, as written
+#     queue_revision / queue_state_revision : seal-time Queue identity
+# What sealing retires is deserialization, not integrity.  Every
+# consistency run re-hashes every segment against the manifest, proves
+# every projection against the exact sealed line it names, and proves both
+# cold registers against the seal receipt's two row hashes; rows of a seal
+# whose binding fails never enter the catalog.  An unreferenced segment, an
+# unfinished seal, or a sealed ID with a hot twin fails the run closed.
+# A 1.9.0+ close bundle externalizes candidate detail: the attestation
+# carries accepted_candidate_count / accepted_by_type_counts /
+# candidate_set_sha256 plus candidate_evidence_path/sha256/bytes/records
+# binding one born-cold evidence file, keeps policy-exception dispositions
+# inline, and drops the inline accepted_candidate_ids list its 1.8.0-era
+# shape carried; member and failure receipts bind counts and the same
+# evidence file instead of repeating rows.
+# A 1.10.0 attestation additionally carries the `exact-carry-v1` partition:
+#   candidate_protocol              : `exact-carry-v1`
+#   candidate_baseline_protocol     : none, legacy, or exact-carry-v1
+#   candidate_baseline_receipt      : null, or the immediately prior close's
+#                                     verified reviewer attestation
+#   carried_candidate_count / carried_candidate_set_sha256
+#   fresh_candidate_count / fresh_candidate_set_sha256
+# The two counts sum to accepted_candidate_count. Every ordinary evidence row
+# carries producer_tool_version, observation_sha256, and disposition
+# (`accept-current` or `accept-while-unchanged`); priority-quota rows retain
+# their separate policy-exception shape. A type selector expands only exact
+# rows present in that fresh scan; it is not authorization for future same-type
+# findings. Legacy producer eras remain readable but never acquire continuation
+# rights.
 # `check_batch_close.py` is the sole close-bundle producer. Its successful
 # publication appends, in order, one distinct `closed_list_<member>` pass
 # receipt for every member of the current producer-era Closed List,
@@ -144,21 +203,19 @@
 # one `batch_close_gate` aggregator. Every record binds task_id, batch_id, the
 # same merged_snapshot_sha256, and producer version as applicable. Member and
 # aggregator records bind declared integrator_id/reviewer_id labels; those
-# labels must be nonempty and different. The attestation additionally carries a substantive
-# details statement plus:
-#   accepted_candidate_ids   : exact stable candidate IDs accepted in this run
-#   accepted_candidate_types : exact tool:check types represented by the set
-#   candidate_dispositions   : the exact ID/type/member/target/detail set and
-#                              whether ID or type authorized each disposition
+# labels must be nonempty and different. The attestation additionally carries
+# one substantive details statement, the accepted types and per-type counts,
+# the compact candidate/evidence binding above, and any policy-exception
+# dispositions that must stay inline for field-by-field replay.
 # The global review binds reviewer_attestation_receipt and the exact
 # producer-era evidence mapping. The aggregator binds both review receipts, all
 # three current state SHAs/revisions, Delta SHA/application receipt, Queue
 # consistency receipt, unchanged before/after state SHAs, the registered
 # gate_id=batch-close, explicit Work Spec binding, and Corpus Planning
-# applicability/child binding. Version 1.6.0 is the current producer; 1.5.0 is
-# the sole supported predecessor for already-sealed producer-era bundles.
-# Older historical JSONL remains immutable but is not accepted as close
-# authority. A failed run
+# applicability/child binding. Version 1.10.0 is the current producer;
+# versions 1.4.0 through 1.9.0 remain supported only while replaying already-
+# closed producer-era history and cannot authorize a new close. Older JSONL
+# remains immutable but is not accepted as close authority. A failed run
 # appends only a failed batch_close_gate attempt; an uncertain append preserves
 # the runtime writer lock for restart reconciliation.
 # A `require-maintenance-complete` pass additionally binds
@@ -234,7 +291,9 @@
 # boundary, a matching commit records successful transaction closure.
 # `register_amendment.py` is the sole producer of executable operational
 # Amendment rows. Its `amendment_registration` pass receipt binds the explicit
-# approval reference, operation-specific plan/proposal/diff fields, current
+# approval reference or current Task Contract delegation, the exact derived
+# change classes and complete impact fingerprint, operation-specific
+# plan/proposal/diff fields, current
 # contract, and unchanged Coverage/Queue plus before/after Progress SHA-256.
 # While the row is approved/pending, only the current filtered receipt catalog
 # can authorize execution. After verified write-back the same receipt is
@@ -242,17 +301,28 @@
 # appended before its pending Progress row; an unreferenced receipt is inert.
 # The consuming commit must bridge all three registration after-SHAs to its
 # before-SHAs and may not predate registration.
-# Canonical `apply_delta.py` receipts bind batch, exact delta SHA, Queue SHA,
-# and Coverage before/after SHA. A worker delta receipt never authorizes
-# Queue/compiler-owned control-field changes.
-# `adopt_standards.py` 1.4.0 validates the candidate Profile after-image with
+# `apply_contract_amendment.py` 1.1.0 rows and commit receipts additionally
+# bind `changed_contract_fields`; schema 2 plans may change the bounded policy
+# register, the operational Amendment delegation, or both in one transaction.
+# Canonical `apply_delta.py` 1.5.0 receipts bind batch, exact delta SHA, Queue
+# SHA, Coverage before/after SHA, and the routed-gap obligation/prospective-
+# settlement fingerprints proven before the Delta was frozen. A worker delta
+# receipt never authorizes Queue/compiler-owned control-field changes.
+# Closed history may replay apply_delta/1.4.0; a new apply requires 1.5.0.
+# Queue transition history similarly accepts update_queue/1.2.0 while current
+# transitions are produced as update_queue/1.3.0 receipts.
+# `adopt_standards.py` 1.6.0 validates the candidate Profile after-image with
 # full `profile-load` before writing state and binds its Profile tree, typed
-# dependency graph, and root-owned profile-load inputs in the plan, adoption
-# receipts, Progress record, and lock intent. A `profile-load` invalidation
-# boundary targets exactly `selected_profile_manifest_after`; admission is not
-# batch-scoped, while any downstream Gates named by the boundary retain their
-# declared rerun boundaries. Sealed pre-1.4 history may omit the root-input
-# fingerprint, just as sealed pre-1.3 history may omit the typed contract.
+# dependency graph, root-owned profile-load inputs, and 1.5-era upstream
+# identity pair in the plan, adoption receipts, Progress record, and lock
+# intent. A `profile-load` invalidation boundary targets exactly
+# `selected_profile_manifest_after`; admission is not batch-scoped. Current
+# changed-predicate leaves project through K00/12 to owner Gate IDs: Queue
+# consistency is immediate, while native owners remain required at their
+# ordinary transitions. Sealed pre-1.5 history may omit the upstream pair,
+# sealed pre-1.4 history may omit the root-input fingerprint, and sealed
+# pre-1.3 history may omit the typed contract. Replay selects the producer-era
+# contract and never projects today's fields backward onto immutable history.
 # Existing receipt IDs remain valid append-only protocol references after generator-format changes; never rewrite historical IDs.
 # =============================================================================
 {"receipt_id": "audit-check_links-20260721T000000Z-4f9c2a7d6e8b4a10b3c5d7e9f1023456-0001", "check": "link-missing", "target": "Topics/Example Topic.md:42", "result": "fail", "details": "[[Example Dependency]] has no matching target (missing)", "checked_at": "2026-07-21T00:00:00Z", "tool": "check_links", "tool_version": "1.5.0", "gate_id": "wiki-link-integrity", "invalidated_by": null}

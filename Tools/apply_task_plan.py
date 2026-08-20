@@ -41,7 +41,7 @@ Amendment, or a successor task.
 Exit codes: 0 = dry run reported or transaction committed; 1 = refused.
 """
 
-import argparse
+import contextlib
 import copy
 import os
 import sys
@@ -51,9 +51,10 @@ import check_proof
 import check_queue
 import compile_queue
 import kblib
+import amendment_policy
 
 TOOL = "apply_task_plan"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 CHECK = "task_plan"
 PLAN_PREFIX = ".cambium/deltas/task-plans"
 RECEIPT_PATH = ".cambium/receipts/task-plans.jsonl"
@@ -68,12 +69,71 @@ COVERAGE_AFTER_FIELDS = {"pages", "batch_specs"}
 
 # Owned by K13/02; this tool supplies values for exactly this closed set and
 # never adds a field.  Kept in step with check_queue's own contract field set.
-CONTRACT_FIELDS = set(check_queue.CONTRACT_FIELDS)
+CONTRACT_FIELDS = set(check_queue.CONTRACT_FIELDS).union((
+    "amendment_authority",
+))
+CONTRACT_OPTIONAL_FIELDS = set(check_queue.CONTRACT_OPTIONAL_FIELDS).union((
+    "amendment_authority",
+))
 
 STATE_NAMES = ("coverage", "queue", "progress")
 # Only these are written; the Queue is read for its before-image and left
 # to its own writer.
 WRITTEN_NAMES = ("coverage", "progress")
+
+
+# ---------------------------------------------------------------------------
+# `--json` output (machine-readable receipts)
+#
+# Purely additive: without the flag not one byte of this tool's behaviour
+# moves.  With it, everything written for a person goes to stderr and stdout
+# carries this run's receipt objects, serialized verbatim as one canonical
+# JSON array.
+#
+# Nothing is filtered or renamed.  `schemas/receipt.template.jsonl` guarantees
+# only the base fields every receipt carries; extension fields differ per
+# producer and are discoverable from the receipt itself, which is why that
+# template says in its own text that its examples are "not the complete set".
+# A field allowlist here would silently drop exactly the fields a caller came
+# for.
+#
+# This tool's receipts are written from inside its transaction helpers, well
+# below `main`, so the run collects them where they are handed to the receipt
+# writer rather than threading an accumulator through every frame.
+# ---------------------------------------------------------------------------
+JSON_HELP = ("write this run's receipt objects to stdout as one canonical "
+             "JSON array and move the human-readable report to stderr; "
+             "receipt writing, verdicts, and exit codes are unchanged")
+
+_JSON_RECEIPTS = []
+
+
+def _record_receipts(receipts):
+    """Remember the exact receipt objects handed to the receipt writer."""
+    _JSON_RECEIPTS.extend(receipts)
+    return receipts
+
+
+def emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    The one canonical serializer is `kblib.canonical_json_bytes`; this module
+    owns no serializer of its own.  A run that produced no receipt writes
+    nothing, which keeps the already-settled rejection shape (empty stdout,
+    one line of reason on stderr, exit 1) intact.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
+
+
+def _run_reporting_json(runner):
+    """Run `runner`, reserving stdout for JSON and giving stderr the prose."""
+    with contextlib.redirect_stdout(sys.stderr):
+        exit_code = runner()
+    emit_json_receipts(_JSON_RECEIPTS)
+    return exit_code
 
 
 class Refusal(Exception):
@@ -132,7 +192,15 @@ def _validate_plan_shape(plan):
                 "values" % field)
     _closed(plan["contract_after"], CONTRACT_FIELDS,
             "task plan contract_after",
-            optional=check_queue.CONTRACT_OPTIONAL_FIELDS)
+            optional=CONTRACT_OPTIONAL_FIELDS)
+    authority = plan["contract_after"].get("amendment_authority")
+    if authority is not None:
+        authority_errors = amendment_policy.amendment_authority_errors(
+            authority, "task plan contract_after.amendment_authority")
+        if authority_errors:
+            raise Refusal(
+                "task plan amendment authority is not the K13/02 shape:\n  %s"
+                % "\n  ".join(authority_errors[:8]))
     _closed(plan["coverage_after"], COVERAGE_AFTER_FIELDS,
             "task plan coverage_after")
     for field in sorted(COVERAGE_AFTER_FIELDS):
@@ -463,7 +531,8 @@ def commit(prepared, receipt_path):
             before = kblib.receipt_append_observation(
                 receipt_path, [commit_receipt])
             outcome, error, _ = kblib.write_receipts_observed(
-                receipt_path, [commit_receipt], before=before)
+                receipt_path, _record_receipts([commit_receipt]),
+                before=before)
             if error is not None:
                 raise error
             if outcome != "present":
@@ -479,7 +548,8 @@ def commit(prepared, receipt_path):
             abort_before = kblib.receipt_append_observation(
                 receipt_path, [abort_receipt])
             kblib.write_receipts_observed(
-                receipt_path, [abort_receipt], before=abort_before)
+                receipt_path, _record_receipts([abort_receipt]),
+                before=abort_before)
             lease.mark_reconciled()
             raise
     return commit_receipt
@@ -519,7 +589,7 @@ def _report(prepared):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Materialize a task runtime from one confirmed plan.")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--plan", required=True,
@@ -528,8 +598,15 @@ def main(argv=None):
                         help="receipt JSONL path under .cambium/receipts")
     parser.add_argument("--apply", action="store_true",
                         help="write the transaction; omit for a dry run")
+    parser.add_argument("--json", action="store_true", help=JSON_HELP)
     args = parser.parse_args(argv)
+    if not args.json:
+        return _run(args)
+    return _run_reporting_json(lambda: _run(args))
 
+
+def _run(args):
+    """This tool's own run; `main` above owns only argument parsing."""
     root = os.path.realpath(os.path.abspath(args.root))
     try:
         receipt_path = kblib.managed_repository_path(

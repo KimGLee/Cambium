@@ -15,15 +15,15 @@ The [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-doma
 | `runtime-startup-recovery` | Existing runtime discovery, new-task collision, and interrupted-writer recovery | The [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Runtime Startup Gate\|Runtime Startup Gate]] runs `check_queue.py --resume-status` before a state write | R01, R07, and task routes consume the machine action; none may initialize over or infer around existing state |
 | `large-scale-execution-admission` | Large-scale execution admission | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Large-scale Pre-execution Gate\|Large-scale Pre-execution Gate]] | R11 packages the gate with the actual work route but does not authorize content work |
 | `wiki-link-integrity` | Wiki link integrity | The K12/09 Closed List consumes the `check_links` summary | Note close uses only its scoped self-check; migration retargets affected links; Terminal Audit reruns the same gate on the frozen snapshot |
-| `frontmatter-vocabulary` | Frontmatter vocabulary | The K12/09 Closed List consumes the `check_vocab` summary | Note close uses a scoped self-check; Terminal Audit reruns the same gate on the frozen snapshot |
+| `frontmatter-vocabulary` | Legality of controlled frontmatter values that are actually present; field presence and conditional applicability remain owned by `page-contract` | The K12/09 Closed List consumes the `check_vocab` summary | Note close uses a scoped self-check; Terminal Audit reruns the same gate on the frozen snapshot |
 | `priority-quota-distribution` | Whole-corpus priority share measurement under one identified effective policy ([[kernel/K00 Standards Control/07 Effort Tiering and Priority Quota\|K00/07]]) | The `check_vocab` `priority-quota-distribution` receipt: per-class structured shares, the exceeded classes, and the effective-policy fingerprint they were measured under. It measures and itemizes; the human call on an excess stays with the per-class quota candidates, which only a bounded contract policy exception may disposition | Batch close, Maintenance/REBASE coverage reconciliation, and the Terminal Audit consume the same structured receipt; none of them re-derives a share from display text |
 | `required-queue-consistency` | Queue structure, Work Spec binding, operational Amendment registration, and Queue/Coverage/Progress drift | K13/08 `check_queue.py` consistency mode | Resume, operational Amendment writers, batch close, Standards adoption, and Terminal Audit consume the same current consistency contract |
 | `required-queue-admission` | Readiness, dependencies, confirmation, concurrent-write conflicts, and the K13/10 condition-2 hub classification, whose inputs are the manifest pages' own frontmatter and the selected profile's `Expression Layer Entry` rows | K13/10 `check_queue.py --require-ready <batch-id>` | Activation consumes the batch-bound receipt; no other layer recreates readiness |
 | `required-queue-completion` | Build Queue exhaustion and completion readiness | K13/12 `check_queue.py --require-complete` | Entry to build `completion-candidate` consumes the frozen Queue-complete receipt |
 | `maintenance-completion` | Maintenance Queue exhaustion, candidate partition, and maintenance evidence closure | K13/12 `check_queue.py --require-maintenance-complete` | Maintenance task completion consumes the frozen maintenance-complete receipt |
 | `batch-review` | In-batch review authorization for one exact Delta evidence set | K12/14 current `manual-attestation` batch-review gate | `open -> merge-ready` consumes exactly one current gate that binds the Delta's page receipt IDs; page receipts alone never authorize the transition |
-| `batch-close` | Complete merged-snapshot batch-close bundle | K12/09 `check_batch_close.py` batch-close aggregator | The close transition consumes the current bundle; later review reuses it only while its snapshot binding remains current |
-| `page-contract` | Compiled frontmatter page contract: applicability modes, writer/projection persistence, relationship shapes and targets, and the unknown-field closure | K08/06 `Tools/check_page_contract.py` page-contract receipt, over the contract composed by `Tools/compose_page_contract.py` | Advisory under the K08/06 Enablement rule: candidates support migration planning and no existing gate consumes them; promotion to a blocking gate is a separate governance decision under K12/10 |
+| `batch-close` | Complete merged-snapshot batch-close bundle | K12/09 `check_batch_close.py` batch-close aggregator | Every close reruns the full current scan. A prior verified close may carry forward only an explicitly durable, byte-exact unchanged candidate disposition; the close transition consumes the resulting current bundle |
+| `page-contract` | Compiled frontmatter page contract: applicability modes, writer/projection persistence, relationship shapes and targets, and the unknown-field closure | K08/06 `Tools/check_page_contract.py` page-contract receipt, over the contract composed by `Tools/compose_page_contract.py` | Whole-corpus backlog remains advisory, while K12/09 consumes the current manifest-page slice at batch close; other pages never become that batch's ticket |
 | `boundary-contract` | Page boundary blocks: K08/09 schema and self-consistency, owner resolvability, reciprocity, corpus-wide concern uniqueness, and boundary projection freshness against `Tools/render_boundary_projection.py` output | K08/09 `Tools/check_boundary_contract.py` boundary-contract receipt, over the same compiled contract's projection labels | Advisory under the K08/09 Enablement rule: candidates support migration planning and no existing gate consumes them; the `boundary` field's presence, mode, and unknown-field closure stay with `page-contract`, and concern vocabulary membership stays with `frontmatter-vocabulary`; promotion to a blocking gate is a separate governance decision under K12/10. Invalidation: a `boundary` block, a page referenced as an owner, the profile's `boundary_projection` labels or concern vocabulary, or the tool version changes; the rerun boundary is every in-scope page carrying a `boundary` block plus every page referenced as an owner |
 | `structure-registry` | Structure Registry resolution: unit and support-layer declarations against the vault, Profile Scope layers, Global Map bindings, and Coverage unit references | K01/05 `Tools/check_structure.py` structure-registry receipt | R03 module close, R06 structural migration, R13 reconciliation, and Terminal Audit consume the same receipt; it proves structure declarations, never content acceptance or class-assignment semantics |
 | `corpus-plan-structure` | Corpus-planning structure, role separation, explicit relations, and Gap-to-Coverage promotion drift | K02/04 `check_corpus_plan.py` structural/reconciliation receipt | R11, R13, Module Review, affected batch close, and Terminal Audit consume structure only; it is not semantic acceptance |
@@ -33,7 +33,7 @@ The [[kernel/K00 Standards Control/11 Standards Map and Rule Registry#Cross-doma
 | `expression-layer-acceptance` | R05 expression artifact acceptance, canonical binding, and migration conservation | The [[kernel/K11 Expression Layer/07 Expression Migration Audit and Acceptance#Acceptance Criteria\|Expression Acceptance Criteria]] attestation at the R05 Gate | A readiness promotion, batch close, and Terminal Audit consume it; a profile supplemental gate loads alongside the kernel floor and never replaces it |
 | `coverage-reconciliation` | Semantic Coverage reconciliation | K12/03 Coverage Reconciliation Review attestation | Run after inventory and scope/guidance changes and before completion-candidate; the Queue checker owns only deterministic set equality |
 | `standards-adoption` | Active-task Standards/Profile consistency and adoption | K12/10 semantics plus the K13/15 `adopt_standards.py` commit receipt | R09 owns the revision; R07 applies it; later boundaries consume post-adoption gates rather than rewriting runtime state |
-| `standards-revalidation` | Deferred post-adoption changed-predicate gates at their declared boundary | K12/10 `check_queue.py --require-revalidation <batch-id>` | The named boundary consumes exact Gate-ID receipts and records one current revalidation receipt; unrelated work does not run every gate |
+| `standards-revalidation` | Deferred post-adoption changed-predicate claims at their declared boundary | K12/10 `check_queue.py --require-revalidation <batch-id>` | The aggregate consumes exact current receipts only for owner Gates due at that point; native owners remain mandatory at their ordinary transitions, and raw semantic-leaf receipts never substitute for either |
 | `guidance-disposition` | Guidance disposition | K13/05 disposition attestation after K13/04 classification | Batch close reconciles only the increment; Terminal Audit reads the canonical ledger disposition |
 | `receipt-validity` | Receipt reuse and invalidation judgment | K12/07 AuditPlan and Reuse Gate attestation | Batch start loads the register; later boundaries consume the same invalidation decision |
 | `rendering` | Rendering verification | K12/02 Level 0/1 evidence plus any triggered visual attestation | Batch close consumes its enumerated member; Terminal Audit reuses it while current |
@@ -78,9 +78,11 @@ this contract: reliable evidence, non-clean outcome, read the lines.
 
 ## Stable Gate ID Registry
 
-This closed table is the machine registry for Standards revalidation. `Tool`,
-`Tool version`, `Check`, `Mode`, and `Dimension` are the canonical receipt
-selector. Tool,
+This closed table is the machine registry for Gate receipt identity and
+producer availability. It is not the Standards-adoption capability registry:
+the separate table below owns leaf-to-owner projection and claim edges.
+`Tool`, `Tool version`, `Check`, `Mode`, and `Dimension` are the canonical
+receipt selector. Tool,
 version, and check are always exact; only Mode and Dimension may use `*` when no narrower
 mode exists. `manual-attestation` is an explicit producer class with current
 protocol version `1.0.0`, not a request for an Agent to guess a tool or version
@@ -107,11 +109,11 @@ tool whose identity already fixes what its receipt means and which writes no
 a receipt under any dimension.
 
 `Lifecycle` is not part of that selector. It records the position at which the
-Gate's producer can run, which is what
-[[kernel/K12 Quality Assurance/10 Standards Version Adoption#Restricted-YAML Adoption Plan\|Standards Version Adoption]]
-reads to decide, for one target batch, which of a boundary's gates are claimed
-now, which further ahead, and which can no longer be produced at all. A cell
-holds one of three things, and the three do not mix. One or more batch lifecycle
+Gate's producer can run. It is producer-availability evidence for a
+`native-owner` claim edge; it does not turn a semantic leaf into a boundary
+owner or independently decide what an adoption may consume. Those decisions
+come from the Standards Revalidation Capability Registry below. A Lifecycle
+cell holds one of three things, and the three do not mix. One or more batch lifecycle
 states, tokenized the way `Dimension` is: the producer runs against a batch at
 those positions. `queue-exhausted`: it runs only once the Queue holds no
 non-terminal batch. `not-batch-scoped`: it takes no batch and no Queue position
@@ -123,17 +125,17 @@ moves its own cell.
 |---|---|---|---|---|---|---|
 | `runtime-card-synchronization` | `manual-attestation` | `1.0.0` | `runtime-card-synchronization` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `profile-load` | `check_profile` | `1.9.0` | `profile-check-summary` | `*` | `guidance_and_contract` | `not-batch-scoped` |
-| `runtime-startup-recovery` | `check_queue` | `1.16.0` | `required_queue` | `resume-status` | `*` | `not-batch-scoped` |
+| `runtime-startup-recovery` | `check_queue` | `1.20.1` | `required_queue` | `resume-status` | `*` | `not-batch-scoped` |
 | `large-scale-execution-admission` | `manual-attestation` | `1.0.0` | `large-scale-execution-admission` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `wiki-link-integrity` | `check_links` | `1.5.0` | `link-check-summary` | `*` | `*` | `not-batch-scoped` |
-| `frontmatter-vocabulary` | `check_vocab` | `1.7.0` | `vocab-check-summary` | `*` | `*` | `not-batch-scoped` |
-| `priority-quota-distribution` | `check_vocab` | `1.7.0` | `priority-quota-distribution` | `*` | `*` | `not-batch-scoped` |
-| `required-queue-consistency` | `check_queue` | `1.16.0` | `required_queue` | `consistency` | `*` | `not-batch-scoped` |
-| `required-queue-admission` | `check_queue` | `1.16.0` | `required_queue` | `require-ready:*` | `*` | `queued` |
-| `required-queue-completion` | `check_queue` | `1.16.0` | `required_queue` | `require-complete` | `*` | `queue-exhausted` |
-| `maintenance-completion` | `check_queue` | `1.16.0` | `required_queue` | `require-maintenance-complete` | `*` | `queue-exhausted` |
+| `frontmatter-vocabulary` | `check_vocab` | `1.8.0` | `vocab-check-summary` | `*` | `*` | `not-batch-scoped` |
+| `priority-quota-distribution` | `check_vocab` | `1.8.0` | `priority-quota-distribution` | `*` | `*` | `not-batch-scoped` |
+| `required-queue-consistency` | `check_queue` | `1.20.1` | `required_queue` | `consistency` | `*` | `not-batch-scoped` |
+| `required-queue-admission` | `check_queue` | `1.20.1` | `required_queue` | `require-ready:*` | `*` | `queued` |
+| `required-queue-completion` | `check_queue` | `1.20.1` | `required_queue` | `require-complete` | `*` | `queue-exhausted` |
+| `maintenance-completion` | `check_queue` | `1.20.1` | `required_queue` | `require-maintenance-complete` | `*` | `queue-exhausted` |
 | `batch-review` | `manual-attestation` | `1.0.0` | `batch_gate` | `*` | `none` | `open` |
-| `batch-close` | `check_batch_close` | `1.8.0` | `batch_close_gate` | `*` | `*` | `merge-ready` |
+| `batch-close` | `check_batch_close` | `1.10.0` | `batch_close_gate` | `*` | `*` | `merge-ready` |
 | `structure-registry` | `check_structure` | `1.1.0` | `structure-registry-summary` | `*` | `*` | `not-batch-scoped` |
 | `page-contract` | `check_page_contract` | `1.4.0` | `page-contract-summary` | `*` | `*` | `not-batch-scoped` |
 | `boundary-contract` | `check_boundary_contract` | `1.1.0` | `boundary-contract-summary` | `*` | `*` | `not-batch-scoped` |
@@ -143,8 +145,8 @@ moves its own cell.
 | `source-promotion` | `manual-attestation` | `1.0.0` | `source-promotion` | `*` | `coverage_and_integration`, `source_and_currentness` | `not-batch-scoped` |
 | `expression-layer-acceptance` | `manual-attestation` | `1.0.0` | `expression-layer-acceptance` | `*` | `content_and_depth`, `coverage_and_integration`, `guidance_and_contract`, `source_and_currentness`, `structure_and_links` | `not-batch-scoped` |
 | `coverage-reconciliation` | `manual-attestation` | `1.0.0` | `coverage-reconciliation` | `*` | `coverage_and_integration` | `not-batch-scoped` |
-| `standards-adoption` | `adopt_standards` | `1.5.0` | `standards_adoption` | `*` | `*` | `not-batch-scoped` |
-| `standards-revalidation` | `check_queue` | `1.16.0` | `required_queue` | `require-revalidation:*` | `*` | `queued`, `open` |
+| `standards-adoption` | `adopt_standards` | `1.6.0` | `standards_adoption` | `*` | `*` | `not-batch-scoped` |
+| `standards-revalidation` | `check_queue` | `1.20.1` | `required_queue` | `require-revalidation:*` | `*` | `queued`, `open` |
 | `guidance-disposition` | `manual-attestation` | `1.0.0` | `guidance-disposition` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `receipt-validity` | `manual-attestation` | `1.0.0` | `receipt-validity` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `rendering` | `manual-attestation` | `1.0.0` | `rendering` | `*` | `rendering`, `structure_and_links` | `not-batch-scoped` |
@@ -155,3 +157,82 @@ moves its own cell.
 | `prerequisite-completeness` | `manual-attestation` | `1.0.0` | `prerequisite-completeness` | `*` | `coverage_and_integration` | `not-batch-scoped` |
 | `canonical-ownership-uniqueness` | `manual-attestation` | `1.0.0` | `canonical-ownership-uniqueness` | `*` | `structure_and_links` | `not-batch-scoped` |
 | `terminal-proof` | `check_proof` | `1.17.0` | `proof-check-summary` | `*` | `*` | `queue-exhausted` |
+
+## Standards Revalidation Capability Registry
+
+This is the sole machine registry for turning a semantic Gate impact into a
+Standards-adoption claim. The Stable Gate ID Registry above still owns receipt
+identity and producer position; this table owns whether that Gate is an
+adoption boundary owner, a leaf whose claim is projected to another owner, or
+not a blocking Standards-revalidation capability in this protocol version.
+Neither table substitutes for the other.
+
+The table is closed. Its header is exactly `Gate ID`, `Role`, `Owner`,
+`Claim edge`, `Scope protocol`, and `Binding protocol`; every Gate ID in the Stable
+Gate ID Registry occurs exactly once here and no other Gate ID occurs. `Owner`
+is either one Gate ID from that registry or `none`. The other cells use only
+these tokens:
+
+- `Role`: `special-owner`, `immediate-owner`, `native-owner`, `semantic-leaf`,
+  `mechanism-only`, `unsupported`, or `advisory`;
+- `Claim edge`: `after-image-admission`, `adoption-commit`,
+  `native-transition`, `project-to-owner`, `mechanism-input-only`,
+  `advisory-only`, or `none`;
+- `Scope protocol`: `profile-after-image`, `runtime-after-image`,
+  `native-owner-scope`, `inherit-owner-scope`, `diagnostic-scope`, or `none`;
+- `Binding protocol`: `profile-fingerprints`,
+  `runtime-state-fingerprints`, `native-owner-receipt`,
+  `owner-member-chain`, or `not-authorizing`.
+
+A `special-owner` is claimed only by candidate after-image admission. An
+`immediate-owner` is the one raw Gate receipt an adoption may consume directly
+after its state after-image exists. A `native-owner` is claimed only by the
+ordinary transition that already owns that Gate. A `semantic-leaf` never
+authorizes an adoption boundary directly: the planner projects it to `Owner`,
+and the owner's receipt binds the leaf through its own member chain. A
+`mechanism-only` Gate may carry or aggregate claims but creates none about
+itself. `unsupported` rejects a new affected-Gate projection until this table is
+revised; `advisory` may be reported but creates no blocking claim.
+
+| Gate ID | Role | Owner | Claim edge | Scope protocol | Binding protocol |
+|---|---|---|---|---|---|
+| `runtime-card-synchronization` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `profile-load` | `special-owner` | `profile-load` | `after-image-admission` | `profile-after-image` | `profile-fingerprints` |
+| `runtime-startup-recovery` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `large-scale-execution-admission` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `wiki-link-integrity` | `semantic-leaf` | `batch-close` | `project-to-owner` | `inherit-owner-scope` | `owner-member-chain` |
+| `frontmatter-vocabulary` | `semantic-leaf` | `batch-close` | `project-to-owner` | `inherit-owner-scope` | `owner-member-chain` |
+| `priority-quota-distribution` | `semantic-leaf` | `batch-close` | `project-to-owner` | `inherit-owner-scope` | `owner-member-chain` |
+| `required-queue-consistency` | `immediate-owner` | `required-queue-consistency` | `adoption-commit` | `runtime-after-image` | `runtime-state-fingerprints` |
+| `required-queue-admission` | `native-owner` | `required-queue-admission` | `native-transition` | `native-owner-scope` | `native-owner-receipt` |
+| `required-queue-completion` | `native-owner` | `required-queue-completion` | `native-transition` | `native-owner-scope` | `native-owner-receipt` |
+| `maintenance-completion` | `native-owner` | `maintenance-completion` | `native-transition` | `native-owner-scope` | `native-owner-receipt` |
+| `batch-review` | `native-owner` | `batch-review` | `native-transition` | `native-owner-scope` | `native-owner-receipt` |
+| `batch-close` | `native-owner` | `batch-close` | `native-transition` | `native-owner-scope` | `native-owner-receipt` |
+| `structure-registry` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `page-contract` | `semantic-leaf` | `batch-close` | `project-to-owner` | `inherit-owner-scope` | `owner-member-chain` |
+| `boundary-contract` | `advisory` | `none` | `advisory-only` | `diagnostic-scope` | `not-authorizing` |
+| `corpus-plan-structure` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `corpus-plan-semantic-acceptance` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `content-correctness` | `semantic-leaf` | `batch-review` | `project-to-owner` | `inherit-owner-scope` | `owner-member-chain` |
+| `source-promotion` | `semantic-leaf` | `batch-review` | `project-to-owner` | `inherit-owner-scope` | `owner-member-chain` |
+| `expression-layer-acceptance` | `semantic-leaf` | `batch-review` | `project-to-owner` | `inherit-owner-scope` | `owner-member-chain` |
+| `coverage-reconciliation` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `standards-adoption` | `mechanism-only` | `none` | `mechanism-input-only` | `none` | `not-authorizing` |
+| `standards-revalidation` | `mechanism-only` | `none` | `mechanism-input-only` | `none` | `not-authorizing` |
+| `guidance-disposition` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `receipt-validity` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `rendering` | `semantic-leaf` | `batch-review` | `project-to-owner` | `inherit-owner-scope` | `owner-member-chain` |
+| `registered-residual-content` | `semantic-leaf` | `batch-close` | `project-to-owner` | `inherit-owner-scope` | `owner-member-chain` |
+| `duplicate-detection` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `knowledge-freshness` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `depth-balance` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `prerequisite-completeness` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `canonical-ownership-uniqueness` | `unsupported` | `none` | `none` | `none` | `not-authorizing` |
+| `terminal-proof` | `native-owner` | `terminal-proof` | `native-transition` | `native-owner-scope` | `native-owner-receipt` |
+
+This registry governs new plan admission and current authorization only.
+Historical adoption plans, transition receipts, revalidation aggregates, and
+sealed evidence are replayed under their recorded producer era. A later
+capability role, owner, or binding protocol neither repairs nor invalidates a
+decision already consumed in history.

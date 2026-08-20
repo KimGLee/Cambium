@@ -17,13 +17,14 @@ bypass R09 adoption.
 | Profile setup | `scaffold_profile.py` creates the candidate from the version-controlled whitelist `profiles/template-files.yaml` (16 copied files; the orientation README is never copied) and derives the mechanical identity/self-path cells; the interview contract `profiles/interview.yaml` collects the remaining decisions; `check_profile.py` validates. Manual whitelist copy remains the no-agent fallback |
 | Execution | The kernel defines sequential work, concurrent disjoint batches, independent review contexts, and serial integration |
 | Persistent work state | `.cambium/` separates object-level Coverage, the canonical Required Queue, task-level Progress, and hash-bound restricted-YAML complex-batch Work Specs; standard-library tools initialize, compile, validate, transition, apply Amendment-bound cross-Ledger changes, recover interrupted-write evidence, and render Queue state |
-| Active-task Standards adoption | One restricted-YAML plan binds approved governance bytes, deterministic Kernel/Profile snapshots, old/new Contract/Standards/Profile/load set, changed predicates, dimension/boundary-specific invalidated evidence, immediate Queue consistency, and deferred gates; after required pre-rollbacks/holds, `adopt_standards.py` synchronizes all three runtime identities without changing lifecycle/holds, while append-only receipts preserve producer-era history, filter invalidated-evidence receipt IDs from current use, recover interruption, and avoid a prose duplicate |
-| Runtime | No bundled orchestrator, scheduler, workspace manager, or host adapter |
-| OpenAI Plugin adapter | No Plugin manifest, Skills, MCP configuration, Hooks, or marketplace entry. The candidate design is a host-specific adapter over the host-neutral Core, not a replacement for the kernel, selected Profile, or adopter-owned state |
+| Active-task Standards adoption | One restricted-YAML plan binds approved governance bytes, deterministic Kernel/Profile snapshots, old/new Contract/Standards/Profile/load set, changed predicates, and dimension/boundary-specific invalidated evidence. Current admission projects semantic leaf impacts to registered owner Gates: Queue consistency is the only raw immediate receipt, while review/close/completion owners remain mandatory at their native transitions. After required pre-rollbacks/holds, `adopt_standards.py` synchronizes all three runtime identities without changing lifecycle/holds; append-only receipts preserve producer-era history, filter invalidated-evidence receipt IDs from current use, recover interruption, and avoid a prose duplicate |
+| Runtime | No bundled orchestrator, scheduler, or workspace manager. The shipped agent interface below is a call surface, not a runtime: it dispatches nothing, schedules nothing, and owns no assignment state |
+| Agent interface | Shipped. `compile_cli_contract.py` derives the CLI invocation contract by introspecting each tool's own parser; `render_interface_projection.py` projects it into the agent-facing MCP tool list (40 operations); `mcp_server.py` serves that list over stdio at protocol `2025-11-25` and decides nothing — it reads exit codes and receipts and never infers a verdict; `render_host_configs.py` renders registration and corpus binding for Claude Code, Codex, Kimi Code, and dsh from one canonical server definition. All four artifacts are build-time generated with `--check` recompute-and-compare. Adopting an already-supported host is configuration only; supporting a new host adds one renderer |
+| OpenAI Plugin adapter | MCP configuration now ships through the host-neutral agent interface above. No Plugin manifest, Skills, Hooks, or marketplace entry. Measured while building that interface: the Agent Plugins shell cannot determine which corpus a session governs at handshake — it declares no roots, resolves an omitted `cwd` to the plugin root rather than the session workdir, and rejects `env_vars` whitelist forwarding. A per-corpus binding and that shell are not simultaneously available; Codex is therefore registered through its project-level `.codex/config.toml`. The candidate design remains a host-specific adapter over the host-neutral Core, not a replacement for the kernel, selected Profile, or adopter-owned state |
 | Corpus planning and impact inputs | A configured Profile explicitly binds restricted-YAML Global Map, Capability Matrix, and Gap Register artifacts; `check_corpus_plan.py` validates structure/reconciliation and emits deterministic JSON, while `record_corpus_acceptance.py` records the distinct Profile-authorized semantic decision as append-only JSONL; no duplicate Markdown report is persisted |
 | Automatic dependency propagation | The kernel defines semantic dependency invalidation and downstream `needs_rereview`, but no bundled compiler or change detector yet calculates an affected set from the explicit planning inputs |
 | Independent completeness and consistency evaluation | Current gates prove integrity within the declared Coverage, Queue, Delta, receipt, and snapshot boundaries. No bundled independent pass yet re-derives the expected corpus or impact set without trusting those declarations, or evaluates paraphrased cross-document contradictions as a general capability |
-| Tools | Deterministic checks, schemas, receipts, vocabulary/Card compilation, Corpus Planning validation/semantic acceptance/on-demand Agent projection, Required Queue and Work Spec control, guarded Amendment and active-task Standards-adoption transactions, and single-delta application |
+| Tools | Deterministic checks, schemas, receipts, vocabulary/Card compilation, Corpus Planning validation/semantic acceptance/on-demand Agent projection, Required Queue and Work Spec control, guarded Amendment and active-task Standards-adoption transactions, single-delta application, and the four agent-interface generators. The 27 receipt-producing tools carry `--json`: the receipt they already build is serialized to stdout while the human summary moves to stderr, and behaviour without the flag is unchanged. A tool that produces no receipt has nothing to serialize and carries no flag |
 | Page-level contract family | The composed frontmatter page contract (K08/06-08; `compose_page_contract.py` + advisory `page-contract` gate), Structure Registry resolution (K01/05-06; `structure-registry` gate) with marker-block coverage projections, and the page boundary contract (K08/09; advisory `boundary-contract` gate) with its tool-owned boundary projection — all deterministic, with advisory gates awaiting per-adopter promotion decisions under K12/10 |
 
 ## Profile Adoption Reform And Onboarding
@@ -194,6 +195,27 @@ currently shipped. The Plugin may package Skills, a local MCP adapter, and
 generated release resources, but it is not a new normative layer. The kernel,
 exactly one selected Profile, and the target repository's `.cambium/` state
 remain authoritative.
+
+The host-neutral half of this capability has since shipped separately, and it
+changes what remains here. Cambium is now callable from Claude Code, Codex,
+Kimi Code, and dsh through generated per-host configuration; the operation
+surface those hosts see is a build-time projection of the compiled CLI
+contract, not a hand-listed one. Several boundaries stated below are therefore
+already held by that interface rather than pending: the MCP surface is a closed
+set of typed operations with no arbitrary command runner and no second
+state-writing implementation, and registration is explicitly not adoption.
+What a Plugin would still add is packaging and distribution — a manifest,
+Skills, Hooks, and a marketplace entry — not the call surface itself.
+
+One measured constraint belongs on the record. The Agent Plugins shell cannot
+determine which corpus a session governs at handshake: it declares no roots, it
+resolves an omitted `cwd` to the plugin resource root rather than the session
+workdir (the native dialect and `config.toml` resolve to the workdir), and it
+rejects `env_vars` whitelist forwarding. All three channels were tested. A
+per-corpus binding and that shell are not simultaneously available, so Codex is
+registered through its project-level `.codex/config.toml` instead. A Plugin
+release that wants per-corpus governance must first close that gap upstream or
+carry the binding some other way; it cannot be assumed.
 
 OpenAI currently documents Plugins as an installable package that may combine
 Skills, MCP servers, Hooks, and assets. Its package contract is an evolving
@@ -727,6 +749,217 @@ This roadmap item does not:
   chain without an external anchor); both detect less than they appear to
   and would read as "closed" when the class is not.
 
+## Detached State Transaction Protocol
+
+An adopter runtime can live on an execution channel that terminates a
+command before a state writer's full validation finishes. During the
+incident, the active `device_bash` tool channel exposed `timeout_ms <=
+45000` and terminated commands at that limit. This is a property of that
+execution channel, not a general device, mount, or bridge guarantee. The
+historical 75-second close duration is unverified. The 2026-08-13
+incident: a close transition that could not finish on the device was
+executed against a byte-identical replica of the runtime in another
+environment and the after-image installed back, verified by before/after
+hashes of the three state files and the close gate's repository snapshot
+binding. The result was correct and the user ratified it as a one-time
+procedural exception — explicitly NOT a reusable precedent, because the
+writer lock taken in the replica protects the replica, not the
+authoritative namespace, and the state-file hashes do not cover the receipt
+append frontier, pending deltas, archive moves, or recovery locks.
+
+Receipt sealing (K12/07) removed the known unbounded hot-ledger
+deserialization cost, but the surviving measurements do not establish that
+cost as the incident's proximate cause; the detached-execution class remains.
+If detached execution is ever needed again, it must be a protocol, not an
+improvisation:
+
+- `detached prepare`: acquire the REAL writer lock on the authoritative
+  namespace, record the complete before-image (three state files, every
+  receipt register tail, pending-delta and lock inventory) in the lock
+  owner metadata, and export it.
+- Compute the transaction elsewhere against exactly that before-image.
+- `detached commit`: under the still-held authoritative lock, CAS the full
+  before-image (not just the three state files), append only new receipt
+  bytes, install the explicit after-image, and write prepare/commit/abort
+  receipts exactly as the in-place writers do.
+- Any drift between prepare and commit aborts; the lock and the recorded
+  intent drive the same `--resume-status` recovery every other writer uses.
+
+Do not ship the shortcut form (copy out, compute, copy back with state-file
+hash checks alone); it reads as safe exactly until a concurrent writer,
+receipt append, or archive move lands between the copies.
+
+## Concurrent Sealing Protocol
+
+Receipt sealing ships with a deliberately narrow operating boundary: a declared
+maintenance window with a single writer, stated in K12/07 and enforced socially
+rather than mechanically. The receipt append mutex makes the ordinary accident —
+a checker or writer running beside a seal — fail loudly instead of dropping a
+receipt, and that is all it claims. The following are known and accepted at that
+boundary. None of them blocks the current version; each is listed so that a
+later version widening the boundary knows what it has to close, and so that
+nobody rediscovers them as surprises.
+
+- **Intra-process concurrency.** Mutex acquisition is re-entrant through a
+  module-level counter, which is what lets a writer append its own receipts
+  while holding it. The cost is that threads, and forked children sharing the
+  interpreter state, are not separated from each other.
+- **Bypassing appenders.** The mutex binds only writers that go through
+  `kblib.write_receipts`. Anything appending bytes to a register directly is
+  unaffected. The rewrite's tail-preservation is the second line of defence
+  here, and it is a mitigation, not an exclusion.
+- **Marker aliasing.** `receipt-append.free` / `.held` are ordinary paths under
+  `.cambium/tmp/` and are not themselves checked for symlink or hardlink
+  aliasing before use.
+- **Cross-host writers.** Reclaiming an abandoned mutex rests on the recorded
+  pid being absent from *this* host. That is sound for a crashed local writer
+  and says nothing about a writer elsewhere.
+- **Cold-path containment is detection, not prevention.** The symlink-component
+  and hard-link checks over `cold/` are evaluated once per consistency run.
+  They catch a stale working copy or an ordinary mistake; they do not defend
+  against a party who can change the filesystem between the check and its use.
+- **Coordinated tampering.** The journal binds the pending record by hash and
+  the cold registers are bound by the seal receipt, so editing any one of them
+  alone fails closed. An edit to journal and pending together, by someone who
+  can also write the receipt register, is not defended — consistent with the
+  standing trust boundary that a party controlling the repository, the tools,
+  and all evidence can fabricate an internally consistent history.
+- **Recovery scope.** `--reconcile` deterministically finishes the publication
+  paths the sealing writer implements. Other interruptions are required only to
+  fail closed and preserve recoverable evidence; the operator runbook in
+  `Tools/README.md` covers them, and restoring the pre-seal `.cambium/` copy is
+  always a valid answer.
+
+Widening this boundary means a real concurrent protocol: an epoch or cutover
+that appenders participate in rather than a marker they cooperate with, with the
+exclusion property stated as an invariant and tested against genuine racing
+writers. That is a separate change with its own acceptance criteria, not an
+incremental hardening of the above.
+
+## Sealed Evidence Reachability
+
+Sealing now keeps the aggregate a recorded Queue transition consumed out of the
+cold namespace, gives the consumption replay an explicit sealed branch that
+re-proves the record's own hash at the read, and fails a run closed when a
+recorded consumption's evidence resolves in neither namespace. That closes the
+defect an adopter hit: its transitions stayed hot, what they bind went cold, and
+obligations those transitions had discharged silently reopened while every run
+reported zero errors. Three things about the shape of that defect are not closed.
+
+- **The protected set is still enumerated by hand.** `_hot_reference_ids` lists
+  fields; consumers resolve receipt IDs from wherever they like. The defect was
+  never one missing field — it was that nothing compared the two sets. The
+  regression test now asserts that no reachable hot body resolves a sealed
+  receipt outside a declared sealed-branch field, which catches the whole class,
+  but only over what a fixture reaches. Deriving the protected set from the
+  consumers themselves would remove the enumeration rather than guard it.
+- **Nothing moves a row back.** `seal_receipts.py` moves rows cold and has no
+  rehydration path. Body resolution makes an already-sealed archive survivable
+  for consumers that have a sealed branch; a consumer that genuinely requires a
+  row hot — because it needs a field no projection carries and no branch exists
+  — has no sanctioned repair short of restoring a pre-seal copy.
+- **The projection schema is fixed and identity-only.** Each new body-level
+  consumer therefore faces a binary choice: keep its evidence hot, or re-read
+  the sealed record. A projection whose fields consumers declare against would
+  let the seal carry what its readers actually need, and would make "this field
+  is not in the projection" a planning-time answer rather than a runtime one.
+
+## Workflow Progression MVP Boundaries
+
+Three workflow debts are closed together because each was making ordinary
+batch progress ask for a semantic decision after the relevant decision had
+already been made. Their implementations share existing state, receipt, and
+writer transactions; none introduces a parallel control plane.
+
+### Batch-close candidate continuation
+
+`exact-carry-v1` keeps the complete repository scan on every close and reuses
+only the review disposition of an exact unchanged observation. The sole
+baseline is the immediately preceding successful close, resolved through the
+same verified hot/cold receipt catalog. A row carries only when its prior
+disposition was `accept-while-unchanged`, its stable ID, complete observation
+hash, and producer version still match, and it is not manifest-local
+page-contract debt. A disappearance breaks continuity; legacy evidence grants
+no carry; a producer or detail change is fresh; and a type selector expands
+only the exact rows present in the current fresh set. Priority quota continues
+to use its bounded policy-exception path.
+
+This is intentionally not scan caching, a global candidate ledger, semantic
+equivalence, a time-to-live policy, or revival across a disappearance interval.
+Those mechanisms can be proposed later if exact carry proves too conservative;
+they are not required to stop stable advisory debt becoming every batch's new
+manual ticket.
+
+### Delegated operational Amendments
+
+The Task Contract may carry a closed `amendment_authority`. Its safe state is
+absent or `user-only`; `delegated-integrator` names only registered bounded
+change classes. The registration writer derives the complete impact from the
+proposed Coverage and live Queue, binds the exact class set and authority
+fingerprint, and every consuming writer derives it again under lock. The first
+delegatable set is limited to Required-object addition/promotion/rerouting,
+batch addition, and queued-batch update. Unknown effects, removal/demotion,
+terminal-history changes, and unsupported metadata changes fail closed or
+require an explicit user decision through an implemented writer.
+
+Delegation never authorizes its own expansion. Changing or revoking the
+allowlist remains a confirmed Contract Amendment. This MVP does not infer
+semantic scope from prose, create a generic arbitrary-diff capability, or let
+an Agent edit Queue/Coverage directly.
+
+### Routed-gap settlement before freeze
+
+Every gap routed to a batch is now an explicit obligation before that batch
+enters `merge-ready`. A read-only Delta preflight computes the prospective
+Coverage after-image; the transition binds the obligation set and proves that
+none remains routed to the batch, then apply and close re-prove the same facts.
+A newly created gap may target only an existing actionable later batch. An
+existing gap reroute uses the controlled Amendment path before freeze.
+
+The close gate is therefore a verifier, not the first place unfinished routing
+is discovered. This MVP does not edit a frozen Delta, treat
+`merge-ready -> open` as routine bookkeeping, reopen terminal history, or
+invent a successor batch when none exists.
+
+## Machine-readable Review Rulings
+
+A K12/12 substantive review currently ends in prose. Its findings, their
+grades, and the confirmation round's verdict on each are written for a
+person; nothing a gate reads carries them. The 2026-08-13 incident: a
+confirmation round ruled one finding not-closed while issuing the exact
+five-character fix, the fix was applied correctly by hand, and the receipt
+that recorded the batch wrote `result: pass` at top level with the deviation
+admitted only in its prose. The machine gates read the field.
+
+A first attempt at the carrier — a `closed-conditional` ruling executed by a
+tool that verifies pre-image, patch uniqueness and post-image — was written
+and then withdrawn before release, because it verified a shape no producer
+emits: no review tool writes a machine-readable verdict, so the tool's
+`review_receipt` field could only ever have been filled in by the same
+executor it was meant to constrain, and no gate consumed the resulting
+receipt. Shipping it would have repeated the original error one level up:
+a rule whose enforcement is prose.
+
+The order this work has to follow:
+
+- A review round writes machine-readable findings — stable finding ID,
+  grade, target page and the bytes judged — into a review register, as a
+  receipt from the reviewing context.
+- The confirmation round writes a verdict per finding against those IDs,
+  with reviewer identity distinct from the executor's, in the same way
+  `check_batch_close` already requires distinct integrator and reviewer
+  labels.
+- Only then can a conditional close mean anything: an executor tool
+  resolves the reviewer's verdict receipt, refuses one it cannot resolve or
+  that names itself as reviewer, applies the literal patch under the writer
+  lock with pre-image CAS, and writes a receipt a close gate reads.
+- The batch-close gate then refuses to close a batch with an unexecuted
+  `closed-conditional` finding, which is the consumer that makes the whole
+  chain load-bearing.
+
+Until the first step exists, a round-2 not-closed escalates. That is the
+current rule and it is not a gap.
+
 ## Implementation Order
 
 Profile onboarding and typed dependency compilation can progress independently
@@ -745,6 +978,13 @@ assignment state and the deterministic integrator loop precede parallel worker
 automation; observability and recovery tests accompany every stage. This order
 protects the shared control plane while still making multi-context execution
 the intended scaling path.
+
+The host-neutral agent interface is complete and sits before the Plugin line
+rather than inside it: the compiled CLI contract, its projection, the MCP
+server, and the per-host configs are all host-neutral, so a Plugin release
+consumes them rather than reimplementing them. A new host is adopted by adding
+one renderer, which is why the per-host configuration piece is the acceptance
+test for the three before it rather than a fourth feature.
 
 Core stabilization precedes every state-writing Plugin capability. The
 Operation Capability Registry is standards-layer work that precedes the

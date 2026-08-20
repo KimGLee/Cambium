@@ -17,7 +17,7 @@ This page is the stable entry point for the Metadata and Status standard. The de
 | [[kernel/K08 Metadata and Status/03 Status Axes\|Status Axes]] + `Vocabulary Extensions` | `Status Axes` |
 | [[kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata\|Evidence and Relationship Metadata]] + `Language Contract` | `Evidence Maturity`, `Prerequisites`, `Aliases` |
 | [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata\|Review Source and Migration Metadata]] + `Vocabulary Extensions` | `Review Dates`, `Freshness And Review Due`, `Conditional Source Metadata`, `Migration Rules`, `Related` |
-| [[kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract\|Frontmatter Applicability Contract]] + `Metadata Contract` | `Frontmatter Applicability Contract`, `Two-layer Composition`, `Enablement` |
+| [[kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract\|Frontmatter Applicability Contract]] + `Metadata Contract` | `Frontmatter Applicability Contract`, `Two-layer Composition`, `Missingness Has One Owner`, `Enablement` |
 | [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority\|Frontmatter Writer and Projection Authority]] | `Frontmatter Writer and Projection Authority`, `Writer Rules` |
 | [[kernel/K08 Metadata and Status/08 Relationship Metadata Contract\|Relationship Metadata Contract]] + `Metadata Contract` | `Relationship Metadata Contract`, `Closure And Extension` |
 | [[kernel/K08 Metadata and Status/09 Page Boundary Contract\|Page Boundary Contract]] + `Metadata Contract` | `Page Boundary Contract`, `Cross-page Rules`, `Projection`, `Enablement` |

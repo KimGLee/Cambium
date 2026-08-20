@@ -25,11 +25,12 @@ Method:
   subset parser (kblib.parse_yaml_subset);
 - values of controlled fields must be in the vocabulary: unknown value ->
   result=fail;
-- a field missing or empty -> result=candidate (whether absence is allowed is
-  a human call: K08/01 says "use the applicable fields", K08/05 says pages
-  without frontmatter default to unassessed);
-- a file without any frontmatter -> one candidate; frontmatter beyond the
-  subset grammar and thus unparseable -> one candidate.
+- missing/empty controlled fields and pages without frontmatter are diagnostic
+  counts only.  Applicability and required presence belong to the compiled
+  page contract; this value checker must not turn a legal absence into a
+  repository-wide human decision;
+- frontmatter beyond the subset grammar is a failure because no controlled
+  value can be proved legal from bytes the producer cannot parse.
 
 Scope semantics: --scope may be a directory or a single .md file (note-close
 self-check, K00/05). After explicit exclusions are applied, an empty effective
@@ -40,10 +41,10 @@ Exit codes: 0 = all pass, 1 = at least one fail, 2 = no fail but candidates.
 
 Usage: python3 check_vocab.py <vault_root> [--scope SUBPATH]
        [--vocab Tools/vocab.yaml] [--quota-p0 N] [--quota-p1 N]
-       [--receipts PATH]
+       [--receipts PATH] [--json]
 """
 
-import argparse
+import contextlib
 import os
 import sys
 
@@ -53,7 +54,7 @@ import compose_vocab
 import profile_admission
 
 TOOL = "check_vocab"
-TOOL_VERSION = "1.7.0"
+TOOL_VERSION = "1.8.0"
 GATE_ID = "frontmatter-vocabulary"
 # Every K00/12 Gate this producer binds, with the check each receipt writes;
 # the registry guard compares its rows against this mapping.
@@ -64,6 +65,25 @@ GATE_CHECKS = {
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
 GATE_CHECK = "vocab-check-summary"
+
+
+def _emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    ``--json`` publishes the receipts themselves, not a projection of them:
+    ``Tools/schemas/receipt.template.jsonl`` says in its own text that its
+    examples are "not the complete set", so a field whitelist here would
+    silently drop this tool's extension fields (``priority_shares``, the
+    admitted-profile evidence). Serialization goes through the shared
+    ``kblib.canonical_json_bytes``; this module owns no serializer. A run
+    that produced no receipt writes nothing, which leaves the settled
+    rejection shape -- empty stdout, one line of reason on stderr, exit 1 --
+    exactly as it was.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
 
 
 def _make_receipt(check, target, result, details, seq, root=None):
@@ -104,7 +124,7 @@ def load_vocab(path, text=None):
 
 
 def main(argv=None, *, authorized_admission=None):
-    ap = argparse.ArgumentParser(description="Frontmatter controlled-vocabulary check")
+    ap = kblib.ArgumentParser(description="Frontmatter controlled-vocabulary check")
     ap.add_argument("vault_root", help="vault root directory")
     ap.add_argument("--scope", help="only scan .md files under this subpath")
     ap.add_argument("--vocab", default=None,
@@ -128,7 +148,34 @@ def main(argv=None, *, authorized_admission=None):
                          "compliance receipt so its consumers can bind the "
                          "policy identity, never re-derive it")
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
+    ap.add_argument(
+        "--json", action="store_true",
+        help="write this run's receipt objects to stdout as one canonical "
+             "JSON array and move the human summary to stderr; receipt "
+             "writing and exit codes are unchanged")
     args = ap.parse_args(argv)
+
+    if not args.json:
+        return _run(args, None, authorized_admission)
+    produced = []
+    with contextlib.redirect_stdout(sys.stderr):
+        code = _run(args, produced, authorized_admission)
+    _emit_json_receipts(produced)
+    return code
+
+
+def _run(args, produced, authorized_admission):
+    """Execute one already-parsed invocation; ``produced`` collects receipts.
+
+    Every exit that owns receipts routes through :func:`_finish` below, so the
+    ``--json`` view and the JSONL append always describe the same objects.
+    """
+
+    def _finish(receipts):
+        if produced is not None:
+            produced.extend(receipts)
+        return kblib.exit_code(receipts)
+
     priority_shares = {}
 
     vocab_path = args.vocab or os.path.join(
@@ -177,7 +224,7 @@ def main(argv=None, *, authorized_admission=None):
             print("check_vocab: FAIL — composed vocabulary is not current: %s"
                   % details)
             kblib.write_receipts(args.receipts, receipts)
-            return kblib.exit_code(receipts)
+            return _finish(receipts)
     try:
         vocab = load_vocab(
             vocab_path,
@@ -197,7 +244,7 @@ def main(argv=None, *, authorized_admission=None):
         print("check_vocab: FAIL — composed vocabulary at %s is not usable: %s"
               % (vocab_path, exc))
         kblib.write_receipts(args.receipts, receipts)
-        return kblib.exit_code(receipts)
+        return _finish(receipts)
 
     receipts = []
     seq = 0
@@ -226,7 +273,7 @@ def main(argv=None, *, authorized_admission=None):
             "result", 1, root=args.vault_root)]
         print("check_vocab: scanned 0 file(s) — FAIL: effective scan set is empty")
         kblib.write_receipts(args.receipts, receipts)
-        return kblib.exit_code(receipts)
+        return _finish(receipts)
     for full, rel in scan_files:
         rel_disp = rel.replace(os.sep, "/")
         counts["files"] += 1
@@ -234,12 +281,6 @@ def main(argv=None, *, authorized_admission=None):
         fm_text = kblib.extract_frontmatter(text)
         if fm_text is None:
             counts["no_frontmatter"] += 1
-            seq += 1
-            receipts.append(_make_receipt(
-                "frontmatter-missing", rel_disp, "candidate",
-                "file has no frontmatter; per K08/05 it defaults to "
-                "authoring_status=unassessed, whether frontmatter must be "
-                "added is a human call", seq, root=args.vault_root))
             continue
         try:
             fm = kblib.parse_yaml_subset(fm_text)
@@ -247,16 +288,16 @@ def main(argv=None, *, authorized_admission=None):
             counts["unparseable"] += 1
             seq += 1
             receipts.append(_make_receipt(
-                "frontmatter-unparseable", rel_disp, "candidate",
+                "frontmatter-unparseable", rel_disp, "fail",
                 "frontmatter is beyond the restricted YAML subset grammar and "
-                "cannot be judged deterministically: %s" % exc, seq,
+                "its controlled values cannot be proved legal: %s" % exc, seq,
                 root=args.vault_root))
             continue
         if not isinstance(fm, dict):
             counts["unparseable"] += 1
             seq += 1
             receipts.append(_make_receipt(
-                "frontmatter-unparseable", rel_disp, "candidate",
+                "frontmatter-unparseable", rel_disp, "fail",
                 "top level of frontmatter is not a mapping", seq,
                 root=args.vault_root))
             continue
@@ -275,13 +316,6 @@ def main(argv=None, *, authorized_admission=None):
             value = effective.get(field)
             if field not in effective or value is None or value == "" or value == []:
                 counts["missing_field"] += 1
-                seq += 1
-                receipts.append(_make_receipt(
-                    "vocab-field-missing",
-                    "%s#%s" % (rel_disp, field), "candidate",
-                    "controlled field %s is missing or empty; whether absence "
-                    "is allowed is a human call (owner: %s)"
-                    % (field, spec["owner"]), seq, root=args.vault_root))
                 continue
             for v in (value if isinstance(value, list) else [value]):
                 sval = str(v)
@@ -313,8 +347,9 @@ def main(argv=None, *, authorized_admission=None):
         _summary = _make_receipt(
             GATE_CHECK,
             (args.scope or ".") + " @ " + os.path.abspath(args.vault_root), "pass",
-            "no illegal controlled-vocabulary values found (unknown_value=0; "
-            "candidates counted separately)", seq, root=args.vault_root)
+            "no illegal controlled-vocabulary values found "
+            "(unknown_value=0; missingness belongs to the page contract)",
+            seq, root=args.vault_root)
         _summary["priority_shares"] = priority_shares
         receipts.append(_summary)
 
@@ -336,7 +371,7 @@ def main(argv=None, *, authorized_admission=None):
 
     print("check_vocab: scanned %(files)d file(s)" % counts)
     print("  no_frontmatter=%(no_frontmatter)d unparseable=%(unparseable)d "
-          "unknown_value(fail)=%(unknown_value)d missing_field(candidate)=%(missing_field)d "
+          "unknown_value(fail)=%(unknown_value)d missing_field(diagnostic)=%(missing_field)d "
           "ok_values=%(ok_values)d" % counts)
     for r in receipts:
         if r["result"] == "fail":
@@ -427,7 +462,7 @@ def main(argv=None, *, authorized_admission=None):
             receipt.update(evidence)
 
     kblib.write_receipts(args.receipts, receipts)
-    return kblib.exit_code(receipts)
+    return _finish(receipts)
 
 
 if __name__ == "__main__":

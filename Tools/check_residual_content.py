@@ -21,7 +21,7 @@ the final summary Receipt's positive-control evidence fields are shared across
 verifiers.
 """
 
-import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -586,6 +586,24 @@ def produce_evidence(root, config_path, time_limit, add, receipt_context,
     return scanned, candidates, time.monotonic() - started
 
 
+def _emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    ``--json`` publishes the receipts themselves, not a projection of them:
+    the schema template in ``Tools/schemas/receipt.template.jsonl`` says in
+    its own text that its examples are "not the complete set", so a field
+    whitelist here would silently drop this tool's extension fields. The one
+    canonical serializer is ``kblib.canonical_json_bytes``; this module owns
+    no serializer of its own. A run that produced no receipt writes nothing,
+    which keeps the already-settled rejection shape (empty stdout, one line
+    of reason on stderr, exit 1) intact.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
+
+
 def write_receipts_safely(path, receipts):
     try:
         kblib.write_receipts(path, receipts)
@@ -597,7 +615,7 @@ def write_receipts_safely(path, receipts):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Find profile-configured residual content outside accepted roots."
     )
     parser.add_argument("vault_root", help="knowledge-vault root to scan")
@@ -617,9 +635,26 @@ def main(argv=None):
         help=("execute the registered controls through the production "
               "classifier without scanning repository content"),
     )
+    parser.add_argument(
+        "--json", action="store_true",
+        help=("write this run's receipt objects to stdout as one canonical "
+              "JSON array and move the human summary to stderr; receipt "
+              "writing and exit codes are unchanged"),
+    )
     args = parser.parse_args(argv)
 
-    receipts = []
+    if not args.json:
+        return _run(args, None)
+    produced = []
+    with contextlib.redirect_stdout(sys.stderr):
+        code = _run(args, produced)
+    _emit_json_receipts(produced)
+    return code
+
+
+def _run(args, produced):
+    """Execute one already-parsed invocation; ``produced`` collects receipts."""
+    receipts = [] if produced is None else produced
     safe_scan_id = (args.scan_id if SCAN_ID_RE.fullmatch(args.scan_id)
                     else "invalid-residual-scan")
     receipt_context = {

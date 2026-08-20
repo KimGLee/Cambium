@@ -16,6 +16,7 @@ sys.path.insert(0, str(TOOLS))
 
 import check_queue
 import check_corpus_plan
+import batch_settlement
 import kblib
 import update_queue
 from profile_fixture import install_loadable_profile
@@ -158,11 +159,18 @@ class UpdateQueueTests(unittest.TestCase):
             close_gate["reviewer_attestation_receipt"],
             *close_gate["closed_list_evidence"].values(),
         ]
+
+        def restamp(record):
+            record["tool_version"] = version
+            if (record.get("check") == "batch_global_review_attestation" and
+                    version not in
+                    check_queue.COMPACT_CLOSE_EVIDENCE_VERSIONS):
+                # A pre-compact era carried the full inline disposition
+                # list; this fixture's bundle has zero candidates.
+                record.setdefault("accepted_candidate_ids", [])
+
         for receipt_id in bundle_ids:
-            self.rewrite_receipt_for_negative_test(
-                receipt_id,
-                lambda record: record.__setitem__("tool_version", version),
-            )
+            self.rewrite_receipt_for_negative_test(receipt_id, restamp)
 
     def restamp_close_bundle_as_legacy_1_4(self, close_gate_id):
         """Reproduce the sealed seven-member check_batch_close 1.4 era."""
@@ -185,6 +193,8 @@ class UpdateQueueTests(unittest.TestCase):
             if record.get("receipt_id") in (
                     close_gate_id, close_gate["global_review_receipt"]):
                 record["closed_list_evidence"].pop(omitted_field)
+            if record.get("check") == "batch_global_review_attestation":
+                record.setdefault("accepted_candidate_ids", [])
 
         for receipt_id in bundle_ids:
             self.rewrite_receipt_for_negative_test(receipt_id, restamp)
@@ -221,6 +231,9 @@ class UpdateQueueTests(unittest.TestCase):
                     if entry["id"] == batch_id)
         revision = queue["state_revision"]
         runtime = check_queue.validate_runtime(self.root)
+        settlement = batch_settlement.current_settlement_report(
+            runtime["coverage"], batch_id)
+        self.assertEqual([], settlement["errors"], settlement["errors"])
         applied = next(
             entry for entry in runtime["applied_delta_receipts"]
             if entry.get("batch") == batch_id)
@@ -243,6 +256,12 @@ class UpdateQueueTests(unittest.TestCase):
             evidence[field] = receipt_id
         attestation_id = "audit-batch-review-attestation-%s-r%d" % (
             batch_id, revision)
+        evidence_relative = "%s/%s-r%d-fixture.jsonl" % (
+            kblib.RECEIPT_COLD_EVIDENCE_PREFIX, batch_id, revision)
+        evidence_path = self.root / evidence_relative
+        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        if not evidence_path.exists():
+            evidence_path.write_bytes(b"")
         self.append_receipt(
             attestation_id, check="batch_global_review_attestation",
             target=batch_id, tool="check_batch_close",
@@ -251,7 +270,22 @@ class UpdateQueueTests(unittest.TestCase):
             integrator_id=integrator_id, reviewer_id=reviewer_id,
             merged_snapshot_sha256=merged_snapshot_sha256,
             details="fixture independent review attestation",
-            accepted_candidate_ids=[], accepted_candidate_types=[],
+            accepted_candidate_count=0, accepted_candidate_types=[],
+            accepted_by_type_counts={},
+            candidate_set_sha256=kblib.sha256_bytes(b""),
+            candidate_protocol=
+                check_queue.candidate_lifecycle.CANDIDATE_PROTOCOL,
+            candidate_baseline_protocol=
+                check_queue.candidate_lifecycle.BASELINE_NONE,
+            candidate_baseline_receipt=None,
+            carried_candidate_count=0,
+            carried_candidate_set_sha256=kblib.sha256_bytes(b""),
+            fresh_candidate_count=0,
+            fresh_candidate_set_sha256=kblib.sha256_bytes(b""),
+            candidate_evidence_path=evidence_relative,
+            candidate_evidence_sha256=kblib.sha256_bytes(b""),
+            candidate_evidence_bytes=0,
+            candidate_evidence_records=0,
             candidate_dispositions=[])
         global_review_id = "audit-batch-global-review-%s-r%d" % (
             batch_id, revision)
@@ -300,6 +334,7 @@ class UpdateQueueTests(unittest.TestCase):
             "global_review_receipt": global_review_id,
             "closed_list_evidence": evidence,
         }
+        receipt.update(batch_settlement.close_binding(settlement))
         if mutate is not None:
             mutate(receipt)
         path = self.root / ".cambium/receipts/close-gates.jsonl"
@@ -609,8 +644,39 @@ class UpdateQueueTests(unittest.TestCase):
         completed = self.command(
             "--id", "B1", "--transition", "cancelled",
         )
-        self.assertEqual(2, completed.returncode, completed.stdout)
+        # 1, not argparse's stock 2: a value outside `choices` is a usage
+        # error, and 2 is reserved here for HOLD (no failure, candidates
+        # remain).  Sharing one code made "you typed it wrong" and "clean but
+        # not quiet" indistinguishable to every caller.  See
+        # kblib.ArgumentParser.
+        self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("invalid choice: 'cancelled'", completed.stdout)
+        for relative, content in before.items():
+            self.assertEqual(content, (self.root / relative).read_bytes())
+
+    def test_lifecycle_and_hold_are_one_required_exclusive_choice(self):
+        before = {
+            relative: (self.root / relative).read_bytes()
+            for relative in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+                             check_queue.PROGRESS_PATH)
+        }
+        # One write per run, and never an empty one: a lifecycle move and a
+        # hold move are separate transitions, and a run naming neither has
+        # nothing to write.  Both halves are the parser's own required
+        # mutually exclusive group, so each is refused before the tool reads
+        # any state -- the two messages below are producible by no other
+        # argparse declaration.
+        both = self.command(
+            "--id", "B1", "--transition", "open", "--hold-state", "paused",
+        )
+        self.assertEqual(1, both.returncode, both.stdout)
+        self.assertIn("not allowed with argument", both.stdout)
+        neither = self.command("--id", "B1")
+        self.assertEqual(1, neither.returncode, neither.stdout)
+        self.assertIn(
+            "one of the arguments --transition --hold-state is required",
+            neither.stdout,
+        )
         for relative, content in before.items():
             self.assertEqual(content, (self.root / relative).read_bytes())
 
@@ -766,7 +832,7 @@ class UpdateQueueTests(unittest.TestCase):
                 self.assertEqual(1, attempted.returncode, attempted.stdout)
                 self.assertIn(
                     "unsupported tool_version='%s' for current close action; "
-                    "expected one of ['1.8.0']" % version,
+                    "expected one of ['1.10.0']" % version,
                     attempted.stdout)
         self.assertEqual("merge-ready", self.load(
             check_queue.QUEUE_PATH)["required_queue"][0]["state"])
@@ -1200,7 +1266,9 @@ class UpdateQueueTests(unittest.TestCase):
             "--actor-role", "integrator",
         )
         self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("open_gaps_added[0] type", attempted.stdout)
+        self.assertIn(
+            "open_gaps_added contains a gap without id or page+type",
+            attempted.stdout)
         self.assertEqual("open", self.load(check_queue.QUEUE_PATH)
                          ["required_queue"][0]["state"])
 
@@ -1562,6 +1630,65 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertEqual(
             [], check_queue.batch_reference_settlement_errors(result, item))
 
+    def test_merge_ready_refuses_an_unsettled_gap_before_freezing_delta(self):
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        coverage.setdefault("open_gaps", []).append({
+            "id": "gap-prefreeze", "page": "Topics/A.md",
+            "type": "rereview", "next_batch": "B1",
+        })
+        coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        self.refresh_initial_origin()
+        self.open_b1()
+        self.append_receipt("audit-page-1", target="Topics/A.md")
+        self.append_receipt("audit-batch-1", check="batch_gate")
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-1\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8")
+        before_queue = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        before_receipts = {
+            path.relative_to(self.root).as_posix(): path.read_bytes()
+            for path in (self.root / ".cambium/receipts").rglob("*.jsonl")
+        }
+        revision, fingerprint = self.expected()
+        attempted = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--apply")
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn("routed-gap-unsettled", attempted.stdout)
+        self.assertEqual(before_queue,
+                         (self.root / check_queue.QUEUE_PATH).read_bytes())
+        self.assertEqual(before_receipts, {
+            path.relative_to(self.root).as_posix(): path.read_bytes()
+            for path in (self.root / ".cambium/receipts").rglob("*.jsonl")
+        })
+
+        delta.write_text(delta.read_text(encoding="utf-8").replace(
+            "open_gaps_closed: []", "open_gaps_closed:\n  - gap-prefreeze"),
+            encoding="utf-8")
+        revision, fingerprint = self.expected()
+        completed = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--apply")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertEqual("merge-ready", self.load(check_queue.QUEUE_PATH)
+                         ["required_queue"][0]["state"])
+
     def test_merge_ready_requires_substantive_review_for_l_tier_pages(self):
         # K12/12: mandatory for L-tier, produced by a context other than the
         # author.  Until this guard, nothing counted the receipts and the
@@ -1727,9 +1854,17 @@ class UpdateQueueTests(unittest.TestCase):
         )
         self.assertEqual(0, held.returncode, held.stdout)
         self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        self.append_receipt("audit-page-1", target="Topics/A.md")
+        self.append_receipt("audit-batch-1", check="batch_gate")
         delta = self.root / ".cambium/deltas/B1.yaml"
         delta.parent.mkdir(parents=True, exist_ok=True)
-        delta.write_text("batch: B1\npages: []\n", encoding="utf-8")
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-1\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8")
         completed = self.command(
             "--id", "B1", "--transition", "merge-ready",
             "--delta-path", ".cambium/deltas/B1.yaml",

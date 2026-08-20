@@ -20,6 +20,8 @@ import check_queue
 import compile_queue
 import kblib
 import register_amendment
+import batch_settlement
+import candidate_lifecycle
 from profile_fixture import install_loadable_profile
 
 
@@ -234,6 +236,12 @@ class CompileQueueTests(unittest.TestCase):
         merged_snapshot_sha = "sha256:" + "7" * 64
         batch_close_version = check_queue.BATCH_CLOSE_TOOL_VERSION
         queue_gate_version = check_queue.TOOL_VERSION
+        evidence_relative = "%s/B1-fixture.jsonl" % (
+            kblib.RECEIPT_COLD_EVIDENCE_PREFIX)
+        evidence_file = self.root / evidence_relative
+        evidence_file.parent.mkdir(parents=True, exist_ok=True)
+        if not evidence_file.exists():
+            evidence_file.write_bytes(b"")
         receipts = [
             {
                 "receipt_id": "audit-page-1", "result": "pass",
@@ -377,9 +385,26 @@ class CompileQueueTests(unittest.TestCase):
                 "reviewer_id": reviewer_id,
                 "details": "fixture independent review attestation",
                 "merged_snapshot_sha256": merged_snapshot_sha,
-                "accepted_candidate_ids": [],
+                "accepted_candidate_count": 0,
                 "accepted_candidate_types": [],
+                "accepted_by_type_counts": {},
+                "candidate_set_sha256": kblib.sha256_bytes(b""),
+                "candidate_evidence_path": evidence_relative,
+                "candidate_evidence_sha256": kblib.sha256_bytes(b""),
+                "candidate_evidence_bytes": 0,
+                "candidate_evidence_records": 0,
                 "candidate_dispositions": [],
+                "candidate_protocol":
+                    candidate_lifecycle.CANDIDATE_PROTOCOL,
+                "candidate_baseline_protocol":
+                    candidate_lifecycle.BASELINE_NONE,
+                "candidate_baseline_receipt": None,
+                "carried_candidate_count": 0,
+                "carried_candidate_set_sha256":
+                    candidate_lifecycle.candidate_set_sha256([]),
+                "fresh_candidate_count": 0,
+                "fresh_candidate_set_sha256":
+                    candidate_lifecycle.candidate_set_sha256([]),
             },
             {
                 "receipt_id": "audit-global-review-1", "result": "pass",
@@ -423,6 +448,9 @@ class CompileQueueTests(unittest.TestCase):
                     "audit-review-attestation-1",
                 "global_review_receipt": "audit-global-review-1",
                 "closed_list_evidence": closed_list_evidence,
+                **batch_settlement.close_binding(
+                    batch_settlement.current_settlement_report(
+                        self.load(check_queue.COVERAGE_PATH), "B1")),
             },
         ))
         receipt_path = self.root / ".cambium/receipts/history.jsonl"

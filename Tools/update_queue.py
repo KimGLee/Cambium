@@ -8,7 +8,7 @@ a batch also projects its Coverage ``next_batch`` route in that same guarded
 transaction; all written state is restored if any replacement fails.
 """
 
-import argparse
+import contextlib
 import copy
 import os
 import sys
@@ -20,12 +20,35 @@ import check_corpus_plan
 import kblib
 import update_task
 import apply_delta
+import batch_settlement
 
-TOOL_VERSION = "1.5.0"
+TOOL_VERSION = "1.6.0"
 # The lifecycle map moved to `kblib` so `check_queue` can read it without
 # importing this writer, which imports it.  The name stays here because it is
 # this tool's transition guard and every existing reference reads it here.
 TRANSITIONS = kblib.BATCH_LIFECYCLE_TRANSITIONS
+
+
+def _emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    ``--json`` publishes the receipts themselves, not a projection of them:
+    ``Tools/schemas/receipt.template.jsonl`` says in its own text that its
+    examples are "not the complete set", and this tool's per-transition
+    bindings (settlement, delta, invalidation) are exactly what a whitelist
+    would drop. Order matches the JSONL append order, so an induced task
+    transition precedes the Queue transition it accompanied. Serialization
+    goes through the shared ``kblib.canonical_json_bytes``; this module owns
+    no serializer. Only a run that actually applied the transition writes
+    here: a dry run plans a receipt but publishes none, so its stdout stays
+    empty and the plan stays on stderr. That also leaves the settled
+    rejection shape -- empty stdout, one line of reason on stderr, exit 1 --
+    exactly as it was.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
 
 
 def _nonempty(value):
@@ -323,12 +346,8 @@ def _transition_item(item, args, result):
     after = args.transition or before
     if before in ("closed", "cancelled"):
         raise ValueError("%s item is immutable; create a successor batch" % before)
-    if args.transition is not None and args.hold_state is not None:
-        raise ValueError("lifecycle and hold transitions are separate writes")
     if args.transition and after not in TRANSITIONS.get(before, frozenset()):
         raise ValueError("illegal transition %s -> %s" % (before, after))
-    if not args.transition and args.hold_state is None:
-        raise ValueError("provide --transition or --hold-state")
     now = args.at
 
     def require_standards_revalidation():
@@ -432,13 +451,22 @@ def _transition_item(item, args, result):
             policy_errors.append("canonical Coverage source bytes are unavailable")
         else:
             try:
-                apply_delta._merge_coverage_sections(
-                    coverage_source, delta_data)
-                _, planned, rejected, _ = apply_delta._build_plan(
+                page_text, planned, rejected, _ = apply_delta._build_plan(
                     coverage_source.splitlines(True), delta_data, force=False)
+                prospective_text = apply_delta._merge_coverage_sections(
+                    page_text, delta_data)
                 if rejected or len(planned) != len(item.get("manifest") or []):
                     policy_errors.append(
                         "delta does not apply exactly to the frozen manifest")
+                prospective_coverage = kblib.parse_yaml_subset(prospective_text)
+                settlement = batch_settlement.delta_settlement_report(
+                    result["coverage"], prospective_coverage, delta_data,
+                    result["queue"], item["id"])
+                policy_errors.extend(settlement["errors"])
+                if not settlement["errors"]:
+                    args.merge_ready_settlement_report = settlement
+                    args.merge_ready_prospective_coverage_sha256 = \
+                        kblib.sha256_bytes(prospective_text)
             except (KeyError, TypeError, ValueError,
                     kblib.YamlSubsetError) as exc:
                 policy_errors.append("delta apply policy failed: %s" % exc)
@@ -514,7 +542,7 @@ def _transition_item(item, args, result):
                 "merge-ready -> closed requires --delta-apply-receipt")
         _receipt(result, args.delta_apply_receipt, "delta application", expected={
             "tool": "apply_delta",
-            "tool_version": "1.4.0",
+            "tool_version": "1.5.0",
             "check": "delta_apply",
             "target": item["id"],
             "task_id": result["queue"].get("task_id"),
@@ -544,6 +572,7 @@ def _transition_item(item, args, result):
             check_queue.current_receipt_catalog(result),
             args.close_gate_receipt,
             item_id=item["id"],
+            root=result.get("root"),
             task_id=result["queue"].get("task_id"),
             queue_revision=result["queue"].get("queue_revision"),
             queue_state_revision=result["queue"].get("state_revision"),
@@ -723,28 +752,81 @@ def _transition_item(item, args, result):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Apply one Required Queue transition")
-    parser.add_argument("root")
-    parser.add_argument("--id", required=True)
-    parser.add_argument("--transition", choices=("open", "merge-ready", "closed"))
-    parser.add_argument("--hold-state", choices=tuple(check_queue.HOLDS))
-    parser.add_argument("--expected-state-revision", type=int)
-    parser.add_argument("--expected-sha256")
+    parser = kblib.ArgumentParser(description="Apply one Required Queue transition")
+    parser.add_argument("root", help="adopting repository root")
+    parser.add_argument("--id", required=True,
+                        help="Required Queue batch id to transition")
+    write = parser.add_mutually_exclusive_group(required=True)
+    write.add_argument("--transition", choices=("open", "merge-ready", "closed"),
+                       help="target lifecycle state; exclusive with "
+                            "--hold-state")
+    write.add_argument("--hold-state", choices=tuple(check_queue.HOLDS),
+                       help="target hold state; exclusive with --transition")
+    parser.add_argument("--expected-state-revision", type=int,
+                        help="compare-and-swap guard: the state_revision the "
+                             "caller read from the current Queue; the write is "
+                             "refused when the live value differs")
+    parser.add_argument("--expected-sha256",
+                        help="compare-and-swap guard: sha256:<hex> the caller "
+                             "read from the current Queue; the write is "
+                             "refused when the live bytes differ")
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
-                        default="worker")
-    parser.add_argument("--gate-receipt")
-    parser.add_argument("--standards-revalidation-receipt")
-    parser.add_argument("--close-gate-receipt")
-    parser.add_argument("--confirmation-receipt")
-    parser.add_argument("--delta-path")
-    parser.add_argument("--delta-apply-receipt")
-    parser.add_argument("--batch-receipt", action="append", default=[])
-    parser.add_argument("--reason")
-    parser.add_argument("--at", default=None)
+                        default="worker",
+                        help="declared caller role; Queue transition planning "
+                             "and apply both require integrator")
+    parser.add_argument("--gate-receipt",
+                        help="gate receipt id: activation gate for queued -> "
+                             "open, Queue consistency gate for closed and for "
+                             "clearing revalidation-required")
+    parser.add_argument("--standards-revalidation-receipt",
+                        help="check_queue --require-revalidation receipt "
+                             "discharging an outstanding Standards "
+                             "revalidation; queued -> open or "
+                             "revalidation-required -> none only")
+    parser.add_argument("--close-gate-receipt",
+                        help="check_batch_close receipt id required by the "
+                             "closed transition")
+    parser.add_argument("--confirmation-receipt",
+                        help="confirmation receipt id required by queued -> "
+                             "open when the batch is confirmation_required")
+    parser.add_argument("--delta-path",
+                        help="repository-relative .cambium/deltas/<id>.yaml "
+                             "batch delta required by open -> merge-ready")
+    parser.add_argument("--delta-apply-receipt",
+                        help="apply_delta receipt id required by the closed "
+                             "transition and by merge-ready -> open reopen")
+    parser.add_argument("--batch-receipt", action="append", default=[],
+                        help="batch-review gate receipt id for open -> "
+                             "merge-ready; exactly one is accepted")
+    parser.add_argument("--reason",
+                        help="non-empty rationale required by merge-ready -> "
+                             "open and by any non-none hold")
+    parser.add_argument("--at", default=None,
+                        help="transition timestamp; defaults to now in UTC")
     parser.add_argument("--receipts",
-                        default=".cambium/receipts/queue-transitions.jsonl")
-    parser.add_argument("--apply", action="store_true")
+                        default=".cambium/receipts/queue-transitions.jsonl",
+                        help="receipt JSONL path under .cambium/receipts")
+    parser.add_argument("--apply", action="store_true",
+                        help="write the transition; omit for a dry run")
+    parser.add_argument(
+        "--json", action="store_true",
+        help="write the applied transition receipt(s) to stdout as one "
+             "canonical JSON array and move the human report to stderr; a "
+             "dry run publishes no receipt and so writes nothing there; "
+             "receipt writing and exit codes are unchanged")
     args = parser.parse_args(argv)
+
+    if not args.json:
+        return _run(args, None)
+    produced = []
+    with contextlib.redirect_stdout(sys.stderr):
+        code = _run(args, produced)
+    _emit_json_receipts(produced)
+    return code
+
+
+def _run(args, produced):
+    """Execute one already-parsed invocation; ``produced`` collects receipts."""
     if args.at is None:
         args.at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     if not check_queue._valid_timestamp(args.at):
@@ -888,6 +970,19 @@ def main(argv=None):
         actor_role=args.actor_role,
     )
     receipt["checked_at"] = args.at
+    if args.transition == "merge-ready":
+        settlement = getattr(args, "merge_ready_settlement_report", None)
+        if settlement is None:
+            print("[FAIL] merge-ready transition has no routed-gap settlement")
+            return 1
+        receipt.update(batch_settlement.transition_binding(settlement))
+        receipt.update({
+            "delta_path": args.delta_path,
+            "delta_sha256": target.get("delta_sha256"),
+            "settlement_coverage_sha256_before": before_coverage_sha,
+            "settlement_prospective_coverage_sha256": getattr(
+                args, "merge_ready_prospective_coverage_sha256", None),
+        })
     if args.standards_revalidation_receipt:
         receipt["standards_revalidation_receipt"] = \
             args.standards_revalidation_receipt
@@ -1089,6 +1184,7 @@ def main(argv=None):
                         check_queue.current_receipt_catalog(current),
                         args.close_gate_receipt,
                         item_id=args.id,
+                        root=current.get("root"),
                         task_id=current["queue"].get("task_id"),
                         queue_revision=current["queue"].get("queue_revision"),
                         queue_state_revision=current["queue"].get(
@@ -1114,6 +1210,49 @@ def main(argv=None):
                             "batch-close gate changed before write: %s" %
                             "; ".join(locked_close_errors)
                         )
+                if args.transition == "merge-ready":
+                    locked_item = current.get("items_by_id", {}).get(args.id)
+                    if locked_item is None or locked_item.get("state") != "open":
+                        raise ValueError(
+                            "batch is no longer the validated open item")
+                    locked_delta_path = kblib.managed_repository_path(
+                        root, args.delta_path, ".cambium/deltas",
+                        suffixes=(".yaml",), must_exist=True)
+                    with open(locked_delta_path, encoding="utf-8") as handle:
+                        locked_delta_text = handle.read()
+                    locked_delta = kblib.parse_yaml_subset(locked_delta_text)
+                    if kblib.sha256_bytes(locked_delta_text) != \
+                            target.get("delta_sha256"):
+                        raise ValueError("delta changed after merge-ready planning")
+                    locked_page_text, locked_planned, locked_rejected, _ = \
+                        apply_delta._build_plan(
+                            old_coverage_text.splitlines(True), locked_delta,
+                            force=False)
+                    if (locked_rejected or
+                            len(locked_planned) != len(
+                                locked_item.get("manifest") or [])):
+                        raise ValueError(
+                            "delta no longer applies exactly to the manifest")
+                    locked_prospective_text = \
+                        apply_delta._merge_coverage_sections(
+                            locked_page_text, locked_delta)
+                    locked_prospective = kblib.parse_yaml_subset(
+                        locked_prospective_text)
+                    locked_settlement = \
+                        batch_settlement.delta_settlement_report(
+                            current["coverage"], locked_prospective,
+                            locked_delta, current["queue"], args.id)
+                    if locked_settlement["errors"]:
+                        raise ValueError(
+                            "routed-gap settlement changed under lock: %s" %
+                            "; ".join(locked_settlement["errors"]))
+                    if (batch_settlement.transition_binding(
+                            locked_settlement) !=
+                            batch_settlement.transition_binding(
+                                getattr(args,
+                                        "merge_ready_settlement_report"))):
+                        raise ValueError(
+                            "routed-gap settlement binding changed under lock")
                 if args.transition == "closed":
                     locked_projection = _project_closed_coverage(
                         current["coverage"], queue_new, args.id
@@ -1299,6 +1438,13 @@ def main(argv=None):
             kblib.RuntimeStateLockedError) as exc:
         print("[FAIL] transition write failed; restoration attempted: %s" % exc)
         return 1
+    if produced is not None:
+        # Append order, so the induced task transition -- when there was one --
+        # precedes the Queue transition it accompanied, exactly as the JSONL
+        # files record them.
+        if task_receipt is not None:
+            produced.append(task_receipt)
+        produced.append(receipt)
     print("[PASS] transition applied; state_revision=%d sha256=%s" %
           (queue_new["state_revision"], after_sha))
     return 0

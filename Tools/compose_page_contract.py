@@ -38,7 +38,6 @@ Exit codes: 0 = ok / check passed; 1 = conflict or input error;
             2 = --check mismatch.
 """
 
-import argparse
 import hashlib
 import os
 import re
@@ -447,19 +446,28 @@ def compilation_currency_errors(root, admission, expected_text, *, base_path,
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Compose the effective frontmatter page contract from "
                     "the kernel bases and the selected profile's Metadata "
                     "Contract.")
     parser.add_argument("--root", default=REPO_ROOT,
                         help="vault root (default: this repository)")
-    parser.add_argument("--base", default=None)
-    parser.add_argument("--relationships", default=None)
-    parser.add_argument("--sources-role", dest="sources_role", default=None)
+    parser.add_argument("--base", default=None,
+                        help="applicability base to compile from (default: "
+                             "%s under --root)" % DEFAULT_BASE)
+    parser.add_argument("--relationships", default=None,
+                        help="relationship base to compile from (default: "
+                             "%s under --root)" % DEFAULT_RELATIONSHIPS)
+    parser.add_argument("--sources-role", dest="sources_role", default=None,
+                        help="sources-role base to compile from (default: "
+                             "%s under --root)" % DEFAULT_SOURCES_ROLE)
     parser.add_argument("--profile",
                         help="profile directory for a validation run; the "
                              "vault selection stays with K00/03")
-    parser.add_argument("--output", default=None)
+    parser.add_argument("--output", default=None,
+                        help="compiled page contract to write, or to compare "
+                             "against under --check (default: %s under "
+                             "--root)" % DEFAULT_OUTPUT)
     parser.add_argument("--check", action="store_true",
                         help="recompute and compare against the existing "
                              "output; exit 0 when byte-identical, 2 "

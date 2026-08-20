@@ -5,7 +5,6 @@ Initialization never invents Required work.  It refuses any existing runtime
 namespace and is a dry run unless ``--apply`` is present.
 """
 
-import argparse
 import ctypes
 import errno
 import json
@@ -548,17 +547,29 @@ def build_documents(args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Initialize empty Cambium runtime state")
+    parser = kblib.ArgumentParser(description="Initialize empty Cambium runtime state")
     parser.add_argument("root", help="adopting repository root")
-    parser.add_argument("--task-id", required=True)
+    parser.add_argument("--task-id", required=True,
+                        help="non-empty task identity stamped on the Queue, "
+                             "Coverage Ledger and Progress Ledger")
     parser.add_argument("--objective", required=True,
                         help="non-empty statement of the task outcome")
     parser.add_argument("--exclude", dest="exclusions", action="append",
                         default=[], help="explicit out-of-scope item; repeatable")
-    parser.add_argument("--scope-version", required=True)
-    parser.add_argument("--standards-version", required=True)
-    parser.add_argument("--profile-manifest", required=True)
-    parser.add_argument("--contract-version", default="c1")
+    parser.add_argument("--scope-version", required=True,
+                        help="non-empty scope identity stamped on the Queue, "
+                             "Coverage Ledger and task contract")
+    parser.add_argument("--standards-version", required=True,
+                        help="Standards version this runtime adopts; must "
+                             "equal the approved standards_version of the "
+                             "active K00/03 Standards Control")
+    parser.add_argument("--profile-manifest", required=True,
+                        help="repository-relative selected profile manifest; "
+                             "must equal the selected_profile_manifest of "
+                             "the active K00/03 Standards Control")
+    parser.add_argument("--contract-version", default="c1",
+                        help="non-empty task-contract version recorded on "
+                             "the Progress Ledger contract")
     parser.add_argument(
         "--completion-semantics", required=True,
         choices=("build", "maintenance"),
@@ -575,7 +586,8 @@ def main(argv=None):
     )
     parser.add_argument("--at", default=None,
                         help="initial Coverage timestamp (default: current UTC)")
-    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--apply", action="store_true",
+                        help="materialize .cambium/; omit for a dry run")
     args = parser.parse_args(argv)
 
     root = os.path.realpath(os.path.abspath(args.root))

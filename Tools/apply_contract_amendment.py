@@ -5,20 +5,20 @@ Once the Queue is materialized the Task Contract fingerprint is frozen, and
 K13/06 until now offered exactly one disposition for a non-scope contract
 change: pause or cancel the task and carry the change into a successor.  This
 writer is the guarded alternative that clause called for.  It consumes one
-operator-confirmed restricted-YAML plan, rewrites an allowlisted contract
-field, advances the Queue revision exactly once, and appends the amendment row
-and commit receipt that let `check_queue`'s contract anchor chain follow the
-change instead of failing closed on it.
+operator-confirmed restricted-YAML plan, rewrites one or both allowlisted
+contract fields, advances the Queue revision exactly once, and appends the
+amendment row and commit receipt that let `check_queue`'s contract anchor
+chain follow the change instead of failing closed on it.
 
-The allowlist is deliberately small.  `policy_exceptions` is the field this
-writer exists for: a bounded, task-scoped policy exception is current
-authorization, and current authorization lives in the contract -- not in the
-amendment log, whose rows are history ("historical registration evidence
-never authorizes", K13/06), and not in a batch-close disposition, which
-speaks only for one snapshot.  Scope belongs to the replan machinery;
-standards identity to K13/15; objective and completion semantics to a
-successor task.  A field outside the allowlist is refused here and stays on
-the successor path.
+The allowlist is deliberately small.  `policy_exceptions` is a bounded,
+task-scoped current authorization, and `amendment_authority` is the closed
+delegation for routine operational Amendment change classes.  Both live in
+the contract -- not in the amendment log, whose rows are history
+("historical registration evidence never authorizes", K13/06), and not in a
+batch-close disposition, which speaks only for one snapshot.  Scope belongs
+to the replan machinery; standards identity to K13/15; objective and
+completion semantics to a successor task.
+A field outside the allowlist is refused here and stays on the successor path.
 
 There is no pending phase.  Like the Standards adoption transaction this
 writer prepares, validates the complete after-image, and commits under the
@@ -29,7 +29,7 @@ bypassed writer, and the runtime validator treats it as such.
 Exit codes: 0 = dry run reported or transaction committed; 1 = refused.
 """
 
-import argparse
+import contextlib
 import copy
 import itertools
 import os
@@ -38,9 +38,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
+import amendment_policy
 
 TOOL = "apply_contract_amendment"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 CHECK = "contract_amendment"
 PLAN_PREFIX = check_queue.CONTRACT_AMENDMENT_PLAN_PREFIX
 RECEIPT_PATH = ".cambium/receipts/contract-amendments.jsonl"
@@ -53,17 +54,72 @@ _RECEIPT_SEQ = itertools.count(1)
 
 # The only contract fields this writer may change.  Extending this tuple is a
 # governance change under K13/06, not an edit.
-AMENDABLE_FIELDS = ("policy_exceptions",)
+AMENDABLE_FIELDS = ("policy_exceptions", "amendment_authority")
 
-PLAN_FIELDS = {
+PLAN_FIELDS_V1 = {
     "schema_version", "amendment_id", "task_id", "date", "summary",
     "approval_reference", "before", "contract_version_after",
     "policy_exceptions_after",
 }
+PLAN_FIELDS_V2 = PLAN_FIELDS_V1.union(("amendment_authority_after",))
 BEFORE_FIELDS = {"coverage_sha256", "queue_sha256", "progress_sha256"}
 
 STATE_NAMES = ("coverage", "queue", "progress")
 WRITTEN_NAMES = ("queue", "progress")
+
+
+# ---------------------------------------------------------------------------
+# `--json` output (machine-readable receipts)
+#
+# Purely additive: without the flag not one byte of this tool's behaviour
+# moves.  With it, everything written for a person goes to stderr and stdout
+# carries this run's receipt objects, serialized verbatim as one canonical
+# JSON array.
+#
+# Nothing is filtered or renamed.  `schemas/receipt.template.jsonl` guarantees
+# only the base fields every receipt carries; extension fields differ per
+# producer and are discoverable from the receipt itself, which is why that
+# template says in its own text that its examples are "not the complete set".
+# A field allowlist here would silently drop exactly the fields a caller came
+# for.
+#
+# This tool's receipts are written from inside its transaction helpers, well
+# below `main`, so the run collects them where they are handed to the receipt
+# writer rather than threading an accumulator through every frame.
+# ---------------------------------------------------------------------------
+JSON_HELP = ("write this run's receipt objects to stdout as one canonical "
+             "JSON array and move the human-readable report to stderr; "
+             "receipt writing, verdicts, and exit codes are unchanged")
+
+_JSON_RECEIPTS = []
+
+
+def _record_receipts(receipts):
+    """Remember the exact receipt objects handed to the receipt writer."""
+    _JSON_RECEIPTS.extend(receipts)
+    return receipts
+
+
+def emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    The one canonical serializer is `kblib.canonical_json_bytes`; this module
+    owns no serializer of its own.  A run that produced no receipt writes
+    nothing, which keeps the already-settled rejection shape (empty stdout,
+    one line of reason on stderr, exit 1) intact.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
+
+
+def _run_reporting_json(runner):
+    """Run `runner`, reserving stdout for JSON and giving stderr the prose."""
+    with contextlib.redirect_stdout(sys.stderr):
+        exit_code = runner()
+    emit_json_receipts(_JSON_RECEIPTS)
+    return exit_code
 
 
 class Refusal(Exception):
@@ -111,9 +167,11 @@ def _validate_plan_shape(plan):
             "amendment plan still carries the template's %s sentinel; every "
             "one of them is an answer this transaction will not invent"
             % SENTINEL)
-    _closed(plan, PLAN_FIELDS, "amendment plan")
-    if plan["schema_version"] != 1:
-        raise Refusal("amendment plan schema_version must be 1")
+    schema_version = plan.get("schema_version")
+    if schema_version not in (1, 2):
+        raise Refusal("amendment plan schema_version must be 1 or 2")
+    _closed(plan, (PLAN_FIELDS_V2 if schema_version == 2 else PLAN_FIELDS_V1),
+            "amendment plan")
     for field in ("amendment_id", "task_id", "date", "summary",
                   "approval_reference", "contract_version_after"):
         value = plan[field]
@@ -134,6 +192,14 @@ def _validate_plan_shape(plan):
         raise Refusal(
             "amendment plan policy_exceptions_after is not the K13/02 "
             "shape:\n  %s" % "\n  ".join(shape_errors[:8]))
+    if schema_version == 2:
+        authority_errors = amendment_policy.amendment_authority_errors(
+            plan["amendment_authority_after"],
+            "amendment_authority_after")
+        if authority_errors:
+            raise Refusal(
+                "amendment plan amendment_authority_after is not the K13/02 "
+                "shape:\n  %s" % "\n  ".join(authority_errors[:8]))
 
 
 def _current_effective_policy(root, contract):
@@ -312,6 +378,9 @@ def _build_after(documents, plan, receipt_id, now):
     contract = copy.deepcopy(contract_before)
     contract["policy_exceptions"] = copy.deepcopy(
         plan["policy_exceptions_after"])
+    if plan.get("schema_version") == 2:
+        contract["amendment_authority"] = copy.deepcopy(
+            plan["amendment_authority_after"])
     contract["contract_version"] = plan["contract_version_after"]
     progress["contract"] = contract
 
@@ -369,6 +438,19 @@ def prepare(root, plan_relative):
             % "\n  ".join(current["errors"][:5]))
 
     contract_before = documents["progress"]["contract"]
+    if plan.get("schema_version") == 2:
+        changed = []
+        if contract_before.get("policy_exceptions", []) != plan.get(
+                "policy_exceptions_after"):
+            changed.append("policy_exceptions")
+        if contract_before.get("amendment_authority") != plan.get(
+                "amendment_authority_after"):
+            changed.append("amendment_authority")
+        if not changed:
+            raise Refusal(
+                "schema_version 2 contract amendment changes no amendable field")
+    else:
+        changed = ["policy_exceptions"]
     policy, policy_fingerprint = _current_effective_policy(
         root, contract_before)
     _require_policy_authorization(
@@ -376,7 +458,7 @@ def prepare(root, plan_relative):
     commit_receipt = kblib.make_receipt(
         TOOL, TOOL_VERSION, CHECK, plan["amendment_id"], "pass",
         "amended Task Contract field(s) %s from plan %s"
-        % (", ".join(AMENDABLE_FIELDS), plan_relative), next(_RECEIPT_SEQ),
+        % (", ".join(changed), plan_relative), next(_RECEIPT_SEQ),
         identity={
             "task_id": plan["task_id"],
             "standards_version": contract_before.get("standards_version"),
@@ -404,6 +486,7 @@ def prepare(root, plan_relative):
         "after_coverage_sha256": kblib.sha256_bytes(raw["coverage"]),
         "after_required_queue_sha256": kblib.sha256_bytes(queue_text),
         "policy_fingerprint": policy_fingerprint,
+        "changed_contract_fields": changed,
     })
 
     progress_text = kblib.canonical_yaml(progress)
@@ -428,6 +511,7 @@ def prepare(root, plan_relative):
         "before_coverage_sha256": kblib.sha256_bytes(raw["coverage"]),
         "after_coverage_sha256": kblib.sha256_bytes(raw["coverage"]),
         "policy_fingerprint": policy_fingerprint,
+        "changed_contract_fields": changed,
     })
 
     proposed = check_queue.validate_runtime(
@@ -461,6 +545,7 @@ def prepare(root, plan_relative):
         "row": row,
         "policy_fingerprint": policy_fingerprint,
         "contract_before": contract_before,
+        "changed_contract_fields": changed,
     }
 
 
@@ -538,7 +623,7 @@ def commit(prepared, receipt_path):
             before = kblib.receipt_append_observation(
                 receipt_path, [receipt])
             outcome, error, _ = kblib.write_receipts_observed(
-                receipt_path, [receipt], before=before)
+                receipt_path, _record_receipts([receipt]), before=before)
             appended = outcome == "present"
             if outcome == "uncertain" or (appended and error is not None):
                 # The receipt bytes may be durable.  Rolling back the state
@@ -576,6 +661,12 @@ def _report(prepared):
           % (row["contract_version_before"], row["contract_version_after"]))
     print("  policy exceptions after: %d"
           % len(plan["policy_exceptions_after"]))
+    if plan.get("schema_version") == 2:
+        authority = plan["amendment_authority_after"]
+        print("  amendment authority after: %s (%s)"
+              % (authority["authority_id"], authority["mode"]))
+    print("  changed contract fields: %s"
+          % ", ".join(prepared["changed_contract_fields"]))
     print("  queue_revision: %s -> %s"
           % (row["queue_revision_before"], row["queue_revision_after"]))
     for name in WRITTEN_NAMES:
@@ -585,7 +676,7 @@ def _report(prepared):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description="Amend the frozen Task Contract from one confirmed plan.")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--plan", required=True,
@@ -593,11 +684,20 @@ def main(argv=None):
     parser.add_argument("--receipts", default=RECEIPT_PATH,
                         help="receipt JSONL path under .cambium/receipts")
     parser.add_argument("--actor-role", choices=("worker", "integrator"),
-                        default="worker")
+                        default="worker",
+                        help="declared caller role; only integrator may "
+                             "apply a contract amendment")
     parser.add_argument("--apply", action="store_true",
                         help="write the transaction; omit for a dry run")
+    parser.add_argument("--json", action="store_true", help=JSON_HELP)
     args = parser.parse_args(argv)
+    if not args.json:
+        return _run(args)
+    return _run_reporting_json(lambda: _run(args))
 
+
+def _run(args):
+    """This tool's own run; `main` above owns only argument parsing."""
     if args.apply and args.actor_role != "integrator":
         print("[FAIL] only actor-role integrator may apply a contract "
               "amendment")

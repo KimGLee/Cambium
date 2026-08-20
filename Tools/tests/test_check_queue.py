@@ -343,6 +343,29 @@ class QueueFixture(unittest.TestCase):
         return result, dict(result["blocked"]).get(batch_id, [])
 
 
+class CorpusPlanEraMapTests(unittest.TestCase):
+    """Every supported close era must resolve a corpus-plan child protocol.
+
+    The incident: bumping the batch-close producer to 1.9.0 without adding
+    the 1.8.0 -> 1.7.0 row left every real 1.8.0-era closed bundle that
+    carried a Corpus Planning child failing consistency with "no registered
+    historical child protocol" -- found by an adopter's live runtime, not
+    by any fixture, because the fixtures restamp to older eras.  The map is
+    an invariant of the version set, so pin it as one.
+    """
+
+    def test_every_supported_close_era_resolves_a_child_protocol(self):
+        for version in check_queue.SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS:
+            if version == check_queue.BATCH_CLOSE_TOOL_VERSION:
+                continue
+            self.assertIn(
+                version,
+                check_queue.HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS,
+                "supported historical era %s has no corpus-plan child "
+                "protocol; a real closed bundle of that era would fail "
+                "every consistency run" % version)
+
+
 class ReviewedEraTests(QueueFixture):
     """K02/01: `reviewed` carries the era of the evidence that earned it."""
 
@@ -857,6 +880,21 @@ class HubPageAdmissionTests(QueueFixture):
 
 
 class CheckQueueTests(QueueFixture):
+    def test_runtime_reuses_an_empty_revalidation_requirements_map(self):
+        """An empty derived map is cached data, not a cache miss."""
+        original = check_queue.standards_revalidation_requirements
+        with mock.patch.object(
+                check_queue, "standards_revalidation_requirements",
+                wraps=original) as requirements_build:
+            result = check_queue.validate_runtime(self.root)
+            self.assertEqual(
+                [], check_queue.outstanding_standards_revalidation(
+                    result, "B1"))
+
+        self.assertEqual([], result["errors"])
+        self.assertEqual({}, result["_standards_revalidation_requirements"])
+        self.assertEqual(1, requirements_build.call_count)
+
     def test_required_completion_predicate_consumes_only_runtime_result(self):
         result = {
             "errors": [],
@@ -1876,6 +1914,21 @@ class CheckQueueTests(QueueFixture):
         proposal = kblib.load_yaml_file(self.coverage_path)
         proposal["scope_version"] = "s2"
         proposal["updated_at"] = "2026-08-04T01:00:00Z"
+        proposal["batch_specs"].append({
+            "id": "B3", "family": "Core", "order_hint": 3,
+            "source_route": "R03", "execution_mode": "concurrent-worker",
+            "depends_on": ["B2"], "confirmation_required": False,
+            "work_spec_path": None, "work_spec_sha256": None,
+        })
+        proposal["pages"].append({
+            "path": "Topics/C.md", "coverage_disposition": "required",
+            "canonical_owner": "Topics/C.md", "type": "concept",
+            "priority": "P1", "tier": "M",
+            "authoring_status": "drafted",
+            "prerequisites": ["Topics/B.md"], "batch": "B3",
+            "next_batch": "B3", "deferred_reason": None,
+            "reentry_condition": None, "gate_receipts": [],
+        })
         proposal_path = self.root / proposal_relative
         proposal_path.parent.mkdir(parents=True, exist_ok=True)
         proposal_path.write_text(kblib.canonical_yaml(proposal),
@@ -1884,7 +1937,8 @@ class CheckQueueTests(QueueFixture):
         plan = {
             "schema_version": 1, "amendment_id": "A-SCOPE",
             "operation": "scope-replan",
-            "affected_pages": [], "affected_batches": [],
+            "affected_pages": ["Topics/C.md"],
+            "affected_batches": ["B3"],
             "scope_version_before": "s1", "scope_version_after": "s2",
             "queue_revision_before": 1, "queue_revision_after": 2,
             "state_revision_before": 0, "state_revision_after": 0,
@@ -1966,6 +2020,44 @@ class CheckQueueTests(QueueFixture):
         errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
         self.assertIn("amendment_id='WRONG', expected 'A-R1'", errors)
         self.assertIn("actor_role='worker', expected 'integrator'", errors)
+
+    def test_replan_protocol_compatibility_stays_fail_closed(self):
+        queue = self.queue()
+        queue["queue_revision"] = 2
+        self.write_queue(queue)
+        self.add_replan_amendment(
+            "A-R1", 1, 2, kblib.sha256_file(self.queue_path),
+            "audit-replan-r1",
+        )
+
+        registration_path = self.root / \
+            ".cambium/receipts/amendment-registrations.jsonl"
+        registration = json.loads(registration_path.read_text(
+            encoding="utf-8").strip())
+        registration["tool_version"] = \
+            check_queue.REGISTER_AMENDMENT_TOOL_VERSION
+        registration_path.write_text(json.dumps(registration) + "\n",
+                                     encoding="utf-8")
+        current_errors = "\n".join(
+            check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("current registration decision_mode is invalid",
+                      current_errors)
+        self.assertIn("current registration change_classes must be",
+                      current_errors)
+
+        registration["tool_version"] = "9.9.9"
+        registration_path.write_text(json.dumps(registration) + "\n",
+                                     encoding="utf-8")
+        replan_path = self.root / ".cambium/receipts/replans.jsonl"
+        replan = json.loads(replan_path.read_text(encoding="utf-8").strip())
+        replan["tool_version"] = "9.9.9"
+        replan_path.write_text(json.dumps(replan) + "\n", encoding="utf-8")
+        unknown_errors = "\n".join(
+            check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("unsupported register_amendment producer version '9.9.9'",
+                      unknown_errors)
+        self.assertIn("unsupported compile_queue producer version '9.9.9'",
+                      unknown_errors)
 
     def test_verified_queue_replan_registration_bridges_execution_state_and_time(self):
         queue = self.queue()
@@ -3120,7 +3212,12 @@ class CheckQueueTests(QueueFixture):
         missing = subprocess.run(
             base, text=True, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, check=False)
-        self.assertEqual(2, missing.returncode, missing.stdout)
+        # 1, not argparse's stock 2: a missing required option is a usage
+        # error, and 2 is reserved here for HOLD (no failure, candidates
+        # remain).  Sharing one code made "you typed it wrong" and "clean but
+        # not quiet" indistinguishable to every caller.  See
+        # kblib.ArgumentParser.
+        self.assertEqual(1, missing.returncode, missing.stdout)
         self.assertIn("--completion-semantics", missing.stdout)
         completed = subprocess.run(
             base[:-1] + ["--completion-semantics", "maintenance", "--apply"],

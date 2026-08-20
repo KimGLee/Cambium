@@ -18,7 +18,7 @@ Usage:
       [--receipts .cambium/receipts/queue.jsonl]
 """
 
-import argparse
+import contextlib
 import datetime
 import importlib
 import json
@@ -32,17 +32,36 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import check_profile
+import amendment_policy
+import batch_settlement
+import candidate_lifecycle
+import coverage_delta
 import maintenance_candidates
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.16.0"
+TOOL_VERSION = "1.20.1"
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
 REGISTER_AMENDMENT_TOOL = "register_amendment"
-REGISTER_AMENDMENT_TOOL_VERSION = "1.1.0"
+REGISTER_AMENDMENT_TOOL_VERSION = "1.2.0"
+# These exact legacy protocols remain replayable.  1.0.0 is the first
+# registration shape; 1.1.0 adds withdrawal.  Neither may claim the
+# delegated-authority fields introduced by the current 1.2.0 shape below.
+SUPPORTED_REGISTER_AMENDMENT_TOOL_VERSIONS = frozenset((
+    "1.0.0", "1.1.0", "1.2.0",
+))
+APPLY_AMENDMENT_TOOL_VERSION = "1.2.0"
+SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS = frozenset(("1.1.0", "1.2.0"))
+COMPILE_QUEUE_TOOL_VERSION = "1.5.0"
+# 1.3.0 produced the original registered queue-replan commit shape.  Its
+# bindings are still validated field by field; unknown protocols fail closed.
+SUPPORTED_COMPILE_QUEUE_TOOL_VERSIONS = frozenset((
+    "1.3.0", "1.4.0", "1.5.0",
+))
 OPERATIONAL_AMENDMENT_OPERATIONS = frozenset((
     "queue-replan", "scope-replan", "cancel-batch",
+    "gap-routing-reconciliation",
 ))
 
 QUEUE_PATH = ".cambium/state/required_queue.yaml"
@@ -104,6 +123,49 @@ INVALIDATION_FIELDS = frozenset((
     "delta_archive_path", "delta_sha256", "batch_receipts",
     "delta_gate_receipts", "revalidation_receipts",
 ))
+# The named fields through which a Queue item, one of its invalidation
+# records, or a transition receipt references another receipt by ID.
+#
+# This exists because a defect was not one missing field: sealing protected
+# a hand-written list of fields while consumers resolved receipt IDs from
+# wherever they liked, and nothing compared the two.  A closed structural
+# inventory is what makes that comparison possible -- the reachability
+# assertion in the tests walks these names, so it asks the schema what a
+# reference is instead of guessing from the shape of a string.  Adding a
+# reference to a record without adding it here is caught: a paired test
+# asserts the item and invalidation groups stay subsets of
+# ``QUEUE_ITEM_FIELDS`` and ``INVALIDATION_FIELDS``.
+#
+# The transition group is the transition receipt's own writer contract in
+# ``update_queue.py``: ``evidence_receipt`` always, the aggregate on a
+# consuming transition, the close trio on a close, and a deep copy of the
+# invalidation record on a rollback.
+RECEIPT_REFERENCE_FIELDS = {
+    "item": {
+        "scalar": ("activation_receipt", "confirmation_receipt",
+                   "queue_consistency_receipt", "close_gate_receipt",
+                   "delta_apply_receipt"),
+        "list": ("transition_receipts", "batch_receipts"),
+        "nested": (("invalidation_history", "invalidation"),),
+    },
+    "invalidation": {
+        "scalar": ("transition_receipt", "delta_apply_receipt"),
+        "list": ("batch_receipts", "delta_gate_receipts",
+                 "revalidation_receipts"),
+        "nested": (),
+    },
+    "transition": {
+        "scalar": ("evidence_receipt", "standards_revalidation_receipt",
+                   "queue_consistency_receipt", "close_gate_receipt",
+                   "delta_apply_receipt"),
+        "list": (),
+        "nested": (("invalidation", "invalidation"),),
+    },
+}
+# K00/12 gives the `standards-revalidation` Gate these lifecycle cells.  The
+# producer's own admission and the recovery vocabulary that names a batch for
+# it read the same constant, so the two cannot drift apart.
+STANDARDS_REVALIDATION_STATES = ("queued", "open")
 # A rollback taken after the delta was applied additionally names the
 # application it undoes and the byte-exact Coverage restore that undid it.
 # The three appear together or not at all: a pre-apply rollback never touched
@@ -194,17 +256,21 @@ LOCK_STATE_FINGERPRINTS = {
 GENERIC_WRITER_TOOLS = frozenset((
     "apply_delta", "update_queue", "compile_queue", "update_task",
     "check_batch_close", "adopt_standards", "register_amendment",
-    "apply_contract_amendment", "apply_task_plan",
+    "apply_contract_amendment", "apply_task_plan", "seal_receipts",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.8.0"
+BATCH_CLOSE_TOOL_VERSION = "1.10.0"
+UPDATE_QUEUE_TOOL_VERSION = "1.3.0"
+SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS = frozenset(("1.2.0", "1.3.0"))
+APPLY_DELTA_TOOL_VERSION = "1.5.0"
+SUPPORTED_APPLY_DELTA_TOOL_VERSIONS = frozenset(("1.4.0", "1.5.0"))
 # Batch-close has a finite historical protocol catalog because its 1.4 era
 # sealed a different Closed List shape.  A current action still accepts only
 # BATCH_CLOSE_TOOL_VERSION; this set is used only while replaying an already
 # recorded closed edge.  Other historical receipts are judged through
 # :func:`accounted_standards_versions` instead of an unbounded version list.
 SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((
-    BATCH_CLOSE_TOOL_VERSION, "1.7.0", "1.6.0", "1.5.0",
+    BATCH_CLOSE_TOOL_VERSION, "1.9.0", "1.8.0", "1.7.0", "1.6.0", "1.5.0",
     *LEGACY_CLOSED_LIST_VERSIONS,
 ))
 CORPUS_PLAN_TOOL = "check_corpus_plan"
@@ -213,6 +279,8 @@ CORPUS_PLAN_TOOL_VERSION = "1.7.0"
 # Batch-close 1.7 is the first protocol that consumes corpus-plan 1.7; older
 # supported bundles retain their 1.6 child identity during historical replay.
 HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
+    "1.9.0": "1.7.0",
+    "1.8.0": "1.7.0",
     "1.7.0": "1.7.0",
     "1.6.0": "1.6.0",
     "1.5.0": "1.6.0",
@@ -296,14 +364,16 @@ CONTRACT_FIELDS = frozenset((
     "selected_card_paths", "selected_profile_route_ids",
     "selected_read_sets", "loaded_module_paths", "minimum_run_until",
     "checkpoint_at", "hard_stop_at", "completion_gate",
-    "policy_exceptions",
+    "policy_exceptions", "amendment_authority",
 ))
 # Optional so that contracts sealed before the field existed stay valid:
 # requiring it would strand every live runtime behind a hand migration the
 # anchor chain itself forbids (editing contract bytes outside a chained
 # writer breaks the chain's binding to the current contract).  Absent means
 # exactly what an explicit empty list means.
-CONTRACT_OPTIONAL_FIELDS = frozenset(("policy_exceptions",))
+CONTRACT_OPTIONAL_FIELDS = frozenset((
+    "policy_exceptions", "amendment_authority",
+))
 POLICY_EXCEPTION_FIELDS = frozenset((
     "decision_id", "policy_id", "baseline_policy_fingerprint", "limit",
     "scope_kind", "scope_ref", "rationale", "approval_reference",
@@ -314,7 +384,22 @@ POLICY_EXCEPTION_SCOPE_KINDS = frozenset(("task", "repository-snapshot"))
 # is never re-judged against members its era lacked, and it is never allowed
 # to carry evidence its era could not have produced.  A 1.7 bundle claiming a
 # policy-exception disposition is a forgery, not history.
-POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset(("1.8.0",))
+POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset((
+    "1.8.0", "1.9.0", "1.10.0",
+))
+# Producer eras whose close bundles externalize full candidate detail to a
+# born-cold evidence file and keep only counts, the accepted-set fingerprint,
+# and the policy-exception dispositions inline (K12/09 compact evidence).
+# The sealing writer and the protocol versions whose cold archives this
+# validator will vouch for.  Sealing is the one operation that removes bytes
+# from a register, so an archive is exactly as trustworthy as the writer that
+# produced it; a version whose protocol did not exclude concurrent appenders
+# or bind its registers to a receipt cannot be certified after the fact.
+SEAL_TOOL = "seal_receipts"
+SUPPORTED_SEAL_TOOL_VERSIONS = frozenset(("1.2.0", "1.3.0"))
+
+COMPACT_CLOSE_EVIDENCE_VERSIONS = frozenset(("1.9.0", "1.10.0"))
+CANDIDATE_CONTINUATION_VERSIONS = frozenset(("1.10.0",))
 SEALED_POLICY_EXCEPTION_FIELDS = frozenset((
     "decision_id", "policy_id", "limit", "scope_kind", "scope_ref",
     "policy_fingerprint", "pages", "total",
@@ -359,16 +444,54 @@ AMENDMENT_COMMON_FIELDS = frozenset((
     "id", "date", "summary", "status", "writeback_done",
 ))
 STANDARDS_ADOPTION_TOOL = "adopt_standards"
-STANDARDS_ADOPTION_TOOL_VERSION = "1.5.0"
+STANDARDS_ADOPTION_TOOL_VERSION = "1.6.0"
 STANDARDS_ADOPTION_PROFILE_CONTRACT_MIN_VERSION = (1, 3, 0)
 # The 1.5 producer records where the adopted revision came from: the
 # distribution has no version numbers by design, so upstream/downstream
 # comparability is the adoption record's job, not a prose convention's.
 STANDARDS_ADOPTION_UPSTREAM_MIN_VERSION = (1, 5, 0)
 STANDARDS_ADOPTION_PROFILE_INPUT_MIN_VERSION = (1, 4, 0)
+STANDARDS_ADOPTION_OWNER_PROJECTION_MIN_VERSION = (1, 6, 0)
 STANDARDS_ADOPTION_PLAN_PREFIX = ".cambium/deltas/standards-adoptions"
 STANDARDS_GATE_REGISTRY_PATH = \
     "kernel/K00 Standards Control/12 Control Registry.md"
+STANDARDS_REVALIDATION_CAPABILITY_PROTOCOL = "owner-projection-v1"
+STANDARDS_REVALIDATION_CAPABILITY_HEADING = \
+    "Standards Revalidation Capability Registry"
+STANDARDS_REVALIDATION_CAPABILITY_ROLES = frozenset((
+    "special-owner", "immediate-owner", "native-owner", "semantic-leaf",
+    "mechanism-only", "unsupported", "advisory",
+))
+STANDARDS_REVALIDATION_CAPABILITY_EDGES = frozenset((
+    "after-image-admission", "adoption-commit", "native-transition",
+    "project-to-owner", "mechanism-input-only", "advisory-only", "none",
+))
+STANDARDS_REVALIDATION_SCOPE_PROTOCOLS = frozenset((
+    "profile-after-image", "runtime-after-image", "native-owner-scope",
+    "inherit-owner-scope", "diagnostic-scope", "none",
+))
+STANDARDS_REVALIDATION_BINDING_PROTOCOLS = frozenset((
+    "profile-fingerprints", "runtime-state-fingerprints",
+    "native-owner-receipt", "owner-member-chain", "not-authorizing",
+))
+STANDARDS_REVALIDATION_ROLE_CONTRACTS = {
+    "special-owner": (
+        "after-image-admission", "profile-after-image",
+        "profile-fingerprints"),
+    "immediate-owner": (
+        "adoption-commit", "runtime-after-image",
+        "runtime-state-fingerprints"),
+    "native-owner": (
+        "native-transition", "native-owner-scope",
+        "native-owner-receipt"),
+    "semantic-leaf": (
+        "project-to-owner", "inherit-owner-scope", "owner-member-chain"),
+    "mechanism-only": (
+        "mechanism-input-only", "none", "not-authorizing"),
+    "unsupported": ("none", "none", "not-authorizing"),
+    "advisory": (
+        "advisory-only", "diagnostic-scope", "not-authorizing"),
+}
 READ_SET_BOUNDARY_OWNER_PATH = \
     "kernel/K00 Standards Control/15 Read Set Loading Boundaries.md"
 READ_SET_PATH_PREFIX = "kernel/Read Sets/"
@@ -580,6 +703,222 @@ def standards_gate_registry(root):
         errors.append("Stable Gate ID Registry has no gate rows")
     errors.extend(gate_registry_producer_errors(registry))
     return registry, errors
+
+
+def standards_revalidation_capabilities(root, gate_registry=None):
+    """Parse the closed Gate leaf-to-owner capability registry in K00/12.
+
+    The Stable Gate ID Registry answers which receipt identifies a Gate and
+    where its producer can run.  It does *not* answer whether a raw receipt is
+    allowed to authorize a Standards-adoption boundary.  Keeping that second
+    question in its own closed table prevents a semantic leaf from becoming a
+    boundary authority merely because both happen to use the word ``Gate``.
+
+    Every stable Gate occurs exactly once.  The role fixes the remaining four
+    cells, and every semantic leaf points to a real native owner.  This makes
+    the planner -> owner -> transition path machine-checkable before an
+    adoption writes state.
+    """
+    errors = []
+    capabilities = {}
+    if gate_registry is None:
+        gate_registry, gate_errors = standards_gate_registry(root)
+        errors.extend(gate_errors)
+    try:
+        path = kblib.repository_path(
+            root, STANDARDS_GATE_REGISTRY_PATH, must_exist=True,
+            reject_symlink=True)
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    except (OSError, UnicodeError, ValueError) as exc:
+        return {}, errors + [
+            "Standards revalidation capability registry is unsafe or "
+            "unreadable: %s" % exc]
+
+    inside = False
+    seen_section = 0
+    expected_header = [
+        "Gate ID", "Role", "Owner", "Claim edge", "Scope protocol",
+        "Binding protocol",
+    ]
+    for line in text.splitlines():
+        heading = re.match(r"^(#{2,3})\s+(.*?)\s*#*\s*$", line)
+        if heading:
+            is_registry = heading.group(2).strip() == \
+                STANDARDS_REVALIDATION_CAPABILITY_HEADING
+            if is_registry:
+                seen_section += 1
+            inside = is_registry and seen_section == 1
+            continue
+        if not inside or not line.lstrip().startswith("|"):
+            continue
+        cells = [cell.strip().strip("`")
+                 for cell in line.strip().strip("|").split("|")]
+        if cells == expected_header:
+            continue
+        if cells and all(re.fullmatch(r":?-+:?", cell) for cell in cells):
+            continue
+        if len(cells) != 6:
+            errors.append(
+                "Standards Revalidation Capability Registry row must have "
+                "six cells")
+            continue
+        gate_id, role, owner, edge, scope, binding = cells
+        if not all(_nonempty_string(value) for value in cells):
+            errors.append(
+                "Standards Revalidation Capability Registry row has an "
+                "empty cell")
+            continue
+        if gate_id in capabilities:
+            errors.append(
+                "Standards Revalidation Capability Registry repeats %s" %
+                gate_id)
+            continue
+        if role not in STANDARDS_REVALIDATION_CAPABILITY_ROLES:
+            errors.append(
+                "Gate ID %s has unknown Standards revalidation Role %s" %
+                (gate_id, role))
+            continue
+        if edge not in STANDARDS_REVALIDATION_CAPABILITY_EDGES:
+            errors.append(
+                "Gate ID %s has unknown Standards revalidation Claim edge "
+                "%s" % (gate_id, edge))
+            continue
+        if scope not in STANDARDS_REVALIDATION_SCOPE_PROTOCOLS:
+            errors.append(
+                "Gate ID %s has unknown Standards revalidation Scope "
+                "protocol %s" % (gate_id, scope))
+            continue
+        if binding not in STANDARDS_REVALIDATION_BINDING_PROTOCOLS:
+            errors.append(
+                "Gate ID %s has unknown Standards revalidation Binding "
+                "protocol %s" % (gate_id, binding))
+            continue
+        expected_contract = STANDARDS_REVALIDATION_ROLE_CONTRACTS[role]
+        if (edge, scope, binding) != expected_contract:
+            errors.append(
+                "Gate ID %s Role %s requires Claim edge / Scope protocol / "
+                "Binding protocol %s / %s / %s, found %s / %s / %s" % (
+                    gate_id, role, *expected_contract, edge, scope, binding))
+            continue
+        capabilities[gate_id] = {
+            "role": role,
+            "owner": owner,
+            "claim_edge": edge,
+            "scope_protocol": scope,
+            "binding_protocol": binding,
+        }
+
+    if seen_section != 1:
+        errors.append(
+            "K00/12 must contain exactly one Standards Revalidation "
+            "Capability Registry")
+    stable_ids = set(gate_registry or {})
+    capability_ids = set(capabilities)
+    missing = sorted(stable_ids - capability_ids)
+    extra = sorted(capability_ids - stable_ids)
+    if missing:
+        errors.append(
+            "Standards Revalidation Capability Registry omits stable Gate "
+            "ID(s): %s" % ", ".join(missing))
+    if extra:
+        errors.append(
+            "Standards Revalidation Capability Registry names unknown Gate "
+            "ID(s): %s" % ", ".join(extra))
+    for gate_id, capability in sorted(capabilities.items()):
+        role = capability["role"]
+        owner = capability["owner"]
+        if role in ("special-owner", "immediate-owner", "native-owner"):
+            if owner != gate_id:
+                errors.append(
+                    "Standards revalidation owner Gate %s must own itself, "
+                    "not %s" % (gate_id, owner))
+        elif role == "semantic-leaf":
+            owner_capability = capabilities.get(owner)
+            if owner == gate_id or not isinstance(owner_capability, dict) or \
+                    owner_capability.get("role") != "native-owner":
+                errors.append(
+                    "Standards revalidation semantic leaf %s must project "
+                    "to a distinct native owner; found %s" %
+                    (gate_id, owner))
+        elif owner != "none":
+            errors.append(
+                "Standards revalidation Gate %s Role %s must use Owner none, "
+                "not %s" % (gate_id, role, owner))
+    return capabilities, errors
+
+
+def standards_gate_capability_registry(root, gate_registry=None):
+    """Public spelling for the Gate capability registry.
+
+    The longer internal name predates the registry's canonical heading.  Keep
+    one implementation and expose the name used by callers that reason about
+    Gate identity and Gate authority as two different registries.
+    """
+    return standards_revalidation_capabilities(root, gate_registry)
+
+
+def standards_revalidation_owner(gate_id, capabilities):
+    """Return the blocking owner of one semantic Gate, or ``None``.
+
+    ``None`` is reserved for advisory/mechanism-only Gates that intentionally
+    create no blocking claim.  Unsupported and unknown Gates raise a value
+    error so a new plan cannot convert an absent capability into a waiver.
+    """
+    capability = capabilities.get(gate_id)
+    if not isinstance(capability, dict):
+        raise ValueError("Gate ID %s has no Standards revalidation capability"
+                         % gate_id)
+    role = capability.get("role")
+    if role in ("special-owner", "immediate-owner", "native-owner"):
+        return gate_id
+    if role == "semantic-leaf":
+        return capability.get("owner")
+    if role == "advisory":
+        return None
+    if role == "mechanism-only":
+        raise ValueError(
+            "Gate ID %s has Role mechanism-only and cannot be used as an "
+            "adoption boundary Gate" % gate_id)
+    raise ValueError(
+        "Gate ID %s has Role unsupported and cannot be used as an adoption "
+        "boundary Gate" % gate_id)
+
+
+def projected_revalidation_owners(gate_ids, capabilities):
+    """Project semantic Gate IDs to the exact sorted blocking owner set."""
+    owners = set()
+    errors = []
+    for gate_id in sorted({value for value in gate_ids
+                           if _nonempty_string(value)}):
+        try:
+            owner = standards_revalidation_owner(gate_id, capabilities)
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        if owner is not None:
+            owners.add(owner)
+    return sorted(owners), errors
+
+
+def project_adoption_gate_ids(gate_ids, capabilities):
+    """Return the immediate and native owner closure for affected Gate IDs.
+
+    Profile admission is evaluated against the writable after-image before an
+    adoption commits, so it deliberately belongs to neither runtime list.
+    Advisory observations likewise create no blocking owner.  Any unsupported
+    or mechanism-only input remains an explicit error.
+    """
+    owners, errors = projected_revalidation_owners(gate_ids, capabilities)
+    immediate = []
+    native = []
+    for gate_id in owners:
+        role = (capabilities.get(gate_id) or {}).get("role")
+        if role == "immediate-owner":
+            immediate.append(gate_id)
+        elif role == "native-owner":
+            native.append(gate_id)
+    return immediate, native, errors
 
 
 def producer_module(tool):
@@ -848,6 +1187,51 @@ def partition_boundary_gates_by_lifecycle(gate_ids, state, registry):
         elif state in position:
             due.append(gate_id)
         elif position & reachable:
+            deferred.append(gate_id)
+        else:
+            passed.append(gate_id)
+    return due, deferred, passed
+
+
+def partition_revalidation_owner_claims(owner_gate_ids, state, registry,
+                                        capabilities):
+    """Partition owner Gates by their *claim edge*, not producer availability.
+
+    K00/12 Lifecycle says where a producer accepts an invocation.  A native
+    transition Gate may accept one while the batch is queued/open/merge-ready,
+    but a Standards hold must not demand it in the source state: the receipt
+    belongs to the transition itself, after the hold has cleared.  Conflating
+    those two facts made ``required-queue-admission`` due while its own
+    producer refused a held batch and made semantic leaf checks block content
+    before the lifecycle allowed content to be repaired.
+
+    Immediate owners are the only raw receipts due in the aggregate.  Native
+    owners at their position or ahead are deferred to their mandatory edge;
+    an owner whose edge the batch already passed is unrepeatable here and a
+    current plan is refused before it can create such a claim.
+    """
+    due, deferred, passed = [], [], []
+    known_state = state in kblib.BATCH_LIFECYCLE_TRANSITIONS
+    reachable = kblib.reachable_batch_states(state)
+    for gate_id in sorted({value for value in owner_gate_ids
+                           if _nonempty_string(value)}):
+        capability = capabilities.get(gate_id) or {}
+        role = capability.get("role")
+        if role == "immediate-owner":
+            due.append(gate_id)
+            continue
+        if role != "native-owner":
+            # A malformed projection is due so the exact receipt set cannot
+            # silently shrink.  The capability error reported alongside it
+            # explains why no receipt can satisfy the claim.
+            due.append(gate_id)
+            continue
+        position = registered_gate_position(gate_id, registry)
+        if position is None or not known_state:
+            passed.append(gate_id)
+        elif position == QUEUE_EXHAUSTED_GATE:
+            (passed if state in TERMINAL_STATES else deferred).append(gate_id)
+        elif state in position or position & reachable:
             deferred.append(gate_id)
         else:
             passed.append(gate_id)
@@ -1587,6 +1971,10 @@ def _progress_shape_errors(progress):
         errors.extend(_policy_exception_errors(
             contract.get("policy_exceptions"),
             "Progress contract.policy_exceptions"))
+    if isinstance(contract, dict) and "amendment_authority" in contract:
+        errors.extend(amendment_policy.amendment_authority_errors(
+            contract.get("amendment_authority"),
+            "Progress contract.amendment_authority"))
     if isinstance(contract, dict):
         for field in ("contract_version", "objective", "scope_version",
                       "standards_version",
@@ -1743,17 +2131,104 @@ def _progress_shape_errors(progress):
     return errors
 
 
+class _Catalog(dict):
+    """The hot receipt catalog plus the sealed-receipt projection index.
+
+    The hot map keeps ``receipt_id -> (relative_path, receipt)`` exactly as
+    before.  ``cold`` carries the K12/07 sealed index --
+    ``receipt_id -> thin projection`` -- so any consumer holding the catalog
+    can resolve sealed existence without a second parameter threading
+    through every historical-validation signature.
+    """
+
+    __slots__ = ("cold", "root", "_sealed_segments", "_sealed_bodies")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cold = {}
+        self.root = None
+        self._sealed_segments = {}
+        self._sealed_bodies = {}
+
+    def resolve_sealed(self, receipt_id):
+        """Return one sealed body, re-proving its bytes at the read.
+
+        This is a sealed branch, not a hole in sealing.  Existence and
+        identity consumers are served by the projection through
+        :func:`_require_receipt` and never come here; a consumer that must
+        replay a *body* -- today the Standards-revalidation consumption
+        replay, whose consumed keys live in ``revalidation_bindings`` and
+        whose retraction test reads ``invalidated_by``, neither of which a
+        projection carries -- has exactly two honest options under K12/07,
+        an explicit sealed branch or failing closed.  Silently skipping an
+        unresolvable reference is the third option, and taking it is what
+        reopened bindings a Queue transition had already discharged.
+
+        What sealing buys out is deserializing *every* sealed body on the
+        hot path (1.33s of the measured 1.75s).  This resolves one body per
+        asking consumer, lazily and memoized, from a segment whose bytes
+        ``_cold_verified_records`` has already re-hashed against the
+        manifest this run.  The line is re-proved against the projection's
+        own ``record_sha256`` here anyway: this returns evidence or it
+        returns nothing, and it does not inherit trust from the caller.
+        """
+        if receipt_id in self._sealed_bodies:
+            return self._sealed_bodies[receipt_id]
+        self._sealed_bodies[receipt_id] = None
+        row = self.cold.get(receipt_id)
+        if not isinstance(row, dict) or not isinstance(self.root, str):
+            return None
+        segment = row.get("segment")
+        line_number = row.get("line")
+        if not _nonempty_string(segment) or not isinstance(line_number, int) \
+                or isinstance(line_number, bool) or line_number < 1:
+            return None
+        if segment not in self._sealed_segments:
+            try:
+                with open(os.path.join(self.root, segment), "rb") as handle:
+                    self._sealed_segments[segment] = \
+                        handle.read().splitlines(keepends=True)
+            except OSError:
+                self._sealed_segments[segment] = []
+        lines = self._sealed_segments[segment]
+        if line_number > len(lines):
+            return None
+        raw = lines[line_number - 1]
+        if kblib.sha256_bytes(raw) != row.get("record_sha256"):
+            return None
+        try:
+            body = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeError):
+            return None
+        if not isinstance(body, dict) or body.get("receipt_id") != receipt_id:
+            return None
+        self._sealed_bodies[receipt_id] = (segment, body)
+        return self._sealed_bodies[receipt_id]
+
+    def resolve(self, receipt_id):
+        """Resolve hot first, then through the sealed branch above."""
+        entry = self.get(receipt_id)
+        if entry is not None:
+            return entry
+        return self.resolve_sealed(receipt_id)
+
+
 def _receipt_catalog(root, errors):
     """Load the repository receipt register into one collision-checked map.
 
     Queue references use receipt IDs rather than file paths.  The canonical
     receipt namespace is therefore scanned recursively; malformed JSONL,
     duplicate IDs, symlinks, and hard-linked files make the evidence set
-    unreliable instead of being silently skipped.
+    unreliable instead of being silently skipped.  The one deliberate
+    exception is the ``cold/`` namespace: sealed segments and born-cold
+    close evidence are never deserialized on the hot path -- that is the
+    entire point of sealing -- and their integrity is carried by the cold
+    manifest instead (K12/07).
     """
     relative_dir = ".cambium/receipts"
     receipt_dir = os.path.join(root, relative_dir)
-    catalog = {}
+    catalog = _Catalog()
+    catalog.root = root
     if not os.path.exists(receipt_dir):
         return catalog
     if not os.path.isdir(receipt_dir) or os.path.islink(receipt_dir):
@@ -1764,6 +2239,10 @@ def _receipt_catalog(root, errors):
         safe_dirs = []
         for name in sorted(dirnames):
             full = os.path.join(dirpath, name)
+            if dirpath == receipt_dir and name == "cold":
+                # The cold namespace is loaded by _cold_receipt_store from
+                # its manifest and index, never by this recursive scan.
+                continue
             if os.path.islink(full):
                 errors.append("receipt namespace contains symlink directory %s" %
                               os.path.relpath(full, root))
@@ -1818,6 +2297,489 @@ def _receipt_catalog(root, errors):
                     continue
                 catalog[receipt_id] = (relative, receipt)
     return catalog
+
+
+def _cold_register_lines(path, label, errors):
+    """Read one append-only cold register as exact lines, or None."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            content = handle.read()
+    except (OSError, UnicodeError) as exc:
+        errors.append("cannot read %s: %s" % (label, exc))
+        return None
+    if content and not content.endswith("\n"):
+        errors.append("%s does not end with a newline; a truncated append "
+                      "leaves the cold chain unprovable (K12/07 fail-closed)"
+                      % label)
+        return None
+    return content.splitlines()
+
+
+def _cold_group_sha256(lines):
+    """Hash one seal's contiguous register rows exactly as written."""
+    payload = "".join(line + "\n" for line in lines)
+    return kblib.sha256_bytes(payload.encode("utf-8"))
+
+
+def _cold_journal_errors(root, errors):
+    """Every seal transaction must have reached its ``complete`` row.
+
+    The journal is what makes an interrupted seal loud.  ``begin`` lands
+    before the first segment byte and ``complete`` lands after the hot
+    rewrites, so an unmatched ``begin`` means a writer died mid-transaction
+    and the operator must reconcile it against the recorded fingerprints
+    rather than let a half-sealed archive validate.
+    """
+    journal_path = os.path.join(root, kblib.RECEIPT_COLD_JOURNAL_PATH)
+    if not os.path.exists(journal_path):
+        return
+    if not os.path.isfile(journal_path) or os.path.islink(journal_path):
+        errors.append("cold journal must be a regular file")
+        return
+    lines = _cold_register_lines(journal_path, "cold journal", errors)
+    if lines is None:
+        return
+    open_seals = {}
+    for line_number, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError as exc:
+            errors.append("malformed cold journal line %d: %s" %
+                          (line_number, exc))
+            continue
+        if not isinstance(entry, dict):
+            errors.append("cold journal line %d must be a JSON object" %
+                          line_number)
+            continue
+        phase = entry.get("phase")
+        seal_id = entry.get("seal_receipt")
+        if phase not in ("begin", "complete") or not _nonempty_string(seal_id):
+            errors.append("cold journal line %d must record phase "
+                          "begin/complete for one seal_receipt" % line_number)
+            continue
+        if phase == "begin":
+            if seal_id in open_seals:
+                errors.append("cold journal opens seal %s twice" % seal_id)
+            open_seals[seal_id] = line_number
+        else:
+            open_seals.pop(seal_id, None)
+    for seal_id, line_number in sorted(open_seals.items(),
+                                       key=lambda pair: pair[1]):
+        errors.append(
+            "cold journal seal %s began at line %d and never completed; an "
+            "interrupted seal must be reconciled against the journal's "
+            "recorded fingerprints before the runtime validates again "
+            "(K12/07 fail-closed)" % (seal_id, line_number))
+
+
+def _cold_register_rows(lines, label, errors):
+    """Parse one cold register into rows plus per-seal raw-line groups.
+
+    Runs before any content check, because which rows count as evidence is
+    decided by the seal binding and not by the rows themselves.
+    """
+    rows = []
+    groups = {}
+    for line_number, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError as exc:
+            errors.append("malformed %s line %d: %s" %
+                          (label, line_number, exc))
+            continue
+        if not isinstance(entry, dict):
+            errors.append("%s line %d must be a JSON object" %
+                          (label, line_number))
+            continue
+        seal_id = entry.get("seal_receipt")
+        if not _nonempty_string(seal_id):
+            errors.append("%s line %d does not name the seal receipt that "
+                          "wrote it; an unattributed cold row has no root of "
+                          "trust (K12/07 fail-closed)" % (label, line_number))
+            continue
+        groups.setdefault(seal_id, []).append(line)
+        rows.append((line_number, seal_id, entry))
+    return rows, groups
+
+
+def _cold_path_within_root(root, relative, errors):
+    """Reject a cold path that leaves the repository by any component.
+
+    Checking only the final component is not enough: a symlinked
+    intermediate directory -- ``cold/segments`` pointed somewhere else, or
+    ``cold`` itself -- moves the whole archive outside the repository while
+    every per-file check still passes, and the sealed bytes then live
+    somewhere the repository snapshot does not cover.
+
+    This is containment detection for an ordinary mistake or a stale
+    working copy, evaluated once per run.  It is not a defence against a
+    party who can change the filesystem between the check and its use;
+    that boundary is stated in K12/07 and the remaining hardening is
+    registered in ROADMAP.md.
+    """
+    root_real = os.path.realpath(root)
+    current = root_real
+    for part in relative.split("/"):
+        if part in ("", ".", ".."):
+            errors.append("cold path %r is not a plain repository path" %
+                          relative)
+            return False
+        current = os.path.join(current, part)
+        if os.path.islink(current):
+            errors.append("cold path %s traverses symlink %s; sealed evidence "
+                          "must live inside the repository it is evidence "
+                          "for (K12/07 fail-closed)" %
+                          (relative, os.path.relpath(current, root_real)))
+            return False
+    resolved = os.path.realpath(os.path.join(root_real, relative))
+    if resolved != current or not resolved.startswith(root_real + os.sep):
+        errors.append("cold path %s resolves outside the repository "
+                      "(K12/07 fail-closed)" % relative)
+        return False
+    return True
+
+
+def _cold_namespace_errors(root, errors):
+    """The cold namespace itself must be a real directory inside the root."""
+    for relative in (kblib.RECEIPT_COLD_PREFIX,
+                     kblib.RECEIPT_COLD_SEGMENT_PREFIX,
+                     kblib.RECEIPT_COLD_EVIDENCE_PREFIX):
+        full = os.path.join(root, relative)
+        if not os.path.exists(full) and not os.path.islink(full):
+            continue
+        if not _cold_path_within_root(root, relative, errors):
+            return False
+        if not os.path.isdir(full):
+            errors.append("cold path %s must be a directory" % relative)
+            return False
+    return True
+
+
+def _cold_manifest_entries(root, rows, bound, errors):
+    """Prove each bound manifest row's segment presence and shape."""
+    entries = {}
+    named = set()
+    for line_number, seal_id, entry in rows:
+        if seal_id not in bound:
+            continue
+        segment = entry.get("segment")
+        if (not _nonempty_string(segment) or
+                not (segment.startswith(
+                    kblib.RECEIPT_COLD_SEGMENT_PREFIX + "/") or
+                     segment.startswith(
+                    kblib.RECEIPT_COLD_EVIDENCE_PREFIX + "/")) or
+                not segment.endswith(".jsonl") or "/../" in segment):
+            errors.append("cold manifest line %d has invalid segment path %r" %
+                          (line_number, segment))
+            continue
+        named.add(segment)
+        if segment in entries:
+            errors.append("cold manifest repeats segment %s" % segment)
+            continue
+        sha_value = entry.get("segment_sha256")
+        size_value = entry.get("segment_bytes")
+        records = entry.get("records")
+        if not isinstance(sha_value, str) or not SHA256_RE.fullmatch(sha_value):
+            errors.append("cold manifest segment %s has invalid "
+                          "segment_sha256" % segment)
+            continue
+        if (not isinstance(size_value, int) or isinstance(size_value, bool) or
+                size_value < 0):
+            errors.append("cold manifest segment %s has invalid "
+                          "segment_bytes" % segment)
+            continue
+        if (not isinstance(records, int) or isinstance(records, bool) or
+                records < 0):
+            errors.append("cold manifest segment %s has invalid records" %
+                          segment)
+            continue
+        if not _cold_path_within_root(root, segment, errors):
+            continue
+        segment_path = os.path.join(root, segment)
+        try:
+            descriptor = os.lstat(segment_path)
+        except OSError:
+            errors.append("cold segment %s is missing; sealed evidence "
+                          "must stay resolvable (K12/07 fail-closed)" %
+                          segment)
+            continue
+        if os.path.islink(segment_path) or not stat.S_ISREG(descriptor.st_mode):
+            errors.append("cold segment %s must be a regular file" % segment)
+            continue
+        if descriptor.st_nlink != 1:
+            # Detection at validation time, not prevention: a second name
+            # for sealed bytes is a second writer for them, and this run
+            # refuses to vouch for the segment.  It does not stop a party
+            # who can create links from doing so between runs.
+            errors.append("cold segment %s has %d hard links; a second name "
+                          "for sealed bytes is a second writer for them "
+                          "(K12/07 fail-closed)" %
+                          (segment, descriptor.st_nlink))
+            continue
+        if descriptor.st_size != size_value:
+            errors.append("cold segment %s is %d bytes on disk but the "
+                          "manifest sealed %d; sealed bytes may not drift "
+                          "(K12/07 fail-closed)" %
+                          (segment, descriptor.st_size, size_value))
+            continue
+        entries[segment] = entry
+    return entries, named
+
+
+def _cold_index_rows(rows, entries, bound, catalog, errors):
+    """Admit bound projections and bind each to a manifested segment."""
+    index = {}
+    by_segment = {}
+    for line_number, seal_id, entry in rows:
+        if seal_id not in bound:
+            continue
+        receipt_id = entry.get("receipt_id")
+        if not _nonempty_string(receipt_id):
+            errors.append("cold index line %d has no receipt_id" % line_number)
+            continue
+        if receipt_id in catalog:
+            errors.append("sealed receipt_id %s still present in hot "
+                          "register %s; a sealed row must leave the hot "
+                          "file it was sealed from" %
+                          (receipt_id, catalog[receipt_id][0]))
+            continue
+        if receipt_id in index:
+            errors.append("cold index repeats receipt_id %s" % receipt_id)
+            continue
+        segment = entry.get("segment")
+        if segment not in entries:
+            errors.append("cold index receipt %s names unknown segment %r" %
+                          (receipt_id, segment))
+            continue
+        record_sha = entry.get("record_sha256")
+        if (not isinstance(record_sha, str) or
+                not SHA256_RE.fullmatch(record_sha)):
+            errors.append("cold index receipt %s has invalid record_sha256" %
+                          receipt_id)
+            continue
+        record_line = entry.get("line")
+        if (not isinstance(record_line, int) or isinstance(record_line, bool)
+                or record_line < 1 or
+                record_line > entries[segment].get("records", 0)):
+            errors.append("cold index receipt %s names line %r, which is "
+                          "outside segment %s" %
+                          (receipt_id, record_line, segment))
+            continue
+        index[receipt_id] = entry
+        by_segment.setdefault(segment, []).append(entry)
+    return index, by_segment
+
+
+def _cold_verified_records(root, entries, by_segment, errors):
+    """Re-hash every sealed segment and return the projections it proves.
+
+    This is the per-run cost sealing does not buy out.  Presence and size
+    prove nothing about content: a same-length edit to a sealed verdict
+    would pass a size check silently, and the projections that consumers
+    read are derived from these bytes.  Measured on a 65 MB adopter
+    archive this whole pass costs 0.42s; what sealing actually retires is
+    re-deserializing the bodies, a further 1.33s on the same archive.
+
+    The return value is what makes the check load-bearing rather than
+    advisory.  Reporting a hash failure while still handing the projection
+    to consumers would leave the run resolving a receipt it has just proved
+    it cannot vouch for, so an unproven projection is withheld, not warned
+    about.
+    """
+    verified = set()
+    for segment in sorted(entries):
+        entry = entries[segment]
+        try:
+            with open(os.path.join(root, segment), "rb") as handle:
+                payload = handle.read()
+        except OSError as exc:
+            errors.append("cold segment %s became unreadable: %s" %
+                          (segment, exc))
+            continue
+        if kblib.sha256_bytes(payload) != entry["segment_sha256"]:
+            errors.append("cold segment %s does not match the hash the "
+                          "manifest sealed; sealed bytes may not change "
+                          "(K12/07 fail-closed)" % segment)
+            continue
+        if payload.count(b"\n") != entry["records"]:
+            errors.append("cold segment %s holds %d records but the manifest "
+                          "sealed %d" %
+                          (segment, payload.count(b"\n"), entry["records"]))
+            continue
+        rows = by_segment.get(segment)
+        if not rows:
+            continue
+        try:
+            lines = payload.decode("utf-8").splitlines(keepends=True)
+        except UnicodeError as exc:
+            errors.append("cold segment %s is not valid UTF-8: %s" %
+                          (segment, exc))
+            continue
+        for row in rows:
+            raw = lines[row["line"] - 1]
+            if kblib.sha256_bytes(raw.encode("utf-8")) != row["record_sha256"]:
+                errors.append(
+                    "cold index receipt %s does not hash to the sealed record "
+                    "at %s line %d; a projection that no longer names its own "
+                    "record is an assertion, not evidence (K12/07 "
+                    "fail-closed)" % (row["receipt_id"], segment, row["line"]))
+                continue
+            verified.add(row["receipt_id"])
+    return verified
+
+
+def _cold_orphan_segment_errors(root, named, errors):
+    """A segment file no manifest row names is an interrupted seal.
+
+    Only ``segments/`` is swept.  Born-cold close evidence is written by
+    ``check_batch_close`` at close time and adopted into the manifest by
+    the next seal, so an unmanifested evidence file is a normal interval
+    state -- its integrity is bound by the close attestation that names
+    its path, bytes and hash.
+    """
+    segment_dir = os.path.join(root, kblib.RECEIPT_COLD_SEGMENT_PREFIX)
+    if not os.path.isdir(segment_dir):
+        return
+    for name in sorted(os.listdir(segment_dir)):
+        relative = "%s/%s" % (kblib.RECEIPT_COLD_SEGMENT_PREFIX, name)
+        if relative not in named:
+            errors.append("cold segment file %s is in no manifest row; an "
+                          "unreferenced segment is an interrupted seal, not "
+                          "spare evidence (K12/07 fail-closed)" % relative)
+
+
+def _cold_bound_seals(catalog, manifest_groups, index_groups, errors):
+    """Bind both cold registers to the seal receipt that wrote them.
+
+    Manifest and index are ordinary editable files with no producer of
+    their own; the seal receipt is a receipt, it never seals, and it
+    records the exact bytes of the rows one transaction appended.  That
+    makes the cold chain terminate where every other claim in this runtime
+    terminates -- in the hot receipt register -- instead of in a side table
+    that anyone may rewrite.
+
+    Returns the seal IDs whose rows are proven.  Rows of an unproven seal
+    are not merely reported: they never enter the catalog, so a forged
+    projection cannot resolve for a consumer inside the same run that
+    rejects it.
+    """
+    bound = set()
+    for seal_id in sorted(set(manifest_groups) | set(index_groups)):
+        entry = catalog.get(seal_id)
+        if entry is None:
+            errors.append("cold registers name seal receipt %s, which is "
+                          "absent from the hot catalog; the cold chain's root "
+                          "of trust is its seal receipt and seal receipts "
+                          "never seal (K12/07 fail-closed)" % seal_id)
+            continue
+        receipt = entry[1]
+        if (receipt.get("tool") != SEAL_TOOL or
+                receipt.get("check") != "receipt_seal" or
+                receipt.get("result") != "pass" or
+                receipt.get("invalidated_by") is not None):
+            errors.append("cold registers name %s as a seal receipt, but that "
+                          "receipt is not a passing %s receipt_seal" %
+                          (seal_id, SEAL_TOOL))
+            continue
+        if receipt.get("tool_version") not in SUPPORTED_SEAL_TOOL_VERSIONS:
+            errors.append(
+                "seal receipt %s was produced by %s %r, which is not a "
+                "supported sealing protocol; a cold archive is only as "
+                "trustworthy as the writer that made it (K12/07 fail-closed)"
+                % (seal_id, SEAL_TOOL, receipt.get("tool_version")))
+            continue
+        proven = True
+        for kind, groups, field in (
+                ("manifest", manifest_groups, "manifest_rows_sha256"),
+                ("index", index_groups, "index_rows_sha256")):
+            recorded = receipt.get(field)
+            actual = _cold_group_sha256(groups.get(seal_id, []))
+            if recorded != actual:
+                proven = False
+                errors.append(
+                    "cold %s rows attributed to seal %s hash to %s but the "
+                    "seal receipt recorded %r; a cold register is evidence "
+                    "only while its seal receipt still binds its bytes "
+                    "(K12/07 fail-closed)" % (kind, seal_id, actual, recorded))
+        if proven:
+            bound.add(seal_id)
+    seen = set(manifest_groups) | set(index_groups)
+    for receipt_id, (_relative, receipt) in catalog.items():
+        if (receipt.get("tool") != SEAL_TOOL or
+                receipt.get("check") != "receipt_seal" or
+                receipt.get("result") != "pass" or
+                receipt.get("invalidated_by") is not None):
+            continue
+        if receipt_id not in seen:
+            errors.append("seal receipt %s recorded a seal whose manifest and "
+                          "index rows are both gone; sealed rows are "
+                          "append-only (K12/07 fail-closed)" % receipt_id)
+    return bound
+
+
+def _cold_receipt_store(root, errors, catalog):
+    """Load and fully verify the K12/07 cold chain, fail-closed.
+
+    Sealing moves parse cost off the hot path.  It does not move integrity
+    off it.  Every consistency run re-reads every sealed segment and proves
+    its bytes against the manifest hash, proves each projection against the
+    exact sealed line it names, proves both registers against the seal
+    receipt that wrote them, refuses an unreferenced segment or an
+    unfinished seal transaction, and refuses a sealed ``receipt_id`` that
+    still has a hot twin.  Absence of the whole namespace means nothing is
+    sealed and is not an error.
+    """
+    store = {"manifest": [], "index": {}, "seals": []}
+    manifest_path = os.path.join(root, kblib.RECEIPT_COLD_MANIFEST_PATH)
+    index_path = os.path.join(root, kblib.RECEIPT_COLD_INDEX_PATH)
+    segment_dir = os.path.join(root, kblib.RECEIPT_COLD_SEGMENT_PREFIX)
+    # The journal is checked before anything else, and unconditionally: a
+    # seal that died between its begin row and its first segment byte
+    # leaves no manifest, no index and no segment at all, and that is
+    # exactly the interruption a namespace-presence short-circuit would
+    # have declared clean.
+    _cold_journal_errors(root, errors)
+    if not _cold_namespace_errors(root, errors):
+        catalog.cold = store["index"]
+        return store
+    if (not os.path.exists(manifest_path) and
+            not os.path.exists(index_path) and
+            not os.path.isdir(segment_dir)):
+        catalog.cold = store["index"]
+        return store
+    for label, path in (("cold manifest", manifest_path),
+                        ("cold index", index_path)):
+        if not os.path.isfile(path) or os.path.islink(path):
+            errors.append("%s must exist as a regular file once the cold "
+                          "namespace exists" % label)
+            catalog.cold = store["index"]
+            return store
+    manifest_lines = _cold_register_lines(manifest_path, "cold manifest",
+                                          errors)
+    index_lines = _cold_register_lines(index_path, "cold index", errors)
+    if manifest_lines is None or index_lines is None:
+        catalog.cold = store["index"]
+        return store
+    manifest_rows, manifest_groups = _cold_register_rows(
+        manifest_lines, "cold manifest", errors)
+    index_rows, index_groups = _cold_register_rows(
+        index_lines, "cold index", errors)
+    bound = _cold_bound_seals(catalog, manifest_groups, index_groups, errors)
+    entries, named = _cold_manifest_entries(root, manifest_rows, bound, errors)
+    index, by_segment = _cold_index_rows(
+        index_rows, entries, bound, catalog, errors)
+    verified = _cold_verified_records(root, entries, by_segment, errors)
+    _cold_orphan_segment_errors(root, named, errors)
+    store["manifest"] = [entries[segment] for segment in sorted(entries)]
+    store["index"] = {receipt_id: row for receipt_id, row in index.items()
+                      if receipt_id in verified}
+    store["seals"] = sorted(bound)
+    catalog.cold = store["index"]
+    return store
 
 
 def _current_item_transition_evidence(item, catalog):
@@ -1983,9 +2945,14 @@ def invalidated_receipt_consumers(root, queue, catalog):
     return consumers
 
 
-def standards_revalidation_requirements(root, progress):
+def standards_revalidation_requirements(root, progress, capabilities=None,
+                                        catalog=None):
     """Return immutable per-batch boundary bindings from all adoption plans."""
     by_batch = {}
+    if capabilities is None:
+        gate_registry, _gate_errors = standards_gate_registry(root)
+        capabilities, _capability_errors = \
+            standards_revalidation_capabilities(root, gate_registry)
     records = progress.get("standards_adoptions")
     if not isinstance(records, list):
         return by_batch
@@ -1999,11 +2966,43 @@ def standards_revalidation_requirements(root, progress):
             plan = kblib.load_yaml_file(path)
         except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError):
             continue
+        producer_tool_version = None
+        receipt_id = record.get("verification_receipt")
+        if catalog is not None and _nonempty_string(receipt_id):
+            resolve = getattr(catalog, "resolve", None)
+            if not callable(resolve):
+                resolve = catalog.get
+            entry = resolve(receipt_id)
+            receipt = entry[1] if entry is not None else None
+            if isinstance(receipt, dict) and \
+                    receipt.get("tool") == STANDARDS_ADOPTION_TOOL:
+                producer_tool_version = receipt.get("tool_version")
+        owner_projection_era = \
+            _standards_adoption_owner_projection_required(
+                producer_tool_version)
+        # Pre-1.6 plans stored raw leaf Gates, so their only safe forward
+        # bridge is the current closed mapping.  A 1.6+ plan stores owner Gates
+        # in required_gate_ids; once its producer is historical those recorded
+        # owners, not a future capability table, remain authoritative.  The
+        # running producer may still materialize leaf-to-owner audit rows from
+        # the same table it just admitted.
+        use_live_leaf_projection = (not owner_projection_era or
+                                    producer_tool_version ==
+                                    STANDARDS_ADOPTION_TOOL_VERSION)
         boundaries = {
             row.get("boundary_id"): row
             for row in plan.get("invalidation_boundaries", [])
             if isinstance(row, dict) and
             _nonempty_string(row.get("boundary_id"))
+        }
+        affected_by_predicate = {
+            row.get("predicate_id"): [
+                gate_id for gate_id in row.get("affected_gate_ids") or []
+                if _nonempty_string(gate_id)
+            ]
+            for row in plan.get("changed_predicates", [])
+            if isinstance(row, dict) and
+            _nonempty_string(row.get("predicate_id"))
         }
         invalidated_by_boundary = {}
         for invalidated in plan.get("invalidated_evidence", []):
@@ -2049,7 +3048,72 @@ def standards_revalidation_requirements(root, progress):
                     for dimension in invalidated.get("dimension_ids") or []
                     if _nonempty_string(dimension)
                 })
-                for gate_id in boundary.get("required_gate_ids") or []:
+                plan_required_gate_ids = [
+                    gate_id for gate_id in
+                    boundary.get("required_gate_ids") or []
+                    if _nonempty_string(gate_id)
+                ]
+                affected_gate_ids = sorted({
+                    gate_id
+                    for predicate_id in boundary.get("predicate_ids") or []
+                    for gate_id in affected_by_predicate.get(predicate_id, [])
+                })
+                binding_specs = []
+                represented_required = set()
+
+                def add_binding_spec(affected_gate_id):
+                    mapped_owner = affected_gate_id
+                    owner_claim_edge = None
+                    mapping_error = None
+                    try:
+                        projected = standards_revalidation_owner(
+                            affected_gate_id, capabilities or {})
+                        if projected is None:
+                            # Advisory observations are intentionally absent
+                            # from the runtime boundary owner closure.
+                            return
+                        mapped_owner = projected
+                    except ValueError as exc:
+                        mapping_error = str(exc)
+                    if mapped_owner in plan_required_gate_ids:
+                        required_gate_id = mapped_owner
+                    elif affected_gate_id in plan_required_gate_ids:
+                        # Producer-era bridge: an old plan stores the raw leaf
+                        # in required_gate_ids.  Keep that immutable key while
+                        # moving its live claim to the current composite owner.
+                        required_gate_id = affected_gate_id
+                    else:
+                        required_gate_id = mapped_owner
+                        mapping_error = mapping_error or (
+                            "Standards revalidation owner %s for affected "
+                            "Gate %s is absent from boundary %s" % (
+                                mapped_owner, affected_gate_id, boundary_id))
+                    owner_capability = (capabilities or {}).get(mapped_owner)
+                    if isinstance(owner_capability, dict):
+                        owner_claim_edge = owner_capability.get("claim_edge")
+                        if owner_capability.get("role") == "special-owner":
+                            # Profile admission is completed against the
+                            # writable after-image by the adoption writer.  It
+                            # never becomes a post-admission batch obligation.
+                            return
+                    represented_required.add(required_gate_id)
+                    binding_specs.append((
+                        affected_gate_id, required_gate_id, mapped_owner,
+                        owner_claim_edge, mapping_error))
+
+                for gate_id in affected_gate_ids:
+                    if use_live_leaf_projection:
+                        add_binding_spec(gate_id)
+                # A malformed or historical boundary may name a requirement
+                # not reachable from its changed-predicate rows.  Preserve it
+                # as an explicit binding so the aggregate cannot silently
+                # shrink the recorded obligation.
+                for gate_id in plan_required_gate_ids:
+                    if gate_id not in represented_required:
+                        add_binding_spec(gate_id)
+
+                for (affected_gate_id, required_gate_id, mapped_owner,
+                     owner_claim_edge, mapping_error) in binding_specs:
                     binding = {
                         "adoption_id": plan.get("adoption_id"),
                         "plan_sha256": record.get("plan_sha256"),
@@ -2057,7 +3121,14 @@ def standards_revalidation_requirements(root, progress):
                         "boundary_id": boundary_id,
                         "predicate_ids": sorted(
                             boundary.get("predicate_ids") or []),
-                        "required_gate_id": gate_id,
+                        "affected_gate_id": affected_gate_id,
+                        "affected_gate_ids": affected_gate_ids,
+                        "required_gate_id": required_gate_id,
+                        "mapped_owner_gate_id": mapped_owner,
+                        "owner_claim_edge": owner_claim_edge,
+                        "mapping_protocol_version":
+                            STANDARDS_REVALIDATION_CAPABILITY_PROTOCOL,
+                        "mapping_error": mapping_error,
                         "required_dimension_ids": relevant_dimensions,
                         "superseded_invalidated_receipt_ids":
                             relevant_invalidated,
@@ -2067,8 +3138,75 @@ def standards_revalidation_requirements(root, progress):
         by_batch[batch_id] = sorted(
             by_batch[batch_id], key=lambda row: (
                 row.get("adoption_id", ""), row.get("boundary_id", ""),
-                row.get("required_gate_id", "")))
+                row.get("required_gate_id", ""),
+                row.get("affected_gate_id", "")))
     return by_batch
+
+
+def standards_revalidation_producer_eligibility(result, batch_id):
+    """Why ``--require-revalidation <batch_id>`` would refuse, or ``None``.
+
+    One predicate with two callers: this producer's own admission, and the
+    resume vocabulary that names a batch for it.  They were separate before,
+    and the recovery action outlived what the producer would accept -- a
+    closed batch was named for an aggregate the tool refuses outright, so
+    the recommendation could never be followed and nothing behind it was
+    ever reported.  Sharing the predicate is what makes "the tool would run
+    this" a checkable claim rather than a parallel guess.
+    """
+    if (result.get("progress") or {}).get("task_state") != "active":
+        return ("Standards revalidation requires task_state=active; "
+                "resume the recorded task before producing the "
+                "state-bound aggregate")
+    item = (result.get("items_by_id") or {}).get(batch_id)
+    if item is None:
+        return "requested batch %s does not exist" % batch_id
+    if item.get("state") not in STANDARDS_REVALIDATION_STATES:
+        return ("Standards revalidation batch %s is %s, expected "
+                "queued or open" % (batch_id, item.get("state")))
+    if item.get("state") == "open" and \
+            item.get("hold_state") != "revalidation-required":
+        return ("open Standards revalidation batch must have "
+                "hold_state=revalidation-required")
+    return None
+
+
+def _unresolvable_consumed_aggregate_errors(items_by_id, catalog):
+    """Fail closed when a recorded consumption's aggregate resolves nowhere.
+
+    The replay below reads each consumed aggregate's body.  When the body
+    is neither hot nor reachable through the sealed branch, the replay has
+    no way to know which bindings that transition discharged -- and the
+    quiet answer, dropping the transition and reporting its bindings as
+    outstanding again, is indistinguishable from a batch that never
+    revalidated at all.  It also cannot be acted on: the batch that
+    recorded the consumption is closed by then, and
+    ``--require-revalidation`` refuses a closed batch (K00/12 gives
+    `standards-revalidation` the lifecycle cells `queued, open`).  So the
+    run says the evidence became unreachable, rather than silently
+    rewriting a discharged obligation into a permanent one.
+    """
+    errors = []
+    resolve = getattr(catalog, "resolve", None)
+    if not callable(resolve):
+        resolve = catalog.get
+    for batch_id in sorted(items_by_id):
+        item = items_by_id[batch_id]
+        if not isinstance(item, dict):
+            continue
+        for transition in _ordered_item_transitions(item, catalog):
+            receipt_id = transition.get("standards_revalidation_receipt")
+            if not _nonempty_string(receipt_id) or \
+                    resolve(receipt_id) is not None:
+                continue
+            errors.append(
+                "batch %s transition %s consumed Standards revalidation "
+                "aggregate %s, which resolves neither in the hot register "
+                "nor through the K12/07 cold chain; a recorded consumption "
+                "whose evidence became unreachable is not a revalidation "
+                "that never happened" %
+                (batch_id, transition.get("receipt_id"), receipt_id))
+    return errors
 
 
 def _consumed_standards_revalidation_keys(item, catalog):
@@ -2076,6 +3214,13 @@ def _consumed_standards_revalidation_keys(item, catalog):
     transitions = _ordered_item_transitions(item, catalog)
     if not transitions:
         return consumed
+    # Sealing must not un-replay a consumption a Queue transition recorded.
+    # This replay reads the aggregate's body, so it takes the K12/07 sealed
+    # branch (`_Catalog.resolve`) rather than the hot map alone; a reduced
+    # test context that passes a plain dict keeps the historical behavior.
+    resolve = getattr(catalog, "resolve", None)
+    if not callable(resolve):
+        resolve = catalog.get
     # The `evidence_receipt` fallback applies to a transition the replayed
     # hold machine recognizes as a discharge, not to the adjacent
     # `revalidation-required -> none` edge alone.
@@ -2087,7 +3232,7 @@ def _consumed_standards_revalidation_keys(item, catalog):
                 transition.get("before_state") == transition.get("after_state")
                 and transition.get("receipt_id") in discharges):
             receipt_id = transition.get("evidence_receipt")
-        receipt_entry = catalog.get(receipt_id) if _nonempty_string(
+        receipt_entry = resolve(receipt_id) if _nonempty_string(
             receipt_id) else None
         receipt = receipt_entry[1] if receipt_entry is not None else None
         # Producer-era rule: a consumed aggregate is a historical fact a Queue
@@ -2120,8 +3265,16 @@ def _consumed_standards_revalidation_keys(item, catalog):
 
 def outstanding_standards_revalidation(result, batch_id):
     """Return plan bindings not yet consumed by a Queue transition."""
-    raw = standards_revalidation_requirements(
-        result.get("root"), result.get("progress") or {}).get(batch_id, [])
+    requirements = result.get("_standards_revalidation_requirements")
+    if not isinstance(requirements, dict):
+        # Public helpers also accept deliberately reduced/test contexts.  Such
+        # a caller has no validation-scoped derivation to reuse, so preserve
+        # the historical standalone behavior instead of requiring a private
+        # field.  ``validate_runtime`` always supplies the derived map once.
+        requirements = standards_revalidation_requirements(
+            result.get("root"), result.get("progress") or {},
+            catalog=historical_receipt_catalog(result))
+    raw = requirements.get(batch_id, [])
     item = (result.get("items_by_id") or {}).get(batch_id) or {}
     # Consumption is replayed from the immutable historical catalog: the
     # era-filtered current catalog drops receipts whose producer version was
@@ -2217,10 +3370,20 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
     })
     registry, registry_errors = standards_gate_registry(result.get("root"))
     errors.extend(registry_errors)
+    capabilities, capability_errors = standards_revalidation_capabilities(
+        result.get("root"), registry)
+    errors.extend(capability_errors)
+    for row in outstanding:
+        if _nonempty_string(row.get("mapping_error")):
+            errors.append(row["mapping_error"])
+    mapped_owner_gate_ids = sorted({
+        row.get("mapped_owner_gate_id") for row in outstanding
+        if _nonempty_string(row.get("mapped_owner_gate_id"))
+    })
     item = (result.get("items_by_id") or {}).get(batch_id) or {}
     due_gate_ids, deferred_gate_ids, unrepeatable_gate_ids = \
-        partition_boundary_gates_by_lifecycle(
-            required_gate_ids, item.get("state"), registry)
+        partition_revalidation_owner_claims(
+            mapped_owner_gate_ids, item.get("state"), registry, capabilities)
     if sorted(gate_receipts) != due_gate_ids:
         errors.append("boundary gate receipt IDs must be exactly %r" %
                       due_gate_ids)
@@ -2245,7 +3408,7 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
         if registered:
             declared = {
                 dimension for row in outstanding
-                if row.get("required_gate_id") == gate_id
+                if row.get("mapped_owner_gate_id") == gate_id
                 for dimension in row.get("required_dimension_ids") or []
             }
             admissible = sorted(declared & registered)
@@ -2280,7 +3443,7 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
         receipt_time = _timestamp_value(receipt.get("checked_at"))
         relevant_times = [_timestamp_value(row.get("adopted_at"))
                           for row in outstanding
-                          if row.get("required_gate_id") == gate_id]
+                          if row.get("mapped_owner_gate_id") == gate_id]
         if receipt_time is None or any(
                 value is None or receipt_time < value for value in relevant_times):
             errors.append("Gate ID %s receipt %s predates its adoption" %
@@ -2288,17 +3451,38 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
         resolved[gate_id] = receipt_id
     bindings = []
     for row in outstanding:
+        owner_gate_id = row.get("mapped_owner_gate_id")
+        if owner_gate_id in due_gate_ids:
+            disposition = "satisfied-immediate"
+        elif owner_gate_id in deferred_gate_ids:
+            disposition = "deferred-to-native-transition"
+        else:
+            disposition = "unrepeatable-passed"
         binding = {
             "adoption_id": row.get("adoption_id"),
             "plan_sha256": row.get("plan_sha256"),
             "boundary_id": row.get("boundary_id"),
             "predicate_ids": row.get("predicate_ids"),
+            "affected_gate_id": row.get("affected_gate_id"),
             "required_gate_id": row.get("required_gate_id"),
-            "gate_receipt_id": resolved.get(row.get("required_gate_id")),
+            "mapped_owner_gate_id": owner_gate_id,
+            "owner_claim_edge": row.get("owner_claim_edge"),
+            "mapping_protocol_version": row.get(
+                "mapping_protocol_version"),
+            "claim_disposition": disposition,
+            "gate_receipt_id": resolved.get(owner_gate_id),
             "superseded_invalidated_receipt_ids":
                 row.get("superseded_invalidated_receipt_ids"),
         }
         bindings.append(binding)
+    immediate_gate_ids = sorted(
+        gate_id for gate_id in mapped_owner_gate_ids
+        if (capabilities.get(gate_id) or {}).get("role") == "immediate-owner")
+    native_owner_gate_ids = sorted(
+        gate_id for gate_id in mapped_owner_gate_ids
+        if (capabilities.get(gate_id) or {}).get("role") == "native-owner")
+    deferred_native_owner_gate_ids = sorted(
+        set(native_owner_gate_ids) & set(deferred_gate_ids))
     context = {
         "gate_id": "standards-revalidation",
         "batch_id": batch_id,
@@ -2312,6 +3496,13 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
             row.get("boundary_id") for row in outstanding
             if _nonempty_string(row.get("boundary_id"))}),
         "required_gate_ids": required_gate_ids,
+        "mapped_owner_gate_ids": mapped_owner_gate_ids,
+        "immediate_gate_ids": immediate_gate_ids,
+        "native_owner_gate_ids": native_owner_gate_ids,
+        "deferred_native_owner_gate_ids":
+            deferred_native_owner_gate_ids,
+        "mapping_protocol_version":
+            STANDARDS_REVALIDATION_CAPABILITY_PROTOCOL,
         "target_batch_state": item.get("state"),
         # The partition of `required_gate_ids` this aggregate was made under.
         # Each Gate ID appears in exactly one of the three, and the three
@@ -2628,6 +3819,18 @@ def _standards_adoption_upstream_required(producer_tool_version):
         STANDARDS_ADOPTION_UPSTREAM_MIN_VERSION
 
 
+def _standards_adoption_owner_projection_required(producer_tool_version):
+    """Return whether this producer era stored projected boundary owners."""
+    match = re.fullmatch(
+        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
+        str(producer_tool_version),
+    )
+    if match is None:
+        return True
+    return tuple(int(part) for part in match.groups()) >= \
+        STANDARDS_ADOPTION_OWNER_PROJECTION_MIN_VERSION
+
+
 def standards_adoption_plan_errors(
         root, plan, catalog=None, queue=None, progress=None,
         validate_current=True,
@@ -2639,7 +3842,7 @@ def standards_adoption_plan_errors(
     pre-1.4 plans are not reinterpreted under fields their producers did not
     promise.
     """
-    # A plan being admitted is always judged by the running 1.4 producer;
+    # A plan being admitted is always judged by the running producer;
     # ``producer_tool_version`` is an era selector only for sealed replay.
     profile_contract_required = validate_current or \
         _standards_adoption_profile_contract_required(producer_tool_version)
@@ -2647,6 +3850,8 @@ def standards_adoption_plan_errors(
         _standards_adoption_profile_inputs_required(producer_tool_version)
     upstream_required = validate_current or \
         _standards_adoption_upstream_required(producer_tool_version)
+    owner_projection_era = validate_current or \
+        _standards_adoption_owner_projection_required(producer_tool_version)
     optional_fields = []
     if not profile_contract_required:
         optional_fields.append("profile_contract_fingerprint_after")
@@ -2802,8 +4007,18 @@ def standards_adoption_plan_errors(
                     errors.append("Standards adoption %s path %r is unsafe or "
                                   "missing: %s" % (field, relative, path_error))
 
+    gate_registry = {}
+    revalidation_capabilities = {}
+    if validate_current and root is not None:
+        gate_registry, gate_registry_errors = standards_gate_registry(root)
+        errors.extend(gate_registry_errors)
+        revalidation_capabilities, capability_errors = \
+            standards_revalidation_capabilities(root, gate_registry)
+        errors.extend(capability_errors)
+
     predicates = plan.get("changed_predicates")
     predicate_ids = []
+    predicate_projected_owners = {}
     boundary_gate_ids = set()
     registered_gate_ids = set()
     if not isinstance(predicates, list):
@@ -2841,11 +4056,26 @@ def standards_adoption_plan_errors(
                 errors.append("%s affected_gate_ids must be sorted" % label)
             registered_gate_ids.update(value for value in affected
                                        if _nonempty_string(value))
-            boundary_gate_ids.update(
-                value for value in affected
-                if (_nonempty_string(value) and
-                    (not profile_contract_required or
-                     value != "profile-load")))
+            if validate_current and root is not None:
+                projected, projection_errors = projected_revalidation_owners(
+                    affected, revalidation_capabilities)
+                errors.extend("%s: %s" % (label, error)
+                              for error in projection_errors)
+                if _nonempty_string(predicate_id):
+                    predicate_projected_owners[predicate_id] = set(projected)
+                boundary_gate_ids.update(
+                    value for value in projected
+                    if (not profile_contract_required or
+                        value != "profile-load"))
+            elif not owner_projection_era:
+                # Historical plans are replayed under their recorded raw Gate
+                # union.  They predate owner projection and cannot be
+                # rewritten merely because the current kernel gained it.
+                boundary_gate_ids.update(
+                    value for value in affected
+                    if (_nonempty_string(value) and
+                        (not profile_contract_required or
+                         value != "profile-load")))
     if len(predicate_ids) != len(set(predicate_ids)):
         errors.append("Standards adoption repeats predicate_id")
     if predicate_ids != sorted(predicate_ids):
@@ -2897,13 +4127,46 @@ def standards_adoption_plan_errors(
             if _nonempty_string(value)
         ]
         registered_gate_ids.update(required_gate_ids)
+        if validate_current and root is not None:
+            allowed_required_gate_ids = set().union(*(
+                predicate_projected_owners.get(predicate_id, set())
+                for predicate_id in referenced
+            )) if referenced else set()
+            extra_required_gate_ids = sorted(
+                set(required_gate_ids) - allowed_required_gate_ids)
+            if extra_required_gate_ids:
+                errors.append(
+                    "%s required_gate_ids adds owner Gate(s) not projected "
+                    "by its predicate_ids: %s" % (
+                        label, ", ".join(extra_required_gate_ids)))
+            for gate_id in required_gate_ids:
+                capability = revalidation_capabilities.get(gate_id) or {}
+                if capability.get("role") not in (
+                        "special-owner", "immediate-owner", "native-owner"):
+                    errors.append(
+                        "%s required_gate_ids names %s, which is not a "
+                        "Standards revalidation boundary owner" %
+                        (label, gate_id))
+                if gate_id == "profile-load" and \
+                        boundary.get("target_kind") != "profile-load":
+                    errors.append(
+                        "%s may require profile-load only on target_kind "
+                        "profile-load; after-image admission cannot be moved "
+                        "onto a batch boundary" % label)
         runtime_gate_ids = [
             value for value in required_gate_ids
             if not profile_contract_required or value != "profile-load"
         ]
         if _nonempty_string(boundary_id):
             boundary_runtime_gate_ids[boundary_id] = runtime_gate_ids
-        boundary_gate_ids.update(runtime_gate_ids)
+        if not validate_current:
+            # Every historical producer froze its boundary-level additions
+            # in required_gate_ids.  Pre-1.6 plans combine those recorded
+            # gates with their raw affected-gate union; 1.6+ plans store only
+            # projected owners there.  Reuse the recorded values in both
+            # eras instead of dropping part of the old contract or
+            # re-projecting it through a future capability table.
+            boundary_gate_ids.update(runtime_gate_ids)
         targets = boundary.get("target_ids") or []
         if boundary.get("target_kind") == "batch":
             affected_batches.update(targets)
@@ -2998,16 +4261,36 @@ def standards_adoption_plan_errors(
     # that same predicate.  Otherwise a plan can look complete in its union
     # while silently dropping the Gate from every enforcement edge.
     if profile_contract_required:
-        predicate_affected_gates = {
-            predicate.get("predicate_id"): {
-                gate_id for gate_id in predicate.get("affected_gate_ids", [])
-                if _nonempty_string(gate_id)
+        if validate_current:
+            predicate_affected_gates = {
+                predicate.get("predicate_id"): set(
+                    predicate_projected_owners.get(
+                        predicate.get("predicate_id"), set()))
+                for predicate in predicates
+                if (isinstance(predicate, dict) and
+                    _nonempty_string(predicate.get("predicate_id")) and
+                    isinstance(predicate.get("affected_gate_ids"), list))
             }
-            for predicate in predicates
-            if (isinstance(predicate, dict) and
-                _nonempty_string(predicate.get("predicate_id")) and
-                isinstance(predicate.get("affected_gate_ids"), list))
-        }
+        elif not owner_projection_era:
+            # Historical plans retain their recorded raw Gate closure.  They
+            # are replayed under their producer era, not retroactively
+            # rewritten to the current leaf-to-owner projection.
+            predicate_affected_gates = {
+                predicate.get("predicate_id"): {
+                    gate_id for gate_id in
+                    predicate.get("affected_gate_ids") or []
+                    if _nonempty_string(gate_id) and gate_id != "profile-load"
+                }
+                for predicate in predicates
+                if (isinstance(predicate, dict) and
+                    _nonempty_string(predicate.get("predicate_id")) and
+                    isinstance(predicate.get("affected_gate_ids"), list))
+            }
+        else:
+            # Current-era owner closure is already recorded in each boundary;
+            # historical replay does not reinterpret semantic leaves through
+            # a later capability table.
+            predicate_affected_gates = {}
         boundary_gates_by_predicate = {
             predicate_id: set() for predicate_id in predicate_affected_gates
         }
@@ -3055,7 +4338,8 @@ def standards_adoption_plan_errors(
             errors.append("%s receipt_id must be non-empty" % label)
         else:
             invalidated_ids.append(receipt_id)
-            if catalog is not None and receipt_id not in catalog:
+            if (catalog is not None and receipt_id not in catalog and
+                    receipt_id not in (getattr(catalog, "cold", None) or {})):
                 errors.append("%s names unknown receipt %s" %
                               (label, receipt_id))
         for field in ("predicate_ids", "dimension_ids", "boundary_ids",
@@ -3109,6 +4393,36 @@ def standards_adoption_plan_errors(
             if _nonempty_string(boundary_id):
                 boundary_reached_batches.setdefault(
                     boundary_id, set()).update(scoped)
+
+    # Any route by which a boundary reaches a terminal batch is equally
+    # impossible to discharge.  Checking only target_kind=batch left an
+    # alternate path through invalidated-evidence revalidation_scope_ids:
+    # the plan admitted a post-admission claim whose producer rejects the
+    # closed/cancelled target forever.  Admission therefore judges the exact
+    # direct-target plus evidence-scope union derived above.  Historical
+    # replay remains producer-era fact and is never rejected retroactively.
+    if validate_current and queue is not None:
+        terminal_states = {
+            item.get("id"): item.get("state")
+            for item in queue.get("required_queue", [])
+            if isinstance(item, dict) and
+            item.get("state") in TERMINAL_STATES
+        }
+        for index, boundary in enumerate(boundaries):
+            if not isinstance(boundary, dict):
+                continue
+            boundary_id = boundary.get("boundary_id")
+            if not boundary_runtime_gate_ids.get(boundary_id):
+                continue
+            terminal = sorted(
+                set(boundary_reached_batches.get(boundary_id, set())) &
+                set(terminal_states))
+            if terminal:
+                errors.append(
+                    "invalidation_boundaries[%d] boundary %s creates "
+                    "post-admission owner claims on terminal batch(es) %s; "
+                    "route the impact to a non-terminal successor instead" %
+                    (index, boundary_id, ", ".join(terminal)))
 
     # K12/10: a boundary is only ever claimed at a Queue batch's next
     # transition, either because it targets that batch or because invalidated
@@ -3190,10 +4504,19 @@ def standards_adoption_plan_errors(
                 (target, READ_SET_BOUNDARY_OWNER_PATH))
 
     if predicate_set:
-        if not boundary_ids:
-            errors.append("changed predicates require invalidation boundaries")
-        if covered_predicates != predicate_set:
-            errors.append("every changed predicate must occur in an invalidation boundary")
+        blocking_predicate_set = (set(
+            predicate_id for predicate_id, owners in
+            predicate_projected_owners.items() if owners)
+            if validate_current else
+            (set(covered_predicates) if owner_projection_era else predicate_set))
+        if blocking_predicate_set and not boundary_ids:
+            errors.append(
+                "changed predicates with blocking owner Gates require "
+                "invalidation boundaries")
+        if not blocking_predicate_set.issubset(covered_predicates):
+            errors.append(
+                "every changed predicate with a blocking owner Gate must "
+                "occur in an invalidation boundary")
     elif invalidated or boundaries:
         errors.append("no-op adoption requires empty invalidated_evidence and "
                       "invalidation_boundaries")
@@ -3206,8 +4529,7 @@ def standards_adoption_plan_errors(
                       "union %r" % expected_boundary_gates)
 
     if validate_current and root is not None:
-        registry, registry_errors = standards_gate_registry(root)
-        errors.extend(registry_errors)
+        registry = gate_registry
         unknown_gates = sorted(registered_gate_ids - set(registry))
         if unknown_gates:
             errors.append("Standards adoption names unregistered Gate ID(s): %s" %
@@ -3248,25 +4570,26 @@ def standards_adoption_plan_errors(
                 dead = {}
                 for batch_id in reached:
                     due, deferred, passed = \
-                        partition_boundary_gates_by_lifecycle(
-                            gate_ids, states[batch_id], registry)
+                        partition_revalidation_owner_claims(
+                            gate_ids, states[batch_id], registry,
+                            revalidation_capabilities)
                     if due or deferred:
-                        dead = {}
-                        break
-                    dead[batch_id] = passed
-                if not dead:
-                    continue
-                errors.append(
-                    "invalidation_boundaries[%d] boundary %s requires Gate "
-                    "ID(s) %s, and every Queue batch it reaches (%s) has "
-                    "already left every one of their producing positions and "
-                    "cannot return to one; nothing ahead of those batches can "
-                    "claim any of them, so the boundary records protection "
-                    "nothing will ever apply" % (
-                        index, boundary_id,
-                        ", ".join(sorted(set(gate_ids))),
-                        ", ".join("%s batch %s" % (states[batch_id], batch_id)
-                                  for batch_id in reached)))
+                        if passed:
+                            dead[batch_id] = passed
+                        continue
+                    if passed:
+                        dead[batch_id] = passed
+                if dead:
+                    errors.append(
+                        "invalidation_boundaries[%d] boundary %s reaches "
+                        "Queue batch(es) that already passed Standards "
+                        "revalidation owner edge(s): %s; roll back before "
+                        "that edge or route the impact to a successor" % (
+                            index, boundary_id,
+                            ", ".join("%s (%s: %s)" % (
+                                batch_id, states[batch_id],
+                                "/".join(dead[batch_id]))
+                                for batch_id in sorted(dead))))
 
     if validate_current and root is not None and queue is not None and \
             catalog is not None:
@@ -3687,7 +5010,7 @@ def _bind_lock_receipts(writer_locks, catalog):
                     "abort": "fail",
                 }[phase]
                 for field, expected in (
-                        ("tool_version", "1.1.0"),
+                        ("tool_version", APPLY_AMENDMENT_TOOL_VERSION),
                         ("check", "amendment_transaction"),
                         ("invalidated_by", None),
                         ("result", expected_result)):
@@ -4198,12 +5521,39 @@ def _terminal_proof_profile_binding_errors(receipt, receipt_id):
 
 
 def _require_receipt(catalog, receipt_id, label, errors, expected=None):
-    """Resolve one receipt and verify common pass/invalidation bindings."""
+    """Resolve one receipt and verify common pass/invalidation bindings.
+
+    A sealed receipt (K12/07 cold chain) satisfies an existence-only
+    consumer through its thin index projection, which this run has already
+    proved against the sealed record's bytes and against the seal receipt
+    that wrote it.  A consumer that supplies ``expected`` field bindings
+    needs the body, and a sealed body is not re-deserialized on the hot
+    path -- that deserialization is the one cost sealing buys out -- so
+    that combination fails closed here unless the caller went through an
+    explicit sealed branch instead of this resolver.
+    """
     if not _nonempty_string(receipt_id):
         errors.append("%s must identify a receipt" % label)
         return None
     entry = catalog.get(receipt_id)
     if entry is None:
+        cold = getattr(catalog, "cold", None) or {}
+        projection = cold.get(receipt_id)
+        if projection is not None:
+            if not expected:
+                if projection.get("result") != "pass":
+                    errors.append("%s references sealed receipt %s whose "
+                                  "sealed result is %r, not pass" %
+                                  (label, receipt_id,
+                                   projection.get("result")))
+                return None
+            errors.append(
+                "%s requires live field revalidation of receipt %s, but "
+                "that receipt is sealed (K12/07); a sealed body is "
+                "verified at seal time and only its consumers with an "
+                "explicit sealed branch may consume it" %
+                (label, receipt_id))
+            return None
         errors.append("%s references missing receipt %s" % (label, receipt_id))
         return None
     receipt = entry[1]
@@ -4324,23 +5674,19 @@ def batch_reference_settlement_errors(result, item):
     item_id = item.get("id")
     coverage = result.get("coverage") or {}
 
-    gaps = coverage.get("open_gaps")
-    if isinstance(gaps, list):
-        stranded = sorted(
-            str(gap.get("id") or gap.get("page"))
-            for gap in gaps
-            if isinstance(gap, dict) and gap.get("next_batch") == item_id
-        )
-        if stranded:
-            errors.append(
-                "K13/08 settlement: %d open gap(s) still route to this batch "
-                "and would be stranded on a terminal batch: %s; the Delta "
-                "must close each one or re-route it to a named later batch "
-                "(routing, not manifest membership, decides which gaps the "
-                "batch owes)" %
-                (len(stranded), ", ".join(stranded[:8]) +
-                 ("..." if len(stranded) > 8 else ""))
-            )
+    try:
+        report = batch_settlement.current_settlement_report(coverage, item_id)
+    except ValueError as exc:
+        return ["K13/08 settlement cannot inspect Coverage: %s" % exc]
+    if report["errors"]:
+        errors.append(
+            "K13/08 settlement: %d open gap(s) still route to this batch "
+            "and would be stranded on a terminal batch: %s; the Delta must "
+            "close each one or re-route it to a named later batch (routing, "
+            "not manifest membership, decides which gaps the batch owes)" %
+            (report["unsettled_count"],
+             ", ".join(report["unsettled_ids"][:8]) +
+             ("..." if report["unsettled_count"] > 8 else "")))
 
     # The batch_specs row is deliberately NOT settled here.  Its row is
     # harmless at close and becomes harmful only when a later replan tries to
@@ -4348,6 +5694,61 @@ def batch_reference_settlement_errors(result, item):
     # replan side (compile_queue treats a terminal item's spec row as history
     # rather than a proposal), which is where the incident actually occurred.
     return errors
+
+
+SETTLEMENT_BINDING_FIELDS = (
+    "routed_gap_obligation_count",
+    "routed_gap_obligation_set_sha256",
+    "routed_gap_obligation_record_set_sha256",
+    "prospective_unsettled_count",
+    "prospective_unsettled_set_sha256",
+)
+
+
+def _settlement_binding_errors(receipt, label):
+    """Validate the current routed-gap receipt protocol shape."""
+    errors = []
+    if receipt.get("settlement_protocol") != batch_settlement.PROTOCOL:
+        errors.append("%s has unsupported settlement_protocol %r" %
+                      (label, receipt.get("settlement_protocol")))
+    for field in ("routed_gap_obligation_count",
+                  "prospective_unsettled_count"):
+        value = receipt.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            errors.append("%s has invalid %s" % (label, field))
+    if receipt.get("prospective_unsettled_count") != 0:
+        errors.append("%s does not bind a settled prospective Coverage" % label)
+    for field in (
+            "routed_gap_obligation_set_sha256",
+            "routed_gap_obligation_record_set_sha256",
+            "prospective_unsettled_set_sha256"):
+        if not SHA256_RE.fullmatch(str(receipt.get(field) or "")):
+            errors.append("%s has invalid %s" % (label, field))
+    return errors
+
+
+def _close_settlement_binding_errors(receipt, label):
+    errors = []
+    if receipt.get("settlement_protocol") != batch_settlement.PROTOCOL:
+        errors.append("%s has unsupported settlement_protocol %r" %
+                      (label, receipt.get("settlement_protocol")))
+    if receipt.get("current_unsettled_count") != 0:
+        errors.append("%s does not bind zero current routed gaps" % label)
+    if not SHA256_RE.fullmatch(str(
+            receipt.get("current_unsettled_set_sha256") or "")):
+        errors.append("%s has invalid current_unsettled_set_sha256" % label)
+    return errors
+
+
+def _latest_merge_transition(item, catalog):
+    for receipt_id in reversed(item.get("transition_receipts") or []):
+        entry = catalog.get(receipt_id)
+        receipt = entry[1] if isinstance(entry, tuple) else None
+        if (isinstance(receipt, dict) and
+                receipt.get("before_state") == "open" and
+                receipt.get("after_state") == "merge-ready"):
+            return receipt_id, receipt
+    return None, None
 
 
 def substantive_review_errors(result, item):
@@ -4440,7 +5841,197 @@ def batch_review_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     return errors
 
 
+def _candidate_evidence_binding_errors(root, label, relative, expected_sha,
+                                       expected_bytes, expected_records):
+    """Prove the born-cold evidence file is the one the attestation bound.
+
+    The attestation carries this file's hash precisely because the full
+    disposition detail was moved out of it; checking only that a file of
+    the right length sits at the path re-creates the hole the externalizing
+    was supposed to be safe under.  A same-length edit to an acceptance row
+    would pass, and the next seal would then hash the edited bytes into the
+    cold manifest and make the edit permanent evidence -- laundering a
+    tamper through the very mechanism that exists to freeze history.  So
+    the bytes are compared on every run, before any seal can adopt them.
+    """
+    errors = []
+    if not _cold_path_within_root(root, relative, errors):
+        return errors
+    full = os.path.join(root, relative)
+    try:
+        descriptor = os.lstat(full)
+    except OSError:
+        return ["%s candidate evidence file %s is missing (K12/07 "
+                "fail-closed)" % (label, relative)]
+    if os.path.islink(full) or not stat.S_ISREG(descriptor.st_mode):
+        return ["%s candidate evidence file %s must be a regular file" %
+                (label, relative)]
+    if descriptor.st_nlink != 1:
+        return ["%s candidate evidence file %s has %d hard links" %
+                (label, relative, descriptor.st_nlink)]
+    try:
+        with open(full, "rb") as handle:
+            payload = handle.read()
+    except OSError as exc:
+        return ["%s candidate evidence file %s is unreadable: %s" %
+                (label, relative, exc)]
+    if expected_bytes is not None and len(payload) != expected_bytes:
+        errors.append("%s candidate evidence file %s is %d bytes on disk but "
+                      "the attestation sealed %d (K12/07 fail-closed)" %
+                      (label, relative, len(payload), expected_bytes))
+    if isinstance(expected_sha, str) and SHA256_RE.fullmatch(expected_sha):
+        actual = kblib.sha256_bytes(payload)
+        if actual != expected_sha:
+            errors.append(
+                "%s candidate evidence file %s hashes to %s but the "
+                "attestation bound %s; externalized detail is evidence only "
+                "while its attestation still names these exact bytes (K12/07 "
+                "fail-closed)" % (label, relative, actual, expected_sha))
+    if (isinstance(expected_records, int) and
+            not isinstance(expected_records, bool)):
+        actual_records = payload.count(b"\n")
+        if actual_records != expected_records:
+            errors.append(
+                "%s candidate evidence file %s holds %d record(s) but the "
+                "attestation sealed %d" %
+                (label, relative, actual_records, expected_records))
+    return errors
+
+
+def _compact_attestation_errors(attestation, attestation_id, item_id,
+                                root=None, receipt_version=None):
+    """Validate a compact-era reviewer attestation (K12/09, 1.9.0+).
+
+    A compact bundle keeps the authorization surface inline -- counts, the
+    per-type counts, the accepted-set fingerprint, and every
+    policy-exception disposition with its sealed decision facts -- and
+    externalizes the full candidate detail to one born-cold evidence file
+    that the hot path never deserializes.  What must therefore hold here:
+    the inline numbers are coherent with each other, the evidence file is
+    bound by path, byte size, record count and content hash, and when a
+    repository root is available the bound file actually exists at exactly
+    its sealed size (fail closed; the full hash is re-proven on
+    dereference and under ``seal_receipts.py --verify``).
+    """
+    errors = []
+    label = "%s declared reviewer attestation %s" % (item_id, attestation_id)
+    count = attestation.get("accepted_candidate_count")
+    if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+        errors.append("%s accepted_candidate_count must be a non-negative "
+                      "integer" % label)
+        count = None
+    accepted_types = attestation.get("accepted_candidate_types")
+    if not isinstance(accepted_types, list) or any(
+            not _nonempty_string(value) for value in accepted_types):
+        errors.append("%s accepted_candidate_types must be a string list" %
+                      label)
+        accepted_types = []
+    if len(accepted_types) != len(set(accepted_types)):
+        errors.append("%s repeats an accepted candidate type" % label)
+    type_counts = attestation.get("accepted_by_type_counts")
+    if not isinstance(type_counts, dict):
+        errors.append("%s accepted_by_type_counts must be a mapping" % label)
+        type_counts = {}
+    else:
+        bad_values = [key for key, value in type_counts.items()
+                      if not isinstance(value, int) or
+                      isinstance(value, bool) or value < 0]
+        if bad_values:
+            errors.append("%s accepted_by_type_counts values must be "
+                          "non-negative integers" % label)
+        if sorted(type_counts) != sorted(set(accepted_types)):
+            errors.append("%s accepted_by_type_counts keys must equal "
+                          "accepted_candidate_types" % label)
+        elif count is not None and not bad_values and \
+                sum(type_counts.values()) != count:
+            errors.append("%s accepted_by_type_counts sum to %d, expected "
+                          "accepted_candidate_count %d" %
+                          (label, sum(type_counts.values()), count))
+    set_sha = attestation.get("candidate_set_sha256")
+    if not isinstance(set_sha, str) or not SHA256_RE.fullmatch(set_sha):
+        errors.append("%s candidate_set_sha256 must be a sha256 fingerprint "
+                      "over the sorted accepted candidate IDs" % label)
+    evidence_path = attestation.get("candidate_evidence_path")
+    evidence_sha = attestation.get("candidate_evidence_sha256")
+    evidence_bytes = attestation.get("candidate_evidence_bytes")
+    evidence_records = attestation.get("candidate_evidence_records")
+    if (not _nonempty_string(evidence_path) or
+            not evidence_path.startswith(
+                kblib.RECEIPT_COLD_EVIDENCE_PREFIX + "/") or
+            not evidence_path.endswith(".jsonl")):
+        errors.append("%s candidate_evidence_path must be a .jsonl file "
+                      "under %s" %
+                      (label, kblib.RECEIPT_COLD_EVIDENCE_PREFIX))
+        evidence_path = None
+    if not isinstance(evidence_sha, str) or not SHA256_RE.fullmatch(
+            evidence_sha):
+        errors.append("%s candidate_evidence_sha256 must be a sha256 "
+                      "fingerprint" % label)
+    if (not isinstance(evidence_bytes, int) or
+            isinstance(evidence_bytes, bool) or evidence_bytes < 0):
+        errors.append("%s candidate_evidence_bytes must be a non-negative "
+                      "integer" % label)
+        evidence_bytes = None
+    if (not isinstance(evidence_records, int) or
+            isinstance(evidence_records, bool) or evidence_records < 0):
+        errors.append("%s candidate_evidence_records must be a non-negative "
+                      "integer" % label)
+    elif count is not None and evidence_records != count:
+        errors.append("%s candidate_evidence_records=%d does not equal "
+                      "accepted_candidate_count=%d" %
+                      (label, evidence_records, count))
+    if root is not None and evidence_path is not None:
+        errors.extend(_candidate_evidence_binding_errors(
+            root, label, evidence_path, evidence_sha, evidence_bytes,
+            evidence_records))
+    dispositions = attestation.get("candidate_dispositions")
+    if not isinstance(dispositions, list):
+        errors.append("%s candidate_dispositions must be a list carrying "
+                      "exactly the policy-exception dispositions" % label)
+        dispositions = []
+    for index, disposition in enumerate(dispositions):
+        disposition_label = "%s candidate_dispositions[%d]" % (
+            item_id, index)
+        if not isinstance(disposition, dict):
+            errors.append("%s must be a mapping" % disposition_label)
+            continue
+        candidate_id = disposition.get("candidate_id")
+        candidate_type = disposition.get("candidate_type")
+        if (not _nonempty_string(candidate_id) or
+                not candidate_id.startswith("candidate-sha256:") or
+                not SHA256_RE.fullmatch(candidate_id.replace(
+                    "candidate-sha256:", "sha256:", 1))):
+            errors.append("%s has invalid stable candidate_id" %
+                          disposition_label)
+        if not _nonempty_string(candidate_type) or ":" not in candidate_type:
+            errors.append("%s has invalid candidate_type" % disposition_label)
+        accepted_by = disposition.get("accepted_by")
+        if (not isinstance(accepted_by, str) or
+                not accepted_by.startswith("policy-exception:")):
+            errors.append(
+                "%s a compact attestation carries only policy-exception "
+                "dispositions inline; ordinary dispositions live in the "
+                "bound candidate evidence file" % disposition_label)
+            continue
+        decision_id = accepted_by.split(":", 1)[1]
+        sealed = disposition.get("policy_exception")
+        if not _nonempty_string(decision_id):
+            errors.append("%s has empty policy-exception decision" %
+                          disposition_label)
+        elif not isinstance(sealed, dict):
+            errors.append("%s policy-exception disposition seals no "
+                          "decision facts" % disposition_label)
+        else:
+            errors.extend(_sealed_policy_exception_errors(
+                sealed, decision_id, candidate_type, disposition_label))
+    if receipt_version in CANDIDATE_CONTINUATION_VERSIONS:
+        errors.extend(candidate_lifecycle.continuation_attestation_errors(
+            attestation, label))
+    return errors
+
+
 def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
+                              root=None,
                               queue_revision, queue_state_revision,
                               required_queue_sha256,
                               coverage_ledger_sha256,
@@ -4502,6 +6093,9 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                 label, receipt_id, receipt_version, protocol,
                 sorted(allowed_versions))
         )
+    if receipt_version == BATCH_CLOSE_TOOL_VERSION:
+        errors.extend(_close_settlement_binding_errors(
+            receipt, "%s receipt %s" % (label, receipt_id)))
     for field, value in (
             ("work_spec_path", work_spec_path),
             ("work_spec_sha256", work_spec_sha256)):
@@ -4743,7 +6337,15 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
             "merged_snapshot_sha256": merged_snapshot_sha256,
         },
     )
-    if isinstance(attestation, dict):
+    if (isinstance(attestation, dict) and
+            receipt_version in COMPACT_CLOSE_EVIDENCE_VERSIONS):
+        if not _nonempty_string(attestation.get("details")):
+            errors.append("%s declared reviewer attestation %s has no "
+                          "review statement" % (item_id, attestation_id))
+        errors.extend(_compact_attestation_errors(
+            attestation, attestation_id, item_id, root=root,
+            receipt_version=receipt_version))
+    elif isinstance(attestation, dict):
         if not _nonempty_string(attestation.get("details")):
             errors.append("%s declared reviewer attestation %s has no "
                           "review statement" % (item_id, attestation_id))
@@ -6015,7 +7617,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
             "first task activation Queue transition", errors,
             expected={
                 "tool": "update_queue",
-                "tool_version": "1.2.0",
+                "tool_version": ANY_PRODUCER_ERA_VERSION,
                 "check": "queue_transition",
                 "target": batch_id,
                 "task_id": task_id,
@@ -6032,6 +7634,13 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                 "evidence_receipt": activation.get("evidence_receipt"),
             },
         )
+        if (isinstance(opening, dict) and
+                opening.get("tool_version") not in
+                SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS):
+            errors.append(
+                "first task activation Queue transition has unsupported "
+                "update_queue producer version %r" %
+                opening.get("tool_version"))
         if activation.get("queue_state_revision") != 1:
             errors.append("first task activation must bind Queue "
                           "state_revision 1")
@@ -6481,6 +8090,52 @@ def _operational_amendment_registration_errors(
     )
     if receipt is None:
         return errors
+    receipt_version = receipt.get("tool_version")
+    if receipt_version not in SUPPORTED_REGISTER_AMENDMENT_TOOL_VERSIONS:
+        errors.append(
+            "%s registration receipt has unsupported register_amendment "
+            "producer version %r" % (label, receipt_version))
+    authority_fields = (
+        "decision_mode", "authority_id", "authority_sha256",
+        "change_classes", "amendment_impact_sha256",
+    )
+    if receipt_version == REGISTER_AMENDMENT_TOOL_VERSION:
+        for field in authority_fields:
+            if receipt.get(field) != amendment.get(field):
+                errors.append(
+                    "%s registration receipt %s=%r, expected %r" %
+                    (label, field, receipt.get(field), amendment.get(field)))
+        if amendment.get("decision_mode") not in (
+                "contract-delegated", "explicit-user"):
+            errors.append(
+                "%s current registration decision_mode is invalid" % label)
+        classes = amendment.get("change_classes")
+        if (not isinstance(classes, list) or not classes or
+                classes != sorted(set(classes))):
+            errors.append(
+                "%s current registration change_classes must be a non-empty "
+                "sorted unique list" % label)
+        for field in ("amendment_impact_sha256",):
+            if not SHA256_RE.fullmatch(str(amendment.get(field) or "")):
+                errors.append("%s current registration has invalid %s" %
+                              (label, field))
+        if amendment.get("decision_mode") == "contract-delegated":
+            if (not _nonempty_string(amendment.get("authority_id")) or
+                    not SHA256_RE.fullmatch(str(
+                        amendment.get("authority_sha256") or ""))):
+                errors.append(
+                    "%s delegated registration must bind authority id/hash" %
+                    label)
+        elif (amendment.get("authority_id") is not None or
+              amendment.get("authority_sha256") is not None):
+            errors.append(
+                "%s explicit-user registration must not claim contract "
+                "authority" % label)
+    elif any(field in amendment or field in receipt
+             for field in authority_fields):
+        errors.append(
+            "%s legacy registration era must not claim delegated-authority "
+            "fields" % label)
     if not _valid_timestamp(receipt.get("checked_at")):
         errors.append("%s registration receipt has invalid checked_at" % label)
     elif amendment.get("date") != receipt.get("checked_at")[:10]:
@@ -6590,9 +8245,14 @@ CONTRACT_AMENDMENT_ROW_FIELDS = frozenset((
     "coverage_sha256_before", "required_queue_sha256_before",
     "progress_sha256_before", "after_coverage_sha256",
     "after_required_queue_sha256", "policy_fingerprint",
+    "changed_contract_fields",
+))
+CONTRACT_AMENDMENT_ROW_OPTIONAL_FIELDS = frozenset((
+    "changed_contract_fields",
 ))
 CONTRACT_AMENDMENT_PLAN_PREFIX = ".cambium/deltas/contract-amendments"
-CONTRACT_AMENDMENT_TOOL_VERSIONS = frozenset(("1.0.0",))
+CONTRACT_AMENDMENT_TOOL_VERSION = "1.1.0"
+CONTRACT_AMENDMENT_TOOL_VERSIONS = frozenset(("1.0.0", "1.1.0"))
 
 
 def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
@@ -6609,9 +8269,12 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
     """
     errors = []
     errors.extend(_closed_mapping_errors(
-        amendment, label, CONTRACT_AMENDMENT_ROW_FIELDS))
+        amendment, label, CONTRACT_AMENDMENT_ROW_FIELDS,
+        CONTRACT_AMENDMENT_ROW_OPTIONAL_FIELDS))
+    required_fields = (CONTRACT_AMENDMENT_ROW_FIELDS -
+                       CONTRACT_AMENDMENT_ROW_OPTIONAL_FIELDS)
     if set(amendment) - CONTRACT_AMENDMENT_ROW_FIELDS or \
-            set(CONTRACT_AMENDMENT_ROW_FIELDS) - set(amendment):
+            required_fields - set(amendment):
         return errors
     if (amendment.get("status") != "verified" or
             amendment.get("writeback_done") is not True):
@@ -6707,13 +8370,32 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
     if not SHA256_RE.fullmatch(str(after_progress or "")):
         errors.append("%s commit receipt has invalid after_progress_sha256" %
                       label)
-    if receipt.get("tool_version") not in \
+    receipt_version = receipt.get("tool_version")
+    if receipt_version not in \
             CONTRACT_AMENDMENT_TOOL_VERSIONS:
         errors.append(
             "%s commit receipt has unsupported producer tool_version %r; "
             "known contract-amendment eras: %s" %
             (label, receipt.get("tool_version"),
              ", ".join(sorted(CONTRACT_AMENDMENT_TOOL_VERSIONS))))
+    if receipt_version == CONTRACT_AMENDMENT_TOOL_VERSION:
+        changed = amendment.get("changed_contract_fields")
+        if (not isinstance(changed, list) or not changed or
+                changed != sorted(set(changed)) or
+                set(changed) - {"policy_exceptions", "amendment_authority"}):
+            errors.append(
+                "%s current-era changed_contract_fields must be a non-empty "
+                "sorted subset of policy_exceptions/amendment_authority" %
+                label)
+        elif receipt.get("changed_contract_fields") != changed:
+            errors.append(
+                "%s commit receipt does not bind changed_contract_fields" %
+                label)
+    elif "changed_contract_fields" in amendment or \
+            "changed_contract_fields" in receipt:
+        errors.append(
+            "%s legacy contract-amendment era must not claim "
+            "changed_contract_fields" % label)
     if receipt.get("task_id") != task_id:
         errors.append(
             "%s commit receipt has task_id=%r, expected %r" %
@@ -6771,7 +8453,8 @@ def _cross_ledger_amendment_errors(
         if (isinstance(amendment, dict) and
                 amendment.get("operation") is not None and
                 amendment.get("operation") not in
-                ("scope-replan", "cancel-batch", "queue-replan")):
+                ("scope-replan", "cancel-batch", "queue-replan",
+                 "gap-routing-reconciliation")):
             # Fail closed here, at the walk itself: a row claiming an
             # operation no validator owns would otherwise be skipped by
             # every specialized check below, making an unknown operation
@@ -6779,12 +8462,14 @@ def _cross_ledger_amendment_errors(
             errors.append(
                 "Progress amendments[%d] declares unknown operation %r; "
                 "known operations are scope-replan, cancel-batch, "
-                "queue-replan, contract-amendment" %
+                "queue-replan, gap-routing-reconciliation, "
+                "contract-amendment" %
                 (index, amendment.get("operation")))
             continue
         if (not isinstance(amendment, dict) or
                 amendment.get("operation") not in
-                ("scope-replan", "cancel-batch")):
+                ("scope-replan", "cancel-batch",
+                 "gap-routing-reconciliation")):
             continue
         label = "Progress amendments[%d]" % index
         status = amendment.get("status")
@@ -6806,9 +8491,16 @@ def _cross_ledger_amendment_errors(
                               (label, field))
         scope_before = amendment.get("scope_version_before")
         scope_after = amendment.get("scope_version_after")
-        if (_nonempty_string(scope_before) and
-                _nonempty_string(scope_after) and
-                scope_before == scope_after):
+        if (operation == "gap-routing-reconciliation" and
+                _nonempty_string(scope_before) and
+                scope_after != scope_before):
+            errors.append(
+                "%s gap-routing-reconciliation must preserve scope_version" %
+                label)
+        elif (operation != "gap-routing-reconciliation" and
+              _nonempty_string(scope_before) and
+              _nonempty_string(scope_after) and
+              scope_before == scope_after):
             errors.append("%s cross-Ledger Amendment must change scope_version" %
                           label)
         queue_before = amendment.get("queue_revision_before")
@@ -6824,8 +8516,11 @@ def _cross_ledger_amendment_errors(
                 isinstance(state_after, bool)):
             errors.append("%s state revision edge must use non-negative integers" %
                           label)
-        elif (operation == "scope-replan" and state_after != state_before):
-            errors.append("%s scope-replan must preserve state_revision" % label)
+        elif (operation in ("scope-replan",
+                            "gap-routing-reconciliation") and
+              state_after != state_before):
+            errors.append("%s %s must preserve state_revision" %
+                          (label, operation))
         elif (operation == "cancel-batch" and
               state_after != state_before + 1):
             errors.append("%s cancel-batch must increment state_revision by one" %
@@ -6836,9 +8531,10 @@ def _cross_ledger_amendment_errors(
             errors.append("%s coverage_proposal_sha256 must be sha256:<64 "
                           "lowercase hex>" % label)
         cancel_id = amendment.get("cancel_batch_id")
-        if operation == "scope-replan":
+        if operation in ("scope-replan", "gap-routing-reconciliation"):
             if cancel_id is not None:
-                errors.append("%s scope-replan cancel_batch_id must be null" % label)
+                errors.append("%s %s cancel_batch_id must be null" %
+                              (label, operation))
         elif (not _nonempty_string(cancel_id) or
               amendment.get("affected_batches") != [cancel_id]):
             errors.append("%s cancel-batch must bind exactly cancel_batch_id" %
@@ -6962,7 +8658,7 @@ def _cross_ledger_amendment_errors(
             "%s verification" % label, errors,
             expected={
                 "tool": "apply_amendment",
-                "tool_version": "1.1.0",
+                "tool_version": ANY_PRODUCER_ERA_VERSION,
                 "check": "amendment_transaction",
                 "target": amendment.get("id"),
                 "transaction_phase": "commit",
@@ -6985,6 +8681,12 @@ def _cross_ledger_amendment_errors(
                 "state_revision_after": state_after,
             },
         )
+        if (receipt is not None and receipt.get("tool_version") not in
+                SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS):
+            errors.append(
+                "%s verification receipt has unsupported apply_amendment "
+                "producer version %r" %
+                (label, receipt.get("tool_version")))
         if not _nonempty_string(transaction_id):
             errors.append("%s verified transaction_id must be non-empty" % label)
         if receipt is not None and not SHA256_RE.fullmatch(
@@ -7018,7 +8720,8 @@ def _pending_cross_ledger_amendments(progress):
         for amendment in amendments
         if (isinstance(amendment, dict) and
             amendment.get("operation") in
-            ("scope-replan", "cancel-batch", "queue-replan") and
+            ("scope-replan", "cancel-batch", "queue-replan",
+             "gap-routing-reconciliation") and
             amendment.get("status") == "approved" and
             amendment.get("writeback_done") is False)
     ]
@@ -7322,6 +9025,11 @@ def _queue_replan_amendment_errors(
                           "the repository" % (label, receipt_id))
         if receipt is None:
             continue
+        if receipt.get("tool_version") not in \
+                SUPPORTED_COMPILE_QUEUE_TOOL_VERSIONS:
+            errors.append(
+                "%s receipt has unsupported compile_queue producer version "
+                "%r" % (label, receipt.get("tool_version")))
 
         errors.extend(_registration_execution_bridge_errors(
             amendment, label, historical_catalog, receipt,
@@ -8801,7 +10509,7 @@ def _closed_delta_apply_errors(item, transition, catalog, queue):
         catalog, receipt_id, "%s delta application" % item_id, errors,
         expected={
             "tool": "apply_delta",
-            "tool_version": "1.4.0",
+            "tool_version": ANY_PRODUCER_ERA_VERSION,
             "check": "delta_apply",
             "target": item_id,
             "task_id": queue.get("task_id"),
@@ -8817,6 +10525,29 @@ def _closed_delta_apply_errors(item, transition, catalog, queue):
                       "repository" % (item_id, receipt_id))
     if receipt is None:
         return errors
+    if receipt.get("tool_version") not in SUPPORTED_APPLY_DELTA_TOOL_VERSIONS:
+        errors.append("%s delta application receipt %s has unsupported "
+                      "apply_delta producer version %r" %
+                      (item_id, receipt_id, receipt.get("tool_version")))
+    if receipt.get("tool_version") == APPLY_DELTA_TOOL_VERSION:
+        errors.extend(_settlement_binding_errors(
+            receipt, "%s delta application receipt %s" %
+            (item_id, receipt_id)))
+        _, merge_transition = _latest_merge_transition(item, catalog)
+        if (not isinstance(merge_transition, dict) or
+                merge_transition.get("tool") != "update_queue" or
+                merge_transition.get("tool_version") !=
+                UPDATE_QUEUE_TOOL_VERSION):
+            errors.append(
+                "%s current delta application has no current-era frozen "
+                "merge-ready settlement" % item_id)
+        else:
+            for field in SETTLEMENT_BINDING_FIELDS:
+                if receipt.get(field) != merge_transition.get(field):
+                    errors.append(
+                        "%s delta application settlement %s does not match "
+                        "the frozen merge-ready transition" %
+                        (item_id, field))
     if receipt.get("delta_sha256") != item.get("delta_sha256"):
         errors.append("%s delta application receipt does not bind frozen "
                       "delta_sha256" % item_id)
@@ -8860,8 +10591,111 @@ def _closed_delta_apply_errors(item, transition, catalog, queue):
     return errors
 
 
+def _closed_bundle_seal_state(item, catalog):
+    """Classify one closed item's evidence trio against the cold index.
+
+    The trio -- batch-close gate, pre-close Queue consistency snapshot, and
+    Coverage delta application -- is sealed together or not at all, because
+    a half-sealed bundle can neither replay the hot revalidation nor claim
+    the sealed short-circuit.  Returns ``"hot"``, ``"sealed"``, or
+    ``"mixed"``.
+    """
+    cold = getattr(catalog, "cold", None) or {}
+    trio = [item.get("close_gate_receipt"),
+            item.get("queue_consistency_receipt"),
+            item.get("delta_apply_receipt")]
+    sealed = [receipt_id for receipt_id in trio
+              if _nonempty_string(receipt_id) and receipt_id in cold]
+    if not sealed:
+        return "hot"
+    if len(sealed) != len([r for r in trio if _nonempty_string(r)]):
+        return "mixed"
+    return "sealed"
+
+
+def _sealed_closed_bundle_errors(item, transition, catalog, queue):
+    """Validate one sealed close bundle through its thin projections.
+
+    Reading a projection is sound here only because ``_cold_receipt_store``
+    has already proved, this run, that each projection hashes to the exact
+    sealed record it names and that the seal receipt which produced it
+    still binds the whole index row set byte for byte.  Without those two
+    proofs a projection would be an editable side table asserting its own
+    correctness, and this function would be reading the claim instead of
+    the evidence.
+
+    Given them, the per-run obligation drops to identity: the projections
+    still name the receipts this item and its close transition bind, with
+    the identities their producers recorded.  Body-level bindings (snapshot
+    hashes, delta hashes, disposition schemas) were proven at seal time
+    against exactly the bytes still on disk, and sealing refuses any bundle
+    whose full frozen-history revalidation does not pass at that moment.
+    """
+    errors = []
+    item_id = item.get("id", "<unknown>")
+    cold = getattr(catalog, "cold", None) or {}
+    close_gate_id = item.get("close_gate_receipt")
+    consistency_id = item.get("queue_consistency_receipt")
+    delta_apply_id = item.get("delta_apply_receipt")
+    expectations = (
+        (close_gate_id, "%s sealed batch-close gate" % item_id, {
+            "tool": BATCH_CLOSE_TOOL,
+            "check": "batch_close_gate",
+            "target": item_id,
+            "batch_id": item_id,
+            "task_id": queue.get("task_id"),
+            "result": "pass",
+        }),
+        (consistency_id, "%s sealed Queue consistency gate" % item_id, {
+            "tool": TOOL,
+            "check": GATE_CHECK,
+            "queue_check_mode": "consistency",
+            "task_id": queue.get("task_id"),
+            "result": "pass",
+        }),
+        (delta_apply_id, "%s sealed delta application" % item_id, {
+            "tool": "apply_delta",
+            "check": "delta_apply",
+            "target": item_id,
+            "batch_id": item_id,
+            "task_id": queue.get("task_id"),
+            "result": "pass",
+        }),
+    )
+    for receipt_id, label, expected in expectations:
+        projection = cold.get(receipt_id)
+        if projection is None:
+            errors.append("%s projection is absent from the cold index" %
+                          label)
+            continue
+        for field, value in expected.items():
+            if projection.get(field) != value:
+                errors.append("%s projection has %s=%r, expected %r" %
+                              (label, field, projection.get(field), value))
+    close_projection = cold.get(close_gate_id) or {}
+    close_version = close_projection.get("tool_version")
+    if close_version not in SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS:
+        errors.append("%s sealed batch-close gate has unsupported producer "
+                      "era %r" % (item_id, close_version))
+    if transition is None:
+        return errors
+    if transition.get("queue_consistency_receipt") != consistency_id:
+        errors.append("%s close transition does not bind Queue consistency "
+                      "receipt %s" % (item_id, consistency_id))
+    if transition.get("close_gate_receipt") != close_gate_id:
+        errors.append("%s close transition does not bind batch-close gate "
+                      "receipt %s" % (item_id, close_gate_id))
+    if transition.get("evidence_receipt") != close_gate_id:
+        errors.append("%s close transition evidence_receipt must be the "
+                      "independent batch-close gate" % item_id)
+    if transition.get("delta_apply_receipt") != delta_apply_id:
+        errors.append("%s close transition does not bind delta application "
+                      "receipt %s" % (item_id, delta_apply_id))
+    return errors
+
+
 def _closed_gate_errors(item, transition, catalog, queue,
-                        accounted_versions=frozenset()):
+                        accounted_versions=frozenset(), root=None):
     """Revalidate the two independent pre-close gates from frozen history."""
     errors = []
     item_id = item.get("id", "<unknown>")
@@ -8912,6 +10746,7 @@ def _closed_gate_errors(item, transition, catalog, queue,
     errors.extend(close_gate_receipt_errors(
         catalog, close_gate_id,
         item_id=item_id,
+        root=root,
         task_id=queue.get("task_id"),
         queue_revision=transition.get("queue_revision"),
         queue_state_revision=transition.get("before_state_revision"),
@@ -9185,18 +11020,43 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             if current is None:
                 continue
             producer = (current.get("tool"), current.get("tool_version"))
-            allowed_producers = {("update_queue", "1.2.0")}
+            allowed_producers = {
+                ("update_queue", version)
+                for version in SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS
+            }
             if current.get("after_state") == "cancelled":
                 # Cancellation changes all three canonical state documents;
                 # the cross-Ledger transaction is therefore a truthful
                 # producer for this edge.  Other lifecycle edges remain
                 # update_queue-owned.
-                allowed_producers.add(("apply_amendment", "1.1.0"))
+                allowed_producers.update(
+                    ("apply_amendment", version)
+                    for version in SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS
+                )
             if producer not in allowed_producers:
                 errors.append("%s transition receipt %s has unsupported "
                               "producer %r/%r" %
                               (item_id, receipt_id,
                                producer[0], producer[1]))
+            if (producer == ("update_queue", UPDATE_QUEUE_TOOL_VERSION) and
+                    current.get("before_state") == "open" and
+                    current.get("after_state") == "merge-ready"):
+                errors.extend(_settlement_binding_errors(
+                    current, "%s merge-ready transition %s" %
+                    (item_id, receipt_id)))
+                if current.get("delta_path") != \
+                        ".cambium/deltas/%s.yaml" % item_id:
+                    errors.append(
+                        "%s merge-ready transition %s has noncanonical "
+                        "delta_path" % (item_id, receipt_id))
+                for field in (
+                        "delta_sha256",
+                        "settlement_coverage_sha256_before",
+                        "settlement_prospective_coverage_sha256"):
+                    if not SHA256_RE.fullmatch(str(current.get(field) or "")):
+                        errors.append(
+                            "%s merge-ready transition %s has invalid %s" %
+                            (item_id, receipt_id, field))
             if (current.get("before_state") not in STATES or
                     current.get("after_state") not in STATES):
                 errors.append("%s transition receipt %s has invalid lifecycle "
@@ -9453,12 +11313,24 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
         if not _valid_timestamp(item.get("closed_at")):
             errors.append("%s closed state requires a timezone-aware closed_at" %
                           item_id)
-        errors.extend(_closed_gate_errors(
-            item, transition, catalog, queue, accounted_versions,
-        ))
-        errors.extend(_closed_delta_apply_errors(
-            item, transition, catalog, queue,
-        ))
+        seal_state = _closed_bundle_seal_state(item, catalog)
+        if seal_state == "mixed":
+            errors.append(
+                "%s close bundle is partially sealed; the batch-close "
+                "gate, Queue consistency snapshot, and delta application "
+                "seal together or not at all (K12/07)" % item_id)
+        elif seal_state == "sealed":
+            errors.extend(_sealed_closed_bundle_errors(
+                item, transition, catalog, queue,
+            ))
+        else:
+            errors.extend(_closed_gate_errors(
+                item, transition, catalog, queue, accounted_versions,
+                root=records.get("root"),
+            ))
+            errors.extend(_closed_delta_apply_errors(
+                item, transition, catalog, queue,
+            ))
 
     if state == "cancelled":
         if not _valid_timestamp(item.get("cancelled_at")):
@@ -9500,7 +11372,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                 "%s cancellation Amendment commit" % item_id, errors,
                 expected={
                     "tool": "apply_amendment",
-                    "tool_version": "1.1.0",
+                    "tool_version": ANY_PRODUCER_ERA_VERSION,
                     "check": "amendment_transaction",
                     "target": amendment_id,
                     "transaction_phase": "commit",
@@ -9515,7 +11387,6 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             else:
                 for field, value in {
                     "tool": "apply_amendment",
-                    "tool_version": "1.1.0",
                     "check": "queue_transition",
                     "after_state": "cancelled",
                     "amendment_id": amendment_id,
@@ -9524,7 +11395,13 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                         errors.append("%s cancellation transition %s=%r, "
                                       "expected %r" %
                                       (item_id, field,
-                                       transition.get(field), value))
+                                      transition.get(field), value))
+                if transition.get("tool_version") not in \
+                        SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS:
+                    errors.append(
+                        "%s cancellation transition has unsupported "
+                        "apply_amendment producer version %r" %
+                        (item_id, transition.get("tool_version")))
 
     timestamp_bindings = []
     opening = next((entry for entry in transition_history
@@ -9533,6 +11410,15 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
     latest_merge = next((entry for entry in reversed(transition_history)
                          if entry.get("before_state") == "open" and
                          entry.get("after_state") == "merge-ready"), None)
+    if (latest_merge is not None and state in ("merge-ready", "closed") and
+            latest_merge.get("tool") == "update_queue" and
+            latest_merge.get("tool_version") == UPDATE_QUEUE_TOOL_VERSION):
+        if latest_merge.get("delta_path") != item.get("delta_path"):
+            errors.append("%s latest merge-ready transition does not bind "
+                          "current delta_path" % item_id)
+        if latest_merge.get("delta_sha256") != item.get("delta_sha256"):
+            errors.append("%s latest merge-ready transition does not bind "
+                          "current delta_sha256" % item_id)
     closing = next((entry for entry in reversed(transition_history)
                     if entry.get("after_state") == "closed"), None)
     cancelling = next((entry for entry in reversed(transition_history)
@@ -9779,8 +11665,15 @@ def _delta_gap_key(value):
 
 
 def _delta_handoff_errors(relative, delta, item, coverage_records,
-                          coverage, catalog):
-    """Validate a worker Delta enough to resume at the admission boundary."""
+                          coverage, queue, catalog):
+    """Return structural errors, repairable settlement blockers, and report.
+
+    A syntactically or evidentially malformed managed Delta is a runtime
+    error.  A well-formed open Delta that has not yet settled every gap routed
+    to its batch is ordinary authoring work: it is reported as ``incomplete``
+    and the merge-ready writer refuses it, but unrelated runtime readers are
+    not wedged while the worker repairs the exact Delta bytes.
+    """
     item_id = item.get("id")
     errors = []
     expected_path = ".cambium/deltas/%s.yaml" % item_id
@@ -9882,7 +11775,17 @@ def _delta_handoff_errors(relative, delta, item, coverage_records,
         if isinstance(gap, dict) and gap.get("page") not in coverage_records:
             errors.append("open gap page is absent from Coverage: %s" %
                           gap.get("page"))
-    return errors
+    settlement_errors = []
+    settlement = None
+    if not errors:
+        try:
+            prospective = coverage_delta.project_open_gaps(coverage, delta)
+            settlement = batch_settlement.delta_settlement_report(
+                coverage, prospective, delta, queue, item_id)
+            settlement_errors = list(settlement.get("errors") or [])
+        except (TypeError, ValueError) as exc:
+            errors.append("cannot project routed-gap settlement: %s" % exc)
+    return errors, settlement_errors, settlement
 
 
 def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
@@ -9890,7 +11793,7 @@ def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
     """Classify unconsumed apply receipts for one merge-ready batch."""
     batch_id = item.get("id")
     expected = {
-        "tool_version": "1.4.0",
+        "tool_version": APPLY_DELTA_TOOL_VERSION,
         "task_id": queue.get("task_id"),
         "actor_role": "integrator",
         "coverage_ledger_path": COVERAGE_PATH,
@@ -9901,6 +11804,13 @@ def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
         "queue_revision": queue.get("queue_revision"),
         "queue_state_revision": queue.get("state_revision"),
     }
+    _, merge_transition = _latest_merge_transition(item, catalog)
+    if (isinstance(merge_transition, dict) and
+            merge_transition.get("tool") == "update_queue" and
+            merge_transition.get("tool_version") ==
+            UPDATE_QUEUE_TOOL_VERSION):
+        for field in SETTLEMENT_BINDING_FIELDS:
+            expected[field] = merge_transition.get(field)
     compatible = []
     stale = []
     for receipt_id in sorted(catalog):
@@ -9922,6 +11832,13 @@ def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
             continue
         mismatches = [field for field, value in expected.items()
                       if receipt.get(field) != value]
+        if receipt.get("tool_version") == APPLY_DELTA_TOOL_VERSION:
+            if not (isinstance(merge_transition, dict) and
+                    merge_transition.get("tool_version") ==
+                    UPDATE_QUEUE_TOOL_VERSION):
+                mismatches.append("merge_ready_settlement")
+            mismatches.extend(_settlement_binding_errors(
+                receipt, "delta application %s" % receipt_id))
         before_coverage = receipt.get("before_coverage_sha256")
         if (not isinstance(before_coverage, str) or
                 not SHA256_RE.fullmatch(before_coverage)):
@@ -10051,6 +11968,7 @@ def validate_runtime(root, allowed_open_delta=None,
     except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
         errors.append(str(exc))
         catalog = _receipt_catalog(root, errors)
+        _cold_receipt_store(root, errors, catalog)
         _bind_lock_receipts(writer_locks, catalog)
         _bind_lock_state_phases(writer_locks, {
             "coverage": None, "queue": None, "progress": None,
@@ -10207,6 +12125,7 @@ def validate_runtime(root, allowed_open_delta=None,
         errors.append("Progress required_queue_sha256 does not match current Queue bytes")
 
     catalog = _receipt_catalog(root, errors)
+    cold_store = _cold_receipt_store(root, errors, catalog)
     _bind_lock_receipts(writer_locks, catalog)
     _bind_lock_state_phases(writer_locks, {
         "coverage": coverage_sha,
@@ -10240,10 +12159,14 @@ def validate_runtime(root, allowed_open_delta=None,
     # current-use admission, handoff, reuse, and completion queries consume
     # this adoption-aware view, so history is never rewritten or made invalid
     # merely because it was produced under an older Standards identity.
-    current_catalog = {
+    current_catalog = _Catalog({
         receipt_id: entry for receipt_id, entry in catalog.items()
         if receipt_id not in invalidated_evidence_receipt_ids
-    }
+    })
+    # Sealed history is by definition not current evidence for any
+    # current-use gate; the cold index rides along for existence resolution
+    # only, and _require_receipt refuses field revalidation against it.
+    current_catalog.cold = catalog.cold
     errors.extend(_initial_queue_receipt_errors(
         progress, catalog, queue, queue_sha, coverage_sha,
     ))
@@ -10586,19 +12509,28 @@ def validate_runtime(root, allowed_open_delta=None,
                         continue
                     state = item.get("state")
                     if state == "open":
-                        handoff_errors = _delta_handoff_errors(
+                        structural_errors, settlement_errors, settlement = \
+                            _delta_handoff_errors(
                             relative, delta, item, records, coverage,
-                            current_catalog,
+                            queue, current_catalog,
                         )
-                        delta_record["handoff_status"] = (
-                            "candidate" if not handoff_errors else "invalid"
-                        )
+                        handoff_errors = structural_errors + settlement_errors
+                        if structural_errors:
+                            delta_record["handoff_status"] = "invalid"
+                        elif settlement_errors:
+                            delta_record["handoff_status"] = "incomplete"
+                        else:
+                            delta_record["handoff_status"] = "candidate"
                         delta_record["handoff_errors"] = handoff_errors
-                        if relative != allowed_open_delta:
-                            errors.extend(
-                                "open delta %s is not an admissible handoff: %s" %
-                                (relative, error) for error in handoff_errors
-                            )
+                        if settlement is not None:
+                            delta_record["routed_gap_settlement"] = settlement
+                        # ``allowed_open_delta`` lets a preflight inspect an
+                        # incomplete handoff; it never legalizes malformed
+                        # paths, evidence, or Delta structure.
+                        errors.extend(
+                            "open delta %s is not an admissible handoff: %s" %
+                            (relative, error) for error in structural_errors
+                        )
                     elif state in ("queued", "cancelled"):
                         errors.append("unapplied delta %s exists for %s batch %s" %
                                       (relative, state, batch_id))
@@ -10766,6 +12698,13 @@ def validate_runtime(root, allowed_open_delta=None,
         coverage,
     )
     errors.extend(task_errors)
+    # Derive the requirements map once from this validation's Progress view
+    # and the adoption-plan bytes observed for it.  Rebuilding it through each
+    # batch helper made a corpus with N batches parse every historical
+    # adoption plan roughly 2N times.
+    standards_revalidation_requirements_by_batch = \
+        standards_revalidation_requirements(
+            root, progress, catalog=catalog)
     standards_barrier_context = {
         "root": root, "queue": queue, "coverage": coverage,
         "progress": progress, "items_by_id": items_by_id,
@@ -10773,7 +12712,10 @@ def validate_runtime(root, allowed_open_delta=None,
         "current_receipt_catalog": current_catalog,
         "invalidated_evidence_receipt_ids":
             sorted(invalidated_evidence_receipt_ids),
+        "_standards_revalidation_requirements":
+            standards_revalidation_requirements_by_batch,
     }
+    errors.extend(_unresolvable_consumed_aggregate_errors(items_by_id, catalog))
     standards_revalidation_barriers = {}
     standards_revalidation_outstanding = {}
     for batch_id, item in items_by_id.items():
@@ -10852,6 +12794,7 @@ def validate_runtime(root, allowed_open_delta=None,
         "queue_sha256": queue_sha, "progress_sha256": progress_sha,
         "remaining": remaining, "items_by_id": items_by_id,
         "receipt_catalog": catalog,
+        "cold_receipts": cold_store,
         "current_receipt_catalog": current_catalog,
         "invalidated_evidence_receipt_ids":
             sorted(invalidated_evidence_receipt_ids),
@@ -10859,6 +12802,8 @@ def validate_runtime(root, allowed_open_delta=None,
             standards_revalidation_barriers,
         "standards_revalidation_outstanding":
             standards_revalidation_outstanding,
+        "_standards_revalidation_requirements":
+            standards_revalidation_requirements_by_batch,
         "writer_locks": writer_locks,
         "managed_deltas": managed_deltas,
         "applied_delta_receipts": applied_delta_receipts,
@@ -10980,13 +12925,49 @@ def make_check_receipt(result, outcome, details, mode,
     return receipt
 
 
+def _emit_json_receipts(receipts):
+    """Write the exact receipt objects this run produced to real stdout.
+
+    ``--json`` publishes the receipts themselves, not a projection of them:
+    ``Tools/schemas/receipt.template.jsonl`` says in its own text that its
+    examples are "not the complete set", and this tool's per-mode extension
+    fields (the whole ``resume-status`` block, the maintenance and Standards
+    revalidation contexts) are exactly the part a whitelist would drop.
+    Serialization goes through the shared ``kblib.canonical_json_bytes``;
+    this module owns no serializer. A run that produced no receipt writes
+    nothing, so the settled rejection shape -- empty stdout, one line of
+    reason on stderr, exit 1 -- is untouched.
+    """
+    if not receipts:
+        return
+    sys.stdout.write(
+        kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
+
+
 def _write_receipt(root, relative_path, result, outcome, details, mode,
                    confirmation_receipt=None, runtime_errors=None,
                    maintenance_context=None,
                    standards_revalidation_context=None,
-                   hub_page_candidates=None):
+                   hub_page_candidates=None, build_unwritten=False):
+    """Append this run's receipt, and return the exact object appended.
+
+    Without ``--receipts`` there is no JSONL target and nothing is built, so
+    a run that asks for nothing pays for nothing -- unchanged. ``--json``
+    still needs the object itself, and passes ``build_unwritten=True`` to get
+    it; the receipt is then constructed and returned but never written, which
+    keeps ``--json`` a pure reader of what this invocation decided.
+    """
     if not relative_path:
-        return
+        if not build_unwritten:
+            return None
+        return make_check_receipt(
+            result, outcome, details, mode,
+            confirmation_receipt=confirmation_receipt,
+            runtime_errors=runtime_errors,
+            maintenance_context=maintenance_context,
+            standards_revalidation_context=standards_revalidation_context,
+            hub_page_candidates=hub_page_candidates,
+        )
     path = kblib.managed_repository_path(
         root, relative_path, ".cambium/receipts",
         suffixes=(".jsonl",), must_exist=False,
@@ -11000,6 +12981,7 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
         hub_page_candidates=hub_page_candidates,
     )
     kblib.write_receipts(path, [receipt])
+    return receipt
 
 
 def _maintenance_gate_inventory(result):
@@ -11198,6 +13180,7 @@ def _batch_close_recovery_inventory(result):
         candidate_errors.extend(close_gate_receipt_errors(
             catalog, receipt_id,
             item_id=batch,
+            root=result.get("root"),
             task_id=(result.get("queue") or {}).get("task_id"),
             queue_revision=(result.get("queue") or {}).get("queue_revision"),
             queue_state_revision=(result.get("queue") or {}).get(
@@ -11246,6 +13229,32 @@ def _batch_close_recovery_inventory(result):
     else:
         inventory["status"] = "gate-required"
     return inventory
+
+
+def _actionable_revalidation_batches(result):
+    """Outstanding batches whose aggregate this producer would still admit.
+
+    ``standards_revalidation_outstanding`` reports every batch whose plan
+    bindings are unconsumed, terminal ones included, because that is a true
+    statement about this runtime's history and dropping it would hide it.
+    A *recommended action* is a different claim: it asserts the named tool
+    would run.  So this filters on
+    :func:`standards_revalidation_producer_eligibility` -- the same
+    predicate ``--require-revalidation`` itself applies -- rather than on a
+    second, parallel notion of eligibility that could drift from it.  A
+    token naming a batch the producer declines is not a recovery action; it
+    is a dead end that masks the real next step for as long as the runtime
+    lives.
+    """
+    outstanding = result.get("standards_revalidation_outstanding") or {}
+    items = result.get("items_by_id") or {}
+    return sorted(
+        (batch_id for batch_id in outstanding
+         if standards_revalidation_producer_eligibility(
+             result, batch_id) is None),
+        key=lambda batch_id: (
+            (items.get(batch_id) or {}).get("order", sys.maxsize), batch_id),
+    )
 
 
 def _resume_recommendation(result, errors):
@@ -11300,16 +13309,23 @@ def _resume_recommendation(result, errors):
     if task_state == "completion-candidate":
         return ("preserve the frozen candidate and run the Terminal Audit; "
                 "do not activate new work or initialize a new task")
-    outstanding = result.get("standards_revalidation_outstanding") or {}
-    if outstanding:
-        batch_id = sorted(
-            outstanding,
-            key=lambda value: (
-                (items.get(value) or {}).get("order", sys.maxsize), value),
-        )[0]
+    incomplete_deltas = sorted(
+        (entry for entry in result.get("managed_deltas", [])
+         if entry.get("state") == "open" and
+         entry.get("handoff_status") == "incomplete"),
+        key=lambda entry: ((items.get(entry.get("batch")) or {}).get(
+            "order", sys.maxsize), entry.get("batch") or ""),
+    )
+    if incomplete_deltas:
+        return ("repair routed-gap settlement in the managed Delta for batch "
+                "%s before batch review or merge-ready admission" %
+                incomplete_deltas[0].get("batch"))
+    actionable_revalidation = _actionable_revalidation_batches(result)
+    if actionable_revalidation:
         return ("run the current boundary gates for batch %s, aggregate them "
                 "with check_queue.py --require-revalidation, then consume "
-                "that receipt before merge/apply/close" % batch_id)
+                "that receipt before merge/apply/close" %
+                actionable_revalidation[0])
     if in_flight:
         return ("resume the existing task and reconcile in-flight batch(es) %s "
                 "before starting new work" % ",".join(sorted(in_flight)))
@@ -11386,16 +13402,19 @@ def _resume_next_action(result, errors):
         return "resume-paused-task"
     if task_state == "blocked":
         return "resolve-blocked-task"
-    revalidation = result.get("standards_revalidation_outstanding") or {}
-    if revalidation:
-        ordered = sorted(
-            revalidation,
-            key=lambda batch_id: (
-                (items.get(batch_id) or {}).get("order", sys.maxsize),
-                batch_id,
-            ),
-        )
-        return "run-standards-revalidation:%s" % ordered[0]
+    incomplete_deltas = sorted(
+        (entry for entry in result.get("managed_deltas", [])
+         if entry.get("state") == "open" and
+         entry.get("handoff_status") == "incomplete"),
+        key=lambda entry: ((items.get(entry.get("batch")) or {}).get(
+            "order", sys.maxsize), entry.get("batch") or ""),
+    )
+    if incomplete_deltas:
+        return "repair-delta-settlement:%s" % \
+            incomplete_deltas[0].get("batch")
+    actionable_revalidation = _actionable_revalidation_batches(result)
+    if actionable_revalidation:
+        return "run-standards-revalidation:%s" % actionable_revalidation[0]
     if task_state == "completion-candidate":
         return "run-terminal-audit"
     merge_ready = sorted(
@@ -11749,13 +13768,20 @@ def required_queue_completion_errors(result):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Validate canonical Required Queue state")
+    parser = kblib.ArgumentParser(description="Validate canonical Required Queue state")
     parser.add_argument("root", help="adopting repository root")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--require-ready", metavar="BATCH_ID")
-    group.add_argument("--require-revalidation", metavar="BATCH_ID")
-    group.add_argument("--require-complete", action="store_true")
-    group.add_argument("--require-maintenance-complete", action="store_true")
+    group.add_argument("--require-ready", metavar="BATCH_ID",
+                       help="prove BATCH_ID is queued and ready to activate")
+    group.add_argument("--require-revalidation", metavar="BATCH_ID",
+                       help="prove BATCH_ID may produce its Standards "
+                            "revalidation aggregate")
+    group.add_argument("--require-complete", action="store_true",
+                       help="build completion gate: prove no Required work "
+                            "remains")
+    group.add_argument("--require-maintenance-complete", action="store_true",
+                       help="maintenance completion gate: prove one bounded "
+                            "maintenance run is complete")
     group.add_argument("--resume-status", action="store_true",
                        help="show interruption-safe task and batch resume state")
     parser.add_argument("--confirmation-receipt",
@@ -11764,12 +13790,34 @@ def main(argv=None):
         "--boundary-gate-receipt", action="append", default=[],
         metavar="GATE_ID=RECEIPT_ID",
         help="current gate evidence supplied to --require-revalidation")
-    parser.add_argument("--budget-manifest-receipt")
-    parser.add_argument("--ledger-advance-receipt")
-    parser.add_argument("--watermark-advance-receipt")
+    parser.add_argument("--budget-manifest-receipt",
+                        help="closed budget-manifest receipt ID supplied to "
+                             "--require-maintenance-complete")
+    parser.add_argument("--ledger-advance-receipt",
+                        help="Coverage Ledger advance receipt ID supplied to "
+                             "--require-maintenance-complete")
+    parser.add_argument("--watermark-advance-receipt",
+                        help="watermark advance receipt ID supplied to "
+                             "--require-maintenance-complete")
     parser.add_argument("--receipts", help="repository-relative JSONL receipt path")
+    parser.add_argument(
+        "--json", action="store_true",
+        help="write this run's receipt object to stdout as one canonical "
+             "JSON array and move the human report to stderr; receipt "
+             "writing and exit codes are unchanged")
     args = parser.parse_args(argv)
 
+    if not args.json:
+        return _run(args, None)
+    produced = []
+    with contextlib.redirect_stdout(sys.stderr):
+        code = _run(args, produced)
+    _emit_json_receipts(produced)
+    return code
+
+
+def _run(args, produced):
+    """Evaluate one already-parsed invocation; ``produced`` collects receipts."""
     result = validate_runtime(args.root)
     errors = list(result["errors"])
     candidates = []
@@ -11831,22 +13879,10 @@ def main(argv=None):
                 for error in close_recovery.get("errors", []))
 
     if not errors and args.require_revalidation:
-        item = result.get("items_by_id", {}).get(args.require_revalidation)
-        if result.get("progress", {}).get("task_state") != "active":
-            errors.append("Standards revalidation requires task_state=active; "
-                          "resume the recorded task before producing the "
-                          "state-bound aggregate")
-        elif item is None:
-            errors.append("requested batch %s does not exist" %
-                          args.require_revalidation)
-        elif item.get("state") not in ("queued", "open"):
-            errors.append("Standards revalidation batch %s is %s, expected "
-                          "queued or open" %
-                          (args.require_revalidation, item.get("state")))
-        elif (item.get("state") == "open" and
-              item.get("hold_state") != "revalidation-required"):
-            errors.append("open Standards revalidation batch must have "
-                          "hold_state=revalidation-required")
+        ineligible = standards_revalidation_producer_eligibility(
+            result, args.require_revalidation)
+        if ineligible:
+            errors.append(ineligible)
         else:
             supplied, supplied_errors = _parse_boundary_gate_arguments(
                 args.boundary_gate_receipt)
@@ -12006,17 +14042,20 @@ def main(argv=None):
               if args.require_maintenance_complete else
               ("resume-status" if args.resume_status else "consistency")))))
     try:
-        _write_receipt(
+        receipt = _write_receipt(
             args.root, args.receipts, result, outcome, details, mode,
             hub_page_candidates=hub_page_candidates,
             confirmation_receipt=args.confirmation_receipt,
             runtime_errors=errors,
             maintenance_context=maintenance_context,
             standards_revalidation_context=revalidation_context,
+            build_unwritten=produced is not None,
         )
     except (OSError, ValueError) as exc:
         print("[FAIL] cannot write receipts: %s" % exc)
         return 1
+    if produced is not None and receipt is not None:
+        produced.append(receipt)
     return code
 
 

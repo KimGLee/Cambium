@@ -32,9 +32,11 @@ Candidates are never swallowed by the prose attestation.  The reviewer must
 accept each current stable candidate ID or its exact ``tool:check`` type with
 ``--accept-candidate-id`` / ``--accept-candidate-type``.  Unused selectors are
 rejected so a stale attestation cannot silently authorize a different run.
+``--accept-while-unchanged-id`` / ``--accept-while-unchanged-type`` grant the
+same current acceptance plus bounded reuse by the immediately following close
+when the exact observation and producer version remain unchanged.
 """
 
-import argparse
 import contextlib
 import hashlib
 import io
@@ -56,13 +58,15 @@ import check_page_contract
 import check_profile
 import check_queue
 import check_vocab
+import batch_settlement
+import candidate_lifecycle
 import kblib
 import profile_admission
 import profile_contract
 
 
 TOOL = "check_batch_close"
-TOOL_VERSION = "1.8.0"
+TOOL_VERSION = "1.10.0"
 GATE_ID = "batch-close"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -72,6 +76,68 @@ MAX_CHECK_SECONDS = 60
 IDENTITY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]*\Z")
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+# ---------------------------------------------------------------------------
+# `--json` projection
+#
+# A check's structured result already exists: it is the set of receipts the
+# run produced.  `--json` adds one projection of those same objects -- the
+# exact receipt dicts, serialized through `kblib.canonical_json_bytes`, with
+# no field whitelist -- onto stdout, and moves every human-readable line to
+# stderr for that run.  Serializing the receipt itself is what keeps the
+# projection honest: `Tools/schemas/receipt.template.jsonl` guarantees only
+# the base fields, and each producer's extension fields are discoverable from
+# the receipt, so a whitelist here could only lose evidence.
+#
+# Without the flag nothing below runs and every byte this tool writes is
+# unchanged.  The flag never changes the exit code and never changes what is
+# appended to the receipts file.  A run rejected before it produced any
+# receipt leaves stdout empty and states the reason on stderr, which is the
+# settled shape for a refused invocation.
+# ---------------------------------------------------------------------------
+
+_JSON_STDOUT = None
+_JSON_RECEIPTS = None
+
+
+def _json_begin(enabled):
+    """Reserve stdout for the projection and send human output to stderr."""
+    global _JSON_STDOUT, _JSON_RECEIPTS
+    _JSON_STDOUT = None
+    _JSON_RECEIPTS = None
+    if enabled:
+        _JSON_STDOUT = sys.stdout
+        sys.stdout = sys.stderr
+
+
+def _json_record(receipts):
+    """Hold the exact receipt objects this run produced."""
+    global _JSON_RECEIPTS
+    if _JSON_STDOUT is not None:
+        _JSON_RECEIPTS = list(receipts)
+
+
+def _json_finish(answered):
+    """Restore stdout, emitting the recorded receipts when the run answered."""
+    global _JSON_STDOUT, _JSON_RECEIPTS
+    stream = _JSON_STDOUT
+    receipts = _JSON_RECEIPTS
+    _JSON_STDOUT = None
+    _JSON_RECEIPTS = None
+    if stream is None:
+        return
+    sys.stdout = stream
+    if answered and receipts is not None:
+        stream.write(
+            kblib.canonical_json_bytes(receipts).decode("utf-8") + "\n")
+        stream.flush()
+
+
+JSON_FLAG_HELP = ("write the receipts this run produced to stdout as one "
+                  "canonical JSON array and move the human-readable summary "
+                  "to stderr; receipts written and the exit code are "
+                  "unchanged")
+
 
 
 def _make_receipt(tool, tool_version, check, target, result, details, seq,
@@ -263,6 +329,12 @@ def _receipting_result(command, label, returncode, stdout, receipts):
                 if receipt.get("result") == "fail"]
     candidates = [receipt for receipt in receipts
                   if receipt.get("result") == "candidate"]
+    # 0 and 2 are the two codes a checker may exit while still having reached a
+    # verdict; 1 is a failure or unreliable evidence.  A usage error also exits
+    # 1 (kblib.ArgumentParser), so a mis-typed command can no longer arrive here
+    # wearing the HOLD code.  Nothing below rests on that alone: the receipts
+    # this checker actually wrote are cross-checked against the code just after,
+    # and a run that exits 2 without candidate receipts is reported either way.
     valid_exit = returncode in (0, 2)
     expected_exit = 2 if candidates and not failures else (1 if failures else 0)
     errors = []
@@ -337,11 +409,12 @@ def _stable_candidate(receipt, member):
         "member": member,
         "target": target,
         "details": details,
+        "producer_tool_version": str(receipt.get("tool_version") or "unknown"),
     }
     share = receipt.get("priority_share")
     if isinstance(share, dict):
         candidate["priority_share"] = dict(share)
-    return candidate
+    return candidate_lifecycle.with_observation(candidate)
 
 
 def _split_pipe_row(line):
@@ -1005,34 +1078,173 @@ def _internal_member_run(run, member):
     }
 
 
-def _candidate_dispositions(candidates, accepted_ids, accepted_types):
-    current_ids = {candidate["candidate_id"] for candidate in candidates}
-    current_types = {candidate["candidate_type"] for candidate in candidates}
-    stale_ids = sorted(set(accepted_ids) - current_ids)
-    stale_types = sorted(set(accepted_types) - current_types)
-    unaccepted = [candidate for candidate in candidates
-                  if candidate["candidate_id"] not in accepted_ids and
-                  candidate["candidate_type"] not in accepted_types]
-    errors = []
-    if stale_ids:
-        errors.append("accepted candidate IDs are absent from this snapshot: %s" %
-                      ", ".join(stale_ids))
-    if stale_types:
-        errors.append("accepted candidate types are absent from this snapshot: %s" %
-                      ", ".join(stale_types))
-    if unaccepted:
-        errors.append("%d current candidate(s) lack an explicit ID/type disposition" %
-                      len(unaccepted))
-    accepted = []
-    for candidate in candidates:
-        if candidate in unaccepted:
+def _write_close_evidence(root, batch, attempt_id, rows):
+    """Persist full candidate detail once, born-cold (K12/09 compact).
+
+    The evidence file carries every disposition row verbatim -- one JSON
+    object per line, sorted keys -- under the cold namespace the hot
+    catalog never deserializes.  The receipts that authorize the close
+    bind it by path, byte size, record count, and content hash, so the
+    detail stays auditable forever without ever again being a per-run
+    parse cost.  Exclusive create: one attempt writes one evidence file.
+    """
+    token = attempt_id.rsplit("-", 2)[-2]
+    relative = "%s/%s-%s.jsonl" % (
+        kblib.RECEIPT_COLD_EVIDENCE_PREFIX, batch, token)
+    full = os.path.join(root, relative)
+    os.makedirs(os.path.dirname(full), mode=0o700, exist_ok=True)
+    payload = "".join(
+        json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
+        for row in rows)
+    encoded = payload.encode("utf-8")
+    with open(full, "x", encoding="utf-8") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return {
+        "candidate_evidence_path": relative,
+        "candidate_evidence_sha256": kblib.sha256_bytes(encoded),
+        "candidate_evidence_bytes": len(encoded),
+        "candidate_evidence_records": len(rows),
+    }
+
+
+def _candidate_set_sha256(candidate_ids):
+    """Fingerprint the exact accepted-candidate ID set, order-free."""
+    return candidate_lifecycle.candidate_set_sha256(candidate_ids)
+
+
+def _candidate_dispositions(candidates, accepted_ids, accepted_types,
+                            durable_ids=None, durable_types=None):
+    return candidate_lifecycle.disposition_candidates(
+        candidates, accepted_ids, accepted_types,
+        durable_ids or [], durable_types or [])
+
+
+def _resolved_receipt(catalog, receipt_id):
+    """Resolve a hot or sealed receipt body from the shared catalog."""
+    if not isinstance(receipt_id, str) or not receipt_id:
+        return None
+    resolver = getattr(catalog, "resolve", None)
+    entry = resolver(receipt_id) if callable(resolver) else catalog.get(receipt_id)
+    if isinstance(entry, tuple) and len(entry) == 2 and isinstance(entry[1], dict):
+        return entry[1]
+    if isinstance(entry, dict):
+        return entry
+    return None
+
+
+def _closed_transition_revision(catalog, item):
+    revisions = []
+    for receipt_id in item.get("transition_receipts") or []:
+        receipt = _resolved_receipt(catalog, receipt_id)
+        if (isinstance(receipt, dict) and
+                receipt.get("after_state") == "closed" and
+                isinstance(receipt.get("after_state_revision"), int) and
+                not isinstance(receipt.get("after_state_revision"), bool)):
+            revisions.append(receipt["after_state_revision"])
+    return max(revisions) if revisions else None
+
+
+def _load_candidate_evidence(root, attestation, label):
+    relative = attestation.get("candidate_evidence_path")
+    errors = check_queue._candidate_evidence_binding_errors(
+        root, label, relative,
+        attestation.get("candidate_evidence_sha256"),
+        attestation.get("candidate_evidence_bytes"),
+        attestation.get("candidate_evidence_records"),
+    )
+    if errors:
+        return errors, []
+    try:
+        full = kblib.managed_repository_path(
+            root, relative, kblib.RECEIPT_COLD_EVIDENCE_PREFIX,
+            suffixes=(".jsonl",), must_exist=True)
+        rows = _load_jsonl(full)
+    except (OSError, UnicodeError, ValueError) as exc:
+        return ["%s candidate evidence cannot be read: %s" % (label, exc)], []
+    expected_count = attestation.get("accepted_candidate_count")
+    if len(rows) != expected_count:
+        errors.append("%s candidate evidence has %d row(s), expected %s" %
+                      (label, len(rows), expected_count))
+    ids = [row.get("candidate_id") for row in rows if isinstance(row, dict)]
+    if (len(ids) != len(rows) or
+            _candidate_set_sha256(ids) != attestation.get(
+                "candidate_set_sha256")):
+        errors.append("%s candidate evidence does not match its accepted-set "
+                      "fingerprint" % label)
+    return errors, rows
+
+
+def _candidate_baseline(root, runtime, current_batch):
+    """Resolve the immediately preceding successful close candidate set.
+
+    Producer eras before exact-carry-v1 are readable history but grant no
+    durability.  A malformed current-era baseline fails rather than falling
+    back to an older, more convenient close.
+    """
+    catalog = runtime.get("receipt_catalog") or {}
+    closed = []
+    for item_id, item in (runtime.get("items_by_id") or {}).items():
+        if item_id == current_batch or item.get("state") != "closed":
             continue
-        disposition = dict(candidate)
-        disposition["accepted_by"] = (
-            "candidate-id" if candidate["candidate_id"] in accepted_ids
-            else "candidate-type")
-        accepted.append(disposition)
-    return errors, accepted, unaccepted
+        revision = _closed_transition_revision(catalog, item)
+        if revision is not None:
+            closed.append((revision, item_id, item))
+    if not closed:
+        return [], {
+            "protocol": candidate_lifecycle.BASELINE_NONE,
+            "attestation_receipt": None,
+            "rows": [],
+        }
+
+    _revision, item_id, item = max(closed, key=lambda value: (value[0], value[1]))
+    close_id = item.get("close_gate_receipt")
+    close = _resolved_receipt(catalog, close_id)
+    if not isinstance(close, dict):
+        return ["latest closed batch %s close receipt %s is unresolvable" %
+                (item_id, close_id)], None
+    attestation_id = close.get("reviewer_attestation_receipt")
+    attestation = _resolved_receipt(catalog, attestation_id)
+    if not isinstance(attestation, dict):
+        return ["latest closed batch %s reviewer attestation %s is "
+                "unresolvable" % (item_id, attestation_id)], None
+    if (close.get("tool") != TOOL or close.get("result") != "pass" or
+            close.get("check") != GATE_CHECK):
+        return ["latest closed batch %s does not bind a successful canonical "
+                "close receipt" % item_id], None
+
+    if (close.get("tool_version") != TOOL_VERSION or
+            attestation.get("candidate_protocol") !=
+            candidate_lifecycle.CANDIDATE_PROTOCOL):
+        return [], {
+            "protocol": candidate_lifecycle.BASELINE_LEGACY,
+            "attestation_receipt": attestation_id,
+            "rows": [],
+        }
+
+    label = "latest closed batch %s attestation %s" % (item_id, attestation_id)
+    errors = candidate_lifecycle.continuation_attestation_errors(
+        attestation, label)
+    evidence_errors, rows = _load_candidate_evidence(root, attestation, label)
+    errors.extend(evidence_errors)
+    ordinary_rows = [
+        row for row in rows
+        if row.get("candidate_type") not in QUOTA_CANDIDATE_TYPES
+    ]
+    # Validate every ordinary row now, not only rows that happen to intersect
+    # the current set.  A malformed baseline is not an invitation to select a
+    # more convenient older close.
+    _partition_errors, _carried, _fresh = \
+        candidate_lifecycle.partition_against_baseline([], ordinary_rows)
+    errors.extend(_partition_errors)
+    if errors:
+        return errors, None
+    return [], {
+        "protocol": candidate_lifecycle.BASELINE_CURRENT,
+        "attestation_receipt": attestation_id,
+        "rows": ordinary_rows,
+    }
 
 
 QUOTA_CANDIDATE_TYPES = frozenset((
@@ -1104,13 +1316,20 @@ def _member_receipt(field, run, snapshot, runtime, item, integrator,
         TOOL, TOOL_VERSION, "closed_list_%s" % field, ".", "pass",
         run["details"], sequence, root=runtime.get("root"),
     )
+    type_counts = {}
+    for entry in accepted_candidates:
+        key = entry.get("candidate_type")
+        type_counts[key] = type_counts.get(key, 0) + 1
     receipt.update({
         "task_id": runtime["queue"].get("task_id"),
         "batch_id": item.get("id"),
         "integrator_id": integrator,
         "reviewer_id": reviewer,
         "merged_snapshot_sha256": snapshot,
-        "candidate_evidence": accepted_candidates,
+        "candidate_count": len(accepted_candidates),
+        "candidate_type_counts": dict(sorted(type_counts.items())),
+        "candidate_set_sha256": _candidate_set_sha256(
+            [entry["candidate_id"] for entry in accepted_candidates]),
     })
     if run.get("source_command"):
         receipt["source_command"] = run["source_command"]
@@ -1135,6 +1354,10 @@ def _append_receipts(path, receipts):
     before = kblib.receipt_append_observation(path, receipts)
     outcome, error, _ = kblib.write_receipts_observed(
         path, receipts, before=before)
+    # Recorded before the durability verdict is raised: these are the receipt
+    # objects this run produced, and a `--json` caller that sees the failure
+    # exit still learns exactly what was attempted.
+    _json_record(receipts)
     if error is not None or outcome != "present":
         raise ReceiptPublicationUncertain(
             "receipt append outcome=%s error=%s" % (outcome, error))
@@ -1172,7 +1395,18 @@ def _print_candidates(candidates):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    """CLI entry point; `--json` projects the produced receipts onto stdout."""
+    try:
+        code = _main(argv)
+    except BaseException:
+        _json_finish(False)
+        raise
+    _json_finish(True)
+    return code
+
+
+def _main(argv=None):
+    parser = kblib.ArgumentParser(
         description="Run and publish the K12/09 batch-close evidence bundle")
     parser.add_argument("root", help="adopting repository root")
     parser.add_argument("--batch", required=True, help="merge-ready batch ID")
@@ -1182,11 +1416,23 @@ def main(argv=None):
                         help="declared reviewer label (must differ from integrator)")
     parser.add_argument("--review-attestation", required=True,
                         help="reviewer's explicit global-review statement")
-    parser.add_argument("--accept-candidate-id", action="append", default=[])
-    parser.add_argument("--accept-candidate-type", action="append", default=[])
+    parser.add_argument("--accept-candidate-id", action="append", default=[],
+                        help="accept this exact current candidate for this "
+                        "close only")
+    parser.add_argument("--accept-candidate-type", action="append", default=[],
+                        help="accept every current candidate of this exact "
+                        "tool:check type for this close only")
+    parser.add_argument("--accept-while-unchanged-id", action="append",
+                        default=[], help="accept this exact current candidate "
+                        "and permit reuse while its observation is unchanged")
+    parser.add_argument("--accept-while-unchanged-type", action="append",
+                        default=[], help="expand this current exact type set "
+                        "and permit those rows to be reused while unchanged")
     parser.add_argument("--receipts", default=DEFAULT_RECEIPTS,
                         help="repository-relative close evidence JSONL")
+    parser.add_argument("--json", action="store_true", help=JSON_FLAG_HELP)
     args = parser.parse_args(argv)
+    _json_begin(args.json)
 
     root = os.path.realpath(os.path.abspath(args.root))
     invocation_errors = []
@@ -1204,6 +1450,14 @@ def main(argv=None):
         invocation_errors.append("--accept-candidate-id values must be unique")
     if len(args.accept_candidate_type) != len(set(args.accept_candidate_type)):
         invocation_errors.append("--accept-candidate-type values must be unique")
+    if len(args.accept_while_unchanged_id) != len(set(
+            args.accept_while_unchanged_id)):
+        invocation_errors.append(
+            "--accept-while-unchanged-id values must be unique")
+    if len(args.accept_while_unchanged_type) != len(set(
+            args.accept_while_unchanged_type)):
+        invocation_errors.append(
+            "--accept-while-unchanged-type values must be unique")
     try:
         receipt_path = kblib.managed_repository_path(
             root, args.receipts, ".cambium/receipts",
@@ -1242,6 +1496,12 @@ def main(argv=None):
               args.batch)
         return 1
     delta_apply_receipt = current[0].get("selected_receipt")
+    pre_settlement = batch_settlement.current_settlement_report(
+        preflight.get("coverage") or {}, args.batch)
+    if pre_settlement["errors"]:
+        for error in pre_settlement["errors"]:
+            print("[FAIL] routed-gap settlement: %s" % error)
+        return 1
     attempt_id = _make_receipt(
         TOOL, TOOL_VERSION, GATE_CHECK, args.batch, "candidate",
         "batch-close evidence is being produced", 9999,
@@ -1264,6 +1524,7 @@ def main(argv=None):
         "planned_after_progress_sha256": preflight.get("progress_sha256"),
         "repository_snapshot_sha256": pre_snapshot,
     }
+    operation.update(batch_settlement.close_binding(pre_settlement))
 
     try:
         with kblib.runtime_write_lock(
@@ -1298,6 +1559,15 @@ def main(argv=None):
                     runtime_errors.append(
                         "canonical state changed before the close gate "
                         "acquired its lock")
+                locked_settlement = batch_settlement.current_settlement_report(
+                    runtime.get("coverage") or {}, args.batch)
+                runtime_errors.extend(
+                    "routed-gap settlement: %s" % error
+                    for error in locked_settlement["errors"])
+                if (batch_settlement.close_binding(locked_settlement) !=
+                        batch_settlement.close_binding(pre_settlement)):
+                    runtime_errors.append(
+                        "routed-gap settlement changed before checks started")
                 item = (runtime.get("items_by_id") or {}).get(args.batch)
                 if item is None or item.get("state") != "merge-ready":
                     runtime_errors.append(
@@ -1492,12 +1762,28 @@ def main(argv=None):
             ordinary_candidates = [
                 candidate for candidate in all_candidates
                 if candidate["candidate_type"] not in QUOTA_CANDIDATE_TYPES]
+            baseline_errors, baseline = _candidate_baseline(
+                root, runtime, args.batch)
+            check_errors.extend(baseline_errors)
+            if baseline is None:
+                baseline = {
+                    "protocol": candidate_lifecycle.BASELINE_NONE,
+                    "attestation_receipt": None,
+                    "rows": [],
+                }
+            partition_errors, carried, fresh_candidates = \
+                candidate_lifecycle.partition_against_baseline(
+                    ordinary_candidates, baseline["rows"])
+            check_errors.extend(partition_errors)
             blocked_generic = sorted(
-                set(args.accept_candidate_type) & QUOTA_CANDIDATE_TYPES)
+                (set(args.accept_candidate_type) |
+                 set(args.accept_while_unchanged_type)) &
+                QUOTA_CANDIDATE_TYPES)
             quota_ids = {candidate["candidate_id"]
                          for candidate in quota_candidates}
             blocked_generic += sorted(
-                set(args.accept_candidate_id) & quota_ids)
+                (set(args.accept_candidate_id) |
+                 set(args.accept_while_unchanged_id)) & quota_ids)
             if blocked_generic:
                 check_errors.append(
                     "priority-quota candidates cannot be accepted by the "
@@ -1506,8 +1792,10 @@ def main(argv=None):
                     ", ".join(blocked_generic))
             disposition_errors, accepted, unaccepted = \
                 _candidate_dispositions(
-                    ordinary_candidates, args.accept_candidate_id,
-                    args.accept_candidate_type)
+                    fresh_candidates, args.accept_candidate_id,
+                    args.accept_candidate_type,
+                    args.accept_while_unchanged_id,
+                    args.accept_while_unchanged_type)
             check_errors.extend(disposition_errors)
             current_exceptions = _quota_exceptions(
                 runtime, profile_evaluation)
@@ -1525,7 +1813,10 @@ def main(argv=None):
                 quota_candidates, current_exceptions, snapshot,
                 quota_policy_fingerprint)
             check_errors.extend(quota_errors)
-            accepted = accepted + quota_accepted
+            fresh_accepted = accepted + quota_accepted
+            accepted = sorted(
+                carried + fresh_accepted,
+                key=lambda value: value["candidate_id"])
             after_checks = kblib.repository_snapshot_sha256(root)
             _assert_authoritative_state_unchanged(root, state_anchor)
             try:
@@ -1544,8 +1835,13 @@ def main(argv=None):
                     "task_id": runtime["queue"].get("task_id"),
                     "integrator_id": args.integrator,
                     "reviewer_id": args.reviewer,
-                    "candidate_evidence": all_candidates,
+                    "candidate_count": len(all_candidates),
                 })
+                try:
+                    failure.update(_write_close_evidence(
+                        root, args.batch, attempt_id, all_candidates))
+                except OSError as exc:
+                    failure["candidate_evidence_error"] = str(exc)
                 _append_receipts(receipt_path, [failure])
                 _assert_authoritative_state_unchanged(root, state_anchor)
                 for error in check_errors:
@@ -1571,18 +1867,43 @@ def main(argv=None):
                 args.batch, "pass", args.review_attestation.strip(),
                 len(check_queue.CLOSED_LIST_EVIDENCE_FIELDS) + 1,
                 root=root)
+            accepted_type_counts = {}
+            for entry in accepted:
+                key = entry.get("candidate_type")
+                accepted_type_counts[key] = \
+                    accepted_type_counts.get(key, 0) + 1
+            evidence_binding = _write_close_evidence(
+                root, args.batch, attempt_id, accepted)
             attestation.update({
                 "task_id": runtime["queue"].get("task_id"),
                 "batch_id": args.batch,
                 "integrator_id": args.integrator,
                 "reviewer_id": args.reviewer,
                 "merged_snapshot_sha256": snapshot,
-                "accepted_candidate_ids": [entry["candidate_id"]
-                                           for entry in accepted],
+                "accepted_candidate_count": len(accepted),
                 "accepted_candidate_types": sorted(set(
                     entry["candidate_type"] for entry in accepted)),
-                "candidate_dispositions": accepted,
+                "accepted_by_type_counts": dict(sorted(
+                    accepted_type_counts.items())),
+                "candidate_set_sha256": _candidate_set_sha256(
+                    [entry["candidate_id"] for entry in accepted]),
+                "candidate_protocol": candidate_lifecycle.CANDIDATE_PROTOCOL,
+                "candidate_baseline_protocol": baseline["protocol"],
+                "candidate_baseline_receipt":
+                    baseline["attestation_receipt"],
+                "carried_candidate_count": len(carried),
+                "carried_candidate_set_sha256": _candidate_set_sha256(
+                    [entry["candidate_id"] for entry in carried]),
+                "fresh_candidate_count": len(fresh_accepted),
+                "fresh_candidate_set_sha256": _candidate_set_sha256(
+                    [entry["candidate_id"] for entry in fresh_accepted]),
+                "candidate_dispositions": [
+                    entry for entry in accepted
+                    if str(entry.get("accepted_by", "")).startswith(
+                        "policy-exception:")
+                ],
             })
+            attestation.update(evidence_binding)
             records.append(attestation)
 
             global_review = _make_receipt(
@@ -1651,6 +1972,8 @@ def main(argv=None):
                 "global_review_receipt": global_review["receipt_id"],
                 "closed_list_evidence": evidence,
             })
+            aggregator.update(batch_settlement.close_binding(
+                locked_settlement))
             records.append(aggregator)
 
             _assert_authoritative_state_unchanged(root, state_anchor)
@@ -1665,6 +1988,7 @@ def main(argv=None):
             pre_errors = check_queue.close_gate_receipt_errors(
                 catalog, attempt_id,
                 item_id=args.batch,
+                root=root,
                 task_id=runtime["queue"].get("task_id"),
                 queue_revision=runtime["queue"].get("queue_revision"),
                 queue_state_revision=runtime["queue"].get(
@@ -1705,6 +2029,7 @@ def main(argv=None):
             persisted_errors.extend(check_queue.close_gate_receipt_errors(
                 check_queue.current_receipt_catalog(persisted), attempt_id,
                 item_id=args.batch,
+                root=root,
                 task_id=runtime["queue"].get("task_id"),
                 queue_revision=runtime["queue"].get("queue_revision"),
                 queue_state_revision=runtime["queue"].get("state_revision"),
@@ -1735,6 +2060,8 @@ def main(argv=None):
             print("close_gate_receipt=%s" % attempt_id)
             print("reviewer_attestation_receipt=%s" %
                   attestation["receipt_id"])
+            print("candidate_baseline_protocol=%s carried=%d fresh=%d" % (
+                baseline["protocol"], len(carried), len(fresh_accepted)))
             print("update_queue_command=python3 Tools/update_queue.py %s --id %s --transition closed --gate-receipt %s --close-gate-receipt %s --delta-apply-receipt %s --expected-state-revision %s --expected-sha256 %s --actor-role integrator --apply" % (
                 shlex.quote(root), shlex.quote(args.batch),
                 shlex.quote(consistency["receipt_id"]),

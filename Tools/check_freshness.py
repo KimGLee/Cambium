@@ -41,10 +41,10 @@ produces fail.
 
 Usage: python3 check_freshness.py <vault_root> [--scope SUBPATH]
        [--as-of YYYY-MM-DD] [--defaults FILE] [--exclude COMPONENT]
-       [--receipts PATH]
+       [--receipts PATH] [--json]
 """
 
-import argparse
+import contextlib
 import datetime
 import os
 import re
@@ -62,6 +62,51 @@ TOOL_VERSION = "1.4.0"
 INTERVAL_DAYS = {"fast": 120, "slow": 365, "stable": None}
 
 PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2}
+
+
+# ---------------------------------------------------------------------------
+# `--json` output (machine-readable receipts)
+#
+# Purely additive: without the flag not one byte of this tool's behaviour
+# moves.  With it, everything written for a person goes to stderr and stdout
+# carries exactly one canonical JSON array -- the receipt objects this run
+# handed to the receipt writer, serialized verbatim.
+#
+# Nothing is filtered or renamed.  `schemas/receipt.template.jsonl` guarantees
+# only the base fields every receipt carries; extension fields differ per
+# producer and are discoverable from the receipt itself, which is why that
+# template says its examples are "not the complete set".  A field allowlist
+# here would silently drop exactly the fields a caller came for.
+#
+# Serialization goes through `kblib.canonical_json_bytes`; this module owns no
+# serializer.  The flag changes no verdict, no exit code, and no receipt
+# write.  A run that writes no receipt -- a dry run, or a refusal -- emits the
+# empty array; a usage error still exits through argparse before any of this,
+# leaving stdout empty and the reason on stderr.
+# ---------------------------------------------------------------------------
+JSON_HELP = ("write the receipts this run produced to stdout as one canonical "
+             "JSON array and move the human-readable report to stderr; "
+             "receipts written, verdicts, and exit codes are unchanged")
+
+_JSON_RECEIPTS = []
+
+
+def _record_receipts(receipts):
+    """Remember the exact receipt objects handed to the receipt writer."""
+    _JSON_RECEIPTS.extend(receipts)
+    return receipts
+
+
+def _run_reporting_json(runner):
+    """Run `runner`, reserving stdout for JSON and giving stderr the prose."""
+    stdout = sys.stdout
+    with contextlib.redirect_stdout(sys.stderr):
+        exit_code = runner()
+    stdout.write(kblib.canonical_json_bytes(_JSON_RECEIPTS).decode("utf-8"))
+    stdout.write("\n")
+    stdout.flush()
+    return exit_code
+
 
 
 def parse_date(value):
@@ -127,7 +172,7 @@ def load_defaults(path, text=None):
 
 
 def main():
-    ap = argparse.ArgumentParser(
+    ap = kblib.ArgumentParser(
         description="Freshness / review_by overdue candidate check")
     ap.add_argument("vault_root", help="vault root directory")
     ap.add_argument("--scope", help="only scan .md files under this subpath")
@@ -143,8 +188,15 @@ def main():
                     help="skip files whose path contains this component "
                          "(repeatable; default: none)")
     ap.add_argument("--receipts", help="JSONL path to append machine-readable receipts to")
+    ap.add_argument("--json", action="store_true", help=JSON_HELP)
     args = ap.parse_args()
 
+    if not args.json:
+        return _run(args)
+    return _run_reporting_json(lambda: _run(args))
+
+
+def _run(args):
     root_argument = os.path.abspath(args.vault_root)
     root = os.path.realpath(root_argument)
 
@@ -366,7 +418,7 @@ def main():
             print("  Conclusion: no maintenance-run candidates (overdue=0, "
                   "pending_first_verification=0).")
 
-    kblib.write_receipts(args.receipts, receipts)
+    kblib.write_receipts(args.receipts, _record_receipts(receipts))
     return kblib.exit_code(receipts)
 
 

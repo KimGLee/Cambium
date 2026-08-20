@@ -7,7 +7,6 @@ produces one fresh structural receipt, and records the distinct authority
 decision as append-only JSONL. It never writes planning artifacts or reports.
 """
 
-import argparse
 import json
 import os
 import sys
@@ -83,13 +82,22 @@ def _make_receipts(result, plan, plan_path, plan_sha, snapshot):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(
+    parser = kblib.ArgumentParser(
         description=(
             "Record a Profile-authorized Corpus Planning semantic decision "
             "as machine-readable JSONL"))
-    parser.add_argument("root")
-    parser.add_argument("--plan", required=True)
-    parser.add_argument("--receipts", default=DEFAULT_RECEIPTS)
+    parser.add_argument("root", help="adopting repository root")
+    parser.add_argument(
+        "--plan", required=True,
+        help=("closed restricted-YAML acceptance decision plan; one .yaml "
+              "file directly under %s/" %
+              check_corpus_plan.SEMANTIC_ACCEPTANCE_PLAN_PREFIX),
+    )
+    parser.add_argument(
+        "--receipts", default=DEFAULT_RECEIPTS,
+        help=("repository-relative JSONL path the receipts are appended to "
+              "(default: %s)" % DEFAULT_RECEIPTS),
+    )
     parser.add_argument(
         "--actor-role",
         help=(

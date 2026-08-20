@@ -98,24 +98,50 @@ every predicate that names that Gate. The same unique-boundary rule applies
 when a same-path revision explicitly declares a Profile-load-affecting
 predicate. A semantically neutral same-path revision need not invent one.
 
-For a plan admitted under the current producer, every Gate named in a changed
-predicate's `affected_gate_ids` MUST occur in `required_gate_ids` on at least
-one concrete invalidation boundary that references that same predicate.
-`boundary_gate_reruns` is only the exact sorted projection of post-admission
-Gate IDs; placing a Gate in that union does not create an enforcement edge and
-cannot compensate for omitting it from all such boundaries.
+For a plan admitted under the current producer, `affected_gate_ids` record the
+semantic leaves actually affected. They are not copied into boundary
+authorization. The planner MUST project each value through the
+[[kernel/K00 Standards Control/12 Control Registry#Standards Revalidation Capability Registry\|Standards Revalidation Capability Registry]]:
 
-Each required gate is claimed at the position it belongs to, not all at hold
-discharge. Partition a boundary's gates by the position
-[[kernel/K00 Standards Control/12 Control Registry#Stable Gate ID Registry\|K00/12]]
-registers each producer for, judged against the target batch's own position.
-The aggregate MUST require receipts for exactly the gates whose position that
-batch is at, and MUST record the rest. A gate whose position lies ahead is
-claimed on arriving there, which already requires it, so nothing further
-enforces it here. A gate whose position the batch has left cannot be remade by
-any sanctioned action; it is recorded as unrepeatable and the batch proceeds on
-evidence made under the superseded predicate. A boundary all of whose gates lie
-behind every batch it reaches is refused at admission.
+- `special-owner` is discharged only by its registered after-image admission;
+- `immediate-owner` is claimed by the adoption's current after-image receipt;
+- `native-owner` projects to itself and is deferred to its ordinary transition;
+- `semantic-leaf` projects to its registered owner, never to a raw leaf
+  receipt;
+- `mechanism-only` and `advisory` create no blocking boundary claim; and
+- `unsupported` makes a changed predicate naming that Gate unadmittable until K00/12 assigns
+  an owner and protocol.
+
+Each `required_gate_ids` entry is therefore an owner Gate ID, not an inventory
+of raw findings. Every blocking owner projected from a predicate MUST occur on
+at least one concrete invalidation boundary that references that predicate.
+`boundary_gate_reruns` is only the exact sorted projection of post-admission
+boundary owners: the `immediate-owner` and every `native-owner` reached by the
+plan. Placing a Gate in that union creates no edge and cannot compensate for an
+omitted owner boundary. `profile-load` is excluded because admission already
+discharged it. `required-queue-consistency` is not excluded: when a current
+boundary projects that owner it remains in `boundary_gate_reruns`, and its
+immediate receipt is the revalidation aggregate's sole raw due receipt.
+Advisory-only and mechanism-only changes may leave that projection empty.
+
+Owner claims are consumed only at their registered claim edge. `profile-load`
+is the special after-image admission above. `required-queue-consistency` is the
+only immediate raw Gate receipt: it binds the staged after Queue, Coverage,
+Progress, Profile identity, and repository snapshot at adoption commit. When a
+boundary names that owner, the aggregate consumes this same receipt as its
+only raw due receipt; the owner remains visible in `boundary_gate_reruns`.
+Every native owner is deferred to the transition that already requires it --
+`queued -> open`, `open -> merge-ready`, `merge-ready -> closed`, or the
+registered Queue-exhaustion/completion edge. The revalidation aggregate records
+that deferred owner; it does not demand a second receipt early and does not
+substitute for the native transition receipt.
+
+If a target batch has already passed a native owner's claim edge, neither a
+fresh leaf receipt nor an aggregate may call the obligation complete. The plan
+is refused until a sanctioned rollback puts the batch before that edge, or a
+successor/Amendment owns the work. Historical evidence made under the
+superseded predicate is evidence of that historical attempt, not current
+authorization.
 
 IDs/references must resolve. Invalidated-evidence `reason_code` is
 `predicate-changed`, `receipt-schema-changed`, `profile-binding-changed`, or
@@ -188,13 +214,19 @@ boundary_gate_reruns: []
 
 State bytes still synchronize, so Queue consistency reruns; nothing reopens.
 
-For semantic change, predicates and boundaries are nonempty. Immediate reruns
-remain exactly `[required-queue-consistency]`. Deferred reruns equal the sorted
-set union of predicate `affected_gate_ids` and boundary `required_gate_ids`
-after removing `profile-load`, which was already discharged against the after
-image at admission; batch-close/Terminal gates occur only there. Scope follows
-explicit predicate, owner, Profile, receipt-dependency, and registered-gate
-edges, never similarity or backlinks.
+For semantic change, predicates are nonempty. Apart from a required
+`profile-load` after-image boundary, post-admission blocking boundaries are
+nonempty exactly when the K00/12 capability projection produces an immediate
+or native owner. Immediate reruns remain exactly
+`[required-queue-consistency]`. `boundary_gate_reruns` equals the sorted union
+of those post-admission boundary owners after removing only `profile-load`,
+which admission already discharged. A projected `required-queue-consistency`
+therefore remains in the union and supplies the aggregate's sole raw due
+receipt; native owners remain deferred to their registered transitions. The
+union never lists semantic leaves, advisory Gates, or mechanism-only Gates.
+Scope follows
+explicit predicate, projected owner, Profile, receipt-dependency, and
+registered-gate edges, never similarity or backlinks.
 
 Affected batches are the union of boundary batch targets and Queue batch IDs in
 invalidated-evidence revalidation scopes. Affected `merge-ready` batches require formal
@@ -217,6 +249,13 @@ occurred — and MUST NOT compare `tool_version` against the current constant.
 Current authorization is unaffected: it still requires the registered producer
 tuple exactly, per K12/17.
 
+The capability registry follows the same producer-era boundary. A consumed
+historical aggregate keeps the leaf/owner and claim-edge meaning recorded by
+its own producer era; the current registry is not applied backward to invent a
+missing owner, revoke a consumed transition, or require a field its producer
+never promised. New plans and new authorization use only the current
+capability table.
+
 ## Acceptance And Resume
 
 Only `Tools/adopt_standards.py` applies the plan. Commit proves:
@@ -228,8 +267,9 @@ Only `Tools/adopt_standards.py` applies the plan. Commit proves:
 3. Queue/Progress revision advanced once and all invariants above held;
 4. historical receipts stayed byte-identical and invalidations stayed explicit;
 5. commit chains old/new Contract anchors; and
-6. staged after bytes passed Queue consistency. Deferred gates block only their
-   named boundary; the transaction receipt substitutes for no gate.
+6. staged after bytes passed Queue consistency. Deferred owner Gates block only
+   their native boundary; the transaction receipt substitutes for no owner or
+   semantic member evidence.
 
 Before commit, old identity is authoritative. Uncertain writes reconcile from
 lock, plan SHA, state SHAs, and prepare/commit/abort chain under K13/15. After

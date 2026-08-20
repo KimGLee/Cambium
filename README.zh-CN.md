@@ -93,6 +93,7 @@ integrator 逐个合并这些输出，并在每次合并后运行全局检查。
 | [`profiles/_template/`](profiles/_template/) | 可复制并填写的领域中立表单；不是可运行或默认的 Profile |
 | [`profiles/examples/`](profiles/examples/) | 非规范性的完整参考；示例不是采用起点，也不能被直接选用 |
 | [`Tools/`](Tools/) | 标准库 Python 检查、schema、receipt 和编译产物生成器 |
+| [`Tools/compiled/`](Tools/compiled/) | 生成产物：CLI 调用契约、面向 Agent 的 MCP 投影，以及每家宿主一份的注册文件。禁止手改；`--check` 重算并比对 |
 | [`ROADMAP.md`](ROADMAP.md) | 非规范性的实现方向；不代表当前能力 |
 
 内含的 [`Agent Systems Atlas`](profiles/examples/agent-atlas/README.md)
@@ -147,6 +148,19 @@ Atlas 知识语料库。
 拥有的边界投影区块。
 它们不会调度 Agent。执行者调度、工作区隔离、事件投递和 integrator 循环仍须
 由采用方运行时或人工操作方提供。
+
+这些操作现在可以从 Agent 宿主直接调用，不需要为任何一家写专门的代码。CLI
+调用契约由内省每个工具自己的解析器推导得出，而不是人工维护；面向 Agent 的
+MCP 投影由该契约生成；一个 stdio server 提供这份投影；每家宿主一份的注册
+文件由同一份 server 定义渲染。以上每一件都在构建期生成、写进仓库，并由
+`--check` 重算比对守护——与 Runtime Cards 和组合后的词表完全同一套机制。
+
+该接口层刻意做得很薄，且这条边界由机械检查守住，而不是靠自觉。它不决定一个
+操作能不能跑、结果算不算成功、要不要留证据——这些仍是内核的问题，由工具自身
+回答。它不得重新实现任何内核规则；有一条测试断言该 server 只 import 标准库，
+因此任何判定模块都无法从它到达。内核的拒绝原样到达调用方：该层绝不把拒绝改写
+成错误，绝不把故障伪装成拒绝，读不懂的结果如实上报读不懂，而不是猜一个结论
+出来。
 
 随项目提供的 Amendment 接口首先针对准确的当前状态登记一项已批准的操作决策，
 随后在范围/处置重新规划或批次取消事务中使用该授权。待处理的 registration
@@ -291,6 +305,50 @@ Profile 里有几项答案是在描述语料库，而没有页面的语料库还
 R09 初始采用变更闭合后，该 manifest 才会成为内容工作的选定 Profile。应验证
 填写后的副本，而不是 `_template`；组合后的 vocabulary 在采用前并不存在。
 
+## 从 Agent 宿主调用 Cambium
+
+Cambium 的操作可以从 Claude Code、Codex、Kimi Code 和 dsh 直接调用，不需要为
+任何一家写代码。每家宿主读到的都是生成文件，绝不是手写的。
+
+为你的语料库渲染注册文件。两个根都是绝对路径；任一不给，其占位符就留在产物里：
+
+```bash
+python3 Tools/render_host_configs.py . \
+  --distribution-root /语料库的绝对路径 \
+  --workspace-root /语料库的绝对路径
+```
+
+产物落在 `Tools/compiled/host-configs/`。把你这家宿主读的那份装上：
+
+| 宿主 | 落点 | 承载 |
+|---|---|---|
+| Claude Code | `<语料库>/.mcp.json` | 注册 + 绑定 |
+| Kimi Code | `<语料库>/.kimi-code/mcp.json` | 注册 + 绑定 |
+| Codex | `<语料库>/.codex/config.toml` | 注册 + 绑定 |
+| dsh | `<语料库>/.env` | 仅绑定 |
+| dsh | `$DSH_HOME/profiles/<名>/cordis.patch.yml`，或 `dsh --patch <路径>` | 仅注册，每台机器一次 |
+
+注册和绑定是两个不同的问题——server 在哪，以及这次会话治哪个语料库。三家宿主
+恰好把两者写进同一个文件；dsh 把它们强行分开，反而让这个区别显形。绑定以
+`CAMBIUM_WORKSPACE_ROOT` 传递，由宿主设置且只从环境变量读取。它绝不从继承来的
+工作目录推断：四家宿主确实都在会话自身的目录里启动 stdio server，但没有一家把
+这个行为写进文档，而未文档化的默认行为不能作为治理绑定的地基。
+
+**四家里有三家的首次接入需要人工一步。** Claude Code 在加载项目级 `.mcp.json`
+前会请人信任该工作区；Codex 只在项目被信任时才读项目级 `.codex/config.toml`；
+Kimi 只在工作区被标记为信任后才加载项目级 MCP 配置。一个刚克隆下来的仓库不能
+自我批准，这正是这道门的意义。每个语料库只需批准一次。dsh 不需要批准，因为它的
+注册放在操作者自己的 profile 里，而不在仓库中。
+
+装之前或装之后都可以校验产物：
+
+```bash
+python3 Tools/render_host_configs.py . --check
+```
+
+该 server 只暴露编译投影所声明的那些操作。它不做任何判定：读退出码和 receipt，
+把内核的拒绝原样传出，读不懂的结果如实上报读不懂，而不是猜一个结论。
+
 ## 将新的 Standards 版本采用到活动任务中
 
 R09 治理 Standards 修订，并记录其准确的 changed predicates。当现有
@@ -385,8 +443,11 @@ python3 Tools/init_state.py . \
 写入器残留，并对状态文件、receipt、revision/fingerprint、待处理 delta 及任何
 已记录的 archive move 完成核对前，不要删除它。JSONL receipt 仅可追加；不确定的
 receipt append 会保留锁，而不是删除或重写证据。新任务不会复用旧命名空间，
-即使旧任务已完成或已取消；必须通过显式的 archive/rollover 流程处理该历史。
-Cambium 尚未实现 rollover 自动化。
+即使旧任务已完成或已取消；必须通过显式的 archive/rollover 流程处理该历史。在
+同一任务内部，`Tools/seal_receipts.py` 就是已验证冻结历史的那个流程：它把已
+关闭批次的、经过完整复验的收据行移入冷链（`.cambium/receipts/cold/`，见
+K12/07），热账本不再随每次关批增长，而每一个字节与收据 ID 永久可解析。跨任务
+的命名空间滚转仍需人工处理。
 
 确认当前任务已知且有效后，将 Required 对象清点到 Coverage 中，声明显式的
 `batch_specs`，编译 Queue，并在激活批次前运行 `check_queue.py`。简单的

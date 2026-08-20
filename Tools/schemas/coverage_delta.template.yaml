@@ -32,8 +32,16 @@ pages:                             # status updates for pages on this batch's ma
 # `next_batch_updates`; that list is suggestion-only and is never applied by
 # apply_delta.  The integrator resolves it through the controlled
 # Coverage/Queue replan path.
+#
+# Every open gap whose current `next_batch` is this batch is a close
+# obligation. Before `open -> merge-ready`, run `apply_delta.py --preflight`:
+# the prospective after-image must close every such gap and may add a gap only
+# when its target is an existing actionable later batch. The transition freezes
+# that exact settlement with the Delta. A reroute of an existing gap is not a
+# worker edit and must complete through the controlled Amendment path before
+# freeze; close only re-proves the binding and never rewrites a frozen Delta.
 
 open_gaps_added: []                # open gaps added by this batch (including needs_rereview and cross-batch missing links, type: link; type vocabulary in the coverage_ledger template)
-open_gaps_closed: []               # open gaps closed by this batch (gap id or page+type)
+open_gaps_closed: []               # existing gaps routed to this batch and closed here (gap id or page+type)
 next_batch_updates: []             # suggestion-only; apply_delta never writes these values into Coverage
 watermark_advance:                 # optional: watermark advance values from source/maintenance batches (K13/10; the integrator applies them to Tools/state/watermark.yaml at merge)

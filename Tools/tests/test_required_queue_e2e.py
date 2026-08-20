@@ -15,6 +15,9 @@ sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import check_queue
+import check_batch_close
+import batch_settlement
+import candidate_lifecycle
 import kblib
 import maintenance_candidates
 from profile_fixture import install_loadable_profile
@@ -103,6 +106,12 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
                     if entry["id"] == batch_id)
         revision = queue["state_revision"]
         runtime = check_queue.validate_runtime(self.root)
+        settlement = batch_settlement.current_settlement_report(
+            runtime["coverage"], batch_id)
+        self.assertEqual([], settlement["errors"], settlement["errors"])
+        baseline_errors, baseline = check_batch_close._candidate_baseline(
+            str(self.root), runtime, batch_id)
+        self.assertEqual([], baseline_errors, baseline_errors)
         applied = next(
             entry for entry in runtime["applied_delta_receipts"]
             if entry.get("batch") == batch_id)
@@ -133,6 +142,12 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
             evidence[field] = receipt_id
         attestation_id = "audit-e2e-review-attestation-%s-r%d" % (
             batch_id, revision)
+        evidence_relative = "%s/%s-r%d-fixture.jsonl" % (
+            kblib.RECEIPT_COLD_EVIDENCE_PREFIX, batch_id, revision)
+        evidence_file = self.root / evidence_relative
+        evidence_file.parent.mkdir(parents=True, exist_ok=True)
+        if not evidence_file.exists():
+            evidence_file.write_bytes(b"")
         records.append({
             "receipt_id": attestation_id,
             "tool": "check_batch_close",
@@ -148,8 +163,23 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
             "checked_at": "2026-08-04T02:30:00Z",
             "details": "fixture independent review attestation",
             "merged_snapshot_sha256": merged_snapshot_sha256,
-            "accepted_candidate_ids": [],
+            "accepted_candidate_count": 0,
             "accepted_candidate_types": [],
+            "accepted_by_type_counts": {},
+            "candidate_set_sha256": kblib.sha256_bytes(b""),
+            "candidate_protocol": candidate_lifecycle.CANDIDATE_PROTOCOL,
+            "candidate_baseline_protocol": baseline["protocol"],
+            "candidate_baseline_receipt": baseline["attestation_receipt"],
+            "carried_candidate_count": 0,
+            "carried_candidate_set_sha256":
+                candidate_lifecycle.candidate_set_sha256([]),
+            "fresh_candidate_count": 0,
+            "fresh_candidate_set_sha256":
+                candidate_lifecycle.candidate_set_sha256([]),
+            "candidate_evidence_path": evidence_relative,
+            "candidate_evidence_sha256": kblib.sha256_bytes(b""),
+            "candidate_evidence_bytes": 0,
+            "candidate_evidence_records": 0,
             "candidate_dispositions": [],
         })
         global_review_id = "audit-e2e-global-review-%s-r%d" % (
@@ -204,7 +234,7 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
             "reviewer_attestation_receipt": attestation_id,
             "global_review_receipt": global_review_id,
             "closed_list_evidence": evidence,
-        })
+        } | batch_settlement.close_binding(settlement))
         kblib.write_receipts(
             self.root / ".cambium/receipts/close-gates.jsonl", records)
         return close_id

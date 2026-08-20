@@ -1,0 +1,52 @@
+# Generated artifact -- do not edit. Every value here is rendered by Tools/render_host_configs.py from one server definition; a hand edit is reported by --check as a HOLD.
+#
+# destination: $DSH_HOME/profiles/<name>/cordis.patch.yml (append this entry) or dsh --patch <path>
+# carries: registration
+# server name: cambium
+# server entry point: Tools/mcp_server.py (under the distribution root)
+# source: Tools/compiled/mcp-tools.json
+# source_hash: sha256:568281de177fa070a19e354f66719cf9710ba4ecd18b66c6e86e64a77afefbec
+# regenerate: python3 Tools/render_host_configs.py .
+# verify: python3 Tools/render_host_configs.py . --check
+#
+# This is the registration half only, and it is installed once per machine
+# rather than once per corpus. It is a loader patch list: append its entry
+# to the profile's own cordis.patch.yml, or pass this file to --patch. The
+# corpus binding travels separately in that corpus's .env, which dsh reads
+# from the invoking directory and forwards to this server through the
+# ordinary parent environment.
+#
+# cwd is a fallback only. All four hosts start a stdio server in the
+# session's own working directory, and none of them document a cwd or an
+# environment field in their plugin packaging contract at all. What this
+# registration rests on is the absolute path inside args, and what binds
+# the server to a corpus is CAMBIUM_WORKSPACE_ROOT -- never an inherited
+# working directory.
+#
+# CAMBIUM_INTERFACE_SOURCE_HASH is the sha256 of the compiled tool
+# projection this file was rendered against. It is carried so a server can
+# refuse a tool list it was not registered against, and so one upstream
+# change makes every host product stale at once.
+#
+# <CAMBIUM_DISTRIBUTION_ROOT> and <CAMBIUM_WORKSPACE_ROOT> still to be
+# substituted. A placeholder is not a valid absolute path on any of these
+# hosts, so an un-substituted copy fails at launch instead of resolving to
+# something.
+
+- insert:
+    - id: cambium-mcp
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        transport: stdio
+        serverName: cambium
+        command: python3
+        args:
+          - <CAMBIUM_DISTRIBUTION_ROOT>/Tools/mcp_server.py
+        cwd: <CAMBIUM_DISTRIBUTION_ROOT>
+        toolCallTimeoutMs: 120000
+        failOnStartupError: true
+        reconnect:
+          enabled: true
+          maxAttempts: 3
+          initialDelayMs: 1000
+          maxDelayMs: 30000

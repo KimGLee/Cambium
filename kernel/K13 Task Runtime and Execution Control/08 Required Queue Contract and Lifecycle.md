@@ -106,15 +106,33 @@ later work uses a successor. Cancellation needs a scope/disposition Amendment.
 
 A batch ID is referenced from exactly four places, and this closed list is the
 contract: nothing may begin referencing a batch without first being added
-here. Each reference has its own terminal-state rule, and a transition into a
-terminal state settles all four or refuses:
+here. Each reference has its own terminal-state rule. Before the Delta freezes,
+the prospective after-image must settle every live reference it owns; close
+rechecks the landed state:
 
 | Reference | Owner | Terminal-state rule |
 |---|---|---|
 | Coverage page `batch` / `next_batch` | Coverage Ledger | The close projection transfers `batch` to the closing ID and moves `next_batch` onward or empties it; the page frontmatter copies follow through the K08/07 projector |
 | Coverage `open_gaps[].next_batch` | Coverage Ledger | Every gap routed to the batch is closed by its Delta or re-routed to a named later batch; a gap left pointing at a terminal batch is a settlement failure, and routing — not manifest membership — decides which gaps the batch owes |
-| `batch_specs[]` row | Coverage Ledger | Terminal batches carry no current spec row; the row retires at close, because a spec that can no longer be recompiled to match its sealed Queue item blocks every later replan |
+| `batch_specs[]` row | Coverage Ledger | The terminal Queue item owns its sealed structure. Its old compiler-input row is no longer a live reference: later compilation ignores its edits or absence and never recompiles or replaces the terminal item; the row may be retired as housekeeping |
 | Receipt `batch_id` | Receipt catalog | Immutable. Sealed evidence keeps naming the batch forever and is never rewritten or retired |
+
+Settlement begins on `open -> merge-ready`, not after the Delta is frozen.
+The transition projects the exact Delta over current Coverage and computes the
+complete set of open gaps routed to this batch. Every such gap must be closed
+by the Delta or rerouted to a named later batch whose current state is `queued`
+or `open`; creating a gap for an unknown, frozen, terminal, same, or earlier
+batch is refused. The transition receipt binds the before obligation count and
+identity/record-set hashes, a zero-unsettled prospective count/hash, and the
+before/prospective Coverage fingerprints. It re-derives them under the writer
+lock.
+
+`apply_delta.py` repeats the same projection and bindings before publishing
+the after-image. `check_batch_close.py` checks the landed Coverage first and
+binds zero current routed gaps; the close transition validates that receipt
+again. A defect is therefore repaired in the still-open batch Delta, rather
+than discovered only after `merge-ready` and paid for with an invalidating
+rollback.
 
 The rule is one sentence: **a terminal batch keeps its history and loses its
 live references.** Each of the four was learned the same expensive way — page

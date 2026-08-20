@@ -19,11 +19,15 @@ sys.path.insert(0, str(TOOLS))
 
 import adopt_standards
 import check_batch_close
+import check_page_contract
 import check_profile
 import check_queue
+import check_vocab
 import kblib
+import seal_receipts
 import update_queue
 from profile_fixture import install_loadable_profile
+from test_update_queue import UpdateQueueTests
 
 
 class AdoptStandardsTests(unittest.TestCase):
@@ -59,7 +63,14 @@ class AdoptStandardsTests(unittest.TestCase):
             "| profile-load | check_profile | %s | profile-check-summary | * | guidance_and_contract | not-batch-scoped |\n"
             "| required-queue-consistency | check_queue | %s | required_queue | consistency | * | not-batch-scoped |\n"
             "| required-queue-admission | check_queue | %s | required_queue | require-ready:* | * | queued |\n"
-            "| batch-close | check_batch_close | %s | batch_close_gate | * | * | merge-ready |\n" % (
+            "| batch-close | check_batch_close | %s | batch_close_gate | * | * | merge-ready |\n\n"
+            "## Standards Revalidation Capability Registry\n\n"
+            "| Gate ID | Role | Owner | Claim edge | Scope protocol | Binding protocol |\n"
+            "|---|---|---|---|---|---|\n"
+            "| profile-load | special-owner | profile-load | after-image-admission | profile-after-image | profile-fingerprints |\n"
+            "| required-queue-consistency | immediate-owner | required-queue-consistency | adoption-commit | runtime-after-image | runtime-state-fingerprints |\n"
+            "| required-queue-admission | native-owner | required-queue-admission | native-transition | native-owner-scope | native-owner-receipt |\n"
+            "| batch-close | native-owner | batch-close | native-transition | native-owner-scope | native-owner-receipt |\n" % (
                 check_profile.TOOL_VERSION,
                 check_queue.TOOL_VERSION,
                 check_queue.TOOL_VERSION,
@@ -722,6 +733,43 @@ class AdoptStandardsTests(unittest.TestCase):
             "governance_revision_sha256" in output or
             "standards_snapshot_sha256_after" in output, output)
 
+    def test_runtime_derives_revalidation_requirements_once(self):
+        """One runtime view must not reparse every plan once per batch."""
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        self.plan(invalidated_receipt=invalidated_gate)
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+
+        original_requirements = \
+            check_queue.standards_revalidation_requirements
+        with mock.patch.object(
+                check_queue, "standards_revalidation_requirements",
+                wraps=original_requirements) as requirements_build:
+            first = check_queue.validate_runtime(self.root)
+            result = check_queue.validate_runtime(self.root)
+
+        self.assertEqual([], first["errors"])
+        self.assertEqual([], result["errors"])
+        self.assertEqual(2, requirements_build.call_count,
+                         "each validation owns exactly one derived map")
+        self.assertIn("_standards_revalidation_requirements", result)
+        self.assertTrue(result["standards_revalidation_outstanding"]["B1"])
+
+        # The cached private view is an optimization, not a new requirement
+        # on helper callers.  Removing it must preserve the exact projection.
+        reduced = {
+            key: value for key, value in result.items()
+            if key != "_standards_revalidation_requirements"
+        }
+        self.assertEqual(
+            check_queue.outstanding_standards_revalidation(result, "B1"),
+            check_queue.outstanding_standards_revalidation(reduced, "B1"),
+        )
+        self.assertEqual(
+            check_queue.current_attempt_evidence_barrier(result, "B1"),
+            check_queue.current_attempt_evidence_barrier(reduced, "B1"),
+        )
+
     def test_semantic_adoption_preserves_history_but_filters_current_use(self):
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         self.plan(invalidated_receipt=invalidated_gate)
@@ -847,29 +895,470 @@ class AdoptStandardsTests(unittest.TestCase):
     # whole union at hold-discharge time therefore deadlocked the hold: the
     # only exit from `open` is `merge-ready`, which refuses a held batch, and
     # the hold refuses to clear without an aggregate naming every gate.
-    LIFECYCLE_GATES = ["batch-close", "required-queue-admission",
-                       "wiki-link-integrity"]
+    LIFECYCLE_AFFECTED_GATES = [
+        "required-queue-consistency", "wiki-link-integrity"]
+    LIFECYCLE_GATES = ["batch-close", "required-queue-consistency"]
     LINK_RECEIPTS = ".cambium/receipts/links.jsonl"
 
     def register_link_gate(self):
-        """Add the one boundary gate an `open` batch can still produce."""
+        """Register the leaf and its native batch-close owner mapping."""
+        registry = (self.root /
+                    "kernel/K00 Standards Control/12 Control Registry.md")
+        text = registry.read_text(encoding="utf-8")
+        if "| wiki-link-integrity | check_links |" not in text:
+            text = text.replace(
+                "\n## Standards Revalidation Capability Registry\n",
+                "\n| wiki-link-integrity | check_links | 1.5.0 "
+                "| link-check-summary | * | * | not-batch-scoped |\n\n"
+                "## Standards Revalidation Capability Registry\n")
+            text += (
+                "| wiki-link-integrity | semantic-leaf | batch-close "
+                "| project-to-owner | inherit-owner-scope "
+                "| owner-member-chain |\n")
+            registry.write_text(text, encoding="utf-8")
+
+    def install_revalidation_capability_fixture(self):
+        """Install the closed two-registry subset these tests exercise.
+
+        Most adoption tests predate the capability registry and intentionally
+        keep their tiny four-row Gate fixture.  These focused tests need a
+        closed capability table, so they replace that fixture locally rather
+        than making every older test accidentally depend on the new policy.
+        """
         registry = (self.root /
                     "kernel/K00 Standards Control/12 Control Registry.md")
         registry.write_text(
-            registry.read_text(encoding="utf-8") +
-            "| wiki-link-integrity | check_links | 1.5.0 "
-            "| link-check-summary | * | * | not-batch-scoped |\n",
+            "## Stable Gate ID Registry\n\n"
+            "| Gate ID | Tool | Tool version | Check | Mode | Dimension "
+            "| Lifecycle |\n"
+            "|---|---|---|---|---|---|---|\n"
+            "| profile-load | check_profile | %s | profile-check-summary "
+            "| * | guidance_and_contract | not-batch-scoped |\n"
+            "| frontmatter-vocabulary | check_vocab | %s "
+            "| vocab-check-summary | * | * | not-batch-scoped |\n"
+            "| required-queue-consistency | check_queue | %s "
+            "| required_queue | consistency | * | not-batch-scoped |\n"
+            "| required-queue-admission | check_queue | %s "
+            "| required_queue | require-ready:* | * | queued |\n"
+            "| batch-review | manual-attestation | %s | batch_gate "
+            "| * | none | open |\n"
+            "| batch-close | check_batch_close | %s | batch_close_gate "
+            "| * | * | merge-ready |\n"
+            "| page-contract | check_page_contract | %s "
+            "| page-contract-summary | * | * | not-batch-scoped |\n"
+            "| standards-adoption | adopt_standards | %s "
+            "| standards_adoption | * | * | not-batch-scoped |\n"
+            "| standards-revalidation | check_queue | %s "
+            "| required_queue | require-revalidation:* | * | queued, open |\n"
+            "| runtime-card-synchronization | manual-attestation | %s "
+            "| runtime-card-synchronization | * | guidance_and_contract "
+            "| not-batch-scoped |\n\n"
+            "## Standards Revalidation Capability Registry\n\n"
+            "| Gate ID | Role | Owner | Claim edge | Scope protocol "
+            "| Binding protocol |\n"
+            "|---|---|---|---|---|---|\n"
+            "| profile-load | special-owner | profile-load "
+            "| after-image-admission | profile-after-image "
+            "| profile-fingerprints |\n"
+            "| frontmatter-vocabulary | semantic-leaf | batch-close "
+            "| project-to-owner | inherit-owner-scope "
+            "| owner-member-chain |\n"
+            "| required-queue-consistency | immediate-owner "
+            "| required-queue-consistency | adoption-commit "
+            "| runtime-after-image | runtime-state-fingerprints |\n"
+            "| required-queue-admission | native-owner "
+            "| required-queue-admission | native-transition "
+            "| native-owner-scope | native-owner-receipt |\n"
+            "| batch-review | native-owner | batch-review "
+            "| native-transition | native-owner-scope "
+            "| native-owner-receipt |\n"
+            "| batch-close | native-owner | batch-close "
+            "| native-transition | native-owner-scope "
+            "| native-owner-receipt |\n"
+            "| page-contract | semantic-leaf | batch-close "
+            "| project-to-owner | inherit-owner-scope "
+            "| owner-member-chain |\n"
+            "| standards-adoption | mechanism-only | none "
+            "| mechanism-input-only | none | not-authorizing |\n"
+            "| standards-revalidation | mechanism-only | none "
+            "| mechanism-input-only | none | not-authorizing |\n"
+            "| runtime-card-synchronization | unsupported | none "
+            "| none | none | not-authorizing |\n" % (
+                check_profile.TOOL_VERSION,
+                check_vocab.TOOL_VERSION,
+                check_queue.TOOL_VERSION,
+                check_queue.TOOL_VERSION,
+                check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+                check_batch_close.TOOL_VERSION,
+                check_page_contract.TOOL_VERSION,
+                adopt_standards.TOOL_VERSION,
+                check_queue.TOOL_VERSION,
+                check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+            ), encoding="utf-8")
+
+    def capability_boundary_plan(self, invalidated_receipt, affected,
+                                 required):
+        """Build one current plan using affected leaves and owner closure."""
+        self.install_revalidation_capability_fixture()
+        affected = sorted(affected)
+        required = sorted(required)
+        return self.plan(invalidated_receipt=invalidated_receipt, overrides={
+            "changed_predicates": [{
+                "predicate_id": "PRED-CAPABILITY-001",
+                "owner_path": self.GOVERNANCE,
+                "change_kind": "modified",
+                "affected_gate_ids": affected,
+            }],
+            "invalidated_evidence": [{
+                "receipt_id": invalidated_receipt,
+                "predicate_ids": ["PRED-CAPABILITY-001"],
+                "dimension_ids": ["coverage_and_integration"],
+                "boundary_ids": ["INV-B1-CAPABILITY"],
+                "reason_code": "gate-semantics-changed",
+                "revalidation_scope_ids": ["B1"],
+            }],
+            "invalidation_boundaries": [{
+                "boundary_id": "INV-B1-CAPABILITY",
+                "predicate_ids": ["PRED-CAPABILITY-001"],
+                "target_kind": "batch",
+                "target_ids": ["B1"],
+                "required_gate_ids": required,
+            }],
+            "boundary_gate_reruns": required,
+        })
+
+    def test_pre_1_6_history_replays_raw_and_recorded_gate_union(self):
+        """Atlas's 1.5 plan keeps raw leaves plus its immediate Gate.
+
+        Pre-1.6 plans recorded semantic leaves directly.  Their global rerun
+        union was the raw affected Gate union plus every Gate explicitly
+        recorded on a boundary; Queue consistency can therefore be present
+        even when it was not named by the predicate's affected leaves.  That
+        sealed producer-era shape must replay, while new admission remains on
+        the projected owner contract.
+        """
+        self.pause()
+        raw_leaves = ["frontmatter-vocabulary", "page-contract"]
+        legacy_required = sorted((
+            *raw_leaves, "required-queue-consistency"))
+        current_plan = self.capability_boundary_plan(
+            "audit-fixture-initial-queue",
+            sorted((*raw_leaves, "required-queue-consistency")),
+            ["batch-close", "required-queue-consistency"])
+        self.assertEqual([], self.plan_errors(current_plan))
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+
+        # The fixture writer can only emit today's 1.6 shape.  Re-form its
+        # newly written, otherwise complete transaction as bytes an immutable
+        # 1.5 producer would have left behind.
+        plan_path = self.root / self.PLAN
+        legacy_plan = self.load(self.PLAN)
+        legacy_plan["changed_predicates"][0][
+            "affected_gate_ids"] = raw_leaves
+        legacy_plan["invalidation_boundaries"][0][
+            "required_gate_ids"] = legacy_required
+        legacy_plan["boundary_gate_reruns"] = legacy_required
+        plan_path.write_text(
+            kblib.canonical_yaml(legacy_plan), encoding="utf-8")
+        legacy_plan_sha = kblib.sha256_file(plan_path)
+
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = self.load(check_queue.PROGRESS_PATH)
+        record = progress["standards_adoptions"][-1]
+        record["plan_sha256"] = legacy_plan_sha
+        record["boundary_gate_reruns"] = legacy_required
+        progress_path.write_text(
+            kblib.canonical_yaml(progress), encoding="utf-8")
+        legacy_progress_sha = kblib.sha256_file(progress_path)
+
+        receipt_path = self.root / self.RECEIPTS
+        receipts = [json.loads(line) for line in receipt_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        for receipt in receipts:
+            if receipt.get("tool") == adopt_standards.TOOL:
+                receipt["tool_version"] = "1.5.0"
+                receipt["plan_sha256"] = legacy_plan_sha
+                receipt["after_progress_sha256"] = legacy_progress_sha
+                receipt["boundary_gate_reruns"] = legacy_required
+            if receipt.get("receipt_id") in record["immediate_gate_receipts"]:
+                receipt["progress_ledger_sha256"] = legacy_progress_sha
+        receipt_path.write_text(
+            "".join(json.dumps(receipt, separators=(",", ":")) + "\n"
+                    for receipt in receipts), encoding="utf-8")
+
+        replay = check_queue.validate_runtime(self.root)
+        self.assertEqual([], replay["errors"])
+        self.assertEqual([], check_queue.standards_adoption_plan_errors(
+            self.root, legacy_plan, catalog=replay["receipt_catalog"],
+            queue=replay["queue"], progress=replay["progress"],
+            validate_current=False, producer_tool_version="1.5.0"))
+
+        bindings = check_queue.standards_revalidation_requirements(
+            self.root, replay["progress"],
+            catalog=replay["receipt_catalog"])["B1"]
+        self.assertEqual([
+            ("frontmatter-vocabulary", "frontmatter-vocabulary",
+             "batch-close"),
+            ("page-contract", "page-contract", "batch-close"),
+            ("required-queue-consistency", "required-queue-consistency",
+             "required-queue-consistency"),
+        ], sorted((
+            row["affected_gate_id"], row["required_gate_id"],
+            row["mapped_owner_gate_id"]
+        ) for row in bindings))
+
+    def test_1_6_history_keeps_its_recorded_owner_projection(self):
+        """A future capability edit cannot reinterpret a sealed 1.6 plan."""
+        self.pause()
+        plan = self.capability_boundary_plan(
+            "audit-fixture-initial-queue", ["frontmatter-vocabulary"],
+            ["batch-close"])
+        registry = (self.root /
+                    "kernel/K00 Standards Control/12 Control Registry.md")
+        registry.write_text(
+            registry.read_text(encoding="utf-8").replace(
+                "| frontmatter-vocabulary | semantic-leaf | batch-close ",
+                "| frontmatter-vocabulary | semantic-leaf | batch-review "),
             encoding="utf-8")
+        runtime = check_queue.validate_runtime(self.root)
+
+        historical = check_queue.standards_adoption_plan_errors(
+            self.root, plan, catalog=runtime["receipt_catalog"],
+            queue=runtime["queue"], progress=runtime["progress"],
+            validate_current=False, producer_tool_version="1.6.0")
+        self.assertEqual([], historical)
+
+        current = check_queue.standards_adoption_plan_errors(
+            self.root, plan, catalog=runtime["receipt_catalog"],
+            queue=runtime["queue"], progress=runtime["progress"],
+            validate_current=True, producer_tool_version="1.6.0")
+        self.assertTrue(any(
+            "required_gate_ids adds owner Gate(s) not projected" in error and
+            "batch-close" in error for error in current), current)
+        self.assertTrue(any(
+            "boundary_gate_reruns must equal the exact affected-gate union"
+            in error and "batch-review" in error for error in current),
+            current)
+
+    def test_current_plan_rejects_an_unprojected_extra_owner(self):
+        """Current required Gate IDs must equal, not widen, owner closure."""
+        self.pause()
+        plan = self.capability_boundary_plan(
+            "audit-fixture-initial-queue", ["frontmatter-vocabulary"],
+            ["batch-close", "batch-review"])
+        errors = self.plan_errors(plan)
+        self.assertTrue(any(
+            "required_gate_ids adds owner Gate(s) not projected" in error and
+            "batch-review" in error for error in errors), errors)
+        self.assertTrue(any(
+            "boundary_gate_reruns must equal the exact affected-gate union"
+            in error and "batch-close" in error for error in errors), errors)
+
+    def adoption_consistency_receipt(self):
+        """Return the after-image consistency receipt the adoption recorded."""
+        records = self.load(check_queue.PROGRESS_PATH)["standards_adoptions"]
+        self.assertTrue(records)
+        receipt_ids = records[-1]["immediate_gate_receipts"]
+        self.assertEqual(1, len(receipt_ids))
+        return receipt_ids[0]
+
+    def test_queued_leaf_impacts_project_to_batch_close_without_raw_receipts(
+            self):
+        """AF-045 shape: two metadata leaves, one native close owner.
+
+        Queue consistency is the only raw receipt the aggregate consumes.
+        Both leaves are represented by the native batch-close owner, which is
+        deferred to its ordinary transition instead of asking a queued batch
+        for an unrelated one-page checker receipt.
+        """
+        self.pause()
+        plan = self.capability_boundary_plan(
+            "audit-fixture-initial-queue",
+            ["frontmatter-vocabulary", "page-contract",
+             "required-queue-consistency"],
+            ["batch-close", "required-queue-consistency"])
+        self.assertEqual([], self.plan_errors(plan))
+        code, output = self.command(apply=True, actor="integrator")
+        self.assertEqual(0, code, output)
+
+        consistency = self.adoption_consistency_receipt()
+        emitted = [line.split("=", 1)[1] for line in output.splitlines()
+                   if line.startswith("immediate_gate_receipt=")]
+        self.assertEqual([consistency], emitted)
+        progress = self.load(check_queue.PROGRESS_PATH)
+        resumed = self.run_tool(
+            "update_task.py", "--transition", "active",
+            "--expected-progress-sha256",
+            kblib.sha256_file(self.root / check_queue.PROGRESS_PATH),
+            "--expected-queue-sha256",
+            kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+            "--actor-role", "integrator", "--at",
+            progress["standards_adoptions"][-1]["adopted_at"], "--apply")
+        self.assertEqual(0, resumed.returncode, resumed.stdout)
+        relative = ".cambium/receipts/capability-revalidation.jsonl"
+        completed = self.run_tool(
+            "check_queue.py", "--require-revalidation", "B1",
+            "--boundary-gate-receipt",
+            "required-queue-consistency=%s" % emitted[0],
+            "--receipts", relative)
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        context = json.loads((self.root / relative).read_text(
+            encoding="utf-8").splitlines()[-1])
+        self.assertEqual(["required-queue-consistency"],
+                         context["immediate_gate_ids"])
+        self.assertEqual(["batch-close"],
+                         context["native_owner_gate_ids"])
+        self.assertEqual(["batch-close"],
+                         context["deferred_native_owner_gate_ids"])
+        self.assertEqual(
+            [{"required_gate_id": "required-queue-consistency",
+              "receipt_id": consistency}],
+            context["boundary_gate_receipts"])
+        leaf_projection = {
+            (row["affected_gate_id"], row["mapped_owner_gate_id"])
+            for row in context["revalidation_bindings"]
+            if row.get("affected_gate_id") in (
+                "frontmatter-vocabulary", "page-contract")
+        }
+        self.assertEqual({
+            ("frontmatter-vocabulary", "batch-close"),
+            ("page-contract", "batch-close"),
+        }, leaf_projection)
+
+        admission_path = ".cambium/receipts/capability-admission.jsonl"
+        admission_run = self.run_tool(
+            "check_queue.py", "--require-ready", "B1",
+            "--receipts", admission_path)
+        self.assertEqual(0, admission_run.returncode, admission_run.stdout)
+        admission = json.loads((self.root / admission_path).read_text(
+            encoding="utf-8").splitlines()[-1])
+        result = check_queue.validate_runtime(self.root)
+        opened = self.run_tool(
+            "update_queue.py", "--id", "B1", "--transition", "open",
+            "--gate-receipt", admission["receipt_id"],
+            "--standards-revalidation-receipt", context["receipt_id"],
+            "--expected-state-revision",
+            str(result["queue"]["state_revision"]),
+            "--expected-sha256", result["queue_sha256"],
+            "--actor-role", "integrator", "--at",
+            self.seconds_after(admission["checked_at"], 1), "--apply")
+        self.assertEqual(0, opened.returncode, opened.stdout)
+        final = check_queue.validate_runtime(self.root)
+        self.assertEqual([], final["errors"])
+        self.assertEqual("open", final["items_by_id"]["B1"]["state"])
+        self.assertEqual([], check_queue.outstanding_standards_revalidation(
+            final, "B1"))
+
+    def test_a_single_page_leaf_receipt_is_extra_not_authorization(self):
+        """A leaf receipt cannot bypass its manifest-scoped composite."""
+        self.pause()
+        plan = self.capability_boundary_plan(
+            "audit-fixture-initial-queue",
+            ["page-contract", "required-queue-consistency"],
+            ["batch-close", "required-queue-consistency"])
+        self.assertEqual([], self.plan_errors(plan))
+        self.assertEqual(0, self.command(
+            apply=True, actor="integrator")[0])
+        consistency = self.adoption_consistency_receipt()
+
+        raw = kblib.make_receipt(
+            check_page_contract.TOOL, check_page_contract.TOOL_VERSION,
+            check_page_contract.GATE_CHECK, "Topics/A.md", "pass",
+            "one page only", 1, root=self.root)
+        raw["gate_id"] = check_page_contract.GATE_ID
+        kblib.write_receipts(
+            self.root / ".cambium/receipts/raw-page-contract.jsonl", [raw])
+        result = check_queue.validate_runtime(self.root)
+        _context, errors = check_queue.standards_revalidation_context(
+            result, "B1", {
+                "required-queue-consistency": consistency,
+                "page-contract": raw["receipt_id"],
+            })
+        self.assertTrue(any(
+            "receipt IDs must be exactly ['required-queue-consistency']"
+            in error for error in errors), errors)
+
+    def test_native_admission_is_deferred_while_the_batch_is_queued(self):
+        """A native transition owner is never replaced by a raw receipt."""
+        self.pause()
+        plan = self.capability_boundary_plan(
+            "audit-fixture-initial-queue",
+            ["required-queue-admission", "required-queue-consistency"],
+            ["required-queue-admission", "required-queue-consistency"])
+        self.assertEqual([], self.plan_errors(plan))
+        self.assertEqual(0, self.command(
+            apply=True, actor="integrator")[0])
+        consistency = self.adoption_consistency_receipt()
+        result = check_queue.validate_runtime(self.root)
+        context, errors = check_queue.standards_revalidation_context(
+            result, "B1", {"required-queue-consistency": consistency})
+        self.assertEqual([], errors)
+        self.assertEqual(["required-queue-admission"],
+                         context["native_owner_gate_ids"])
+        self.assertEqual(["required-queue-admission"],
+                         context["deferred_native_owner_gate_ids"])
+        self.assertEqual([], context["unrepeatable_passed_gate_ids"])
+
+    def test_current_plan_rejects_mechanism_only_and_unsupported_gates(self):
+        """A tool in the registry is not necessarily boundary authority."""
+        self.pause()
+        for gate_id, role in (
+                ("standards-adoption", "mechanism-only"),
+                ("standards-revalidation", "mechanism-only"),
+                ("runtime-card-synchronization", "unsupported")):
+            with self.subTest(gate_id=gate_id):
+                plan = self.capability_boundary_plan(
+                    "audit-fixture-initial-queue", [gate_id], [gate_id])
+                current = self.plan_errors(plan)
+                capability_errors = [error for error in current if
+                    "cannot be used as an adoption boundary Gate" in error]
+                self.assertTrue(any(role in error
+                                    for error in capability_errors), current)
+
+                runtime = check_queue.validate_runtime(self.root)
+                replay = check_queue.standards_adoption_plan_errors(
+                    self.root, plan, catalog=runtime["receipt_catalog"],
+                    queue=runtime["queue"], progress=runtime["progress"],
+                    validate_current=False)
+                self.assertEqual([], [error for error in replay if
+                    "cannot be used as an adoption boundary Gate" in error])
+
+    def test_current_merge_ready_native_owner_requires_rollback(self):
+        """A plan cannot retroactively claim batch-review after its edge."""
+        invalidated = self.open_b1_and_hold_for_revalidation()
+        plan = self.capability_boundary_plan(
+            invalidated, ["batch-review"], ["batch-review"])
+        runtime = check_queue.validate_runtime(self.root)
+        queue = copy.deepcopy(runtime["queue"])
+        item = next(row for row in queue["required_queue"]
+                    if row["id"] == "B1")
+        item["state"] = "merge-ready"
+        item["hold_state"] = "none"
+        current = check_queue.standards_adoption_plan_errors(
+            self.root, plan, catalog=runtime["receipt_catalog"],
+            queue=queue, progress=runtime["progress"],
+            validate_current=True)
+        self.assertTrue(any(
+            ("rollback" in error.lower() or "roll it back" in error.lower())
+            and "B1" in error for error in current), current)
+
+        replay = check_queue.standards_adoption_plan_errors(
+            self.root, plan, catalog=runtime["receipt_catalog"],
+            queue=queue, progress=runtime["progress"],
+            validate_current=False)
+        self.assertEqual([], [error for error in replay
+                              if "rollback" in error.lower()])
 
     def lifecycle_boundary_plan(self, invalidated_gate):
-        """Adopt a boundary naming one producible gate and two that are not."""
+        """Adopt one immediate owner and one future native owner."""
         self.register_link_gate()
         self.plan(invalidated_receipt=invalidated_gate, overrides={
             "changed_predicates": [{
                 "predicate_id": "PRED-LIFECYCLE-001",
                 "owner_path": self.GOVERNANCE,
                 "change_kind": "modified",
-                "affected_gate_ids": list(self.LIFECYCLE_GATES),
+                "affected_gate_ids": list(self.LIFECYCLE_AFFECTED_GATES),
             }],
             "invalidated_evidence": [{
                 "receipt_id": invalidated_gate,
@@ -901,11 +1390,19 @@ class AdoptStandardsTests(unittest.TestCase):
             encoding="utf-8").splitlines()[-1])["receipt_id"]
 
     def revalidation_aggregate(self, link_receipt):
-        """Run the aggregate with only the producible gate supplied."""
+        """Run the aggregate with the adoption's immediate owner receipt.
+
+        ``link_receipt`` remains an input to the helper so the surrounding
+        seal/replay fixtures still prove a raw leaf can coexist in the receipt
+        catalog; it is intentionally not offered as boundary authority.
+        """
+        del link_receipt
+        consistency = self.adoption_consistency_receipt()
         relative = ".cambium/receipts/revalidation.jsonl"
         completed = self.run_tool(
             "check_queue.py", "--require-revalidation", "B1",
-            "--boundary-gate-receipt", "wiki-link-integrity=%s" % link_receipt,
+            "--boundary-gate-receipt",
+            "required-queue-consistency=%s" % consistency,
             "--receipts", relative)
         self.assertEqual(0, completed.returncode, completed.stdout)
         return json.loads((self.root / relative).read_text(
@@ -957,23 +1454,23 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertEqual(1, close.returncode, close.stdout)
         self.assertIn("B1 is open, not merge-ready", close.stdout)
 
-    def test_an_open_batch_clears_on_the_gates_its_position_can_produce(self):
-        """The hold clears with the one producible receipt supplied."""
+    def test_an_open_batch_clears_with_immediate_owner_and_defers_close(self):
+        """The hold clears without asking a raw semantic leaf to authorize."""
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         self.lifecycle_boundary_plan(invalidated_gate)
         aggregate = self.revalidation_aggregate(self.link_gate_receipt())
 
         self.assertEqual(self.LIFECYCLE_GATES, aggregate["required_gate_ids"])
-        self.assertEqual(["wiki-link-integrity"], aggregate["due_gate_ids"])
+        self.assertEqual(["required-queue-consistency"],
+                         aggregate["due_gate_ids"])
         self.assertEqual(["batch-close"],
                          aggregate["deferred_to_later_transition_gate_ids"])
-        self.assertEqual(["required-queue-admission"],
-                         aggregate["unrepeatable_passed_gate_ids"])
+        self.assertEqual([], aggregate["unrepeatable_passed_gate_ids"])
         self.assertEqual("open", aggregate["target_batch_state"])
         self.assertEqual(
             [row["required_gate_id"]
              for row in aggregate["boundary_gate_receipts"]],
-            ["wiki-link-integrity"])
+            ["required-queue-consistency"])
 
         self.clear_b1_hold(aggregate)
         final = check_queue.validate_runtime(self.root)
@@ -981,79 +1478,6 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertEqual("none", final["items_by_id"]["B1"]["hold_state"])
         self.assertEqual([], check_queue.outstanding_standards_revalidation(
             final, "B1"))
-
-    def test_requiring_the_whole_union_regardless_of_position_deadlocks(self):
-        """Counterfactual: the pre-change requirement, run in this process.
-
-        Reverting only the partition -- every named gate due, nothing
-        deferred or unrepeatable -- must make the same aggregate refuse.  A
-        regression that passed either way would prove nothing.
-        """
-        invalidated_gate = self.open_b1_and_hold_for_revalidation()
-        self.lifecycle_boundary_plan(invalidated_gate)
-        supplied = {"wiki-link-integrity": self.link_gate_receipt()}
-        result = check_queue.validate_runtime(self.root)
-
-        context, errors = check_queue.standards_revalidation_context(
-            result, "B1", supplied)
-        self.assertEqual([], errors)
-        self.assertIsNotNone(context)
-
-        def whole_union(gate_ids, state, registry):
-            return sorted({value for value in gate_ids if value}), [], []
-
-        with mock.patch.object(
-                check_queue, "partition_boundary_gates_by_lifecycle",
-                whole_union):
-            _reverted, reverted_errors = \
-                check_queue.standards_revalidation_context(
-                    result, "B1", supplied)
-        demanded = [error for error in reverted_errors
-                    if "boundary gate receipt IDs must be exactly" in error]
-        self.assertEqual(1, len(demanded), reverted_errors)
-        for gate_id in ("batch-close", "required-queue-admission"):
-            self.assertIn(gate_id, demanded[0])
-
-    def test_the_partition_never_becomes_a_way_to_require_nothing(self):
-        """`due` is still enforced exactly as before the partition."""
-        invalidated_gate = self.open_b1_and_hold_for_revalidation()
-        self.lifecycle_boundary_plan(invalidated_gate)
-        link_receipt = self.link_gate_receipt()
-        result = check_queue.validate_runtime(self.root)
-
-        _context, absent = check_queue.standards_revalidation_context(
-            result, "B1", {})
-        self.assertTrue(any(
-            "boundary gate receipt IDs must be exactly "
-            "['wiki-link-integrity']" in error for error in absent), absent)
-
-        _context, unknown = check_queue.standards_revalidation_context(
-            result, "B1", {"wiki-link-integrity": "audit-not-a-receipt"})
-        self.assertTrue(any("references missing current receipt" in error
-                            for error in unknown), unknown)
-
-        _context, mismatched = check_queue.standards_revalidation_context(
-            result, "B1", {"batch-close": link_receipt})
-        self.assertTrue(any(
-            "boundary gate receipt IDs must be exactly" in error
-            for error in mismatched), mismatched)
-
-        # A receipt of the right Gate whose bound identity was stripped is
-        # still refused: the partition narrows which gates are owed, never
-        # what a receipt for one of them must carry.
-        rows = [json.loads(line) for line in
-                (self.root / self.LINK_RECEIPTS).read_text(
-                    encoding="utf-8").splitlines()]
-        for row in rows:
-            row.pop("standards_version", None)
-        (self.root / self.LINK_RECEIPTS).write_text(
-            "".join(json.dumps(row, ensure_ascii=False) + "\n"
-                    for row in rows), encoding="utf-8")
-        result = check_queue.validate_runtime(self.root)
-        _context, stripped = check_queue.standards_revalidation_context(
-            result, "B1", {"wiki-link-integrity": link_receipt})
-        self.assertTrue(any("standards_version" in error
-                            for error in stripped), stripped)
 
     def append_fixture_receipt(self, receipt_id, **fields):
         """Append one hand-written receipt to the fixture register."""
@@ -1161,21 +1585,29 @@ class AdoptStandardsTests(unittest.TestCase):
         """
         registry = (self.root /
                     "kernel/K00 Standards Control/12 Control Registry.md")
-        registry.write_text(
-            registry.read_text(encoding="utf-8") +
-            "| required-queue-completion | check_queue | %s "
-            "| required_queue | require-complete | * | queue-exhausted |\n"
-            % check_queue.TOOL_VERSION,
-            encoding="utf-8")
+        text = registry.read_text(encoding="utf-8").replace(
+            "\n## Standards Revalidation Capability Registry\n",
+            "\n| required-queue-completion | check_queue | %s "
+            "| required_queue | require-complete | * | queue-exhausted |\n\n"
+            "## Standards Revalidation Capability Registry\n" %
+            check_queue.TOOL_VERSION)
+        text += (
+            "| required-queue-completion | native-owner "
+            "| required-queue-completion | native-transition "
+            "| native-owner-scope | native-owner-receipt |\n")
+        registry.write_text(text, encoding="utf-8")
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
-        gates = ["required-queue-completion", "wiki-link-integrity"]
+        affected = ["required-queue-completion",
+                    "required-queue-consistency", "wiki-link-integrity"]
+        gates = ["batch-close", "required-queue-completion",
+                 "required-queue-consistency"]
         self.register_link_gate()
         self.plan(invalidated_receipt=invalidated_gate, overrides={
             "changed_predicates": [{
                 "predicate_id": "PRED-EXHAUSTION-001",
                 "owner_path": self.GOVERNANCE,
                 "change_kind": "modified",
-                "affected_gate_ids": gates,
+                "affected_gate_ids": affected,
             }],
             "invalidated_evidence": [{
                 "receipt_id": invalidated_gate,
@@ -1204,8 +1636,9 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertIn("remaining_required_work_units=2", refused.stdout)
 
         aggregate = self.revalidation_aggregate(self.link_gate_receipt())
-        self.assertEqual(["wiki-link-integrity"], aggregate["due_gate_ids"])
-        self.assertEqual(["required-queue-completion"],
+        self.assertEqual(["required-queue-consistency"],
+                         aggregate["due_gate_ids"])
+        self.assertEqual(["batch-close", "required-queue-completion"],
                          aggregate["deferred_to_later_transition_gate_ids"])
         self.assertEqual([], aggregate["unrepeatable_passed_gate_ids"])
         self.clear_b1_hold(aggregate)
@@ -1226,25 +1659,25 @@ class AdoptStandardsTests(unittest.TestCase):
         return plan
 
     def test_a_boundary_of_only_passed_gates_is_refused_at_admission(self):
-        """Every named gate is behind the batch, so nothing would apply."""
+        """A current plan cannot retroactively defer an owner edge."""
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         plan = self.passed_only_boundary_plan(invalidated_gate, ["B1"])
         dead = [error for error in self.plan_errors(plan)
-                if "records protection nothing will ever apply" in error]
+                if "already passed Standards revalidation owner edge" in error]
 
         self.assertEqual(1, len(dead), dead)
         self.assertIn("INV-B1-READY", dead[0])
         self.assertIn("required-queue-admission", dead[0])
-        self.assertIn("open batch B1", dead[0])
+        self.assertIn("B1 (open", dead[0])
+        self.assertIn("roll back", dead[0])
 
-    def test_one_reached_batch_that_can_still_claim_it_keeps_the_boundary(
-            self):
-        """The rule reads each reached batch's position, not a gate blacklist.
+    def test_every_reached_batch_must_still_have_its_owner_edge_ahead(self):
+        """One queued target cannot erase another target's passed edge.
 
-        This boundary reaches `queued` B2 as a declared target and `open` B1
-        through its invalidated evidence's revalidation scope.  B1 has left
-        the gate's position, but B2 has not, so the boundary still protects
-        something and stands.
+        This boundary reaches queued B2 directly and open B1 through the
+        invalidated evidence scope.  B2 can still run admission, but B1 cannot;
+        owner projection is enforced per reached batch, so the current plan
+        must roll B1 back or route its impact to a successor.
         """
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         plan = self.passed_only_boundary_plan(invalidated_gate, ["B2"])
@@ -1254,8 +1687,11 @@ class AdoptStandardsTests(unittest.TestCase):
         items = check_queue.validate_runtime(self.root)["items_by_id"]
         self.assertEqual("queued", items["B2"]["state"])
         self.assertEqual("open", items["B1"]["state"])
-        self.assertEqual([], [error for error in self.plan_errors(plan)
-                              if "records protection nothing" in error])
+        passed = [error for error in self.plan_errors(plan)
+                  if "already passed Standards revalidation owner edge" in error]
+        self.assertEqual(1, len(passed), passed)
+        self.assertIn("B1 (open: required-queue-admission)", passed[0])
+        self.assertNotIn("B2 (queued", passed[0])
 
     def evidence_scoped_boundary_plan(self, invalidated_gate, scope_ids):
         """Reach a batch only through invalidated-evidence scope."""
@@ -1285,19 +1721,47 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertEqual([], [error for error in errors
                               if "no gate rerun" in error])
         dead = [error for error in errors
-                if "records protection nothing will ever apply" in error]
+                if "already passed Standards revalidation owner edge" in error]
 
         self.assertEqual(1, len(dead), errors)
         self.assertIn("INV-B1-READY", dead[0])
         self.assertIn("required-queue-admission", dead[0])
-        self.assertIn("open batch B1", dead[0])
+        self.assertIn("B1 (open", dead[0])
 
     def test_an_evidence_scoped_boundary_a_batch_can_claim_still_stands(self):
         """Same route, live position: nothing is refused."""
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         plan = self.evidence_scoped_boundary_plan(invalidated_gate, ["B2"])
         self.assertEqual([], [error for error in self.plan_errors(plan)
-                              if "records protection nothing" in error])
+                              if "already passed Standards revalidation owner "
+                              "edge" in error])
+
+    def test_evidence_scope_cannot_route_a_new_owner_claim_to_closed_batch(self):
+        """Terminal protection covers scope-derived as well as direct targets."""
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        plan = self.evidence_scoped_boundary_plan(invalidated_gate, ["B1"])
+        runtime = check_queue.validate_runtime(self.root)
+        queue = copy.deepcopy(runtime["queue"])
+        item = next(row for row in queue["required_queue"]
+                    if row["id"] == "B1")
+        item["state"] = "closed"
+        item["hold_state"] = "none"
+
+        current = check_queue.standards_adoption_plan_errors(
+            self.root, plan, catalog=runtime["receipt_catalog"], queue=queue,
+            progress=runtime["progress"], validate_current=True)
+        terminal = [error for error in current
+                    if "post-admission owner claims on terminal batch" in error]
+        self.assertEqual(1, len(terminal), current)
+        self.assertIn("B1", terminal[0])
+        self.assertIn("successor", terminal[0])
+
+        replay = check_queue.standards_adoption_plan_errors(
+            self.root, plan, catalog=runtime["receipt_catalog"], queue=queue,
+            progress=runtime["progress"], validate_current=False)
+        self.assertEqual([], [error for error in replay
+                              if "post-admission owner claims on terminal "
+                              "batch" in error])
 
     def test_a_sealed_plan_of_only_passed_gates_still_replays_clean(self):
         """History is replayed under the rules of its own day.
@@ -1310,246 +1774,16 @@ class AdoptStandardsTests(unittest.TestCase):
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
         plan = self.passed_only_boundary_plan(invalidated_gate, ["B1"])
         self.assertEqual(1, len([error for error in self.plan_errors(plan)
-                                 if "records protection nothing" in error]))
+                                 if "already passed Standards revalidation "
+                                 "owner edge" in error]))
         runtime = check_queue.validate_runtime(self.root)
         replay = check_queue.standards_adoption_plan_errors(
             self.root, plan, catalog=runtime["receipt_catalog"],
             queue=runtime["queue"], progress=runtime["progress"],
             validate_current=False)
         self.assertEqual([], [error for error in replay
-                              if "records protection nothing" in error])
-
-    def test_deterministic_boundary_gate_receipt_satisfies_revalidation(self):
-        """A named `check_links` boundary must be satisfiable, not a deadlock.
-
-        The boundary consumer requires the Gate receipt to carry `task_id`,
-        `standards_version`, and `selected_profile_manifest` equal to the
-        post-adoption Queue.  A producer that omits them can never clear the
-        boundary it was named for.
-        """
-        registry = (self.root /
-                    "kernel/K00 Standards Control/12 Control Registry.md")
-        registry.write_text(
-            registry.read_text(encoding="utf-8") +
-            "| wiki-link-integrity | check_links | 1.5.0 "
-            "| link-check-summary | * | * | not-batch-scoped |\n",
-            encoding="utf-8")
-        invalidated_gate = self.open_b1_and_hold_for_revalidation()
-        self.plan(invalidated_receipt=invalidated_gate, overrides={
-            "changed_predicates": [{
-                "predicate_id": "PRED-LINK-001",
-                "owner_path": self.GOVERNANCE,
-                "change_kind": "modified",
-                "affected_gate_ids": ["wiki-link-integrity"],
-            }],
-            "invalidated_evidence": [{
-                "receipt_id": invalidated_gate,
-                "predicate_ids": ["PRED-LINK-001"],
-                "dimension_ids": ["coverage_and_integration"],
-                "boundary_ids": ["INV-B1-LINKS"],
-                "reason_code": "predicate-changed",
-                "revalidation_scope_ids": ["B1"],
-            }],
-            "invalidation_boundaries": [{
-                "boundary_id": "INV-B1-LINKS",
-                "predicate_ids": ["PRED-LINK-001"],
-                "target_kind": "batch",
-                "target_ids": ["B1"],
-                "required_gate_ids": ["wiki-link-integrity"],
-            }],
-            "boundary_gate_reruns": ["wiki-link-integrity"],
-        })
-        code, output = self.command(apply=True, actor="integrator")
-        self.assertEqual(0, code, output)
-
-        receipts = self.root / ".cambium/receipts/links.jsonl"
-        completed = self.run_tool(
-            "check_links.py", "--receipts", str(receipts))
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        summary = [
-            json.loads(line) for line in
-            receipts.read_text(encoding="utf-8").splitlines()
-        ][-1]
-        self.assertEqual("link-check-summary", summary["check"])
-
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        for field in ("task_id", "standards_version",
-                      "selected_profile_manifest"):
-            self.assertEqual(result["queue"].get(field), summary.get(field),
-                             field)
-        self.assertEqual("3.1.0", summary["standards_version"])
-        context, errors = check_queue.standards_revalidation_context(
-            result, "B1", {"wiki-link-integrity": summary["receipt_id"]})
-        self.assertEqual([], errors)
-        self.assertEqual(
-            [{"required_gate_id": "wiki-link-integrity",
-              "receipt_id": summary["receipt_id"]}],
-            context["boundary_gate_receipts"])
-
-    def dimension_boundary_plan(self, invalidated_gate, dimension):
-        """Name `content-correctness` at a boundary raised in one dimension."""
-        registry = (self.root /
-                    "kernel/K00 Standards Control/12 Control Registry.md")
-        registry.write_text(
-            registry.read_text(encoding="utf-8") +
-            "| content-correctness | manual-attestation | 1.0.0 "
-            "| content-correctness | * "
-            "| content_and_depth, formula_and_numeric, rendering, "
-            "source_and_currentness, structure_and_links "
-            "| not-batch-scoped |\n",
-            encoding="utf-8")
-        self.plan(invalidated_receipt=invalidated_gate, overrides={
-            "changed_predicates": [{
-                "predicate_id": "PRED-CONTENT-001",
-                "owner_path": self.GOVERNANCE,
-                "change_kind": "modified",
-                "affected_gate_ids": ["content-correctness"],
-            }],
-            "invalidated_evidence": [{
-                "receipt_id": invalidated_gate,
-                "predicate_ids": ["PRED-CONTENT-001"],
-                "dimension_ids": [dimension],
-                "boundary_ids": ["INV-B1-CONTENT"],
-                "reason_code": "predicate-changed",
-                "revalidation_scope_ids": ["B1"],
-            }],
-            "invalidation_boundaries": [{
-                "boundary_id": "INV-B1-CONTENT",
-                "predicate_ids": ["PRED-CONTENT-001"],
-                "target_kind": "batch",
-                "target_ids": ["B1"],
-                "required_gate_ids": ["content-correctness"],
-            }],
-            "boundary_gate_reruns": ["content-correctness"],
-        })
-        code, output = self.command(apply=True, actor="integrator")
-        self.assertEqual(0, code, output)
-
-    def attestation(self, receipt_id, dimension):
-        """Record one hand-written `content-correctness` attestation."""
-        queue = self.load(check_queue.QUEUE_PATH)
-        kblib.write_receipts(
-            self.root / ".cambium/receipts/attestations.jsonl", [{
-                "receipt_id": receipt_id,
-                "gate_id": "content-correctness",
-                "tool": check_queue.MANUAL_ATTESTATION_TOOL,
-                "tool_version":
-                    check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-                "check": "content-correctness",
-                "dimension": dimension,
-                "target": "B1", "result": "pass", "invalidated_by": None,
-                "details": "re-reviewed after adoption",
-                "checked_at": (datetime.now(timezone.utc) +
-                               timedelta(hours=1)).strftime(
-                                   "%Y-%m-%dT%H:%M:%SZ"),
-                "task_id": queue["task_id"],
-                "standards_version": queue["standards_version"],
-                "selected_profile_manifest":
-                    queue["selected_profile_manifest"],
-            }])
-        return receipt_id
-
-    def test_a_boundary_is_owed_the_dimension_it_was_raised_in(self):
-        """F01-F03: one Gate ID, several dimensions, one obligation.
-
-        `content-correctness` covers five receipt dimensions, so its producer
-        tuple is the same for all five.  An attestation filed under one of
-        them used to satisfy a boundary raised over another.
-        """
-        invalidated_gate = self.open_b1_and_hold_for_revalidation()
-        self.dimension_boundary_plan(invalidated_gate, "formula_and_numeric")
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-
-        wrong = self.attestation("attest-structure", "structure_and_links")
-        result = check_queue.validate_runtime(self.root)
-        _, errors = check_queue.standards_revalidation_context(
-            result, "B1", {"content-correctness": wrong})
-        self.assertTrue(
-            any("does not match registered Gate ID content-correctness"
-                in error for error in errors), errors)
-
-        right = self.attestation("attest-formula", "formula_and_numeric")
-        result = check_queue.validate_runtime(self.root)
-        context, errors = check_queue.standards_revalidation_context(
-            result, "B1", {"content-correctness": right})
-        self.assertEqual([], errors)
-        self.assertEqual(
-            [{"required_gate_id": "content-correctness",
-              "receipt_id": right}],
-            context["boundary_gate_receipts"])
-
-    def test_a_boundary_naming_an_unregisterable_dimension_fails_closed(self):
-        """The plan and the registry cannot both hold, so neither is guessed."""
-        invalidated_gate = self.open_b1_and_hold_for_revalidation()
-        self.dimension_boundary_plan(
-            invalidated_gate, "coverage_and_integration")
-        receipt = self.attestation("attest-coverage",
-                                   "coverage_and_integration")
-        result = check_queue.validate_runtime(self.root)
-        _, errors = check_queue.standards_revalidation_context(
-            result, "B1", {"content-correctness": receipt})
-        self.assertTrue(
-            any("which K00/12 does not register for it" in error
-                for error in errors), errors)
-
-    def test_boundary_gate_receipt_without_identity_cannot_clear(self):
-        """Dropping the bound identity must fail closed, not silently pass."""
-        registry = (self.root /
-                    "kernel/K00 Standards Control/12 Control Registry.md")
-        registry.write_text(
-            registry.read_text(encoding="utf-8") +
-            "| wiki-link-integrity | check_links | 1.5.0 "
-            "| link-check-summary | * | * | not-batch-scoped |\n",
-            encoding="utf-8")
-        invalidated_gate = self.open_b1_and_hold_for_revalidation()
-        self.plan(invalidated_receipt=invalidated_gate, overrides={
-            "changed_predicates": [{
-                "predicate_id": "PRED-LINK-001",
-                "owner_path": self.GOVERNANCE,
-                "change_kind": "modified",
-                "affected_gate_ids": ["wiki-link-integrity"],
-            }],
-            "invalidated_evidence": [{
-                "receipt_id": invalidated_gate,
-                "predicate_ids": ["PRED-LINK-001"],
-                "dimension_ids": ["coverage_and_integration"],
-                "boundary_ids": ["INV-B1-LINKS"],
-                "reason_code": "predicate-changed",
-                "revalidation_scope_ids": ["B1"],
-            }],
-            "invalidation_boundaries": [{
-                "boundary_id": "INV-B1-LINKS",
-                "predicate_ids": ["PRED-LINK-001"],
-                "target_kind": "batch",
-                "target_ids": ["B1"],
-                "required_gate_ids": ["wiki-link-integrity"],
-            }],
-            "boundary_gate_reruns": ["wiki-link-integrity"],
-        })
-        code, output = self.command(apply=True, actor="integrator")
-        self.assertEqual(0, code, output)
-        receipts = self.root / ".cambium/receipts/links.jsonl"
-        completed = self.run_tool(
-            "check_links.py", "--receipts", str(receipts))
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        # Reproduce the pre-fix producer byte-for-byte: same Gate ID, same
-        # producer tuple, no bound Queue identity.
-        rows = [json.loads(line) for line in
-                receipts.read_text(encoding="utf-8").splitlines()]
-        for row in rows:
-            for field in kblib.RECEIPT_IDENTITY_FIELDS:
-                row.pop(field, None)
-        receipts.write_text(
-            "".join(json.dumps(row, ensure_ascii=False) + "\n"
-                    for row in rows), encoding="utf-8")
-        summary = rows[-1]
-        result = check_queue.validate_runtime(self.root)
-        _context, errors = check_queue.standards_revalidation_context(
-            result, "B1", {"wiki-link-integrity": summary["receipt_id"]})
-        self.assertTrue(any("standards_version" in error for error in errors),
-                        errors)
+                              if "already passed Standards revalidation owner "
+                              "edge" in error])
 
     def test_affected_open_and_merge_ready_batches_fail_without_safe_state(self):
         invalidated_gate = self.open_b1_and_hold_for_revalidation()
@@ -2632,6 +2866,340 @@ class AdoptStandardsTests(unittest.TestCase):
             check_queue.accounted_standards_versions(
                 {"contract": {"standards_version": "3.0.0"},
                  "standards_adoptions": []}))
+
+    # ------------------------------------------------------------------
+    # Sealing must not un-replay a consumption a Queue transition recorded.
+    #
+    # The failure these pin: sealing kept every item's transition receipts
+    # hot but moved the aggregates those transitions bind.  The consumption
+    # replay resolves that aggregate through the catalog, the catalog never
+    # reads the cold namespace, so the replay quietly found nothing and
+    # reported bindings the transition had discharged as outstanding again
+    # -- on batches by then closed, which `--require-revalidation` refuses.
+    # Zero errors were reported the whole time.
+    # ------------------------------------------------------------------
+
+    # Borrowed from the Queue suite, which drives the same fixture: this
+    # file can adopt and revalidate but has no hand-built close bundle, and
+    # `check_batch_close.py` itself needs scaffolding this fixture lacks.
+    append_receipt = UpdateQueueTests.append_receipt
+    queue_gate = UpdateQueueTests.queue_gate
+    close_gate = UpdateQueueTests.close_gate
+
+    # Named fields whose consumers may resolve a sealed receipt.  Each entry
+    # is a promise that a declared sealed branch handles that field; the
+    # reachability assertion below is what keeps the promise a closed set
+    # rather than a hand-written guess that drifts.
+    SEALED_BRANCH_FIELDS = frozenset((
+        # the closed-bundle identity branch (_sealed_closed_bundle_errors)
+        "close_gate_receipt", "queue_consistency_receipt",
+        "delta_apply_receipt",
+        # identity comparison and existence-only resolution
+        # (_require_receipt with no `expected`)
+        "evidence_receipt", "revalidation_receipts",
+        # the body branch added with this rule (_Catalog.resolve_sealed)
+        "standards_revalidation_receipt",
+    ))
+
+    def reachable_receipt_references(self, result):
+        """``(field, receipt_id)`` pairs reached through the declared schema.
+
+        Walks `check_queue.RECEIPT_REFERENCE_FIELDS` -- the named structural
+        inventory of how a record references a receipt -- rather than
+        sweeping values for anything that looks like an ID.  A sweep would
+        answer a different question: it finds strings that happen to be
+        receipt IDs, while the defect was about *fields* whose consumers
+        resolve one.  Walking the schema also means a new reference field
+        that nobody registered is invisible here and caught by the paired
+        inventory test instead, which is where that failure belongs.
+        """
+        inventory = check_queue.RECEIPT_REFERENCE_FIELDS
+        catalog = result["receipt_catalog"]
+        found = []
+
+        def visit(record, group):
+            spec = inventory[group]
+            for field in spec["scalar"]:
+                value = record.get(field)
+                if isinstance(value, str) and value:
+                    found.append((field, value))
+            for field in spec["list"]:
+                for value in record.get(field) or []:
+                    if isinstance(value, str) and value:
+                        found.append((field, value))
+            for field, child_group in spec["nested"]:
+                child = record.get(field)
+                for nested in (child if isinstance(child, list) else [child]):
+                    if isinstance(nested, dict):
+                        visit(nested, child_group)
+
+        for item in (result.get("queue") or {}).get("required_queue") or []:
+            visit(item, "item")
+            for receipt_id in item.get("transition_receipts") or []:
+                entry = catalog.get(receipt_id)
+                if entry is not None:
+                    visit(entry[1], "transition")
+        return found
+
+    def seal(self, *arguments):
+        return subprocess.run(
+            [sys.executable, str(TOOLS / "seal_receipts.py"),
+             str(self.root), *arguments],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False)
+
+    def closed_b1_that_consumed_an_aggregate(self):
+        """Drive B1 through a real revalidation and out to `closed`."""
+        invalidated_gate = self.open_b1_and_hold_for_revalidation()
+        self.lifecycle_boundary_plan(invalidated_gate)
+        aggregate = self.revalidation_aggregate(self.link_gate_receipt())
+        cleared_at = self.clear_b1_hold(aggregate)
+        self.merge_and_apply_b1(self.seconds_after(cleared_at, 1))
+        gate = self.queue_gate()
+        close_gate = self.close_gate("B1", gate)
+        result = check_queue.validate_runtime(self.root)
+        applied = next(entry for entry in result["applied_delta_receipts"]
+                       if entry.get("batch") == "B1")
+        completed = self.run_tool(
+            "update_queue.py", "--id", "B1", "--transition", "closed",
+            "--gate-receipt", gate, "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", applied["selected_receipt"],
+            "--expected-state-revision",
+            str(result["queue"]["state_revision"]),
+            "--expected-sha256", result["queue_sha256"],
+            "--actor-role", "integrator",
+            "--at", self.seconds_after(cleared_at, 3), "--apply")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        final = check_queue.validate_runtime(self.root)
+        self.assertEqual([], final["errors"])
+        self.assertEqual("closed", final["items_by_id"]["B1"]["state"])
+        # The premise of every test below: this consumption really happened.
+        self.assertEqual([], check_queue.outstanding_standards_revalidation(
+            final, "B1"))
+        return aggregate["receipt_id"], final
+
+    def seal_ignoring_the_rule(self, result):
+        """Reproduce an archive sealed by the protocol that had no rule.
+
+        The repair has to work on instances already in this state, so it is
+        tested against a real archive built the way 1.2.0 built one, not
+        against a hand-placed cold row.
+        """
+        with mock.patch.object(seal_receipts, "_transition_bound_aggregates",
+                               return_value=()):
+            by_file = seal_receipts.plan_seal(str(self.root), result)
+            seal_receipts.apply_seal(str(self.root), result, by_file,
+                                     seal_receipts.SEAL_RECEIPTS_PATH)
+        return by_file
+
+    def test_a_consumed_revalidation_aggregate_is_never_sealed(self):
+        aggregate_id, before = self.closed_b1_that_consumed_an_aggregate()
+        planned = {receipt_id for rows in
+                   seal_receipts.plan_seal(str(self.root), before).values()
+                   for receipt_id, _ in rows}
+        self.assertNotIn(aggregate_id, planned)
+        self.assertTrue(planned, "the seal must still be sealing something")
+
+        completed = self.seal("--apply")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        after = check_queue.validate_runtime(self.root)
+        self.assertEqual([], after["errors"])
+        self.assertIn(aggregate_id, after["receipt_catalog"])
+        self.assertNotIn(aggregate_id, after["receipt_catalog"].cold)
+        self.assertEqual([], check_queue.outstanding_standards_revalidation(
+            after, "B1"))
+
+    def test_an_archive_sealed_before_the_rule_still_replays(self):
+        aggregate_id, before = self.closed_b1_that_consumed_an_aggregate()
+        self.seal_ignoring_the_rule(before)
+
+        after = check_queue.validate_runtime(self.root)
+        catalog = after["receipt_catalog"]
+        self.assertNotIn(aggregate_id, catalog,
+                         "the fixture must really have sealed it")
+        self.assertIn(aggregate_id, catalog.cold)
+        # The projection alone cannot answer this: the consumed keys are in
+        # `revalidation_bindings` and the retraction test reads
+        # `invalidated_by`, and the projection carries neither.
+        self.assertNotIn("revalidation_bindings", catalog.cold[aggregate_id])
+        body = catalog.resolve_sealed(aggregate_id)[1]
+        self.assertTrue(body.get("revalidation_bindings"))
+
+        self.assertEqual([], after["errors"])
+        self.assertEqual([], check_queue.outstanding_standards_revalidation(
+            after, "B1"))
+
+    def test_a_sealed_body_whose_bytes_drifted_does_not_resolve(self):
+        aggregate_id, before = self.closed_b1_that_consumed_an_aggregate()
+        self.seal_ignoring_the_rule(before)
+        catalog = check_queue.validate_runtime(self.root)["receipt_catalog"]
+        segment = self.root / catalog.cold[aggregate_id]["segment"]
+        payload = segment.read_bytes()
+        # A same-length edit: the projection still names this line, and only
+        # re-proving the record's own hash at the read can tell.
+        segment.write_bytes(payload.replace(b'"result": "pass"',
+                                            b'"result": "PASS"', 1))
+        fresh = check_queue._receipt_catalog(str(self.root), [])
+        fresh.cold = catalog.cold
+        self.assertIsNone(fresh.resolve_sealed(aggregate_id))
+
+    def test_an_unresolvable_consumed_aggregate_fails_the_run_closed(self):
+        aggregate_id, before = self.closed_b1_that_consumed_an_aggregate()
+        self.seal_ignoring_the_rule(before)
+        catalog = check_queue.validate_runtime(self.root)["receipt_catalog"]
+        (self.root / catalog.cold[aggregate_id]["segment"]).unlink()
+
+        after = check_queue.validate_runtime(self.root)
+        self.assertTrue(any(
+            aggregate_id in error and
+            "resolves neither in the hot register" in error
+            for error in after["errors"]), after["errors"])
+        # The replay cannot know what it cannot read, so B1's bindings do
+        # come back as outstanding here -- that is exactly the reading this
+        # rule refuses to let pass unremarked.  The guarantee is that the
+        # run is not clean while it says so, and that recovery is routed to
+        # the unreachable evidence rather than to a revalidation the closed
+        # batch could never run.
+        self.assertIn(
+            "B1", after.get("standards_revalidation_outstanding") or {})
+        self.assertEqual("repair-runtime",
+                         check_queue._resume_next_action(after,
+                                                         after["errors"]))
+
+    def test_the_reference_inventory_matches_the_record_schemas(self):
+        """The inventory may not drift from the records it describes."""
+        inventory = check_queue.RECEIPT_REFERENCE_FIELDS
+        item_fields = (set(inventory["item"]["scalar"]) |
+                       set(inventory["item"]["list"]) |
+                       {field for field, _ in inventory["item"]["nested"]})
+        self.assertLessEqual(item_fields, check_queue.QUEUE_ITEM_FIELDS)
+        invalidation_fields = (set(inventory["invalidation"]["scalar"]) |
+                               set(inventory["invalidation"]["list"]))
+        # An invalidation record's schema is both halves: a rollback taken
+        # after the delta was applied additionally names the application it
+        # undoes, and that name is a receipt reference like any other.
+        self.assertLessEqual(
+            invalidation_fields,
+            check_queue.INVALIDATION_FIELDS |
+            check_queue.INVALIDATION_APPLIED_ROLLBACK_FIELDS)
+
+    def test_consumption_is_identical_across_the_seal(self):
+        """Sealing is a parse-cost move; it may not change an answer."""
+        _, before = self.closed_b1_that_consumed_an_aggregate()
+        consumed_before = check_queue._consumed_standards_revalidation_keys(
+            before["items_by_id"]["B1"], before["receipt_catalog"])
+        self.assertTrue(consumed_before, "the premise: something was consumed")
+
+        completed = self.seal("--apply")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        after = check_queue.validate_runtime(self.root)
+        self.assertTrue(after["receipt_catalog"].cold, "nothing sealed")
+        self.assertEqual(
+            consumed_before,
+            check_queue._consumed_standards_revalidation_keys(
+                after["items_by_id"]["B1"], after["receipt_catalog"]))
+
+    def test_consumption_survives_an_archive_sealed_before_the_rule(self):
+        _, before = self.closed_b1_that_consumed_an_aggregate()
+        consumed_before = check_queue._consumed_standards_revalidation_keys(
+            before["items_by_id"]["B1"], before["receipt_catalog"])
+        self.seal_ignoring_the_rule(before)
+        after = check_queue.validate_runtime(self.root)
+        self.assertEqual(
+            consumed_before,
+            check_queue._consumed_standards_revalidation_keys(
+                after["items_by_id"]["B1"], after["receipt_catalog"]))
+
+    def test_every_sealed_reference_a_named_field_makes_has_a_branch(self):
+        """The closed-set assertion whose absence let this ship.
+
+        `_hot_reference_ids` enumerates protected fields by hand while
+        consumers resolve receipt IDs from their own fields, so the defect
+        was never one missing field -- it was that nothing compared the two
+        sets.  Every reference the declared schema reaches that lands on a
+        sealed receipt must sit at a field with a declared sealed branch.
+        """
+        self.closed_b1_that_consumed_an_aggregate()
+        completed = self.seal("--apply")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        cold = result["receipt_catalog"].cold
+        self.assertTrue(cold, "nothing sealed; the assertion is vacuous")
+
+        references = self.reachable_receipt_references(result)
+        self.assertTrue(references, "the schema walk reached nothing")
+        sealed = [(field, receipt_id) for field, receipt_id in references
+                  if receipt_id in cold]
+        self.assertTrue(sealed, "no sealed reference was reached at all")
+        self.assertEqual(
+            [], [pair for pair in sealed
+                 if pair[0] not in self.SEALED_BRANCH_FIELDS],
+            "a record references a sealed receipt at a field no sealed "
+            "branch covers")
+
+    # ------------------------------------------------------------------
+    # `run-standards-revalidation:<id>` must name a batch its own producer
+    # would admit.  K00/12 gives that Gate the lifecycle cells `queued,
+    # open`, so the token was naming closed batches for an aggregate
+    # `--require-revalidation` refuses outright -- and because exactly one
+    # token is reported per run, it hid every later row behind it.
+    # ------------------------------------------------------------------
+
+    def revalidation_result(self, **item):
+        """A reduced resume context carrying one outstanding batch."""
+        record = {"id": "B1", "order": 1, "state": "queued",
+                  "hold_state": "none"}
+        record.update(item)
+        return {
+            "standards_revalidation_outstanding": {
+                "B1": [{"adoption_id": "SA-001", "boundary_id": "INV-B1",
+                        "required_gate_id": "batch-close"}]},
+            "items_by_id": {"B1": record},
+            "progress": {"task_state": item.pop("task_state", "active")},
+            "queue": {"required_queue": [{"id": "B1"}]},
+        }
+
+    def test_next_action_only_names_a_batch_the_producer_admits(self):
+        cases = (
+            ({"state": "queued"}, True),
+            ({"state": "open", "hold_state": "revalidation-required"}, True),
+            ({"state": "open", "hold_state": "none"}, False),
+            ({"state": "closed"}, False),
+            ({"state": "cancelled"}, False),
+            ({"state": "merge-ready"}, False),
+        )
+        for item, admitted in cases:
+            with self.subTest(**item):
+                result = self.revalidation_result(**item)
+                eligible = (
+                    check_queue.standards_revalidation_producer_eligibility(
+                        result, "B1") is None)
+                self.assertEqual(admitted, eligible)
+                self.assertEqual(
+                    ["B1"] if admitted else [],
+                    check_queue._actionable_revalidation_batches(result))
+                token = check_queue._resume_next_action(result, [])
+                if admitted:
+                    self.assertEqual("run-standards-revalidation:B1", token)
+                else:
+                    self.assertNotIn("run-standards-revalidation", token)
+
+    def test_a_named_batch_always_passes_the_producer_gate(self):
+        """The acceptance condition, stated as the invariant it is."""
+        for state in sorted(check_queue.STATES):
+            for hold in sorted(check_queue.HOLDS):
+                for task_state in ("active", "paused"):
+                    result = self.revalidation_result(
+                        state=state, hold_state=hold, task_state=task_state)
+                    for batch_id in check_queue._actionable_revalidation_batches(
+                            result):
+                        self.assertIsNone(
+                            check_queue
+                            .standards_revalidation_producer_eligibility(
+                                result, batch_id),
+                            "named %s at state=%s hold=%s task=%s, which the "
+                            "producer refuses" %
+                            (batch_id, state, hold, task_state))
 
 
 if __name__ == "__main__":

@@ -22,8 +22,10 @@ verdict is left to humans/maintenance rounds; run only during maintenance
 rounds and governance tasks.
 
 Usage: python3 Tools/check_moc.py <root> [--exclude COMPONENT ...] [--receipts PATH]
+       [--json]
 """
-import argparse, os, re, sys
+import contextlib
+import os, re, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
@@ -68,16 +70,51 @@ def find_mocs(root, excludes):
     return sorted(mocs)
 
 
-def main():
-    ap = argparse.ArgumentParser(
-        description="MOC Module Index consistency candidate detection")
-    ap.add_argument("root", help="scan root directory")
-    ap.add_argument("--exclude", action="append", default=[],
-                    help="path component to exclude (repeatable); no semantic "
-                         "directory name is excluded by default")
-    ap.add_argument("--receipts", help="JSONL path to append a machine-readable receipt to")
-    args = ap.parse_args()
+# ---------------------------------------------------------------------------
+# `--json` output (machine-readable receipts)
+#
+# Purely additive: without the flag not one byte of this tool's behaviour
+# moves.  With it, everything written for a person goes to stderr and stdout
+# carries exactly one canonical JSON array -- the receipt objects this run
+# handed to the receipt writer, serialized verbatim.
+#
+# Nothing is filtered or renamed.  `schemas/receipt.template.jsonl` guarantees
+# only the base fields every receipt carries; extension fields differ per
+# producer and are discoverable from the receipt itself, which is why that
+# template says its examples are "not the complete set".  A field allowlist
+# here would silently drop exactly the fields a caller came for.
+#
+# Serialization goes through `kblib.canonical_json_bytes`; this module owns no
+# serializer.  The flag changes no verdict, no exit code, and no receipt
+# write.  A run that writes no receipt -- a dry run, or a refusal -- emits the
+# empty array; a usage error still exits through argparse before any of this,
+# leaving stdout empty and the reason on stderr.
+# ---------------------------------------------------------------------------
+JSON_HELP = ("write the receipts this run produced to stdout as one canonical "
+             "JSON array and move the human-readable report to stderr; "
+             "receipts written, verdicts, and exit codes are unchanged")
 
+_JSON_RECEIPTS = []
+
+
+def _record_receipts(receipts):
+    """Remember the exact receipt objects handed to the receipt writer."""
+    _JSON_RECEIPTS.extend(receipts)
+    return receipts
+
+
+def _run_reporting_json(runner):
+    """Run `runner`, reserving stdout for JSON and giving stderr the prose."""
+    stdout = sys.stdout
+    with contextlib.redirect_stdout(sys.stderr):
+        exit_code = runner()
+    stdout.write(kblib.canonical_json_bytes(_JSON_RECEIPTS).decode("utf-8"))
+    stdout.write("\n")
+    stdout.flush()
+    return exit_code
+
+
+def _run(args):
     excludes = set(args.exclude)
     root = args.root
     mocs = find_mocs(root, excludes)
@@ -135,8 +172,24 @@ def main():
             TOOL, TOOL_VERSION, "moc-check-summary", "full-vault", "pass",
             "Module Index sections match actual H2 headings "
             "(%d MOC file(s) scanned)" % len(mocs), 1))
-    kblib.write_receipts(args.receipts, receipts)
+    kblib.write_receipts(args.receipts, _record_receipts(receipts))
     return kblib.exit_code(receipts)
+
+
+def main():
+    ap = kblib.ArgumentParser(
+        description="MOC Module Index consistency candidate detection")
+    ap.add_argument("root", help="scan root directory")
+    ap.add_argument("--exclude", action="append", default=[],
+                    help="path component to exclude (repeatable); no semantic "
+                         "directory name is excluded by default")
+    ap.add_argument("--receipts", help="JSONL path to append a machine-readable receipt to")
+    ap.add_argument("--json", action="store_true", help=JSON_HELP)
+    args = ap.parse_args()
+
+    if not args.json:
+        return _run(args)
+    return _run_reporting_json(lambda: _run(args))
 
 
 if __name__ == "__main__":

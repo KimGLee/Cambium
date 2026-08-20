@@ -371,8 +371,7 @@ class CheckBatchCloseTests(unittest.TestCase):
 
     def test_configured_corpus_plan_child_is_consumed_by_batch_close(self):
         self.install_configured_corpus_plan()
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
         self.assertEqual(0, completed.returncode, completed.stdout)
         close_gate = self.output_value(completed.stdout, "close_gate_receipt")
         consistency = self.output_value(
@@ -423,6 +422,23 @@ class CheckBatchCloseTests(unittest.TestCase):
         for _path, receipt in historical_catalog.values():
             if receipt.get("tool") == check_batch_close.TOOL:
                 receipt["tool_version"] = "1.6.0"
+                if receipt.get("check") == "batch_global_review_attestation":
+                    # A 1.6.0-era attestation carried the full inline
+                    # disposition list; simulating that era from a compact
+                    # 1.9.0 body must restore the legacy shape from the
+                    # externalized evidence the compact writer produced.
+                    evidence_rows = []
+                    evidence_path = receipt.get("candidate_evidence_path")
+                    if evidence_path:
+                        evidence_rows = [
+                            json.loads(line)
+                            for line in (self.root / evidence_path)
+                            .read_text(encoding="utf-8").splitlines()
+                            if line.strip()
+                        ]
+                    receipt["candidate_dispositions"] = evidence_rows
+                    receipt["accepted_candidate_ids"] = [
+                        row["candidate_id"] for row in evidence_rows]
         historical_kwargs = {
             "item_id": "B1",
             "task_id": runtime["queue"]["task_id"],
@@ -488,8 +504,7 @@ class CheckBatchCloseTests(unittest.TestCase):
                 "  fixture: stable", "  fixture: slow"),
             encoding="utf-8")
 
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
 
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("vocab-artifact-stale", completed.stdout)
@@ -502,8 +517,7 @@ class CheckBatchCloseTests(unittest.TestCase):
                     if line.startswith(prefix))
 
     def test_production_cli_generates_bundle_consumed_by_close(self):
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
         self.assertEqual(0, completed.returncode, completed.stdout)
         consistency = self.output_value(
             completed.stdout, "queue_consistency_receipt")
@@ -552,8 +566,7 @@ class CheckBatchCloseTests(unittest.TestCase):
         """K12/10 producer-era identity: a sealed close bundle's Queue
         consistency snapshot is not re-judged against the current
         check_queue constant after an upgrade."""
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
         self.assertEqual(0, completed.returncode, completed.stdout)
         consistency = self.output_value(
             completed.stdout, "queue_consistency_receipt")
@@ -583,8 +596,7 @@ class CheckBatchCloseTests(unittest.TestCase):
         foreign.write_text(
             "---\ntype: service-case\npriority: P9\n---\n# Foreign Case\n",
             encoding="utf-8")
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
         self.assertEqual(0, completed.returncode, completed.stdout)
         self.assertNotIn("service-case", completed.stdout)
 
@@ -609,8 +621,7 @@ class CheckBatchCloseTests(unittest.TestCase):
             check_batch_close._assert_work_spec_unchanged(self.root, item)
 
     def test_simple_batch_close_receipt_must_bind_explicit_null_work_spec(self):
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
         self.assertEqual(0, completed.returncode, completed.stdout)
         close_gate = self.output_value(completed.stdout, "close_gate_receipt")
         consistency = self.output_value(
@@ -650,8 +661,7 @@ class CheckBatchCloseTests(unittest.TestCase):
                                     for error in errors), errors)
 
     def test_close_evidence_from_prior_work_spec_binding_is_not_reusable(self):
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
         self.assertEqual(0, completed.returncode, completed.stdout)
         close_gate = self.output_value(completed.stdout, "close_gate_receipt")
         consistency = self.output_value(
@@ -677,8 +687,7 @@ class CheckBatchCloseTests(unittest.TestCase):
                             for error in errors), errors)
 
     def test_resume_recovers_published_bundle_when_producer_stdout_is_lost(self):
-        published = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        published = self.batch_close()
         self.assertEqual(0, published.returncode, published.stdout)
         consistency = self.output_value(
             published.stdout, "queue_consistency_receipt")
@@ -727,8 +736,7 @@ class CheckBatchCloseTests(unittest.TestCase):
                       resumed.stdout)
 
     def test_resume_rejects_close_bundle_after_repository_snapshot_changes(self):
-        published = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        published = self.batch_close()
         self.assertEqual(0, published.returncode, published.stdout)
         close_gate = self.output_value(published.stdout, "close_gate_receipt")
         topic = self.root / "Topics/A.md"
@@ -746,13 +754,11 @@ class CheckBatchCloseTests(unittest.TestCase):
                       resumed.stdout)
 
     def test_resume_selects_latest_of_multiple_current_close_bundles(self):
-        first = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        first = self.batch_close()
         self.assertEqual(0, first.returncode, first.stdout)
         first_close = self.output_value(first.stdout, "close_gate_receipt")
         time.sleep(1.1)
-        second = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        second = self.batch_close()
         self.assertEqual(0, second.returncode, second.stdout)
         second_consistency = self.output_value(
             second.stdout, "queue_consistency_receipt")
@@ -910,10 +916,16 @@ class CheckBatchCloseTests(unittest.TestCase):
             kblib.profile_execution_default_overrides(manifest_text))
 
     def test_candidates_require_exact_id_or_type_disposition(self):
+        duplicate = self.root / "Other/A.md"
+        duplicate.parent.mkdir()
+        duplicate.write_text("# A duplicate basename\n", encoding="utf-8")
         completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("lack an explicit ID/type disposition", completed.stdout)
-        self.assertIn("type=check_vocab:frontmatter-missing", completed.stdout)
+        self.assertIn("fresh candidate(s) lack an explicit ID/type disposition",
+                      completed.stdout)
+        self.assertIn(
+            "type=check_batch_close:duplicate-markdown-basename",
+            completed.stdout)
         records = []
         for path in (self.root / ".cambium/receipts").glob("*.jsonl"):
             records.extend(json.loads(line) for line in path.read_text(
@@ -924,6 +936,35 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertEqual("fail", attempts[0]["result"])
         self.assertNotIn("closed_list_evidence", attempts[0])
         self.assertFalse((self.root / ".cambium/tmp/state-writer.lock").exists())
+
+    def test_durable_selector_is_expanded_into_current_exact_evidence(self):
+        duplicate = self.root / "Other/A.md"
+        duplicate.parent.mkdir()
+        duplicate.write_text("# A duplicate basename\n", encoding="utf-8")
+        completed = self.batch_close(
+            "--accept-while-unchanged-type",
+            "check_batch_close:duplicate-markdown-basename")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        attestation_id = self.output_value(
+            completed.stdout, "reviewer_attestation_receipt")
+        records = []
+        for path in (self.root / ".cambium/receipts").glob("*.jsonl"):
+            records.extend(json.loads(line) for line in path.read_text(
+                encoding="utf-8").splitlines() if line.strip())
+        attestation = next(row for row in records
+                           if row.get("receipt_id") == attestation_id)
+        self.assertEqual("exact-carry-v1",
+                         attestation["candidate_protocol"])
+        self.assertEqual(0, attestation["carried_candidate_count"])
+        self.assertEqual(1, attestation["fresh_candidate_count"])
+        evidence = [json.loads(line) for line in (
+            self.root / attestation["candidate_evidence_path"]
+        ).read_text(encoding="utf-8").splitlines() if line.strip()]
+        self.assertEqual(1, len(evidence))
+        self.assertEqual("accept-while-unchanged",
+                         evidence[0]["disposition"])
+        self.assertRegex(evidence[0]["observation_sha256"],
+                         r"^sha256:[0-9a-f]{64}$")
 
     def test_plain_json_and_scalar_json_fences_are_not_graph_inputs(self):
         ordinary = self.root / "application-data.json"
@@ -1039,8 +1080,7 @@ class CheckBatchCloseTests(unittest.TestCase):
             1,
         ), encoding="utf-8")
 
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
 
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("profiles/foreign/scan-config.yaml", completed.stdout)
@@ -1064,8 +1104,7 @@ class CheckBatchCloseTests(unittest.TestCase):
             1,
         ), encoding="utf-8")
 
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
 
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("slot-binding-unresolved", completed.stdout)
@@ -1079,8 +1118,7 @@ class CheckBatchCloseTests(unittest.TestCase):
             ".write('changed during gate')\n",
             encoding="utf-8",
         )
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("repository content changed while the Closed List ran",
                       completed.stdout)
@@ -1101,8 +1139,7 @@ class CheckBatchCloseTests(unittest.TestCase):
                 "r['positive_control_fingerprint']=control_fp\n"):
             source = source.replace(line, "")
         script.write_text(source, encoding="utf-8")
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn(
             "positive_control_result=passed", completed.stdout)
@@ -1121,8 +1158,7 @@ class CheckBatchCloseTests(unittest.TestCase):
             "if a.positive_controls_only:\n"
             "    raise SystemExit(1)\n")
         script.write_text(source, encoding="utf-8")
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("positive-control invocation", completed.stdout)
         self.assertIn("checker exited 1", completed.stdout)
@@ -1134,8 +1170,7 @@ class CheckBatchCloseTests(unittest.TestCase):
             "r['config_fingerprint']=(('sha256:' + 'f'*64) "
             "if a.positive_controls_only else config_fp)\n")
         script.write_text(source, encoding="utf-8")
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn(
             "positive-control and production summaries disagree on "
@@ -1148,8 +1183,7 @@ class CheckBatchCloseTests(unittest.TestCase):
             "r['scan_id']='foreign-scan'\n")
         script.write_text(source, encoding="utf-8")
 
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
 
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn(
@@ -1220,8 +1254,7 @@ class CheckBatchCloseTests(unittest.TestCase):
 
     def _assert_state_mutating_verifier_is_uncertain(self, exit_code):
         self._install_authoritative_state_mutating_verifier(exit_code)
-        completed = self.batch_close(
-            "--accept-candidate-type", "check_vocab:frontmatter-missing")
+        completed = self.batch_close()
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn(
             "authoritative state changed while the Closed List ran",
@@ -1273,7 +1306,6 @@ raise SystemExit(check_batch_close.main([
     "--reviewer", "fixture-reviewer",
     "--review-attestation",
     "I reviewed the exact listed candidates and merged snapshot.",
-    "--accept-candidate-type", "check_vocab:frontmatter-missing",
 ]))
 '''
         crashed = subprocess.run(

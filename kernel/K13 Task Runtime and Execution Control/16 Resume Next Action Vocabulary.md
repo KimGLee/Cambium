@@ -30,7 +30,7 @@ a comma-separated ascending list.
 | `run-batch-close-gate:<id>` | Same applied state, but no current bundle was recovered | Run `check_batch_close.py` for that batch before any Queue close, control input, other batch, or terminal archival |
 | `archive-terminal-runtime` | Task state is `complete` or `cancelled` | Preserve unfinished batch and control records as incomplete history, then archive or roll the namespace over explicitly; see below |
 | `reconcile-control-input` | Pending Guidance or pending Amendments are recorded | Classify, dispose, and log them per K13/04-K13/06 before batch work resumes |
-| `run-standards-revalidation:<id>` | Batches carry outstanding Standards or profile revalidation; the lowest-ordered is named | Run that batch's current boundary gates, aggregate with `check_queue.py --require-revalidation <id>`, and consume the receipt before merge, apply, or close |
+| `run-standards-revalidation:<id>` | Batches carry outstanding Standards or profile revalidation and the aggregate's producer would admit them; the lowest-ordered is named. One a producer refuses is never named | Run the aggregate with only the owner receipts currently due; native owners stay required at their ordinary transitions. Consume it before merge, apply, or close |
 | `run-terminal-audit` | Task state is `completion-candidate` | Preserve the frozen candidate and run the Terminal Audit; do not activate new work |
 | `apply-delta:<id>` | The lowest-ordered `merge-ready` batch has `hold_state` `none` and no current apply receipt | Apply its already written-out delta in serial merge; in-batch work is not redone |
 | `admit-delta:<id>` | The lowest-ordered `open` batch has a managed delta at handoff status `candidate` and `hold_state` `none` | Admit that handoff candidate through its admission gate |
@@ -54,6 +54,13 @@ them is correct, reading them as executable is not.
   already carries a current `delta_apply` receipt: close, apply, and admit each
   require `hold_state` `none`, so none is selected. The token names the batch
   but no step that advances it; releasing the hold restores one.
+
+These two are reported deliberately, and that is the line. A token its own
+named producer would refuse is not in this class: nobody can take that action,
+and since one token is reported per run it hides every later row while the
+condition holds. `run-standards-revalidation:<id>` was one — it named batches
+the `standards-revalidation` Gate's K00/12 cells (`queued, open`) exclude. A
+row MUST select on what its named producer admits.
 
 ## Related
 
