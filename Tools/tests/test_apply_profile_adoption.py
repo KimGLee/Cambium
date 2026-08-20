@@ -94,15 +94,15 @@ def _build_base(target):
         test_template_fill.SCAN_CONFIG.replace("fill-e2e", PROFILE_ID),
         encoding="utf-8")
     # This adopter's register grants K00/03 growth headroom for its Change
-    # Summary rows (an adopter governance choice; the shipped 11.5KB cap
-    # leaves only ~150 bytes over the shipped measured value).
+    # Summary rows (an adopter governance choice; the shipped 12KB cap still
+    # leaves insufficient room for this fixture's adoption history).
     register = target / SIZE_REGISTER
     lines = register.read_text(encoding="utf-8").splitlines(keepends=True)
     for index, line in enumerate(lines):
         if line.startswith("| [[kernel/K00 Standards Control/"
                            "03 Standards Governance\\|"):
-            assert "| 11.5KB |" in line
-            lines[index] = line.replace("| 11.5KB |", "| 13KB |", 1)
+            assert "| 12KB |" in line
+            lines[index] = line.replace("| 12KB |", "| 13KB |", 1)
     register.write_text("".join(lines), encoding="utf-8")
 
 

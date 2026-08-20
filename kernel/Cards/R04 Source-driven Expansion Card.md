@@ -20,7 +20,13 @@ source_files:
   - kernel/K08 Metadata and Status/08 Relationship Metadata Contract.md
   - kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes.md
   - kernel/K12 Quality Assurance/04 Guidance and Source Review.md
+readback_sources:
+  - kernel/K05 Terminology/01 Terminology Extraction.md
+  - kernel/K06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads.md
+  - kernel/K07 Sources and Accuracy/04 Evaluation and Source Quality.md
+  - kernel/K07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty.md
 source_hash: 'b74b0feca7c0'
+compiled_source_hash: 'b74b0feca7c0'
 ---
 # R04 Source-driven Expansion Card
 

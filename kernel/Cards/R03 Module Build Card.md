@@ -26,7 +26,19 @@ source_files:
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
+readback_sources:
+  - kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
+  - kernel/K04 Content Depth/01 Depth Model and Foundation.md
+  - kernel/K04 Content Depth/02 Core Concept Structure.md
+  - kernel/K04 Content Depth/03 Process and Flow Structure.md
+  - kernel/K04 Content Depth/04 System and Production Reasoning.md
+  - kernel/K04 Content Depth/05 Source and Evaluation Depth.md
+  - kernel/K04 Content Depth/06 Examples Deep Dives and Failure Analysis.md
+  - kernel/K08 Metadata and Status/03 Status Axes.md
+  - kernel/K10 Writing and Formatting/01 Naming Language and Prose.md
+  - kernel/K12 Quality Assurance/11 Content-level Propagation.md
 source_hash: 'ea331362495c'
+compiled_source_hash: 'ea331362495c'
 ---
 # R03 Module Build Card
 

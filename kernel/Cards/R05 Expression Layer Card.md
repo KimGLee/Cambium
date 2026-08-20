@@ -25,7 +25,11 @@ source_files:
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
   - kernel/K12 Quality Assurance/07 Audit Evidence Reuse and Invalidation.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
+readback_sources:
+  - kernel/K12 Quality Assurance/02 Rendering Verification.md
+  - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
 source_hash: '76d695a14fa5'
+compiled_source_hash: '76d695a14fa5'
 ---
 # R05 Expression Layer Card
 
@@ -58,6 +62,7 @@ Stop rather than inventing one or treating an unconfigured artifact as loaded.
 - Preserve source provenance and evidence qualification when content is
   condensed, reordered, or transformed.
 - A readiness value is written only by the profile's registered expression gate or receipt, and a mapped-class binding keeps a resolvable reciprocal link; file existence, link resolvability, or another status axis never upgrades readiness (K08/07).
+- A registered readiness or other Profile Gate field is projected from current Coverage owner state by its declared transition writer. Do not hand-edit the page copy; content drift invalidates evidence bound to the prior semantic fingerprint before another promotion can be accepted.
 - Keep expression readiness independent from canonical authoring and evidence
   status; one axis never implies another.
 - Maintain resolvable links from expression to knowledge and from knowledge to

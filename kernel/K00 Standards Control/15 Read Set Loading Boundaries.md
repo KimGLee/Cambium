@@ -26,6 +26,8 @@ Together these thirteen Read Sets name every kernel leaf module. A leaf that no 
 
 A Runtime Card compiles the boundaries of its own route and owns none of them. So a route that a Card names, in any of its sections, is named by the paired Read Set's boundaries as well. A route reached only from the Card is a load instruction with no boundary behind it: the reader who follows the Card loads it and the reader who resolves the Read Set does not, and the two disagree about what the task read. Either the boundary gains the route or the Card stops naming it, and which of the two is correct is decided by whether the route's work is actually in scope, never by which artifact was easier to edit.
 
+Every Kernel leaf named by a paired Read Set loading boundary has exactly one Card disposition: `source_files` when its rule is compiled into the Card, or `readback_sources` when the Card intentionally delegates it to conditional/full source reading. Omission, overlap, or a read-back not named by that boundary is synchronization failure.
+
 ## Derived Load Set
 
 The modules a task loads are derived from the loading boundaries of the Read Sets it selects; that set is resolved, never authored by hand. A declared load set that omits a module a selected boundary names is an under-declaration, and the same two readers disagree again: the one who resolves the boundary loads that module and the one who follows the declaration does not.

@@ -11,8 +11,12 @@ indexes have no route identity of their own. Every Card's `compiled_from` must
 equal the active `standards_version` recorded in K00/03; uniform but obsolete
 version stamps are stale, not synchronized.
 
-Hash = the first 12 hexadecimal digits of SHA-256 over each source file's
-bytes, concatenated in source_files order.
+`source_hash` is the first 12 hexadecimal digits of SHA-256 over each source
+file's bytes, concatenated in source_files order. `compiled_source_hash` is a
+separate semantic-compilation acknowledgement: ordinary stamping advances only
+`source_hash`, while `--acknowledge-compiled` advances both after the Card body
+has been regenerated or consciously confirmed against those exact inputs. A
+Card whose two hashes differ remains stale.
 
 A code span whose first token is `python3` is the copy-and-run command form an
 agent types verbatim, so the Card and Read Set layer is also checked against
@@ -39,11 +43,10 @@ boundaries and owns none of them, so a route the Card names is one the paired
 Read Set's boundaries name too. A route reachable only from the Card is
 reported: the reader who follows the Card loads it and the reader who resolves
 the Read Set does not, and a leaf named only through that route is reachable
-for one of them. Only that direction is checked. A boundary the Card does not
-repeat is the compression judgment its owner is entitled to make, and which
-side of a reported disagreement moves is not decided here. Routes are read
-from the artifacts on disk that carry a route identity, so no route path
-spelling is restated here either.
+for one of them. Each paired Read Set boundary leaf is also closed over an
+explicit disposition: it is either a direct semantic input in `source_files`
+or an intentional `readback_sources` entry, exactly once. Routes and leaf paths are
+read from the artifacts on disk rather than restated in this tool.
 
 A fourth check measures the size budget. kernel/K00 Standards Control/03
 Standards Governance states the target and the soft cap and kernel/K00
@@ -61,7 +64,7 @@ its page measured against the soft cap alone.
 
 Usage:
   python3 Tools/stamp_cards.py <standards_root> [--cards-dir DIR]
-      [--set-version VERSION] [--check]
+      [--set-version VERSION] [--acknowledge-compiled] [--check]
 
 Exit codes:
   0 = structurally complete and current
@@ -204,6 +207,12 @@ def source_digest(paths):
     for path in paths:
         digest.update(path.read_bytes())
     return digest.hexdigest()[:12]
+
+
+def is_kernel_leaf_path(rel):
+    """Return whether one repository path is a numbered Kernel leaf module."""
+    prefix = "kernel/"
+    return rel.startswith(prefix) and bool(KERNEL_LEAF_RE.fullmatch(rel[len(prefix):]))
 
 
 def markdown_paths(directory):
@@ -567,6 +576,55 @@ def card_route_load_failures(read_set_records, runtime_records):
     return failures
 
 
+def card_readback_source_failures(read_set_records, runtime_records):
+    """Close every paired Read Set boundary leaf over one Card disposition.
+
+    A direct `source_files` leaf is prose the Card semantically compiles. A
+    `readback_sources` leaf is intentionally kept out of the compressed prose
+    and loaded only through the paired Read Set boundary. The two sets need not
+    cover Card sources outside that paired boundary, but they MUST partition
+    every boundary-named Kernel leaf exactly once. This turns omission from an
+    implicit compression judgment into a reviewable, machine-closed decision.
+    """
+    read_sets = {
+        record.get("rel"): record.get("text") or ""
+        for record in read_set_records
+    }
+    failures = []
+    for record in runtime_records:
+        read_set = record.get("read_set") or ""
+        if read_set not in read_sets:
+            continue
+        boundary_leafs = {
+            target
+            for target in kblib.read_set_boundary_targets(read_sets[read_set])
+            if is_kernel_leaf_path(target)
+        }
+        direct = set(record.get("source_rels") or ()) & boundary_leafs
+        readback = set(record.get("readback_rels") or ())
+        overlap = direct & readback
+        missing = boundary_leafs - direct - readback
+        extra = readback - boundary_leafs
+        if overlap:
+            failures.append(
+                "%s classifies paired boundary leaf(s) as both compiled and "
+                "read-back: %s" % (record["rel"], sorted(overlap))
+            )
+        if missing:
+            failures.append(
+                "%s leaves paired Read Set boundary leaf(s) without a compiled "
+                "or read-back disposition: %s"
+                % (record["rel"], sorted(missing))
+            )
+        if extra:
+            failures.append(
+                "%s declares readback_sources that its paired Read Set names "
+                "in no loading boundary: %s"
+                % (record["rel"], sorted(extra))
+            )
+    return failures
+
+
 def table_cells(line):
     """Split one Markdown table row, honouring the escaped Wiki-alias pipe."""
     return [cell.strip() for cell in ESCAPED_PIPE_RE.split(line.strip().strip("|"))]
@@ -794,8 +852,23 @@ def main():
         "--set-version",
         help="also set every card's compiled_from value",
     )
+    ap.add_argument(
+        "--acknowledge-compiled",
+        action="store_true",
+        help=(
+            "after semantic regeneration/review, advance compiled_source_hash "
+            "to the exact current source digest"
+        ),
+    )
     ap.add_argument("--check", action="store_true", help="verify only; never write")
     args = ap.parse_args()
+
+    if args.check and args.acknowledge_compiled:
+        print(
+            "stamp_cards: FAIL — --check and --acknowledge-compiled are "
+            "mutually exclusive"
+        )
+        return 1
 
     root = Path(args.root).resolve()
     if not root.is_dir():
@@ -1114,6 +1187,10 @@ def main():
         if not current_hash:
             failures.append("%s is missing source_hash" % rel)
 
+        compiled_source_hash = str(data.get("compiled_source_hash") or "")
+        if not compiled_source_hash:
+            failures.append("%s is missing compiled_source_hash" % rel)
+
         source_values = data.get("source_files")
         if not isinstance(source_values, list) or not source_values:
             failures.append("%s must declare a non-empty source_files list" % rel)
@@ -1146,6 +1223,39 @@ def main():
                 pass
             source_paths.append(source)
 
+        readback_rels = []
+        if expected_type == "runtime-card":
+            readback_values = data.get("readback_sources")
+            if not isinstance(readback_values, list):
+                failures.append("%s must declare readback_sources as a list" % rel)
+                readback_values = []
+            for value in readback_values:
+                readback_rel = str(value)
+                if readback_rel in readback_rels:
+                    failures.append(
+                        "%s repeats read-back source %s" % (rel, readback_rel)
+                    )
+                    continue
+                readback_rels.append(readback_rel)
+                readback_path = as_repo_path(
+                    root, readback_rel, "%s readback_sources" % rel, failures
+                )
+                if readback_path is None:
+                    continue
+                if not readback_path.is_file():
+                    failures.append(
+                        "%s read-back source is not a regular file: %s"
+                        % (rel, readback_rel)
+                    )
+                    continue
+                if not is_kernel_leaf_path(readback_rel):
+                    failures.append(
+                        "%s readback_sources must contain only numbered Kernel "
+                        "leaf modules: %s" % (rel, readback_rel)
+                    )
+        elif "readback_sources" in data:
+            failures.append("%s must not declare readback_sources" % rel)
+
         read_set = str(data.get("read_set") or "")
         if expected_type == "runtime-card":
             if not read_set:
@@ -1169,6 +1279,8 @@ def main():
                 "source_paths": source_paths,
                 "source_rels": source_rels,
                 "source_hash": current_hash,
+                "compiled_source_hash": compiled_source_hash,
+                "readback_rels": readback_rels,
                 "read_set": read_set,
             }
         )
@@ -1262,6 +1374,9 @@ def main():
 
     failures.extend(leaf_coverage_failures(root, read_set_records))
     failures.extend(card_route_load_failures(read_set_records, runtime_records))
+    failures.extend(
+        card_readback_source_failures(read_set_records, runtime_records)
+    )
 
     # ---- Leaf module size budget, read from its owner and its register ----
     budget_candidates = []
@@ -1340,6 +1455,7 @@ def main():
         return 1
 
     stale = list(budget_candidates)
+    semantic_stale = []
     for candidate in budget_candidates:
         print("  [CAND] %s" % candidate)
 
@@ -1354,13 +1470,20 @@ def main():
             )
             return 1
         hash_stale = record["source_hash"] != expected_hash
+        compiled_hash_stale = record["compiled_source_hash"] != expected_hash
         version_stale = record["compiled_from"] != active_version
         if args.check:
-            if hash_stale or version_stale:
+            if hash_stale or compiled_hash_stale or version_stale:
                 stale.append(record["rel"])
                 details = []
                 if hash_stale:
                     details.append("hash %s -> %s" % (record["source_hash"], expected_hash))
+                if compiled_hash_stale:
+                    details.append(
+                        "compiled_source_hash %s -> %s (semantic compilation "
+                        "must be acknowledged explicitly)"
+                        % (record["compiled_source_hash"], expected_hash)
+                    )
                 if version_stale:
                     details.append(
                         "compiled_from %s -> %s"
@@ -1373,6 +1496,12 @@ def main():
             text = replace_frontmatter_scalar(
                 record["text"], "source_hash", expected_hash
             )
+            compiled_hash_after = record["compiled_source_hash"]
+            if args.acknowledge_compiled:
+                text = replace_frontmatter_scalar(
+                    text, "compiled_source_hash", expected_hash
+                )
+                compiled_hash_after = expected_hash
             if args.set_version:
                 text = replace_frontmatter_scalar(
                     text, "compiled_from", args.set_version
@@ -1387,15 +1516,23 @@ def main():
             )
             return 1
         if (parsed_front.get("source_hash") != expected_hash or
+                parsed_front.get("compiled_source_hash") != compiled_hash_after or
                 parsed_front.get("compiled_from") != active_version):
             print(
                 "stamp_cards: FAIL — rendered frontmatter does not round-trip "
-                "for %s (source_hash=%r compiled_from=%r)" %
+                "for %s (source_hash=%r compiled_source_hash=%r "
+                "compiled_from=%r)" %
                 (record["rel"], parsed_front.get("source_hash"),
+                 parsed_front.get("compiled_source_hash"),
                  parsed_front.get("compiled_from"))
             )
             return 1
-        rendered.append((record["path"], record["rel"], text, expected_hash))
+        if compiled_hash_after != expected_hash:
+            semantic_stale.append(record["rel"])
+        rendered.append(
+            (record["path"], record["rel"], text, expected_hash,
+             compiled_hash_after)
+        )
 
     if args.check:
         print(
@@ -1411,7 +1548,7 @@ def main():
         return 2 if stale else 0
 
     changes = []
-    for path, rel, text, expected_hash in rendered:
+    for path, rel, text, expected_hash, _compiled_hash_after in rendered:
         current = path.read_text(encoding="utf-8")
         if current == text:
             continue
@@ -1439,17 +1576,24 @@ def main():
 
     for _path, rel, _text, expected_hash, _original in changes:
         print("  [STAMP] %s -> %s" % (rel, expected_hash))
+    for rel in semantic_stale:
+        print(
+            "  [CAND] %s: source bytes are stamped but semantic compilation "
+            "is not acknowledged; regenerate/review the Card body, then rerun "
+            "with --acknowledge-compiled" % rel
+        )
     print(
         "stamp_cards: routes=%d read_sets=%d runtime_cards=%d indexes=2 "
-        "stale=0 updated=%d"
+        "semantic_stale=%d updated=%d"
         % (
             len(expected_routes),
             len(read_set_records),
             len(runtime_records),
+            len(semantic_stale),
             len(changes),
         )
     )
-    return 0
+    return 2 if semantic_stale or budget_candidates else 0
 
 
 if __name__ == "__main__":

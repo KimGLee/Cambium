@@ -7,7 +7,8 @@ source_files:
   - kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md
   - kernel/K00 Standards Control/02 Task Routing.md
   - kernel/K00 Standards Control/03 Standards Governance.md
-source_hash: '34dfde79b906'
+source_hash: '564697e7b900'
+compiled_source_hash: '564697e7b900'
 route_registry:
   - route_id: R01
     path: "kernel/Cards/R01 Core Bootstrap Card.md"
@@ -107,7 +108,9 @@ broad K-module identifier does not prove loading.
 
 The Read Set Index owns the kernel route registry and this index mirrors it.
 After a route, Read Set, source path, or normative source changes, run
-`python3 Tools/stamp_cards.py .` and then `python3 Tools/stamp_cards.py . --check`.
+`python3 Tools/stamp_cards.py .`, regenerate or review each reported Card, then
+run `python3 Tools/stamp_cards.py . --acknowledge-compiled` and
+`python3 Tools/stamp_cards.py . --check`.
 
 ## Related
 

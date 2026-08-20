@@ -64,7 +64,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:86b5d167c80d706094729e64631d0b147e025157a0bf8d471c68f72e2b59217d
+source_hash: sha256:46c9adee224d1316b8bec5ce548d99a8481f7568f3a2a7e93c22e4cb35af967a
 receipt_shape:
   base_fields:
     - receipt_id
@@ -772,7 +772,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_profile_adoption
     module: Tools/apply_profile_adoption.py
-    source_hash: sha256:7ab4234eeafc78d056749da95e73d8e01c830ddc8d2903df1792f04cda03faf4
+    source_hash: sha256:d845170185e1b29cbc50565a446cc40e7b8d97ea9184e305cc08ba8861871b3c
     description: Apply one no-runtime R09 Profile adoption (initial adoption or pre-runtime profile revision) from a restricted-YAML plan
     arguments:
       - dest: root
@@ -3994,7 +3994,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: stamp_cards
     module: Tools/stamp_cards.py
-    source_hash: sha256:2dbad555d9b0e25dc2cd7570964b0ae875e368cf781665408a36958680ea9f4d
+    source_hash: sha256:2365f162236451041f8f24322060955f28832b762612b079341686d78497314a
     description: Stamp kernel Runtime Cards
     arguments:
       - dest: root
@@ -4029,6 +4029,17 @@ tools:
         action: store
         type: null
         help: also set every card's compiled_from value
+      - dest: acknowledge_compiled
+        option_strings:
+          - --acknowledge-compiled
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: after semantic regeneration/review, advance compiled_source_hash to the exact current source digest
       - dest: check
         option_strings:
           - --check

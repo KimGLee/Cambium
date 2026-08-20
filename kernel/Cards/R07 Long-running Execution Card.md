@@ -26,6 +26,8 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/13 Final Handoff.md
   - kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover.md
   - kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction.md
+  - kernel/K13 Task Runtime and Execution Control/17 Escalation Policy.md
+  - kernel/K13 Task Runtime and Execution Control/18 Initial Task Planning Transaction.md
   - kernel/K12 Quality Assurance/03 Module and Coverage Review.md
   - kernel/K12 Quality Assurance/14 Batch Review.md
   - kernel/K11 Expression Layer/06 Sequence and Progress Semantics.md
@@ -34,7 +36,16 @@ source_files:
   - kernel/K12 Quality Assurance/10 Standards Version Adoption.md
   - kernel/K00 Standards Control/17 Profile Dependency Closure.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
-source_hash: 'b3a1033e97d3'
+readback_sources:
+  - kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
+  - kernel/K00 Standards Control/13 Runtime Admission and Recovery.md
+  - kernel/K06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads.md
+  - kernel/K06 Knowledge Intake and Evolution/05 Evidence Maturity and Batch Policy.md
+  - kernel/K12 Quality Assurance/04 Guidance and Source Review.md
+  - kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract.md
+  - kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary.md
+source_hash: '57596cac42aa'
+compiled_source_hash: '57596cac42aa'
 ---
 # R07 Long-running Execution Card
 
@@ -47,6 +58,7 @@ Run a multi-batch task, sustain checkpoints, resume after interruption, maintain
 ## Before Start
 
 - [ ] If `.cambium/` exists, run `python3 Tools/check_queue.py . --resume-status` before any state write; resume the recorded task instead of initializing a replacement.
+- [ ] If persistent runtime state is authorized and `.cambium/` is absent, create the empty namespace with `init_state.py`, commit the exact initial Task Plan with `apply_task_plan.py`, then derive Queue views with `compile_queue.py`. Never materialize Coverage or Queue by hand.
 - [ ] Freeze the long-run Task Contract: Standards version, exact `selected_profile_manifest`, its passing `profile-load` snapshot/contract fingerprints, time semantics, route IDs, Card paths, actual read-backs, completion semantics, and the Queue path/revisions/fingerprint. Profile closure members remain derived Gate output, not loaded-module entries.
 - [ ] Reconcile `.cambium/` Coverage, Queue, and Progress with the file system and user modifications. Ready, open, and merge-ready lists are derived from the Queue, never edited in Progress as a second authority.
 - [ ] For persistent multi-batch corpus work, require Corpus Planning `applicability.state: configured` and pass `check_corpus_plan.py`; use its on-demand `--json` projection for recovery and R13 for any planning edit.
@@ -62,6 +74,8 @@ Each batch follows the fixed loop: version/Guidance self-check → `check_queue.
 - Concurrent batches have disjoint manifests and merged prerequisites; only the integrator writes shared control state and hub pages.
 - In-batch QA is not satisfied by producing the close evidence set alone: each M-tier manifest page passes, page by page, the M-tier Gate Checklist surfaced by the kernel Single Note Authoring Card (K12/14 folds note-level acceptance into Batch Review), including the sources-role and page-contract items; the per-page conclusion is recorded in that page's attestation, not asserted once in the batch wrapper.
 - After one canonical delta apply passes, perform checks and close that batch before any other Queue/Coverage write; the apply receipt opens a strict serial critical section.
+- Route an inability to satisfy the frozen contract through K13/17: record the typed blocker/escalation and required authority instead of silently relaxing the Gate, inventing a fallback, or reporting progress as completion.
+- During delta apply, bind semantic before/after fingerprints and the exact invalidated property/evidence set. The same transaction advances `last_content_modified`, refreshes a stale review tombstone, retires content-bound Profile Gate owners, and projects the resulting page after-images; partial owner/page updates fail closed.
 - Treat meaningful user changes to objective, scope, acceptance, priority, or content judgment as Guidance: classify, disposition, record, switch safely, and verify closure.
 - For a same-scope Queue replan, scope replan, or cancellation, prepare its exact proposal or plan and use `register_amendment.py` as the sole approved-row writer before `compile_queue.py` or `apply_amendment.py` consumes it. The pending registration receipt must remain current and bind live state; after verified write-back it proves history only and cannot authorize another action.
 - For a bounded policy exception (K00/07 priority-quota excess accepted temporarily), prepare a confirmed contract-amendment plan and use `apply_contract_amendment.py` as its sole writer -- grant BEFORE any affected batch reaches `merge-ready` (the writer refuses past that point), and revoke by confirming a plan whose after list no longer carries the exception; closed history replays through its sealed dispositions either way.
@@ -84,4 +98,4 @@ Each batch follows the fixed loop: version/Guidance self-check → `check_queue.
 
 ## Read Back When
 
-Read R07 Read Set and the canonical owner for full Guidance dispositions, concurrent-write boundaries, receipt fingerprints, invalidation propagation, adoption execution/recovery, checkpoint recovery, or Terminal Proof fields. Read the Gate Receipt Payload Contract before recording or accepting a `manual-attestation` receipt, and the Resume Next Action Vocabulary for the exact token a resume scan reported.
+Read R07 Read Set and the canonical owner for full Guidance dispositions, concurrent-write boundaries, receipt fingerprints, invalidation propagation, adoption execution/recovery, initial Task Plan materialization, escalation policy, checkpoint recovery, or Terminal Proof fields. Read the Gate Receipt Payload Contract before recording or accepting a `manual-attestation` receipt, and the Resume Next Action Vocabulary for the exact token a resume scan reported.

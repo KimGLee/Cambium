@@ -24,7 +24,10 @@ source_files:
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
   - kernel/K12 Quality Assurance/09 Batch-close Closed List.md
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
+readback_sources:
+  - kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes.md
 source_hash: '4b88a1426fd2'
+compiled_source_hash: '4b88a1426fd2'
 ---
 # R06 Migration and Refactor Card
 
@@ -42,6 +45,7 @@ Move, rename, split, merge, retire, or restructure files or directories. Load [[
 - [ ] Confirm that target ownership, naming, aliases, metadata, and profile language rules are valid before moving content.
 - [ ] When the migration changes registered structure — unit roots, support-layer layouts, or a grouped taxonomy — freeze the target Structure Registry bindings and classification predicate before any file moves, and map every old path to its new class and directory in the manifest.
 - [ ] When legacy relationship fields (`sources`, `source_note`, `source_notes`, `source_set`, `review_due`) are migrated, judge semantic equivalence per page and freeze an old-field to new-field manifest; names are never merged mechanically.
+- [ ] When a legacy page already carries a machine-managed property without current owner evidence, freeze its exact value as `legacy-unverified` migration input. The migration must establish the Coverage owner/observation and remove the page-side copy in one guarded transaction; it must not reinterpret an old date or status as current evidence.
 - [ ] Isolate the migration batch from concurrent content batches.
 
 ## During
@@ -52,6 +56,7 @@ Use the safe order: create and verify the target → update references and headi
 - Never delete first, use destructive reset as migration, or hide a rule/content loss inside a split.
 - Preserve unique content and Sources; do not create duplicate canonical owners.
 - Synchronize aliases, metadata, incoming links, MOCs, and replacement/tombstone state.
+- Use only the registered initial-plan or property-state-migration writer for legacy property adoption. A hand-authored Coverage row, fabricated receipt, or page-only deletion is not a migration.
 - Record a checkpoint with modified paths and the next exact action before pausing.
 
 ## Gate
