@@ -67,6 +67,7 @@ class StagedProjection:
         "projection", "parent_fd", "temporary_name", "backup_name",
         "stage_artifact_name", "rollback_artifact_name", "stage_fd",
         "stage_dev", "stage_ino", "stage_mode", "claimed", "published",
+        "after_image_verified", "published_size", "published_mtime_ns",
     )
 
     def __init__(self, projection, parent_fd, temporary_name, backup_name,
@@ -83,6 +84,9 @@ class StagedProjection:
         self.stage_mode = stage_descriptor.st_mode
         self.claimed = False
         self.published = False
+        self.after_image_verified = False
+        self.published_size = None
+        self.published_mtime_ns = None
 
 
 def _staged_artifact_descriptor(staged):
@@ -99,6 +103,9 @@ def _staged_artifact_descriptor(staged):
         "rollback_image_active": staged.backup_name,
         "claimed": staged.claimed,
         "published": staged.published,
+        "after_image_verified": staged.after_image_verified,
+        "published_size": staged.published_size,
+        "published_mtime_ns": staged.published_mtime_ns,
     }
 
 
@@ -541,9 +548,36 @@ def _publish_staged(root, staged):
             raise OSError(errno.EAGAIN,
                           "installed page differs from staged after-image",
                           page.relative)
-        os.unlink(staged.temporary_name, dir_fd=staged.parent_fd)
+        os.unlink(staged.stage_artifact_name, dir_fd=staged.parent_fd)
+        # The installed name has been verified once as the exact planned
+        # after-image and its staging alias is gone.  From this point onward a
+        # byte change can only be a later writer, so rollback must preserve it
+        # rather than treating it as corruption of an unpublished stage.
         staged.temporary_name = None
         os.fsync(parent_fd)
+        verified_after = os.fstat(staged.stage_fd)
+        named_verified_after = os.stat(
+            basename, dir_fd=parent_fd, follow_symlinks=False)
+        if ((verified_after.st_dev, verified_after.st_ino) !=
+                (staged.stage_dev, staged.stage_ino) or
+                (named_verified_after.st_dev, named_verified_after.st_ino) !=
+                (verified_after.st_dev, verified_after.st_ino) or
+                verified_after.st_nlink != 1 or
+                _read_exact_descriptor(staged.stage_fd) != page.after_data):
+            raise OSError(errno.EAGAIN,
+                          "installed page changed after publication",
+                          page.relative)
+        # Closing the staging link changes ctime once more.  Capture the stable
+        # single-name identity only after that descriptor is closed.
+        os.close(staged.stage_fd)
+        staged.stage_fd = None
+        verified_after = os.stat(
+            basename, dir_fd=parent_fd, follow_symlinks=False)
+        staged.published_size = verified_after.st_size
+        staged.published_mtime_ns = getattr(
+            verified_after, "st_mtime_ns",
+            int(verified_after.st_mtime * 1e9))
+        staged.after_image_verified = True
         held_data = _read_exact_descriptor(target_fd)
         held = os.fstat(target_fd)
         if (held.st_dev, held.st_ino) != (page.snapshot.dev,
@@ -565,16 +599,28 @@ def _restore_staged(root, staged):
     parent_fd, basename = _open_parent(root, staged.projection.relative)
     try:
         if staged.published:
+            publication_complete = staged.after_image_verified
             current = kblib.repository_target_snapshot(
                 root, staged.projection.relative, suffixes=".md",
                 singly_linked=False)
             if (not current.exists or
                     current.dev != staged.stage_dev or
                     current.ino != staged.stage_ino or
-                    current.mode != staged.stage_mode):
+                    current.mode != staged.stage_mode or
+                    (publication_complete and current.nlink != 1) or
+                    (not publication_complete and current.nlink not in (1, 2))):
                 raise OSError(errno.EAGAIN,
                               "published page identity changed before rollback",
                               staged.projection.relative)
+            if (publication_complete and
+                    (current.size != staged.published_size or
+                     current.mtime_ns != staged.published_mtime_ns or
+                     current.data != staged.projection.after_data)):
+                raise OSError(
+                    errno.EAGAIN,
+                    "published page bytes changed before rollback; "
+                    "preserving the concurrent page and recovery evidence",
+                    staged.projection.relative)
             named = os.stat(basename, dir_fd=parent_fd,
                             follow_symlinks=False)
             if (named.st_dev, named.st_ino) != (current.dev, current.ino):
@@ -596,13 +642,26 @@ def _restore_staged(root, staged):
                 held_after = os.fstat(held_after_fd)
                 named_after = os.stat(basename, dir_fd=parent_fd,
                                       follow_symlinks=False)
-                if ((held_after.st_dev, held_after.st_ino) !=
-                        (staged.stage_dev, staged.stage_ino) or
-                        (named_after.st_dev, named_after.st_ino) !=
-                        (held_after.st_dev, held_after.st_ino)):
+                identity_changed = (
+                    (held_after.st_dev, held_after.st_ino) !=
+                    (staged.stage_dev, staged.stage_ino) or
+                    (named_after.st_dev, named_after.st_ino) !=
+                    (held_after.st_dev, held_after.st_ino) or
+                    held_after.st_mode != staged.stage_mode or
+                    (publication_complete and
+                     held_after.st_size != staged.published_size) or
+                    (publication_complete and getattr(
+                        held_after, "st_mtime_ns",
+                        int(held_after.st_mtime * 1e9)) !=
+                     staged.published_mtime_ns) or
+                    (publication_complete and held_after.st_nlink != 2) or
+                    (not publication_complete and held_after.st_nlink not in
+                     (2, 3))
+                )
+                if identity_changed:
                     raise OSError(
                         errno.EAGAIN,
-                        "published page changed during rollback claim",
+                        "published page identity changed before rollback",
                         staged.projection.relative)
                 os.unlink(basename, dir_fd=parent_fd)
             finally:
