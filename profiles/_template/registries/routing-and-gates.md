@@ -34,5 +34,37 @@ there is no readiness axis, so no readiness gate is required.
 
 - Registration: None
 
-| Gate ID | Kernel Gate ID or repo-relative owner path, optionally `#heading` | Blocked transition/action | Pass-authority Role ID reference | Applicability predicate | Vocabulary field ID or `None` | Registered completion value(s) or `None` | Judgment Item ID reference |
-|---|---|---|---|---|---|---|---|
+`None` keeps the table empty. A configured row is an executable contract, not
+a prose reminder: its Gate and transition IDs are each unique; its role,
+field/completion values, Judgment Item, semantic owner, producer capability,
+receipt schema, and consumer capability must all resolve during
+`profile-load`. A `deterministic` row uses `registered-scan-v1` with
+`deterministic-gate-result-v1` and its Judgment Item must resolve to exactly
+one Registered Scan. A `manual-attestation` row uses
+`manual-attestation-v1` with `manual-gate-attestation-v1`; its named
+pass-authority role is the producer. The initial transition consumer is
+`metadata-transition-integrator-v1`, implemented by
+`Tools/apply_metadata_transition.py`; manual evidence is produced by
+`Tools/record_gate_attestation.py`, while a deterministic row is adapted from
+its exact Registered Scan by `Tools/record_gate_result.py`. These executable
+paths are declared in `Tools/operation-capabilities.yaml`, and their stable
+no-follow file hashes are part of the compiled Metadata Execution Contract;
+changing an implementation therefore invalidates the old Profile/runtime
+binding. The producer and consumer both load this
+typed row through the selected Profile contract, so neither command accepts a
+caller-supplied field schema or policy callback. The field must also be present
+in the Profile Metadata Contract extension-field slot, and the installed
+Metadata Execution Contract must expose the closed generic Profile-enum
+owner-to-page writer. Deterministic evidence executes staged, hashed scanner,
+runtime, and Profile-snapshot configuration inputs; it is consumable only while
+the bound repository snapshot remains current. Write multiple completion values as
+comma-separated code literals. `None` is legal only as the pair field =
+`None`, completion values = `None` only for a non-field transition whose
+consumer registers the distinct `non-field-transition` operation. The shipped
+`metadata-transition-integrator-v1` registers only
+`typed-field-metadata-transition`, so it cannot authorize such a row. A
+deterministic typed-field Gate declares exactly one completion value: one scan
+pass cannot choose among multiple state values.
+
+| Gate ID | Kernel Gate ID or repo-relative owner path, optionally `#heading` | Blocked transition/action ID | Pass-authority Role ID reference | Applicability predicate | Vocabulary field ID or `None` | Registered completion value(s) or `None` | Judgment Item ID reference | Producer kind: `deterministic` or `manual-attestation` | Producer capability | Receipt schema | Consumer capability |
+|---|---|---|---|---|---|---|---|---|---|---|---|

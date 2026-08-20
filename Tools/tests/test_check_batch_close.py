@@ -22,6 +22,7 @@ import check_batch_close
 import check_queue
 import compose_vocab
 import kblib
+import metadata_execution_contract
 import profile_admission
 from profile_fixture import install_loadable_profile
 
@@ -38,6 +39,25 @@ class CheckBatchCloseTests(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def reset_applied_batch(self, prepare_profile):
+        """Rebuild the fixture when a test changes Profile-owned inputs.
+
+        Current apply_delta/1.6 content evidence binds the exact authorized
+        Profile it ran under.  Tests for a later close-time Profile condition
+        must therefore install that condition *before* applying the Delta;
+        mutating Profile bytes after apply would correctly make the owner
+        evidence stale and never reach the close behavior under test.
+        """
+        self.temporary.cleanup()
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name) / "repo"
+        shutil.copytree(FIXTURE, self.root)
+        for name in ("deltas", "receipts", "reports"):
+            (self.root / ".cambium" / name).mkdir(exist_ok=True)
+        self.install_profile_and_tools()
+        prepare_profile()
+        self.prepare_applied_batch()
 
     def run_tool(self, name, *arguments):
         return subprocess.run(
@@ -251,6 +271,43 @@ class CheckBatchCloseTests(unittest.TestCase):
             *extra,
         )
 
+    def close_validation_kwargs(self, runtime, consistency, *, historical=False):
+        item = runtime["items_by_id"]["B1"]
+        view = runtime["_profile_authorized_view"]
+        contract = metadata_execution_contract.\
+            load_metadata_execution_contract(self.root)
+        values = {
+            "item_id": "B1",
+            "root": self.root,
+            "task_id": runtime["queue"]["task_id"],
+            "queue_revision": runtime["queue"]["queue_revision"],
+            "queue_state_revision": runtime["queue"]["state_revision"],
+            "required_queue_sha256": runtime["queue_sha256"],
+            "coverage_ledger_sha256": runtime["coverage_sha256"],
+            "progress_ledger_sha256": runtime["progress_sha256"],
+            "delta_sha256": item["delta_sha256"],
+            "queue_consistency_receipt": consistency,
+            "delta_apply_receipt": self.delta_apply_receipt,
+            "work_spec_path": item["work_spec_path"],
+            "work_spec_sha256": item["work_spec_sha256"],
+            "manifest": item["manifest"],
+            "selected_profile_manifest":
+                runtime["queue"]["selected_profile_manifest"],
+            "profile_snapshot_sha256": view["profile_snapshot_sha256"],
+            "profile_contract_fingerprint":
+                view["profile_contract_fingerprint"],
+            "profile_load_inputs_sha256":
+                view["profile_load_inputs_sha256"],
+            "metadata_execution_contract_fingerprint":
+                contract.contract_fingerprint,
+            "authorized_profile_contract": view["_contract"],
+            "authorized_metadata_contract": contract,
+            "current_repository_snapshot_sha256":
+                kblib.repository_snapshot_sha256(self.root),
+            "historical": historical,
+        }
+        return values
+
     def install_inactive_corpus_plan(self):
         manifest = self.root / "profiles/test-profile/profile.md"
         (manifest.parent / "corpus-planning.yaml").write_text(
@@ -337,7 +394,7 @@ class CheckBatchCloseTests(unittest.TestCase):
             "schema_version: 1\ngaps: []\n", encoding="utf-8")
 
     def test_manifest_hit_requires_current_corpus_plan_child(self):
-        self.install_inactive_corpus_plan()
+        self.reset_applied_batch(self.install_inactive_corpus_plan)
         runtime = check_queue.validate_runtime(self.root)
         self.assertEqual([], runtime["errors"])
         item = dict(next(row for row in runtime["queue"]["required_queue"]
@@ -354,7 +411,7 @@ class CheckBatchCloseTests(unittest.TestCase):
                          outcome["receipt"]["corpus_plan_applicability"])
 
     def test_r13_cannot_close_with_not_applicable_corpus_plan(self):
-        self.install_inactive_corpus_plan()
+        self.reset_applied_batch(self.install_inactive_corpus_plan)
         runtime = check_queue.validate_runtime(self.root)
         self.assertEqual([], runtime["errors"])
         runtime["progress"]["contract"]["selected_route_ids"] = ["R13"]
@@ -370,7 +427,7 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertIsNone(outcome["receipt"])
 
     def test_configured_corpus_plan_child_is_consumed_by_batch_close(self):
-        self.install_configured_corpus_plan()
+        self.reset_applied_batch(self.install_configured_corpus_plan)
         completed = self.batch_close()
         self.assertEqual(0, completed.returncode, completed.stdout)
         close_gate = self.output_value(completed.stdout, "close_gate_receipt")
@@ -392,26 +449,14 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertEqual("configured", child["corpus_plan_applicability"])
         runtime = check_queue.validate_runtime(self.root)
         item = runtime["items_by_id"]["B1"]
+        current_kwargs = self.close_validation_kwargs(runtime, consistency)
+        current_kwargs.update({
+            "corpus_plan_required": True,
+            "corpus_plan_triggers": ["manifest"],
+        })
         errors = check_queue.close_gate_receipt_errors(
             runtime["current_receipt_catalog"], close_gate,
-            item_id="B1", task_id=runtime["queue"]["task_id"],
-            queue_revision=runtime["queue"]["queue_revision"],
-            queue_state_revision=runtime["queue"]["state_revision"],
-            required_queue_sha256=runtime["queue_sha256"],
-            coverage_ledger_sha256=runtime["coverage_sha256"],
-            progress_ledger_sha256=runtime["progress_sha256"],
-            delta_sha256=item["delta_sha256"],
-            queue_consistency_receipt=consistency,
-            delta_apply_receipt=self.delta_apply_receipt,
-            work_spec_path=item["work_spec_path"],
-            work_spec_sha256=item["work_spec_sha256"],
-            selected_profile_manifest=runtime["queue"][
-                "selected_profile_manifest"],
-            corpus_plan_required=True,
-            corpus_plan_triggers=["manifest"],
-            current_repository_snapshot_sha256=
-                kblib.repository_snapshot_sha256(self.root),
-        )
+            **current_kwargs)
         self.assertEqual([], errors)
 
         historical_catalog = {
@@ -470,7 +515,7 @@ class CheckBatchCloseTests(unittest.TestCase):
             historical_catalog, close_gate, **historical_kwargs))
 
     def test_one_authorized_view_drives_corpus_scan_and_quota_overrides(self):
-        self.install_configured_corpus_plan()
+        self.reset_applied_batch(self.install_configured_corpus_plan)
         view, errors = check_queue.profile_load_authorized_view(
             self.root, "profiles/test-profile/profile.md")
         self.assertEqual([], errors)
@@ -497,12 +542,15 @@ class CheckBatchCloseTests(unittest.TestCase):
 
     def test_batch_rejects_vocab_compiled_before_profile_change(self):
         """The closed list cannot reuse Profile A's vocabulary under B."""
-        extension = self.root / \
-            "profiles/test-profile/vocabulary-extensions.yaml"
-        extension.write_text(
-            extension.read_text(encoding="utf-8").replace(
-                "  fixture: stable", "  fixture: slow"),
-            encoding="utf-8")
+        def change_profile_after_vocab_compile():
+            extension = self.root / \
+                "profiles/test-profile/vocabulary-extensions.yaml"
+            extension.write_text(
+                extension.read_text(encoding="utf-8").replace(
+                    "  fixture: stable", "  fixture: slow"),
+                encoding="utf-8")
+
+        self.reset_applied_batch(change_profile_after_vocab_compile)
 
         completed = self.batch_close()
 
@@ -555,6 +603,33 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertIn("work_spec_sha256", close_record)
         self.assertIsNone(close_record["work_spec_path"])
         self.assertIsNone(close_record["work_spec_sha256"])
+        self.assertEqual(1, close_record["page_review_receipt_count"])
+        self.assertEqual(
+            sorted(close_record["page_review_receipts"]),
+            close_record["page_review_receipts"])
+        self.assertEqual(
+            check_batch_close._receipt_id_set_sha256(
+                close_record["page_review_receipts"]),
+            close_record["page_review_receipt_set_sha256"])
+        page_review = next(
+            record for record in close_records
+            if record.get("receipt_id") ==
+            close_record["page_review_receipts"][0])
+        self.assertEqual("page_review_acceptance", page_review["check"])
+        self.assertEqual("Topics/A.md", page_review["target"])
+        self.assertEqual(
+            page_review["checked_at"][:10], page_review["reviewed_on"])
+        self.assertRegex(
+            page_review["semantic_content_sha256"],
+            r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual(
+            close_record["metadata_execution_contract_fingerprint"],
+            page_review["metadata_execution_contract_fingerprint"])
+        for field in (
+                "selected_profile_manifest", "profile_snapshot_sha256",
+                "profile_contract_fingerprint",
+                "profile_load_inputs_sha256"):
+            self.assertEqual(close_record[field], page_review[field])
         self.transition(
             "closed", "--gate-receipt", consistency,
             "--close-gate-receipt", close_gate,
@@ -585,6 +660,201 @@ class CheckBatchCloseTests(unittest.TestCase):
             encoding="utf-8")
         self.assertEqual(
             [], check_queue.validate_runtime(str(self.root))["errors"])
+
+    def test_1_10_history_never_acquires_page_review_requirements(self):
+        completed = self.batch_close()
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        close_gate = self.output_value(completed.stdout, "close_gate_receipt")
+        consistency = self.output_value(
+            completed.stdout, "queue_consistency_receipt")
+        runtime = check_queue.validate_runtime(self.root)
+        catalog = {
+            receipt_id: (path, copy.deepcopy(receipt))
+            for receipt_id, (path, receipt)
+            in runtime["current_receipt_catalog"].items()
+        }
+        for _path, receipt in catalog.values():
+            if receipt.get("tool") == check_batch_close.TOOL:
+                receipt["tool_version"] = "1.10.0"
+        aggregate = catalog[close_gate][1]
+        aggregate.pop("page_review_receipts")
+        aggregate.pop("page_review_receipt_count")
+        aggregate.pop("page_review_receipt_set_sha256")
+        aggregate.pop("metadata_execution_contract_fingerprint")
+        kwargs = self.close_validation_kwargs(
+            runtime, consistency, historical=True)
+        self.assertEqual([], check_queue.close_gate_receipt_errors(
+            catalog, close_gate, **kwargs))
+
+    def test_current_page_review_subgraph_rejects_missing_extra_and_drift(self):
+        completed = self.batch_close()
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        close_gate = self.output_value(completed.stdout, "close_gate_receipt")
+        consistency = self.output_value(
+            completed.stdout, "queue_consistency_receipt")
+        runtime = check_queue.validate_runtime(self.root)
+        base_catalog = runtime["current_receipt_catalog"]
+        kwargs = self.close_validation_kwargs(runtime, consistency)
+        with mock.patch.object(
+                check_queue.metadata_execution_contract,
+                "load_metadata_execution_contract",
+                side_effect=AssertionError(
+                    "validator must reuse the authorized contract")):
+            self.assertEqual([], check_queue.close_gate_receipt_errors(
+                base_catalog, close_gate, **kwargs))
+
+        aggregate = base_catalog[close_gate][1]
+        frozen_semantics = {
+            base_catalog[receipt_id][1]["target"]:
+                base_catalog[receipt_id][1]["semantic_content_sha256"]
+            for receipt_id in aggregate["page_review_receipts"]
+        }
+        frozen_kwargs = dict(kwargs)
+        frozen_kwargs["authorized_page_semantic_fingerprints"] = \
+            frozen_semantics
+        with mock.patch.object(
+                check_queue.kblib, "repository_target_snapshot",
+                side_effect=AssertionError(
+                    "same-transaction validation must not re-read pages")), \
+                mock.patch.object(
+                    check_queue.project_page_state,
+                    "semantic_content_fingerprint",
+                    side_effect=AssertionError(
+                        "same-transaction validation must reuse frozen page "
+                        "semantics")):
+            self.assertEqual([], check_queue.close_gate_receipt_errors(
+                base_catalog, close_gate, **frozen_kwargs))
+
+        for name, supplied, expected in (
+                ("missing-target", {}, "targets do not equal the exact manifest"),
+                ("extra-target", {
+                    **frozen_semantics,
+                    "Topics/B.md": "sha256:" + "a" * 64,
+                }, "targets do not equal the exact manifest"),
+                ("bad-sha", {
+                    target: "not-a-sha256" for target in frozen_semantics
+                }, "have invalid values")):
+            with self.subTest(authorized_frozen_map=name):
+                invalid_kwargs = dict(kwargs)
+                invalid_kwargs["authorized_page_semantic_fingerprints"] = \
+                    supplied
+                errors = check_queue.close_gate_receipt_errors(
+                    base_catalog, close_gate, **invalid_kwargs)
+                self.assertTrue(
+                    any(expected in error for error in errors), errors)
+
+        def copied_catalog():
+            return {
+                receipt_id: (path, copy.deepcopy(receipt))
+                for receipt_id, (path, receipt) in base_catalog.items()
+            }
+
+        cases = []
+
+        missing = copied_catalog()
+        missing_aggregate = missing[close_gate][1]
+        missing_aggregate["page_review_receipts"] = []
+        cases.append(("missing", missing, "do not equal exact manifest"))
+
+        extra = copied_catalog()
+        extra_aggregate = extra[close_gate][1]
+        source_id = extra_aggregate["page_review_receipts"][0]
+        extra_id = "audit-page-review-extra-current-era"
+        extra_child = copy.deepcopy(extra[source_id][1])
+        extra_child["receipt_id"] = extra_id
+        extra_child["target"] = "Topics/B.md"
+        extra[extra_id] = (extra[source_id][0], extra_child)
+        extra_ids = sorted(extra_aggregate["page_review_receipts"] + [extra_id])
+        extra_aggregate["page_review_receipts"] = extra_ids
+        extra_aggregate["page_review_receipt_count"] = len(extra_ids)
+        extra_aggregate["page_review_receipt_set_sha256"] = \
+            check_batch_close._receipt_id_set_sha256(extra_ids)
+        cases.append(("extra", extra, "do not equal exact manifest"))
+
+        wrong_target = copied_catalog()
+        target_aggregate = wrong_target[close_gate][1]
+        target_child = wrong_target[
+            target_aggregate["page_review_receipts"][0]][1]
+        target_child["target"] = "Topics/B.md"
+        cases.append(("wrong-target", wrong_target,
+                      "do not equal exact manifest"))
+
+        wrong_hash = copied_catalog()
+        hash_aggregate = wrong_hash[close_gate][1]
+        wrong_hash[hash_aggregate["page_review_receipts"][0]][1][
+            "semantic_content_sha256"] = "sha256:" + "f" * 64
+        cases.append(("wrong-hash", wrong_hash,
+                      "does not match the authorized current page content"))
+
+        wrong_date = copied_catalog()
+        date_aggregate = wrong_date[close_gate][1]
+        wrong_date[date_aggregate["page_review_receipts"][0]][1][
+            "reviewed_on"] = "1999-01-01"
+        cases.append(("wrong-date", wrong_date,
+                      "must equal its own checked_at UTC date"))
+
+        wrong_contract = copied_catalog()
+        contract_aggregate = wrong_contract[close_gate][1]
+        wrong_contract[contract_aggregate["page_review_receipts"][0]][1][
+            "metadata_execution_contract_fingerprint"] = \
+                "sha256:" + "e" * 64
+        cases.append(("wrong-contract", wrong_contract,
+                      "metadata_execution_contract_fingerprint"))
+
+        wrong_distinction = copied_catalog()
+        distinction_aggregate = wrong_distinction[close_gate][1]
+        distinction_aggregate["page_review_receipts"] = [close_gate]
+        distinction_aggregate["page_review_receipt_count"] = 1
+        distinction_aggregate["page_review_receipt_set_sha256"] = \
+            check_batch_close._receipt_id_set_sha256([close_gate])
+        cases.append(("child-not-distinct", wrong_distinction,
+                      "must use receipt IDs distinct"))
+
+        for name, catalog, expected in cases:
+            with self.subTest(name=name):
+                errors = check_queue.close_gate_receipt_errors(
+                    catalog, close_gate, **kwargs)
+                self.assertTrue(any(expected in error for error in errors),
+                                errors)
+
+    def test_manifest_page_identity_and_bytes_are_cas_checked_before_append(self):
+        page = self.root / "Topics/A.md"
+        original = page.read_text(encoding="utf-8")
+        real_assert = check_batch_close._assert_manifest_pages_unchanged
+        injected = {"done": False}
+
+        def change_before_first_cas(root, frozen, *, uncertain=False):
+            if not injected["done"]:
+                injected["done"] = True
+                page.write_text(original + "\nconcurrent edit\n", encoding="utf-8")
+            return real_assert(root, frozen, uncertain=uncertain)
+
+        output = io.StringIO()
+        with mock.patch.object(
+                check_batch_close, "_assert_manifest_pages_unchanged",
+                side_effect=change_before_first_cas), redirect_stdout(output):
+            code = check_batch_close.main([
+                str(self.root), "--batch", "B1",
+                "--integrator", "fixture-integrator",
+                "--reviewer", "fixture-reviewer",
+                "--review-attestation",
+                "I reviewed the exact listed candidates and merged snapshot.",
+            ])
+        self.assertEqual(1, code, output.getvalue())
+        self.assertTrue(injected["done"])
+        self.assertIn("manifest page changed before review evidence publication",
+                      output.getvalue())
+        attempts = [
+            json.loads(line)
+            for line in (self.root / ".cambium/receipts/batch-close.jsonl")
+            .read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(1, len(attempts))
+        self.assertEqual("fail", attempts[0]["result"])
+        self.assertEqual("batch_close_gate", attempts[0]["check"])
+        self.assertFalse(any(
+            row.get("check") == "page_review_acceptance"
+            for row in attempts))
 
     def test_profile_example_vocabulary_is_outside_the_vocab_member(self):
         """A shipped example instance's own vocabulary values must not fail

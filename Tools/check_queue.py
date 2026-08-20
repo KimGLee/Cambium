@@ -19,6 +19,7 @@ Usage:
 """
 
 import contextlib
+import copy
 import datetime
 import importlib
 import json
@@ -28,6 +29,7 @@ import shlex
 import stat
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
@@ -37,22 +39,33 @@ import batch_settlement
 import candidate_lifecycle
 import coverage_delta
 import maintenance_candidates
+import metadata_execution_contract
+import metadata_property_state
+import project_page_state
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.20.1"
+TOOL_VERSION = "1.21.0"
+# 1.20.1 remains a producer-era identity for already-consumed maintenance
+# gates.  Current gate production and all live gate admission use 1.21.0;
+# historical consumption replays the older receipt's own promised shape.
+SUPPORTED_CHECK_QUEUE_TOOL_VERSIONS = frozenset(("1.20.1", "1.21.0"))
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
 REGISTER_AMENDMENT_TOOL = "register_amendment"
-REGISTER_AMENDMENT_TOOL_VERSION = "1.2.0"
+REGISTER_AMENDMENT_TOOL_VERSION = "1.3.0"
 # These exact legacy protocols remain replayable.  1.0.0 is the first
 # registration shape; 1.1.0 adds withdrawal.  Neither may claim the
-# delegated-authority fields introduced by the current 1.2.0 shape below.
+# delegated-authority fields introduced by 1.2.0.  The current 1.3.0 era adds
+# the Coverage-only ``property-state-migration`` operation; older rows remain
+# producer-era history and are never asked to satisfy that new operation.
 SUPPORTED_REGISTER_AMENDMENT_TOOL_VERSIONS = frozenset((
-    "1.0.0", "1.1.0", "1.2.0",
+    "1.0.0", "1.1.0", "1.2.0", "1.3.0",
 ))
-APPLY_AMENDMENT_TOOL_VERSION = "1.2.0"
-SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS = frozenset(("1.1.0", "1.2.0"))
+APPLY_AMENDMENT_TOOL_VERSION = "1.3.0"
+SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS = frozenset((
+    "1.1.0", "1.2.0", "1.3.0",
+))
 COMPILE_QUEUE_TOOL_VERSION = "1.5.0"
 # 1.3.0 produced the original registered queue-replan commit shape.  Its
 # bindings are still validated field by field; unknown protocols fail closed.
@@ -61,7 +74,7 @@ SUPPORTED_COMPILE_QUEUE_TOOL_VERSIONS = frozenset((
 ))
 OPERATIONAL_AMENDMENT_OPERATIONS = frozenset((
     "queue-replan", "scope-replan", "cancel-batch",
-    "gap-routing-reconciliation",
+    "gap-routing-reconciliation", "property-state-migration",
 ))
 
 QUEUE_PATH = ".cambium/state/required_queue.yaml"
@@ -259,18 +272,26 @@ GENERIC_WRITER_TOOLS = frozenset((
     "apply_contract_amendment", "apply_task_plan", "seal_receipts",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.10.0"
-UPDATE_QUEUE_TOOL_VERSION = "1.3.0"
-SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS = frozenset(("1.2.0", "1.3.0"))
-APPLY_DELTA_TOOL_VERSION = "1.5.0"
-SUPPORTED_APPLY_DELTA_TOOL_VERSIONS = frozenset(("1.4.0", "1.5.0"))
+BATCH_CLOSE_TOOL_VERSION = "1.11.0"
+# Queue-transition *evidence protocol* emitted by
+# ``kblib.make_queue_receipt``.  This is deliberately independent from
+# ``Tools/update_queue.py``'s CLI/distribution TOOL_VERSION: changing the
+# executable release does not reinterpret old transition evidence, while a
+# receipt-shape change must advance this producer-era identity explicitly.
+UPDATE_QUEUE_TOOL_VERSION = "1.5.0"
+SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS = frozenset((
+    "1.2.0", "1.3.0", "1.4.0", "1.5.0"))
+APPLY_DELTA_TOOL_VERSION = "1.6.0"
+SUPPORTED_APPLY_DELTA_TOOL_VERSIONS = frozenset((
+    "1.4.0", "1.5.0", "1.6.0"))
 # Batch-close has a finite historical protocol catalog because its 1.4 era
 # sealed a different Closed List shape.  A current action still accepts only
 # BATCH_CLOSE_TOOL_VERSION; this set is used only while replaying an already
 # recorded closed edge.  Other historical receipts are judged through
 # :func:`accounted_standards_versions` instead of an unbounded version list.
 SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((
-    BATCH_CLOSE_TOOL_VERSION, "1.9.0", "1.8.0", "1.7.0", "1.6.0", "1.5.0",
+    BATCH_CLOSE_TOOL_VERSION, "1.10.0", "1.9.0", "1.8.0", "1.7.0",
+    "1.6.0", "1.5.0",
     *LEGACY_CLOSED_LIST_VERSIONS,
 ))
 CORPUS_PLAN_TOOL = "check_corpus_plan"
@@ -279,6 +300,7 @@ CORPUS_PLAN_TOOL_VERSION = "1.7.0"
 # Batch-close 1.7 is the first protocol that consumes corpus-plan 1.7; older
 # supported bundles retain their 1.6 child identity during historical replay.
 HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
+    "1.10.0": "1.7.0",
     "1.9.0": "1.7.0",
     "1.8.0": "1.7.0",
     "1.7.0": "1.7.0",
@@ -347,6 +369,22 @@ COVERAGE_BATCH_SPEC_FIELDS = frozenset((
     "depends_on", "confirmation_required", "work_spec_path",
     "work_spec_sha256",
 ))
+LEGACY_PROPERTY_STATE_FIELD = "legacy_property_state"
+LEGACY_PROPERTY_RECORD_FIELDS = frozenset(("status", "value"))
+LEGACY_PROPERTY_STATUS = "legacy-unverified"
+LEGACY_PROPERTY_ADOPTION_OPERATION = "legacy-property-adoption-v1"
+PROPERTY_STATE_MIGRATION_BINDING_FIELDS = (
+    "property_state_migration_records",
+    "property_state_migration_count",
+    "property_state_migration_set_sha256",
+    "metadata_execution_contract_fingerprint",
+    "metadata_execution_rule_fingerprint",
+    "operation_capability",
+    "selected_profile_manifest",
+    "profile_snapshot_sha256",
+    "profile_contract_fingerprint",
+    "profile_load_inputs_sha256",
+)
 PROGRESS_TOP_LEVEL_FIELDS = frozenset((
     "schema_version", "task_id", "task_state", "required_queue_path",
     "queue_revision", "queue_state_revision", "required_queue_sha256",
@@ -385,7 +423,7 @@ POLICY_EXCEPTION_SCOPE_KINDS = frozenset(("task", "repository-snapshot"))
 # to carry evidence its era could not have produced.  A 1.7 bundle claiming a
 # policy-exception disposition is a forgery, not history.
 POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset((
-    "1.8.0", "1.9.0", "1.10.0",
+    "1.8.0", "1.9.0", "1.10.0", "1.11.0",
 ))
 # Producer eras whose close bundles externalize full candidate detail to a
 # born-cold evidence file and keep only counts, the accepted-set fingerprint,
@@ -396,10 +434,12 @@ POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset((
 # produced it; a version whose protocol did not exclude concurrent appenders
 # or bind its registers to a receipt cannot be certified after the fact.
 SEAL_TOOL = "seal_receipts"
-SUPPORTED_SEAL_TOOL_VERSIONS = frozenset(("1.2.0", "1.3.0"))
+SUPPORTED_SEAL_TOOL_VERSIONS = frozenset(("1.2.0", "1.3.0", "1.4.0"))
 
-COMPACT_CLOSE_EVIDENCE_VERSIONS = frozenset(("1.9.0", "1.10.0"))
-CANDIDATE_CONTINUATION_VERSIONS = frozenset(("1.10.0",))
+COMPACT_CLOSE_EVIDENCE_VERSIONS = frozenset((
+    "1.9.0", "1.10.0", "1.11.0",
+))
+CANDIDATE_CONTINUATION_VERSIONS = frozenset(("1.10.0", "1.11.0"))
 SEALED_POLICY_EXCEPTION_FIELDS = frozenset((
     "decision_id", "policy_id", "limit", "scope_kind", "scope_ref",
     "policy_fingerprint", "pages", "total",
@@ -6030,6 +6070,284 @@ def _compact_attestation_errors(attestation, attestation_id, item_id,
     return errors
 
 
+def _page_review_acceptance_errors(
+        catalog, aggregate, aggregate_id, *, item_id, task_id, manifest,
+        integrator_id, reviewer_id, attestation_id, merged_snapshot_sha256,
+        root=None, historical=False, selected_profile_manifest=None,
+        profile_snapshot_sha256=None, profile_contract_fingerprint=None,
+        profile_load_inputs_sha256=None,
+        metadata_execution_contract_fingerprint=None,
+        authorized_profile_contract=None,
+        authorized_metadata_contract=None,
+        authorized_page_semantic_fingerprints=None):
+    """Validate the 1.11 exact per-page review-evidence subgraph.
+
+    ``authorized_page_semantic_fingerprints`` is a same-transaction
+    orchestration input, not persisted authority: the producer may pass the
+    hashes it just computed from its frozen target snapshots and must still
+    perform the final exact-byte/identity CAS.  Independent consumers omit it
+    and this validator re-reads every current page before accepting the hash.
+    """
+    errors = []
+    label = "%s batch-close gate receipt %s" % (item_id, aggregate_id)
+
+    if (not isinstance(manifest, list) or
+            any(not _nonempty_string(value) for value in manifest)):
+        errors.append(
+            "%s current page-review protocol requires an explicit manifest "
+            "page-path list" % label)
+        expected_targets = []
+    else:
+        expected_targets = sorted(manifest)
+        if len(expected_targets) != len(set(expected_targets)):
+            errors.append("%s manifest page paths must be unique" % label)
+    expected_target_set = set(expected_targets)
+
+    frozen_semantics = None
+    if not historical and authorized_page_semantic_fingerprints is not None:
+        if not isinstance(authorized_page_semantic_fingerprints, dict):
+            errors.append(
+                "%s authorized page semantic fingerprints must be a "
+                "target-to-sha256 mapping" % label)
+        else:
+            supplied_targets = set(authorized_page_semantic_fingerprints)
+            bad_values = sorted(
+                target for target, value in
+                authorized_page_semantic_fingerprints.items()
+                if (not _nonempty_string(target) or
+                    not isinstance(value, str) or
+                    not SHA256_RE.fullmatch(value)))
+            if supplied_targets != expected_target_set:
+                errors.append(
+                    "%s authorized page semantic fingerprint targets do not "
+                    "equal the exact manifest" % label)
+            if bad_values:
+                errors.append(
+                    "%s authorized page semantic fingerprints have invalid "
+                    "values for: %s" % (label, ", ".join(bad_values)))
+            if supplied_targets == expected_target_set and not bad_values:
+                frozen_semantics = dict(
+                    authorized_page_semantic_fingerprints)
+
+    ids = aggregate.get("page_review_receipts")
+    if (not isinstance(ids, list) or
+            any(not _nonempty_string(value) for value in ids)):
+        errors.append("%s page_review_receipts must be a string list" % label)
+        ids = []
+    elif ids != sorted(ids):
+        errors.append("%s page_review_receipts must be sorted" % label)
+    if len(ids) != len(set(ids)):
+        errors.append("%s page_review_receipts must be unique" % label)
+    reserved_receipt_ids = {
+        value for value in (
+            aggregate_id,
+            aggregate.get("global_review_receipt"),
+            aggregate.get("reviewer_attestation_receipt"),
+            aggregate.get("queue_consistency_receipt"),
+            aggregate.get("delta_apply_receipt"),
+            aggregate.get("corpus_plan_receipt"),
+        ) if _nonempty_string(value)
+    }
+    evidence = aggregate.get("closed_list_evidence")
+    if isinstance(evidence, dict):
+        reserved_receipt_ids.update(
+            value for value in evidence.values()
+            if _nonempty_string(value))
+    overlaps = sorted(set(ids).intersection(reserved_receipt_ids))
+    if overlaps:
+        errors.append(
+            "%s page review children must use receipt IDs distinct from "
+            "the aggregate and its non-page evidence: %s" %
+            (label, ", ".join(overlaps)))
+    count = aggregate.get("page_review_receipt_count")
+    if (not isinstance(count, int) or isinstance(count, bool) or
+            count < 0 or count != len(ids)):
+        errors.append(
+            "%s page_review_receipt_count must equal the exact receipt list" %
+            label)
+    set_sha = aggregate.get("page_review_receipt_set_sha256")
+    expected_set_sha = candidate_lifecycle.candidate_set_sha256(ids)
+    if (not isinstance(set_sha, str) or not SHA256_RE.fullmatch(set_sha) or
+            set_sha != expected_set_sha):
+        errors.append(
+            "%s page_review_receipt_set_sha256 does not bind the exact "
+            "sorted receipt-ID set" % label)
+
+    profile_bindings = {}
+    expected_profile = {
+        "selected_profile_manifest": selected_profile_manifest,
+        "profile_snapshot_sha256": profile_snapshot_sha256,
+        "profile_contract_fingerprint": profile_contract_fingerprint,
+        "profile_load_inputs_sha256": profile_load_inputs_sha256,
+    }
+    for field in (
+            "selected_profile_manifest", "profile_snapshot_sha256",
+            "profile_contract_fingerprint", "profile_load_inputs_sha256"):
+        value = aggregate.get(field)
+        if field == "selected_profile_manifest":
+            if not _nonempty_string(value):
+                errors.append("%s %s must be a non-empty path" %
+                              (label, field))
+        elif not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+            errors.append("%s %s must be a sha256 fingerprint" %
+                          (label, field))
+        expected = expected_profile[field]
+        if expected is not None and value != expected:
+            errors.append("%s has %s=%r, expected %r" %
+                          (label, field, value, expected))
+        profile_bindings[field] = value
+
+    metadata_fingerprint = aggregate.get(
+        "metadata_execution_contract_fingerprint")
+    if (not isinstance(metadata_fingerprint, str) or
+            not SHA256_RE.fullmatch(metadata_fingerprint)):
+        errors.append(
+            "%s metadata_execution_contract_fingerprint must be a sha256 "
+            "fingerprint" % label)
+    if (metadata_execution_contract_fingerprint is not None and
+            metadata_fingerprint !=
+            metadata_execution_contract_fingerprint):
+        errors.append(
+            "%s metadata_execution_contract_fingerprint=%r, expected %r" %
+            (label, metadata_fingerprint,
+             metadata_execution_contract_fingerprint))
+
+    projection_rules = None
+    live_metadata_fingerprint = None
+    if not historical:
+        if root is None:
+            errors.append(
+                "%s current page-review validation requires repository root" %
+                label)
+        else:
+            try:
+                contract = authorized_metadata_contract
+                if contract is None:
+                    contract = metadata_execution_contract.\
+                        load_metadata_execution_contract(root)
+                elif not isinstance(
+                        contract,
+                        metadata_execution_contract.
+                        CompiledMetadataExecutionContract):
+                    raise ValueError(
+                        "authorized metadata contract has the wrong type")
+                live_metadata_fingerprint = contract.contract_fingerprint
+                extension_gates = getattr(
+                    authorized_profile_contract, "extension_gates", None)
+                if extension_gates is None:
+                    raise ValueError(
+                        "no authorized typed Profile contract was supplied")
+                if (getattr(authorized_profile_contract, "authorized", False)
+                        is not True or
+                        getattr(
+                            authorized_profile_contract,
+                            "manifest_repo_path", None) !=
+                        profile_bindings["selected_profile_manifest"] or
+                        getattr(
+                            authorized_profile_contract,
+                            "profile_contract_fingerprint", None) !=
+                        profile_bindings["profile_contract_fingerprint"]):
+                    raise ValueError(
+                        "typed Profile contract does not match the exact "
+                        "authorized fingerprint")
+                projection_rules = metadata_property_state.\
+                    profile_gate_projection_rules(
+                        root, extension_gates, metadata_contract=contract,
+                        authorized_profile_contract=
+                            authorized_profile_contract)
+            except (OSError, UnicodeError, ValueError) as exc:
+                errors.append(
+                    "%s cannot authorize current metadata/Profile execution "
+                    "context: %s" %
+                    (label, exc))
+            if (live_metadata_fingerprint is not None and
+                    metadata_fingerprint != live_metadata_fingerprint):
+                errors.append(
+                    "%s metadata execution contract is stale relative to "
+                    "the current repository" % label)
+
+    targets = []
+    for index, page_receipt_id in enumerate(ids):
+        child_label = "%s page review child[%d]" % (item_id, index)
+        child = _require_receipt(
+            catalog, page_receipt_id, child_label, errors,
+            expected={
+                "tool": BATCH_CLOSE_TOOL,
+                "tool_version": BATCH_CLOSE_TOOL_VERSION,
+                "check": "page_review_acceptance",
+                "result": "pass",
+                "task_id": task_id,
+                "batch_id": item_id,
+                "integrator_id": integrator_id,
+                "reviewer_id": reviewer_id,
+                "reviewer_attestation_receipt": attestation_id,
+                "merged_snapshot_sha256": merged_snapshot_sha256,
+                "metadata_execution_contract_fingerprint":
+                    metadata_fingerprint,
+                **profile_bindings,
+            },
+        )
+        if not isinstance(child, dict):
+            continue
+        target = child.get("target")
+        if not _nonempty_string(target):
+            errors.append("%s target must be a non-empty page path" %
+                          child_label)
+            continue
+        targets.append(target)
+        checked_at = _timestamp_value(child.get("checked_at"))
+        reviewed_on = child.get("reviewed_on")
+        if checked_at is None:
+            errors.append("%s checked_at must be an RFC 3339 instant" %
+                          child_label)
+        expected_date = (checked_at.date().isoformat()
+                         if checked_at is not None else None)
+        try:
+            parsed_date = datetime.date.fromisoformat(reviewed_on)
+        except (TypeError, ValueError):
+            parsed_date = None
+        if parsed_date is None or reviewed_on != expected_date:
+            errors.append(
+                "%s reviewed_on must equal its own checked_at UTC date" %
+                child_label)
+        semantic = child.get("semantic_content_sha256")
+        if not isinstance(semantic, str) or not SHA256_RE.fullmatch(semantic):
+            errors.append(
+                "%s semantic_content_sha256 must be a sha256 fingerprint" %
+                child_label)
+        if (not historical and root is not None and
+                projection_rules is not None and
+                target in expected_target_set):
+            if frozen_semantics is not None:
+                current_semantic = frozen_semantics[target]
+            else:
+                try:
+                    page = kblib.repository_target_snapshot(
+                        root, target, suffixes=".md", singly_linked=True)
+                    if not page.exists:
+                        raise ValueError("page does not exist")
+                    current_semantic = \
+                        project_page_state.semantic_content_fingerprint(
+                            target, page.read_text(), projection_rules)
+                except (OSError, UnicodeError, ValueError) as exc:
+                    errors.append("%s cannot re-read exact target: %s" %
+                                  (child_label, exc))
+                    current_semantic = None
+            if (current_semantic is not None and
+                    semantic != current_semantic):
+                errors.append(
+                    "%s semantic_content_sha256 does not match the "
+                    "authorized current page content" % child_label)
+
+    if sorted(targets) != expected_targets:
+        errors.append(
+            "%s page review child targets %r do not equal exact manifest %r" %
+            (label, sorted(targets), expected_targets))
+    elif len(targets) != len(set(targets)):
+        errors.append("%s page review child targets must be unique" % label)
+    return errors, ids
+
+
 def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                               root=None,
                               queue_revision, queue_state_revision,
@@ -6040,7 +6358,15 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                               delta_apply_receipt,
                               work_spec_path=None,
                               work_spec_sha256=None,
+                              manifest=None,
                               selected_profile_manifest=None,
+                              profile_snapshot_sha256=None,
+                              profile_contract_fingerprint=None,
+                              profile_load_inputs_sha256=None,
+                              metadata_execution_contract_fingerprint=None,
+                              authorized_profile_contract=None,
+                              authorized_metadata_contract=None,
+                              authorized_page_semantic_fingerprints=None,
                               corpus_plan_required=None,
                               corpus_plan_triggers=None,
                               corpus_plan_expected_binding=None,
@@ -6441,6 +6767,29 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                           "candidate types do not equal its dispositions" %
                           (item_id, attestation_id))
 
+    page_review_ids = []
+    if receipt_version == BATCH_CLOSE_TOOL_VERSION:
+        page_review_errors, page_review_ids = \
+            _page_review_acceptance_errors(
+                catalog, receipt, receipt_id,
+                item_id=item_id, task_id=task_id, manifest=manifest,
+                integrator_id=integrator_id, reviewer_id=reviewer_id,
+                attestation_id=attestation_id,
+                merged_snapshot_sha256=merged_snapshot_sha256,
+                root=root, historical=historical,
+                selected_profile_manifest=selected_profile_manifest,
+                profile_snapshot_sha256=profile_snapshot_sha256,
+                profile_contract_fingerprint=profile_contract_fingerprint,
+                profile_load_inputs_sha256=profile_load_inputs_sha256,
+                metadata_execution_contract_fingerprint=
+                    metadata_execution_contract_fingerprint,
+                authorized_profile_contract=authorized_profile_contract,
+                authorized_metadata_contract=authorized_metadata_contract,
+                authorized_page_semantic_fingerprints=
+                    authorized_page_semantic_fingerprints,
+            )
+        errors.extend(page_review_errors)
+
     evidence = receipt.get("closed_list_evidence")
     # The Closed List a bundle answers to is the one its producer era ran:
     # a pre-1.5.0 bundle carries seven members forever (K12/10 producer-era
@@ -6501,6 +6850,19 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
         errors.append("%s receipt %s reviewer attestation must be a distinct "
                       "record from the aggregator, global review, and the Closed "
                       "List members" % (label, receipt_id))
+    if page_review_ids:
+        reserved = set(evidence_ids + [
+            receipt_id, global_review_id, attestation_id,
+            queue_consistency_receipt, delta_apply_receipt,
+        ])
+        if corpus_receipt_id is not None:
+            reserved.add(corpus_receipt_id)
+        reused = sorted(set(page_review_ids).intersection(reserved))
+        if reused:
+            errors.append(
+                "%s receipt %s page-review children must be distinct from "
+                "the aggregator and every other close-evidence record: %s" %
+                (label, receipt_id, ", ".join(reused)))
     if (isinstance(global_review, dict) and
             global_review.get("closed_list_evidence") != evidence):
         errors.append("%s global review receipt %s does not bind the same "
@@ -6674,7 +7036,8 @@ def _latest_consumed_maintenance_gate(root, result, contract,
         if not isinstance(gate, dict):
             continue
         if not (gate.get("tool") == TOOL and
-                gate.get("tool_version") == TOOL_VERSION and
+                gate.get("tool_version") in
+                SUPPORTED_CHECK_QUEUE_TOOL_VERSIONS and
                 gate.get("check") == "required_queue" and
                 gate.get("queue_check_mode") ==
                 "require-maintenance-complete" and
@@ -6793,7 +7156,7 @@ def _previous_maintenance_candidate_state(root, result, receipt_id,
         "previous maintenance completion", errors,
         expected={
             "tool": TOOL,
-            "tool_version": TOOL_VERSION,
+            "tool_version": ANY_PRODUCER_ERA_VERSION,
             "check": "required_queue",
             "target": QUEUE_PATH,
             "queue_check_mode": "require-maintenance-complete",
@@ -6806,6 +7169,11 @@ def _previous_maintenance_candidate_state(root, result, receipt_id,
     )
     if receipt is None:
         return None, [], None
+    if receipt.get("tool_version") not in SUPPORTED_CHECK_QUEUE_TOOL_VERSIONS:
+        errors.append(
+            "previous maintenance completion receipt %s has unsupported "
+            "check_queue producer version %r" %
+            (receipt_id, receipt.get("tool_version")))
     entry = (result.get("receipt_catalog") or {}).get(receipt_id)
     if entry is not None and entry[0] == "<pending-write>":
         errors.append(
@@ -8084,6 +8452,11 @@ def _operational_amendment_registration_errors(
             "plan_sha256": amendment.get("plan_sha256"),
             "cancel_batch_id": amendment.get("cancel_batch_id"),
         })
+    if operation == "property-state-migration":
+        expected.update({
+            field: amendment.get(field)
+            for field in PROPERTY_STATE_MIGRATION_BINDING_FIELDS
+        })
     receipt = _require_receipt(
         catalog, receipt_id, "%s registration" % label, errors,
         expected=expected,
@@ -8095,11 +8468,60 @@ def _operational_amendment_registration_errors(
         errors.append(
             "%s registration receipt has unsupported register_amendment "
             "producer version %r" % (label, receipt_version))
+    if (operation == "property-state-migration" and
+            receipt_version != REGISTER_AMENDMENT_TOOL_VERSION):
+        errors.append(
+            "%s property-state-migration requires register_amendment %s" %
+            (label, REGISTER_AMENDMENT_TOOL_VERSION))
+    if operation == "property-state-migration":
+        try:
+            migration_records = \
+                metadata_property_state.validate_legacy_property_migration_records(
+                    amendment.get("property_state_migration_records"),
+                    expected_paths=amendment.get("affected_pages"))
+            migration_set_sha = \
+                metadata_property_state.legacy_property_migration_set_sha256(
+                    amendment.get("property_state_migration_records"))
+        except (TypeError, ValueError) as exc:
+            errors.append(
+                "%s property-state-migration records are invalid: %s" %
+                (label, exc))
+            migration_records = {}
+            migration_set_sha = None
+        if amendment.get("property_state_migration_count") != len(
+                migration_records):
+            errors.append(
+                "%s property-state-migration count does not equal its exact "
+                "record set" % label)
+        if amendment.get(
+                "property_state_migration_set_sha256") != migration_set_sha:
+            errors.append(
+                "%s property-state-migration record-set digest is stale" %
+                label)
+        if amendment.get("operation_capability") != \
+                LEGACY_PROPERTY_ADOPTION_OPERATION:
+            errors.append(
+                "%s property-state-migration does not bind the %s typed "
+                "operation" % (label, LEGACY_PROPERTY_ADOPTION_OPERATION))
+        for field in (
+                "property_state_migration_set_sha256",
+                "metadata_execution_contract_fingerprint",
+                "metadata_execution_rule_fingerprint",
+                "profile_snapshot_sha256", "profile_contract_fingerprint",
+                "profile_load_inputs_sha256"):
+            if not SHA256_RE.fullmatch(str(amendment.get(field) or "")):
+                errors.append(
+                    "%s property-state-migration has invalid %s" %
+                    (label, field))
+        if not _nonempty_string(amendment.get("selected_profile_manifest")):
+            errors.append(
+                "%s property-state-migration has no selected Profile "
+                "manifest" % label)
     authority_fields = (
         "decision_mode", "authority_id", "authority_sha256",
         "change_classes", "amendment_impact_sha256",
     )
-    if receipt_version == REGISTER_AMENDMENT_TOOL_VERSION:
+    if receipt_version in ("1.2.0", REGISTER_AMENDMENT_TOOL_VERSION):
         for field in authority_fields:
             if receipt.get(field) != amendment.get(field):
                 errors.append(
@@ -8454,7 +8876,7 @@ def _cross_ledger_amendment_errors(
                 amendment.get("operation") is not None and
                 amendment.get("operation") not in
                 ("scope-replan", "cancel-batch", "queue-replan",
-                 "gap-routing-reconciliation")):
+                 "gap-routing-reconciliation", "property-state-migration")):
             # Fail closed here, at the walk itself: a row claiming an
             # operation no validator owns would otherwise be skipped by
             # every specialized check below, making an unknown operation
@@ -8463,13 +8885,13 @@ def _cross_ledger_amendment_errors(
                 "Progress amendments[%d] declares unknown operation %r; "
                 "known operations are scope-replan, cancel-batch, "
                 "queue-replan, gap-routing-reconciliation, "
-                "contract-amendment" %
+                "property-state-migration, contract-amendment" %
                 (index, amendment.get("operation")))
             continue
         if (not isinstance(amendment, dict) or
                 amendment.get("operation") not in
                 ("scope-replan", "cancel-batch",
-                 "gap-routing-reconciliation")):
+                 "gap-routing-reconciliation", "property-state-migration")):
             continue
         label = "Progress amendments[%d]" % index
         status = amendment.get("status")
@@ -8491,13 +8913,14 @@ def _cross_ledger_amendment_errors(
                               (label, field))
         scope_before = amendment.get("scope_version_before")
         scope_after = amendment.get("scope_version_after")
-        if (operation == "gap-routing-reconciliation" and
+        if (operation in (
+                "gap-routing-reconciliation", "property-state-migration") and
                 _nonempty_string(scope_before) and
                 scope_after != scope_before):
             errors.append(
-                "%s gap-routing-reconciliation must preserve scope_version" %
-                label)
-        elif (operation != "gap-routing-reconciliation" and
+                "%s %s must preserve scope_version" % (label, operation))
+        elif (operation not in (
+                "gap-routing-reconciliation", "property-state-migration") and
               _nonempty_string(scope_before) and
               _nonempty_string(scope_after) and
               scope_before == scope_after):
@@ -8505,10 +8928,16 @@ def _cross_ledger_amendment_errors(
                           label)
         queue_before = amendment.get("queue_revision_before")
         queue_after = amendment.get("queue_revision_after")
+        expected_queue_after = (
+            queue_before + 1
+            if isinstance(queue_before, int) and
+            not isinstance(queue_before, bool) else None)
         if (not isinstance(queue_before, int) or isinstance(queue_before, bool) or
                 queue_before < 1 or not isinstance(queue_after, int) or
-                isinstance(queue_after, bool) or queue_after != queue_before + 1):
-            errors.append("%s queue revision edge must increment by one" % label)
+                isinstance(queue_after, bool) or
+                queue_after != expected_queue_after):
+            errors.append(
+                "%s queue revision edge must increment by one" % label)
         state_before = amendment.get("state_revision_before")
         state_after = amendment.get("state_revision_after")
         if (not isinstance(state_before, int) or isinstance(state_before, bool) or
@@ -8517,7 +8946,8 @@ def _cross_ledger_amendment_errors(
             errors.append("%s state revision edge must use non-negative integers" %
                           label)
         elif (operation in ("scope-replan",
-                            "gap-routing-reconciliation") and
+                            "gap-routing-reconciliation",
+                            "property-state-migration") and
               state_after != state_before):
             errors.append("%s %s must preserve state_revision" %
                           (label, operation))
@@ -8531,10 +8961,16 @@ def _cross_ledger_amendment_errors(
             errors.append("%s coverage_proposal_sha256 must be sha256:<64 "
                           "lowercase hex>" % label)
         cancel_id = amendment.get("cancel_batch_id")
-        if operation in ("scope-replan", "gap-routing-reconciliation"):
+        if operation in ("scope-replan", "gap-routing-reconciliation",
+                         "property-state-migration"):
             if cancel_id is not None:
                 errors.append("%s %s cancel_batch_id must be null" %
                               (label, operation))
+            if (operation == "property-state-migration" and
+                    amendment.get("affected_batches") != []):
+                errors.append(
+                    "%s property-state-migration affected_batches must be "
+                    "empty" % label)
         elif (not _nonempty_string(cancel_id) or
               amendment.get("affected_batches") != [cancel_id]):
             errors.append("%s cancel-batch must bind exactly cancel_batch_id" %
@@ -8601,8 +9037,10 @@ def _cross_ledger_amendment_errors(
             if scope_before != queue.get("scope_version"):
                 errors.append("%s pending Amendment scope_version_before does "
                               "not match the live Queue" % label)
+            expected_pending_queue_after = \
+                queue.get("queue_revision", 0) + 1
             if (queue_before != queue.get("queue_revision") or
-                    queue_after != queue.get("queue_revision", 0) + 1):
+                    queue_after != expected_pending_queue_after):
                 errors.append("%s pending Amendment must bind the next live "
                               "Queue revision" % label)
             if state_before != queue.get("state_revision"):
@@ -8687,6 +9125,18 @@ def _cross_ledger_amendment_errors(
                 "%s verification receipt has unsupported apply_amendment "
                 "producer version %r" %
                 (label, receipt.get("tool_version")))
+        if (receipt is not None and operation ==
+                "property-state-migration" and
+                receipt.get("tool_version") != APPLY_AMENDMENT_TOOL_VERSION):
+            errors.append(
+                "%s property-state-migration requires apply_amendment %s" %
+                (label, APPLY_AMENDMENT_TOOL_VERSION))
+        if receipt is not None and operation == "property-state-migration":
+            for field in PROPERTY_STATE_MIGRATION_BINDING_FIELDS:
+                if receipt.get(field) != amendment.get(field):
+                    errors.append(
+                        "%s property-state-migration commit receipt does not "
+                        "bind %s" % (label, field))
         if not _nonempty_string(transaction_id):
             errors.append("%s verified transaction_id must be non-empty" % label)
         if receipt is not None and not SHA256_RE.fullmatch(
@@ -8721,7 +9171,7 @@ def _pending_cross_ledger_amendments(progress):
         if (isinstance(amendment, dict) and
             amendment.get("operation") in
             ("scope-replan", "cancel-batch", "queue-replan",
-             "gap-routing-reconciliation") and
+             "gap-routing-reconciliation", "property-state-migration") and
             amendment.get("status") == "approved" and
             amendment.get("writeback_done") is False)
     ]
@@ -10429,6 +10879,901 @@ def _coverage_records(root, coverage, errors):
     return records, assignments
 
 
+def _current_property_receipt(catalog, receipt_id, label, errors):
+    """Resolve one live owner-state pointer without consulting history.
+
+    ``catalog`` is the adoption-filtered hot view assembled by
+    :func:`validate_runtime`.  Looking up the mapping directly is important:
+    the historical/sealed resolver is valid for replay, but a current owner
+    property may not silently promote an invalidated producer-era receipt
+    back into live authority.
+    """
+    if not _nonempty_string(receipt_id):
+        errors.append("%s evidence_receipt must be a non-empty string" % label)
+        return None
+    entry = catalog.get(receipt_id)
+    if not isinstance(entry, tuple) or len(entry) != 2 or not isinstance(
+            entry[1], dict):
+        errors.append(
+            "%s evidence receipt %s is absent from the current receipt "
+            "catalog" % (label, receipt_id))
+        return None
+    receipt = entry[1]
+    if receipt.get("receipt_id") != receipt_id:
+        errors.append(
+            "%s evidence receipt catalog key differs from its record" %
+            label)
+        return None
+    return receipt
+
+
+def _property_receipt_utc_date(receipt, label, errors):
+    try:
+        return metadata_property_state.receipt_utc_date(receipt)
+    except ValueError as exc:
+        errors.append("%s %s" % (label, exc))
+        return None
+
+
+def _current_inflight_semantic_baselines(
+        root, coverage, queue, current_catalog, profile_view):
+    """Return the sole controlled owner-staleness window per manifest page.
+
+    A canonical page may change after a current batch opens but before the
+    serial Integrator consumes its delta.  During that bounded window an
+    existing owner record is still admissible only when it binds the exact
+    semantic before-image frozen by the latest *current* opening receipt.
+    Missing/legacy/invalid openings and overlapping active manifests grant no
+    exception; their ordinary validators report the underlying defect.
+    """
+    candidates = {}
+    for item in queue.get("required_queue") or []:
+        if not isinstance(item, dict) or item.get("state") not in (
+                "open", "merge-ready"):
+            continue
+        if item.get("state") == "merge-ready":
+            live_coverage_sha = kblib.sha256_bytes(
+                kblib.canonical_yaml(coverage))
+            matching_apply = any(
+                isinstance(entry, tuple) and isinstance(entry[1], dict) and
+                entry[1].get("tool") == "apply_delta" and
+                entry[1].get("tool_version") == APPLY_DELTA_TOOL_VERSION and
+                entry[1].get("check") == "delta_apply" and
+                entry[1].get("target") == item.get("id") and
+                entry[1].get("result") == "pass" and
+                entry[1].get("invalidated_by") is None and
+                entry[1].get("delta_path") == item.get("delta_path") and
+                entry[1].get("delta_sha256") == item.get("delta_sha256") and
+                entry[1].get("after_coverage_sha256") == live_coverage_sha
+                for entry in current_catalog.values())
+            if matching_apply:
+                continue
+        opening = None
+        for receipt_id in reversed(item.get("transition_receipts") or []):
+            entry = current_catalog.get(receipt_id)
+            receipt = entry[1] if isinstance(entry, tuple) else None
+            if (isinstance(receipt, dict) and
+                    receipt.get("before_state") in
+                    ("queued", "merge-ready") and
+                    receipt.get("after_state") == "open"):
+                opening = receipt
+                break
+        if (not isinstance(opening, dict) or
+                opening.get("tool") != "update_queue" or
+                opening.get("tool_version") != UPDATE_QUEUE_TOOL_VERSION):
+            continue
+        if _current_open_semantic_baseline_errors(
+                root, opening, item, profile_view):
+            continue
+        try:
+            before = metadata_property_state.validate_semantic_baseline_records(
+                opening.get("manifest_semantic_before_records"),
+                expected_paths=sorted(item.get("manifest") or []))
+        except (TypeError, ValueError):
+            continue
+        for path, fingerprint in before.items():
+            candidates.setdefault(path, []).append(fingerprint)
+    return {
+        path: values[0] for path, values in candidates.items()
+        if len(values) == 1
+    }
+
+
+def _delta_opening_semantic_binding(
+        receipt, catalog, label, *, expected_item=None):
+    """Validate and resolve a current delta's frozen opening before-set."""
+    errors = []
+    opening_id = receipt.get("opening_transition_receipt")
+    opening = _current_property_receipt(
+        catalog, opening_id, "%s opening semantic binding" % label, errors)
+    if opening is None:
+        return errors, {}
+    expected = {
+        "tool": "update_queue",
+        "tool_version": UPDATE_QUEUE_TOOL_VERSION,
+        "after_state": "open",
+        "semantic_content_protocol":
+            project_page_state.SEMANTIC_FINGERPRINT_PROTOCOL,
+    }
+    if isinstance(expected_item, dict):
+        expected["target"] = expected_item.get("id")
+    else:
+        expected["target"] = receipt.get("batch_id")
+    for name, value in expected.items():
+        if opening.get(name) != value:
+            errors.append(
+                "%s opening receipt %s has %s=%r, expected %r" %
+                (label, opening_id, name, opening.get(name), value))
+    for name in (
+            "task_id", "selected_profile_manifest",
+            "profile_snapshot_sha256", "profile_contract_fingerprint",
+            "profile_load_inputs_sha256",
+            "metadata_execution_contract_fingerprint"):
+        if opening.get(name) != receipt.get(name):
+            errors.append(
+                "%s opening receipt %s does not share %s with the delta "
+                "receipt" % (label, opening_id, name))
+    if opening.get("before_state") not in ("queued", "merge-ready"):
+        errors.append(
+            "%s opening receipt %s has invalid before_state" %
+            (label, opening_id))
+    if (receipt.get("manifest_semantic_before_set_sha256") !=
+            opening.get("manifest_semantic_before_set_sha256")):
+        errors.append(
+            "%s does not bind the opening receipt's exact semantic "
+            "before-set" % label)
+    expected_paths = (sorted(expected_item.get("manifest") or [])
+                      if isinstance(expected_item, dict) else None)
+    try:
+        before = metadata_property_state.validate_semantic_baseline_records(
+            opening.get("manifest_semantic_before_records"),
+            expected_paths=expected_paths)
+        expected_set_sha = \
+            metadata_property_state.semantic_baseline_set_sha256(
+                opening.get("manifest_semantic_before_records"))
+    except (TypeError, ValueError) as exc:
+        errors.append(
+            "%s opening receipt %s has invalid semantic before records: %s" %
+            (label, opening_id, exc))
+        return errors, {}
+    if opening.get("manifest_semantic_before_count") != len(before):
+        errors.append(
+            "%s opening receipt %s does not bind the exact baseline count" %
+            (label, opening_id))
+    if (opening.get("manifest_semantic_before_set_sha256") !=
+            expected_set_sha):
+        errors.append(
+            "%s opening receipt %s has a stale semantic before-set digest" %
+            (label, opening_id))
+    return errors, before
+
+
+def _content_change_property_evidence_errors(
+        receipt, *, receipt_id, path, field, value, semantic_fingerprint,
+        metadata_contract_fingerprint, metadata_rule_fingerprint, task_id,
+        profile_view, include_shape, current_catalog):
+    """Bind a live content property to one exact current delta event."""
+    label = "Coverage property_state.%s for %s" % (field, path)
+    errors = []
+    expected = {
+        "tool": "apply_delta",
+        "tool_version": APPLY_DELTA_TOOL_VERSION,
+        "check": "delta_apply",
+        "result": "pass",
+        "invalidated_by": None,
+        "actor_role": "integrator",
+        "task_id": task_id,
+        "metadata_execution_contract_fingerprint":
+            metadata_contract_fingerprint,
+        "metadata_execution_rule_fingerprint": metadata_rule_fingerprint,
+        "semantic_content_protocol":
+            project_page_state.SEMANTIC_FINGERPRINT_PROTOCOL,
+        "selected_profile_manifest":
+            profile_view.get("selected_profile_manifest"),
+        "profile_snapshot_sha256":
+            profile_view.get("profile_snapshot_sha256"),
+        "profile_contract_fingerprint":
+            profile_view.get("profile_contract_fingerprint"),
+        "profile_load_inputs_sha256":
+            profile_view.get("profile_load_inputs_sha256"),
+    }
+    for name, expected_value in expected.items():
+        if receipt.get(name) != expected_value:
+            errors.append(
+                "%s evidence receipt %s has %s=%r, expected %r" %
+                (label, receipt_id, name, receipt.get(name), expected_value))
+    if include_shape:
+        errors.extend(_delta_property_event_errors(
+            receipt, "content-change evidence receipt %s" % receipt_id))
+    opening_errors, opening_before = _delta_opening_semantic_binding(
+        receipt, current_catalog, label)
+    errors.extend(opening_errors)
+    accepted_date = _property_receipt_utc_date(receipt, label, errors)
+    events = receipt.get("property_events")
+    matches = ([event for event in events
+                if isinstance(event, dict) and event.get("path") == path]
+               if isinstance(events, list) else [])
+    if len(matches) != 1:
+        errors.append(
+            "%s evidence receipt %s must carry exactly one event for that "
+            "page; found %d" % (label, receipt_id, len(matches)))
+        return errors
+    event = matches[0]
+    if event.get("event") != "semantic-content-change":
+        errors.append("%s evidence event has the wrong event type" % label)
+    if event.get("accepted_on") != accepted_date:
+        errors.append(
+            "%s evidence event accepted_on=%r does not equal its receipt "
+            "UTC date %r" %
+            (label, event.get("accepted_on"), accepted_date))
+    if event.get("after_semantic_content_sha256") != semantic_fingerprint:
+        errors.append(
+            "%s evidence event does not bind the current semantic content" %
+            label)
+    if event.get("before_semantic_content_sha256") != opening_before.get(path):
+        errors.append(
+            "%s evidence event does not bind the page's frozen opening "
+            "semantic fingerprint" % label)
+    if field == metadata_property_state.LAST_CONTENT_MODIFIED:
+        if value != event.get("accepted_on"):
+            errors.append(
+                "%s value=%r does not equal the accepted content-change "
+                "date %r" % (label, value, event.get("accepted_on")))
+    elif field == metadata_property_state.LAST_REVIEWED:
+        if value is not None:
+            errors.append(
+                "%s content-change evidence may only own a null review "
+                "tombstone" % label)
+        if event.get("last_reviewed_invalidated") is not True:
+            errors.append(
+                "%s null tombstone is not backed by a review invalidation "
+                "event" % label)
+    return errors
+
+
+def _review_property_evidence_errors(
+        receipt, *, receipt_id, path, value, semantic_fingerprint,
+        metadata_contract_fingerprint, task_id, profile_view,
+        current_catalog):
+    """Bind ``last_reviewed`` to one current Profile-bound page receipt."""
+    label = "Coverage property_state.last_reviewed for %s" % path
+    errors = []
+    expected = {
+        "tool": BATCH_CLOSE_TOOL,
+        "tool_version": BATCH_CLOSE_TOOL_VERSION,
+        "check": "page_review_acceptance",
+        "target": path,
+        "result": "pass",
+        "invalidated_by": None,
+        "task_id": task_id,
+        "reviewed_on": value,
+        "semantic_content_sha256": semantic_fingerprint,
+        "selected_profile_manifest":
+            profile_view.get("selected_profile_manifest"),
+        "profile_snapshot_sha256":
+            profile_view.get("profile_snapshot_sha256"),
+        "profile_contract_fingerprint":
+            profile_view.get("profile_contract_fingerprint"),
+        "profile_load_inputs_sha256":
+            profile_view.get("profile_load_inputs_sha256"),
+        "metadata_execution_contract_fingerprint":
+            metadata_contract_fingerprint,
+    }
+    for name, expected_value in expected.items():
+        if receipt.get(name) != expected_value:
+            errors.append(
+                "%s evidence receipt %s has %s=%r, expected %r" %
+                (label, receipt_id, name, receipt.get(name), expected_value))
+    accepted_date = _property_receipt_utc_date(receipt, label, errors)
+    if value != accepted_date:
+        errors.append(
+            "%s value=%r does not equal its review receipt UTC date %r" %
+            (label, value, accepted_date))
+    batch_id = receipt.get("batch_id")
+    integrator_id = receipt.get("integrator_id")
+    reviewer_id = receipt.get("reviewer_id")
+    merged_snapshot = receipt.get("merged_snapshot_sha256")
+    for name, candidate in (
+            ("batch_id", batch_id), ("integrator_id", integrator_id),
+            ("reviewer_id", reviewer_id)):
+        if not _nonempty_string(candidate):
+            errors.append(
+                "%s evidence receipt %s has no %s" %
+                (label, receipt_id, name))
+    if (_nonempty_string(integrator_id) and
+            _nonempty_string(reviewer_id) and
+            integrator_id.casefold() == reviewer_id.casefold()):
+        errors.append(
+            "%s evidence receipt uses the same integrator and reviewer" %
+            label)
+    if (not isinstance(merged_snapshot, str) or
+            not SHA256_RE.fullmatch(merged_snapshot)):
+        errors.append(
+            "%s evidence receipt has invalid merged_snapshot_sha256" %
+            label)
+    attestation_id = receipt.get("reviewer_attestation_receipt")
+    attestation = _current_property_receipt(
+        current_catalog, attestation_id,
+        "%s reviewer attestation" % label, errors)
+    if attestation is not None:
+        attestation_expected = {
+            "tool": BATCH_CLOSE_TOOL,
+            "tool_version": BATCH_CLOSE_TOOL_VERSION,
+            "check": "batch_global_review_attestation",
+            "target": batch_id,
+            "result": "pass",
+            "invalidated_by": None,
+            "task_id": task_id,
+            "batch_id": batch_id,
+            "integrator_id": integrator_id,
+            "reviewer_id": reviewer_id,
+            "merged_snapshot_sha256": merged_snapshot,
+        }
+        for name, expected_value in attestation_expected.items():
+            if attestation.get(name) != expected_value:
+                errors.append(
+                    "%s reviewer attestation %s has %s=%r, expected %r" %
+                    (label, attestation_id, name,
+                     attestation.get(name), expected_value))
+        if not _nonempty_string(attestation.get("details")):
+            errors.append(
+                "%s reviewer attestation %s has no review statement" %
+                (label, attestation_id))
+    return errors
+
+
+def _gate_property_evidence_errors(
+        receipt, *, receipt_id, path, field, value, semantic_fingerprint,
+        metadata_contract_fingerprint, profile_view,
+        active_standards_view, gates_by_id, manifest_sha256, root,
+        rules, current_catalog, coverage_sha256, projected_page_text=None):
+    """Validate a current Profile Gate receipt after page-side projection.
+
+    The producer receipt's exact ``page_sha256`` is its pre-projection page
+    observation, so it remains a required fingerprint but is intentionally
+    not compared with the current full page bytes.  The current semantic
+    fingerprint *is* compared exactly; it excludes every field in the same
+    composed rule set used by the projector.
+    """
+    label = "Coverage property_state.%s for %s" % (field, path)
+    errors = []
+    gate_id = receipt.get("gate_id")
+    gate = gates_by_id.get(gate_id)
+    if gate is None:
+        return [
+            "%s evidence receipt %s names Gate %r outside the authorized "
+            "Profile contract" % (label, receipt_id, gate_id)]
+    if gate.field_id != field or value not in gate.completion_values:
+        errors.append(
+            "%s value=%r is not authorized by receipt Gate %s" %
+            (label, value, gate_id))
+    expected = {
+        "check": "profile-extension-gate",
+        "target": path,
+        "result": "pass",
+        "invalidated_by": None,
+        "gate_id": gate.gate_id,
+        "transition_id": gate.transition_id,
+        "judgment_item_id": gate.judgment_item_id,
+        "property_field": gate.field_id,
+        "requested_completion_value": value,
+        "pass_authority_role_id": gate.pass_authority_role_id,
+        "producer_kind": gate.producer_kind,
+        "producer_capability": gate.producer_capability,
+        "producer_reference": gate.producer_reference,
+        "receipt_schema": gate.receipt_schema,
+        "consumer_capability": gate.consumer_capability,
+        "semantic_content_fingerprint": semantic_fingerprint,
+        "selected_profile_manifest":
+            profile_view.get("selected_profile_manifest"),
+        "selected_profile_manifest_sha256": manifest_sha256,
+        "profile_snapshot_sha256":
+            profile_view.get("profile_snapshot_sha256"),
+        "profile_contract_fingerprint":
+            profile_view.get("profile_contract_fingerprint"),
+        "profile_load_inputs_sha256":
+            profile_view.get("profile_load_inputs_sha256"),
+        "active_standards_sha256":
+            (active_standards_view or {}).get("active_standards_sha256"),
+        "metadata_execution_contract_fingerprint":
+            metadata_contract_fingerprint,
+    }
+    for name, expected_value in expected.items():
+        if receipt.get(name) != expected_value:
+            errors.append(
+                "%s evidence receipt %s has %s=%r, expected %r" %
+                (label, receipt_id, name, receipt.get(name), expected_value))
+    if (not isinstance(receipt.get("page_sha256"), str) or
+            not SHA256_RE.fullmatch(receipt["page_sha256"])):
+        errors.append("%s evidence receipt has invalid page_sha256" % label)
+    _property_receipt_utc_date(receipt, label, errors)
+    if gate.producer_kind == "manual-attestation":
+        if (receipt.get("tool") != "record_gate_attestation" or
+                receipt.get("tool_version") != "1.0.0"):
+            errors.append(
+                "%s manual evidence was not emitted by the registered "
+                "producer protocol" % label)
+        if receipt.get("actor_role") != gate.pass_authority_role_id:
+            errors.append(
+                "%s manual evidence actor is not the Gate pass authority" %
+                label)
+        statement = receipt.get("attestation_statement")
+        if not _nonempty_string(statement) or receipt.get("details") != statement:
+            errors.append(
+                "%s manual evidence has no exact bounded attestation" %
+                label)
+    elif gate.producer_kind == "deterministic":
+        if (receipt.get("tool") != "record_gate_result" or
+                receipt.get("tool_version") != "1.0.0"):
+            errors.append(
+                "%s deterministic evidence was not emitted by the "
+                "registered-scan adapter protocol" % label)
+        if receipt.get("scan_id") != gate.producer_reference:
+            errors.append(
+                "%s deterministic evidence does not name its registered "
+                "scan" % label)
+    else:
+        errors.append("%s Gate has unsupported producer kind" % label)
+    transition_matches = []
+    for candidate_id, entry in current_catalog.items():
+        candidate = (entry[1] if isinstance(entry, tuple) and len(entry) == 2
+                     else None)
+        if (isinstance(candidate, dict) and
+                candidate.get("tool") == "apply_metadata_transition" and
+                candidate.get("tool_version") == "1.0.0" and
+                candidate.get("check") == "metadata-transition" and
+                candidate.get("gate_receipt") == receipt_id and
+                candidate.get("target") == path and
+                candidate.get("property_field") == field):
+            transition_matches.append((candidate_id, candidate))
+    if len(transition_matches) != 1:
+        errors.append(
+            "%s evidence receipt %s must resolve exactly one current "
+            "Integrator transition receipt; found %d" %
+            (label, receipt_id, len(transition_matches)))
+        return errors
+    try:
+        # Lazy import avoids a module-initialization cycle: the Gate runtime
+        # uses check_queue for admission, while current property validation
+        # reuses its closed post-transition schema only after this module has
+        # fully loaded.
+        import metadata_gate_runtime
+        page_snapshot = kblib.repository_target_snapshot(
+            root, path, suffixes=(".md", ".MD"), singly_linked=True)
+        if not page_snapshot.exists:
+            raise ValueError("persisted Gate owner target page is absent")
+        page_binding = page_snapshot
+        if projected_page_text is not None:
+            page_binding = SimpleNamespace(sha256=kblib.sha256_bytes(
+                projected_page_text.encode("utf-8")))
+        context = metadata_gate_runtime.GateRuntimeContext(
+            root=os.path.realpath(os.path.abspath(root)),
+            runtime={"coverage_sha256": coverage_sha256},
+            authority={
+                "root": os.path.realpath(os.path.abspath(root)),
+                "profile_view": profile_view,
+                "active_standards_view": active_standards_view or {},
+            },
+            gate=gate, rules=tuple(rules), page_path=path,
+            page_snapshot=page_binding,
+            semantic_content_fingerprint=semantic_fingerprint,
+            selected_profile_manifest_sha256=manifest_sha256,
+            metadata_contract_fingerprint=metadata_contract_fingerprint,
+            repository_snapshot_sha256=None,
+        )
+        metadata_gate_runtime.validate_persisted_gate_owner(
+            context, receipt, transition_matches[0][1], value)
+    except (OSError, TypeError, UnicodeError, ValueError) as exc:
+        errors.append(
+            "%s persisted producer/Integrator evidence graph is invalid: %s" %
+            (label, exc))
+    return errors
+
+
+def _coverage_property_state_errors(
+        root, coverage, current_catalog, queue, profile_view,
+        active_standards_view, page_projection_overrides=None,
+        allow_legacy_missing=False):
+    """Validate the live Coverage metadata-owner/evidence/projection loop.
+
+    Every live page opts into the current contract explicitly, including a
+    page with no earned owner values yet (``property_state: {}``).  An absent
+    mapping is a legacy *live-state* defect, not a producer-era receipt to be
+    reinterpreted.  The only caller allowed to tolerate that defect is the
+    existing Amendment writer while it reads the exact migration before-image;
+    its proposed Coverage after-image still passes this function strictly.
+
+    A pre-contract page value may be remembered without inventing authority
+    only as an exact ``legacy_property_state`` observation.  That marker owns
+    no transition.  The migration transaction removes the unowned page copy
+    at the same commit point, so ordinary frontmatter consumers cannot keep
+    treating a legacy review/date/Gate value as current authority.
+    """
+    pages = coverage.get("pages")
+    if not isinstance(pages, list) or not pages:
+        return []
+    errors = []
+    try:
+        metadata_contract, rules = \
+            metadata_property_state.authorized_profile_projection_rules(
+                root, profile_view)
+        contract = profile_view.get("_contract")
+        extension_gates = contract.extension_gates
+        manifest_snapshot = kblib.repository_file_snapshot(
+            root, profile_view.get("selected_profile_manifest"),
+            singly_linked=True)
+    except (OSError, TypeError, UnicodeError, ValueError,
+            metadata_execution_contract.MetadataExecutionContractError) as exc:
+        return [
+            "Coverage current property_state cannot compose its authorized "
+            "metadata rules: %s" % exc]
+    metadata_fingerprint = metadata_contract.contract_fingerprint
+    coverage_sha256 = kblib.sha256_bytes(
+        kblib.canonical_yaml(coverage).encode("utf-8"))
+    metadata_rule_fingerprint = project_page_state._rules_fingerprint(rules)
+    gates_by_id = {gate.gate_id: gate for gate in extension_gates}
+    property_rules = {
+        rule.get("field"): rule for rule in rules
+        if isinstance(rule, dict) and
+        rule.get("source_adapter") in
+        project_page_state.PROPERTY_VALUE_ADAPTERS
+    }
+    projection_overrides = page_projection_overrides or {}
+    inflight_baselines = _current_inflight_semantic_baselines(
+        root, coverage, queue, current_catalog, profile_view)
+    consumed_projection_overrides = set()
+    seen_content_receipts = set()
+    for index, row in enumerate(pages):
+        if not isinstance(row, dict):
+            continue
+        path = row.get("path")
+        label = "Coverage pages[%d] property_state" % index
+        if not _nonempty_string(path):
+            errors.append("%s has no valid page path" % label)
+            continue
+        legacy_missing = "property_state" not in row
+        if legacy_missing and not allow_legacy_missing:
+            errors.append(
+                "%s for %s is absent; this live legacy page must be "
+                "adopted through a property-state-migration Amendment "
+                "before further writes" % (label, path))
+        try:
+            projected_text = projection_overrides.get(path)
+            if path in projection_overrides:
+                consumed_projection_overrides.add(path)
+            if legacy_missing:
+                page_snapshot, semantic_fingerprint, records = None, None, {}
+            else:
+                page_snapshot, semantic_fingerprint, records = \
+                    metadata_property_state.validate_owner_property_records(
+                        root, row, path, rules=rules,
+                        page_text=projected_text,
+                        accepted_stale_fingerprint=inflight_baselines.get(
+                            path))
+        except (OSError, TypeError, UnicodeError, ValueError) as exc:
+            errors.append("%s for %s is invalid: %s" % (label, path, exc))
+            continue
+
+        page_text = projected_text
+        if page_text is None and page_snapshot is not None:
+            page_text = page_snapshot.read_text()
+        if page_text is None:
+            try:
+                candidate = kblib.repository_target_snapshot(
+                    root, path, suffixes=(".md", ".MD"), singly_linked=True)
+                if candidate.exists:
+                    page_text = candidate.read_text()
+            except (OSError, UnicodeError, ValueError) as exc:
+                errors.append(
+                    "%s for %s cannot inspect its page projection: %s" %
+                    (label, path, exc))
+        page_fields = {}
+        page_has_frontmatter = (
+            page_text is not None and
+            kblib.extract_frontmatter(page_text) is not None)
+        if page_has_frontmatter:
+            try:
+                page_fields = project_page_state._frontmatter_mapping(
+                    page_text, path)
+            except (TypeError, UnicodeError, ValueError,
+                    kblib.YamlSubsetError) as exc:
+                errors.append(
+                    "%s for %s has invalid page frontmatter: %s" %
+                    (label, path, exc))
+
+        legacy = row.get(LEGACY_PROPERTY_STATE_FIELD)
+        if legacy is None:
+            legacy = {}
+        elif not isinstance(legacy, dict):
+            errors.append(
+                "Coverage pages[%d] %s for %s must be a mapping" %
+                (index, LEGACY_PROPERTY_STATE_FIELD, path))
+            legacy = {}
+        elif not legacy:
+            errors.append(
+                "Coverage pages[%d] %s for %s must be omitted when empty" %
+                (index, LEGACY_PROPERTY_STATE_FIELD, path))
+        undeclared_legacy = sorted(set(legacy) - set(property_rules))
+        if undeclared_legacy:
+            errors.append(
+                "Coverage %s for %s has field(s) outside the authorized "
+                "metadata rules: %s" %
+                (LEGACY_PROPERTY_STATE_FIELD, path,
+                 ", ".join(undeclared_legacy)))
+        for field, record in sorted(legacy.items()):
+            if field not in property_rules:
+                continue
+            legacy_label = "Coverage %s.%s for %s" % (
+                LEGACY_PROPERTY_STATE_FIELD, field, path)
+            if (not isinstance(record, dict) or
+                    set(record) != LEGACY_PROPERTY_RECORD_FIELDS):
+                errors.append(
+                    "%s must be the closed status/value observation" %
+                    legacy_label)
+                continue
+            if record.get("status") != LEGACY_PROPERTY_STATUS:
+                errors.append(
+                    "%s status must be %s" %
+                    (legacy_label, LEGACY_PROPERTY_STATUS))
+            try:
+                project_page_state._typed_owner_value(
+                    record.get("value"), property_rules[field], path)
+            except (TypeError, ValueError) as exc:
+                errors.append("%s has invalid value: %s" % (legacy_label, exc))
+            if field in records:
+                errors.append(
+                    "%s conflicts with current property_state.%s; the "
+                    "current-owner transaction must retire the legacy marker" %
+                    (legacy_label, field))
+            if field in page_fields:
+                errors.append(
+                    "%s still has a persisted page copy %r; a completed "
+                    "migration must remove the unowned copy atomically" %
+                    (legacy_label, page_fields.get(field)))
+
+        # Reconcile only the property-copy surface here.  Value/tombstone and
+        # semantic bindings already came from the generic projector's shared
+        # owner parser above; this loop adds the lower-bound invariant the
+        # projector itself needs: a persisted machine field may not exist with
+        # neither current owner nor an exact legacy/unverified observation.
+        for field, rule in sorted(property_rules.items()):
+            current = records.get(field)
+            if current is not None:
+                expected = current.get("value")
+                if expected is None:
+                    if field in page_fields:
+                        errors.append(
+                            "%s for %s retains page field %s despite its "
+                            "current owner tombstone" % (label, path, field))
+                elif page_has_frontmatter and field not in page_fields:
+                    errors.append(
+                        "%s for %s has current owner %s=%r but the page "
+                        "projection is absent" %
+                        (label, path, field, expected))
+                elif page_fields.get(field) != expected:
+                    errors.append(
+                        "%s for %s has current owner %s=%r but the page "
+                        "projection is %r" %
+                        (label, path, field, expected,
+                         page_fields.get(field)))
+            elif field in page_fields and field not in legacy and not (
+                    allow_legacy_missing and legacy_missing):
+                errors.append(
+                    "%s for %s persists machine-managed field %s=%r "
+                    "without a current owner or an exact "
+                    "legacy/unverified observation" %
+                    (label, path, field, page_fields.get(field)))
+
+        if not records:
+            continue
+        modified = records.get(metadata_property_state.LAST_CONTENT_MODIFIED)
+        reviewed = records.get(metadata_property_state.LAST_REVIEWED)
+        if isinstance(reviewed, dict) and reviewed.get("value") is None:
+            if not isinstance(modified, dict):
+                errors.append(
+                    "%s for %s has a last_reviewed tombstone without the "
+                    "content-change state that invalidated it" %
+                    (label, path))
+            elif (reviewed.get("evidence_receipt") !=
+                    modified.get("evidence_receipt") or
+                    reviewed.get("content_fingerprint") !=
+                    modified.get("content_fingerprint")):
+                errors.append(
+                    "%s for %s does not bind its last_reviewed tombstone "
+                    "and last_content_modified value to one content-change "
+                    "event" % (label, path))
+        if (isinstance(modified, dict) and modified.get("value") is not None and
+                isinstance(reviewed, dict) and
+                reviewed.get("value") is not None):
+            try:
+                modified_date = datetime.date.fromisoformat(modified["value"])
+                reviewed_date = datetime.date.fromisoformat(reviewed["value"])
+            except (TypeError, ValueError):
+                pass  # The shared value-shape validator already reported it.
+            else:
+                if reviewed_date < modified_date:
+                    errors.append(
+                        "%s for %s has last_reviewed before "
+                        "last_content_modified" % (label, path))
+        for field, record in sorted(records.items()):
+            record_label = "Coverage property_state.%s for %s" % (field, path)
+            receipt_id = record.get("evidence_receipt")
+            receipt = _current_property_receipt(
+                current_catalog, receipt_id, record_label, errors)
+            if receipt is None:
+                continue
+            value = record.get("value")
+            evidence_fingerprint = record.get("content_fingerprint")
+            if (field == metadata_property_state.LAST_CONTENT_MODIFIED or
+                    (field == metadata_property_state.LAST_REVIEWED and
+                     value is None)):
+                include_shape = receipt_id not in seen_content_receipts
+                seen_content_receipts.add(receipt_id)
+                errors.extend(_content_change_property_evidence_errors(
+                    receipt, receipt_id=receipt_id, path=path, field=field,
+                    value=value,
+                    semantic_fingerprint=evidence_fingerprint,
+                    metadata_contract_fingerprint=metadata_fingerprint,
+                    metadata_rule_fingerprint=metadata_rule_fingerprint,
+                    task_id=queue.get("task_id"),
+                    profile_view=profile_view,
+                    include_shape=include_shape,
+                    current_catalog=current_catalog))
+            elif field == metadata_property_state.LAST_REVIEWED:
+                errors.extend(_review_property_evidence_errors(
+                    receipt, receipt_id=receipt_id, path=path, value=value,
+                    semantic_fingerprint=evidence_fingerprint,
+                    metadata_contract_fingerprint=metadata_fingerprint,
+                    task_id=queue.get("task_id"), profile_view=profile_view,
+                    current_catalog=current_catalog))
+            else:
+                errors.extend(_gate_property_evidence_errors(
+                    receipt, receipt_id=receipt_id, path=path,
+                    field=field, value=value,
+                    semantic_fingerprint=evidence_fingerprint,
+                    metadata_contract_fingerprint=metadata_fingerprint,
+                    profile_view=profile_view,
+                    active_standards_view=active_standards_view,
+                    gates_by_id=gates_by_id,
+                    manifest_sha256=manifest_snapshot.sha256,
+                    root=root, rules=rules,
+                    current_catalog=current_catalog,
+                    coverage_sha256=coverage_sha256,
+                    projected_page_text=projected_text))
+    unused_overrides = sorted(
+        set(projection_overrides) - consumed_projection_overrides)
+    if unused_overrides:
+        errors.append(
+            "page projection after-images do not correspond to current "
+            "Coverage property_state owners: %s" %
+            ", ".join(unused_overrides))
+    return errors
+
+
+def _legacy_property_state_source_errors(
+        coverage, progress, catalog):
+    """Resolve every live legacy marker to exact current-protocol evidence.
+
+    A migrated page no longer carries the unowned machine value, by design.
+    Ordinary validation therefore proves the marker against the immutable
+    before/after record set emitted by the sole writer instead of trusting the
+    page copy that migration removed.  Producer-era identity stays closed:
+    only the versions that introduced this protocol are parsed here.
+    """
+    errors = []
+    wanted = {}
+    for index, row in enumerate(coverage.get("pages") or []):
+        if not isinstance(row, dict):
+            continue
+        path = row.get("path")
+        legacy = row.get(LEGACY_PROPERTY_STATE_FIELD)
+        if not _nonempty_string(path) or not isinstance(legacy, dict):
+            continue
+        for field, record in legacy.items():
+            if not isinstance(record, dict):
+                continue
+            key = (path, field, kblib.canonical_yaml({"value": record.get(
+                "value")}))
+            wanted[key] = (
+                "Coverage pages[%d] %s.%s" %
+                (index, LEGACY_PROPERTY_STATE_FIELD, field))
+    if not wanted:
+        return errors, []
+
+    sources = {key: set() for key in wanted}
+    for receipt_id, entry in catalog.items():
+        receipt = entry[1] if isinstance(entry, tuple) and len(entry) == 2 \
+            else None
+        if not isinstance(receipt, dict) or not (
+                receipt.get("tool") == "apply_task_plan" and
+                receipt.get("tool_version") == "1.2.0" and
+                receipt.get("check") == "task_plan" and
+                receipt.get("transaction_phase") == "commit" and
+                receipt.get("result") == "pass" and
+                receipt.get("invalidated_by") is None and
+                receipt.get("operation_capability") ==
+                LEGACY_PROPERTY_ADOPTION_OPERATION):
+            continue
+        try:
+            records = \
+                metadata_property_state.validate_legacy_property_migration_records(
+                    receipt.get("property_state_adoption_records"))
+            set_sha = \
+                metadata_property_state.legacy_property_migration_set_sha256(
+                    receipt.get("property_state_adoption_records"))
+        except (TypeError, ValueError) as exc:
+            errors.append(
+                "initial property adoption receipt %s has invalid exact "
+                "migration records: %s" % (receipt_id, exc))
+            continue
+        if receipt.get("property_state_adoption_count") != len(records):
+            errors.append(
+                "initial property adoption receipt %s has a stale record "
+                "count" % receipt_id)
+            continue
+        if receipt.get("property_state_adoption_set_sha256") != set_sha:
+            errors.append(
+                "initial property adoption receipt %s has a stale record-set "
+                "digest" % receipt_id)
+            continue
+        if any(not SHA256_RE.fullmatch(str(receipt.get(field) or ""))
+               for field in (
+                   "metadata_execution_contract_fingerprint",
+                   "metadata_execution_rule_fingerprint",
+                   "profile_snapshot_sha256", "profile_contract_fingerprint",
+                   "profile_load_inputs_sha256")) or not _nonempty_string(
+                       receipt.get("selected_profile_manifest")):
+            errors.append(
+                "initial property adoption receipt %s has incomplete "
+                "metadata/Profile authority bindings" % receipt_id)
+            continue
+        for path, record in records.items():
+            for field, observation in record[
+                    "legacy_property_state"].items():
+                key = (path, field, kblib.canonical_yaml(
+                    {"value": observation.get("value")}))
+                if key in sources:
+                    sources[key].add(receipt_id)
+
+    for amendment in progress.get("amendments") or []:
+        if not (isinstance(amendment, dict) and
+                amendment.get("operation") == "property-state-migration" and
+                amendment.get("status") == "verified" and
+                amendment.get("writeback_done") is True):
+            continue
+        try:
+            records = \
+                metadata_property_state.validate_legacy_property_migration_records(
+                    amendment.get("property_state_migration_records"),
+                    expected_paths=amendment.get("affected_pages"))
+        except (TypeError, ValueError):
+            # The operational-Amendment validator reports the exact shape.
+            continue
+        source_ids = {
+            value for value in (
+                amendment.get("registration_receipt"),
+                amendment.get("verification_receipt"))
+            if _nonempty_string(value)
+        }
+        for path, record in records.items():
+            for field, observation in record[
+                    "legacy_property_state"].items():
+                key = (path, field, kblib.canonical_yaml(
+                    {"value": observation.get("value")}))
+                if key in sources:
+                    sources[key].update(source_ids)
+
+    resolved = set()
+    for key, label in wanted.items():
+        if not sources[key]:
+            errors.append(
+                "%s is not bound to a current-protocol initial-adoption or "
+                "property-state-migration receipt" % label)
+        else:
+            resolved.update(sources[key])
+    return errors, sorted(resolved)
+
+
 def _coverage_batch_spec_errors(coverage, items_by_id):
     """Detect direct edits to canonical compiler inputs after materialization."""
     errors = []
@@ -10500,7 +11845,7 @@ def _coverage_batch_spec_errors(coverage, items_by_id):
     return errors
 
 
-def _closed_delta_apply_errors(item, transition, catalog, queue):
+def _closed_delta_apply_errors(item, transition, catalog, queue, root=None):
     """Bind one closed batch to the Coverage delta application it consumed."""
     errors = []
     item_id = item.get("id", "<unknown>")
@@ -10530,6 +11875,23 @@ def _closed_delta_apply_errors(item, transition, catalog, queue):
                       "apply_delta producer version %r" %
                       (item_id, receipt_id, receipt.get("tool_version")))
     if receipt.get("tool_version") == APPLY_DELTA_TOOL_VERSION:
+        errors.extend(_delta_property_event_errors(
+            receipt, "%s delta application receipt %s" %
+            (item_id, receipt_id)))
+        if root is None:
+            errors.append(
+                "%s current-era delta application cannot replay property "
+                "invalidation without repository root" % item_id)
+        else:
+            errors.extend(_delta_property_invalidation_errors(
+                root, receipt))
+        opening_errors, _opening_before = \
+            _delta_opening_semantic_binding(
+                receipt, catalog,
+                "%s delta application receipt %s" %
+                (item_id, receipt_id),
+                expected_item=item)
+        errors.extend(opening_errors)
         errors.extend(_settlement_binding_errors(
             receipt, "%s delta application receipt %s" %
             (item_id, receipt_id)))
@@ -10588,6 +11950,313 @@ def _closed_delta_apply_errors(item, transition, catalog, queue):
         if transition.get("delta_apply_receipt") != receipt_id:
             errors.append("%s close transition does not bind delta application "
                           "receipt %s" % (item_id, receipt_id))
+    return errors
+
+
+DELTA_PROPERTY_EVENT_KEYS = frozenset((
+    "event", "path", "accepted_on",
+    "before_semantic_content_sha256", "after_semantic_content_sha256",
+    "last_reviewed_invalidated",
+    "invalidated_property_fields",
+    "invalidated_property_records",
+    "invalidated_property_receipt_ids",
+))
+DELTA_INVALIDATED_PROPERTY_RECORD_KEYS = frozenset((
+    "field", "action", "before_owner_record",
+    "before_legacy_observation",
+))
+
+
+def _delta_property_event_errors(receipt, label):
+    """Validate the current semantic-content event protocol by shape.
+
+    Historical replay preserves its producer-era bytes; current-use exact
+    content and Coverage equality are enforced by the Integrator before the
+    receipt is written.  This consumer keeps the durable record closed so a
+    later replay cannot reinterpret free-form extension data as authority.
+    """
+    errors = []
+    fingerprint = receipt.get("metadata_execution_contract_fingerprint")
+    if not isinstance(fingerprint, str) or not SHA256_RE.fullmatch(fingerprint):
+        errors.append("%s has invalid metadata execution contract fingerprint" %
+                      label)
+    rule_fingerprint = receipt.get("metadata_execution_rule_fingerprint")
+    if not isinstance(rule_fingerprint, str) or not SHA256_RE.fullmatch(
+            rule_fingerprint):
+        errors.append("%s has invalid producer-era metadata rule fingerprint" %
+                      label)
+    if receipt.get("semantic_content_protocol") != \
+            "cambium-semantic-page-v1":
+        errors.append("%s has invalid semantic content protocol" % label)
+    events = receipt.get("property_events")
+    if not isinstance(events, list):
+        errors.append("%s property_events must be an explicit list" % label)
+        return errors
+    paths = []
+    for index, event in enumerate(events):
+        event_label = "%s property_events[%d]" % (label, index)
+        if not isinstance(event, dict):
+            errors.append("%s must be a mapping" % event_label)
+            continue
+        missing = sorted(DELTA_PROPERTY_EVENT_KEYS - set(event))
+        extra = sorted(set(event) - DELTA_PROPERTY_EVENT_KEYS)
+        if missing or extra:
+            errors.append(
+                "%s must be closed (missing=%s extra=%s)" %
+                (event_label, missing, extra))
+            continue
+        if event.get("event") != "semantic-content-change":
+            errors.append("%s event must be semantic-content-change" %
+                          event_label)
+        path = event.get("path")
+        if not _nonempty_string(path):
+            errors.append("%s path must be non-empty" % event_label)
+        else:
+            paths.append(path)
+        if not re.fullmatch(
+                r"[0-9]{4}-[0-9]{2}-[0-9]{2}",
+                str(event.get("accepted_on") or "")):
+            errors.append("%s accepted_on must be YYYY-MM-DD" % event_label)
+        before = event.get("before_semantic_content_sha256")
+        if not isinstance(before, str) or not SHA256_RE.fullmatch(before):
+            errors.append("%s before fingerprint must be sha256" %
+                          event_label)
+        after = event.get("after_semantic_content_sha256")
+        if not isinstance(after, str) or not SHA256_RE.fullmatch(after):
+            errors.append("%s after fingerprint must be sha256" % event_label)
+        if not isinstance(event.get("last_reviewed_invalidated"), bool):
+            errors.append("%s last_reviewed_invalidated must be boolean" %
+                          event_label)
+        invalidated = event.get("invalidated_property_fields")
+        if (not isinstance(invalidated, list) or
+                any(not _nonempty_string(field) for field in invalidated) or
+                invalidated != sorted(set(invalidated))):
+            errors.append(
+                "%s invalidated_property_fields must be a sorted unique "
+                "string list" % event_label)
+        elif ((metadata_property_state.LAST_REVIEWED in invalidated) !=
+              (event.get("last_reviewed_invalidated") is True)):
+            errors.append(
+                "%s last_reviewed_invalidated must exactly equal membership "
+                "in invalidated_property_fields" % event_label)
+        invalidation_records = event.get("invalidated_property_records")
+        record_fields = []
+        record_receipts = []
+        if not isinstance(invalidation_records, list):
+            errors.append(
+                "%s invalidated_property_records must be an explicit list" %
+                event_label)
+        else:
+            for record_index, record in enumerate(invalidation_records):
+                record_label = "%s invalidated_property_records[%d]" % (
+                    event_label, record_index)
+                if (not isinstance(record, dict) or set(record) !=
+                        DELTA_INVALIDATED_PROPERTY_RECORD_KEYS):
+                    errors.append(
+                        "%s is not the closed invalidation record" %
+                        record_label)
+                    continue
+                field = record.get("field")
+                if not _nonempty_string(field):
+                    errors.append("%s field must be non-empty" % record_label)
+                    continue
+                record_fields.append(field)
+                expected_action = (
+                    "tombstone-current-owner"
+                    if field == metadata_property_state.LAST_REVIEWED else
+                    "remove-owner-and-page-copy")
+                if record.get("action") != expected_action:
+                    errors.append(
+                        "%s action=%r, expected %r" %
+                        (record_label, record.get("action"), expected_action))
+                owner = record.get("before_owner_record")
+                legacy = record.get("before_legacy_observation")
+                if owner is not None:
+                    if (not isinstance(owner, dict) or set(owner) !=
+                            metadata_property_state.PROPERTY_RECORD_KEYS):
+                        errors.append(
+                            "%s before_owner_record is not closed" %
+                            record_label)
+                    else:
+                        if not _nonempty_string(owner.get("evidence_receipt")):
+                            errors.append(
+                                "%s before owner has no evidence receipt" %
+                                record_label)
+                        else:
+                            record_receipts.append(
+                                owner["evidence_receipt"])
+                        if not SHA256_RE.fullmatch(str(
+                                owner.get("content_fingerprint") or "")):
+                            errors.append(
+                                "%s before owner has invalid fingerprint" %
+                                record_label)
+                if legacy is not None and (
+                        not isinstance(legacy, dict) or
+                        set(legacy) != LEGACY_PROPERTY_RECORD_FIELDS or
+                        legacy.get("status") != LEGACY_PROPERTY_STATUS):
+                    errors.append(
+                        "%s before_legacy_observation is not closed" %
+                        record_label)
+                if owner is None and legacy is None:
+                    errors.append(
+                        "%s has neither a current owner nor legacy source" %
+                        record_label)
+            if record_fields != sorted(set(record_fields)):
+                errors.append(
+                    "%s invalidated_property_records must be field-sorted "
+                    "and unique" % event_label)
+            if isinstance(invalidated, list) and record_fields != invalidated:
+                errors.append(
+                    "%s invalidated_property_fields does not equal the exact "
+                    "record field set" % event_label)
+        receipt_ids = event.get("invalidated_property_receipt_ids")
+        if (not isinstance(receipt_ids, list) or
+                any(not _nonempty_string(value) for value in receipt_ids) or
+                receipt_ids != sorted(set(receipt_ids))):
+            errors.append(
+                "%s invalidated_property_receipt_ids must be a sorted unique "
+                "string list" % event_label)
+        elif receipt_ids != sorted(set(record_receipts)):
+            errors.append(
+                "%s invalidated_property_receipt_ids does not equal the "
+                "prior owner evidence set" % event_label)
+    if paths != sorted(set(paths)):
+        errors.append("%s property_events paths must be unique and sorted" %
+                      label)
+    return errors
+
+
+def _delta_property_invalidation_errors(
+        root, receipt, coverage=None, profile_view=None):
+    """Replay current-protocol invalidations from the frozen before image.
+
+    The exact invalidated set is producer-era data: every content-bound owner
+    other than LCM, plus a stale review/legacy review, must occur in the event
+    record.  Historical replay deliberately does not compose today's Profile.
+    A live after-image may additionally be supplied to prove the declared
+    tombstone/removals landed.
+    """
+    errors = []
+    if not SHA256_RE.fullmatch(str(
+            receipt.get("metadata_execution_rule_fingerprint") or "")):
+        errors.append(
+            "property invalidation receipt has no producer-era rule "
+            "fingerprint")
+    archive_relative = receipt.get("before_coverage_archive_path")
+    try:
+        archive_path = kblib.managed_repository_path(
+            root, archive_relative, ".cambium/receipts",
+            suffixes=(".yaml",), must_exist=True)
+        if kblib.sha256_file(archive_path) != receipt.get(
+                "before_coverage_sha256"):
+            raise ValueError("archive bytes differ from before_coverage_sha256")
+        before_coverage = kblib.load_yaml_file(archive_path)
+    except (OSError, TypeError, UnicodeError, ValueError,
+            kblib.YamlSubsetError) as exc:
+        return errors + [
+            "property invalidation replay cannot load its exact before "
+            "Coverage: %s" % exc]
+    before_rows = {
+        row.get("path"): row for row in before_coverage.get("pages") or []
+        if isinstance(row, dict) and _nonempty_string(row.get("path"))
+    }
+    after_rows = ({
+        row.get("path"): row for row in coverage.get("pages") or []
+        if isinstance(row, dict) and _nonempty_string(row.get("path"))
+    } if isinstance(coverage, dict) else {})
+    for event in receipt.get("property_events") or []:
+        if not isinstance(event, dict):
+            continue
+        path = event.get("path")
+        before_row = before_rows.get(path)
+        after_row = after_rows.get(path)
+        if not isinstance(before_row, dict):
+            errors.append(
+                "property invalidation event %s is absent from archived "
+                "Coverage" % path)
+            continue
+        before_state = before_row.get("property_state") or {}
+        after_state = (after_row.get("property_state") or {}
+                       if isinstance(after_row, dict) else None)
+        if not isinstance(before_state, dict) or (
+                after_state is not None and not isinstance(after_state, dict)):
+            errors.append(
+                "property invalidation event %s has non-mapping owner state" %
+                path)
+            continue
+        after_fingerprint = event.get("after_semantic_content_sha256")
+        expected_records = []
+        review = before_state.get(metadata_property_state.LAST_REVIEWED)
+        legacy_mapping = before_row.get(LEGACY_PROPERTY_STATE_FIELD) or {}
+        legacy_review = legacy_mapping.get(
+            metadata_property_state.LAST_REVIEWED) if isinstance(
+                legacy_mapping, dict) else None
+        if ((isinstance(review, dict) and
+             review.get("content_fingerprint") != after_fingerprint) or
+                legacy_review is not None):
+            expected_records.append({
+                "field": metadata_property_state.LAST_REVIEWED,
+                "action": "tombstone-current-owner",
+                "before_owner_record": copy.deepcopy(
+                    review if isinstance(review, dict) else None),
+                "before_legacy_observation": copy.deepcopy(legacy_review),
+            })
+        for field, record in sorted(before_state.items()):
+            if field in (metadata_property_state.LAST_CONTENT_MODIFIED,
+                         metadata_property_state.LAST_REVIEWED):
+                continue
+            if not isinstance(record, dict) or \
+                    record.get("content_fingerprint") == after_fingerprint:
+                continue
+            expected_records.append({
+                "field": field,
+                "action": "remove-owner-and-page-copy",
+                "before_owner_record": copy.deepcopy(record),
+                "before_legacy_observation": None,
+            })
+        expected_records.sort(key=lambda record: record["field"])
+        if event.get("invalidated_property_records") != expected_records:
+            errors.append(
+                "property invalidation event %s records do not equal the "
+                "exact archived owner set" % path)
+        expected_fields = [record["field"] for record in expected_records]
+        if event.get("invalidated_property_fields") != expected_fields:
+            errors.append(
+                "property invalidation event %s declares %r, expected exact "
+                "%r from archived owner state" %
+                (path, event.get("invalidated_property_fields"),
+                 expected_fields))
+        expected_receipts = sorted({
+            record["before_owner_record"]["evidence_receipt"]
+            for record in expected_records
+            if isinstance(record.get("before_owner_record"), dict) and
+            _nonempty_string(record["before_owner_record"].get(
+                "evidence_receipt"))
+        })
+        if event.get("invalidated_property_receipt_ids") != expected_receipts:
+            errors.append(
+                "property invalidation event %s does not bind the exact prior "
+                "owner receipt set" % path)
+        if after_state is None:
+            continue
+        for record in expected_records:
+            field = record["field"]
+            if record["action"] == "remove-owner-and-page-copy" and \
+                    field in after_state:
+                errors.append(
+                    "property invalidation event %s did not remove owner %s" %
+                    (path, field))
+            elif record["action"] == "tombstone-current-owner":
+                tombstone = after_state.get(field)
+                if not (isinstance(tombstone, dict) and
+                        tombstone.get("value") is None and
+                        tombstone.get("evidence_receipt") ==
+                        receipt.get("receipt_id") and
+                        tombstone.get("content_fingerprint") ==
+                        after_fingerprint):
+                    errors.append(
+                        "property invalidation event %s did not publish its "
+                        "current review tombstone" % path)
     return errors
 
 
@@ -10759,6 +12428,7 @@ def _closed_gate_errors(item, transition, catalog, queue,
         delta_apply_receipt=transition.get("delta_apply_receipt"),
         work_spec_path=item.get("work_spec_path"),
         work_spec_sha256=item.get("work_spec_sha256"),
+        manifest=item.get("manifest"),
         # Historical closure is checked against the identity frozen by its
         # producer.  A later Standards adoption must not reinterpret a valid
         # closed edge using the live Profile.
@@ -10766,6 +12436,246 @@ def _closed_gate_errors(item, transition, catalog, queue,
             "selected_profile_manifest"),
         historical=True,
     ))
+    return errors
+
+
+def _current_open_semantic_baseline_errors(
+        root, transition, item, profile_view):
+    """Validate the current opening receipt's exact semantic before-set.
+
+    Producer version 1.5 is the adoption boundary.  Its before-set lets
+    ``apply_delta`` distinguish a real semantic edit from a first observation
+    or a machine-projection-only rewrite.  Versions 1.2--1.4 remain immutable
+    history: they never claimed these fields and are not reinterpreted through
+    today's Profile or metadata contract.
+    """
+    if not isinstance(transition, dict) or not (
+            transition.get("tool") == "update_queue" and
+            transition.get("tool_version") == UPDATE_QUEUE_TOOL_VERSION and
+            transition.get("before_state") in ("queued", "merge-ready") and
+            transition.get("after_state") == "open"):
+        return []
+    label = "%s current open transition %s" % (
+        item.get("id", "<unknown>"),
+        transition.get("receipt_id") or "<unknown>")
+    errors = []
+    manifest = item.get("manifest")
+    if (not isinstance(manifest, list) or
+            any(not _nonempty_string(path) for path in manifest)):
+        errors.append("%s cannot bind an invalid manifest" % label)
+        expected_paths = []
+    else:
+        expected_paths = sorted(manifest)
+
+    records = transition.get("manifest_semantic_before_records")
+    try:
+        metadata_property_state.validate_semantic_baseline_records(
+            records, expected_paths=expected_paths)
+    except (TypeError, ValueError) as exc:
+        errors.append(
+            "%s has invalid manifest_semantic_before_records: %s" %
+            (label, exc))
+    record_count = len(records) if isinstance(records, list) else 0
+
+    count = transition.get("manifest_semantic_before_count")
+    if (not isinstance(count, int) or isinstance(count, bool) or
+            count != record_count):
+        errors.append(
+            "%s manifest_semantic_before_count must equal the exact record "
+            "list" % label)
+    set_sha = transition.get("manifest_semantic_before_set_sha256")
+    try:
+        expected_set_sha = \
+            metadata_property_state.semantic_baseline_set_sha256(records)
+    except (TypeError, ValueError):
+        expected_set_sha = None
+    if (not isinstance(set_sha, str) or not SHA256_RE.fullmatch(set_sha) or
+            expected_set_sha is None or set_sha != expected_set_sha):
+        errors.append(
+            "%s manifest_semantic_before_set_sha256 does not bind the "
+            "exact canonical record list" % label)
+
+    if transition.get("semantic_content_protocol") != \
+            project_page_state.SEMANTIC_FINGERPRINT_PROTOCOL:
+        errors.append("%s has the wrong semantic content protocol" % label)
+    if not isinstance(profile_view, dict):
+        errors.append("%s has no authorized Profile view" % label)
+        profile_view = {}
+    for field in (
+            "selected_profile_manifest", "profile_snapshot_sha256",
+            "profile_contract_fingerprint", "profile_load_inputs_sha256"):
+        expected = profile_view.get(field)
+        if transition.get(field) != expected:
+            errors.append(
+                "%s has %s=%r, expected authorized Profile value %r" %
+                (label, field, transition.get(field), expected))
+
+    fingerprint = transition.get(
+        "metadata_execution_contract_fingerprint")
+    if not isinstance(fingerprint, str) or not SHA256_RE.fullmatch(fingerprint):
+        errors.append(
+            "%s metadata_execution_contract_fingerprint must be canonical" %
+            label)
+    try:
+        live_fingerprint = \
+            metadata_execution_contract.load_metadata_execution_contract(
+                root).contract_fingerprint
+    except (OSError, UnicodeError, ValueError,
+            metadata_execution_contract.MetadataExecutionContractError) as exc:
+        errors.append(
+            "%s cannot load the live metadata execution contract: %s" %
+            (label, exc))
+    else:
+        if fingerprint != live_fingerprint:
+            errors.append(
+                "%s metadata execution fingerprint is stale relative to "
+                "the live contract" % label)
+    return errors
+
+
+def current_opening_semantic_context(result, item_id):
+    """Return the validated current opening receipt and semantic before-set.
+
+    This is the sole durable consumer boundary for ``apply_delta``.  It
+    resolves the most recent opening edge from the adoption-filtered hot
+    receipt catalog, rejects a legacy producer instead of treating apply-time
+    observation as a baseline, and returns both the exact semantic mapping and
+    the receipt identity/hash that a later content-change receipt must bind.
+    """
+    if not isinstance(result, dict):
+        raise TypeError("runtime result must be a mapping")
+    item = (result.get("items_by_id") or {}).get(item_id)
+    if not isinstance(item, dict):
+        raise ValueError("unknown Queue item %s" % item_id)
+    catalog = current_receipt_catalog(result)
+    opening = None
+    for receipt_id in reversed(item.get("transition_receipts") or []):
+        entry = catalog.get(receipt_id)
+        receipt = entry[1] if isinstance(entry, tuple) else None
+        if (isinstance(receipt, dict) and
+                receipt.get("before_state") in ("queued", "merge-ready") and
+                receipt.get("after_state") == "open"):
+            opening = receipt
+            break
+    if opening is None:
+        raise ValueError(
+            "Queue item %s has no current opening receipt" % item_id)
+    if (opening.get("tool") != "update_queue" or
+            opening.get("tool_version") != UPDATE_QUEUE_TOOL_VERSION):
+        raise ValueError(
+            "Queue item %s latest opening receipt uses legacy producer %r/%r; "
+            "a current semantic before-set is required" %
+            (item_id, opening.get("tool"), opening.get("tool_version")))
+    errors = _current_open_semantic_baseline_errors(
+        result.get("root"), opening, item,
+        result.get("_profile_authorized_view"))
+    if errors:
+        raise ValueError("; ".join(errors))
+    before = metadata_property_state.validate_semantic_baseline_records(
+        opening.get("manifest_semantic_before_records"),
+        expected_paths=sorted(item.get("manifest") or []))
+    return {
+        "opening_transition_receipt": opening.get("receipt_id"),
+        "semantic_content_protocol": opening.get(
+            "semantic_content_protocol"),
+        "manifest_semantic_before_set_sha256": opening.get(
+            "manifest_semantic_before_set_sha256"),
+        "before_semantic_fingerprints": before,
+    }
+
+
+def current_opening_semantic_baseline(result, item_id):
+    """Return the validated current opening path->semantic before-set."""
+    return current_opening_semantic_context(
+        result, item_id)["before_semantic_fingerprints"]
+
+
+def _current_close_transition_metadata_errors(
+        root, transition, catalog, item_id):
+    """Validate the current update_queue close-to-property-state bridge.
+
+    The producer-version equality is the era boundary.  Older 1.2--1.4
+    transitions remain frozen history and are not reinterpreted through the
+    live metadata/Profile protocol.  A current 1.5 close, however, is the
+    durable bridge from the exact batch-close page-review children to the
+    Coverage owner state it published, so its child set and metadata-contract
+    identity must be closed and exact.
+    """
+    if not isinstance(transition, dict) or not (
+            transition.get("tool") == "update_queue" and
+            transition.get("tool_version") == UPDATE_QUEUE_TOOL_VERSION and
+            transition.get("before_state") == "merge-ready" and
+            transition.get("after_state") == "closed"):
+        return []
+    label = "%s current close transition %s" % (
+        item_id, transition.get("receipt_id") or "<unknown>")
+    errors = []
+    ids = transition.get("page_review_receipts")
+    if (not isinstance(ids, list) or
+            any(not _nonempty_string(value) for value in ids)):
+        errors.append("%s page_review_receipts must be a string list" % label)
+        ids = []
+    else:
+        if ids != sorted(ids):
+            errors.append("%s page_review_receipts must be sorted" % label)
+        if len(ids) != len(set(ids)):
+            errors.append("%s page_review_receipts must be unique" % label)
+    count = transition.get("page_review_receipt_count")
+    if (not isinstance(count, int) or isinstance(count, bool) or
+            count != len(ids)):
+        errors.append(
+            "%s page_review_receipt_count must equal the exact receipt list" %
+            label)
+
+    close_id = transition.get("close_gate_receipt")
+    aggregate = None
+    entry = catalog.get(close_id) if _nonempty_string(close_id) else None
+    if isinstance(entry, tuple) and len(entry) == 2 and isinstance(
+            entry[1], dict):
+        aggregate = entry[1]
+    elif (hasattr(catalog, "resolve_sealed") and
+          close_id in (getattr(catalog, "cold", None) or {})):
+        try:
+            aggregate = catalog.resolve_sealed(close_id)
+        except (OSError, UnicodeError, ValueError) as exc:
+            errors.append(
+                "%s cannot resolve sealed close Gate %s: %s" %
+                (label, close_id, exc))
+    if not isinstance(aggregate, dict):
+        errors.append(
+            "%s cannot resolve close_gate_receipt %r" % (label, close_id))
+        return errors
+    aggregate_ids = aggregate.get("page_review_receipts")
+    if ids != aggregate_ids:
+        errors.append(
+            "%s page_review_receipts do not equal the close Gate's exact "
+            "child receipt IDs" % label)
+
+    fingerprint = transition.get(
+        "metadata_execution_contract_fingerprint")
+    aggregate_fingerprint = aggregate.get(
+        "metadata_execution_contract_fingerprint")
+    if not isinstance(fingerprint, str) or not SHA256_RE.fullmatch(fingerprint):
+        errors.append(
+            "%s metadata_execution_contract_fingerprint must be canonical" %
+            label)
+    if fingerprint != aggregate_fingerprint:
+        errors.append(
+            "%s metadata execution fingerprint differs from its close Gate" %
+            label)
+    try:
+        live = metadata_execution_contract.load_metadata_execution_contract(
+            root).contract_fingerprint
+    except (OSError, UnicodeError, ValueError,
+            metadata_execution_contract.MetadataExecutionContractError) as exc:
+        errors.append(
+            "%s cannot load the live metadata execution contract: %s" %
+            (label, exc))
+    else:
+        if fingerprint != live:
+            errors.append(
+                "%s metadata execution fingerprint is stale relative to "
+                "the live contract" % label)
     return errors
 
 
@@ -11057,6 +12967,11 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                         errors.append(
                             "%s merge-ready transition %s has invalid %s" %
                             (item_id, receipt_id, field))
+            errors.extend(_current_open_semantic_baseline_errors(
+                records["root"], current, item,
+                records.get("profile_view")))
+            errors.extend(_current_close_transition_metadata_errors(
+                records["root"], current, catalog, item_id))
             if (current.get("before_state") not in STATES or
                     current.get("after_state") not in STATES):
                 errors.append("%s transition receipt %s has invalid lifecycle "
@@ -11139,6 +13054,23 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             if transition.get("after_hold_state") != hold:
                 errors.append("%s last transition hold is %r, current hold is %r" %
                               (item_id, transition.get("after_hold_state"), hold))
+        if state in ("open", "merge-ready"):
+            latest_opening = next((
+                receipt for receipt in reversed(transition_history)
+                if receipt.get("before_state") in ("queued", "merge-ready")
+                and receipt.get("after_state") == "open"), None)
+            if latest_opening is None:
+                errors.append(
+                    "%s live state %s has no opening semantic before-set" %
+                    (item_id, state))
+            elif (latest_opening.get("tool") != "update_queue" or
+                    latest_opening.get("tool_version") !=
+                    UPDATE_QUEUE_TOOL_VERSION):
+                errors.append(
+                    "%s live state %s uses legacy opening producer %r/%r; "
+                    "migrate/reopen it before further writes" %
+                    (item_id, state, latest_opening.get("tool"),
+                     latest_opening.get("tool_version")))
     if state in ("closed", "cancelled") and hold != "none":
         errors.append("%s history is immutable and must have hold_state none" %
                       item_id)
@@ -11330,6 +13262,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             ))
             errors.extend(_closed_delta_apply_errors(
                 item, transition, catalog, queue,
+                root=records.get("root"),
             ))
 
     if state == "cancelled":
@@ -11789,7 +13722,8 @@ def _delta_handoff_errors(relative, delta, item, coverage_records,
 
 
 def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
-                                    coverage_sha):
+                                    coverage_sha, *, root=None,
+                                    coverage=None, profile_view=None):
     """Classify unconsumed apply receipts for one merge-ready batch."""
     batch_id = item.get("id")
     expected = {
@@ -11839,6 +13773,12 @@ def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
                 mismatches.append("merge_ready_settlement")
             mismatches.extend(_settlement_binding_errors(
                 receipt, "delta application %s" % receipt_id))
+            mismatches.extend(_delta_property_event_errors(
+                receipt, "delta application %s" % receipt_id))
+            if (root is not None and isinstance(coverage, dict) and
+                    isinstance(profile_view, dict)):
+                mismatches.extend(_delta_property_invalidation_errors(
+                    root, receipt, coverage, profile_view))
         before_coverage = receipt.get("before_coverage_sha256")
         if (not isinstance(before_coverage, str) or
                 not SHA256_RE.fullmatch(before_coverage)):
@@ -11895,9 +13835,11 @@ def delta_apply_write_barrier(result, tool, action, target=None):
 
 def validate_runtime(root, allowed_open_delta=None,
                      allowed_cancellation_id=None, state_overrides=None,
+                     page_projection_overrides=None,
                      extra_receipts=None, allow_unmaterialized_queue=False,
                      allow_structural_drift=False,
                      allow_pending_replan_receipts=False,
+                     allow_legacy_property_state_for_migration=False,
                      allow_standards_rollback_batch=None,
                      allow_invalid_current_profile_for_corrective_adoption=
                      False,
@@ -11909,9 +13851,12 @@ def validate_runtime(root, allowed_open_delta=None,
     Full ``profile-load`` is part of the default runtime invariant, so every
     ordinary reader/writer gets the same closure admission as the public CLI.
     The sole escape hatch exists for ``adopt_standards`` to read and replace
-    an already-selected invalid Profile.  It is intentionally inapplicable to
-    proposed/overridden state: the adoption after-image must always pass the
-    full invariant.  A caller that already ran
+    an already-selected invalid Profile.  Even on that path, a valid current
+    Profile is evaluated normally and its authorized view is retained; the
+    smaller unadmitted identity check is used only when that one producer run
+    actually fails.  The escape is intentionally inapplicable to proposed/
+    overridden state: the adoption after-image must always pass the full
+    invariant.  A caller that already ran
     :func:`profile_load_authorized_view` may inject that exact in-process view;
     its identity, typed contract, and current tree snapshot are rechecked, but
     the expensive producer is not run again.
@@ -11923,6 +13868,27 @@ def validate_runtime(root, allowed_open_delta=None,
     if type(allow_active_standards_mismatch_for_adoption) is not bool:
         raise TypeError(
             "allow_active_standards_mismatch_for_adoption must be boolean")
+    if page_projection_overrides is not None:
+        if state_overrides is None or not isinstance(state_overrides, dict) or \
+                COVERAGE_PATH not in state_overrides:
+            raise ValueError(
+                "page_projection_overrides requires a proposed Coverage "
+                "state override")
+        if (not isinstance(page_projection_overrides, dict) or
+                any(not _nonempty_string(path) or not isinstance(text, str)
+                    for path, text in page_projection_overrides.items())):
+            raise TypeError(
+                "page_projection_overrides must map non-empty page paths "
+                "to exact text after-images")
+    if type(allow_legacy_property_state_for_migration) is not bool:
+        raise TypeError(
+            "allow_legacy_property_state_for_migration must be bool")
+    if allow_legacy_property_state_for_migration and isinstance(
+            state_overrides, dict) and COVERAGE_PATH in state_overrides:
+        raise ValueError(
+            "legacy property-state migration admission is a persisted "
+            "Coverage before-image escape; a proposed Coverage override "
+            "must pass the current property-state contract strictly")
     if (allow_active_standards_mismatch_for_adoption and
             not allow_invalid_current_profile_for_corrective_adoption):
         raise ValueError(
@@ -11982,6 +13948,7 @@ def validate_runtime(root, allowed_open_delta=None,
             "progress_sha256": None, "remaining": None,
             "receipt_catalog": catalog, "writer_locks": writer_locks,
             "managed_deltas": [], "hub_page_admission": {},
+            "legacy_property_state_source_receipt_ids": [],
         }
 
     coverage_sha = kblib.sha256_bytes(coverage_raw)
@@ -12064,7 +14031,19 @@ def validate_runtime(root, allowed_open_delta=None,
                           (key, qvalue, cvalue, pvalue))
 
     active_standards_view = None
-    if not allow_active_standards_mismatch_for_adoption:
+    if allow_active_standards_mismatch_for_adoption:
+        # As with the corrective Profile path below, permission to replace a
+        # mismatched authority is not proof that the persisted before image
+        # is mismatched.  Retain a valid immutable K00/03 view whenever its
+        # single producer attempt succeeds; only a real mismatch uses the
+        # identity escape and leaves the before view absent.
+        active_standards_view, active_errors = \
+            active_standards_authorized_view(
+                root, queue.get("standards_version"),
+                queue.get("selected_profile_manifest"))
+        if active_errors:
+            active_standards_view = None
+    else:
         if authorized_active_standards_view is None:
             active_standards_view, active_errors = \
                 active_standards_authorized_view(
@@ -12091,7 +14070,17 @@ def validate_runtime(root, allowed_open_delta=None,
     profile_view = None
     if _nonempty_string(profile):
         if allow_invalid_current_profile_for_corrective_adoption:
-            errors.extend(selected_profile_manifest_errors(root, profile))
+            # Corrective adoption is not synonymous with an invalid current
+            # Profile.  Preserve the full authorized before-view whenever the
+            # canonical producer succeeds, so current opening/property
+            # evidence remains verifiable.  Only an actual producer failure
+            # falls back to the deliberately smaller manifest identity path;
+            # the producer is never rerun in either branch.
+            profile_view, profile_errors = profile_load_authorized_view(
+                root, profile)
+            if profile_errors:
+                profile_view = None
+                errors.extend(selected_profile_manifest_errors(root, profile))
         elif authorized_profile_view is not None:
             profile_errors = _authorized_profile_view_errors(
                 root, profile, authorized_profile_view)
@@ -12155,6 +14144,55 @@ def validate_runtime(root, allowed_open_delta=None,
             adoption.get("invalidated_evidence_receipt_ids") or [])
         if _nonempty_string(receipt_id)
     }
+    trusted_content_change_receipts = {
+        record.get("evidence_receipt")
+        for row in coverage.get("pages") or [] if isinstance(row, dict)
+        for record in (row.get("property_state") or {}).values()
+        if isinstance(record, dict) and
+        _nonempty_string(record.get("evidence_receipt"))
+    }
+    trusted_content_change_receipts.update(
+        item.get("delta_apply_receipt")
+        for item in queue.get("required_queue") or []
+        if isinstance(item, dict) and
+        _nonempty_string(item.get("delta_apply_receipt")))
+    # The just-applied merge-ready window has not yet projected its receipt ID
+    # into Queue.  Its exact live Coverage/delta binding is nevertheless
+    # enough to make the content-change invalidation authoritative now.
+    trusted_content_change_receipts.update(
+        receipt_id for receipt_id, entry in catalog.items()
+        if isinstance(entry, tuple) and isinstance(entry[1], dict) and
+        entry[1].get("tool") == "apply_delta" and
+        entry[1].get("tool_version") == APPLY_DELTA_TOOL_VERSION and
+        entry[1].get("check") == "delta_apply" and
+        entry[1].get("result") == "pass" and
+        entry[1].get("invalidated_by") is None and
+        entry[1].get("after_coverage_sha256") == coverage_sha and
+        any(isinstance(item, dict) and item.get("state") == "merge-ready" and
+            item.get("id") == entry[1].get("target") and
+            item.get("delta_path") == entry[1].get("delta_path") and
+            item.get("delta_sha256") == entry[1].get("delta_sha256")
+            for item in queue.get("required_queue") or []))
+    content_invalidated_receipt_ids = set()
+    for receipt_id in trusted_content_change_receipts:
+        entry = catalog.get(receipt_id)
+        receipt = entry[1] if isinstance(entry, tuple) else None
+        if not (isinstance(receipt, dict) and
+                receipt.get("tool") == "apply_delta" and
+                receipt.get("tool_version") == APPLY_DELTA_TOOL_VERSION and
+                receipt.get("check") == "delta_apply" and
+                receipt.get("result") == "pass" and
+                receipt.get("invalidated_by") is None):
+            continue
+        for event in receipt.get("property_events") or []:
+            if not isinstance(event, dict):
+                continue
+            values = event.get("invalidated_property_receipt_ids")
+            if isinstance(values, list):
+                content_invalidated_receipt_ids.update(
+                    value for value in values if _nonempty_string(value))
+    invalidated_evidence_receipt_ids.update(
+        content_invalidated_receipt_ids)
     # Historical transition/close validation keeps the full catalog.  Only
     # current-use admission, handoff, reuse, and completion queries consume
     # this adoption-aware view, so history is never rewritten or made invalid
@@ -12194,7 +14232,26 @@ def validate_runtime(root, allowed_open_delta=None,
     orders = {}
     manifest_owners = {}
     records, assignments = _coverage_records(root, coverage, errors)
-    context = {"root": root}
+    legacy_property_state_source_receipt_ids = []
+    if profile_view is not None:
+        errors.extend(_coverage_property_state_errors(
+            root, coverage, current_catalog, queue, profile_view,
+            active_standards_view,
+            page_projection_overrides=page_projection_overrides,
+            allow_legacy_missing=
+                allow_legacy_property_state_for_migration))
+        # A proposed Coverage override is still inside its sole writer's
+        # preflight; the writer-specific planner proves its before/after set
+        # and the ordinary persisted validation below resolves the landed
+        # receipt.  Treating a not-yet-emitted append-only receipt as absent
+        # here would make an atomic first adoption impossible.
+        if not (isinstance(state_overrides, dict) and
+                COVERAGE_PATH in state_overrides):
+            legacy_errors, legacy_property_state_source_receipt_ids = \
+                _legacy_property_state_source_errors(
+                    coverage, progress, catalog)
+            errors.extend(legacy_errors)
+    context = {"root": root, "profile_view": profile_view}
 
     # Closing a successor batch transfers Coverage ``batch`` ownership
     # forward (K12/03: Coverage names the most recent closed owner), so a
@@ -12595,8 +14652,12 @@ def validate_runtime(root, allowed_open_delta=None,
     registered_hub_paths, hub_derivation_errors = profile_hub_paths(
         root, queue.get("selected_profile_manifest"),
         authorized_view=profile_view, evaluate_if_missing=False,
-        allow_unadmitted_profile=
-            allow_invalid_current_profile_for_corrective_adoption)
+        # The corrective flag permits an unadmitted derivation only when the
+        # one canonical producer actually failed above.  A valid current
+        # Profile keeps its authorized typed view throughout the same run.
+        allow_unadmitted_profile=(
+            allow_invalid_current_profile_for_corrective_adoption and
+            profile_view is None))
     if profile_view is not None and hub_derivation_errors:
         # A successfully authorized view becoming unreadable or stale is a
         # runtime invariant failure even when no queued concurrent batch needs
@@ -12712,6 +14773,8 @@ def validate_runtime(root, allowed_open_delta=None,
         "current_receipt_catalog": current_catalog,
         "invalidated_evidence_receipt_ids":
             sorted(invalidated_evidence_receipt_ids),
+        "legacy_property_state_source_receipt_ids":
+            legacy_property_state_source_receipt_ids,
         "_standards_revalidation_requirements":
             standards_revalidation_requirements_by_batch,
     }
@@ -12742,6 +14805,7 @@ def validate_runtime(root, allowed_open_delta=None,
                                value.get("id", ""))):
         compatible, stale = _delta_apply_receipt_candidates(
             item, current_catalog, queue, queue_sha, coverage_sha,
+            root=root, coverage=coverage, profile_view=profile_view,
         )
         stale_delta_apply_receipts.extend(stale)
         applied_delta_receipts.append({
@@ -13193,8 +15257,20 @@ def _batch_close_recovery_inventory(result):
             delta_apply_receipt=delta_apply,
             work_spec_path=item.get("work_spec_path"),
             work_spec_sha256=item.get("work_spec_sha256"),
+            manifest=item.get("manifest"),
             selected_profile_manifest=(result.get("queue") or {}).get(
                 "selected_profile_manifest"),
+            profile_snapshot_sha256=(result.get(
+                "_profile_authorized_view") or {}).get(
+                    "profile_snapshot_sha256"),
+            profile_contract_fingerprint=(result.get(
+                "_profile_authorized_view") or {}).get(
+                    "profile_contract_fingerprint"),
+            profile_load_inputs_sha256=(result.get(
+                "_profile_authorized_view") or {}).get(
+                    "profile_load_inputs_sha256"),
+            authorized_profile_contract=(result.get(
+                "_profile_authorized_view") or {}).get("_contract"),
             current_repository_snapshot_sha256=snapshot,
         ))
         entry = {

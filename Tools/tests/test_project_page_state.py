@@ -18,6 +18,49 @@ TOOL = REPO / "Tools" / "project_page_state.py"
 sys.path.insert(0, str(REPO / "Tools"))
 
 import project_page_state
+import kblib
+import metadata_execution_contract
+
+LEGACY_RULES = (
+    {
+        "field": "coverage_disposition",
+        "value_shape": "scalar-string-or-null",
+        "source_adapter": "coverage-row-value-v1",
+        "writer_capability": "project-page-state-v2",
+        "reconcile_policy": "existing-copy-exact-or-remove-v1",
+    },
+    {
+        "field": "authoring_status",
+        "value_shape": "scalar-string-or-null",
+        "source_adapter": "coverage-row-value-v1",
+        "writer_capability": "project-page-state-v2",
+        "reconcile_policy": "existing-copy-exact-or-remove-v1",
+    },
+    {
+        "field": "next_batch",
+        "value_shape": "scalar-string-or-null",
+        "source_adapter": "coverage-row-value-v1",
+        "writer_capability": "project-page-state-v2",
+        "reconcile_policy": "existing-copy-exact-or-remove-v1",
+    },
+)
+
+
+def property_rule(field, adapter="coverage-property-state-v1",
+                  invalidation_rule=None, value_shape="date",
+                  allowed_values=None):
+    rule = {
+        "field": field,
+        "value_shape": value_shape,
+        "source_adapter": adapter,
+        "writer_capability": "project-page-state-v2",
+        "reconcile_policy": "upsert-exact-or-remove-v1",
+    }
+    if invalidation_rule is not None:
+        rule["invalidation_rule"] = invalidation_rule
+    if allowed_values is not None:
+        rule["allowed_values"] = allowed_values
+    return rule
 
 LEDGER = """schema_version: 1
 pages:
@@ -74,6 +117,26 @@ class ProjectPageStateTests(unittest.TestCase):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(body)
+        # The runtime never falls back to a source-code field list.  Even a
+        # minimal adopting repository therefore carries the canonical
+        # authority/capability inputs and their generated artifact.
+        for relative in (
+                "kernel/K08 Metadata and Status/metadata-authority-base.yaml",
+                "Tools/operation-capabilities.yaml",
+                "Tools/compiled/metadata-execution-contract.json"):
+            source = REPO / relative
+            target = pathlib.Path(root, relative)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+        capabilities = kblib.parse_yaml_subset(
+            (REPO / "Tools/operation-capabilities.yaml").read_text(
+                encoding="utf-8"))
+        for relative in metadata_execution_contract.\
+                capability_implementation_paths(capabilities):
+            source = REPO / relative
+            target = pathlib.Path(root, relative)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
         return root
 
     def run_tool(self, root, *argv):
@@ -117,6 +180,405 @@ class ProjectPageStateTests(unittest.TestCase):
         # idempotent: a second run plans zero changes
         again = self.run_tool(root, "--apply")
         self.assertIn("field_changes=0", again.stdout)
+
+    def test_contract_rule_projects_an_unlisted_field(self):
+        """The executable contract, not a source allowlist, grants writes."""
+        text = """---
+type: concept
+profile_readiness: pending
+---
+# Profile page
+"""
+        rules = ({
+            "field": "profile_readiness",
+            "value_shape": "enum",
+            "allowed_values": ["pending", "accepted"],
+            "source_adapter": "coverage-row-value-v1",
+            "writer_capability": "project-page-state-v2",
+            "reconcile_policy": "existing-copy-exact-or-remove-v1",
+        },)
+
+        projected, changes = project_page_state.project_page(
+            text, {"path": "Domain/Profile.md",
+                   "profile_readiness": "accepted"}, rules)
+
+        self.assertIn("profile_readiness: accepted", projected)
+        self.assertEqual(
+            [("profile_readiness", "pending", "accepted")], changes)
+
+    def test_property_projection_uses_contract_enum_not_field_logic(self):
+        rules = (property_rule(
+            "profile_gate_state", value_shape="enum",
+            allowed_values=["pending", "accepted"]),)
+        relative = "Domain/Profile.md"
+        fingerprint = project_page_state.semantic_content_fingerprint(
+            relative, BARE, rules)
+        record = {
+            "value": "accepted",
+            "evidence_receipt": "audit-profile-gate-1",
+            "content_fingerprint": fingerprint,
+        }
+
+        projected, _changes = project_page_state.project_page(
+            BARE,
+            {"path": relative,
+             "property_state": {"profile_gate_state": record}},
+            rules)
+        self.assertIn("profile_gate_state: accepted", projected)
+
+        record["value"] = "invented"
+        with self.assertRaisesRegex(ValueError, "must be one of"):
+            project_page_state.project_page(
+                BARE,
+                {"path": relative,
+                 "property_state": {"profile_gate_state": record}},
+                rules)
+
+    def test_current_property_state_upserts_both_evidence_dates(self):
+        """Exact owner state adds missing page copies and remains self-stable."""
+        rules = (
+            property_rule("last_reviewed"),
+            property_rule("last_content_modified"),
+        )
+        relative = "Domain/Reviewed.md"
+        fingerprint = project_page_state.semantic_content_fingerprint(
+            relative, CLOSED, rules)
+        row = {
+            "path": relative,
+            "property_state": {
+                "last_reviewed": {
+                    "value": "2026-08-19",
+                    "evidence_receipt": "audit-substantive-review-1",
+                    "content_fingerprint": fingerprint,
+                },
+                "last_content_modified": {
+                    "value": "2026-08-18",
+                    "evidence_receipt": "audit-content-change-1",
+                    "content_fingerprint": fingerprint,
+                },
+            },
+        }
+
+        projected, changes = project_page_state.project_page(
+            CLOSED, row, rules)
+
+        self.assertIn("last_reviewed: 2026-08-19", projected)
+        self.assertIn("last_content_modified: 2026-08-18", projected)
+        self.assertEqual(2, len(changes))
+        self.assertEqual(
+            fingerprint,
+            project_page_state.semantic_content_fingerprint(
+                relative, projected, rules))
+
+    def test_property_upsert_materializes_frontmatter_without_legacy_fields(self):
+        """Evidence-backed properties may create the first frontmatter block."""
+        rules = (property_rule("last_reviewed"),) + LEGACY_RULES
+        relative = "Domain/Reviewed.md"
+        text = "# Reviewed\n"
+        fingerprint = project_page_state.semantic_content_fingerprint(
+            relative, text, rules)
+        row = {
+            "path": relative,
+            "coverage_disposition": "required",
+            "authoring_status": "reviewed",
+            "next_batch": None,
+            "property_state": {
+                "last_reviewed": {
+                    "value": "2026-08-20",
+                    "evidence_receipt": "audit-substantive-review-1",
+                    "content_fingerprint": fingerprint,
+                },
+            },
+        }
+
+        projected, changes = project_page_state.project_page(
+            text, row, rules)
+
+        self.assertEqual(
+            "---\nlast_reviewed: 2026-08-20\n---\n# Reviewed\n",
+            projected)
+        self.assertEqual(
+            [("last_reviewed", None, "2026-08-20")], changes)
+        self.assertNotIn("authoring_status:", projected)
+        self.assertNotIn("coverage_disposition:", projected)
+        self.assertNotIn("next_batch:", projected)
+        self.assertEqual(
+            fingerprint,
+            project_page_state.semantic_content_fingerprint(
+                relative, projected, rules))
+
+    def test_stale_review_content_fingerprint_fails_closed(self):
+        rules = metadata_execution_contract.AuthorizedProjectionRules(
+            (property_rule("last_reviewed"),), "sha256:" + "1" * 64)
+        relative = "Domain/Reviewed.md"
+        fingerprint = project_page_state.semantic_content_fingerprint(
+            relative, CLOSED, rules)
+        row = {
+            "path": relative,
+            "property_state": {
+                "last_reviewed": {
+                    "value": "2026-08-19",
+                    "evidence_receipt": "audit-substantive-review-1",
+                    "content_fingerprint": fingerprint,
+                },
+            },
+        }
+        changed = CLOSED.replace("# Closed", "# Semantically changed")
+
+        with self.assertRaisesRegex(ValueError, "stale content"):
+            project_page_state.project_page(changed, row, rules)
+
+    def test_content_change_event_tombstones_review_and_advances_modified(self):
+        """A current event removes stale review authority without mtime."""
+        rules = (
+            property_rule(
+                "last_reviewed",
+                invalidation_rule="semantic-content-change-tombstone-v1"),
+            property_rule("last_content_modified"),
+        )
+        relative = "Domain/Reviewed.md"
+        changed = CLOSED.replace(
+            "authoring_status: drafted\n",
+            "authoring_status: needs_rereview\n"
+            "last_reviewed: 2026-08-10\n").replace(
+                "# Closed", "# Revised semantics")
+        current = project_page_state.semantic_content_fingerprint(
+            relative, changed, rules)
+        row = {
+            "path": relative,
+            "property_state": {
+                "last_reviewed": {
+                    "value": None,
+                    "evidence_receipt": "audit-content-change-2",
+                    "content_fingerprint": current,
+                },
+                "last_content_modified": {
+                    "value": "2026-08-20",
+                    "evidence_receipt": "audit-content-change-2",
+                    "content_fingerprint": current,
+                },
+            },
+        }
+
+        projected, changes = project_page_state.project_page(
+            changed, row, rules)
+
+        self.assertNotIn("last_reviewed:", projected)
+        self.assertIn("last_content_modified: 2026-08-20", projected)
+        self.assertIn(
+            ("last_reviewed", "2026-08-10", None), changes)
+        self.assertEqual(
+            current,
+            project_page_state.semantic_content_fingerprint(
+                relative, projected, rules))
+        again, second_changes = project_page_state.project_page(
+            projected, row, rules)
+        self.assertEqual(projected, again)
+        self.assertEqual([], second_changes)
+
+    def test_null_property_value_requires_contract_invalidation_rule(self):
+        rules = metadata_execution_contract.AuthorizedProjectionRules(
+            (property_rule("last_reviewed"),),
+            "sha256:" + "1" * 64,
+            "sha256:" + "2" * 64,
+        )
+        relative = "Domain/Reviewed.md"
+        fingerprint = project_page_state.semantic_content_fingerprint(
+            relative, CLOSED, rules)
+        row = {
+            "path": relative,
+            "property_state": {
+                "last_reviewed": {
+                    "value": None,
+                    "evidence_receipt": "audit-content-change-2",
+                    "content_fingerprint": fingerprint,
+                },
+            },
+        }
+
+        with self.assertRaisesRegex(ValueError, "unauthorized null tombstone"):
+            project_page_state.project_page(CLOSED, row, rules)
+
+    def test_persisted_review_date_without_owner_evidence_fails_closed(self):
+        rules = metadata_execution_contract.AuthorizedProjectionRules(
+            (property_rule("last_reviewed"),),
+            "sha256:" + "1" * 64)
+        text = CLOSED.replace(
+            "authoring_status: drafted\n",
+            "authoring_status: drafted\nlast_reviewed: 2026-08-01\n")
+
+        with self.assertRaisesRegex(ValueError, "no evidence-backed owner"):
+            project_page_state.project_page(
+                text, {"path": "Domain/Legacy.md"}, rules)
+
+    def test_property_state_record_is_closed_and_requires_evidence(self):
+        rules = (property_rule("last_reviewed"),)
+        relative = "Domain/Reviewed.md"
+        fingerprint = project_page_state.semantic_content_fingerprint(
+            relative, CLOSED, rules)
+        base = {
+            "value": "2026-08-19",
+            "content_fingerprint": fingerprint,
+        }
+        for record, pattern in (
+                (base, "missing evidence_receipt"),
+                (dict(base, evidence_receipt="audit-review-1", extra="x"),
+                 "undeclared extra")):
+            with self.subTest(record=record):
+                with self.assertRaisesRegex(ValueError, pattern):
+                    project_page_state.project_page(
+                        CLOSED,
+                        {"path": relative,
+                         "property_state": {"last_reviewed": record}},
+                        rules)
+
+    def test_integrator_can_plan_pages_from_proposed_coverage(self):
+        """Coverage need not be published before deriving page after-images."""
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, True)
+        ledger_path = pathlib.Path(
+            root, ".cambium/state/coverage_ledger.yaml")
+        page_path = pathlib.Path(root, "Domain/Closed.md")
+        ledger_path.parent.mkdir(parents=True)
+        page_path.parent.mkdir(parents=True)
+        ledger_path.write_text(
+            "schema_version: 1\npages:\n"
+            "  - path: Domain/Closed.md\n",
+            encoding="utf-8")
+        page_path.write_text(CLOSED, encoding="utf-8")
+        rules = metadata_execution_contract.AuthorizedProjectionRules(
+            (property_rule("last_reviewed"),),
+            "sha256:" + "1" * 64,
+            "sha256:" + "2" * 64,
+        )
+        fingerprint = project_page_state.semantic_content_fingerprint(
+            "Domain/Closed.md", CLOSED, rules)
+        proposed = {
+            "schema_version": 1,
+            "pages": [{
+                "path": "Domain/Closed.md",
+                "property_state": {
+                    "last_reviewed": {
+                        "value": "2026-08-20",
+                        "evidence_receipt": "audit-review-current",
+                        "content_fingerprint": fingerprint,
+                    },
+                },
+            }],
+        }
+
+        plan = project_page_state.build_projection_plan(
+            root, ledger_override=proposed, rules=rules)
+
+        self.assertEqual(1, len(plan.pages))
+        self.assertIn(
+            b"last_reviewed: 2026-08-20", plan.pages[0].after_data)
+        self.assertFalse(plan.revalidate_contract)
+        self.assertNotIn(
+            "last_reviewed", ledger_path.read_text(encoding="utf-8"))
+
+    def build_composite_plan(self):
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, True)
+        pathlib.Path(root, ".cambium/tmp").mkdir(parents=True)
+        ledger = pathlib.Path(root, ".cambium/state/coverage_ledger.yaml")
+        page = pathlib.Path(root, "Domain/Closed.md")
+        ledger.parent.mkdir(parents=True, exist_ok=True)
+        page.parent.mkdir(parents=True)
+        ledger.write_text(
+            "schema_version: 1\npages:\n"
+            "  - path: Domain/Closed.md\n"
+            "    authoring_status: reviewed\n",
+            encoding="utf-8")
+        page.write_text(CLOSED, encoding="utf-8")
+        rule = metadata_execution_contract.AuthorizedProjectionRules(({
+            "field": "authoring_status",
+            "value_shape": "scalar-string-or-null",
+            "source_adapter": "coverage-row-value-v1",
+            "writer_capability": "project-page-state-v2",
+            "reconcile_policy": "existing-copy-exact-or-remove-v1",
+        },), "sha256:" + "1" * 64)
+        plan = project_page_state.build_projection_plan(
+            root, rules=rule)
+        return root, ledger, page, plan
+
+    def test_composite_transaction_defers_cleanup_until_outer_commit(self):
+        root, _ledger, page, plan = self.build_composite_plan()
+        with project_page_state.kblib.runtime_write_lock(
+                root, owner_metadata={"tool": "outer-integrator"}) as lease:
+            transaction = project_page_state.stage_projection_plan(
+                root, plan, lease, "outer-page-commit")
+            self.assertEqual(CLOSED, page.read_text(encoding="utf-8"))
+            transaction.publish()
+            self.assertIn(
+                "authoring_status: reviewed",
+                page.read_text(encoding="utf-8"))
+            self.assertTrue(any(page.parent.glob(
+                project_page_state.TEMP_PREFIX + "before-*")))
+            transaction.commit()
+            self.assertFalse(pathlib.Path(
+                os.fspath(lease),
+                project_page_state.JOURNAL_NAME).exists())
+            self.assertEqual([], list(page.parent.glob(
+                project_page_state.TEMP_PREFIX + "*")))
+
+    def test_composite_transaction_can_rollback_after_page_publication(self):
+        root, _ledger, page, plan = self.build_composite_plan()
+        with project_page_state.kblib.runtime_write_lock(
+                root, owner_metadata={"tool": "outer-integrator"}) as lease:
+            transaction = project_page_state.stage_projection_plan(
+                root, plan, lease, "outer-page-rollback")
+            transaction.publish()
+            transaction.rollback()
+            self.assertEqual(CLOSED, page.read_text(encoding="utf-8"))
+            self.assertFalse(pathlib.Path(
+                os.fspath(lease),
+                project_page_state.JOURNAL_NAME).exists())
+            self.assertEqual([], list(page.parent.glob(
+                project_page_state.TEMP_PREFIX + "*")))
+
+    def test_composite_publish_accepts_outer_coverage_after_image(self):
+        root, ledger, page, plan = self.build_composite_plan()
+        with project_page_state.kblib.runtime_write_lock(
+                root, owner_metadata={"tool": "outer-integrator"}) as lease:
+            transaction = project_page_state.stage_projection_plan(
+                root, plan, lease, "outer-coverage-first")
+            # The outer transaction owns this canonical-state publication and
+            # its rollback.  Page publication must not demand the pre-state
+            # Ledger after that deliberate write.
+            ledger.write_text(
+                ledger.read_text(encoding="utf-8") +
+                "updated_at: 2026-08-20T00:00:00Z\n",
+                encoding="utf-8")
+            transaction.publish()
+            transaction.commit()
+
+        self.assertIn(
+            "authoring_status: reviewed", page.read_text(encoding="utf-8"))
+
+    def test_composite_rollback_never_deletes_foreign_same_inode_edit(self):
+        root, _ledger, page, plan = self.build_composite_plan()
+        concurrent = CLOSED.replace("# Closed", "# Concurrent after publish")
+        lock_path = pathlib.Path(root, ".cambium/tmp/state-writer.lock")
+
+        with self.assertRaisesRegex(ValueError, "rollback is incomplete"):
+            with project_page_state.kblib.runtime_write_lock(
+                    root,
+                    owner_metadata={"tool": "outer-integrator"}) as lease:
+                transaction = project_page_state.stage_projection_plan(
+                    root, plan, lease, "outer-page-drift")
+                transaction.publish()
+                published_inode = page.stat().st_ino
+                page.write_text(concurrent, encoding="utf-8")
+                self.assertEqual(published_inode, page.stat().st_ino)
+                transaction.rollback()
+
+        self.assertEqual(concurrent, page.read_text(encoding="utf-8"))
+        self.assertTrue(lock_path.is_dir())
+        journal = json.loads(pathlib.Path(
+            lock_path, project_page_state.JOURNAL_NAME
+        ).read_text(encoding="utf-8"))
+        self.assertEqual("rollback-required", journal.get("status"))
 
     def test_page_scope_and_unknown_page(self):
         root = self.build()
@@ -319,7 +781,7 @@ class ProjectPageStateTests(unittest.TestCase):
                 "coverage_disposition": "required",
                 "authoring_status": "reviewed",
                 "next_batch": None,
-            })
+            }, LEGACY_RULES)
         outside = pathlib.Path(root).parent / "swap-outside.md"
         outside.write_text(CLOSED, encoding="utf-8")
         original_open = project_page_state.os.open
@@ -438,6 +900,7 @@ class ProjectPageStateTests(unittest.TestCase):
                 outside.unlink()
 
     def test_staged_bytes_changed_during_install_are_rejected(self):
+        """Unknown after-image bytes are preserved for reconciliation."""
         root = self.build()
         original_link = project_page_state.os.link
         changed = False
@@ -466,7 +929,14 @@ class ProjectPageStateTests(unittest.TestCase):
 
         self.assertTrue(changed)
         self.assertEqual(1, code, output)
-        self.assertEqual(CLOSED, self.read(root, "Domain/Closed.md"))
+        self.assertEqual(
+            "corrupted during install\n",
+            self.read(root, "Domain/Closed.md"))
+        journal = json.loads(pathlib.Path(
+            root, ".cambium/tmp/state-writer.lock",
+            project_page_state.JOURNAL_NAME
+        ).read_text(encoding="utf-8"))
+        self.assertEqual("rollback-required", journal.get("status"))
 
     def test_later_publication_failure_restores_earlier_page(self):
         """A multi-page failure must not leave an earlier projection behind."""

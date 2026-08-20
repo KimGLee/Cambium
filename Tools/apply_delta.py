@@ -27,8 +27,11 @@ import check_queue
 import batch_settlement
 import coverage_delta
 import kblib
+import metadata_execution_contract
+import metadata_property_state
+import project_page_state
 
-TOOL, TOOL_VERSION = "apply_delta", "1.5.0"
+TOOL, TOOL_VERSION = "apply_delta", "1.6.0"
 
 # These fields are owned by Coverage reconciliation / Queue compilation, not
 # by a worker-produced page delta.  Their presence is an operation-wide error
@@ -502,6 +505,13 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
         print("[FAIL] canonical delta must update exactly every frozen manifest page")
         return 1
     try:
+        opening_context = check_queue.current_opening_semantic_context(
+            current, batch)
+    except (TypeError, ValueError) as exc:
+        print("[FAIL] canonical delta has no current opening semantic "
+              "before-set: %s" % exc)
+        return 1
+    try:
         parsed_new = kblib.parse_yaml_subset(new_text)
         if not isinstance(parsed_new, dict):
             raise kblib.YamlSubsetError("merged Coverage must be a mapping")
@@ -524,6 +534,7 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
     before_coverage_sha = planned_coverage_sha
     before_queue_sha = current.get("queue_sha256")
     before_progress_sha = current.get("progress_sha256")
+    delta_coverage = copy.deepcopy(parsed_new)
     after_coverage_sha = kblib.sha256_bytes(new_text)
     archive_relative = pre_apply_coverage_archive_path(
         batch, current["queue"].get("state_revision"))
@@ -531,6 +542,49 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
         current, batch, expected_delta, planned_delta_sha, before_coverage_sha,
         after_coverage_sha, args.actor_role, archive_relative, settlement,
     )
+    try:
+        metadata_contract = \
+            metadata_execution_contract.load_metadata_execution_contract(root)
+        profile_contract = current["_profile_authorized_view"]["_contract"]
+        projection_rules = \
+            metadata_property_state.profile_gate_projection_rules(
+                root, profile_contract.extension_gates,
+                metadata_contract=metadata_contract,
+                authorized_profile_contract=profile_contract)
+        parsed_new, property_paths, property_events = \
+            metadata_property_state.apply_content_change(
+                parsed_new, root, delta_manifest, receipt,
+                rules=projection_rules,
+                before_semantic_fingerprints=opening_context[
+                    "before_semantic_fingerprints"])
+        new_text = kblib.canonical_yaml(parsed_new)
+        after_coverage_sha = kblib.sha256_bytes(new_text)
+        receipt.update({
+            "after_coverage_sha256": after_coverage_sha,
+            "metadata_execution_contract_fingerprint":
+                metadata_contract.contract_fingerprint,
+            "metadata_execution_rule_fingerprint":
+                project_page_state._rules_fingerprint(projection_rules),
+            "selected_profile_manifest": current[
+                "_profile_authorized_view"]["selected_profile_manifest"],
+            "profile_snapshot_sha256": current[
+                "_profile_authorized_view"]["profile_snapshot_sha256"],
+            "profile_contract_fingerprint": current[
+                "_profile_authorized_view"]["profile_contract_fingerprint"],
+            "profile_load_inputs_sha256": current[
+                "_profile_authorized_view"]["profile_load_inputs_sha256"],
+            "semantic_content_protocol":
+                project_page_state.SEMANTIC_FINGERPRINT_PROTOCOL,
+            "opening_transition_receipt": opening_context[
+                "opening_transition_receipt"],
+            "manifest_semantic_before_set_sha256": opening_context[
+                "manifest_semantic_before_set_sha256"],
+            "property_events": [dict(event) for event in property_events],
+        })
+    except (OSError, TypeError, ValueError,
+            metadata_execution_contract.MetadataExecutionContractError) as exc:
+        print("[FAIL] cannot bind semantic content-change events: %s" % exc)
+        return 1
     receipt_relative = args.receipts or (
         ".cambium/receipts/%s.jsonl" % receipt["receipt_id"]
     )
@@ -591,10 +645,15 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
         "required_queue_sha256": before_queue_sha,
         "receipt_id": receipt["receipt_id"],
         "receipt_path": receipt_relative,
+        "opening_transition_receipt": opening_context[
+            "opening_transition_receipt"],
+        "manifest_semantic_before_set_sha256": opening_context[
+            "manifest_semantic_before_set_sha256"],
     }
     lock_operation.update(check_queue.runtime_authority_lock_fields(authority))
     try:
         with kblib.runtime_write_lock(root, owner_metadata=lock_operation) as lock:
+            page_plan = None
             with kblib.no_authoritative_write_guard(lock):
                 # Re-read under the lock.  Queue validation sees our own lock
                 # but does not treat it as a state error; fingerprints provide
@@ -635,6 +694,40 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
                     raise ValueError(
                         "Queue state revision changed after validation; the "
                         "pre-apply Coverage archive key is no longer current")
+                locked_opening_context = \
+                    check_queue.current_opening_semantic_context(
+                        locked, batch)
+                if locked_opening_context != opening_context:
+                    raise ValueError(
+                        "opening semantic before-set changed under lock")
+                locked_coverage, locked_property_paths, locked_events = \
+                    metadata_property_state.apply_content_change(
+                        delta_coverage, root, delta_manifest, receipt,
+                        rules=projection_rules,
+                        before_semantic_fingerprints=locked_opening_context[
+                            "before_semantic_fingerprints"])
+                if (kblib.canonical_yaml(locked_coverage) != new_text or
+                        tuple(locked_property_paths) != tuple(property_paths) or
+                        tuple(locked_events) != tuple(property_events)):
+                    raise ValueError(
+                        "semantic content-change projection changed under lock")
+                if locked_property_paths:
+                    owner_removals = {
+                        event["path"]: sorted(
+                            field for field in event[
+                                "invalidated_property_fields"]
+                            if field !=
+                            metadata_property_state.LAST_REVIEWED)
+                        for event in locked_events
+                        if any(
+                            field != metadata_property_state.LAST_REVIEWED
+                            for field in event[
+                                "invalidated_property_fields"])
+                    }
+                    page_plan = metadata_property_state.build_projection_plan(
+                        root, locked_coverage, locked_property_paths,
+                        rules=projection_rules,
+                        authorized_owner_removals=owner_removals)
                 locked_settlement = batch_settlement.delta_settlement_report(
                     locked["coverage"], parsed_new, delta, locked["queue"],
                     batch)
@@ -672,7 +765,13 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
             wrote_coverage = False
             receipt_attempted = False
             wrote_archive = False
+            page_transaction = None
             try:
+                if page_plan is not None:
+                    page_transaction = project_page_state.stage_projection_plan(
+                        root, page_plan, lock,
+                        transaction_id="delta-content-%s" %
+                        receipt["receipt_id"])
                 if not archive_exists:
                     check_queue.require_runtime_authority_current(
                         root, authority,
@@ -693,6 +792,8 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
                     ledger_path, new_text, validator=kblib.parse_yaml_subset
                 )
                 wrote_coverage = True
+                if page_transaction is not None:
+                    page_transaction.publish()
                 check_queue.require_runtime_authority_current(
                     root, authority,
                     "runtime authority changed during Coverage write")
@@ -723,8 +824,26 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
                 if persisted["errors"]:
                     raise ValueError("persisted runtime state: %s" %
                                      "; ".join(persisted["errors"]))
+                if page_transaction is not None:
+                    page_transaction.commit()
             except Exception as write_error:
                 rollback_failures = []
+                page_rollback_complete = True
+                if (page_transaction is not None and
+                        page_transaction.state not in (
+                            "rolled-back", "committed")):
+                    if page_transaction.state == "commit-cleanup-failed":
+                        page_rollback_complete = False
+                        rollback_failures.append(
+                            "page projection committed but cleanup requires "
+                            "recovery")
+                    else:
+                        try:
+                            page_transaction.rollback()
+                        except Exception as exc:
+                            page_rollback_complete = False
+                            rollback_failures.append(
+                                "page projection: %s" % exc)
                 if receipt_attempted:
                     try:
                         receipt_after = kblib.receipt_append_observation(
@@ -753,7 +872,7 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
                             "append-only receipt publication requires "
                             "recovery: %s" % receipt_outcome
                         )
-                if wrote_coverage:
+                if wrote_coverage and page_rollback_complete:
                     try:
                         kblib.atomic_write_text(
                             ledger_path, old_text,
@@ -761,7 +880,11 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
                         )
                     except Exception as exc:
                         rollback_failures.append("coverage: %s" % exc)
-                if wrote_archive:
+                elif wrote_coverage:
+                    rollback_failures.append(
+                        "Coverage retained because page rollback is "
+                        "unproven")
+                if wrote_archive and page_rollback_complete:
                     # The archive only ever describes a completed apply.  A
                     # failed apply that left it behind would advertise a
                     # rollback point for a delta that was never applied.

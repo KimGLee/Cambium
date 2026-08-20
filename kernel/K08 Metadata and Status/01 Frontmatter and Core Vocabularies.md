@@ -26,6 +26,7 @@ aliases: []
 prerequisites: []
 evidence_maturity:
 first_seen:
+last_content_modified:
 last_reviewed:
 last_verified:
 volatility:

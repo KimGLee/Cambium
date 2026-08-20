@@ -38,6 +38,11 @@ help:
 # needs a selected profile before it can start, and this artifact depends on
 # no profile at all, so a registry row for it could never be swept.
 #
+# metadata_execution_contract --check binds live Kernel metadata authority to
+# the installed writer/consumer/producer capability registry.  It runs here
+# because every metadata writer and typed extension Gate consumes that same
+# profile-independent compiled authority boundary.
+#
 # render_interface_projection --check covers every agent-facing form projected
 # from that contract (today Tools/compiled/mcp-tools.json).  It runs directly
 # after its own upstream, and stays out of the registry for the same reason.
@@ -50,6 +55,7 @@ help:
 check: check-test-shards
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/check_links.py .
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/stamp_cards.py . --check
+	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/metadata_execution_contract.py --root . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/compile_cli_contract.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/render_interface_projection.py . --check
 	PYTHONDONTWRITEBYTECODE=1 $(PYTHON) Tools/render_host_configs.py . --check

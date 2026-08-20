@@ -38,6 +38,7 @@ CHANGE_REQUIRED_DEMOTE = "required-object-demote"
 CHANGE_BATCH_RETIRE = "batch-retire"
 CHANGE_OPEN_WORK_SPEC_UPDATE = "open-work-spec-update"
 CHANGE_GAP_ROUTING_RECONCILIATION = "gap-routing-reconciliation"
+CHANGE_PROPERTY_STATE_ADOPTION = "property-state-adoption"
 
 DELEGATABLE_CHANGE_CLASSES = frozenset((
     CHANGE_REQUIRED_ADD,
@@ -51,12 +52,14 @@ KNOWN_CHANGE_CLASSES = DELEGATABLE_CHANGE_CLASSES.union((
     CHANGE_BATCH_RETIRE,
     CHANGE_OPEN_WORK_SPEC_UPDATE,
     CHANGE_GAP_ROUTING_RECONCILIATION,
+    CHANGE_PROPERTY_STATE_ADOPTION,
 ))
 
 PAGE_FIELDS = frozenset((
     "path", "coverage_disposition", "canonical_owner", "type", "priority",
     "tier", "authoring_status", "prerequisites", "batch", "next_batch",
     "deferred_reason", "reentry_condition", "gate_receipts",
+    "property_state", "legacy_property_state",
 ))
 PROMOTION_FIELDS = PAGE_FIELDS - frozenset(("path",))
 REROUTE_FIELDS = frozenset(("batch", "next_batch"))
@@ -227,8 +230,6 @@ def derive_amendment_impact(current, proposal, queue):
         if before == after:
             continue
         affected_pages.add(path)
-        affected_batches.update(_batch_refs(before))
-        affected_batches.update(_batch_refs(after))
         if before is None:
             extra = sorted(set(after) - PAGE_FIELDS)
             if extra:
@@ -239,12 +240,44 @@ def derive_amendment_impact(current, proposal, queue):
                                "delegates Required-object growth" % path)
             else:
                 classes.add(CHANGE_REQUIRED_ADD)
+            if "property_state" not in after or not isinstance(
+                    after.get("property_state"), dict):
+                reasons.append(
+                    "new Coverage page %s must carry explicit "
+                    "property_state mapping" % path)
+            elif after.get("property_state"):
+                reasons.append(
+                    "new Coverage page %s may not claim pre-existing current "
+                    "property evidence" % path)
+            if "legacy_property_state" in after:
+                reasons.append(
+                    "new Coverage page %s may not claim legacy property "
+                    "observations" % path)
+            affected_batches.update(_batch_refs(after))
             continue
         if after is None:
             reasons.append("Coverage page removal is unsupported in v1: %s" % path)
+            affected_batches.update(_batch_refs(before))
             continue
 
         changed = set(_changed_fields(before, after))
+        migration_fields = {"property_state", "legacy_property_state"}
+        if changed and changed.issubset(migration_fields):
+            if ("property_state" not in before and
+                    after.get("property_state") == {} and
+                    "legacy_property_state" not in before and
+                    ("legacy_property_state" not in after or
+                     isinstance(after.get("legacy_property_state"), dict))):
+                classes.add(CHANGE_PROPERTY_STATE_ADOPTION)
+                continue
+            reasons.append(
+                "Coverage page %s property-state migration may only adopt "
+                "one absent owner mapping as property_state: {} plus optional "
+                "legacy_property_state observations" % path)
+            continue
+
+        affected_batches.update(_batch_refs(before))
+        affected_batches.update(_batch_refs(after))
         extra = sorted((set(before).union(after)) - PAGE_FIELDS)
         changed_extra = [field for field in extra
                          if before.get(field) != after.get(field)]
@@ -328,7 +361,14 @@ def derive_amendment_impact(current, proposal, queue):
         reasons.append(
             "gap-routing reconciliation may not be mixed with Scope/Queue "
             "structure changes in protocol v1")
-    if classes == {CHANGE_GAP_ROUTING_RECONCILIATION}:
+    if (CHANGE_PROPERTY_STATE_ADOPTION in classes and
+            classes != {CHANGE_PROPERTY_STATE_ADOPTION}):
+        reasons.append(
+            "property-state adoption may not be mixed with Scope, routing, "
+            "gap, or batch changes")
+    if classes == {CHANGE_PROPERTY_STATE_ADOPTION}:
+        operation = "property-state-migration"
+    elif classes == {CHANGE_GAP_ROUTING_RECONCILIATION}:
         operation = "gap-routing-reconciliation"
     elif removed_specs:
         operation = "cancel-batch"
@@ -336,7 +376,8 @@ def derive_amendment_impact(current, proposal, queue):
         operation = "scope-replan"
     else:
         operation = "queue-replan"
-    if operation in ("queue-replan", "gap-routing-reconciliation") and \
+    if operation in ("queue-replan", "gap-routing-reconciliation",
+                     "property-state-migration") and \
             scope_changed:
         reasons.append("%s effects may not change scope_version" % operation)
     if operation in ("scope-replan", "cancel-batch") and not scope_changed:

@@ -58,9 +58,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import compose_page_contract
 import profile_admission
+import metadata_execution_contract
+import metadata_property_state
+import project_page_state
 
 TOOL = "check_page_contract"
-TOOL_VERSION = "1.4.0"
+TOOL_VERSION = "1.5.0"
 GATE_ID = "page-contract"
 # The `Check` cell K00/12 registers for this Gate.
 GATE_CHECK = "page-contract-summary"
@@ -376,7 +379,26 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
 
     scan_roots = []
     ledger_dispositions = {}
+    projection_rules = ()
+    projection_rule_by_field = {}
     if contract is not None and admission is not None:
+        try:
+            metadata_contract = \
+                metadata_execution_contract.load_metadata_execution_contract(
+                    root)
+            projection_rules = \
+                metadata_property_state.profile_gate_projection_rules(
+                    root, admission.contract.extension_gates,
+                    metadata_contract=metadata_contract,
+                    authorized_profile_contract=admission.contract)
+            projection_rule_by_field = {
+                rule["field"]: rule for rule in projection_rules
+            }
+        except (OSError, UnicodeError, TypeError, ValueError) as exc:
+            findings.add(
+                "page-contract-metadata-authority",
+                "Tools/compiled/metadata-execution-contract.json", "fail",
+                "cannot compose current field authority: %s" % exc)
         if scope:
             scan_roots = [scope]
         else:
@@ -420,7 +442,8 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
     checked = 0
     for path in pages:
         rel = os.path.relpath(path, root).replace(os.sep, "/")
-        raw = kblib.extract_frontmatter(read_text(path))
+        page_text = read_text(path)
+        raw = kblib.extract_frontmatter(page_text)
         if raw is None:
             findings.add("page-contract-frontmatter", rel, violation,
                          "no fenced frontmatter; every applicable field "
@@ -472,27 +495,10 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
                            "receipts")
                 continue
             elif mode == "projection":
-                # K08/07: the ledger/queue own every projection-mode field.
-                # A page copy is optional, but when present it must equal the
-                # owner value, and a value whose owner is empty is stale --
-                # the classic dangling reference a closed batch leaves behind.
-                if present and not empty and rel in ledger_dispositions:
-                    owner_row = ledger_dispositions[rel]
-                    if isinstance(owner_row, dict) and name in owner_row:
-                        owner_value = owner_row.get(name)
-                        if owner_value is None:
-                            report("page-contract-projection",
-                                   "%s:%s" % (rel, name),
-                                   "page projection %r is stale: the "
-                                   "Coverage Ledger owner value is empty "
-                                   "(K08/07 requires a projector to "
-                                   "invalidate it)" % (value,))
-                        elif str(owner_value) != str(value):
-                            report("page-contract-projection",
-                                   "%s:%s" % (rel, name),
-                                   "page projection %r disagrees with the "
-                                   "Coverage Ledger owner value %r"
-                                   % (value, owner_value))
+                # Applicability and write authority are orthogonal.  The
+                # metadata execution contract below reconciles the copy; this
+                # branch only keeps projection-mode presence optional here.
+                pass
             if present and empty:
                 report("page-contract-empty", "%s:%s" % (rel, name),
                        "present but empty; empty placeholders are noise "
@@ -501,7 +507,99 @@ def run(root, profile_override, contract_path, scope, excludes, strict,
             if present and not empty:
                 check_shape(root, rel, name, spec, value, report)
 
-        check_sources_role(root, rel, read_text(path), fields, contract,
+        owner_row = ledger_dispositions.get(rel)
+        for name, rule in sorted(projection_rule_by_field.items()):
+            present = name in fields
+            page_value = fields.get(name)
+            adapter = rule.get("source_adapter")
+            policy = rule.get("reconcile_policy")
+            owner_value = None
+            owner_bound = False
+            if isinstance(owner_row, dict):
+                if adapter == "coverage-row-value-v1":
+                    owner_bound = name in owner_row
+                    owner_value = owner_row.get(name)
+                elif adapter == "coverage-property-state-v1":
+                    states = owner_row.get("property_state")
+                    record = states.get(name) if isinstance(states, dict) \
+                        else None
+                    if record is not None:
+                        owner_bound = True
+                        if (not isinstance(record, dict) or
+                                set(record) !=
+                                metadata_property_state.PROPERTY_RECORD_KEYS):
+                            report(
+                                "page-contract-property-evidence",
+                                "%s:%s" % (rel, name),
+                                "Coverage owner record is not the closed "
+                                "value/evidence/content binding")
+                            continue
+                        owner_value = record.get("value")
+                        if not isinstance(
+                                record.get("evidence_receipt"), str) or not \
+                                record["evidence_receipt"].strip():
+                            report(
+                                "page-contract-property-evidence",
+                                "%s:%s" % (rel, name),
+                                "Coverage owner record has no evidence "
+                                "receipt")
+                        try:
+                            current_semantic = \
+                                project_page_state.semantic_content_fingerprint(
+                                    rel, page_text, projection_rules)
+                        except (TypeError, ValueError) as exc:
+                            report(
+                                "page-contract-property-evidence",
+                                "%s:%s" % (rel, name),
+                                "cannot bind current semantic content: %s" %
+                                exc)
+                        else:
+                            if record.get("content_fingerprint") != \
+                                    current_semantic:
+                                report(
+                                    "page-contract-property-evidence",
+                                    "%s:%s" % (rel, name),
+                                    "Coverage owner evidence binds stale "
+                                    "semantic content")
+                else:
+                    report(
+                        "page-contract-metadata-authority",
+                        "%s:%s" % (rel, name),
+                        "unsupported metadata source adapter %r" % adapter)
+                    continue
+            if policy == "upsert-exact-or-remove-v1":
+                if owner_bound and owner_value is not None and (
+                        not present or str(page_value) != str(owner_value)):
+                    report(
+                        "page-contract-projection", "%s:%s" % (rel, name),
+                        "machine projection must equal current owner value "
+                        "%r" % owner_value)
+                elif owner_bound and owner_value is None and present:
+                    report(
+                        "page-contract-projection", "%s:%s" % (rel, name),
+                        "machine projection is stale because current owner "
+                        "state is an evidence-backed removal")
+                elif not owner_bound and present:
+                    report(
+                        "page-contract-projection", "%s:%s" % (rel, name),
+                        "machine projection has no current Coverage owner "
+                        "record")
+            elif (policy == "existing-copy-exact-or-remove-v1" and present
+                  and owner_bound and
+                  ((owner_value is None) or
+                   str(page_value) != str(owner_value))):
+                if owner_value is None:
+                    details = (
+                        "page projection %r is stale because the Coverage "
+                        "Ledger owner is empty" % page_value)
+                else:
+                    details = (
+                        "page projection %r disagrees with the Coverage "
+                        "Ledger owner %r" % (page_value, owner_value))
+                report("page-contract-projection",
+                       "%s:%s" % (rel, name), details)
+
+        check_sources_role(root, rel, page_text, fields, contract,
                            section_roles, report)
 
         for name in sorted(fields):

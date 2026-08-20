@@ -120,6 +120,7 @@ class ApplyAmendmentTests(unittest.TestCase):
         amendment_id = {
             "cancel-batch": "A-CANCEL-001",
             "gap-routing-reconciliation": "A-GAP-001",
+            "property-state-migration": "A-PROPERTY-001",
         }.get(operation, "A-SCOPE-001")
         proposal_rel = ".cambium/deltas/amendments/%s.coverage.yaml" % amendment_id
         proposal_path = self.write_yaml(proposal_rel, proposal)
@@ -174,6 +175,7 @@ class ApplyAmendmentTests(unittest.TestCase):
             "prerequisites": ["Topics/B.md"], "batch": "B3",
             "next_batch": "B3", "deferred_reason": None,
             "reentry_condition": None, "gate_receipts": [],
+            "property_state": {},
         })
         return coverage
 
@@ -191,6 +193,120 @@ class ApplyAmendmentTests(unittest.TestCase):
         page["deferred_reason"] = "removed by approved scope Amendment"
         page["reentry_condition"] = "a successor Amendment restores scope"
         return coverage
+
+    def make_live_legacy_property_fixture(self):
+        """Downgrade only the owner protocol while preserving provenance."""
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        for page in coverage["pages"]:
+            page.pop("property_state", None)
+            page.pop("legacy_property_state", None)
+        self.write_yaml(check_queue.COVERAGE_PATH, coverage)
+        coverage_sha = kblib.sha256_file(
+            self.root / check_queue.COVERAGE_PATH)
+        origin_path = self.root / \
+            ".cambium/receipts/task-transitions.jsonl"
+        origin = [json.loads(line) for line in origin_path.read_text(
+            encoding="utf-8").splitlines()]
+        for receipt in origin:
+            if receipt.get("receipt_id") == "audit-fixture-initial-queue":
+                receipt["before_coverage_sha256"] = coverage_sha
+                receipt["after_coverage_sha256"] = coverage_sha
+        origin_path.write_text(
+            "".join(json.dumps(receipt) + "\n" for receipt in origin),
+            encoding="utf-8")
+        (self.root / "Topics/A.md").write_text(
+            "---\nlast_reviewed: 2026-07-31\n---\n# A\n",
+            encoding="utf-8")
+        return coverage
+
+    def test_property_state_migration_is_the_only_legacy_write_path(self):
+        coverage = self.make_live_legacy_property_fixture()
+        strict = check_queue.validate_runtime(self.root)
+        self.assertTrue(any(
+            "property-state-migration Amendment" in error
+            for error in strict["errors"]), strict["errors"])
+        admitted = check_queue.validate_runtime(
+            self.root,
+            allow_legacy_property_state_for_migration=True)
+        self.assertEqual([], admitted["errors"])
+
+        proposal = copy.deepcopy(coverage)
+        proposal["updated_at"] = "2026-08-20T00:00:00Z"
+        for page in proposal["pages"]:
+            page["property_state"] = {}
+        proposal["pages"][0]["legacy_property_state"] = {
+            "last_reviewed": {
+                "status": "legacy-unverified",
+                "value": "2026-07-31",
+            },
+        }
+        plan_rel, plan = self.make_plan(
+            "property-state-migration", proposal,
+            ["Topics/A.md", "Topics/B.md"], [])
+        queue_before = self.load(check_queue.QUEUE_PATH)
+
+        self.add_progress_amendment(plan)
+        # Registration authorizes the sole writer; it does not make the live
+        # legacy Coverage current or open a general writer escape.
+        still_legacy = check_queue.validate_runtime(self.root)
+        self.assertTrue(any(
+            "property-state-migration Amendment" in error
+            for error in still_legacy["errors"]), still_legacy["errors"])
+
+        completed = self.command(
+            plan_rel, self.shas(), "--actor-role", "integrator", "--apply")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        queue_after = self.load(check_queue.QUEUE_PATH)
+        self.assertEqual(
+            queue_before["required_queue"], queue_after["required_queue"])
+        self.assertEqual(
+            queue_before["queue_revision"] + 1,
+            queue_after["queue_revision"])
+        migrated = result["coverage"]["pages"]
+        self.assertEqual({}, migrated[1]["property_state"])
+        self.assertEqual(
+            {"last_reviewed": {
+                "status": "legacy-unverified",
+                "value": "2026-07-31",
+            }}, migrated[0]["legacy_property_state"])
+        self.assertNotIn(
+            "last_reviewed",
+            kblib.parse_yaml_subset(kblib.extract_frontmatter(
+                (self.root / "Topics/A.md").read_text(
+                    encoding="utf-8"))),
+            "migration must retire the unowned page-side copy so freshness "
+            "and other consumers cannot treat it as current authority")
+
+    def test_property_state_migration_rejects_invented_legacy_value(self):
+        coverage = self.make_live_legacy_property_fixture()
+        proposal = copy.deepcopy(coverage)
+        proposal["updated_at"] = "2026-08-20T00:00:00Z"
+        for page in proposal["pages"]:
+            page["property_state"] = {}
+        proposal["pages"][0]["legacy_property_state"] = {
+            "last_reviewed": {
+                "status": "legacy-unverified",
+                "value": "2026-07-30",
+            },
+        }
+        _plan_rel, plan = self.make_plan(
+            "property-state-migration", proposal,
+            ["Topics/A.md", "Topics/B.md"], [])
+        with self.assertRaises(ValueError) as caught:
+            register_amendment._prepare(
+                str(self.root), mock.Mock(
+                    operation="property-state-migration",
+                    plan=".cambium/deltas/amendments/%s.yaml" %
+                    plan["amendment_id"],
+                    amendment_id=None, coverage_proposal=None,
+                    decision_mode="explicit-user",
+                    approval_reference="user:test", date=time.strftime(
+                        "%Y-%m-%d", time.gmtime()), summary="migration"),
+                self.shas())
+        self.assertIn("does not equal the exact page-side machine values",
+                      str(caught.exception))
 
     def test_gap_routing_reconciliation_registers_applies_and_replays_cleanly(self):
         coverage = self.load(check_queue.COVERAGE_PATH)
@@ -679,6 +795,7 @@ class ApplyAmendmentTests(unittest.TestCase):
             "prerequisites": ["Topics/A.md"], "batch": "B3",
             "next_batch": "B3", "deferred_reason": None,
             "reentry_condition": None, "gate_receipts": [],
+            "property_state": {},
         })
         replan_rel, replan_plan = self.make_plan(
             "scope-replan", coverage, ["Topics/C.md"], ["B3"])

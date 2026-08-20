@@ -30,15 +30,19 @@ K00_03_RELATIVE = ("kernel/K00 Standards Control/"
 sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 import profile_onboarding_status  # noqa: E402
+import check_profile  # noqa: E402
+import kblib  # noqa: E402
+import metadata_execution_contract  # noqa: E402
 import scaffold_profile  # noqa: E402
 import test_template_fill  # noqa: E402  (reused semantic fill + scan config)
 
-# Root-owned files check_profile resolves relative to --root, exactly as
-# test_scaffold_profile builds its scratch roots.
-INTERFACE_FILES = (
-    "profiles/README.md",
-    "kernel/K00 Standards Control/execution-defaults-base.yaml",
-    "Tools/schemas/execution_defaults.template.yaml",
+# Extra root-owned inputs used by this onboarding fixture outside the
+# canonical profile-load set.  The canonical set itself is derived below from
+# the producer and its installed capability registry: copying a hand-written
+# subset made this fixture report an open interview when profile-load had in
+# fact stopped before semantic evaluation because a newly registered input
+# was absent.
+ONBOARDING_FIXTURE_FILES = (
     "Tools/schemas/residual_scan_config.template.yaml",
     "Tools/check_residual_content.py",
 )
@@ -46,11 +50,32 @@ INTERFACE_FILES = (
 FILLED_ID = test_template_fill.PROFILE_ID  # the FILL text names this id
 
 
+def profile_load_fixture_files():
+    """Exact files one scratch-root profile-load must be able to snapshot."""
+    capabilities = kblib.parse_yaml_subset(
+        (REPOSITORY / check_profile.DEFAULT_OPERATION_CAPABILITIES).read_text(
+            encoding="utf-8"))
+    implementations = \
+        metadata_execution_contract.capability_implementation_paths(
+            capabilities)
+    return tuple(sorted(set(
+        check_profile.CANONICAL_PROFILE_LOAD_INPUTS +
+        tuple(implementations) + ONBOARDING_FIXTURE_FILES)))
+
+
+def copy_profile_load_fixture(root):
+    """Copy the producer's closed input set into one minimal adopting root."""
+    for relative in profile_load_fixture_files():
+        target = Path(root) / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(REPOSITORY / relative, target)
+
+
 def make_root(tmp):
     """A minimal adopting root the scaffolder and check_profile accept."""
     root = Path(tmp) / "repo"
-    for relative in INTERFACE_FILES + (
-            K00_03_RELATIVE, "profiles/template-files.yaml"):
+    copy_profile_load_fixture(root)
+    for relative in (K00_03_RELATIVE, "profiles/template-files.yaml"):
         target = root / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(REPOSITORY / relative, target)

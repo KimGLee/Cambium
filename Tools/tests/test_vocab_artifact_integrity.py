@@ -46,6 +46,7 @@ def build_composable_tree(destination):
     it derives from its own location, so the tool has to be copied in rather
     than pointed at this tree.
     """
+    destination = Path(destination).resolve()
     tools = destination / "Tools"
     tools.mkdir(parents=True)
     for name in (
@@ -53,15 +54,34 @@ def build_composable_tree(destination):
             "check_freshness.py", "freshness_engine.py",
             "maintenance_candidates.py",
             "profile_admission.py", "check_profile.py",
-            "profile_contract.py"):
+            "profile_contract.py", "metadata_execution_contract.py"):
         shutil.copy2(TOOLS / name, tools / name)
 
-    install_loadable_profile(destination)
+    source_profile = install_loadable_profile(
+        destination, profile_id=PROFILE_ID)
+    selected_profile = (
+        destination / "profiles" / "examples" / PROFILE_ID)
+    selected_profile.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(source_profile), selected_profile)
+    slots = selected_profile / "slots.md"
+    slots.write_text(
+        slots.read_text(encoding="utf-8").replace(
+            "profiles/%s/" % PROFILE_ID,
+            "profiles/examples/%s/" % PROFILE_ID),
+        encoding="utf-8")
+    shutil.copy2(
+        REPOSITORY / "profiles" / "examples" / PROFILE_ID /
+        "vocabulary-extensions.yaml",
+        selected_profile / "vocabulary-extensions.yaml")
+    manifest = selected_profile / "profile.md"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "- `Vocabulary Extensions`: `slots.md`",
+            "- `Vocabulary Extensions`: `vocabulary-extensions.yaml`"),
+        encoding="utf-8")
 
     (destination / VOCABULARY_BASE).parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(REPOSITORY / VOCABULARY_BASE, destination / VOCABULARY_BASE)
-    shutil.copytree(REPOSITORY / "profiles" / "examples" / PROFILE_ID,
-                    destination / "profiles" / "examples" / PROFILE_ID)
 
     state = destination / ACTIVE_STATE
     state.parent.mkdir(parents=True, exist_ok=True)
@@ -185,7 +205,7 @@ class ProducerPublishesAtomically(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.tree = build_composable_tree(Path(self.temporary.name))
+        self.tree = build_composable_tree(Path(self.temporary.name).resolve())
         self.artifact = self.tree / "Tools" / "vocab.yaml"
 
     def test_compose_writes_a_usable_artifact(self):

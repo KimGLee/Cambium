@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 TOOLS = Path(__file__).resolve().parents[1]
@@ -342,6 +343,99 @@ class QueueFixture(unittest.TestCase):
         self.assertEqual([], result["errors"])
         return result, dict(result["blocked"]).get(batch_id, [])
 
+    def test_live_legacy_property_state_requires_migration_admission(self):
+        coverage = kblib.load_yaml_file(self.coverage_path)
+        for page in coverage["pages"]:
+            page.pop("property_state")
+        self.coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        self.refresh_initial_origin()
+
+        strict = check_queue.validate_runtime(self.root)
+        self.assertTrue(any(
+            "property-state-migration Amendment" in error
+            for error in strict["errors"]), strict["errors"])
+        migration_before = check_queue.validate_runtime(
+            self.root,
+            allow_legacy_property_state_for_migration=True)
+        self.assertEqual([], migration_before["errors"])
+        with self.assertRaises(ValueError):
+            check_queue.validate_runtime(
+                self.root,
+                state_overrides={check_queue.COVERAGE_PATH: (
+                    kblib.canonical_yaml(coverage), coverage)},
+                allow_legacy_property_state_for_migration=True)
+
+    def test_legacy_marker_is_exact_or_page_field_is_reported_unowned(self):
+        (self.root / "Topics/A.md").write_text(
+            "---\nlast_reviewed: 2026-07-31\n---\n# A\n",
+            encoding="utf-8")
+        coverage = kblib.load_yaml_file(self.coverage_path)
+        page = coverage["pages"][0]
+        self.coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        self.refresh_initial_origin()
+
+        unowned = check_queue.validate_runtime(self.root)
+        self.assertTrue(any(
+            "persists machine-managed field last_reviewed" in error and
+            "without a current owner" in error
+            for error in unowned["errors"]), unowned["errors"])
+
+        page["legacy_property_state"] = {
+            "last_reviewed": {
+                "status": "legacy-unverified",
+                "value": "2026-07-31",
+            },
+        }
+        before_page_sha = kblib.sha256_file(self.root / "Topics/A.md")
+        (self.root / "Topics/A.md").write_text(
+            "---\n---\n# A\n", encoding="utf-8")
+        migration_records = [{
+            "path": "Topics/A.md",
+            "before_page_sha256": before_page_sha,
+            "after_page_sha256": kblib.sha256_file(
+                self.root / "Topics/A.md"),
+            "legacy_property_state": copy.deepcopy(
+                page["legacy_property_state"]),
+        }]
+        self.coverage_path.write_text(
+            kblib.canonical_yaml(coverage), encoding="utf-8")
+        self.refresh_initial_origin()
+        source = {
+            "receipt_id": "audit-property-adoption",
+            "tool": "apply_task_plan", "tool_version": "1.2.0",
+            "check": "task_plan", "transaction_phase": "commit",
+            "result": "pass", "invalidated_by": None,
+            "operation_capability": "legacy-property-adoption-v1",
+            "property_state_adoption_records": migration_records,
+            "property_state_adoption_count": 1,
+            "property_state_adoption_set_sha256":
+                check_queue.metadata_property_state.
+                legacy_property_migration_set_sha256(migration_records),
+            "metadata_execution_contract_fingerprint":
+                "sha256:" + "1" * 64,
+            "metadata_execution_rule_fingerprint":
+                "sha256:" + "2" * 64,
+            "selected_profile_manifest":
+                "profiles/test-profile/profile.md",
+            "profile_snapshot_sha256": "sha256:" + "3" * 64,
+            "profile_contract_fingerprint": "sha256:" + "4" * 64,
+            "profile_load_inputs_sha256": "sha256:" + "5" * 64,
+        }
+        receipt_path = self.root / ".cambium/receipts/task-plans.jsonl"
+        receipt_path.write_text(json.dumps(source) + "\n", encoding="utf-8")
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+
+        (self.root / "Topics/A.md").write_text(
+            "---\nlast_reviewed: 2026-07-31\n---\n# A\n",
+            encoding="utf-8")
+        drifted = check_queue.validate_runtime(self.root)
+        self.assertTrue(any(
+            "legacy_property_state.last_reviewed" in error and
+            "still has a persisted page copy" in error
+            for error in drifted["errors"]), drifted["errors"])
+
 
 class CorpusPlanEraMapTests(unittest.TestCase):
     """Every supported close era must resolve a corpus-plan child protocol.
@@ -364,6 +458,869 @@ class CorpusPlanEraMapTests(unittest.TestCase):
                 "supported historical era %s has no corpus-plan child "
                 "protocol; a real closed bundle of that era would fail "
                 "every consistency run" % version)
+
+
+class CurrentPropertyStateTests(unittest.TestCase):
+    """Current owner state is strict without reinterpreting absent history."""
+
+    META_SHA = "sha256:" + "8" * 64
+    PROFILE_SHA = "sha256:" + "2" * 64
+    PROFILE_CONTRACT_SHA = "sha256:" + "3" * 64
+    PROFILE_INPUTS_SHA = "sha256:" + "4" * 64
+    ACTIVE_SHA = "sha256:" + "5" * 64
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "repo"
+        shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root, profile_id="test-profile")
+        self.page_path = "Topics/A.md"
+        self.gate = SimpleNamespace(
+            gate_id="P:test-profile:readiness",
+            transition_id="readiness-promotion",
+            judgment_item_id="test-profile-foundation-depth",
+            pass_authority_role_id="stopper",
+            field_id="readiness_state",
+            completion_values=("accepted", "rejected"),
+            producer_kind="manual-attestation",
+            producer_capability="manual-attestation-v1",
+            producer_reference="stopper",
+            receipt_schema="manual-gate-attestation-v1",
+            consumer_capability="metadata-transition-integrator-v1",
+        )
+        self.profile_view = {
+            "selected_profile_manifest":
+                "profiles/test-profile/profile.md",
+            "profile_snapshot_sha256": self.PROFILE_SHA,
+            "profile_contract_fingerprint": self.PROFILE_CONTRACT_SHA,
+            "profile_load_inputs_sha256": self.PROFILE_INPUTS_SHA,
+            "_contract": SimpleNamespace(extension_gates=(self.gate,)),
+        }
+        self.active_view = {
+            "active_standards_sha256": self.ACTIVE_SHA,
+        }
+        self.metadata_contract = SimpleNamespace(
+            contract_fingerprint=self.META_SHA)
+        self.rules = (
+            self.date_rule("last_content_modified"),
+            self.date_rule(
+                "last_reviewed",
+                invalidation="semantic-content-change-tombstone-v1"),
+            check_queue.metadata_property_state.gate_projection_rule(
+                "readiness_state", ("accepted", "rejected")),
+        )
+
+    @staticmethod
+    def date_rule(field, invalidation="owner-property-state-change-v1"):
+        return {
+            "field": field,
+            "source_adapter": "coverage-property-state-v1",
+            "value_shape": "date",
+            "invalidation_rule": invalidation,
+            "reconcile_policy": "upsert-exact-or-remove-v1",
+        }
+
+    def semantic(self, text):
+        return check_queue.project_page_state.semantic_content_fingerprint(
+            self.page_path, text, self.rules)
+
+    def errors(self, row, catalog):
+        coverage = {"pages": [row]}
+        with mock.patch.object(
+                check_queue.metadata_execution_contract,
+                "load_metadata_execution_contract",
+                return_value=self.metadata_contract), mock.patch.object(
+                    check_queue.metadata_property_state,
+                    "profile_gate_projection_rules",
+                    return_value=self.rules):
+            return check_queue._coverage_property_state_errors(
+                str(self.root), coverage, catalog,
+                {"task_id": "fixture-task"}, self.profile_view,
+                self.active_view)
+
+    def errors_with_projection(self, row, catalog, page_text):
+        coverage = {"pages": [row]}
+        with mock.patch.object(
+                check_queue.metadata_execution_contract,
+                "load_metadata_execution_contract",
+                return_value=self.metadata_contract), mock.patch.object(
+                    check_queue.metadata_property_state,
+                    "profile_gate_projection_rules",
+                    return_value=self.rules):
+            return check_queue._coverage_property_state_errors(
+                str(self.root), coverage, catalog,
+                {"task_id": "fixture-task"}, self.profile_view,
+                self.active_view,
+                page_projection_overrides={self.page_path: page_text})
+
+    def content_receipt(self, receipt_id, fingerprint):
+        before = "sha256:" + "1" * 64
+        records = [{
+            "path": self.page_path,
+            "semantic_content_sha256": before,
+            "page_sha256": "sha256:" + "6" * 64,
+        }]
+        set_sha = check_queue.metadata_property_state.\
+            semantic_baseline_set_sha256(records)
+        return {
+            "receipt_id": receipt_id,
+            "tool": "apply_delta",
+            "tool_version": check_queue.APPLY_DELTA_TOOL_VERSION,
+            "check": "delta_apply",
+            "target": "B1",
+            "batch_id": "B1",
+            "result": "pass",
+            "invalidated_by": None,
+            "actor_role": "integrator",
+            "task_id": "fixture-task",
+            "checked_at": "2026-08-20T03:04:05Z",
+            "metadata_execution_contract_fingerprint": self.META_SHA,
+            "metadata_execution_rule_fingerprint":
+                check_queue.project_page_state._rules_fingerprint(self.rules),
+            "semantic_content_protocol":
+                check_queue.project_page_state.SEMANTIC_FINGERPRINT_PROTOCOL,
+            "selected_profile_manifest":
+                self.profile_view["selected_profile_manifest"],
+            "profile_snapshot_sha256": self.PROFILE_SHA,
+            "profile_contract_fingerprint": self.PROFILE_CONTRACT_SHA,
+            "profile_load_inputs_sha256": self.PROFILE_INPUTS_SHA,
+            "opening_transition_receipt": "audit-open-current",
+            "manifest_semantic_before_set_sha256": set_sha,
+            "property_events": [{
+                "event": "semantic-content-change",
+                "path": self.page_path,
+                "accepted_on": "2026-08-20",
+                "before_semantic_content_sha256": before,
+                "after_semantic_content_sha256": fingerprint,
+                "last_reviewed_invalidated": False,
+                "invalidated_property_fields": [],
+                "invalidated_property_records": [],
+                "invalidated_property_receipt_ids": [],
+            }],
+        }
+
+    def content_catalog(self, receipt):
+        before = receipt["property_events"][0][
+            "before_semantic_content_sha256"]
+        records = [{
+            "path": self.page_path,
+            "semantic_content_sha256": before,
+            "page_sha256": "sha256:" + "6" * 64,
+        }]
+        opening = {
+            "receipt_id": receipt["opening_transition_receipt"],
+            "tool": "update_queue",
+            "tool_version": check_queue.UPDATE_QUEUE_TOOL_VERSION,
+            "target": "B1",
+            "before_state": "queued",
+            "after_state": "open",
+            "task_id": receipt["task_id"],
+            "semantic_content_protocol":
+                check_queue.project_page_state.SEMANTIC_FINGERPRINT_PROTOCOL,
+            "manifest_semantic_before_records": records,
+            "manifest_semantic_before_count": 1,
+            "manifest_semantic_before_set_sha256":
+                receipt["manifest_semantic_before_set_sha256"],
+            "selected_profile_manifest":
+                receipt["selected_profile_manifest"],
+            "profile_snapshot_sha256":
+                receipt["profile_snapshot_sha256"],
+            "profile_contract_fingerprint":
+                receipt["profile_contract_fingerprint"],
+            "profile_load_inputs_sha256":
+                receipt["profile_load_inputs_sha256"],
+            "metadata_execution_contract_fingerprint":
+                receipt["metadata_execution_contract_fingerprint"],
+        }
+        return {
+            receipt["receipt_id"]: ("receipt.jsonl", receipt),
+            opening["receipt_id"]: ("open.jsonl", opening),
+        }
+
+    def test_absent_property_state_is_a_legacy_boundary(self):
+        errors = self.errors({"path": self.page_path}, {})
+        self.assertTrue(any(
+            "live legacy page must be adopted" in error
+            for error in errors), errors)
+
+    def test_content_event_closes_owner_evidence_and_machine_fields(self):
+        text = (
+            "---\ntitle: A\nlast_content_modified: 2026-08-20\n"
+            "---\nBody\n")
+        (self.root / self.page_path).write_text(text, encoding="utf-8")
+        fingerprint = self.semantic(text)
+        self.assertEqual(
+            fingerprint,
+            self.semantic(text.replace(
+                "---\nBody", "readiness_state: accepted\n---\nBody")))
+        self.assertEqual(
+            fingerprint,
+            self.semantic(text.replace(
+                "---\nBody", "readiness_state: rejected\n---\nBody")))
+        self.assertEqual(
+            fingerprint,
+            self.semantic(text.replace(
+                "---\nBody", "last_reviewed: 2099-01-01\n---\nBody")))
+        receipt_id = "audit-content-current"
+        row = {
+            "path": self.page_path,
+            "property_state": {
+                "last_content_modified": {
+                    "value": "2026-08-20",
+                    "evidence_receipt": receipt_id,
+                    "content_fingerprint": fingerprint,
+                },
+            },
+        }
+        receipt = self.content_receipt(receipt_id, fingerprint)
+        catalog = self.content_catalog(receipt)
+        self.assertEqual([], self.errors(row, catalog))
+
+        projection_only = text.replace(
+            "last_content_modified: 2026-08-20",
+            "last_content_modified: 2099-01-01")
+        self.assertEqual(fingerprint, self.semantic(projection_only))
+        (self.root / self.page_path).write_text(
+            projection_only, encoding="utf-8")
+        drift = self.errors(row, catalog)
+        self.assertTrue(any(
+            "page projection is" in error for error in drift), drift)
+        self.assertFalse(any(
+            "stale content" in error or "current semantic content" in error
+            for error in drift), drift)
+        self.assertEqual([], self.errors_with_projection(
+            row, catalog, text))
+
+    def test_current_content_pointer_rejects_closed_shape_and_stale_evidence(self):
+        text = (
+            "---\ntitle: A\nlast_content_modified: 2026-08-20\n"
+            "---\nBody\n")
+        (self.root / self.page_path).write_text(text, encoding="utf-8")
+        fingerprint = self.semantic(text)
+        receipt_id = "audit-content-current"
+        record = {
+            "value": "2026-08-20",
+            "evidence_receipt": receipt_id,
+            "content_fingerprint": fingerprint,
+        }
+        row = {"path": self.page_path,
+               "property_state": {"last_content_modified": dict(record)}}
+        absent = self.errors(row, {})
+        self.assertTrue(any(
+            "absent from the current receipt catalog" in error
+            for error in absent), absent)
+
+        row["property_state"]["last_content_modified"]["extra"] = True
+        receipt = self.content_receipt(receipt_id, fingerprint)
+        closed = self.errors(row, self.content_catalog(receipt))
+        self.assertTrue(any("not closed" in error for error in closed), closed)
+
+        row["property_state"]["last_content_modified"] = dict(record)
+        receipt["metadata_execution_contract_fingerprint"] = (
+            "sha256:" + "9" * 64)
+        stale = self.errors(row, self.content_catalog(receipt))
+        self.assertTrue(any(
+            "metadata_execution_contract_fingerprint" in error
+            for error in stale), stale)
+        receipt["metadata_execution_contract_fingerprint"] = self.META_SHA
+        receipt["profile_snapshot_sha256"] = "sha256:" + "0" * 64
+        stale_profile = self.errors(row, self.content_catalog(receipt))
+        self.assertTrue(any(
+            "profile_snapshot_sha256" in error
+            for error in stale_profile), stale_profile)
+
+    def test_content_event_must_bind_exact_opening_before_image(self):
+        text = (
+            "---\ntitle: A\nlast_content_modified: 2026-08-20\n"
+            "---\nBody\n")
+        (self.root / self.page_path).write_text(text, encoding="utf-8")
+        fingerprint = self.semantic(text)
+        receipt = self.content_receipt("audit-content-current", fingerprint)
+        row = {
+            "path": self.page_path,
+            "property_state": {
+                "last_content_modified": {
+                    "value": "2026-08-20",
+                    "evidence_receipt": receipt["receipt_id"],
+                    "content_fingerprint": fingerprint,
+                },
+            },
+        }
+        catalog = self.content_catalog(receipt)
+        opening = catalog[receipt["opening_transition_receipt"]][1]
+        opening["manifest_semantic_before_records"][0][
+            "semantic_content_sha256"] = "sha256:" + "7" * 64
+        errors = self.errors(row, catalog)
+        self.assertTrue(any(
+            "stale semantic before-set digest" in error or
+            "frozen opening semantic fingerprint" in error
+            for error in errors), errors)
+
+    def test_property_fields_values_and_tombstones_are_closed(self):
+        text = "---\ntitle: A\nreadiness_state: accepted\n---\nBody\n"
+        (self.root / self.page_path).write_text(text, encoding="utf-8")
+        fingerprint = self.semantic(text)
+        record = {
+            "value": "accepted",
+            "evidence_receipt": "audit-gate",
+            "content_fingerprint": fingerprint,
+        }
+        row = {
+            "path": self.page_path,
+            "property_state": {"unregistered_state": dict(record)},
+        }
+        unknown = self.errors(row, {})
+        self.assertTrue(any("undeclared field" in error for error in unknown),
+                        unknown)
+
+        row["property_state"] = {"readiness_state": dict(record)}
+        row["property_state"]["readiness_state"]["value"] = "maybe"
+        bad_enum = self.errors(row, {})
+        self.assertTrue(any("must be one of" in error for error in bad_enum),
+                        bad_enum)
+
+        row["property_state"]["readiness_state"]["value"] = None
+        tombstone = self.errors(row, {})
+        self.assertTrue(any("unauthorized null tombstone" in error
+                            for error in tombstone), tombstone)
+
+        row["property_state"] = {
+            "last_reviewed": {
+                "value": None,
+                "evidence_receipt": "audit-content",
+                "content_fingerprint": fingerprint,
+            },
+        }
+        orphan = self.errors(row, {})
+        self.assertTrue(any(
+            "tombstone without the content-change state" in error
+            for error in orphan), orphan)
+
+    def test_review_and_profile_gate_receipts_bind_current_profile(self):
+        text = (
+            "---\ntitle: A\nlast_reviewed: 2026-08-20\n"
+            "readiness_state: accepted\n---\nBody\n")
+        (self.root / self.page_path).write_text(text, encoding="utf-8")
+        fingerprint = self.semantic(text)
+        review_id = "audit-page-review"
+        gate_id = "audit-gate"
+        attestation_id = "audit-review-attestation"
+        row = {
+            "path": self.page_path,
+            "property_state": {
+                "last_reviewed": {
+                    "value": "2026-08-20",
+                    "evidence_receipt": review_id,
+                    "content_fingerprint": fingerprint,
+                },
+                "readiness_state": {
+                    "value": "accepted",
+                    "evidence_receipt": gate_id,
+                    "content_fingerprint": fingerprint,
+                },
+            },
+        }
+        review = {
+            "receipt_id": review_id,
+            "tool": check_queue.BATCH_CLOSE_TOOL,
+            "tool_version": check_queue.BATCH_CLOSE_TOOL_VERSION,
+            "check": "page_review_acceptance",
+            "target": self.page_path,
+            "result": "pass",
+            "invalidated_by": None,
+            "task_id": "fixture-task",
+            "batch_id": "B1",
+            "integrator_id": "integrator-a",
+            "reviewer_id": "reviewer-b",
+            "merged_snapshot_sha256": "sha256:" + "1" * 64,
+            "checked_at": "2026-08-20T04:05:06Z",
+            "reviewed_on": "2026-08-20",
+            "semantic_content_sha256": fingerprint,
+            "reviewer_attestation_receipt": attestation_id,
+            "selected_profile_manifest":
+                self.profile_view["selected_profile_manifest"],
+            "profile_snapshot_sha256": self.PROFILE_SHA,
+            "profile_contract_fingerprint": self.PROFILE_CONTRACT_SHA,
+            "profile_load_inputs_sha256": self.PROFILE_INPUTS_SHA,
+            "metadata_execution_contract_fingerprint": self.META_SHA,
+        }
+        manifest_sha = kblib.sha256_file(
+            self.root / self.profile_view["selected_profile_manifest"])
+        gate = {
+            "receipt_id": gate_id,
+            "tool": "record_gate_attestation",
+            "tool_version": "1.0.0",
+            "check": "profile-extension-gate",
+            "target": self.page_path,
+            "result": "pass",
+            "invalidated_by": None,
+            "checked_at": "2026-08-20T04:06:07Z",
+            "details": "bounded acceptance",
+            "attestation_statement": "bounded acceptance",
+            "actor_role": "stopper",
+            "gate_id": self.gate.gate_id,
+            "transition_id": self.gate.transition_id,
+            "judgment_item_id": self.gate.judgment_item_id,
+            "property_field": self.gate.field_id,
+            "requested_completion_value": "accepted",
+            "pass_authority_role_id": self.gate.pass_authority_role_id,
+            "producer_kind": self.gate.producer_kind,
+            "producer_capability": self.gate.producer_capability,
+            "producer_reference": self.gate.producer_reference,
+            "receipt_schema": self.gate.receipt_schema,
+            "consumer_capability": self.gate.consumer_capability,
+            "semantic_content_fingerprint": fingerprint,
+            "page_sha256": "sha256:" + "6" * 64,
+            "selected_profile_manifest":
+                self.profile_view["selected_profile_manifest"],
+            "selected_profile_manifest_sha256": manifest_sha,
+            "profile_snapshot_sha256": self.PROFILE_SHA,
+            "profile_contract_fingerprint": self.PROFILE_CONTRACT_SHA,
+            "profile_load_inputs_sha256": self.PROFILE_INPUTS_SHA,
+            "active_standards_sha256": self.ACTIVE_SHA,
+            "metadata_execution_contract_fingerprint": self.META_SHA,
+        }
+        catalog = {
+            review_id: ("review.jsonl", review),
+            gate_id: ("gate.jsonl", gate),
+            attestation_id: ("review.jsonl", {
+                "receipt_id": attestation_id,
+                "tool": check_queue.BATCH_CLOSE_TOOL,
+                "tool_version": check_queue.BATCH_CLOSE_TOOL_VERSION,
+                "check": "batch_global_review_attestation",
+                "target": "B1",
+                "result": "pass",
+                "invalidated_by": None,
+                "task_id": "fixture-task",
+                "batch_id": "B1",
+                "integrator_id": "integrator-a",
+                "reviewer_id": "reviewer-b",
+                "merged_snapshot_sha256": "sha256:" + "1" * 64,
+                "details": "independent review accepted",
+            }),
+        }
+        coverage_sha = kblib.sha256_bytes(kblib.canonical_yaml(
+            {"pages": [row]}).encode("utf-8"))
+        state_sha = "sha256:" + "8" * 64
+        page_after_sha = kblib.sha256_file(self.root / self.page_path)
+        transition_id = "audit-gate-transition"
+        catalog[transition_id] = ("gate-transition.jsonl", {
+            "receipt_id": transition_id,
+            "tool": "apply_metadata_transition",
+            "tool_version": "1.0.0",
+            "check": "metadata-transition",
+            "target": self.page_path,
+            "result": "pass",
+            "invalidated_by": None,
+            "actor_role": "integrator",
+            "gate_id": self.gate.gate_id,
+            "transition_id": self.gate.transition_id,
+            "judgment_item_id": self.gate.judgment_item_id,
+            "property_field": self.gate.field_id,
+            "requested_completion_value": "accepted",
+            "gate_receipt": gate_id,
+            "gate_receipt_checked_at": gate["checked_at"],
+            "semantic_content_fingerprint": fingerprint,
+            "pass_authority_role_id": self.gate.pass_authority_role_id,
+            "producer_kind": self.gate.producer_kind,
+            "producer_capability": self.gate.producer_capability,
+            "producer_reference": self.gate.producer_reference,
+            "receipt_schema": self.gate.receipt_schema,
+            "consumer_capability": self.gate.consumer_capability,
+            "selected_profile_manifest":
+                self.profile_view["selected_profile_manifest"],
+            "selected_profile_manifest_sha256": manifest_sha,
+            "profile_snapshot_sha256": self.PROFILE_SHA,
+            "profile_contract_fingerprint": self.PROFILE_CONTRACT_SHA,
+            "profile_load_inputs_sha256": self.PROFILE_INPUTS_SHA,
+            "active_standards_sha256": self.ACTIVE_SHA,
+            "metadata_execution_contract_fingerprint": self.META_SHA,
+            "before_coverage_sha256": "sha256:" + "7" * 64,
+            "after_coverage_sha256": coverage_sha,
+            "before_required_queue_sha256": state_sha,
+            "after_required_queue_sha256": state_sha,
+            "before_progress_sha256": state_sha,
+            "after_progress_sha256": state_sha,
+            "before_page_sha256": gate["page_sha256"],
+            "after_page_sha256": page_after_sha,
+            "before_repository_snapshot_sha256": state_sha,
+            "after_repository_snapshot_sha256": state_sha,
+        })
+        self.assertEqual([], self.errors(row, catalog))
+
+        review["profile_contract_fingerprint"] = "sha256:" + "7" * 64
+        stale = self.errors(row, catalog)
+        self.assertTrue(any(
+            "profile_contract_fingerprint" in error for error in stale),
+            stale)
+        review["profile_contract_fingerprint"] = self.PROFILE_CONTRACT_SHA
+        gate["requested_completion_value"] = "rejected"
+        wrong_value = self.errors(row, catalog)
+        self.assertTrue(any(
+            "requested_completion_value" in error for error in wrong_value),
+            wrong_value)
+        gate["requested_completion_value"] = "accepted"
+        review["target"] = "Topics/B.md"
+        wrong_target = self.errors(row, catalog)
+        self.assertTrue(any("target=" in error for error in wrong_target),
+                        wrong_target)
+        review["target"] = self.page_path
+        catalog[attestation_id][1]["reviewer_id"] = "reviewer-c"
+        wrong_attestation = self.errors(row, catalog)
+        self.assertTrue(any(
+            "reviewer attestation" in error and "reviewer_id" in error
+            for error in wrong_attestation), wrong_attestation)
+
+
+class InFlightPropertyStateTests(unittest.TestCase):
+    """A prior batch's owner may drift only inside the next exact open set."""
+
+    META_SHA = "sha256:" + "a" * 64
+    PROFILE_SHA = "sha256:" + "b" * 64
+    PROFILE_CONTRACT_SHA = "sha256:" + "c" * 64
+    PROFILE_INPUTS_SHA = "sha256:" + "d" * 64
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "repo"
+        shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root, profile_id="test-profile")
+        self.path = "Topics/A.md"
+        self.rule = CurrentPropertyStateTests.date_rule(
+            "last_reviewed",
+            invalidation="semantic-content-change-tombstone-v1")
+        self.rules = (self.rule,)
+        self.profile_view = {
+            "selected_profile_manifest":
+                "profiles/test-profile/profile.md",
+            "profile_snapshot_sha256": self.PROFILE_SHA,
+            "profile_contract_fingerprint": self.PROFILE_CONTRACT_SHA,
+            "profile_load_inputs_sha256": self.PROFILE_INPUTS_SHA,
+            "_contract": SimpleNamespace(extension_gates=()),
+        }
+        self.metadata_contract = SimpleNamespace(
+            contract_fingerprint=self.META_SHA)
+
+    def opening(self, manifest, fingerprints):
+        records = [{
+            "path": path,
+            "page_sha256": "sha256:" + str(index + 1) * 64,
+            "semantic_content_sha256": fingerprints[path],
+        } for index, path in enumerate(manifest)]
+        return {
+            "receipt_id": "audit-open-b2",
+            "tool": "update_queue",
+            "tool_version": check_queue.UPDATE_QUEUE_TOOL_VERSION,
+            "check": "queue_transition",
+            "target": "B2",
+            "before_state": "queued",
+            "after_state": "open",
+            "semantic_content_protocol":
+                check_queue.project_page_state.SEMANTIC_FINGERPRINT_PROTOCOL,
+            "manifest_semantic_before_records": records,
+            "manifest_semantic_before_count": len(records),
+            "manifest_semantic_before_set_sha256":
+                check_queue.metadata_property_state.
+                semantic_baseline_set_sha256(records),
+            "selected_profile_manifest":
+                self.profile_view["selected_profile_manifest"],
+            "profile_snapshot_sha256": self.PROFILE_SHA,
+            "profile_contract_fingerprint": self.PROFILE_CONTRACT_SHA,
+            "profile_load_inputs_sha256": self.PROFILE_INPUTS_SHA,
+            "metadata_execution_contract_fingerprint": self.META_SHA,
+        }
+
+    def property_errors(self, row, queue, catalog):
+        with mock.patch.object(
+                check_queue.metadata_property_state,
+                "authorized_profile_projection_rules",
+                return_value=(self.metadata_contract, self.rules)), \
+                mock.patch.object(
+                    check_queue.metadata_execution_contract,
+                    "load_metadata_execution_contract",
+                    return_value=self.metadata_contract), \
+                mock.patch.object(
+                    check_queue, "_review_property_evidence_errors",
+                    return_value=[]):
+            return check_queue._coverage_property_state_errors(
+                str(self.root), {"pages": [row]}, catalog, queue,
+                self.profile_view, {"active_standards_sha256":
+                                    "sha256:" + "e" * 64})
+
+    def test_two_batch_edit_uses_second_opening_as_controlled_window(self):
+        before_text = (
+            "---\ntitle: A\nlast_reviewed: 2026-08-19\n---\nBody A\n")
+        page = self.root / self.path
+        page.write_text(before_text, encoding="utf-8")
+        before = check_queue.project_page_state.semantic_content_fingerprint(
+            self.path, before_text, self.rules)
+        page.write_text(
+            before_text.replace("Body A", "Body edited by B2"),
+            encoding="utf-8")
+        row = {"path": self.path, "property_state": {
+            "last_reviewed": {
+                "value": "2026-08-19",
+                "evidence_receipt": "audit-review-b1",
+                "content_fingerprint": before,
+            },
+        }}
+        opening = self.opening([self.path], {self.path: before})
+        queue = {"task_id": "fixture-task", "required_queue": [
+            {"id": "B1", "state": "closed", "manifest": [self.path],
+             "transition_receipts": []},
+            {"id": "B2", "state": "open", "manifest": [self.path],
+             "transition_receipts": [opening["receipt_id"]]},
+        ]}
+        catalog = {
+            opening["receipt_id"]: ("open.jsonl", opening),
+            "audit-review-b1": ("review.jsonl", {
+                "receipt_id": "audit-review-b1",
+            }),
+        }
+        self.assertEqual([], self.property_errors(row, queue, catalog))
+
+    def test_nonmanifest_or_missing_current_opening_never_grants_window(self):
+        text = "---\ntitle: A\nlast_reviewed: 2026-08-19\n---\nBody A\n"
+        page = self.root / self.path
+        page.write_text(text, encoding="utf-8")
+        before = check_queue.project_page_state.semantic_content_fingerprint(
+            self.path, text, self.rules)
+        page.write_text(text.replace("Body A", "Body drift"), encoding="utf-8")
+        row = {"path": self.path, "property_state": {
+            "last_reviewed": {
+                "value": "2026-08-19",
+                "evidence_receipt": "audit-review-b1",
+                "content_fingerprint": before,
+            },
+        }}
+        owner = {"audit-review-b1": ("review.jsonl", {
+            "receipt_id": "audit-review-b1",
+        })}
+        for name, item, catalog in (
+                ("missing", {"id": "B2", "state": "open",
+                             "manifest": [self.path],
+                             "transition_receipts": []}, owner),
+                ("nonmanifest", {"id": "B2", "state": "open",
+                                 "manifest": ["Topics/B.md"],
+                                 "transition_receipts": ["audit-open-b2"]},
+                 dict(owner, **{
+                     "audit-open-b2": ("open.jsonl", self.opening(
+                         ["Topics/B.md"], {
+                             "Topics/B.md": "sha256:" + "9" * 64}))
+                 }))):
+            with self.subTest(name=name):
+                errors = self.property_errors(
+                    row, {"task_id": "fixture-task",
+                          "required_queue": [item]}, catalog)
+                self.assertTrue(any(
+                    "stale content" in error for error in errors), errors)
+
+
+class CurrentOpenSemanticBaselineTests(unittest.TestCase):
+    META_SHA = "sha256:" + "a" * 64
+    PROFILE_SHA = "sha256:" + "b" * 64
+    PROFILE_CONTRACT_SHA = "sha256:" + "c" * 64
+    PROFILE_INPUTS_SHA = "sha256:" + "d" * 64
+
+    def profile_view(self):
+        return {
+            "selected_profile_manifest": "profiles/test/profile.md",
+            "profile_snapshot_sha256": self.PROFILE_SHA,
+            "profile_contract_fingerprint": self.PROFILE_CONTRACT_SHA,
+            "profile_load_inputs_sha256": self.PROFILE_INPUTS_SHA,
+        }
+
+    @staticmethod
+    def records():
+        return [
+            {
+                "path": "Topics/A.md",
+                "semantic_content_sha256": "sha256:" + "1" * 64,
+                "page_sha256": "sha256:" + "2" * 64,
+            },
+            {
+                "path": "Topics/B.md",
+                "semantic_content_sha256": "sha256:" + "3" * 64,
+                "page_sha256": "sha256:" + "4" * 64,
+            },
+        ]
+
+    def transition(self, version=None):
+        records = self.records()
+        return {
+            "receipt_id": "audit-open-transition",
+            "tool": "update_queue",
+            "tool_version": version or check_queue.UPDATE_QUEUE_TOOL_VERSION,
+            "before_state": "queued",
+            "after_state": "open",
+            "manifest_semantic_before_records": records,
+            "manifest_semantic_before_count": len(records),
+            "manifest_semantic_before_set_sha256": kblib.sha256_bytes(
+                kblib.canonical_json_bytes(records)),
+            "semantic_content_protocol":
+                check_queue.project_page_state.SEMANTIC_FINGERPRINT_PROTOCOL,
+            **self.profile_view(),
+            "metadata_execution_contract_fingerprint": self.META_SHA,
+        }
+
+    def errors(self, transition):
+        contract = SimpleNamespace(contract_fingerprint=self.META_SHA)
+        with mock.patch.object(
+                check_queue.metadata_execution_contract,
+                "load_metadata_execution_contract", return_value=contract):
+            return check_queue._current_open_semantic_baseline_errors(
+                "/fixture", transition,
+                {"id": "B1", "manifest": [
+                    "Topics/A.md", "Topics/B.md"]},
+                self.profile_view())
+
+    def test_current_open_binds_exact_manifest_before_set(self):
+        self.assertEqual([], self.errors(self.transition()))
+
+        malformed = self.transition()
+        malformed["manifest_semantic_before_records"] = list(reversed(
+            malformed["manifest_semantic_before_records"]))
+        malformed["manifest_semantic_before_count"] = 3
+        malformed["manifest_semantic_before_set_sha256"] = (
+            "sha256:" + "9" * 64)
+        malformed["profile_snapshot_sha256"] = "sha256:" + "8" * 64
+        malformed["metadata_execution_contract_fingerprint"] = (
+            "sha256:" + "7" * 64)
+        errors = self.errors(malformed)
+        self.assertTrue(any("path-sorted" in error for error in errors),
+                        errors)
+        self.assertTrue(any("count must equal" in error for error in errors),
+                        errors)
+        self.assertTrue(any("does not bind" in error for error in errors),
+                        errors)
+        self.assertTrue(any("profile_snapshot_sha256" in error
+                            for error in errors), errors)
+        self.assertTrue(any("stale relative" in error for error in errors),
+                        errors)
+
+    def test_legacy_open_is_not_reinterpreted(self):
+        for version in ("1.2.0", "1.3.0", "1.4.0"):
+            with self.subTest(version=version):
+                historical = {
+                    "receipt_id": "audit-open-%s" % version,
+                    "tool": "update_queue", "tool_version": version,
+                    "before_state": "queued", "after_state": "open",
+                }
+                with mock.patch.object(
+                        check_queue.metadata_execution_contract,
+                        "load_metadata_execution_contract") as loader:
+                    self.assertEqual([],
+                        check_queue._current_open_semantic_baseline_errors(
+                            "/fixture", historical,
+                            {"id": "B1", "manifest": ["Topics/A.md"]},
+                            self.profile_view()))
+                loader.assert_not_called()
+
+    def test_public_resolver_returns_only_current_latest_opening(self):
+        current = self.transition()
+        result = {
+            "root": "/fixture",
+            "items_by_id": {"B1": {
+                "id": "B1",
+                "manifest": ["Topics/A.md", "Topics/B.md"],
+                "transition_receipts": ["audit-open-transition"],
+            }},
+            "current_receipt_catalog": {
+                "audit-open-transition": ("receipts.jsonl", current),
+            },
+            "_profile_authorized_view": self.profile_view(),
+        }
+        contract = SimpleNamespace(contract_fingerprint=self.META_SHA)
+        with mock.patch.object(
+                check_queue.metadata_execution_contract,
+                "load_metadata_execution_contract", return_value=contract):
+            self.assertEqual({
+                "Topics/A.md": "sha256:" + "1" * 64,
+                "Topics/B.md": "sha256:" + "3" * 64,
+            }, check_queue.current_opening_semantic_baseline(result, "B1"))
+
+        legacy = dict(current, tool_version="1.4.0")
+        result["current_receipt_catalog"]["audit-open-transition"] = (
+            "receipts.jsonl", legacy)
+        with self.assertRaisesRegex(ValueError, "legacy producer"):
+            check_queue.current_opening_semantic_baseline(result, "B1")
+        result["current_receipt_catalog"] = {}
+        with self.assertRaisesRegex(ValueError, "no current opening receipt"):
+            check_queue.current_opening_semantic_baseline(result, "B1")
+
+
+class CurrentCloseTransitionMetadataTests(unittest.TestCase):
+    META_SHA = "sha256:" + "a" * 64
+
+    def transition(self, version=None):
+        return {
+            "receipt_id": "audit-close-transition",
+            "tool": "update_queue",
+            "tool_version": version or check_queue.UPDATE_QUEUE_TOOL_VERSION,
+            "before_state": "merge-ready",
+            "after_state": "closed",
+            "close_gate_receipt": "audit-close-gate",
+            "page_review_receipts": ["audit-page-a", "audit-page-b"],
+            "page_review_receipt_count": 2,
+            "metadata_execution_contract_fingerprint": self.META_SHA,
+        }
+
+    def catalog(self):
+        return {
+            "audit-close-gate": ("close.jsonl", {
+                "receipt_id": "audit-close-gate",
+                "page_review_receipts": ["audit-page-a", "audit-page-b"],
+                "metadata_execution_contract_fingerprint": self.META_SHA,
+            }),
+        }
+
+    def errors(self, transition, catalog=None):
+        contract = SimpleNamespace(contract_fingerprint=self.META_SHA)
+        with mock.patch.object(
+                check_queue.metadata_execution_contract,
+                "load_metadata_execution_contract", return_value=contract):
+            return check_queue._current_close_transition_metadata_errors(
+                "/fixture", transition, catalog or self.catalog(), "B1")
+
+    def test_current_close_binds_exact_children_and_live_metadata(self):
+        self.assertEqual([], self.errors(self.transition()))
+
+        malformed = self.transition()
+        malformed["page_review_receipts"] = [
+            "audit-page-b", "audit-page-a", "audit-page-b"]
+        malformed["page_review_receipt_count"] = 2
+        malformed["metadata_execution_contract_fingerprint"] = (
+            "sha256:" + "b" * 64)
+        errors = self.errors(malformed)
+        self.assertTrue(any("must be sorted" in error for error in errors),
+                        errors)
+        self.assertTrue(any("must be unique" in error for error in errors),
+                        errors)
+        self.assertTrue(any("count must equal" in error for error in errors),
+                        errors)
+        self.assertTrue(any("exact child" in error for error in errors),
+                        errors)
+        self.assertTrue(any("differs from its close Gate" in error
+                            for error in errors), errors)
+        self.assertTrue(any("stale relative" in error for error in errors),
+                        errors)
+
+    def test_historical_close_is_not_reinterpreted(self):
+        for version in ("1.2.0", "1.3.0", "1.4.0"):
+            with self.subTest(version=version):
+                historical = self.transition(version=version)
+                historical.pop("page_review_receipts")
+                historical.pop("page_review_receipt_count")
+                historical.pop("metadata_execution_contract_fingerprint")
+                with mock.patch.object(
+                        check_queue.metadata_execution_contract,
+                        "load_metadata_execution_contract") as loader:
+                    self.assertEqual([],
+                        check_queue._current_close_transition_metadata_errors(
+                            "/fixture", historical, {}, "B1"))
+                loader.assert_not_called()
 
 
 class ReviewedEraTests(QueueFixture):
@@ -732,6 +1689,54 @@ class HubPageAdmissionTests(QueueFixture):
         )
         self.assertNotIn("B1", result["ready"])
 
+    def test_runtime_cas_includes_kernel_metadata_field_registries(self):
+        authorized_view, view_errors = \
+            check_queue.profile_load_authorized_view(
+                self.root, "profiles/test-profile/profile.md")
+        self.assertEqual([], view_errors)
+        applicability = self.root / (
+            check_queue.check_profile.DEFAULT_APPLICABILITY_BASE)
+        applicability.write_text(
+            applicability.read_text(encoding="utf-8") +
+            "\n# canonical applicability revision B\n",
+            encoding="utf-8")
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                side_effect=AssertionError(
+                    "stale injected view must fail, not silently rerun")) \
+                as load:
+            result = check_queue.validate_runtime(
+                self.root, authorized_profile_view=authorized_view)
+
+        load.assert_not_called()
+        self.assertIn(
+            "canonical profile-load inputs changed",
+            "; ".join(result["errors"]))
+        self.assertNotIn("B1", result["ready"])
+
+    def test_runtime_cas_includes_property_state_implementation_bytes(self):
+        authorized_view, view_errors = \
+            check_queue.profile_load_authorized_view(
+                self.root, "profiles/test-profile/profile.md")
+        self.assertEqual([], view_errors)
+        implementation = self.root / "Tools/metadata_property_state.py"
+        implementation.write_text(
+            implementation.read_text(encoding="utf-8") +
+            "\n# implementation revision B\n", encoding="utf-8")
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                side_effect=AssertionError(
+                    "stale injected view must fail, not silently rerun")) \
+                as load:
+            result = check_queue.validate_runtime(
+                self.root, authorized_profile_view=authorized_view)
+
+        load.assert_not_called()
+        self.assertIn(
+            "canonical profile-load inputs changed",
+            "; ".join(result["errors"]))
+        self.assertNotIn("B1", result["ready"])
+
     def test_hub_derivation_reads_authorized_snapshot_not_transient_live_bytes(self):
         self.register_expression_layer([
             ("Existing canonical dependency-map path", "`Topics/A.md`"),
@@ -798,19 +1803,56 @@ class HubPageAdmissionTests(QueueFixture):
         self.assertIn("changed after profile-load authorization", reasons)
         self.assertIn("snapshot mismatch before Expression hub", reasons)
 
-    def test_corrective_profile_escape_does_not_run_profile_load(self):
+    def test_corrective_profile_mode_retains_a_valid_authorized_view(self):
+        profile_producer = check_queue.check_profile.evaluate_profile_load
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                wraps=profile_producer) as profile_load:
+            ordinary = check_queue.validate_runtime(self.root)
+            corrective = check_queue.validate_runtime(
+                self.root,
+                allow_invalid_current_profile_for_corrective_adoption=True,
+                allow_active_standards_mismatch_for_adoption=True,
+            )
+
+        # Each validation evaluates profile-load exactly once.  Corrective
+        # permission does not discard either valid before-view and does not
+        # trigger a speculative second Profile producer run.
+        self.assertEqual(2, profile_load.call_count)
+        self.assertEqual([], ordinary["errors"])
+        self.assertEqual([], corrective["errors"])
+        ordinary_view = ordinary["_profile_authorized_view"]
+        corrective_view = corrective["_profile_authorized_view"]
+        ordinary_standards = ordinary[
+            "_active_standards_authorized_view"]
+        corrective_standards = corrective[
+            "_active_standards_authorized_view"]
+        self.assertIsInstance(corrective_view, dict)
+        self.assertIsInstance(corrective_standards, dict)
+        for field in (
+                "selected_profile_manifest", "profile_snapshot_sha256",
+                "profile_contract_fingerprint",
+                "profile_load_inputs_sha256"):
+            self.assertEqual(ordinary_view[field], corrective_view[field])
+        for field in (
+                "standards_version", "selected_profile_manifest",
+                "active_standards_sha256"):
+            self.assertEqual(
+                ordinary_standards[field], corrective_standards[field])
+
+    def test_corrective_profile_escape_runs_one_failed_profile_load(self):
         self.register_expression_layer(None)
         with mock.patch.object(
                 check_queue.check_profile, "evaluate_profile_load",
-                side_effect=AssertionError(
-                    "corrective escape must not run profile-load")) as load:
+                wraps=check_queue.check_profile.evaluate_profile_load) as load:
             result = check_queue.validate_runtime(
                 self.root,
                 allow_invalid_current_profile_for_corrective_adoption=True,
             )
 
-        load.assert_not_called()
+        load.assert_called_once()
         self.assertEqual([], result["errors"])
+        self.assertIsNone(result["_profile_authorized_view"])
 
     def test_registered_dependency_map_not_yet_created_is_a_candidate(self):
         (self.root / "Topics/A.md").unlink()
@@ -864,10 +1906,17 @@ class HubPageAdmissionTests(QueueFixture):
                      "---\n- overview\n---\n\n# A\n"):
             with self.subTest(body=body):
                 self.write_page("Topics/A.md", body)
-                result, reasons = self.blocked_reasons("B1")
+                result = check_queue.validate_runtime(self.root)
                 self.assertNotIn("B1", result["ready"])
-                self.assertIn("cannot be classified against K13/10 hub roles",
-                              "; ".join(reasons))
+                if result["errors"]:
+                    self.assertIn(
+                        "invalid page frontmatter",
+                        "; ".join(result["errors"]))
+                else:
+                    reasons = dict(result["blocked"]).get("B1", [])
+                    self.assertIn(
+                        "cannot be classified against K13/10 hub roles",
+                        "; ".join(reasons))
 
     def test_shipped_example_profile_registration_is_parsed(self):
         # A shipped example is intentionally not a selectable runtime Profile;
@@ -1928,6 +2977,7 @@ class CheckQueueTests(QueueFixture):
             "prerequisites": ["Topics/B.md"], "batch": "B3",
             "next_batch": "B3", "deferred_reason": None,
             "reentry_condition": None, "gate_receipts": [],
+            "property_state": {},
         })
         proposal_path = self.root / proposal_relative
         proposal_path.parent.mkdir(parents=True, exist_ok=True)

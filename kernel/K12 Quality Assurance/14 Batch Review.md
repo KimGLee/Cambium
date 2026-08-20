@@ -24,7 +24,8 @@ In-batch items (merge-ready preconditions):
 - Required expression migrations registered by the `Expression Layer Entry` are complete or have an explicit disposition and pass R05; any supplemental profile gate is also closed.
 - Automated checks (`--scope` level), manual content review, and the applicable rendering level are complete.
 - An AuditPlan has been generated from changed objects, acceptance predicates, and dependency changes; still-valid historical evidence has an explicit `reused_receipt_id`, and new checks produce dimension-specific AuditReceipts.
-- Page frontmatter projections (`authoring_status`, `next_batch`, `coverage_disposition` where persisted) of every page the batch touched agree with the post-delta Coverage Ledger, per [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority|K08/07]]; `last_reviewed` carries the review date the batch's evidence establishes, and any `last_verified` change cites the verification evidence that earned it — a close never advances `last_verified` by itself.
+- Page frontmatter projections of every page the batch touched agree with the
+  post-delta Coverage owner state, per [[kernel/K08 Metadata and Status/07 Frontmatter Writer and Projection Authority|K08/07]]. A substantive change advances evidence-bound `last_content_modified` and invalidates the old review; `last_reviewed` returns only from review evidence for the current semantic fingerprint. Any `last_verified` change cites the separate verification evidence that earned it.
 - The delta has been written out; no unverified modifications are left to the next batch.
 
 Global items (verified by the integrator during serial merge):
@@ -32,6 +33,15 @@ Global items (verified by the integrator during serial merge):
 - Guidance reconciliation per [[kernel/K12 Quality Assurance/04 Guidance and Source Review|K12/04]] (incremental).
 - The direct / dependency invalidations affected by the current batch are closed, `unresolved_invalidations = 0`.
 - The exact delta is applied through canonical `Tools/apply_delta.py --root`; then the current full snapshot and Coverage/Queue relation pass their global checks. A current `Tools/check_queue.py` consistency receipt binds the Queue revisions and fingerprint consumed by the close transition.
+- The current batch-close producer freezes every manifest page through the
+  canonical no-follow target-snapshot API and emits one distinct
+  `page_review_acceptance` receipt per page. Each child binds the semantic
+  content fingerprint computed from the same authorized Core + typed Profile
+  projection rules, its own `checked_at` UTC date as `reviewed_on`, reviewer
+  attestation, and exact Profile/Metadata Execution Contract identities. The
+  aggregator binds the unique sorted child-receipt set. Immediately before
+  publication, all frozen page identities and exact bytes pass a final CAS;
+  drift refuses the close rather than dating content nobody reviewed.
 
 Only after the global items pass may the integrator record `merge-ready -> closed` through `Tools/update_queue.py`; that guarded close also derives the Coverage `next_batch` projection and updates the Progress Queue reference. Delta application and close are ordered, independently evidenced integrator writes—not one falsely atomic multi-file step. A failed merge records the failure and returns the item to `open`; a worker cannot write either transition.
 

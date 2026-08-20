@@ -89,10 +89,11 @@ from typing import Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
+import metadata_execution_contract
 import profile_contract
 
 TOOL = "check_profile"
-TOOL_VERSION = "1.9.0"
+TOOL_VERSION = "2.0.0"
 GATE_ID = "profile-load"
 GATE_CHECK = "profile-check-summary"
 GATE_DIMENSION = "guidance_and_contract"
@@ -146,6 +147,26 @@ DEFAULT_INTERFACE = "profiles/README.md"
 DEFAULT_DEFAULTS = "Tools/schemas/execution_defaults.template.yaml"
 DEFAULT_EXECUTION_DEFAULTS = (
     "kernel/K00 Standards Control/execution-defaults-base.yaml"
+)
+DEFAULT_OPERATION_CAPABILITIES = "Tools/operation-capabilities.yaml"
+DEFAULT_METADATA_AUTHORITY = (
+    "kernel/K08 Metadata and Status/metadata-authority-base.yaml")
+DEFAULT_METADATA_CONTRACT = (
+    "Tools/compiled/metadata-execution-contract.json")
+DEFAULT_APPLICABILITY_BASE = profile_contract.KERNEL_APPLICABILITY_PATH
+DEFAULT_RELATIONSHIP_BASE = profile_contract.KERNEL_RELATIONSHIP_PATH
+DEFAULT_GATE_REGISTRY = (
+    "kernel/K00 Standards Control/12 Control Registry.md")
+CANONICAL_PROFILE_LOAD_INPUTS = (
+    DEFAULT_INTERFACE,
+    DEFAULT_DEFAULTS,
+    DEFAULT_EXECUTION_DEFAULTS,
+    DEFAULT_OPERATION_CAPABILITIES,
+    DEFAULT_METADATA_AUTHORITY,
+    DEFAULT_METADATA_CONTRACT,
+    DEFAULT_APPLICABILITY_BASE,
+    DEFAULT_RELATIONSHIP_BASE,
+    DEFAULT_GATE_REGISTRY,
 )
 
 MANIFEST_NAME = "profile.md"
@@ -236,6 +257,8 @@ _SEMANTIC_UNRESOLVED_CHECKS = frozenset((
     "judgment-items-row-empty",
     "registered-scans-empty",
     "registered-scans-row-empty",
+    "extension-gates-configured-empty",
+    "extension-gates-row-empty",
 ))
 
 _MECHANICAL_CHECKS = frozenset((
@@ -244,6 +267,7 @@ _MECHANICAL_CHECKS = frozenset((
     "profile-load-noncanonical-input",
     "profile-load-input-unreadable",
     "profile-load-input-changed",
+    "profile-load-metadata-contract-invalid",
     "profile-dir-missing",
     "manifest-missing",
     "profile-snapshot-invalid",
@@ -346,6 +370,42 @@ _MECHANICAL_CHECKS = frozenset((
     "registered-scan-command-gate-option",
     "registered-scan-command-scan-id",
     "registered-scan-command-config",
+    # typed Profile extension Gate execution contract
+    "extension-gates-registration",
+    "extension-gates-none-with-rows",
+    "extension-gate-deterministic-completion",
+    "extension-gate-id-invalid",
+    "extension-gate-id-duplicate",
+    "extension-gate-transition-invalid",
+    "extension-gate-transition-duplicate",
+    "extension-gate-owner-registry",
+    "extension-gate-owner-reference",
+    "extension-gate-owner-heading-empty",
+    "extension-gate-owner-heading-missing",
+    "extension-gate-owner-path-invalid",
+    "extension-gate-owner-unreadable",
+    "extension-gate-owner-heading-non-markdown",
+    "extension-gate-owner-heading-count",
+    "extension-gate-role-registry",
+    "extension-gate-role-reference",
+    "extension-gate-vocabulary-registry",
+    "extension-gate-metadata-contract",
+    "extension-gate-kernel-metadata-registry",
+    "extension-gate-field-reference",
+    "extension-gate-field-applicability",
+    "extension-gate-field-shape",
+    "extension-gate-field-kernel-collision",
+    "extension-gate-field-completion",
+    "extension-gate-completion-invalid",
+    "extension-gate-completion-reference",
+    "extension-gate-judgment-reference",
+    "extension-gate-producer-kind",
+    "extension-gate-capability-registry",
+    "extension-gate-producer-capability",
+    "extension-gate-producer-reference",
+    "extension-gate-receipt-schema",
+    "extension-gate-consumer-capability",
+    "extension-gate-writer-capability",
     # registry table shape (composed `<section>-<shape>` diagnostics)
     "extension-dimensions-section-count",
     "extension-dimensions-table-count",
@@ -365,6 +425,12 @@ _MECHANICAL_CHECKS = frozenset((
     "registered-scans-table-header",
     "registered-scans-table-separator",
     "registered-scans-row-shape",
+    "extension-gates-section-count",
+    "extension-gates-table-count",
+    "extension-gates-table-shape",
+    "extension-gates-table-header",
+    "extension-gates-table-separator",
+    "extension-gates-row-shape",
     # Profile-owned dependency resolution (composed `<kind>-<failure>`)
     "predicate-owner-heading-empty",
     "predicate-owner-heading-missing",
@@ -407,9 +473,15 @@ def finding_category(check):
 def canonical_profile_load_inputs(root):
     """Return immutable canonical producer inputs and their aggregate hash."""
     snapshots = {}
-    for relative in (
-            DEFAULT_INTERFACE, DEFAULT_DEFAULTS,
-            DEFAULT_EXECUTION_DEFAULTS):
+    for relative in CANONICAL_PROFILE_LOAD_INPUTS:
+        snapshots[relative] = kblib.repository_file_snapshot(
+            root, relative, singly_linked=True)
+    capabilities = kblib.parse_yaml_subset(
+        snapshots[DEFAULT_OPERATION_CAPABILITIES].read_text())
+    capabilities = metadata_execution_contract.\
+        validate_operation_capabilities_document(capabilities)
+    for relative in metadata_execution_contract.\
+            capability_implementation_paths(capabilities):
         snapshots[relative] = kblib.repository_file_snapshot(
             root, relative, singly_linked=True)
     fingerprint = kblib.sha256_bytes(
@@ -937,6 +1009,31 @@ def main(argv=None, *, _evaluation_out=None,
         say("check_profile: FAIL — canonical profile-load input is not a "
               "stable singly-linked file: %s" % exc)
         return finish()
+    try:
+        metadata_authority = kblib.parse_yaml_subset(
+            normative_snapshots[DEFAULT_METADATA_AUTHORITY].read_text())
+        operation_capabilities = kblib.parse_yaml_subset(
+            normative_snapshots[DEFAULT_OPERATION_CAPABILITIES].read_text())
+        compiled_metadata = \
+            metadata_execution_contract.compile_metadata_execution_document(
+                metadata_authority, operation_capabilities,
+                implementation_snapshots={
+                    path: normative_snapshots[path]
+                    for path in metadata_execution_contract.
+                        capability_implementation_paths(
+                            operation_capabilities)
+                })
+        if (normative_snapshots[DEFAULT_METADATA_CONTRACT].read_text() !=
+                compiled_metadata.canonical_bytes.decode("utf-8")):
+            raise ValueError(
+                "compiled metadata execution contract is stale")
+    except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError,
+            metadata_execution_contract.MetadataExecutionContractError) as exc:
+        add("profile-load-metadata-contract-invalid",
+            DEFAULT_METADATA_CONTRACT, "fail",
+            "canonical metadata authority/capability bundle cannot be "
+            "compiled from the same root-input snapshot: %s" % exc)
+        return finish()
 
     # ---- inputs must be readable before anything can be judged ----
     if not os.path.isdir(profile_dir):
@@ -1227,7 +1324,8 @@ def main(argv=None, *, _evaluation_out=None,
     # keep executing another Profile's config or citing its predicate owner.
     contract = profile_contract.load_profile_contract(
         root, manifest_path, sentinel=sentinel,
-        profile_snapshot=profile_snapshot)
+        profile_snapshot=profile_snapshot,
+        root_input_snapshots=normative_snapshots)
     sentinel_targets = {
         "%s:%d" % (("%s/%s" % (profile_disp, rel))
                     if profile_disp != "." else rel, lineno)

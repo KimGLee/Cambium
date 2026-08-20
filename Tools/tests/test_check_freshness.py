@@ -100,7 +100,7 @@ class FreshnessFutureBaselineTests(unittest.TestCase):
         self.assertEqual("future_baseline", rows[0]["candidate_kind"])
         self.assertIn("%s=2099-01-01" % field, rows[0]["details"])
         self.assertIn("as_of=2026-08-14", rows[0]["details"])
-        self.assertEqual("2.0.0", rows[0]["tool_version"])
+        self.assertEqual("2.1.0", rows[0]["tool_version"])
         summary = self.summary_row()
         self.assertEqual("candidate", summary["result"])
         self.assertTrue(summary["scan_complete"])
@@ -263,6 +263,21 @@ class FreshnessFutureBaselineTests(unittest.TestCase):
         self.assertIsNone(row["review_by"])
         self.assertIn("no recurring review deadline", row["details"])
         self.assertIn("mtime is diagnostic only", row["details"])
+
+    def test_content_modified_after_review_is_a_typed_candidate(self):
+        self.write_page(
+            last_reviewed="2026-08-01",
+            volatility="slow",
+            extra_fields=("last_content_modified: 2026-08-10",),
+        )
+        completed = self.run_check()
+        self.assertEqual(2, completed.returncode, completed.stdout)
+        row = self.candidate_rows()[0]
+        self.assertEqual("modified_since_review", row["candidate_kind"])
+        self.assertEqual(
+            ["content_modified_since_review"], row["reason_codes"])
+        self.assertIn("last_content_modified=2026-08-10", row["details"])
+        self.assertEqual("candidate", self.summary_row()["result"])
 
     def test_canonical_directory_scope_is_preserved_in_summary(self):
         (self.root / "Docs").mkdir()

@@ -29,5 +29,5 @@ Every subsection of this registry is `None`. That is the minimal legal state of 
 
 - Registration: None
 
-| Gate ID | Kernel Gate ID or repo-relative owner path, optionally `#heading` | Blocked transition/action | Pass-authority Role ID reference | Applicability predicate | Vocabulary field ID or `None` | Registered completion value(s) or `None` | Judgment Item ID reference |
-|---|---|---|---|---|---|---|---|
+| Gate ID | Kernel Gate ID or repo-relative owner path, optionally `#heading` | Blocked transition/action ID | Pass-authority Role ID reference | Applicability predicate | Vocabulary field ID or `None` | Registered completion value(s) or `None` | Judgment Item ID reference | Producer kind: `deterministic` or `manual-attestation` | Producer capability | Receipt schema | Consumer capability |
+|---|---|---|---|---|---|---|---|---|---|---|---|

@@ -44,6 +44,23 @@ batch_specs:
 # only records whose selection is selected.
 maintenance_candidates: []
 
+# ``property_state`` is the closed owner-side state for evidence-backed page
+# properties.  Keys are admitted only by the compiled Metadata Execution
+# Contract.  Each current value binds the receipt/event that earned it and the
+# page's semantic-content fingerprint; page projection fields themselves are
+# excluded from that fingerprint so a write-back cannot invalidate its own
+# evidence.  A content edit never fabricates a date from mtime or wall-clock
+# time: the Integrator consumes an explicit content-change/review event,
+# advances this owner state, and asks the generic projector to mirror it.
+#
+# Current record shape (exactly these three keys):
+#   value: YYYY-MM-DD, or null only for a contract-authorized semantic-content
+#          invalidation tombstone that removes a stale page projection
+#   evidence_receipt: non-empty receipt/event ID
+#   content_fingerprint: sha256:<64 lowercase hex>
+#
+# Existing unproved dates migrate as explicit legacy/unverified state through
+# the migration protocol; they are not copied into this current-value shape.
 pages:
   - path: "Topics/Example Topic.md"
     coverage_disposition: required
@@ -59,6 +76,11 @@ pages:
     reentry_condition: null
     gate_receipts:
       - "audit-check_links-20260721T000000Z-33333333333333333333333333333333-0001"
+    property_state:
+      last_content_modified:
+        value: "2026-07-21"
+        evidence_receipt: "audit-content-change-20260721T000000Z-33333333333333333333333333333333-0001"
+        content_fingerprint: "sha256:4444444444444444444444444444444444444444444444444444444444444444"
 
 open_gaps:
   - page: "Topics/Example Topic.md"

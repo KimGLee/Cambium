@@ -26,7 +26,10 @@ that later goes missing or changes fails every consistency run closed.
 Rows this version never seals: the global transition history, Standards
 adoptions, contract and operational amendments, this tool's own receipts,
 the Standards-revalidation aggregate a recorded Queue transition consumed,
-and any receipt bound to a batch that is not terminally closed.
+any receipt bound to a batch that is not terminally closed, and every receipt
+currently referenced by Coverage ``property_state``.  A producer batch may be
+closed while its review/content-change receipt is still live owner evidence;
+only a later owner transition that replaces the pointer makes that row cold.
 
 SUPPORTED OPERATING BOUNDARY -- read before ``--apply``.
 
@@ -83,7 +86,7 @@ import kblib
 import check_queue
 
 TOOL = "seal_receipts"
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.4.0"
 SEAL_RECEIPTS_PATH = ".cambium/receipts/seal-receipts.jsonl"
 COLD_PENDING_PREFIX = ".cambium/receipts/cold/pending"
 RECEIPTS_ROOT = ".cambium/receipts"
@@ -199,6 +202,66 @@ def _closed_bundle_trios(result, closed):
     return trio_ids
 
 
+def _hot_closed_bundle_receipts(result, closed, hot_references):
+    """Keep a hot trio and every body its hot replay must still read.
+
+    The sealed replay deliberately treats the close gate, Queue consistency,
+    and Delta application as one unit.  Coverage commonly points
+    ``last_content_modified`` at the Delta application, so honoring that hot
+    reference by itself would create the forbidden half-hot/half-cold shape.
+
+    Keeping only the trio is still insufficient: while its close gate is hot,
+    ``check_queue`` revalidates the complete producer-era bundle through the
+    receipt bodies (global review, reviewer attestation, page-review children,
+    Closed List members, and the optional Corpus Planning child).  Those rows
+    may use the cold projection only after the trio itself takes the sealed
+    branch.  Retain that exact one-hop dependency closure with the trio; a
+    later owner transition that supersedes the Coverage pointer makes the
+    whole old bundle sealable again.
+    """
+    keep = set()
+    catalog = result.get("receipt_catalog") or {}
+    for item_id, item in (result.get("items_by_id") or {}).items():
+        if item_id not in closed:
+            continue
+        trio = {
+            item.get(field) for field in (
+                "close_gate_receipt", "queue_consistency_receipt",
+                "delta_apply_receipt")
+            if isinstance(item.get(field), str) and item.get(field).strip()
+        }
+        close_id = item.get("close_gate_receipt")
+        entry = catalog.get(close_id)
+        close = entry[1] if isinstance(entry, tuple) and len(entry) == 2 \
+            else None
+        replay_ids = set()
+        if isinstance(close, dict):
+            for field in (
+                    "global_review_receipt", "reviewer_attestation_receipt",
+                    "corpus_plan_receipt"):
+                value = close.get(field)
+                if isinstance(value, str) and value.strip():
+                    replay_ids.add(value)
+            for value in close.get("page_review_receipts") or []:
+                if isinstance(value, str) and value.strip():
+                    replay_ids.add(value)
+            evidence = close.get("closed_list_evidence")
+            if isinstance(evidence, dict):
+                for value in evidence.values():
+                    if isinstance(value, str) and value.strip():
+                        replay_ids.add(value)
+
+        # A Coverage owner may be a child of the close gate (most commonly a
+        # page-review acceptance), not one of the trio records themselves.
+        # Reachability therefore has to be tested against the complete replay
+        # unit before any member of that unit is made cold.
+        if not (trio | replay_ids).intersection(hot_references):
+            continue
+        keep.update(trio)
+        keep.update(replay_ids)
+    return keep
+
+
 def _transition_bound_aggregates(catalog, transition_id):
     """Aggregates a transition binds that a later replay reads field by field.
 
@@ -240,11 +303,45 @@ def _hot_reference_ids(result):
     Activation and confirmation gates, batch-review wrappers, transition
     evidence of every item, the aggregates those transitions bind (see
     :func:`_transition_bound_aggregates`), and anything referenced by a
-    batch that is not terminally closed.  Close-bundle trios of closed
-    batches are NOT here: their consumers have the K12/07 sealed branch.
+    batch that is not terminally closed.  Coverage property-state evidence is
+    also current owner state, even after its producing batch closes: its body
+    is revalidated for property value, content fingerprint, and invalidation,
+    so it stays hot until some later owner transition supersedes the pointer.
+    A closed trio is not retained merely because the batch is closed; its
+    consumers have the K12/07 sealed branch.  If one of its members is a live
+    property reference, :func:`_hot_closed_bundle_receipts` expands that
+    direct reference into the complete hot replay closure.
     """
     keep = set()
+    property_evidence = set()
     catalog = result.get("receipt_catalog") or {}
+    coverage = result.get("coverage") or {}
+    for page in coverage.get("pages") or []:
+        if not isinstance(page, dict):
+            continue
+        property_state = page.get("property_state")
+        if not isinstance(property_state, dict):
+            continue
+        for record in property_state.values():
+            if not isinstance(record, dict):
+                continue
+            receipt_id = record.get("evidence_receipt")
+            if isinstance(receipt_id, str) and receipt_id.strip():
+                keep.add(receipt_id)
+                property_evidence.add(receipt_id)
+    # A live review property validates both the page-review body and the
+    # declared reviewer attestation it names.  The latter is not itself a
+    # Coverage pointer, but sealing it would still break the current owner
+    # loop.  Other current property receipt kinds are self-contained.
+    for receipt_id in property_evidence:
+        entry = catalog.get(receipt_id)
+        receipt = entry[1] if isinstance(entry, tuple) and len(entry) == 2 \
+            else None
+        if (isinstance(receipt, dict) and
+                receipt.get("check") == "page_review_acceptance"):
+            attestation_id = receipt.get("reviewer_attestation_receipt")
+            if isinstance(attestation_id, str) and attestation_id.strip():
+                keep.add(attestation_id)
     for item_id, item in (result.get("items_by_id") or {}).items():
         state = item.get("state")
         for field in ("activation_receipt", "confirmation_receipt"):
@@ -293,10 +390,14 @@ def plan_seal(root, result):
     closed = _closed_anchored_batches(result)
     referenced_hot = _hot_reference_ids(result)
     trio_ids = _closed_bundle_trios(result, closed)
+    hot_bundle_ids = _hot_closed_bundle_receipts(
+        result, closed, referenced_hot)
     by_file = {}
     for receipt_id, (relative, receipt) in catalog.items():
         basename = os.path.basename(relative)
         if basename in NEVER_SEAL_BASENAMES:
+            continue
+        if receipt_id in hot_bundle_ids:
             continue
         if receipt_id in trio_ids:
             by_file.setdefault(relative, []).append((receipt_id, receipt))

@@ -42,10 +42,15 @@ from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 TOOLS = REPOSITORY / "Tools"
+TESTS = TOOLS / "tests"
 EXAMPLE = REPOSITORY / "profiles" / "examples" / "minimal-notes"
 
+if str(TESTS) not in sys.path:
+    sys.path.insert(0, str(TESTS))
 if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
+
+import test_profile_onboarding_status as tpos  # noqa: E402
 
 
 def _load(name):
@@ -173,16 +178,8 @@ class ProfileLoadDoesNotResolveThePlanningArtifacts(unittest.TestCase):
 
     def test_configured_is_authorized_with_no_artifacts_on_disk(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            for relative in ("profiles/README.md",
-                             "kernel/K00 Standards Control/"
-                             "execution-defaults-base.yaml",
-                             "Tools/schemas/execution_defaults.template.yaml",
-                             "Tools/schemas/residual_scan_config.template.yaml",
-                             "Tools/check_residual_content.py"):
-                destination = root / relative
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(REPOSITORY / relative, destination)
+            root = Path(tmp).resolve()
+            tpos.copy_profile_load_fixture(root)
             # Same relative location: the example materializes its own
             # self-paths, and profile-load fails closed on a foreign one.
             profile = root / "profiles" / "examples" / "minimal-notes"

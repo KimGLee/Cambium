@@ -159,6 +159,24 @@ class SealReceiptsTests(UpdateQueueTests):
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             check=False)
 
+    def close_b1(self):
+        """Close B1 and leave one genuinely superseded B1 row to archive.
+
+        The current Coverage owner now points at B1's Delta and page-review
+        receipts.  Those receipts, and the complete close replay they need,
+        must therefore remain hot until a later owner transition supersedes
+        them.  Most tests in this class exercise the archive machinery rather
+        than owner reachability, so give them an unrelated historical B1 row
+        that is already unreferenced and may legitimately become cold.
+        """
+        completed = super().close_b1()
+        self.append_receipt(
+            "audit-superseded-b1-history", check="fixture_history",
+            target="B1", batch_id="B1", tool="fixture",
+            tool_version="1.0.0", checked_at="2026-08-04T03:01:00Z",
+            details="superseded unreferenced fixture history")
+        return completed
+
     def sealed_ids(self):
         index_path = self.root / kblib.RECEIPT_COLD_INDEX_PATH
         if not index_path.exists():
@@ -169,26 +187,140 @@ class SealReceiptsTests(UpdateQueueTests):
             if line.strip()
         }
 
-    def test_sealing_a_closed_batch_keeps_the_runtime_clean(self):
-        """The trio moves cold; the full validation stays green."""
+    def test_current_coverage_property_evidence_stays_hot_after_batch_close(self):
+        """A closed producer batch does not make current owner evidence cold."""
+        current_id = "audit-page-review-current-owner"
+        delta_id = "audit-delta-apply-current-owner"
+        close_id = "audit-batch-close-b1"
+        consistency_id = "audit-queue-consistency-b1"
+        superseded_id = "audit-page-review-superseded"
+        attestation_id = "audit-reviewer-attestation-b1"
+        global_review_id = "audit-global-review-b1"
+        closed_list_id = "audit-closed-list-b1"
+        transition_id = "audit-close-transition-b1"
+        relative = ".cambium/receipts/close-gates.jsonl"
+        result = {
+            "coverage": {
+                "pages": [{
+                    "path": "Topics/A.md",
+                    "property_state": {
+                        "last_reviewed": {
+                            "value": "2026-08-20",
+                            "evidence_receipt": current_id,
+                            "content_fingerprint": "sha256:" + "a" * 64,
+                        },
+                    },
+                }],
+            },
+            "items_by_id": {
+                "B1": {
+                    "id": "B1",
+                    "state": "closed",
+                    "transition_receipts": [transition_id],
+                    "close_gate_receipt": close_id,
+                    "queue_consistency_receipt": consistency_id,
+                    "delta_apply_receipt": delta_id,
+                },
+            },
+            "progress": {},
+            "receipt_catalog": {
+                current_id: (relative, {
+                    "receipt_id": current_id,
+                    "batch_id": "B1",
+                    "check": "page_review_acceptance",
+                    "reviewer_attestation_receipt": attestation_id,
+                }),
+                superseded_id: (relative, {
+                    "receipt_id": superseded_id,
+                    "batch_id": "B1",
+                    "check": "page_review_acceptance",
+                }),
+                delta_id: (relative, {
+                    "receipt_id": delta_id,
+                    "batch_id": "B1",
+                    "check": "delta_apply",
+                }),
+                close_id: (relative, {
+                    "receipt_id": close_id,
+                    "batch_id": "B1",
+                    "check": "batch_close_gate",
+                    "global_review_receipt": global_review_id,
+                    "reviewer_attestation_receipt": attestation_id,
+                    "page_review_receipts": [current_id],
+                    "closed_list_evidence": {"links": closed_list_id},
+                }),
+                attestation_id: (relative, {
+                    "receipt_id": attestation_id,
+                    "check": "batch_global_review_attestation",
+                }),
+                global_review_id: (relative, {
+                    "receipt_id": global_review_id,
+                    "check": "batch_global_review",
+                }),
+                closed_list_id: (relative, {
+                    "receipt_id": closed_list_id,
+                    "check": "closed_list_links",
+                }),
+                consistency_id: (relative, {
+                    "receipt_id": consistency_id,
+                    "check": "required_queue",
+                }),
+                transition_id: (
+                    ".cambium/receipts/queue-transitions.jsonl",
+                    {
+                        "receipt_id": transition_id,
+                        "after_state": "closed",
+                    },
+                ),
+            },
+        }
+
+        self.assertIn(current_id, seal_receipts._hot_reference_ids(result))
+        self.assertNotIn(delta_id, seal_receipts._hot_reference_ids(result))
+        self.assertIn(attestation_id,
+                      seal_receipts._hot_reference_ids(result))
+        planned = seal_receipts.plan_seal(str(self.root), result)
+        planned_ids = {
+            receipt_id for rows in planned.values()
+            for receipt_id, _receipt in rows
+        }
+        self.assertNotIn(current_id, planned_ids)
+        self.assertFalse(
+            {close_id, consistency_id, delta_id, attestation_id,
+             global_review_id, closed_list_id}.intersection(planned_ids),
+            "a current owner reference keeps the hot close replay whole")
+        self.assertIn(superseded_id, planned_ids)
+
+    def test_sealing_keeps_current_owner_evidence_hot_and_runtime_clean(self):
+        """Every live Coverage owner pointer survives a real seal run."""
         self.close_b1()
         before = check_queue.validate_runtime(self.root)
         self.assertEqual([], before["errors"])
-        item = before["items_by_id"]["B1"]
-        trio = {item["close_gate_receipt"],
-                item["queue_consistency_receipt"],
-                item["delta_apply_receipt"]}
+        current_property_evidence = {
+            record.get("evidence_receipt")
+            for page in before["coverage"].get("pages") or []
+            for record in (page.get("property_state") or {}).values()
+            if isinstance(record, dict)
+        }
+        self.assertTrue(current_property_evidence)
+        current_attestations = {
+            before["receipt_catalog"][receipt_id][1].get(
+                "reviewer_attestation_receipt")
+            for receipt_id in current_property_evidence
+            if (receipt_id in before["receipt_catalog"] and
+                before["receipt_catalog"][receipt_id][1].get("check") ==
+                "page_review_acceptance")
+        }
+        current_attestations.discard(None)
         completed = self.seal("--apply")
         self.assertEqual(0, completed.returncode, completed.stdout)
         sealed = self.sealed_ids()
-        self.assertTrue(trio.issubset(sealed),
-                        "the close bundle trio seals together")
+        self.assertFalse(current_property_evidence.intersection(sealed))
+        self.assertFalse(current_attestations.intersection(sealed))
         after = check_queue.validate_runtime(self.root)
         self.assertEqual([], after["errors"])
-        for receipt_id in trio:
-            self.assertNotIn(receipt_id, after["receipt_catalog"],
-                             "sealed rows leave the hot catalog")
-            self.assertIn(receipt_id, after["receipt_catalog"].cold)
+        for receipt_id in current_property_evidence | current_attestations:
+            self.assertIn(receipt_id, after["receipt_catalog"])
 
     def test_sealing_refuses_a_runtime_with_errors(self):
         """A bundle that cannot replay hot cannot claim the shortcut."""
@@ -690,10 +822,9 @@ class SealReceiptsTests(UpdateQueueTests):
         self.close_b1()
         self.assertEqual(0, self.seal("--apply").returncode)
         result = check_queue.validate_runtime(self.root)
-        item = result["items_by_id"]["B1"]
         errors = []
         receipt = check_queue._require_receipt(
-            result["receipt_catalog"], item["close_gate_receipt"],
+            result["receipt_catalog"], "audit-superseded-b1-history",
             "sealed-consumer probe", errors,
             expected={"merged_snapshot_sha256": "sha256:" + "0" * 64})
         self.assertIsNone(receipt)

@@ -12,7 +12,8 @@
 #   - `key: value` scalars (string/number/boolean/null, quoted strings, inline `[]`);
 #   - `- item` lists indented under `key:`;
 #   - list items may be a one-level flat map; two-level indented nested maps.
-#   Not allowed: anchors/aliases, block scalars (| >), flow maps {}, tags, multi-document.
+#   Not allowed: anchors/aliases, block scalars (| >), non-empty flow maps, tags, multi-document.
+#   The exact empty mapping `{}` is allowed where a schema requires an explicit empty state.
 # =============================================================================
 
 generated_at: "2026-07-21T00:00:00Z"  # AuditPlan generation time = artifact/contract snapshot freeze time (K12/07 step 1)

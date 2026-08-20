@@ -23,13 +23,17 @@ import check_queue
 import compile_queue
 import kblib
 import amendment_policy
+import metadata_execution_contract
+import metadata_property_state
+import project_page_state
 
 TOOL = "apply_amendment"
-TOOL_VERSION = "1.2.0"
+TOOL_VERSION = "1.3.0"
 PLAN_PREFIX = ".cambium/deltas/amendments"
 RECEIPT_PATH = ".cambium/receipts/amendments.jsonl"
 OPERATIONS = (
     "scope-replan", "cancel-batch", "gap-routing-reconciliation",
+    "property-state-migration",
 )
 PLAN_FIELDS = (
     "schema_version", "amendment_id", "operation", "affected_pages",
@@ -52,6 +56,20 @@ AMENDMENT_BINDINGS = {
     "coverage_proposal_sha256": "coverage_proposal_sha256",
     "cancel_batch_id": "cancel_batch_id",
 }
+
+PROPERTY_MIGRATION_BINDING_FIELDS = (
+    "property_state_migration_records",
+    "property_state_migration_count",
+    "property_state_migration_set_sha256",
+    "metadata_execution_contract_fingerprint",
+    "metadata_execution_rule_fingerprint",
+    "operation_capability",
+    "selected_profile_manifest",
+    "profile_snapshot_sha256",
+    "profile_contract_fingerprint",
+    "profile_load_inputs_sha256",
+)
+LEGACY_PROPERTY_ADOPTION_OPERATION = "legacy-property-adoption-v1"
 
 
 # ---------------------------------------------------------------------------
@@ -161,11 +179,13 @@ def _validate_plan(plan):
     after_scope = plan.get("scope_version_after")
     if not _nonempty(before_scope) or not _nonempty(after_scope):
         raise ValueError("scope versions must be non-empty strings")
-    if (plan["operation"] == "gap-routing-reconciliation" and
+    if (plan["operation"] in (
+            "gap-routing-reconciliation", "property-state-migration") and
             before_scope != after_scope):
         raise ValueError(
-            "gap-routing-reconciliation must preserve scope_version")
-    if (plan["operation"] != "gap-routing-reconciliation" and
+            "%s must preserve scope_version" % plan["operation"])
+    if (plan["operation"] not in (
+            "gap-routing-reconciliation", "property-state-migration") and
             before_scope == after_scope):
         raise ValueError("a scope/cancel Amendment must change scope_version")
     for field in ("queue_revision_before", "queue_revision_after",
@@ -175,10 +195,12 @@ def _validate_plan(plan):
             raise ValueError("%s must be a non-negative integer" % field)
     if plan["queue_revision_before"] < 1:
         raise ValueError("queue_revision_before must be at least 1")
-    if plan["queue_revision_after"] != plan["queue_revision_before"] + 1:
+    expected_queue_after = plan["queue_revision_before"] + 1
+    if plan["queue_revision_after"] != expected_queue_after:
         raise ValueError("queue_revision_after must increment by exactly one")
     if plan["operation"] in (
-            "scope-replan", "gap-routing-reconciliation"):
+            "scope-replan", "gap-routing-reconciliation",
+            "property-state-migration"):
         if plan["state_revision_after"] != plan["state_revision_before"]:
             raise ValueError("%s must preserve state_revision" %
                              plan["operation"])
@@ -193,6 +215,10 @@ def _validate_plan(plan):
             raise ValueError("cancel-batch affected_batches must contain only cancel_batch_id")
         if plan["state_revision_after"] != plan["state_revision_before"] + 1:
             raise ValueError("cancel-batch state_revision_after must increment by one")
+    if (plan["operation"] == "property-state-migration" and
+            plan["affected_batches"]):
+        raise ValueError(
+            "property-state-migration affected_batches must be empty")
     if not _nonempty(plan.get("coverage_proposal_path")):
         raise ValueError("coverage_proposal_path must be a non-empty string")
     if not check_queue.SHA256_RE.fullmatch(
@@ -272,6 +298,94 @@ def _map_by_id(values, field, label):
 def _changed_keys(before, after):
     return sorted(key for key in set(before).union(after)
                   if before.get(key) != after.get(key))
+
+
+def _property_state_migration_plan(
+        root, current_pages, proposed_pages, affected_pages, profile_view):
+    """Derive the exact legacy observation + page-removal subtransaction.
+
+    The Amendment plan may declare the Coverage after-image, but it cannot
+    declare that a historical date was earned.  This function therefore
+    proves each marker against an immutable live page snapshot and composes
+    its field set/value shapes from the authorized Profile plus the compiled
+    Core metadata contract.  ``project_page_state`` remains the sole page
+    transaction publisher.
+    """
+    selected = list(affected_pages)
+    if selected != sorted(set(selected)):
+        raise ValueError(
+            "property-state-migration affected_pages must be sorted and "
+            "unique")
+    declared = {}
+    for path in selected:
+        before = current_pages.get(path)
+        after = proposed_pages.get(path)
+        if not isinstance(before, dict) or not isinstance(after, dict):
+            raise ValueError(
+                "property-state-migration page %s is absent from one "
+                "Coverage image" % path)
+        if "property_state" in before:
+            raise ValueError(
+                "property-state-migration page %s already has current "
+                "property_state" % path)
+        if after.get("property_state") != {}:
+            raise ValueError(
+                "property-state-migration page %s must adopt explicit empty "
+                "property_state" % path)
+        legacy = after.get(check_queue.LEGACY_PROPERTY_STATE_FIELD, {})
+        declared[path] = copy.deepcopy(legacy)
+    metadata_contract, rules = \
+        metadata_property_state.authorized_profile_projection_rules(
+            root, profile_view)
+    if not metadata_execution_contract.compiled_capability_supports(
+            metadata_contract, LEGACY_PROPERTY_ADOPTION_OPERATION,
+            LEGACY_PROPERTY_ADOPTION_OPERATION, kind="writer"):
+        raise ValueError(
+            "compiled metadata contract does not authorize the %s writer "
+            "operation" % LEGACY_PROPERTY_ADOPTION_OPERATION)
+    migration = metadata_property_state.build_legacy_property_removal_plan(
+        root, selected, rules=rules, declared_legacy=declared)
+    migration["metadata_execution_contract_fingerprint"] = \
+        metadata_contract.contract_fingerprint
+    migration["metadata_execution_rule_fingerprint"] = \
+        migration["plan"].contract_rule_fingerprint
+    migration["operation_capability"] = \
+        LEGACY_PROPERTY_ADOPTION_OPERATION
+    for field in (
+            "selected_profile_manifest", "profile_snapshot_sha256",
+            "profile_contract_fingerprint", "profile_load_inputs_sha256"):
+        migration[field] = profile_view.get(field)
+    return migration
+
+
+def _property_state_migration_bindings(migration):
+    return {
+        "property_state_migration_records": copy.deepcopy(
+            migration["records"]),
+        "property_state_migration_count": migration["count"],
+        "property_state_migration_set_sha256": migration["set_sha256"],
+        "metadata_execution_contract_fingerprint": migration[
+            "metadata_execution_contract_fingerprint"],
+        "metadata_execution_rule_fingerprint": migration[
+            "metadata_execution_rule_fingerprint"],
+        "operation_capability": migration["operation_capability"],
+        "selected_profile_manifest": migration[
+            "selected_profile_manifest"],
+        "profile_snapshot_sha256": migration["profile_snapshot_sha256"],
+        "profile_contract_fingerprint": migration[
+            "profile_contract_fingerprint"],
+        "profile_load_inputs_sha256": migration[
+            "profile_load_inputs_sha256"],
+    }
+
+
+def _require_property_state_migration_binding(amendment, migration):
+    expected = _property_state_migration_bindings(migration)
+    for field, value in expected.items():
+        if amendment.get(field) != value:
+            raise ValueError(
+                "Progress Amendment %s does not match the current exact "
+                "property migration" % field)
 
 
 def _changed_gap_pages(current, proposal):
@@ -495,7 +609,11 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
     if proposal_sha != plan["coverage_proposal_sha256"]:
         raise ValueError("Coverage proposal SHA does not match plan")
 
-    current = (check_queue.validate_runtime(root)
+    migration_admission = plan["operation"] == "property-state-migration"
+    current = (check_queue.validate_runtime(
+                   root,
+                   allow_legacy_property_state_for_migration=
+                       migration_admission)
                if admitted_runtime is None else admitted_runtime)
     if (not isinstance(current, dict) or
             current.get("root") != root):
@@ -568,6 +686,7 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
         transaction_sequence, previous_transaction_commit_receipt,
         queue.get("task_id"), registration_receipt)
     transition = None
+    property_migration = None
 
     if plan["operation"] == "scope-replan":
         compile_base = copy.deepcopy(queue)
@@ -600,6 +719,27 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
                 "affected_batches does not match gap-routing impact; "
                 "found=%r expected=%r" %
                 (impact["affected_batches"], plan["affected_batches"]))
+    elif plan["operation"] == "property-state-migration":
+        if proposed_pages.keys() != current_pages.keys():
+            raise ValueError(
+                "property-state-migration may not add or remove Coverage pages")
+        if changed_specs:
+            raise ValueError(
+                "property-state-migration may not change batch_specs")
+        if plan["affected_batches"] or impact["affected_batches"]:
+            raise ValueError(
+                "property-state-migration may not affect Queue batches")
+        property_migration = _property_state_migration_plan(
+            root, current_pages, proposed_pages, plan["affected_pages"],
+            authority["profile_view"])
+        _require_property_state_migration_binding(
+            amendment, property_migration)
+        queue_new = copy.deepcopy(queue)
+        # Coverage changed even though Queue membership did not.  Advance the
+        # cross-ledger revision so the initial Queue receipt is not asked to
+        # authorize a different Coverage after-image.
+        queue_new["queue_revision"] = plan["queue_revision_after"]
+        queue_new["state_revision"] = plan["state_revision_after"]
     else:
         if proposed_pages.keys() != current_pages.keys():
             raise ValueError("cancel-batch may not add or remove Coverage pages")
@@ -689,6 +829,9 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
         receipt["queue_revision_after"] = plan["queue_revision_after"]
         receipt["state_revision_before"] = plan["state_revision_before"]
         receipt["state_revision_after"] = plan["state_revision_after"]
+        if property_migration is not None:
+            receipt.update(_property_state_migration_bindings(
+                property_migration))
 
     overrides = {
         check_queue.COVERAGE_PATH: (coverage_text, proposal),
@@ -700,6 +843,9 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
         pending.append(transition)
     final_check = check_queue.validate_runtime(
         root, state_overrides=overrides, extra_receipts=pending,
+        page_projection_overrides=(
+            property_migration["after_text_by_path"]
+            if property_migration is not None else None),
         **authority_kwargs)
     if final_check["errors"]:
         raise ValueError("planned final state fails check_queue: %s" %
@@ -721,6 +867,7 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
         "task_id": queue.get("task_id"),
         "impact": impact,
         "proposal": proposal,
+        "property_state_migration": property_migration,
         "authority": authority,
     }
 
@@ -760,6 +907,9 @@ def _commit_transaction(root, prepared, receipt_path):
     )
     _transaction_fields(abort, prepared["before_sha"], prepared["after_sha"])
     abort.update(prepared["contract_fields"])
+    if prepared.get("property_state_migration") is not None:
+        abort.update(_property_state_migration_bindings(
+            prepared["property_state_migration"]))
     operation = _lock_operation(
         plan, prepared["transaction_id"], prepared["plan_sha"],
         prepared["before_sha"], prepared["after_sha"],
@@ -780,6 +930,15 @@ def _commit_transaction(root, prepared, receipt_path):
         ),
     })
     operation.update(check_queue.runtime_authority_lock_fields(authority))
+    if prepared.get("property_state_migration") is not None:
+        operation.update({
+            "operation_capability": LEGACY_PROPERTY_ADOPTION_OPERATION,
+            "property_state_migration_set_sha256": prepared[
+                "property_state_migration"]["set_sha256"],
+            "metadata_execution_rule_fingerprint": prepared[
+                "property_state_migration"][
+                    "metadata_execution_rule_fingerprint"],
+        })
     with kblib.runtime_write_lock(root, owner_metadata=operation) as lock:
         with kblib.no_authoritative_write_guard(lock):
             for name, path in prepared["paths"].items():
@@ -789,7 +948,10 @@ def _commit_transaction(root, prepared, receipt_path):
                     raise ValueError(
                         "%s changed after transaction planning" % name)
             locked = check_queue.validate_runtime(
-                root, **authority_kwargs)
+                root,
+                allow_legacy_property_state_for_migration=(
+                    plan["operation"] == "property-state-migration"),
+                **authority_kwargs)
             if locked["errors"]:
                 raise ValueError("runtime changed before write: %s" %
                                  "; ".join(locked["errors"]))
@@ -814,6 +976,33 @@ def _commit_transaction(root, prepared, receipt_path):
             amendment_policy.require_decision_binding(
                 locked["progress"].get("contract") or {},
                 locked_impact, locked_amendment)
+            if prepared.get("property_state_migration") is not None:
+                locked_pages = _map_by_id(
+                    locked["coverage"].get("pages"), "path",
+                    "Coverage pages")
+                proposed_pages = _map_by_id(
+                    prepared["proposal"].get("pages"), "path",
+                    "Coverage proposal pages")
+                locked_migration = _property_state_migration_plan(
+                    root, locked_pages, proposed_pages,
+                    plan["affected_pages"], authority["profile_view"])
+                _require_property_state_migration_binding(
+                    locked_amendment, locked_migration)
+                if (_property_state_migration_bindings(locked_migration) !=
+                        _property_state_migration_bindings(
+                            prepared["property_state_migration"])):
+                    raise ValueError(
+                        "property-state-migration page plan changed under "
+                        "the writer lock")
+                prepared["property_state_migration"] = locked_migration
+        page_transaction = None
+        if prepared.get("property_state_migration") is not None:
+            page_plan = prepared["property_state_migration"]["plan"]
+            if any(page.changed for page in page_plan.pages):
+                page_transaction = project_page_state.stage_projection_plan(
+                    root, page_plan, lock,
+                    transaction_id="amendment-property-%s" %
+                    prepared["transaction_id"])
         final_receipts = ([prepared["transition"]]
                           if prepared["transition"] else []) + [
                               prepared["commit"]]
@@ -857,6 +1046,8 @@ def _commit_transaction(root, prepared, receipt_path):
                 check_queue.require_runtime_authority_current(
                     root, authority,
                     "runtime authority changed during %s write" % name)
+            if page_transaction is not None:
+                page_transaction.publish()
             post = check_queue.validate_runtime(
                 root,
                 extra_receipts=(
@@ -891,9 +1082,26 @@ def _commit_transaction(root, prepared, receipt_path):
                 raise ValueError("persisted transaction evidence failed "
                                  "check_queue: %s" %
                                  "; ".join(persisted["errors"]))
+            if page_transaction is not None:
+                page_transaction.commit()
         except Exception as exc:
-            rollback_failures = _restore(
-                prepared["paths"], prepared["before_raw"])
+            if (page_transaction is not None and
+                    page_transaction.state == "commit-cleanup-failed"):
+                raise ValueError(
+                    "property migration committed but page recovery cleanup "
+                    "is incomplete; inspect the retained writer journal: %s" %
+                    exc) from exc
+            rollback_failures = []
+            if (page_transaction is not None and
+                    page_transaction.state not in
+                    ("rolled-back", "committed")):
+                try:
+                    page_transaction.rollback()
+                except Exception as page_error:
+                    rollback_failures.append(
+                        "page projection: %s" % page_error)
+            rollback_failures.extend(_restore(
+                prepared["paths"], prepared["before_raw"]))
             if outcomes["final"] == "not-attempted":
                 outcomes["final"] = (
                     kblib.receipt_outcome_from(
@@ -996,22 +1204,29 @@ def _run(args):
             return 1
     admission = None
     if args.apply:
-        admission = check_queue.validate_runtime(root)
-        if admission["errors"]:
-            print("[FAIL] current runtime is inconsistent: %s" %
-                  "; ".join(admission["errors"]))
-            return 1
-        barrier = check_queue.delta_apply_write_barrier(
-            admission, "apply_amendment", "apply")
-        if barrier:
-            print("[FAIL] %s" % barrier)
-            return 1
+        strict_admission = check_queue.validate_runtime(root)
+        if not strict_admission["errors"]:
+            # Preserve the ordinary writer invariant: a healthy runtime must
+            # pass the global applied-delta barrier before this command opens
+            # or interprets an Amendment plan.
+            barrier = check_queue.delta_apply_write_barrier(
+                strict_admission, "apply_amendment", "apply")
+            if barrier:
+                print("[FAIL] %s" % barrier)
+                return 1
+            admission = strict_admission
+        # A legacy property-state before-image is intentionally not healthy
+        # under the current validator.  In that one case only _prepare_result
+        # may read the exact plan and select the narrowly-scoped migration
+        # admission while validating the complete proposal.  Non-migration
+        # plans simply re-run strict admission there and remain rejected.
     try:
         receipt_path = kblib.managed_repository_path(
             root, args.receipts, ".cambium/receipts",
             suffixes=(".jsonl",), must_exist=False)
         prepared = _prepare_result(
-            root, args.plan, expected, admitted_runtime=admission)
+            root, args.plan, expected,
+            admitted_runtime=admission)
     except (OSError, UnicodeError, ValueError, TypeError,
             kblib.YamlSubsetError) as exc:
         print("[FAIL] %s" % exc)

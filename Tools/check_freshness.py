@@ -62,7 +62,7 @@ import maintenance_candidates
 import profile_admission
 
 TOOL = "check_freshness"
-TOOL_VERSION = "2.0.0"
+TOOL_VERSION = "2.1.0"
 
 # Re-verification interval (days) per volatility tier.
 INTERVAL_DAYS = freshness_engine.INTERVAL_DAYS
@@ -565,9 +565,23 @@ def _candidate_details(outcome, as_of):
         )
         return (
             "invalid completed-event date: %s; every explicit "
-            "last_verified / last_reviewed value must be YYYY-MM-DD and an "
+            "last_content_modified / last_verified / last_reviewed value "
+            "must be YYYY-MM-DD and an "
             "invalid value cannot fall back to another field (as_of=%s, "
             "priority=%s)" % (events, as_of.isoformat(), priority)
+        )
+    if outcome.kind == freshness_engine.MODIFIED_SINCE_REVIEW:
+        modified = next(
+            (reason for reason in outcome.reasons
+             if reason.code == "content_modified_since_review"), None)
+        return (
+            "content modified since the current review: "
+            "last_content_modified=%s is later than last_reviewed (or no "
+            "current review exists); review evidence bound to the prior "
+            "semantic content cannot authorize this page (as_of=%s, "
+            "priority=%s)" % (
+                _date_text(modified.date_value) if modified else "unknown",
+                as_of.isoformat(), priority)
         )
     if outcome.kind == freshness_engine.UNPARSEABLE_FRONTMATTER:
         return (

@@ -5,7 +5,7 @@
 #   by hand, and a hand edit is reported by --check as a HOLD.
 # regenerate with: python3 Tools/compile_cli_contract.py .
 # verify with:     python3 Tools/compile_cli_contract.py . --check
-# `source_hash` covers the manifest of the 40 tool sources listed
+# `source_hash` covers the manifest of the 44 tool sources listed
 #   under source_files, each with its own sha256.
 # A positional argument is one whose `option_strings` is empty.
 # `choices` is the admissible SET in canonical order, not the
@@ -24,6 +24,7 @@ source_files:
   - Tools/apply_amendment.py
   - Tools/apply_contract_amendment.py
   - Tools/apply_delta.py
+  - Tools/apply_metadata_transition.py
   - Tools/apply_profile_adoption.py
   - Tools/apply_task_plan.py
   - Tools/check_batch_close.py
@@ -45,9 +46,12 @@ source_files:
   - Tools/compose_vocab.py
   - Tools/duplicate_check.py
   - Tools/init_state.py
+  - Tools/metadata_execution_contract.py
   - Tools/profile_onboarding_status.py
   - Tools/project_page_state.py
   - Tools/record_corpus_acceptance.py
+  - Tools/record_gate_attestation.py
+  - Tools/record_gate_result.py
   - Tools/register_amendment.py
   - Tools/render_boundary_projection.py
   - Tools/render_host_configs.py
@@ -60,7 +64,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:30cab5ad97ad4ba7ac1145e6f5cd4717ae0890f6571d1434749c9fd119de6927
+source_hash: sha256:32442c746f8711513df36fab4e5840d25f77aeee5b1fe01d3ddaf4057739743c
 receipt_shape:
   base_fields:
     - receipt_id
@@ -75,7 +79,7 @@ receipt_shape:
   conditional_fields:
     - gate_id
   extension_policy: derived-per-tool-from-source
-tool_count: 40
+tool_count: 44
 tools:
   - tool: adopt_standards
     module: Tools/adopt_standards.py
@@ -214,7 +218,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_amendment
     module: Tools/apply_amendment.py
-    source_hash: sha256:a6f51c35c0ba5194563e69d314a10bd2c4fd9f51f0e16dd2cc46a8d516c1a563
+    source_hash: sha256:7d0b77af449ad4e09c1ab1dc0bbf0e4390a15c1a6f56d4483728630716ef2743
     description: Apply one approved cross-Ledger Amendment transaction
     arguments:
       - dest: root
@@ -444,7 +448,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_delta
     module: Tools/apply_delta.py
-    source_hash: sha256:04d51b5ba2858fd05764e8609b2783358b991a02d244aa74c0f403635cf06ecb
+    source_hash: sha256:3749db54ecc0d713c657eb32d1fe52011d65eb64e3a4c4938430344bcfe957d2
     description: Deterministic Coverage Delta application
     arguments:
       - dest: ledger
@@ -586,12 +590,186 @@ tools:
       - coverage_ledger_path
       - delta_path
       - delta_sha256
+      - manifest_semantic_before_set_sha256
+      - metadata_execution_contract_fingerprint
+      - metadata_execution_rule_fingerprint
+      - opening_transition_receipt
+      - profile_contract_fingerprint
+      - profile_load_inputs_sha256
+      - profile_snapshot_sha256
+      - property_events
       - queue_revision
       - queue_state_revision
       - receipt_path
       - required_queue_sha256
+      - selected_profile_manifest
+      - semantic_content_protocol
       - task_id
     receipt_extensions_extraction: partial
+  - tool: apply_metadata_transition
+    module: Tools/apply_metadata_transition.py
+    source_hash: sha256:71d687f1a2afb4006dc19b90bcb27e886ca46ce6e577d294802925523e7ae0cd
+    description: Apply one receipt-backed Profile metadata transition
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: gate_id
+        option_strings:
+          - --gate-id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: exact typed Profile Extension Gate ID
+      - dest: page
+        option_strings:
+          - --page
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-relative Markdown target
+      - dest: value
+        option_strings:
+          - --value
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: requested registered completion value
+      - dest: gate_receipt
+        option_strings:
+          - --gate-receipt
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: current producer receipt ID for this Gate
+      - dest: actor_role
+        option_strings:
+          - --actor-role
+        required: false
+        default: worker
+        default_type: str
+        choices:
+          - integrator
+          - worker
+        nargs: null
+        action: store
+        type: null
+        help: declared caller role; only integrator may write
+      - dest: expected_coverage_sha256
+        option_strings:
+          - --expected-coverage-sha256
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: Coverage fingerprint observed by the caller
+      - dest: expected_page_sha256
+        option_strings:
+          - --expected-page-sha256
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: target page fingerprint observed by the caller
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: fresh JSONL path under .cambium/receipts; default is <receipt_id>.jsonl
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: commit owner state and page projection
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the applied receipt as one JSON array
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - active_standards_sha256
+      - actor_role
+      - after_coverage_sha256
+      - after_page_sha256
+      - after_progress_sha256
+      - after_repository_snapshot_sha256
+      - after_required_queue_sha256
+      - before_coverage_sha256
+      - before_page_sha256
+      - before_progress_sha256
+      - before_repository_snapshot_sha256
+      - before_required_queue_sha256
+      - consumer_capability
+      - gate_id
+      - gate_receipt
+      - gate_receipt_checked_at
+      - judgment_item_id
+      - metadata_execution_contract_fingerprint
+      - pass_authority_role_id
+      - producer_capability
+      - producer_kind
+      - producer_reference
+      - profile_contract_fingerprint
+      - profile_load_inputs_sha256
+      - profile_snapshot_sha256
+      - property_field
+      - receipt_path
+      - receipt_schema
+      - requested_completion_value
+      - root
+      - selected_profile_manifest
+      - selected_profile_manifest_sha256
+      - semantic_content_fingerprint
+      - transition_id
+    receipt_extensions_extraction: complete
   - tool: apply_profile_adoption
     module: Tools/apply_profile_adoption.py
     source_hash: sha256:7ab4234eeafc78d056749da95e73d8e01c830ddc8d2903df1792f04cda03faf4
@@ -677,7 +855,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_task_plan
     module: Tools/apply_task_plan.py
-    source_hash: sha256:aa08bd9afb8973bf363e03db2cb8ea3cd6d0bbb083250f899add1f495408da6c
+    source_hash: sha256:df8993aceff2c051c2d5328ae1c84801cef24db7455ab7bfda1ada1c24d93ab9
     description: Materialize a task runtime from one confirmed plan.
     arguments:
       - dest: root
@@ -741,7 +919,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_batch_close
     module: Tools/check_batch_close.py
-    source_hash: sha256:9881abf97e40b145b92008cd25c564a3bdfcc59712fc2e0728c9aa2638822645
+    source_hash: sha256:b887f5a22666a417e47a4625b77b5c1b5164d8595fe26cec15f332665e67e2b9
     description: Run and publish the K12/09 batch-close evidence bundle
     arguments:
       - dest: root
@@ -898,15 +1076,21 @@ tools:
       - global_review_receipt
       - integrator_id
       - merged_snapshot_sha256
+      - metadata_execution_contract_fingerprint
+      - page_review_receipt_count
+      - page_review_receipt_set_sha256
+      - page_review_receipts
       - progress_ledger_sha256
       - queue_consistency_receipt
       - queue_revision
       - queue_state_revision
       - repository_snapshot_sha256
       - required_queue_sha256
+      - reviewed_on
       - reviewer_attestation_receipt
       - reviewer_id
       - root
+      - semantic_content_sha256
       - seq
       - source_command
       - task_id
@@ -1072,7 +1256,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_freshness
     module: Tools/check_freshness.py
-    source_hash: sha256:2be93cc81feae2a1af130c61509d83f06a796844ae3493f4dec0e2a9a0a23867
+    source_hash: sha256:d6e333b5f6ff533b6669f6366418c190d6f7f8bc429e71517c86c2984ffa9a7e
     description: Closed-world freshness / review_by candidate check
     arguments:
       - dest: vault_root
@@ -1302,7 +1486,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_page_contract
     module: Tools/check_page_contract.py
-    source_hash: sha256:9ea05d77f7b4f7596c9bca9ba3b367fbd2efa84927874761e74eeed38dbd11fb
+    source_hash: sha256:3696d3b0024a5f2e96dd7012f47ecf91caa430ddafe50c177f8cdfbe1c4c0492
     description: "Validate pages against the compiled frontmatter page contract (gate: page-contract; advisory by default)."
     arguments:
       - dest: vault_root
@@ -1404,7 +1588,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_profile
     module: Tools/check_profile.py
-    source_hash: sha256:07af5b7f9dcf2ee6ad3e32c2f1485abeeaea27fa83f6a5467d493f7d749a61ac
+    source_hash: sha256:cda331e1d5afd149bd006b009e09cf9293095a2e9e07f15895815a579646b7e5
     description: Profile manifest completeness and unfilled-template check
     arguments:
       - dest: profile_dir
@@ -1582,7 +1766,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:f4ace1d0bf867cee2fd21d1ae44f09c419bb2897c6a95472d18fbdb8dfa823f5
+    source_hash: sha256:54ffdea3a5cf70527620eaa812a487c85e87abe2ecb88e767c961cc240c71343
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -2615,6 +2799,69 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+  - tool: metadata_execution_contract
+    module: Tools/metadata_execution_contract.py
+    source_hash: sha256:0b1d5240bd5cfd6b4edc5cce2dc1af6840b0cb8a84226e6b972779a373c282c1
+    description: Compile and load Cambium's closed metadata-execution authority contract. This module is deliberately the single authority boundary between metadata declarations and executable writers. A field rule is executable only when an installed writer capability declares the same ``(field, transition, adapter)`` operation, and every installed writer operation must be authorized by exactly one rule. Unknown keys, unknown adapters, orphan implementations, and partial evidence bindings fail closed.
+    arguments:
+      - dest: root
+        option_strings:
+          - --root
+        required: false
+        default: .
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: authority
+        option_strings:
+          - --authority
+        required: false
+        default: kernel/K08 Metadata and Status/metadata-authority-base.yaml
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: capabilities
+        option_strings:
+          - --capabilities
+        required: false
+        default: Tools/operation-capabilities.yaml
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: output
+        option_strings:
+          - --output
+        required: false
+        default: Tools/compiled/metadata-execution-contract.json
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: null
+      - dest: check
+        option_strings:
+          - --check
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: null
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
   - tool: profile_onboarding_status
     module: Tools/profile_onboarding_status.py
     source_hash: sha256:cde3d167db14066a1b1325f16666451dc473bc83f88e47927edcce0f7510c6c8
@@ -2657,8 +2904,8 @@ tools:
     receipt_extensions_extraction: complete
   - tool: project_page_state
     module: Tools/project_page_state.py
-    source_hash: sha256:588cf84b7ab691e21b6861a88760b74aae2326a085606319a3b31963c700de0a
-    description: Project Ledger-owned state onto page frontmatter
+    source_hash: sha256:c1386b4b3bcd1d3f56d9e0cf0246b956f13e5d09e1ca85a9d5a1eaf409cb859f
+    description: Project metadata-contract owner state onto page frontmatter
     arguments:
       - dest: root
         option_strings: []
@@ -2769,9 +3016,212 @@ tools:
       - seq
       - structural_check_receipt
     receipt_extensions_extraction: partial
+  - tool: record_gate_attestation
+    module: Tools/record_gate_attestation.py
+    source_hash: sha256:73e8ad584a4c8e77f3510c09666496c2c7f2a2dd4b24b8394d6f41f9b9a81e3e
+    description: Record snapshot-bound manual Extension Gate evidence
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: gate_id
+        option_strings:
+          - --gate-id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: exact typed Profile Extension Gate ID
+      - dest: page
+        option_strings:
+          - --page
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-relative Markdown target
+      - dest: value
+        option_strings:
+          - --value
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: requested registered completion value
+      - dest: actor_role
+        option_strings:
+          - --actor-role
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: declared pass-authority Profile role ID
+      - dest: statement
+        option_strings:
+          - --statement
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: bounded manual attestation statement
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/gate-attestations.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: receipt JSONL path under .cambium/receipts
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: append the evidence; omit for a dry run
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the applied receipt as one JSON array
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - active_standards_sha256
+      - actor_role
+      - attestation_statement
+      - consumer_capability
+      - gate_id
+      - judgment_item_id
+      - metadata_execution_contract_fingerprint
+      - page_sha256
+      - pass_authority_role_id
+      - producer_capability
+      - producer_kind
+      - producer_reference
+      - profile_contract_fingerprint
+      - profile_load_inputs_sha256
+      - profile_snapshot_sha256
+      - property_field
+      - receipt_schema
+      - requested_completion_value
+      - root
+      - selected_profile_manifest
+      - selected_profile_manifest_sha256
+      - semantic_content_fingerprint
+      - transition_id
+    receipt_extensions_extraction: complete
+  - tool: record_gate_result
+    module: Tools/record_gate_result.py
+    source_hash: sha256:6111c6ff8bd5bf28fdb659cc891db318c314bd878cc9b75d86c6e2b9a97ed8d0
+    description: Run a registered scan and record a deterministic Extension Gate result
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: gate_id
+        option_strings:
+          - --gate-id
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: exact deterministic typed Profile Gate ID
+      - dest: page
+        option_strings:
+          - --page
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: repository-relative Markdown target
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/gate-results.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: receipt JSONL path under .cambium/receipts
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: run and append the bound Gate result
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the applied receipt as one JSON array
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - root
+    receipt_extensions_extraction: complete
   - tool: register_amendment
     module: Tools/register_amendment.py
-    source_hash: sha256:25a6b771547db2e44b3032f77b714c7f7c191857669ff278c500a8ae9e3baef8
+    source_hash: sha256:771f56764acb33d78f7b4ad171b3937575e2f638e99dba4dacb3043e6ab17fa2
     description: Register one approved current-protocol Amendment
     arguments:
       - dest: root
@@ -2793,6 +3243,7 @@ tools:
         choices:
           - cancel-batch
           - gap-routing-reconciliation
+          - property-state-migration
           - queue-replan
           - scope-replan
         nargs: null
@@ -3461,7 +3912,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: seal_receipts
     module: Tools/seal_receipts.py
-    source_hash: sha256:e0ce52e4ae9f1300260606ce0e3aba1437d6028c581f94b82d743b0d89904ed0
+    source_hash: sha256:4dc262500ef60bb9cd7374c0be76266865e75d714051ada3262d94e43ab76e1e
     description: "Seal verified frozen receipt history (K12/07). --apply is a maintenance-window operation: run it only with no other Cambium or adopter writer, checker or receipt appender active against this repository."
     arguments:
       - dest: root
@@ -3594,7 +4045,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: update_queue
     module: Tools/update_queue.py
-    source_hash: sha256:9b029ff478565fd6bdb3c6c408d068c472780ab7e91cb484adfe47ab8076d3c4
+    source_hash: sha256:ae13490c35189a31bc9ce3f7371ef16a8fe21b1f6600e79676c0262d5234518e
     description: Apply one Required Queue transition
     arguments:
       - dest: root
@@ -3840,8 +4291,19 @@ tools:
       - delta_sha256
       - evidence_receipt
       - invalidation
+      - manifest_semantic_before_count
+      - manifest_semantic_before_records
+      - manifest_semantic_before_set_sha256
+      - metadata_execution_contract_fingerprint
+      - page_review_receipt_count
+      - page_review_receipts
+      - profile_contract_fingerprint
+      - profile_load_inputs_sha256
+      - profile_snapshot_sha256
       - queue_consistency_receipt
       - queue_revision
+      - selected_profile_manifest
+      - semantic_content_protocol
       - settlement_coverage_sha256_before
       - settlement_prospective_coverage_sha256
       - standards_revalidation_receipt

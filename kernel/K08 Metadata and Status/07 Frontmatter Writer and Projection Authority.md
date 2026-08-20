@@ -10,9 +10,31 @@ Fields sharing one YAML block does not mean they share one writer. This leaf own
 
 - **User state** (`learning_status`): user-owned. Only the user or an explicitly authorized learning flow writes it; bulk knowledge-base building never fills it, including to silence a checker candidate. Absence carries no quality meaning and never enters authoring or coverage completion.
 - **Derived freshness** (`review_by`): computed by `Tools/check_freshness.py` from the valid completed-event baseline and resolved volatility policy owned by [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|K08/05]]. By default it appears only in tool output, reports, and receipts, and is **not persisted** to the page — a persisted derived date goes stale the moment its inputs change. A real external validity date (a legal, contract, version, or expiry) is not derived freshness: it uses the explicitly named `source_valid_until` field or a formal override, never `review_by`.
-- **State projections** (`coverage_disposition`, `authoring_status`, `next_batch`): the Coverage Ledger and Required Queue are the sole owners. Any of these MAY persist as a tool-controlled page projection that a checker reconciles against the owner; hand-editing one never changes execution reality. `authoring_status` is earned in the Ledger by the batch lifecycle — the page copy only reports it, and a page copy that still shows the pre-close value after the Ledger moved is a checkable defect, as is a `next_batch` copy still naming a closed batch whose Ledger routing has been projected onward. The write-back timing is the batch close: after the close projection updates the Ledger, a projector (`Tools/project_page_state.py`, or the integrator acting as one) rewrites the page copies of every page the close touched — update to the owner value, remove when the owner value is empty, never invent a value the owner does not hold. `last_reviewed` is this projection's companion timestamp: it is written by the same close-time projector from the review evidence being consumed, not hand-advanced. `last_verified` is NOT part of this class and is never advanced by a close: it asserts that an external verification act happened, so writing or advancing it requires the verification evidence (a freshness or source-verification receipt) from the same change — a date bump without that evidence is a checkable defect in review.
+- **State and event projections**: the Coverage Ledger and Required Queue own
+  the current values and evidence pointers; the page only mirrors them.
+  `coverage_disposition`, `authoring_status`, and `next_batch` report lifecycle
+  state. `last_content_modified` is advanced only by a guarded Integrator
+  content-change event bound to the new semantic content fingerprint.
+  `last_reviewed` is advanced only by consumed review evidence bound to that
+  same fingerprint. A content change invalidates the prior review authority
+  instead of fabricating a review date. `last_verified` remains a separate
+  external-verification event and is never advanced by a close without its
+  own evidence. The compiled metadata execution contract names each owner,
+  source adapter, writer capability, timing, and invalidation rule; the generic
+  projector reconciles the page copy to that owner and never treats a hand edit
+  as execution reality.
 - **Profile expression bindings** (readiness axes and expression relations such as a profile's card binding): the kernel owns only this authority rule; the selected profile registers the concrete fields. A `mapped`-class value requires a resolvable reciprocal binding; a `ready`-class value is granted only by the profile's registered expression gate or receipt, never inferred from file existence or link resolvability. A profile with no expression layer marks these fields `forbidden`.
 
 ## Writer Rules
 
-Tools write only fields the compiled contract declares `derived` or `projection`; a checker never infers or rewrites a `user-owned` value or any value requiring an authority decision. A writer re-parses the target before writing and uses an atomic write. Writer overreach, a projection disagreeing with its canonical owner, and a hand-filled derived value are all checkable defects — `Tools/check_page_contract.py` reports them under the same advisory contract as [[kernel/K08 Metadata and Status/06 Frontmatter Applicability Contract|K08/06]]. Page frontmatter never becomes a second Queue or a personal learning database.
+Applicability and mutation authority are independent axes. A writer may change
+only a transition granted to its installed capability by the compiled metadata
+execution contract, after resolving the declared owner/source/evidence and
+write timing. Compilation fails both when a machine-managed transition has no
+writer and when an installed writer claims an undeclared transition. A checker
+never rewrites user-owned state or performs an authority judgment. Writers
+re-parse targets and use the shared guarded transaction boundary; owner state,
+evidence pointer, and page projection either reconcile together or fail closed.
+Writer overreach, stale evidence, and a page projection disagreeing with its
+owner are checkable defects. Page frontmatter never becomes a second Queue or
+a personal learning database.

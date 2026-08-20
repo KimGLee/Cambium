@@ -6,8 +6,8 @@ Provides:
    grammar is supported (matching the subset declared in the header comments
    of Tools/schemas/*.template.yaml):
    - `key: value` scalars (string / int / float / bool / null);
-   - quoted strings and the inline empty list `[]`, simple inline lists
-     `[a, b]`;
+   - quoted strings, the exact inline empty containers `[]` and `{}`, and
+     simple inline lists `[a, b]`;
    - `- item` lists indented under a `key:` line;
    - a list item may be a one-level flat map (`- key: value` followed by key
      lines at the same indentation);
@@ -15,7 +15,7 @@ Provides:
      naturally supports deeper nesting, but the standards convention only
      uses two levels).
    Not supported: duplicate mapping keys, anchors/aliases, multi-line strings
-   (| >), flow maps `{}`, tags, multiple documents.
+   (| >), non-empty flow maps, tags, multiple documents.
 2. Markdown helpers: frontmatter extraction, code-block stripping (preserving
    line numbers), heading extraction.
 3. Receipt helpers: construction and append-writing of machine-readable JSONL
@@ -40,7 +40,7 @@ import time
 from types import MappingProxyType
 import uuid
 
-LIB_VERSION = "1.8.0"
+LIB_VERSION = "1.9.0"
 
 # ---------------------------------------------------------------------------
 # Restricted YAML subset parser
@@ -72,7 +72,7 @@ def strip_yaml_comment(line):
 
 
 def parse_scalar(text):
-    """Parse a single scalar: quoted string, inline list, bool, null, int, float, bare string."""
+    """Parse one restricted scalar or exact inline empty container."""
     s = text.strip()
     if s == "":
         return None
@@ -80,6 +80,8 @@ def parse_scalar(text):
         return s[1:-1]
     if s == "[]":
         return []
+    if s == "{}":
+        return {}
     if s.startswith("[") and s.endswith("]"):
         inner = s[1:-1].strip()
         if not inner:
@@ -3073,8 +3075,11 @@ def _render_yaml_node(value, indent):
             if not isinstance(key, str) or not re.fullmatch(r"[^:\s][^:]*", key):
                 raise ValueError("unsupported YAML mapping key: %r" % (key,))
             if isinstance(child, dict):
-                lines.append("%s%s:" % (prefix, key))
-                lines.extend(_render_yaml_node(child, indent + 2))
+                if not child:
+                    lines.append("%s%s: {}" % (prefix, key))
+                else:
+                    lines.append("%s%s:" % (prefix, key))
+                    lines.extend(_render_yaml_node(child, indent + 2))
             elif isinstance(child, list):
                 if not child:
                     lines.append("%s%s: []" % (prefix, key))
@@ -3089,7 +3094,8 @@ def _render_yaml_node(value, indent):
         for child in value:
             if isinstance(child, dict):
                 if not child:
-                    raise ValueError("empty maps are outside the restricted YAML subset")
+                    lines.append("%s- {}" % prefix)
+                    continue
                 first = True
                 for key, grandchild in child.items():
                     if not isinstance(key, str) or not re.fullmatch(r"[^:\s][^:]*", key):
@@ -3097,8 +3103,10 @@ def _render_yaml_node(value, indent):
                     marker = "- " if first else "  "
                     line_prefix = prefix + marker
                     if isinstance(grandchild, (dict, list)):
-                        if isinstance(grandchild, list) and not grandchild:
-                            lines.append("%s%s: []" % (line_prefix, key))
+                        if not grandchild:
+                            empty = "{}" if isinstance(grandchild, dict) else "[]"
+                            lines.append("%s%s: %s" %
+                                         (line_prefix, key, empty))
                         else:
                             lines.append("%s%s:" % (line_prefix, key))
                             lines.extend(_render_yaml_node(grandchild, indent + 4))
@@ -3538,7 +3546,8 @@ def repository_tree_sha256(root, relative_directory):
     return repository_tree_snapshot(root, relative_directory).sha256
 
 
-def repository_snapshot_sha256(root):
+def repository_snapshot_sha256(root, byte_overrides=None,
+                               excluded_paths=None):
     """Hash the current repository content outside Git and Cambium state.
 
     The digest is a deterministic, path-sensitive snapshot of every regular
@@ -3552,10 +3561,54 @@ def repository_snapshot_sha256(root):
     special files fail closed because their target bytes are not a stable
     repository snapshot.  Each file is checked before and after reading so an
     in-place concurrent mutation cannot silently produce a mixed digest.
+
+    ``byte_overrides`` is a closed repository-path-to-bytes mapping used by a
+    composite writer to calculate the exact repository digest its already
+    staged after-images will produce.  Every named live path is still opened
+    and stability-checked; only the bytes fed into the final digest are
+    replaced.  Unknown, missing, non-canonical, or control-namespace paths
+    fail closed.  ``excluded_paths`` is an equally closed set for exact
+    transaction-artifact names that a caller already owns and validates; each
+    exclusion must exist in the enumerated repository view.
     """
     root_real = os.path.realpath(os.path.abspath(root))
     if not os.path.isdir(root_real):
         raise ValueError("repository snapshot root must be a directory")
+
+    if byte_overrides is None:
+        overrides = {}
+    elif not isinstance(byte_overrides, dict):
+        raise TypeError("repository snapshot byte_overrides must be a mapping")
+    else:
+        overrides = dict(byte_overrides)
+    for relative, data in overrides.items():
+        if (not isinstance(relative, str) or not relative or
+                relative.startswith("/") or "\\" in relative or
+                any(part in ("", ".", "..")
+                    for part in relative.split("/")) or
+                relative.split("/", 1)[0] in (".git", ".cambium") or
+                not isinstance(data, bytes)):
+            raise ValueError(
+                "repository snapshot override must bind canonical non-control "
+                "repository paths to bytes")
+    if excluded_paths is None:
+        exclusions = set()
+    elif (not isinstance(excluded_paths, (set, frozenset, tuple, list)) or
+          any(not isinstance(path, str) for path in excluded_paths)):
+        raise TypeError(
+            "repository snapshot excluded_paths must be a string collection")
+    else:
+        exclusions = set(excluded_paths)
+    for relative in exclusions:
+        if (not relative or relative.startswith("/") or "\\" in relative or
+                any(part in ("", ".", "..")
+                    for part in relative.split("/")) or
+                relative.split("/", 1)[0] in (".git", ".cambium") or
+                relative in overrides):
+            raise ValueError(
+                "repository snapshot exclusion must be a canonical, "
+                "non-overridden repository path")
+    unmatched_exclusions = set(exclusions)
 
     digest = hashlib.sha256()
     digest.update(b"cambium-repository-snapshot-v1\0")
@@ -3589,7 +3642,15 @@ def repository_snapshot_sha256(root):
         for name in sorted(visible_files):
             absolute = os.path.join(current, name)
             relative = os.path.relpath(absolute, root_real).replace(os.sep, "/")
+            if relative in exclusions:
+                unmatched_exclusions.discard(relative)
+                continue
             paths.append((relative, absolute))
+
+    if unmatched_exclusions:
+        raise ValueError(
+            "repository snapshot exclusion path(s) are absent: %s" %
+            ", ".join(sorted(unmatched_exclusions)))
 
     nofollow = getattr(os, "O_NOFOLLOW", None)
     if nofollow is None:
@@ -3648,11 +3709,22 @@ def repository_snapshot_sha256(root):
                               relative)
         finally:
             os.close(fd)
+        replacement = overrides.get(relative)
+        effective_size = (len(replacement)
+                          if replacement is not None else before.st_size)
+        effective_digest = (hashlib.sha256(replacement).digest()
+                            if replacement is not None
+                            else file_digest.digest())
         encoded = relative.encode("utf-8")
         digest.update(len(encoded).to_bytes(8, "big"))
         digest.update(encoded)
-        digest.update(before.st_size.to_bytes(8, "big"))
-        digest.update(file_digest.digest())
+        digest.update(effective_size.to_bytes(8, "big"))
+        digest.update(effective_digest)
+        overrides.pop(relative, None)
+    if overrides:
+        raise ValueError(
+            "repository snapshot override path(s) are absent: %s" %
+            ", ".join(sorted(overrides)))
     return "sha256:" + digest.hexdigest()
 
 
@@ -3718,7 +3790,7 @@ def atomic_write_yaml(path, data):
 def make_queue_receipt(action, target, result, details, seq=1, **fields):
     """Build a normal audit receipt with Queue before/after metadata."""
     receipt = make_receipt(
-        "update_queue", "1.3.0", action, target, result, details, seq
+        "update_queue", "1.5.0", action, target, result, details, seq
     )
     receipt.update(fields)
     return receipt

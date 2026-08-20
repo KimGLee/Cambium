@@ -206,17 +206,29 @@ class MaintenanceCandidateTests(unittest.TestCase):
                 self.assertTrue(any("source_kinds must be" in error
                                     for error in errors), errors)
 
-    def test_noncanonical_nested_values_fail_closed_without_exception(self):
-        for field, value in (("source_kinds", [[]]), ("disposition", {})):
+    def test_nested_container_values_fail_closed_without_exception(self):
+        cases = (
+            ("source_kinds", [[]],
+             "cannot be represented by canonical restricted YAML", False),
+            # Empty mappings are now a canonical restricted-YAML scalar so
+            # property_state can represent an explicit empty owner set.  They
+            # remain invalid for this scalar disposition field.
+            ("disposition", {}, "disposition has invalid value {}", True),
+        )
+        for field, value, expected, canonical in cases:
             with self.subTest(field=field):
                 record = self.record("Topics/A.md")
                 record[field] = value
                 errors, context = maintenance_candidates.validate_candidates(
                     self.root, [record])
-                self.assertTrue(any(
-                    "cannot be represented by canonical restricted YAML" in
-                    error for error in errors), errors)
-                self.assertIsNone(context["candidate_state_sha256"])
+                self.assertTrue(any(expected in error for error in errors),
+                                errors)
+                if canonical:
+                    self.assertRegex(
+                        context["candidate_state_sha256"],
+                        r"^sha256:[0-9a-f]{64}$")
+                else:
+                    self.assertIsNone(context["candidate_state_sha256"])
 
     def test_non_list_candidate_state_has_explicit_invalid_fingerprint(self):
         errors, context = maintenance_candidates.validate_candidates(

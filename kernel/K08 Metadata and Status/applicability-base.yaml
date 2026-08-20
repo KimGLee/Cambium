@@ -73,6 +73,9 @@ fields:
   first_seen:
     mode: optional
     shape: date
+  last_content_modified:
+    mode: optional
+    shape: date
   last_reviewed:
     mode: conditional
     shape: date

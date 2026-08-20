@@ -316,6 +316,12 @@ def setUpModule():
     # copied from the template; the flow under test replaces that candidate
     # with a scaffolder-created one so the whole path stays cp-free.
     tap._build_base(_FOUNDING_BASE)
+    # Keep tap's specialized adoption fixture, but complete its profile-load
+    # producer inputs from the producer-owned registry.  A hand-maintained
+    # fixture subset used to omit newly registered metadata contract assets,
+    # causing exact-spelling admission to fail before this E2E reached the
+    # semantic interview it is intended to exercise.
+    tpos.copy_profile_load_fixture(_FOUNDING_BASE)
     shutil.rmtree(_FOUNDING_BASE / "profiles" / PROFILE_ID)
     shutil.copyfile(REPOSITORY / "profiles" / "template-files.yaml",
                     _FOUNDING_BASE / "profiles" / "template-files.yaml")

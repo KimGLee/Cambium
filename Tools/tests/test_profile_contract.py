@@ -38,8 +38,10 @@ SCAN_HEADER = (
     "Judgment Item ID reference |\n"
     "|---|---|---|---|---|---|\n"
 )
-
-
+GATE_HEADER = (
+    "| " + " | ".join(profile_contract.EXTENSION_GATE_HEADER) + " |\n" +
+    "|" + "---|" * len(profile_contract.EXTENSION_GATE_HEADER) + "\n"
+)
 
 # Derived from the linker's own registry rather than re-listed: `check_profile`
 # refuses a repository whose interface and this registry disagree, so a slot
@@ -48,6 +50,10 @@ SCAN_HEADER = (
 SPECIAL_BINDINGS = {
     profile_contract.AUDIT_SLOT: "registries/audit-dimensions.md",
     profile_contract.SCAN_SLOT: "registries/registered-scans.md",
+    profile_contract.ROLE_SLOT: "registries/roles.md",
+    profile_contract.VOCABULARY_SLOT: "vocabulary-extensions.yaml",
+    profile_contract.METADATA_SLOT: "metadata-contract.yaml",
+    profile_contract.ROUTING_SLOT: "registries/routing-and-gates.md",
 }
 BINDING_BLOCK = "".join(
     "- `%s`: `%s`\n" % (name, SPECIAL_BINDINGS.get(name, "slots.md"))
@@ -67,14 +73,25 @@ class ProfileContractFixture:
         self.manifest = self.profile / "profile.md"
         self.audit = self.profile / "registries/audit-dimensions.md"
         self.scans = self.profile / "registries/registered-scans.md"
+        self.roles = self.profile / "registries/roles.md"
+        self.vocabulary = self.profile / "vocabulary-extensions.yaml"
+        self.metadata = self.profile / "metadata-contract.yaml"
+        self.routing = self.profile / "registries/routing-and-gates.md"
         self.owner = self.profile / "predicate.md"
         self.config = self.profile / "scan-configs/residual.yaml"
         self.generic_slot = self.profile / "slots.md"
         self.custom_tool = self.root / "Tools/custom_scan.py"
         self.bundled_tool = self.root / "Tools/check_residual_content.py"
+        self.capabilities = self.root / "Tools/operation-capabilities.yaml"
         self.write_defaults()
 
     def write_defaults(self):
+        for relative in (
+                profile_contract.KERNEL_APPLICABILITY_PATH,
+                profile_contract.KERNEL_RELATIONSHIP_PATH):
+            target = self.root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(REPOSITORY / relative, target)
         self.manifest.write_text(
             "# Sample\n\n## Profile Identity\n\n"
             "- `profile_id`: `sample`\n\n"
@@ -92,6 +109,11 @@ class ProfileContractFixture:
             path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
         self.write_audit()
         self.write_scans()
+        self.write_roles()
+        self.write_vocabulary()
+        self.write_metadata()
+        self.write_gates()
+        self.write_capabilities()
 
     def write_audit(self, *, registration="None", extension_rows="",
                     judgment_rows=None, extension_header=EXTENSION_HEADER,
@@ -128,6 +150,119 @@ class ProfileContractFixture:
             (prefix, SCAN_HEADER, rows, suffix),
             encoding="utf-8",
         )
+
+    def write_roles(self, registration="None", rows=""):
+        self.roles.write_text(
+            "# Role Registry\n\n"
+            "## Process Roles\n\n"
+            "| Kernel role | Bound actor or system ID/name |\n"
+            "|---|---|\n"
+            "| `proposer` | Agent |\n"
+            "| `gatekeeper` | Maintainer |\n"
+            "| `executor` | Agent |\n"
+            "| `stopper` | Maintainer |\n\n"
+            "## Knowledge Host\n\n"
+            "| Kernel role | Binding |\n"
+            "|---|---|\n"
+            "| `knowledge-host` | Markdown tree |\n"
+            "| `knowledge-host UI` | Headless |\n\n"
+            "## Extension Roles\n\n"
+            "- Registration: %s\n\n"
+            "| Role ID | Bound actor or system ID/name | Responsibility |\n"
+            "|---|---|---|\n%s" % (registration, rows),
+            encoding="utf-8")
+
+    def write_vocabulary(self, fields=(
+            "fields:\n"
+            "  unused_state:\n"
+            "    values:\n"
+            "      - unused\n")):
+        self.vocabulary.write_text(
+            "schema_version: 1\n" + fields, encoding="utf-8")
+
+    def write_metadata(self, field="unused_state", shape="nonempty-string"):
+        self.metadata.write_text(
+            "schema_version: 1\n"
+            "applicability:\n"
+            "  state: configured\n"
+            "applicability_differences: []\n"
+            "extension_fields:\n"
+            "  - field: %s\n"
+            "    mode: optional\n"
+            "    shape: %s\n"
+            "    owner: profiles/sample/predicate.md\n"
+            "relationship_extensions: []\n"
+            "section_roles: []\n" % (field, shape),
+            encoding="utf-8")
+
+    def write_gates(self, registration="None", rows="", header=GATE_HEADER,
+                    prefix="", suffix=""):
+        self.routing.write_text(
+            "# Routing And Gate Registry\n\n%s"
+            "## Extension Gates\n\n"
+            "- Registration: %s\n\n%s%s%s" %
+            (prefix, registration, header, rows, suffix),
+            encoding="utf-8")
+
+    def write_capabilities(self):
+        self.capabilities.write_text(
+            "schema_version: 1\n\n"
+            "capabilities:\n"
+            "  - capability_id: project-page-state-v2\n"
+            "    kind: writer\n"
+            "    capability_version: 2.0.0\n"
+            "    implementation_paths:\n"
+            "      - Tools/custom_scan.py\n"
+            "    operations:\n"
+            "      - operation: profile-extension-enum-owner-projection-v1\n"
+            "  - capability_id: metadata-transition-integrator-v1\n"
+            "    kind: consumer\n"
+            "    capability_version: 1.0.0\n"
+            "    implementation_paths:\n"
+            "      - Tools/custom_scan.py\n"
+            "    operations:\n"
+            "      - operation: typed-field-metadata-transition\n"
+            "  - capability_id: manual-attestation-v1\n"
+            "    kind: producer\n"
+            "    capability_version: 1.0.0\n"
+            "    implementation_paths:\n"
+            "      - Tools/custom_scan.py\n"
+            "    operations: []\n"
+            "  - capability_id: registered-scan-v1\n"
+            "    kind: producer\n"
+            "    capability_version: 1.0.0\n"
+            "    implementation_paths:\n"
+            "      - Tools/custom_scan.py\n"
+            "    operations: []\n"
+            "  - capability_id: manual-gate-attestation-v1\n"
+            "    kind: receipt-schema\n"
+            "    capability_version: 1.0.0\n"
+            "    implementation_paths:\n"
+            "      - Tools/custom_scan.py\n"
+            "    operations: []\n"
+            "  - capability_id: deterministic-gate-result-v1\n"
+            "    kind: receipt-schema\n"
+            "    capability_version: 1.0.0\n"
+            "    implementation_paths:\n"
+            "      - Tools/custom_scan.py\n"
+            "    operations: []\n",
+            encoding="utf-8")
+
+    def gate_row(self, *, gate_id="P:sample:readiness",
+                 owner="profiles/sample/predicate.md#Acceptance",
+                 transition="readiness-promotion", role="stopper",
+                 applicability="A readiness promotion is requested.",
+                 field="unused_state", completions="unused",
+                 judgment="sample-item", producer_kind="manual-attestation",
+                 producer_capability="manual-attestation-v1",
+                 receipt_schema="manual-gate-attestation-v1",
+                 consumer_capability="metadata-transition-integrator-v1"):
+        return (
+            "| `%s` | `%s` | `%s` | `%s` | %s | `%s` | `%s` | `%s` | "
+            "`%s` | `%s` | `%s` | `%s` |\n" %
+            (gate_id, owner, transition, role, applicability, field,
+             completions, judgment, producer_kind, producer_capability,
+             receipt_schema, consumer_capability))
 
     def load(self, manifest=None, sentinel="TODO(profile)"):
         return profile_contract.load_profile_contract(
@@ -218,6 +353,305 @@ class AuthorizedContractTests(unittest.TestCase):
                 self.assertTrue(contract.authorized, contract.diagnostics)
                 self.assertIsNotNone(contract.required_scan)
                 self.assertIsNotNone(contract.fingerprint)
+
+        atlas = profile_contract.load_profile_contract(
+            REPOSITORY, "profiles/examples/agent-atlas/profile.md")
+        self.assertEqual("Configured", atlas.extension_gate_registration)
+        self.assertEqual(1, len(atlas.extension_gates))
+        gate = atlas.extension_gates[0]
+        self.assertEqual("interview-readiness-promotion", gate.transition_id)
+        self.assertEqual("manual-attestation", gate.producer_kind)
+        self.assertEqual("interview-reviewer", gate.producer_reference)
+        self.assertEqual(("interview-ready",), gate.completion_values)
+
+
+class ExtensionGateContractTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture = ProfileContractFixture(self)
+
+    def checks(self, contract=None):
+        contract = contract or self.fixture.load()
+        return {diagnostic.check for diagnostic in contract.diagnostics}
+
+    def configure_manual_gate(self, **overrides):
+        self.fixture.write_gates(
+            registration="Configured",
+            rows=self.fixture.gate_row(**overrides))
+        return self.fixture.load()
+
+    def test_manual_gate_compiles_to_typed_ir_and_fingerprint_edges(self):
+        baseline = self.fixture.load()
+        contract = self.configure_manual_gate()
+
+        self.assertTrue(contract.authorized, contract.diagnostics)
+        self.assertNotEqual(baseline.fingerprint, contract.fingerprint)
+        self.assertEqual("Configured", contract.extension_gate_registration)
+        self.assertEqual(1, len(contract.extension_gates))
+        gate = contract.extension_gates[0]
+        self.assertEqual("P:sample:readiness", gate.gate_id)
+        self.assertEqual("readiness-promotion", gate.transition_id)
+        self.assertEqual("stopper", gate.pass_authority_role_id)
+        self.assertEqual("unused_state", gate.field_id)
+        self.assertEqual(("unused",), gate.completion_values)
+        self.assertEqual("stopper", gate.producer_reference)
+        edge_kinds = {
+            edge.kind for edge in contract.dependency_edges
+            if edge.owner_id == gate.gate_id
+        }
+        self.assertTrue({
+            "extension-gate-owner", "extension-gate-transition",
+            "extension-gate-role", "extension-gate-field",
+            "extension-gate-judgment",
+            "extension-gate-producer-capability",
+            "extension-gate-producer", "extension-gate-receipt-schema",
+            "extension-gate-consumer-capability",
+        }.issubset(edge_kinds))
+
+        self.fixture.write_gates(
+            registration="Configured",
+            rows=self.fixture.gate_row(
+                applicability="A different bounded predicate applies."))
+        changed_semantics = self.fixture.load()
+        self.assertTrue(changed_semantics.authorized,
+                        changed_semantics.diagnostics)
+        self.assertNotEqual(contract.fingerprint,
+                            changed_semantics.fingerprint)
+
+    def test_typed_gate_requires_generic_profile_enum_writer_operation(self):
+        text = self.fixture.capabilities.read_text(encoding="utf-8")
+        self.fixture.capabilities.write_text(
+            text.replace(
+                "      - operation: "
+                "profile-extension-enum-owner-projection-v1\n", ""),
+            encoding="utf-8")
+        contract = self.configure_manual_gate()
+        self.assertFalse(contract.authorized)
+        self.assertIn("extension-gate-writer-capability",
+                      self.checks(contract))
+        self.assertEqual((), contract.extension_gates)
+
+    def test_extension_role_is_linked_as_manual_producer(self):
+        self.fixture.write_roles(
+            registration="Configured",
+            rows=(
+                "| `release-reviewer` | Human reviewer | Authorize release. |\n"))
+        contract = self.configure_manual_gate(role="release-reviewer")
+        self.assertTrue(contract.authorized, contract.diagnostics)
+        self.assertEqual(
+            "release-reviewer", contract.extension_gates[0].producer_reference)
+
+    def test_non_field_gate_requires_a_separate_implemented_consumer(self):
+        contract = self.configure_manual_gate(
+            field="None", completions="None",
+            producer_kind="deterministic",
+            producer_capability="registered-scan-v1",
+            receipt_schema="deterministic-gate-result-v1")
+        self.assertIn(
+            "extension-gate-consumer-capability", self.checks(contract))
+        self.assertEqual((), contract.extension_gates)
+
+    def test_deterministic_typed_field_binds_one_scan_and_one_value(self):
+        contract = self.configure_manual_gate(
+            producer_kind="deterministic",
+            producer_capability="registered-scan-v1",
+            receipt_schema="deterministic-gate-result-v1")
+        self.assertTrue(contract.authorized, contract.diagnostics)
+        gate = contract.extension_gates[0]
+        self.assertEqual("sample-scan", gate.producer_reference)
+        self.assertEqual(("unused",), gate.completion_values)
+
+    def test_deterministic_typed_field_rejects_ambiguous_pass_value(self):
+        self.fixture.write_vocabulary(
+            "fields:\n"
+            "  unused_state:\n"
+            "    values:\n"
+            "      - unused\n"
+            "      - ready\n")
+        contract = self.configure_manual_gate(
+            completions="unused, ready",
+            producer_kind="deterministic",
+            producer_capability="registered-scan-v1",
+            receipt_schema="deterministic-gate-result-v1")
+        self.assertIn(
+            "extension-gate-deterministic-completion",
+            self.checks(contract))
+        self.assertEqual((), contract.extension_gates)
+
+    def test_typed_gate_field_requires_metadata_extension_applicability(self):
+        self.fixture.metadata.write_text(
+            "schema_version: 1\n"
+            "applicability:\n"
+            "  state: kernel-defaults\n"
+            "applicability_differences: []\n"
+            "extension_fields: []\n"
+            "relationship_extensions: []\n"
+            "section_roles: []\n",
+            encoding="utf-8")
+        contract = self.configure_manual_gate()
+        self.assertIn(
+            "extension-gate-field-applicability", self.checks(contract))
+        self.assertEqual((), contract.extension_gates)
+
+        self.fixture.write_metadata(shape="date")
+        contract = self.configure_manual_gate()
+        self.assertIn("extension-gate-field-shape", self.checks(contract))
+        self.assertEqual((), contract.extension_gates)
+
+    def test_kernel_managed_metadata_difference_cannot_be_profile_gate_field(self):
+        self.fixture.write_vocabulary(
+            "fields:\n"
+            "  learning_status:\n"
+            "    values:\n"
+            "      - reviewed\n")
+        self.fixture.metadata.write_text(
+            "schema_version: 1\n"
+            "applicability:\n"
+            "  state: configured\n"
+            "applicability_differences:\n"
+            "  - field: learning_status\n"
+            "    mode: required\n"
+            "extension_fields: []\n"
+            "relationship_extensions: []\n"
+            "section_roles: []\n",
+            encoding="utf-8")
+        contract = self.configure_manual_gate(
+            field="learning_status", completions="reviewed")
+        self.assertIn(
+            "extension-gate-field-applicability", self.checks(contract))
+        self.assertIn(
+            "extension-gate-field-kernel-collision", self.checks(contract))
+        self.assertEqual((), contract.extension_gates)
+
+    def test_gate_and_transition_identities_are_each_unique(self):
+        first = self.fixture.gate_row()
+        second = self.fixture.gate_row(
+            gate_id="P:sample:other", transition="other-transition")
+        self.fixture.write_gates(
+            registration="Configured", rows=first + first)
+        self.assertIn("extension-gate-id-duplicate", self.checks())
+        self.assertIn("extension-gate-transition-duplicate", self.checks())
+        self.fixture.write_gates(
+            registration="Configured", rows=first + second.replace(
+                "`other-transition`", "`readiness-promotion`"))
+        self.assertIn("extension-gate-transition-duplicate", self.checks())
+
+    def test_gate_id_must_use_selected_profile_namespace(self):
+        contract = self.configure_manual_gate(
+            gate_id="P:foreign:readiness")
+        self.assertIn("extension-gate-id-invalid", self.checks(contract))
+        self.assertEqual((), contract.extension_gates)
+
+    def test_role_field_value_and_judgment_references_are_closed(self):
+        cases = (
+            ({"role": "unknown-role"}, "extension-gate-role-reference"),
+            ({"field": "unknown_field"}, "extension-gate-field-reference"),
+            ({"completions": "unknown"},
+             "extension-gate-completion-reference"),
+            ({"judgment": "unknown-item"},
+             "extension-gate-judgment-reference"),
+            ({"field": "None", "completions": "unused"},
+             "extension-gate-field-completion"),
+            ({"field": "unused_state", "completions": "None"},
+             "extension-gate-field-completion"),
+        )
+        for overrides, expected in cases:
+            with self.subTest(expected=expected):
+                contract = self.configure_manual_gate(**overrides)
+                self.assertIn(expected, self.checks(contract))
+                self.assertEqual((), contract.extension_gates)
+
+    def test_multiple_completion_values_normalize_to_one_typed_tuple(self):
+        self.fixture.write_vocabulary(
+            "fields:\n"
+            "  unused_state:\n"
+            "    values:\n"
+            "      - unused\n"
+            "      - ready\n")
+        contract = self.configure_manual_gate(completions="unused, ready")
+        self.assertTrue(contract.authorized, contract.diagnostics)
+        self.assertEqual(
+            ("unused", "ready"),
+            contract.extension_gates[0].completion_values)
+
+    def test_owner_path_and_kernel_gate_references_must_resolve(self):
+        contract = self.configure_manual_gate(
+            owner="profiles/sample/predicate.md#Missing")
+        self.assertIn("extension-gate-owner-heading-count",
+                      self.checks(contract))
+
+        registry = (
+            self.fixture.root /
+            "kernel/K00 Standards Control/12 Control Registry.md")
+        registry.parent.mkdir(parents=True)
+        registry.write_text(
+            "# Control Registry\n\n## Stable Gate ID Registry\n\n"
+            "| Gate ID | Tool |\n|---|---|\n"
+            "| `known-gate` | `manual-attestation` |\n",
+            encoding="utf-8")
+        known = self.configure_manual_gate(owner="known-gate")
+        self.assertTrue(known.authorized, known.diagnostics)
+        self.assertEqual("known-gate", known.extension_gates[0].owner_gate_id)
+        unknown = self.configure_manual_gate(owner="missing-gate")
+        self.assertIn("extension-gate-owner-reference", self.checks(unknown))
+
+    def test_producer_receipt_and_consumer_capabilities_are_closed(self):
+        cases = (
+            ({"producer_kind": "script"},
+             "extension-gate-producer-kind"),
+            ({"producer_capability": "unknown-producer-v1"},
+             "extension-gate-producer-capability"),
+            ({"receipt_schema": "unknown-receipt-v1"},
+             "extension-gate-receipt-schema"),
+            ({"consumer_capability": "unknown-consumer-v1"},
+             "extension-gate-consumer-capability"),
+        )
+        for overrides, expected in cases:
+            with self.subTest(expected=expected):
+                contract = self.configure_manual_gate(**overrides)
+                self.assertIn(expected, self.checks(contract))
+                self.assertEqual((), contract.extension_gates)
+
+    def test_capability_registry_errors_fail_closed_without_crashing(self):
+        self.fixture.write_gates(
+            registration="Configured", rows=self.fixture.gate_row())
+
+        self.fixture.capabilities.write_text(
+            "schema_version: 1\ncapabilities: invalid\n",
+            encoding="utf-8")
+        contract = profile_contract.load_profile_contract(
+            self.fixture.root, self.fixture.manifest)
+        self.assertFalse(contract.authorized)
+        self.assertIn("extension-gate-capability-registry",
+                      self.checks(contract))
+        self.assertEqual((), contract.extension_gates)
+
+    def test_deterministic_gate_without_scan_producer_is_unauthorized(self):
+        contract = self.configure_manual_gate(
+            judgment="not-produced",
+            producer_kind="deterministic",
+            producer_capability="registered-scan-v1",
+            receipt_schema="deterministic-gate-result-v1")
+        checks = self.checks(contract)
+        self.assertIn("extension-gate-judgment-reference", checks)
+        self.assertIn("extension-gate-producer-reference", checks)
+
+    def test_registration_and_closed_table_shape_fail_closed(self):
+        self.fixture.write_gates(
+            registration="None", rows=self.fixture.gate_row())
+        self.assertIn("extension-gates-none-with-rows", self.checks())
+        self.fixture.write_gates(registration="Configured")
+        self.assertIn("extension-gates-configured-empty", self.checks())
+        self.fixture.write_gates(
+            header="| Gate ID |\n|---|\n", registration="None")
+        self.assertIn("extension-gates-table-header", self.checks())
+
+    def test_sentinel_gate_row_suppresses_dependent_parsing(self):
+        row = "|" + " TODO(profile) |" * len(
+            profile_contract.EXTENSION_GATE_HEADER) + "\n"
+        self.fixture.write_gates(registration="Configured", rows=row)
+        contract = self.fixture.load()
+        self.assertEqual({"profile-contract-sentinel"}, self.checks(contract))
+        self.assertEqual((), contract.extension_gates)
 
 
 class PathClosureTests(unittest.TestCase):

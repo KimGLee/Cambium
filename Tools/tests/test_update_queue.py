@@ -1,3 +1,4 @@
+import copy
 import json
 from contextlib import contextmanager, redirect_stdout
 import io
@@ -18,6 +19,9 @@ import check_queue
 import check_corpus_plan
 import batch_settlement
 import kblib
+import metadata_execution_contract
+import metadata_property_state
+import project_page_state
 import update_queue
 from profile_fixture import install_loadable_profile
 
@@ -199,6 +203,31 @@ class UpdateQueueTests(unittest.TestCase):
         for receipt_id in bundle_ids:
             self.rewrite_receipt_for_negative_test(receipt_id, restamp)
 
+    def detach_current_page_review_from_historical_bundle(self, close_gate_id):
+        """Give live owner evidence a current attestation of its own.
+
+        The historical-close tests deliberately restamp the frozen close
+        bundle to an older producer era.  Current Coverage review ownership is
+        not historical replay: it still requires a 1.11 page child and
+        attestation.  Split that live edge before restamping so the fixture
+        models the real case in which current owner evidence and an older
+        closed bundle coexist without reinterpreting either era.
+        """
+        close_gate = self.close_bundle(close_gate_id)
+        original_id = close_gate["reviewer_attestation_receipt"]
+        catalog = check_queue.current_receipt_catalog(
+            check_queue.validate_runtime(self.root))
+        original = copy.deepcopy(catalog[original_id][1])
+        current_id = original_id + "-current-owner"
+        original["receipt_id"] = current_id
+        kblib.write_receipts(
+            self.root / ".cambium/receipts/fixture.jsonl", [original])
+        for page_review_id in close_gate.get("page_review_receipts") or []:
+            self.rewrite_receipt_for_negative_test(
+                page_review_id,
+                lambda record, value=current_id: record.__setitem__(
+                    "reviewer_attestation_receipt", value))
+
     def refresh_initial_origin(self):
         path = self.root / ".cambium/receipts/task-transitions.jsonl"
         records = [json.loads(line) for line in path.read_text(
@@ -238,6 +267,9 @@ class UpdateQueueTests(unittest.TestCase):
             entry for entry in runtime["applied_delta_receipts"]
             if entry.get("batch") == batch_id)
         delta_apply_receipt = applied["selected_receipt"]
+        delta_apply_record = check_queue.current_receipt_catalog(runtime)[
+            delta_apply_receipt][1]
+        review_checked_at = delta_apply_record["checked_at"]
         merged_snapshot_sha256 = kblib.repository_snapshot_sha256(self.root)
         evidence = {}
         integrator_id = "fixture-integrator"
@@ -287,6 +319,47 @@ class UpdateQueueTests(unittest.TestCase):
             candidate_evidence_bytes=0,
             candidate_evidence_records=0,
             candidate_dispositions=[])
+        metadata_contract = \
+            metadata_execution_contract.load_metadata_execution_contract(
+                self.root)
+        profile_view = runtime["_profile_authorized_view"]
+        projection_rules = \
+            metadata_property_state.profile_gate_projection_rules(
+                self.root, profile_view["_contract"].extension_gates,
+                metadata_contract=metadata_contract,
+                authorized_profile_contract=profile_view["_contract"])
+        profile_bindings = {
+            field: profile_view[field]
+            for field in (
+                "selected_profile_manifest", "profile_snapshot_sha256",
+                "profile_contract_fingerprint", "profile_load_inputs_sha256",
+            )
+        }
+        page_review_ids = []
+        for index, relative in enumerate(sorted(item["manifest"])):
+            page_review_id = "audit-page-review-%s-r%d-%d" % (
+                batch_id, revision, index)
+            page = kblib.repository_target_snapshot(
+                self.root, relative, suffixes=".md", singly_linked=True)
+            self.assertTrue(page.exists)
+            self.append_receipt(
+                page_review_id, check="page_review_acceptance",
+                target=relative, tool="check_batch_close",
+                tool_version=check_queue.BATCH_CLOSE_TOOL_VERSION,
+                checked_at=review_checked_at,
+                batch_id=batch_id, task_id=queue["task_id"],
+                integrator_id=integrator_id, reviewer_id=reviewer_id,
+                reviewer_attestation_receipt=attestation_id,
+                reviewed_on=review_checked_at[:10],
+                semantic_content_sha256=
+                    project_page_state.semantic_content_fingerprint(
+                        relative, page.read_text(), projection_rules),
+                metadata_execution_contract_fingerprint=
+                    metadata_contract.contract_fingerprint,
+                merged_snapshot_sha256=merged_snapshot_sha256,
+                **profile_bindings)
+            page_review_ids.append(page_review_id)
+        page_review_ids.sort()
         global_review_id = "audit-batch-global-review-%s-r%d" % (
             batch_id, revision)
         self.append_receipt(
@@ -333,6 +406,14 @@ class UpdateQueueTests(unittest.TestCase):
             "reviewer_attestation_receipt": attestation_id,
             "global_review_receipt": global_review_id,
             "closed_list_evidence": evidence,
+            "page_review_receipts": page_review_ids,
+            "page_review_receipt_count": len(page_review_ids),
+            "page_review_receipt_set_sha256":
+                check_queue.candidate_lifecycle.candidate_set_sha256(
+                    page_review_ids),
+            "metadata_execution_contract_fingerprint":
+                metadata_contract.contract_fingerprint,
+            **profile_bindings,
         }
         receipt.update(batch_settlement.close_binding(settlement))
         if mutate is not None:
@@ -433,6 +514,63 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertEqual(previous_batch, coverage["pages"][0]["batch"])
         return completed
 
+    def test_close_projects_evidence_backed_last_reviewed(self):
+        page_path = self.root / "Topics/A.md"
+        page_path.write_text(
+            "---\ntype: concept\n---\n# A\n", encoding="utf-8")
+
+        self.close_b1()
+
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        page = next(row for row in coverage["pages"]
+                    if row["path"] == "Topics/A.md")
+        record = page["property_state"]["last_reviewed"]
+        self.assertRegex(record["value"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertTrue(record["evidence_receipt"].startswith(
+            "audit-page-review-B1-"))
+        self.assertRegex(record["content_fingerprint"],
+                         r"^sha256:[0-9a-f]{64}$")
+        projected = page_path.read_text(encoding="utf-8")
+        self.assertIn("last_reviewed: %s" % record["value"], projected)
+
+    def test_close_receipt_failure_restores_page_and_owner_state_together(self):
+        page_path = self.root / "Topics/A.md"
+        page_path.write_text(
+            "---\ntype: concept\n---\n# A\n", encoding="utf-8")
+        self.merge_b1()
+        delta_apply_receipt = self.apply_b1()
+        gate = self.queue_gate()
+        close_gate = self.close_gate("B1", gate)
+        revision, fingerprint = self.expected()
+        tracked = {
+            relative: (self.root / relative).read_bytes()
+            for relative in (
+                check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+                check_queue.PROGRESS_PATH, "Topics/A.md")
+        }
+
+        with mock.patch.object(
+                update_queue.kblib, "write_receipts",
+                side_effect=OSError("injected Queue receipt failure")):
+            with redirect_stdout(io.StringIO()):
+                exit_code = update_queue.main([
+                    str(self.root), "--id", "B1", "--transition", "closed",
+                    "--gate-receipt", gate,
+                    "--close-gate-receipt", close_gate,
+                    "--delta-apply-receipt", delta_apply_receipt,
+                    "--expected-state-revision", revision,
+                    "--expected-sha256", fingerprint,
+                    "--actor-role", "integrator",
+                    "--at", "2026-08-04T03:00:00Z", "--apply",
+                ])
+
+        self.assertEqual(1, exit_code)
+        for relative, before in tracked.items():
+            self.assertEqual(before, (self.root / relative).read_bytes(),
+                             relative)
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+
     def test_dry_run_does_not_write(self):
         path = self.root / check_queue.QUEUE_PATH
         before = path.read_bytes()
@@ -468,6 +606,66 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertEqual(fingerprint, receipt["before_required_queue_sha256"])
         self.assertEqual(result["queue_sha256"],
                          receipt["after_required_queue_sha256"])
+        self.assertEqual(
+            check_queue.UPDATE_QUEUE_TOOL_VERSION,
+            receipt["tool_version"])
+        self.assertEqual(
+            project_page_state.SEMANTIC_FINGERPRINT_PROTOCOL,
+            receipt["semantic_content_protocol"])
+        records = receipt["manifest_semantic_before_records"]
+        self.assertEqual(item["manifest"], [row["path"] for row in records])
+        self.assertEqual(len(records),
+                         receipt["manifest_semantic_before_count"])
+        self.assertEqual(
+            metadata_property_state.semantic_baseline_set_sha256(records),
+            receipt["manifest_semantic_before_set_sha256"])
+        opening = check_queue.current_opening_semantic_context(result, "B1")
+        self.assertEqual(
+            receipt["receipt_id"], opening["opening_transition_receipt"])
+        self.assertEqual(
+            receipt["manifest_semantic_before_set_sha256"],
+            opening["manifest_semantic_before_set_sha256"])
+
+    def test_page_change_after_open_state_write_aborts_without_losing_edit(self):
+        gate = self.queue_gate("--require-ready", "B1")
+        revision, fingerprint = self.expected()
+        tracked = {
+            path: (self.root / path).read_bytes()
+            for path in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+                         check_queue.PROGRESS_PATH)
+        }
+        page = self.root / "Topics/A.md"
+        concurrent = page.read_text(encoding="utf-8") + \
+            "\nConcurrent semantic edit\n"
+        real_write_state = update_queue._write_state
+
+        def write_then_edit_page(*args, **kwargs):
+            result = real_write_state(*args, **kwargs)
+            page.write_text(concurrent, encoding="utf-8")
+            return result
+
+        output = io.StringIO()
+        with mock.patch.object(
+                update_queue, "_write_state", side_effect=write_then_edit_page), \
+                redirect_stdout(output):
+            code = update_queue.main([
+                str(self.root), "--id", "B1", "--transition", "open",
+                "--gate-receipt", gate,
+                "--expected-state-revision", revision,
+                "--expected-sha256", fingerprint,
+                "--actor-role", "integrator", "--apply",
+            ])
+
+        self.assertEqual(1, code, output.getvalue())
+        self.assertIn("opening semantic baseline changed", output.getvalue())
+        for path, before in tracked.items():
+            self.assertEqual(before, (self.root / path).read_bytes(), path)
+        self.assertEqual(concurrent, page.read_text(encoding="utf-8"))
+        self.assertFalse((
+            self.root / ".cambium/receipts/queue-transitions.jsonl"
+        ).exists())
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
 
     def test_open_transaction_runs_profile_load_producer_once(self):
         gate = self.queue_gate("--require-ready", "B1")
@@ -832,7 +1030,8 @@ class UpdateQueueTests(unittest.TestCase):
                 self.assertEqual(1, attempted.returncode, attempted.stdout)
                 self.assertIn(
                     "unsupported tool_version='%s' for current close action; "
-                    "expected one of ['1.10.0']" % version,
+                    "expected one of ['%s']" %
+                    (version, check_queue.BATCH_CLOSE_TOOL_VERSION),
                     attempted.stdout)
         self.assertEqual("merge-ready", self.load(
             check_queue.QUEUE_PATH)["required_queue"][0]["state"])
@@ -843,6 +1042,7 @@ class UpdateQueueTests(unittest.TestCase):
         close_gate = queue["required_queue"][0]["close_gate_receipt"]
 
         self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        self.detach_current_page_review_from_historical_bundle(close_gate)
         self.restamp_close_bundle_version(close_gate, "1.6.0")
         self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
         self.restamp_close_bundle_version(close_gate, "1.5.0")
@@ -1053,8 +1253,9 @@ class UpdateQueueTests(unittest.TestCase):
             "--actor-role", "integrator",
         )
         self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("does not match the current repository snapshot",
-                      attempted.stdout)
+        self.assertIn(
+            "semantic_content_sha256 does not match the authorized current "
+            "page content", attempted.stdout)
 
     def test_close_gate_rejects_consistently_forged_snapshot(self):
         self.merge_b1()
@@ -1474,8 +1675,11 @@ class UpdateQueueTests(unittest.TestCase):
                 ])
 
         self.assertEqual(1, exit_code)
-        for path, before in tracked.items():
-            self.assertEqual(before, (self.root / path).read_bytes())
+        self.assertEqual(
+            tracked[check_queue.COVERAGE_PATH],
+            (self.root / check_queue.COVERAGE_PATH).read_bytes())
+        for path in (check_queue.QUEUE_PATH, check_queue.PROGRESS_PATH):
+            self.assertNotEqual(tracked[path], (self.root / path).read_bytes())
         records = [
             json.loads(line) for line in
             (self.root / ".cambium/receipts/queue-transitions.jsonl")
@@ -1494,7 +1698,8 @@ class UpdateQueueTests(unittest.TestCase):
                          lock["operation_receipt"]["status"])
         self.assertTrue(lock["operation_receipt"]["matching_receipt"])
         self.assertEqual(
-            {"coverage": "before", "progress": "before", "queue": "before"},
+            {"coverage": "before", "progress": "planned-after",
+             "queue": "planned-after"},
             {name: phase["phase"] for name, phase in
              lock["state_phases"].items()},
         )
@@ -2424,9 +2629,9 @@ class UpdateQueueTests(unittest.TestCase):
 
         failed = self.rollback_b1(receipt=receipt)
         self.assertEqual(1, failed.returncode, failed.stdout)
-        self.assertIn("missing or unreadable", failed.stdout)
-        self.assertIn("an integrator must recover Coverage manually",
-                      failed.stdout)
+        self.assertIn("path does not exist", failed.stdout)
+        self.assertIn("property invalidation replay cannot load its exact "
+                      "before Coverage", failed.stdout)
         self.assertEqual(
             applied_coverage,
             (self.root / check_queue.COVERAGE_PATH).read_bytes())
@@ -2444,8 +2649,7 @@ class UpdateQueueTests(unittest.TestCase):
             encoding="utf-8")
         failed = self.rollback_b1(receipt=receipt)
         self.assertEqual(1, failed.returncode, failed.stdout)
-        self.assertIn("recorded", failed.stdout)
-        self.assertIn("an integrator must recover Coverage manually",
+        self.assertIn("archive bytes differ from before_coverage_sha256",
                       failed.stdout)
 
     def test_applied_rollback_rejects_a_valid_but_substituted_archive(self):
@@ -2479,17 +2683,17 @@ class UpdateQueueTests(unittest.TestCase):
         failed = self.rollback_b1(receipt=receipt)
 
         self.assertEqual(1, failed.returncode, failed.stdout)
-        # The rejection names both digests, so it is the archive comparison
-        # itself that refused, not a later schema or binding check.
-        self.assertIn(substitute_sha, failed.stdout)
-        self.assertIn(recorded_sha, failed.stdout)
-        self.assertIn("an integrator must recover Coverage manually",
+        # The archive digest comparison itself refuses the well-formed
+        # substitute before any later schema or binding check can accept it.
+        self.assertIn("archive bytes differ from before_coverage_sha256",
                       failed.stdout)
         self.assertEqual(
             applied_coverage,
             (self.root / check_queue.COVERAGE_PATH).read_bytes())
         result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
+        self.assertIn(
+            "archive bytes differ from before_coverage_sha256",
+            "; ".join(result["errors"]))
         self.assertEqual("merge-ready", result["items_by_id"]["B1"]["state"])
 
     def test_rolled_back_batch_reaches_merge_ready_and_closes_again(self):

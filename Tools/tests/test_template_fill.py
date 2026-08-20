@@ -31,15 +31,6 @@ ORIENTATION = ("README.md",)
 SHARED = ("interview.yaml", "answer-patterns.md")  # profiles/-level, template-independent
 SENTINEL = "TODO(profile)"
 
-# Interface files check_profile resolves relative to its working directory.
-INTERFACE_FILES = (
-    "profiles/README.md",
-    "kernel/K00 Standards Control/execution-defaults-base.yaml",
-    "Tools/schemas/execution_defaults.template.yaml",
-    "Tools/schemas/residual_scan_config.template.yaml",
-    "Tools/check_residual_content.py",
-)
-
 PROFILE_ID = "fill-e2e"
 
 # (file, old, new) — every `old` must exist verbatim in the template.
@@ -226,11 +217,11 @@ class TemplateShape(unittest.TestCase):
 class TemplateFillEndToEnd(unittest.TestCase):
     def test_filled_copy_passes_check_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            for rel in INTERFACE_FILES:
-                dst = root / rel
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(REPOSITORY / rel, dst)
+            root = Path(tmp).resolve()
+            # Reuse the producer-derived closed Profile-load fixture instead
+            # of maintaining a second, inevitably stale interface subset.
+            from Tools.tests import test_profile_onboarding_status as fixture
+            fixture.copy_profile_load_fixture(root)
             profile = root / "profiles" / PROFILE_ID
             shutil.copytree(TEMPLATE, profile)
             for name in ORIENTATION:
