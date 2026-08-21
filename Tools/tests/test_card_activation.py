@@ -71,6 +71,45 @@ class CardActivationTests(unittest.TestCase):
         self.assertTrue(all(card["content"] for card in bundle["cards"]))
         self.assertEqual(1, len(bundle["readback_plan"]))
 
+    def test_frozen_card_index_is_delivered_as_startup_navigation(self):
+        progress = self.progress()
+        progress["contract"]["selected_card_paths"].append(
+            card_activation.CARD_INDEX_PATH)
+        progress["contract"]["selected_card_paths"].sort()
+        runtime = self.runtime()
+        runtime["progress"] = progress
+        runtime["progress_sha256"] = kblib.sha256_bytes(
+            kblib.canonical_yaml(progress))
+
+        context = card_activation.build_activation_context(
+            self.root, progress, runtime["items_by_id"]["B1"],
+            runtime_state=runtime)
+
+        self.assertEqual([], card_activation.activation_context_errors(context))
+        startup = context["activation_delivery_payload"]["startup_readbacks"]
+        index_rows = [row for row in startup
+                      if row["path"] == card_activation.CARD_INDEX_PATH]
+        self.assertEqual(1, len(index_rows))
+        self.assertEqual("kernel-card-index", index_rows[0]["route_id"])
+        self.assertEqual(
+            (self.root / card_activation.CARD_INDEX_PATH).read_text(
+                encoding="utf-8"),
+            index_rows[0]["content"])
+
+    def test_unregistered_extra_selected_card_path_is_rejected(self):
+        progress = self.progress()
+        progress["contract"]["selected_card_paths"].append(
+            "kernel/Cards/Unregistered.md")
+        runtime = self.runtime()
+        runtime["progress"] = progress
+        runtime["progress_sha256"] = kblib.sha256_bytes(
+            kblib.canonical_yaml(progress))
+
+        with self.assertRaisesRegex(ValueError, "Unregistered.md"):
+            card_activation.build_activation_context(
+                self.root, progress, runtime["items_by_id"]["B1"],
+                runtime_state=runtime)
+
     def test_batch_provenance_does_not_select_runtime_cards(self):
         coverage_path = self.root / check_queue.COVERAGE_PATH
         coverage = kblib.load_yaml_file(coverage_path)

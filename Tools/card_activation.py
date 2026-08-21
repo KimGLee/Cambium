@@ -288,9 +288,14 @@ def build_activation_context(root, progress, item, *, runtime_state,
         raise ActivationError("selected route(s) are unregistered: %s" %
                               ", ".join(unknown))
     expected_paths = [registry[route]["path"] for route in routes]
-    if sorted(declared_cards) != sorted(expected_paths):
-        missing = sorted(set(expected_paths) - set(declared_cards))
-        extra = sorted(set(declared_cards) - set(expected_paths))
+    # Older adopting contracts may explicitly freeze the Card Index itself in
+    # selected_card_paths.  It is the navigation registry, not an Rxx Card, so
+    # it must not be interpreted as a route or silently discarded.  Permit
+    # only that one canonical extra path and deliver its exact bytes below.
+    allowed_paths = set(expected_paths) | {CARD_INDEX_PATH}
+    missing = sorted(set(expected_paths) - set(declared_cards))
+    extra = sorted(set(declared_cards) - allowed_paths)
+    if missing or extra:
         raise ActivationError(
             "selected_card_paths does not exactly match selected routes; "
             "missing=%s extra=%s" %
@@ -299,6 +304,15 @@ def build_activation_context(root, progress, item, *, runtime_state,
     cards = []
     startup = []
     readback_plan = []
+    if CARD_INDEX_PATH in declared_cards:
+        index_snapshot, index_text = _snapshot_text(root, CARD_INDEX_PATH)
+        startup.append({
+            "rule_id": "kernel:activation:card-index",
+            "route_id": "kernel-card-index",
+            "path": CARD_INDEX_PATH,
+            "sha256": index_snapshot.sha256,
+            "content": index_text,
+        })
     for route_id in routes:
         card = _card_record(root, route_id, registry[route_id],
                             registry[route_id]["path"])
