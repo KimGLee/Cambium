@@ -20,8 +20,8 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
 readback_sources: []
 readback_policy: none
-source_hash: 'edf230597940'
-compiled_source_hash: 'edf230597940'
+source_hash: '7d03b7f04f48'
+compiled_source_hash: '7d03b7f04f48'
 ---
 # R01 Core Bootstrap Card
 
@@ -47,11 +47,12 @@ The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Co
   R01 plus every selected task Card. Treat an unbound CLI delivery as
   degraded; it does not prove injection into an Agent execution context.
 - [ ] State the objective, target scope, exclusions, and latest user instructions.
-- [ ] Inspect the repository root for `.cambium/` before any content or state
-  write. If it exists, run `python3 Tools/check_queue.py . --resume-status`,
+- [ ] Inspect the repository root for `.cambium/state/` before any content or
+  task-state write. If it exists, run `python3 Tools/check_queue.py . --resume-status`,
   reconcile the recorded task and exact `next_action`, and do not initialize a
-  replacement. If it is absent, only a selected persistent, resumable, or
-  multi-batch route may initialize it.
+  replacement. If task state is absent, only a selected persistent, resumable,
+  or multi-batch route may initialize it beside any valid governance/history
+  already under `.cambium/`.
 - [ ] Confirm the active Standards state is instantiated and its one selected
   profile manifest has a current passing `profile-load` result. That result
   must bind the Profile directory snapshot and typed dependency-closure

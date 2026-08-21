@@ -58,7 +58,7 @@ The verifier command in [registries/registered-scans.md](registries/registered-s
 
 ## Validation Provenance
 
-The public Cambium distribution is intentionally uninstantiated: `kernel/K00 Standards Control/03 Standards Governance.md` still carries `{{ standards_version }}`, so there is no released version string for an example to declare. The machine-checkable stand-in is the validating tool version below. Re-run every command in this table — and update the versions — after any Standards revision, interface change, or tool bump; `Tools/tests/test_profile_examples.py` enforces exactly this table.
+The public Cambium distribution is intentionally uninstantiated: it carries no `.cambium/governance/standards_state.yaml`, so there is no adopter version string for an example to declare. The machine-checkable stand-in is the validating tool version below. Re-run every command in this table — and update the versions — after any Standards revision, interface change, or tool bump; `Tools/tests/test_profile_examples.py` enforces exactly this table.
 
 | Validator | Tool version | Command | Expected result |
 |---|---|---|---|

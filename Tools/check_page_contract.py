@@ -135,7 +135,7 @@ JSON_FLAG_HELP = ("write the receipts this run produced to stdout as one "
                   "unchanged")
 
 
-ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
+ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
 SCOPE_SLOT = "Profile Scope"
 COVERAGE_LEDGER_PATH = ".cambium/state/coverage_ledger.yaml"
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")

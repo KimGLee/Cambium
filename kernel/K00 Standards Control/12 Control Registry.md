@@ -145,7 +145,7 @@ moves its own cell.
 | `source-promotion` | `manual-attestation` | `1.0.0` | `source-promotion` | `*` | `coverage_and_integration`, `source_and_currentness` | `not-batch-scoped` |
 | `expression-layer-acceptance` | `manual-attestation` | `1.0.0` | `expression-layer-acceptance` | `*` | `content_and_depth`, `coverage_and_integration`, `guidance_and_contract`, `source_and_currentness`, `structure_and_links` | `not-batch-scoped` |
 | `coverage-reconciliation` | `manual-attestation` | `1.0.0` | `coverage-reconciliation` | `*` | `coverage_and_integration` | `not-batch-scoped` |
-| `standards-adoption` | `adopt_standards` | `1.6.0` | `standards_adoption` | `*` | `*` | `not-batch-scoped` |
+| `standards-adoption` | `adopt_standards` | `1.7.0` | `standards_adoption` | `*` | `*` | `not-batch-scoped` |
 | `standards-revalidation` | `check_queue` | `1.23.0` | `required_queue` | `require-revalidation:*` | `*` | `queued`, `open` |
 | `guidance-disposition` | `manual-attestation` | `1.0.0` | `guidance-disposition` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `receipt-validity` | `manual-attestation` | `1.0.0` | `receipt-validity` | `*` | `guidance_and_contract` | `not-batch-scoped` |

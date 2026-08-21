@@ -19,6 +19,7 @@ sys.path.insert(0, str(TOOLS))
 
 import check_queue
 import kblib
+import standards_state
 from profile_fixture import install_loadable_profile
 
 
@@ -50,12 +51,12 @@ class QueueFixture(unittest.TestCase):
     def test_runtime_identity_must_match_approved_active_standards(self):
         baseline = check_queue.validate_runtime(self.root)
         self.assertEqual([], baseline["errors"])
-        active = (
-            self.root /
-            "kernel/K00 Standards Control/03 Standards Governance.md")
-        text = active.read_text(encoding="utf-8")
+        active = self.root / standards_state.STATE_PATH
+        state = kblib.load_yaml_file(active)
+        state["standards_version"] = "9.9.9"
+        state["state_revision"] += 1
         active.write_text(
-            text.replace("`3.0.0`", "`9.9.9`", 1), encoding="utf-8")
+            standards_state.canonical_text(state), encoding="utf-8")
 
         result = check_queue.validate_runtime(self.root)
 
@@ -1645,9 +1646,10 @@ class HubPageAdmissionTests(QueueFixture):
         self.assertEqual([], initial["errors"])
         authority = check_queue.runtime_authority_context(initial)
         active = self.root / check_queue.ACTIVE_STANDARDS_PATH
+        state = kblib.load_yaml_file(active)
+        state["state_revision"] += 1
         active.write_text(
-            active.read_text(encoding="utf-8") +
-            "\n<!-- active Standards revision B -->\n",
+            standards_state.canonical_text(state),
             encoding="utf-8")
 
         with mock.patch.object(
@@ -1661,7 +1663,7 @@ class HubPageAdmissionTests(QueueFixture):
 
         load.assert_not_called()
         self.assertIn(
-            "active Standards Control changed after identity admission",
+            "active Standards state changed after identity admission",
             "; ".join(rebound["errors"]))
 
     def test_runtime_rejects_stale_injected_profile_view_without_rerun(self):
@@ -4197,7 +4199,10 @@ class CheckQueueTests(QueueFixture):
         self.assertEqual(1, conflicting.returncode, conflicting.stdout)
         self.assertIn("contradicts the selected profile manifest's registered "
                       "concurrency_cap 5", conflicting.stdout)
-        self.assertFalse((fresh / ".cambium").exists())
+        self.assertTrue(
+            (fresh / standards_state.STATE_PATH).is_file(),
+            "failed task initialization preserves pre-runtime governance")
+        self.assertFalse((fresh / ".cambium/state").exists())
         agreeing = self.run_init(fresh, "--concurrency-cap", "5")
         self.assertEqual(0, agreeing.returncode, agreeing.stdout)
         self.assertIn("concurrency_cap=5 (resolved from "
@@ -4214,7 +4219,9 @@ class CheckQueueTests(QueueFixture):
                               completed.stdout)
                 self.assertIn("override-value-domain", completed.stdout)
                 self.assertIn("expected a positive integer", completed.stdout)
-                self.assertFalse((fresh / ".cambium").exists())
+                self.assertTrue(
+                    (fresh / standards_state.STATE_PATH).is_file())
+                self.assertFalse((fresh / ".cambium/state").exists())
 
     def test_init_creates_empty_state_without_fake_work_and_refuses_overwrite(self):
         fresh = Path(self.tmp.name) / "fresh"

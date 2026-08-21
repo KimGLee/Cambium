@@ -21,54 +21,36 @@ sys.path.insert(0, str(TOOLS_DIR))
 
 import check_proof
 import kblib
+import standards_state
 import test_required_queue_e2e as required_queue_e2e
 
 
-def materialize_synthetic_standards_state(document, profile_manifest):
-    """Set fixture-owned active state in a generic or instantiated K00/03."""
-
-    replacements = (
-        ("Standards version", SYNTHETIC_STANDARDS_VERSION),
-        ("Status", "approved"),
-        ("Effective date", "2026-08-04"),
-        ("Selected profile manifest", profile_manifest),
-    )
-    for field, value in replacements:
-        pattern = r"(?m)^\| %s \| .* \|$" % re.escape(field)
-        document, count = re.subn(
-            pattern,
-            "| %s | `%s` |" % (field, value),
-            document,
-        )
-        if count != 1:
-            raise AssertionError(
-                "expected exactly one %s row in synthetic K00/03, found %d"
-                % (field, count)
-            )
-    return document
+def materialize_synthetic_standards_state(profile_manifest):
+    """Render the fixture-owned canonical adopter Standards state."""
+    return standards_state.canonical_text({
+        "schema_version": 1,
+        "state_revision": 1,
+        "standards_version": SYNTHETIC_STANDARDS_VERSION,
+        "status": "approved",
+        "effective_date": "2026-08-04",
+        "selected_profile_manifest": profile_manifest,
+        "latest_adoption_receipt": "audit-fixture-standards-adoption",
+        "upstream_source_ref": None,
+        "upstream_revision_id": None,
+    })
 
 
 class ActiveStandardsFixtureTests(unittest.TestCase):
-    def test_materializer_replaces_populated_adopter_state(self):
-        source = """\
-| Field | Value |
-|---|---|
-| Standards version | `9.9.9` |
-| Status | `superseded` |
-| Effective date | `2099-01-01` |
-| Selected profile manifest | `profiles/other/profile.md` |
-"""
+    def test_materializer_renders_canonical_adopter_state(self):
         rendered = materialize_synthetic_standards_state(
-            source, "profiles/test-profile/profile.md"
+            "profiles/test-profile/profile.md"
         )
-        self.assertIn(
-            "| Standards version | `3.2.0` |", rendered
-        )
-        self.assertIn("| Status | `approved` |", rendered)
-        self.assertIn(
-            "| Selected profile manifest | "
-            "`profiles/test-profile/profile.md` |",
-            rendered,
+        parsed = kblib.parse_yaml_subset(rendered)
+        self.assertEqual("3.2.0", parsed["standards_version"])
+        self.assertEqual("approved", parsed["status"])
+        self.assertEqual(
+            "profiles/test-profile/profile.md",
+            parsed["selected_profile_manifest"],
         )
 
 

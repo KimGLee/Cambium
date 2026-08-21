@@ -16,6 +16,7 @@ if str(TOOLS) not in sys.path:
 import profile_contract  # noqa: E402  (path set above)
 import kblib  # noqa: E402
 import metadata_execution_contract  # noqa: E402
+import standards_state  # noqa: E402
 
 # Derived, never re-listed: `check_profile` refuses a repository whose
 # interface slot list and this registry disagree, so deriving the synthetic
@@ -238,16 +239,20 @@ def install_loadable_profile(root, profile_id="test-profile",
         "kernel/K00 Standards Control/execution-defaults-base.yaml",
         defaults,
     )
-    active = root / "kernel/K00 Standards Control/03 Standards Governance.md"
+    active = root / standards_state.STATE_PATH
+    active.parent.mkdir(parents=True, exist_ok=True)
     if not active.exists():
-        active.write_text(
-            "# Standards Governance\n\n## Standards Control\n\n"
-            "| Field | Value |\n|---|---|\n"
-            "| Standards version | `%s` |\n"
-            "| Status | `approved` |\n"
-            "| Effective date | `2026-08-01` |\n"
-            "| Selected profile manifest | `profiles/%s/profile.md` |\n" %
-            (standards_version, profile_id),
-            encoding="utf-8")
+        active.write_text(standards_state.canonical_text({
+            "schema_version": 1,
+            "state_revision": 1,
+            "standards_version": standards_version,
+            "status": "approved",
+            "effective_date": "2026-08-01",
+            "selected_profile_manifest":
+                "profiles/%s/profile.md" % profile_id,
+            "latest_adoption_receipt": "audit-fixture-standards-adoption",
+            "upstream_source_ref": None,
+            "upstream_revision_id": None,
+        }), encoding="utf-8")
     _install_runtime_activation_fixture(root)
     return profile

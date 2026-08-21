@@ -39,7 +39,7 @@ import profile_admission
 TOOL = "render_boundary_projection"
 TOOL_VERSION = "1.1.0"
 
-ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
+ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
 SCOPE_SLOT = "Profile Scope"
 BEGIN = kblib.BOUNDARY_PROJECTION_BEGIN
 END = kblib.BOUNDARY_PROJECTION_END

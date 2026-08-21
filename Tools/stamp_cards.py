@@ -8,8 +8,10 @@ Read Set Index and Card Index share registry_id `kernel-runtime-routes`; their
 route registries, the Read Set files, and the Runtime Cards must agree exactly
 on the continuous route set R01-R13. A Read Set and its Card share route_id;
 indexes have no route identity of their own. Every Card's `compiled_from` must
-equal the active `standards_version` recorded in K00/03; uniform but obsolete
-version stamps are stale, not synchronized.
+equal the canonical adopter `standards_version`; in the uninstantiated public
+distribution, the explicit template/version supplied by the release workflow
+is authoritative. Uniform but obsolete version stamps are stale, not
+synchronized.
 
 `source_hash` is the first 12 hexadecimal digits of SHA-256 over each source
 file's bytes, concatenated in source_files order. `compiled_source_hash` is a
@@ -83,6 +85,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import check_queue
+import standards_state
 
 
 DEFAULT_CARDS_DIR = "kernel/Cards"
@@ -92,7 +95,7 @@ READ_SET_INDEX_NAME = "Read Sets Index.md"
 REGISTRY_ID = "kernel-runtime-routes"
 ROUTE_ID_RE = re.compile(r"^R([0-9]{2})$")
 EXPECTED_ROUTE_IDS = tuple("R%02d" % number for number in range(1, 14))
-ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
+ACTIVE_STATE_PATH = standards_state.STATE_PATH
 CODE_SPAN_RE = re.compile(r"`([^`\n]+)`")
 COMMAND_PREFIX = "python3"
 SKELETON_OWNER_PATH = (
@@ -877,37 +880,19 @@ def main():
 
     failures = []
     tool_contracts = {}
-    active_path = as_repo_path(
-        root, ACTIVE_STATE_PATH, "active Standards state", failures
-    )
     active_version = ""
-    if active_path is not None:
-        if not active_path.is_file():
-            failures.append(
-                "active Standards state is not a regular file: %s"
-                % ACTIVE_STATE_PATH
-            )
-        else:
-            try:
-                active_text = active_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeError) as exc:
-                failures.append("active Standards state is unreadable: %s" % exc)
-            else:
-                active_state, state_errors = kblib.active_standards_state(
-                    active_text
-                )
-                failures.extend(
-                    "%s: %s" % (ACTIVE_STATE_PATH, error)
-                    for error in state_errors
-                )
-                active_version = str(
-                    active_state.get("standards_version") or ""
-                ).strip()
-                if not active_version:
-                    failures.append(
-                        "%s has no usable Standards version"
-                        % ACTIVE_STATE_PATH
-                    )
+    active_path = root / ACTIVE_STATE_PATH
+    if active_path.exists():
+        active_state, _view, state_errors = standards_state.snapshot(root)
+        failures.extend("%s: %s" % (ACTIVE_STATE_PATH, error)
+                        for error in state_errors)
+        if active_state is not None:
+            active_version = str(active_state["standards_version"]).strip()
+    else:
+        # The public distribution is deliberately uninstantiated.  Its Card
+        # stamps therefore retain the template token until an adopter's
+        # initial transaction supplies --set-version and creates state.
+        active_version = args.set_version or "{{ standards_version }}"
     if args.set_version and active_version and args.set_version != active_version:
         failures.append(
             "--set-version %r does not equal active standards_version %r in %s"

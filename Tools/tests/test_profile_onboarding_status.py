@@ -1,7 +1,7 @@
 """`Tools/profile_onboarding_status.py` — the read-only status projector.
 
 The projector derives one onboarding view and exactly one `next_action`
-token from bytes owned elsewhere (K00/03, profiles/, the corpus tree,
+token from bytes owned elsewhere (adopter Standards state, profiles/, the corpus tree,
 `.cambium/`).  This module pins the full decision table over temp-root
 fixtures, that the tool degrades gracefully off a Cambium root, that its
 `--json` output is deterministic, and — because a status *projector* that
@@ -34,6 +34,7 @@ import check_profile  # noqa: E402
 import kblib  # noqa: E402
 import metadata_execution_contract  # noqa: E402
 import scaffold_profile  # noqa: E402
+import standards_state  # noqa: E402
 import test_template_fill  # noqa: E402  (reused semantic fill + scan config)
 
 # Extra root-owned inputs used by this onboarding fixture outside the
@@ -121,20 +122,23 @@ def fill_candidate(root, profile_id=FILLED_ID):
 
 
 def adopt(root, manifest_relative, fields=None):
-    """Instantiate K00/03's four placeholders (or the subset in fields)."""
+    """Materialize canonical state, optionally omitting fields for a fault."""
     values = {
+        "schema_version": 1,
+        "state_revision": 1,
         "standards_version": "adopt-v1",
-        "standards_status": "approved",
-        "standards_effective_date": "2026-08-13",
+        "status": "approved",
+        "effective_date": "2026-08-13",
         "selected_profile_manifest": manifest_relative,
+        "latest_adoption_receipt": "audit-fixture-adoption",
+        "upstream_source_ref": None,
+        "upstream_revision_id": None,
     }
-    path = root / K00_03_RELATIVE
-    text = path.read_text(encoding="utf-8")
-    for field in (fields if fields is not None else sorted(values)):
-        placeholder = "{{ %s }}" % field
-        assert placeholder in text, field
-        text = text.replace(placeholder, values[field])
-    path.write_text(text, encoding="utf-8")
+    if fields is not None:
+        values = {field: values[field] for field in fields}
+    path = root / standards_state.STATE_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(kblib.canonical_yaml(values), encoding="utf-8")
 
 
 def tree_state(root):
@@ -257,8 +261,8 @@ class AdoptedTests(unittest.TestCase):
             self.assertEqual("adopted", view["standards_state"])
             self.assertEqual(
                 {"standards_version": "adopt-v1",
-                 "standards_status": "approved",
-                 "standards_effective_date": "2026-08-13",
+                 "status": "approved",
+                 "effective_date": "2026-08-13",
                  "selected_profile_manifest":
                      "profiles/%s/profile.md" % FILLED_ID},
                 view["standards_values"])
@@ -342,13 +346,14 @@ class RuntimeRecoveryTests(unittest.TestCase):
             self.assertTrue(any("--resume-status" in note
                                 for note in view["notes"]))
 
-    def test_empty_cambium_directory_still_wins(self):
+    def test_governance_only_namespace_is_not_a_task_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_root(tmp)
             (root / ".cambium").mkdir()
             code, view, _ = run_status_json(root)
             self.assertEqual(0, code)
-            self.assertEqual("resume-existing-task", view["next_action"])
+            self.assertEqual("confirm-profile-identity", view["next_action"])
+            self.assertFalse(view["cambium_runtime"]["present"])
             self.assertFalse(view["cambium_runtime"]["state_has_content"])
 
 
@@ -357,23 +362,23 @@ class ControlStateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_root(tmp)
             adopt(root, "profiles/x/profile.md",
-                  fields=("standards_version", "standards_status"))
+                  fields=("schema_version", "standards_version"))
             code, view, _ = run_status_json(root)
             self.assertEqual(0, code)
             self.assertEqual("inconsistent", view["standards_state"])
-            self.assertEqual(
-                ["selected_profile_manifest", "standards_effective_date"],
-                view["standards_uninstantiated"])
+            self.assertEqual([], view["standards_uninstantiated"])
             self.assertEqual("repair-control-state", view["next_action"])
             self.assertTrue(any(
-                "selected_profile_manifest" in note and
-                "standards_effective_date" in note
+                "misses field(s)" in note and
+                "selected_profile_manifest" in note
                 for note in view["notes"]))
 
     def test_unreadable_control_file_is_inconsistent(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_root(tmp)
-            (root / K00_03_RELATIVE).unlink()
+            path = root / standards_state.STATE_PATH
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.mkdir()
             code, view, _ = run_status_json(root)
             self.assertEqual(0, code)
             self.assertEqual("inconsistent", view["standards_state"])

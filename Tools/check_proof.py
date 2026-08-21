@@ -79,7 +79,7 @@ Method:
   is claimed;
 - when --ledger (Coverage Ledger) is given, cross-check: open_gaps non-empty
   while the proof claims required_authoring_gaps=0 -> fail;
-- --root requires an instantiated, approved K00/03 active state,
+- --root requires an instantiated, approved canonical adopter Standards state,
   --progress-ledger, and --ledger; the active state, frozen contract,
   Coverage, Queue, and Terminal Proof must carry the same task, scope,
   Standards, and profile identity, while Proof and Progress also agree on the
@@ -243,7 +243,7 @@ TERMINAL_REQUIRED_ROUTE_IDS = frozenset(("R01", "R08", "R12"))
 REGISTRY_ID = "kernel-runtime-routes"
 CARD_INDEX_PATH = "kernel/Cards/Card Index.md"
 READ_SET_INDEX_PATH = "kernel/Read Sets/Read Sets Index.md"
-ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
+ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
 UNINSTANTIATED_RE = re.compile(r"\{\{.*?\}\}")
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 CANONICAL_COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
@@ -2769,7 +2769,7 @@ def _main():
             "not-applicable%s%s%s%s%s%s%s" % (
                 len(required_fields), len(required_fields),
                 route_summary, profile_summary,
-                ", consistent with the active K00/03 Standards state"
+                ", consistent with the canonical adopter Standards state"
                 if active_state_checked else "",
                 ", consistent with the frozen Progress Ledger contract"
                 if args.progress_ledger else "",

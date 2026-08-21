@@ -7,14 +7,16 @@
 ## Purpose And Sole Ownership
 
 This module solely owns active-task Standards adoption: changed-predicate
-impact, invalidated evidence, and gate reruns when materialized task identity differs
-from K00/03. R09 owns the revision; [[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction|K13/15]]
+impact, invalidated evidence, and gate reruns when materialized task identity
+differs from the canonical adopter Standards state. R09 owns the revision;
+[[kernel/K13 Task Runtime and Execution Control/15 Standards Adoption State Transaction|K13/15]]
 owns the write transaction. Pre-Task initial adoption belongs to R09.
 
 ## Trigger And Invariants
 
-Batch activation, resume, and completion entry compare K00/03 with the Contract
-and three state objects. Mismatch blocks normal work until adoption commits.
+Batch activation, resume, and completion entry compare
+`.cambium/governance/standards_state.yaml` with the Contract and three task
+state objects. Mismatch blocks normal work until adoption commits.
 Only `active` or `paused` may adopt; stale `completion-candidate` first returns
 through K13/03.
 
@@ -42,8 +44,10 @@ state table is allowed. Exact top-level fields:
 schema_version, adoption_id, task_id, task_state_before,
 contract_version_before, contract_version_after,
 standards_version_before, standards_version_after,
+standards_effective_date_after, standards_state_sha256_before,
 selected_profile_manifest_before, selected_profile_manifest_after,
 governance_revision_ref, governance_revision_sha256,
+upstream_source_ref, upstream_revision_id,
 standards_snapshot_sha256_after, profile_snapshot_sha256_after,
 profile_contract_fingerprint_after, profile_load_inputs_sha256_after,
 selected_route_ids_after, selected_card_paths_after,
@@ -154,7 +158,9 @@ bumps `contract_version`; a pure identity no-op may retain it.
 
 `governance_revision_ref` is exactly
 `kernel/K00 Standards Control/03 Standards Governance.md`; its SHA binds all
-approved bytes, whose active version/Profile equal the plan after identity.
+approved governance-rule bytes. The separate
+`standards_state_sha256_before` binds the current adopter identity, and
+`standards_effective_date_after` becomes the next state's effective date.
 After snapshot SHAs deterministically bind all `kernel/` and the selected
 Profile directory. The 1.3 producer persists the exact typed dependency graph
 as `profile_contract_fingerprint_after`; the 1.4 producer additionally
@@ -196,7 +202,7 @@ publishing that candidate result into the current Queue receipt identity. On
 apply, the writer MUST rerun full `profile-load` and compare all three under
 the shared lock before the first write, after the state writes, and immediately
 before and after final receipt publication. Pre-commit drift restores the
-three before images and records abort. If commit evidence may already be
+four before images and records abort. If commit evidence may already be
 durable, rollback still restores those state bytes and records abort, but the
 writer lock remains for explicit reconciliation.
 
@@ -260,8 +266,9 @@ capability table.
 
 Only `Tools/adopt_standards.py` applies the plan. Commit proves:
 
-1. three-state after identity and Progress after load set agree;
-2. Progress appends one entry binding plan, three before SHAs, after
+1. adopter Standards state and three-task-state after identity agree, and the
+   Progress after load set is complete;
+2. Progress appends one entry binding plan, four before SHAs, after
    Coverage/Queue SHAs, and immediate-gate receipt; only commit receipt binds
    the self-containing after Progress SHA;
 3. Queue/Progress revision advanced once and all invariants above held;

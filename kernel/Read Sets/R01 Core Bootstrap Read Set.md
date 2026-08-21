@@ -12,7 +12,7 @@ Core Bootstrap is the minimal common read set for all Knowledge Base Standards t
 Read in order:
 
 1. [[kernel/K00 Standards Overview|Standards Overview]]
-2. [[kernel/K00 Standards Control/03 Standards Governance#Standards Control|Standards Control]]
+2. [[kernel/K00 Standards Control/03 Standards Governance#Standards State And Adoption History|Standards State And Adoption History]]
 3. [[kernel/K00 Standards Control/02 Task Routing|Task Routing]]
 4. [[kernel/K00 Standards Control/13 Runtime Admission and Recovery|Runtime Admission and Recovery]]
 5. [[kernel/K00 Standards Control/04 Control State and Scope|Control State and Scope]]

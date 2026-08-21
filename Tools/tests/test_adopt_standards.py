@@ -25,6 +25,7 @@ import check_queue
 import check_vocab
 import kblib
 import seal_receipts
+import standards_state
 import update_queue
 from profile_fixture import install_loadable_profile
 from test_update_queue import UpdateQueueTests
@@ -43,14 +44,8 @@ class AdoptStandardsTests(unittest.TestCase):
         governance = self.root / self.GOVERNANCE
         governance.parent.mkdir(parents=True, exist_ok=True)
         governance.write_text(
-            "## Standards Control\n\n"
-            "| Field | Value |\n"
-            "|---|---|\n"
-            "| Standards version | `3.0.0` |\n"
-            "| Status | `approved` |\n"
-            "| Effective date | `2026-08-05` |\n"
-            "| Selected profile manifest | "
-            "`profiles/test-profile/profile.md` |\n",
+            "## Standards State And Adoption History\n\n"
+            "Adopter state is external to the Kernel.\n",
             encoding="utf-8",
         )
         registry = (self.root /
@@ -137,16 +132,8 @@ class AdoptStandardsTests(unittest.TestCase):
         return gate["receipt_id"]
 
     def plan(self, *, invalidated_receipt=None, overrides=None):
-        # The live runtime starts aligned to approved 3.0. Publish the approved
-        # 3.1 governance after-image only when preparing its adoption; the
-        # writer's explicit mismatch escape is the sole bridge between them.
-        governance = self.root / self.GOVERNANCE
-        governance.write_text(
-            governance.read_text(encoding="utf-8").replace(
-                "| Standards version | `3.0.0` |",
-                "| Standards version | `3.1.0` |"),
-            encoding="utf-8",
-        )
+        # The live adopter state starts aligned to approved 3.0.  The plan
+        # proposes 3.1 while K00/03 remains an unchanged rules owner.
         queue = self.load(check_queue.QUEUE_PATH)
         progress = self.load(check_queue.PROGRESS_PATH)
         contract = progress["contract"]
@@ -155,7 +142,7 @@ class AdoptStandardsTests(unittest.TestCase):
             self.root, queue["selected_profile_manifest"])
         self.assertEqual([], profile_errors)
         plan = {
-            "schema_version": 1,
+            "schema_version": 2,
             "adoption_id": "SA-001",
             "task_id": queue["task_id"],
             "task_state_before": progress["task_state"],
@@ -164,6 +151,9 @@ class AdoptStandardsTests(unittest.TestCase):
                 contract["contract_version"],
             "standards_version_before": queue["standards_version"],
             "standards_version_after": "3.1.0",
+            "standards_effective_date_after": "2026-08-06",
+            "standards_state_sha256_before": kblib.sha256_file(
+                self.root / standards_state.STATE_PATH),
             "selected_profile_manifest_before":
                 queue["selected_profile_manifest"],
             "selected_profile_manifest_after":
@@ -248,6 +238,15 @@ class AdoptStandardsTests(unittest.TestCase):
         with redirect_stdout(stdout):
             code = adopt_standards.main(args)
         return code, stdout.getvalue()
+
+    @staticmethod
+    def legacy_plan_shape(plan):
+        """Project a current plan onto the immutable pre-1.7 schema."""
+        legacy = copy.deepcopy(plan)
+        legacy["schema_version"] = 1
+        legacy.pop("standards_effective_date_after", None)
+        legacy.pop("standards_state_sha256_before", None)
+        return legacy
 
     def test_a_contract_amendment_may_follow_an_adoption(self):
         """The other guarded contract writer must not be locked out.
@@ -430,7 +429,7 @@ class AdoptStandardsTests(unittest.TestCase):
         self.plan()
         paths = [self.root / path for path in (
             check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
-            check_queue.PROGRESS_PATH)]
+            check_queue.PROGRESS_PATH, standards_state.STATE_PATH)]
         before = [path.read_bytes() for path in paths]
         original = kblib.atomic_write_text
         state_writes = {"count": 0}
@@ -458,8 +457,7 @@ class AdoptStandardsTests(unittest.TestCase):
             {adopt_standards.GATE_ID},
             {row.get("gate_id") for row in rows})
         ordinary_errors = check_queue.validate_runtime(self.root)["errors"]
-        self.assertTrue(any("differs from active K00/03" in error
-                            for error in ordinary_errors), ordinary_errors)
+        self.assertEqual([], ordinary_errors)
         recovered = check_queue.validate_runtime(
             self.root,
             allow_invalid_current_profile_for_corrective_adoption=True,
@@ -1055,7 +1053,7 @@ class AdoptStandardsTests(unittest.TestCase):
         # newly written, otherwise complete transaction as bytes an immutable
         # 1.5 producer would have left behind.
         plan_path = self.root / self.PLAN
-        legacy_plan = self.load(self.PLAN)
+        legacy_plan = self.legacy_plan_shape(self.load(self.PLAN))
         legacy_plan["changed_predicates"][0][
             "affected_gate_ids"] = raw_leaves
         legacy_plan["invalidation_boundaries"][0][
@@ -1125,8 +1123,9 @@ class AdoptStandardsTests(unittest.TestCase):
             encoding="utf-8")
         runtime = check_queue.validate_runtime(self.root)
 
+        legacy_plan = self.legacy_plan_shape(plan)
         historical = check_queue.standards_adoption_plan_errors(
-            self.root, plan, catalog=runtime["receipt_catalog"],
+            self.root, legacy_plan, catalog=runtime["receipt_catalog"],
             queue=runtime["queue"], progress=runtime["progress"],
             validate_current=False, producer_tool_version="1.6.0")
         self.assertEqual([], historical)
@@ -2594,6 +2593,28 @@ class AdoptStandardsTests(unittest.TestCase):
         to satisfy a constant that moved after they were written; the fixture
         edits them only to stand in for bytes a past producer left behind.
         """
+        rewritten_adopt_version = field_overrides.get(
+            "tool_version", {}).get(adopt_standards.TOOL)
+        legacy_plan_sha = None
+        legacy_progress_sha = None
+        immediate_receipts = set()
+        if (isinstance(rewritten_adopt_version, str) and
+                tuple(int(part) for part in
+                      rewritten_adopt_version.split(".")) < (1, 7, 0)):
+            plan_path = self.root / self.PLAN
+            legacy_plan = self.legacy_plan_shape(self.load(self.PLAN))
+            plan_path.write_text(
+                kblib.canonical_yaml(legacy_plan), encoding="utf-8")
+            legacy_plan_sha = kblib.sha256_file(plan_path)
+            progress_path = self.root / check_queue.PROGRESS_PATH
+            progress = self.load(check_queue.PROGRESS_PATH)
+            record = progress["standards_adoptions"][-1]
+            record["plan_sha256"] = legacy_plan_sha
+            immediate_receipts.update(record["immediate_gate_receipts"])
+            progress_path.write_text(
+                kblib.canonical_yaml(progress), encoding="utf-8")
+            legacy_progress_sha = kblib.sha256_file(progress_path)
+
         receipt_path = self.root / self.RECEIPTS
         rows = [json.loads(line) for line in receipt_path.read_text(
             encoding="utf-8").splitlines() if line.strip()]
@@ -2601,6 +2622,12 @@ class AdoptStandardsTests(unittest.TestCase):
             for field, by_tool in field_overrides.items():
                 if row.get("tool") in by_tool:
                     row[field] = by_tool[row["tool"]]
+            if (legacy_plan_sha is not None and
+                    row.get("tool") == adopt_standards.TOOL):
+                row["plan_sha256"] = legacy_plan_sha
+                row["after_progress_sha256"] = legacy_progress_sha
+            if row.get("receipt_id") in immediate_receipts:
+                row["progress_ledger_sha256"] = legacy_progress_sha
         receipt_path.write_text(
             "".join(json.dumps(row, separators=(",", ":")) + "\n"
                     for row in rows), encoding="utf-8")
@@ -2672,7 +2699,7 @@ class AdoptStandardsTests(unittest.TestCase):
         # contract.  The state transition and selected after Profile stay the
         # same; only fields and boundary declarations 1.2 never promised are
         # absent.
-        legacy_plan = self.load(self.PLAN)
+        legacy_plan = self.legacy_plan_shape(self.load(self.PLAN))
         legacy_plan.pop("profile_contract_fingerprint_after")
         legacy_plan.pop("profile_load_inputs_sha256_after")
         legacy_plan["changed_predicates"] = []
@@ -2742,7 +2769,7 @@ class AdoptStandardsTests(unittest.TestCase):
         self.commit_one_adoption()
 
         plan_path = self.root / self.PLAN
-        legacy_plan = self.load(self.PLAN)
+        legacy_plan = self.legacy_plan_shape(self.load(self.PLAN))
         legacy_plan.pop("profile_load_inputs_sha256_after")
         plan_path.write_text(
             kblib.canonical_yaml(legacy_plan), encoding="utf-8")
@@ -2849,11 +2876,12 @@ class AdoptStandardsTests(unittest.TestCase):
         errors = self.rewrite_adoption_receipts(
             tool_version={adopt_standards.TOOL: "1.1.0"},
             standards_version={adopt_standards.TOOL: "9.9.9"})
-        self.assertEqual(1, len(errors), errors)
-        self.assertIn("commit receipt", errors[0])
-        self.assertIn("claims standards_version='9.9.9'", errors[0])
+        era_errors = [error for error in errors
+                      if "claims standards_version='9.9.9'" in error]
+        self.assertEqual(1, len(era_errors), errors)
+        self.assertIn("commit receipt", era_errors[0])
         self.assertIn("no Standards adoption record or live identity",
-                      errors[0])
+                      era_errors[0])
 
     def test_the_accounted_era_set_is_the_instance_own_adoption_chain(self):
         """Both ends of every recorded step, plus the live identity."""

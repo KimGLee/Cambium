@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Materialize an adopter's empty ``.cambium/`` runtime state.
 
-Initialization never invents Required work.  It refuses any existing runtime
-namespace and is a dry run unless ``--apply`` is present.
+Initialization never invents Required work.  It refuses an existing task
+runtime, preserves a governance-only ``.cambium/`` namespace, and is a dry
+run unless ``--apply`` is present.
 """
 
 import ctypes
@@ -21,7 +22,7 @@ import check_queue
 import kblib
 
 TOOL = "init_state"
-TOOL_VERSION = "1.3.0"
+TOOL_VERSION = "1.4.0"
 RUNTIME_DIRS = (
     "state", "work_specs", "deltas", "receipts", "reports", "tmp",
 )
@@ -319,6 +320,100 @@ def publish_runtime(root, documents, *, pre_publish_validator=None,
             shutil.rmtree(staging)
 
 
+def _governance_only_namespace_errors(root):
+    """Return errors when an existing namespace is not pre-runtime state."""
+    runtime = os.path.join(root, ".cambium")
+    if not os.path.lexists(runtime):
+        return []
+    if os.path.islink(runtime) or not os.path.isdir(runtime):
+        return [".cambium must be a real directory"]
+    allowed = {
+        "governance": {"standards_state.yaml"},
+        "receipts": {"standards-adoptions.jsonl"},
+    }
+    errors = []
+    if not os.path.isfile(os.path.join(
+            runtime, "governance", "standards_state.yaml")):
+        errors.append(
+            "pre-runtime .cambium must contain governance/standards_state.yaml")
+    for name in sorted(os.listdir(runtime)):
+        path = os.path.join(runtime, name)
+        if name not in allowed:
+            errors.append("pre-runtime .cambium contains %s" % name)
+            continue
+        if os.path.islink(path) or not os.path.isdir(path):
+            errors.append("pre-runtime .cambium/%s must be a real directory" %
+                          name)
+            continue
+        entries = set(os.listdir(path))
+        unexpected = sorted(entries - allowed[name])
+        for entry in unexpected:
+            errors.append("pre-runtime .cambium/%s contains %s" %
+                          (name, entry))
+        for entry in sorted(entries & allowed[name]):
+            target = os.path.join(path, entry)
+            if os.path.islink(target) or not os.path.isfile(target):
+                errors.append("pre-runtime .cambium/%s/%s must be a regular "
+                              "file" % (name, entry))
+    return errors
+
+
+def publish_runtime_into_governance_namespace(
+        root, documents, *, pre_publish_validator,
+        post_publish_validator, lock_operation):
+    """Publish task runtime directories beside preserved governance state."""
+    errors = _governance_only_namespace_errors(root)
+    if errors:
+        raise FileExistsError("; ".join(errors))
+    runtime = os.path.join(root, ".cambium")
+    expected = {
+        "coverage_ledger.yaml", "required_queue.yaml", "progress_ledger.yaml"
+    }
+    if set(documents) != expected:
+        raise ValueError(
+            "runtime initialization requires exactly the three state files")
+    staging = tempfile.mkdtemp(prefix=".cambium-init-", dir=root)
+    moved = []
+    publish_dirs = ["tmp", "state", "work_specs", "deltas", "reports"]
+    if not os.path.lexists(os.path.join(runtime, "receipts")):
+        publish_dirs.append("receipts")
+    publish_dirs = tuple(publish_dirs)
+    try:
+        for directory in publish_dirs:
+            os.makedirs(os.path.join(staging, directory), exist_ok=False)
+        for name, text in documents.items():
+            target = os.path.join(staging, "state", name)
+            kblib.atomic_write_text(
+                target, text, validator=kblib.parse_yaml_subset)
+        pre_publish_validator()
+        _create_publication_lock(staging, lock_operation)
+        try:
+            for directory in publish_dirs:
+                source = os.path.join(staging, directory)
+                target = os.path.join(runtime, directory)
+                _rename_noreplace(source, target)
+                moved.append(directory)
+            _fsync_directory(runtime)
+            post_publish_validator()
+        except BaseException as publication_error:
+            try:
+                for directory in reversed(moved):
+                    _rename_noreplace(
+                        os.path.join(runtime, directory),
+                        os.path.join(staging, directory))
+                _fsync_directory(runtime)
+            except BaseException as rollback_error:
+                raise ValueError(
+                    "runtime publication failed and rollback is incomplete: "
+                    "publication=%s; rollback=%s" %
+                    (publication_error, rollback_error)) from publication_error
+            raise
+        _remove_publication_lock(runtime, lock_operation)
+    finally:
+        if os.path.lexists(staging):
+            shutil.rmtree(staging)
+
+
 KERNEL_CONCURRENCY_CAP = 3
 
 
@@ -562,11 +657,11 @@ def main(argv=None):
     parser.add_argument("--standards-version", required=True,
                         help="Standards version this runtime adopts; must "
                              "equal the approved standards_version of the "
-                             "active K00/03 Standards Control")
+                             "canonical adopter Standards state")
     parser.add_argument("--profile-manifest", required=True,
                         help="repository-relative selected profile manifest; "
                              "must equal the selected_profile_manifest of "
-                             "the active K00/03 Standards Control")
+                             "the canonical adopter Standards state")
     parser.add_argument("--contract-version", default="c1",
                         help="non-empty task-contract version recorded on "
                              "the Progress Ledger contract")
@@ -627,8 +722,15 @@ def main(argv=None):
         return 1
 
     runtime = os.path.join(root, ".cambium")
-    if os.path.lexists(runtime):
+    task_state = os.path.join(runtime, "state")
+    governance_only = os.path.lexists(runtime) and not os.path.lexists(
+        task_state)
+    namespace_errors = (_governance_only_namespace_errors(root)
+                        if governance_only else [])
+    if os.path.lexists(task_state) or namespace_errors:
         _report_existing_runtime(root, ".cambium already exists")
+        for error in namespace_errors:
+            print("[FAIL] %s" % error)
         return 1
     if args.at is None:
         args.at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -690,7 +792,9 @@ def main(argv=None):
             kblib.sha256_bytes(documents["required_queue.yaml"]),
     }
     try:
-        publish_runtime(
+        publisher = (publish_runtime_into_governance_namespace
+                     if governance_only else publish_runtime)
+        publisher(
             root, documents,
             pre_publish_validator=lambda: revalidate_profile(
                 "pre-publication"),

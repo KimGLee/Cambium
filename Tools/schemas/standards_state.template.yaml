@@ -1,0 +1,13 @@
+# Canonical adopter Standards/Profile current state.
+# Owner: kernel/K00 Standards Control/03 Standards Governance.md
+# Path: .cambium/governance/standards_state.yaml
+# History: .cambium/receipts/standards-adoptions.jsonl
+schema_version: 1
+state_revision: 1
+standards_version: TODO(standards-adoption)
+status: approved
+effective_date: TODO(standards-adoption)
+selected_profile_manifest: "profiles/my-profile/profile.md"
+latest_adoption_receipt: TODO(standards-adoption)
+upstream_source_ref: TODO(standards-adoption)
+upstream_revision_id: TODO(standards-adoption)

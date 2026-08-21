@@ -13,6 +13,7 @@ import os
 
 import check_profile
 import kblib
+import standards_state
 
 
 def _profile_load_inputs_sha256(root):
@@ -143,9 +144,7 @@ def admission_from_evaluation(root, evaluation, *, active_state=None,
 
 
 def admit_profile(root, override=None, *,
-                  active_state_path=(
-                      "kernel/K00 Standards Control/"
-                      "03 Standards Governance.md"),
+                  active_state_path=standards_state.STATE_PATH,
                   require_approved=False):
     """Return ``(admission, errors)`` for one complete Profile evaluation.
 
@@ -171,23 +170,19 @@ def admit_profile(root, override=None, *,
                 override
             ]
     else:
-        try:
-            state_snapshot = kblib.repository_file_snapshot(
-                root, active_state_path, singly_linked=True)
-            state_raw = state_snapshot.data
-            state_text = state_snapshot.read_text()
-        except (OSError, UnicodeError, ValueError) as exc:
+        if active_state_path != standards_state.STATE_PATH:
             return None, [
-                "cannot read the active Standards state %s: %s" %
-                (active_state_path, exc)
-            ]
-        active_state_repo_path = state_snapshot.repository_path
-        active_state_sha256 = state_snapshot.sha256
-        active_state, parse_errors = kblib.active_standards_state(state_text)
-        errors.extend(
-            "%s: %s" % (active_state_path, error)
-            for error in parse_errors
-        )
+                "active_state_path must be the canonical adopter state %s; "
+                "Kernel Markdown is not instance state" %
+                standards_state.STATE_PATH]
+        active_state, state_view, parse_errors = standards_state.snapshot(root)
+        errors.extend("%s: %s" % (active_state_path, error)
+                      for error in parse_errors)
+        if state_view is not None:
+            active_state_repo_path = state_view["active_standards_path"]
+            active_state_sha256 = state_view["active_standards_sha256"]
+        if active_state is None:
+            return None, errors
         expected_manifest = active_state.get("selected_profile_manifest")
         if (not isinstance(expected_manifest, str) or
                 not expected_manifest.strip() or
@@ -197,10 +192,10 @@ def admit_profile(root, override=None, *,
                 "for an explicit validation run"
             )
         if (require_approved and
-                active_state.get("standards_status") != "approved"):
+                active_state.get("status") != "approved"):
             errors.append(
                 "active Standards Status must be approved; found %r" %
-                active_state.get("standards_status")
+                active_state.get("status")
             )
         if errors:
             return None, errors
@@ -272,7 +267,7 @@ def currency_errors(admission):
                 "active Standards state changed after profile-load admission; "
                 "rerun against one stable Profile selection"
             ]
-        state, parse_errors = kblib.active_standards_state(state_text)
+        state, parse_errors = standards_state.parse(state_text)
         if parse_errors:
             return [
                 "active Standards state became invalid after profile-load "

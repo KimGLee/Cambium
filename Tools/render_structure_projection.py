@@ -43,7 +43,7 @@ import profile_admission
 TOOL = "render_structure_projection"
 TOOL_VERSION = "1.1.0"
 
-ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
+ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
 STRUCTURE_SLOT = "Structure Registry"
 COVERAGE_LEDGER_PATH = ".cambium/state/coverage_ledger.yaml"
 BEGIN = "<!-- structure-projection:begin -->"

@@ -1,21 +1,19 @@
 ## Purpose
 
-This file is the sole overall entry point for the active Standards. It is responsible only for state slots, task routing, the Standard Module Index, and the loading protocol; detailed rules are maintained by folder-based leaf modules.
+This file is the sole overall entry point for the active Standards. It is responsible only for governance-interface routing, the Standard Module Index, and the loading protocol; detailed rules are maintained by folder-based leaf modules.
 
-## Current State
+## Governance Interface
 
-| Field | Value |
+| Concern | Canonical owner |
 |---|---|
-| Standards version | See [[kernel/K00 Standards Control/03 Standards Governance#Standards Control\|active Standards state]] |
-| Status | See [[kernel/K00 Standards Control/03 Standards Governance#Standards Control\|active Standards state]] |
-| Effective date | See [[kernel/K00 Standards Control/03 Standards Governance#Standards Control\|active Standards state]] |
-| Selected profile manifest | See [[kernel/K00 Standards Control/03 Standards Governance#Standards Control\|active Standards state]] |
+| Current adopter Standards/Profile identity | `.cambium/governance/standards_state.yaml`, under [[kernel/K00 Standards Control/03 Standards Governance#Standards State And Adoption History\|Standards Governance]] |
+| Adoption history | `.cambium/receipts/standards-adoptions.jsonl`; append-only receipts, never Kernel or Card chronology |
 | Standard module MOCs | `derived-from-active-kernel-module-registry` |
 | Canonical leaf modules | `derived-from-active-kernel-inventory` |
 | Routing model | Kernel Runtime Cards (Card-first) + Read Sets escalation read-back + Triggered / Gate Modules |
 | Change authority | User's explicit governance instruction |
 
-The complete state rules are maintained by [[kernel/K00 Standards Control/03 Standards Governance|Standards Governance]].
+The complete state and history separation rules are maintained by [[kernel/K00 Standards Control/03 Standards Governance|Standards Governance]].
 
 ## Start Here
 
@@ -75,7 +73,7 @@ Detailed task combinations are located in [[kernel/K00 Standards Control/02 Task
 |---|---|
 | [[kernel/K00 Standards Control/01 Operating Role and Reading Protocol\|Operating Role and Reading Protocol]] | execution role, Card-first loading, and source read-back |
 | [[kernel/K00 Standards Control/02 Task Routing\|Task Routing]] | task-to-route combinations only |
-| [[kernel/K00 Standards Control/03 Standards Governance\|Standards Governance]] | active adopter state and governance change process |
+| [[kernel/K00 Standards Control/03 Standards Governance\|Standards Governance]] | governance process and the external adopter-state contract |
 | [[kernel/K00 Standards Control/04 Control State and Scope\|Control State and Scope]] | protected control state and modification authority |
 | [[kernel/K00 Standards Control/05 Core Principles\|Core Principles]] | universal knowledge-corpus principles |
 | [[kernel/K00 Standards Control/06 Completion Precedence and Task Contract\|Completion Precedence and Task Contract]] | precedence, contract, and selected completion semantics |
