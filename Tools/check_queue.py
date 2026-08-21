@@ -5876,13 +5876,14 @@ def batch_review_judgment_errors(result, item, wrapper_receipt):
     catalog = current_receipt_catalog(result)
     activation_entry = catalog.get(item.get("activation_receipt")) if         isinstance(item.get("activation_receipt"), str) else None
     activation = activation_entry[1] if activation_entry else None
-    if not isinstance(activation, dict):
-        errors.append(
-            "%s has no current activation receipt for judgment binding" %
-            item_id)
-        return errors
-    protocol = activation.get("activation_protocol")
-    legacy = protocol == card_activation.LEGACY_ACTIVATION_PROTOCOL
+    protocol = activation.get("activation_protocol") if isinstance(
+        activation, dict) else None
+    # A batch whose activation predates delivery receipts entirely — or
+    # was activated under v1 — predates the review era.  It owes nothing
+    # and must carry nothing; the runtime validator, not this gate, is
+    # what guarantees a current-era batch cannot shed its activation
+    # receipt to slip into this branch.
+    legacy = protocol != card_activation.ACTIVATION_PROTOCOL
     wrapper_fields = (
         "review_requirement_set_sha256", "judgment_receipt_ids",
         "judgment_record_set_sha256")
