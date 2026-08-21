@@ -25,8 +25,9 @@ readback_sources:
   - kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
   - kernel/K12 Quality Assurance/11 Content-level Propagation.md
   - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
-source_hash: 'e6b421471d51'
-compiled_source_hash: 'e6b421471d51'
+readback_policy: declared
+source_hash: '563340a8156a'
+compiled_source_hash: '563340a8156a'
 ---
 # R10 Maintenance Run Card
 
@@ -38,6 +39,8 @@ Perform periodic freshness, re-verification, watermark, `needs_rereview`, or can
 
 ## Before Start
 
+- [ ] Confirm the activation Bundle contains R01, R10, and the exact frozen
+  maintenance reading plan before selecting candidates.
 - [ ] Inspect the repository root for `.cambium/` before any write. If it
   exists, run `python3 Tools/check_queue.py . --resume-status` and follow its
   exact `next_action`; never initialize a replacement or restart candidate age.

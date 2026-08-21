@@ -28,6 +28,9 @@ A Runtime Card compiles the boundaries of its own route and owns none of them. S
 
 Every Kernel leaf named by a paired Read Set loading boundary has exactly one Card disposition: `source_files` when its rule is compiled into the Card, or `readback_sources` when the Card intentionally delegates it to conditional/full source reading. Omission, overlap, or a read-back not named by that boundary is synchronization failure.
 
+`readback_policy` assigns delegated leaves to startup or Addendum delivery per
+[[kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery|K13/19]]; it cannot remove one.
+
 ## Derived Load Set
 
 The modules a task loads are derived from the loading boundaries of the Read Sets it selects; that set is resolved, never authored by hand. A declared load set that omits a module a selected boundary names is an under-declaration, and the same two readers disagree again: the one who resolves the boundary loads that module and the one who follows the declaration does not.

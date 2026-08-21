@@ -93,3 +93,13 @@ capabilities:
     implementation_paths:
       - Tools/metadata_gate_runtime.py
     operations: []
+
+  - capability_id: card-context-delivery-v1
+    kind: producer
+    capability_version: 1.0.0
+    implementation_paths:
+      - Tools/card_activation.py
+      - Tools/check_queue.py
+      - Tools/mcp_server.py
+      - Tools/update_queue.py
+    operations: []

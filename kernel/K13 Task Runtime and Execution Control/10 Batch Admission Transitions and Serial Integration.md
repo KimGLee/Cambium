@@ -17,10 +17,10 @@ The machine-decidable members of condition 2's page set come from metadata that 
 Condition 2 is time-invariant, and its reporting reflects that. Whether a queued batch's manifest edits an existing hub page does not depend on which batch is being admitted, how many batches are active, or what has closed since — the answer is the same at every moment until a structural Amendment changes the batch's `execution_mode`. Reported only through readiness, such a batch looks merely "not yet turn" and the defect stays invisible until it reaches the head of the Queue, so a whole mis-specified family is rediscovered one batch at a time. The consistency mode therefore reports every queued batch that fails condition 2 as a candidate over the whole Queue, naming the batch, the hub pages, and the current mode. It stays a candidate rather than an error because the repair is an Amendment and the Amendment tools refuse to run against a runtime carrying errors: a hard failure would wedge the instance out of its own repair path. The other admission conditions stay readiness-only, because each of them is a statement about *now* — a dependency not yet closed, a cap currently reached, a manifest currently overlapping active work — and becomes true or false as the run proceeds.
 
 For a complex batch, readiness additionally requires a current Work Spec
-path/hash whose batch ID and ordered manifest equal B. The worker reads that
-specification after activation together with the Standards for the selected
-route. The specification narrows this batch's instructions; it cannot enlarge
-the frozen manifest or override Kernel, Profile, Queue, or Amendment state.
+whose batch ID and ordered manifest equal B. It narrows instructions after
+activation but cannot enlarge the manifest or override governing state.
+
+Card delivery and read-back follow [[kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery|K13/19]]; `open` remains admission.
 
 Migration or refactor batches necessarily edit hub pages and cross-batch pages, do not meet concurrency admission, and MUST use an exclusive or `serial-integrator` execution mode; while such a batch is open, no other batch is activated.
 

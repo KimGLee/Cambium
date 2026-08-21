@@ -170,6 +170,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 import traceback
 
 # ---------------------------------------------------------------------------
@@ -198,6 +199,7 @@ DISTRIBUTION_ROOT = os.path.dirname(TOOLS_DIR)
 PROJECTION_RELATIVE = "Tools/compiled/mcp-tools.json"
 
 WORKSPACE_ENV = "CAMBIUM_WORKSPACE_ROOT"
+EXECUTION_CONTEXT_ENV = "CAMBIUM_EXECUTION_CONTEXT_ID"
 SOURCE_HASH_ENV = "CAMBIUM_INTERFACE_SOURCE_HASH"
 
 # What the projection must claim about itself before it is served.
@@ -737,6 +739,7 @@ class Server(object):
         self.environ = dict(os.environ if environ is None else environ)
         self.workspace_root = None
         self.projection = None
+        self.execution_context_id = None
 
     # -- lifecycle --------------------------------------------------------
 
@@ -746,6 +749,7 @@ class Server(object):
         self.workspace_root = resolve_workspace_root(self.environ)
         self.projection = load_projection(self.distribution_root,
                                           self.environ)
+        self.execution_context_id = "mcp:%s" % uuid.uuid4().hex
         requested = params.get("protocolVersion")
         agreed = (requested if requested in SUPPORTED_PROTOCOL_VERSIONS
                   else LATEST_PROTOCOL_VERSION)
@@ -804,7 +808,9 @@ class Server(object):
         # Re-read the binding: the directory can go away between calls, and
         # a stale root would run the corpus's tools somewhere else.
         workspace_root = resolve_workspace_root(self.environ)
-        return run_tool(tool, arguments, workspace_root, self.environ)
+        execution_env = dict(self.environ)
+        execution_env[EXECUTION_CONTEXT_ENV] = self.execution_context_id
+        return run_tool(tool, arguments, workspace_root, execution_env)
 
     def handle_ping(self, params):
         return {}

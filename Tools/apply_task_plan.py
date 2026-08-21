@@ -453,7 +453,11 @@ def _derive_load_sets(root, contract):
             "the Card/Read Set registry is not sound, so a route selection "
             "cannot be resolved against it: %s" % registry_errors[0])
 
-    routes = sorted(_strings(contract.get("selected_route_ids")))
+    # R01 is the mandatory entry route, not an operator choice.  Resolving it
+    # here prevents a newly planned task from reaching its first activation
+    # with a frozen contract that no valid Card Bundle can satisfy.
+    routes = sorted(_strings(contract.get("selected_route_ids")) | {"R01"})
+    contract["selected_route_ids"] = routes
     unknown = [route for route in routes if route not in read_map]
     if unknown:
         raise Refusal("selected_route_ids names unregistered route(s): %s"

@@ -36,6 +36,7 @@ import kblib
 import check_profile
 import amendment_policy
 import batch_settlement
+import card_activation
 import candidate_lifecycle
 import coverage_delta
 import maintenance_candidates
@@ -44,11 +45,13 @@ import metadata_property_state
 import project_page_state
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.22.0"
+TOOL_VERSION = "1.23.0"
 # 1.20.1 remains a producer-era identity for already-consumed maintenance
-# gates.  Current gate production and all live gate admission use 1.21.0;
+# gates. Current gate production and all live gate admission use 1.23.0;
 # historical consumption replays the older receipt's own promised shape.
-SUPPORTED_CHECK_QUEUE_TOOL_VERSIONS = frozenset(("1.20.1", "1.21.0", "1.22.0"))
+SUPPORTED_CHECK_QUEUE_TOOL_VERSIONS = frozenset((
+    "1.20.1", "1.21.0", "1.22.0", "1.23.0",
+))
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
 GATE_CHECK = "required_queue"
@@ -13134,6 +13137,26 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
         errors.extend(_producer_era_errors(
             activation_receipt, item.get("activation_receipt"),
             "%s activation" % item_id, accounted_versions))
+        if (isinstance(activation_receipt, dict) and
+                activation_receipt.get("tool") == TOOL and
+                activation_receipt.get("tool_version") == TOOL_VERSION):
+            activation_context = card_activation.context_from_receipt(
+                activation_receipt)
+            errors.extend(
+                "%s activation %s" % (item_id, error)
+                for error in card_activation.activation_context_errors(
+                    activation_context))
+            if opening_transition is not None:
+                for field in (
+                        "activation_protocol", "task_contract_sha256",
+                        "reading_plan_sha256", "readback_plan_sha256",
+                        "card_bundle_sha256", "delivery_mode",
+                        "delivery_assurance", "execution_context_id"):
+                    if opening_transition.get(field) != \
+                            activation_receipt.get(field):
+                        errors.append(
+                            "%s opening transition does not preserve "
+                            "activation %s" % (item_id, field))
         if item.get("confirmation_required"):
             _require_receipt(
                 catalog, item.get("confirmation_receipt"),
@@ -14889,7 +14912,10 @@ def make_check_receipt(result, outcome, details, mode,
                        confirmation_receipt=None, runtime_errors=None,
                        maintenance_context=None,
                        standards_revalidation_context=None,
-                       hub_page_candidates=None):
+                       hub_page_candidates=None,
+                       activation_context=None,
+                       readback_context=None,
+                       resume_activation_contexts=None):
     """Build the canonical receipt for one already-evaluated Queue result.
 
     This is the canonical construction path for ``check_queue`` receipt bytes.
@@ -14925,6 +14951,12 @@ def make_check_receipt(result, outcome, details, mode,
             # integrator's post-merge synchronization step; the durable
             # record travels with the activation receipt.
             receipt["hub_page_candidates"] = list(hub_page_candidates or [])
+            if activation_context:
+                receipt.update(card_activation.activation_receipt_binding(
+                    activation_context))
+        if mode.startswith("deliver-readback:") and readback_context:
+            receipt.update(card_activation.readback_receipt_binding(
+                readback_context))
         if mode == "consistency" and outcome == "pass":
             receipt["repository_snapshot_sha256"] = \
                 kblib.repository_snapshot_sha256(result["root"])
@@ -14938,6 +14970,15 @@ def make_check_receipt(result, outcome, details, mode,
                 progress.get("contract"), dict) else {}
             checkpoint = progress.get("checkpoint")
             receipt["task_state"] = progress.get("task_state")
+            receipt["active_card_context_deliveries"] = [
+                {
+                    "batch_id": delivery.get("batch_id"),
+                    "parent_activation_receipt": delivery.get(
+                        "parent_activation_receipt"),
+                    **card_activation.activation_receipt_binding(delivery),
+                }
+                for delivery in (resume_activation_contexts or [])
+            ]
             receipt["objective"] = contract.get("objective")
             receipt["exclusions"] = contract.get("exclusions")
             receipt["checkpoint"] = checkpoint if isinstance(
@@ -14994,9 +15035,12 @@ def make_check_receipt(result, outcome, details, mode,
 
 
 def _emit_json_receipts(receipts):
-    """Write the exact receipt objects this run produced to real stdout.
+    """Write this run's receipt-shaped tool results to real stdout.
 
-    ``--json`` publishes the receipts themselves, not a projection of them:
+    ``--json`` publishes the receipts plus any transient Card payload that a
+    Host must inject. The payload is deliberately absent from durable JSONL;
+    its content-addressed manifest remains in the receipt. Otherwise this is
+    not a schema projection:
     ``Tools/schemas/receipt.template.jsonl`` says in its own text that its
     examples are "not the complete set", and this tool's per-mode extension
     fields (the whole ``resume-status`` block, the maintenance and Standards
@@ -15012,12 +15056,38 @@ def _emit_json_receipts(receipts):
         kblib.canonical_json_bytes(list(receipts)).decode("utf-8") + "\n")
 
 
+def _delivery_result(receipt, activation_context=None, readback_context=None,
+                     resume_activation_contexts=None):
+    """Attach transient bytes to the tool result, never the receipt register."""
+    emitted = dict(receipt)
+    if activation_context:
+        emitted["activation_delivery_payload"] = activation_context.get(
+            "activation_delivery_payload")
+    if readback_context:
+        emitted["readback_delivery_payload"] = readback_context.get(
+            "readback_delivery_payload")
+    if resume_activation_contexts:
+        persisted = emitted.get("active_card_context_deliveries") or []
+        emitted["active_card_context_deliveries"] = [
+            {
+                **dict(binding),
+                "activation_delivery_payload": delivery.get(
+                    "activation_delivery_payload"),
+            }
+            for binding, delivery in zip(
+                persisted, resume_activation_contexts)
+        ]
+    return emitted
+
+
 def _write_receipt(root, relative_path, result, outcome, details, mode,
                    confirmation_receipt=None, runtime_errors=None,
                    maintenance_context=None,
                    standards_revalidation_context=None,
-                   hub_page_candidates=None, build_unwritten=False):
-    """Append this run's receipt, and return the exact object appended.
+                   hub_page_candidates=None, activation_context=None,
+                   readback_context=None, resume_activation_contexts=None,
+                   build_unwritten=False):
+    """Append the small receipt and return its delivery-enriched tool result.
 
     Without ``--receipts`` there is no JSONL target and nothing is built, so
     a run that asks for nothing pays for nothing -- unchanged. ``--json``
@@ -15028,14 +15098,20 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
     if not relative_path:
         if not build_unwritten:
             return None
-        return make_check_receipt(
+        receipt = make_check_receipt(
             result, outcome, details, mode,
             confirmation_receipt=confirmation_receipt,
             runtime_errors=runtime_errors,
             maintenance_context=maintenance_context,
             standards_revalidation_context=standards_revalidation_context,
             hub_page_candidates=hub_page_candidates,
+            activation_context=activation_context,
+            readback_context=readback_context,
+            resume_activation_contexts=resume_activation_contexts,
         )
+        return _delivery_result(
+            receipt, activation_context, readback_context,
+            resume_activation_contexts)
     path = kblib.managed_repository_path(
         root, relative_path, ".cambium/receipts",
         suffixes=(".jsonl",), must_exist=False,
@@ -15047,9 +15123,14 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
         maintenance_context=maintenance_context,
         standards_revalidation_context=standards_revalidation_context,
         hub_page_candidates=hub_page_candidates,
+        activation_context=activation_context,
+        readback_context=readback_context,
+        resume_activation_contexts=resume_activation_contexts,
     )
     kblib.write_receipts(path, [receipt])
-    return receipt
+    return _delivery_result(
+        receipt, activation_context, readback_context,
+        resume_activation_contexts)
 
 
 def _maintenance_gate_inventory(result):
@@ -15864,6 +15945,13 @@ def main(argv=None):
                             "maintenance run is complete")
     group.add_argument("--resume-status", action="store_true",
                        help="show interruption-safe task and batch resume state")
+    group.add_argument(
+        "--deliver-readback", metavar="BATCH_ID",
+        help="deliver one registered conditional Card read-back source for an "
+             "already-open batch")
+    parser.add_argument(
+        "--readback-rule", metavar="RULE_ID",
+        help="registered rule selected with --deliver-readback")
     parser.add_argument("--confirmation-receipt",
                         help="confirmation evidence supplied to --require-ready")
     parser.add_argument(
@@ -15909,12 +15997,19 @@ def _run(args, produced):
     writer_locks = result.get("writer_locks") or []
     maintenance_context = None
     revalidation_context = None
+    activation_context = None
+    readback_context = None
+    resume_activation_contexts = []
 
     if args.confirmation_receipt and not args.require_ready:
         errors.append("--confirmation-receipt is only valid with --require-ready")
     if args.boundary_gate_receipt and not args.require_revalidation:
         errors.append("--boundary-gate-receipt is only valid with "
                       "--require-revalidation")
+    if args.readback_rule and not args.deliver_readback:
+        errors.append("--readback-rule is only valid with --deliver-readback")
+    if args.deliver_readback and not args.readback_rule:
+        errors.append("--deliver-readback requires --readback-rule")
     maintenance_evidence = (
         args.budget_manifest_receipt, args.ledger_advance_receipt,
         args.watermark_advance_receipt,
@@ -16014,6 +16109,38 @@ def _run(args, produced):
             if reasons and not errors:
                 candidates.append("%s is not executable: %s" %
                                   (args.require_ready, "; ".join(reasons)))
+    elif not errors and args.deliver_readback:
+        item = result.get("items_by_id", {}).get(args.deliver_readback)
+        if item is None:
+            errors.append("requested batch %s does not exist" %
+                          args.deliver_readback)
+        elif item.get("state") not in ("open", "merge-ready"):
+            errors.append(
+                "read-back delivery requires an open or merge-ready batch; "
+                "%s is %s" % (args.deliver_readback, item.get("state")))
+        else:
+            catalog = result.get(
+                "current_receipt_catalog", result.get("receipt_catalog", {}))
+            activation_id = item.get("activation_receipt")
+            entry = catalog.get(activation_id)
+            activation_receipt = entry[1] if entry is not None else None
+            if (not isinstance(activation_receipt, dict) or
+                    activation_receipt.get("tool") != TOOL or
+                    activation_receipt.get("tool_version") != TOOL_VERSION):
+                errors.append(
+                    "batch %s has no current Card-first activation receipt; "
+                    "reopen or migrate it before read-back delivery" %
+                    args.deliver_readback)
+            else:
+                try:
+                    readback_context = card_activation.build_readback_addendum(
+                        result["root"],
+                        card_activation.context_from_receipt(
+                            activation_receipt),
+                        args.readback_rule,
+                    )
+                except (OSError, UnicodeError, ValueError) as exc:
+                    errors.append("cannot deliver Card read-back: %s" % exc)
     elif not errors and args.require_maintenance_complete:
         maintenance_errors, maintenance_context = \
             _maintenance_completion_gate_errors(
@@ -16049,6 +16176,34 @@ def _run(args, produced):
                 ("paused", "blocked", "complete", "cancelled")):
             candidates.append("batch hold(s) require resolution: %s" %
                               ", ".join(sorted(held_ids)))
+        for item_id in sorted(active_ids):
+            item = result["items_by_id"][item_id]
+            try:
+                delivery = card_activation.build_activation_context(
+                    result["root"], result["progress"], item,
+                    runtime_state=result)
+            except (OSError, UnicodeError, ValueError) as exc:
+                errors.append(
+                    "cannot compile resume Card delivery for %s: %s" %
+                    (item_id, exc))
+                continue
+            catalog = result.get(
+                "current_receipt_catalog", result.get("receipt_catalog", {}))
+            recorded_entry = catalog.get(item.get("activation_receipt"))
+            recorded = recorded_entry[1] if recorded_entry else None
+            bundle_errors = card_activation.exact_bundle_errors(
+                delivery, card_activation.context_from_receipt(recorded))
+            if bundle_errors:
+                errors.extend(
+                    "cannot resume %s Card delivery: %s" % (item_id, error)
+                    for error in bundle_errors)
+                continue
+            resume_activation_contexts.append({
+                "batch_id": item_id,
+                "parent_activation_receipt": item.get(
+                    "activation_receipt"),
+                **delivery,
+            })
     for defect in result.get("structural_admission_defects") or []:
         candidates.append(defect)
     unsupported_reviewed = unsupported_reviewed_records(result.get("coverage"))
@@ -16087,6 +16242,17 @@ def _run(args, produced):
                       for item in queue_items if isinstance(item, dict))):
             candidates.append("no executable batch; remaining work is held or dependency-blocked")
 
+    if (not errors and not candidates and args.require_ready and
+            activation_context is None):
+        try:
+            activation_context = card_activation.build_activation_context(
+                result["root"], result["progress"],
+                result["items_by_id"][args.require_ready],
+                runtime_state=result,
+            )
+        except (OSError, UnicodeError, ValueError) as exc:
+            errors.append("cannot compile Card activation bundle: %s" % exc)
+
     for error in errors:
         print("[FAIL] %s" % error)
     for candidate in candidates:
@@ -16107,6 +16273,14 @@ def _run(args, produced):
         if args.require_ready:
             print("hub_page_candidates=%s" %
                   ("; ".join(hub_page_candidates) or "none"))
+            if activation_context:
+                print("card_bundle_sha256=%s delivery_assurance=%s" % (
+                    activation_context.get("card_bundle_sha256"),
+                    activation_context.get("delivery_assurance")))
+        if args.deliver_readback and readback_context:
+            print("readback_addendum_sha256=%s delivery_assurance=%s" % (
+                readback_context.get("readback_addendum_sha256"),
+                readback_context.get("delivery_assurance")))
 
     code = 1 if errors else (2 if candidates else 0)
     outcome = "fail" if errors else ("candidate" if candidates else "pass")
@@ -16117,10 +16291,13 @@ def _run(args, produced):
     mode = ("require-revalidation:%s" % args.require_revalidation
             if args.require_revalidation else
             ("require-ready:%s" % args.require_ready if args.require_ready else
+            ("deliver-readback:%s:%s" % (
+                args.deliver_readback, args.readback_rule)
+             if args.deliver_readback else
             ("require-complete" if args.require_complete else
              ("require-maintenance-complete"
               if args.require_maintenance_complete else
-              ("resume-status" if args.resume_status else "consistency")))))
+              ("resume-status" if args.resume_status else "consistency"))))))
     try:
         receipt = _write_receipt(
             args.root, args.receipts, result, outcome, details, mode,
@@ -16129,6 +16306,9 @@ def _run(args, produced):
             runtime_errors=errors,
             maintenance_context=maintenance_context,
             standards_revalidation_context=revalidation_context,
+            activation_context=activation_context,
+            readback_context=readback_context,
+            resume_activation_contexts=resume_activation_contexts,
             build_unwritten=produced is not None,
         )
     except (OSError, ValueError) as exc:

@@ -25,6 +25,7 @@ readback_sources:
   - kernel/K06 Knowledge Intake and Evolution/02 User Guidance Hypotheses and Source Leads.md
   - kernel/K07 Sources and Accuracy/04 Evaluation and Source Quality.md
   - kernel/K07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty.md
+readback_policy: declared
 source_hash: 'b74b0feca7c0'
 compiled_source_hash: 'b74b0feca7c0'
 ---

@@ -21,6 +21,7 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/08 Required Queue Contract and Lifecycle.md
   - kernel/K13 Task Runtime and Execution Control/09 Queue Compilation Replanning and Views.md
   - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
+  - kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery.md
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
   - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
   - kernel/K13 Task Runtime and Execution Control/13 Final Handoff.md
@@ -44,8 +45,9 @@ readback_sources:
   - kernel/K12 Quality Assurance/04 Guidance and Source Review.md
   - kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract.md
   - kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary.md
-source_hash: '57596cac42aa'
-compiled_source_hash: '57596cac42aa'
+readback_policy: declared
+source_hash: 'd81c55c91c1f'
+compiled_source_hash: 'd81c55c91c1f'
 ---
 # R07 Long-running Execution Card
 
@@ -59,7 +61,7 @@ Run a multi-batch task, sustain checkpoints, resume after interruption, maintain
 
 - [ ] If `.cambium/` exists, run `python3 Tools/check_queue.py . --resume-status` before any state write; resume the recorded task instead of initializing a replacement.
 - [ ] If persistent runtime state is authorized and `.cambium/` is absent, create the empty namespace with `init_state.py`, commit the exact initial Task Plan with `apply_task_plan.py`, then derive Queue views with `compile_queue.py`. Never materialize Coverage or Queue by hand.
-- [ ] Freeze the long-run Task Contract: Standards version, exact `selected_profile_manifest`, its passing `profile-load` snapshot/contract fingerprints, time semantics, route IDs, Card paths, actual read-backs, completion semantics, and the Queue path/revisions/fingerprint. Profile closure members remain derived Gate output, not loaded-module entries.
+- [ ] Freeze the long-run Task Contract: Standards/Profile fingerprints, time semantics, route/Card paths, derived source-delivery boundary, completion semantics, and Queue identity. Delivery is evidenced separately; Profile closure members remain derived Gate output.
 - [ ] Reconcile `.cambium/` Coverage, Queue, and Progress with the file system and user modifications. Ready, open, and merge-ready lists are derived from the Queue, never edited in Progress as a second authority.
 - [ ] For persistent multi-batch corpus work, require Corpus Planning `applicability.state: configured` and pass `check_corpus_plan.py`; use its on-demand `--json` projection for recovery and R13 for any planning edit.
 - [ ] Define batch manifests, tier-derived caps, concurrency admission, write partitions, merge order, and acceptance conditions.

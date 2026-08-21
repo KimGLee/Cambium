@@ -64,7 +64,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:46c9adee224d1316b8bec5ce548d99a8481f7568f3a2a7e93c22e4cb35af967a
+source_hash: sha256:b89cf8dbcb8cde230f1eda43cf8d833232efc9dfd889f96ce2e0b1cc83b88757
 receipt_shape:
   base_fields:
     - receipt_id
@@ -855,7 +855,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_task_plan
     module: Tools/apply_task_plan.py
-    source_hash: sha256:df8993aceff2c051c2d5328ae1c84801cef24db7455ab7bfda1ada1c24d93ab9
+    source_hash: sha256:99b47d8dfc2366098ebb3f7d285dec2bc84c0c834c39efea3b846a06b0a36f5d
     description: Materialize a task runtime from one confirmed plan.
     arguments:
       - dest: root
@@ -1766,7 +1766,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:192ba163b63a444bd1b5b0971d3d356420c1be08fd3431d0f42d05dcfd252eb0
+    source_hash: sha256:f07fc3628d1aa0c2ff351415f0070f7de6526344b163bb8981e74ef36ed2f2e9
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -1834,6 +1834,28 @@ tools:
         action: store_true
         type: null
         help: show interruption-safe task and batch resume state
+      - dest: deliver_readback
+        option_strings:
+          - --deliver-readback
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: deliver one registered conditional Card read-back source for an already-open batch
+      - dest: readback_rule
+        option_strings:
+          - --readback-rule
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: registered rule selected with --deliver-readback
       - dest: confirmation_receipt
         option_strings:
           - --confirmation-receipt
@@ -1919,7 +1941,10 @@ tools:
           - require_complete
           - require_maintenance_complete
           - resume_status
+          - deliver_readback
     receipt_extensions:
+      - activation_context
+      - active_card_context_deliveries
       - applied_delta_receipts
       - batch_close_recovery
       - batch_work_specs
@@ -1943,9 +1968,11 @@ tools:
       - queue_check_mode
       - queue_revision
       - queue_state_revision
+      - readback_context
       - remaining_required_work_units
       - repository_snapshot_sha256
       - required_queue_sha256
+      - resume_activation_contexts
       - runtime_errors
       - selected_profile_manifest
       - standards_revalidation_barriers
@@ -3994,7 +4021,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: stamp_cards
     module: Tools/stamp_cards.py
-    source_hash: sha256:2365f162236451041f8f24322060955f28832b762612b079341686d78497314a
+    source_hash: sha256:2837efc108d6fc15663aa0aa66e9a49c16c6cccf704d34a213492bc8d8122e62
     description: Stamp kernel Runtime Cards
     arguments:
       - dest: root
@@ -4056,7 +4083,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: update_queue
     module: Tools/update_queue.py
-    source_hash: sha256:ae13490c35189a31bc9ce3f7371ef16a8fe21b1f6600e79676c0262d5234518e
+    source_hash: sha256:d8e77856ffc69c37ac665516b376804cc53e4ad6e0e579753b975f635b679d35
     description: Apply one Required Queue transition
     arguments:
       - dest: root

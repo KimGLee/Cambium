@@ -16,6 +16,7 @@ source_files:
   - kernel/K02 Knowledge Work Construction/02 Coverage Reconciliation.md
 readback_sources:
   - kernel/K02 Knowledge Work Construction/08 Architecture Samples and Dependency Planning.md
+readback_policy: declared
 source_hash: '327ae316e60a'
 compiled_source_hash: '327ae316e60a'
 ---

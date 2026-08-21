@@ -37,8 +37,9 @@ readback_sources:
   - kernel/K00 Standards Control/16 Leaf Module Size Register.md
   - kernel/K12 Quality Assurance/02 Rendering Verification.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
-source_hash: 'ab1b805c0380'
-compiled_source_hash: 'ab1b805c0380'
+readback_policy: activation
+source_hash: '582b6e6c08a7'
+compiled_source_hash: '582b6e6c08a7'
 ---
 # R09 Standards Governance Card
 
@@ -51,7 +52,9 @@ Modify kernel rules, Read Sets, Cards, versions, directories, ownership, tooling
 ## Before Start
 
 - [ ] Obtain explicit user authorization for the governance change.
-- [ ] Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]], then read [[kernel/Read Sets/R09 Standards Governance Read Set|R09 Read Set]] and its Start list in full.
+- [ ] Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]], then verify
+  the activation Bundle delivered [[kernel/Read Sets/R09 Standards Governance Read Set|R09 Read Set]]
+  and its Start list in full under `readback_policy: activation`.
 - [ ] Choose the branch: for initial adoption, freeze the four K00/03 placeholders and upstream provenance, then admit the candidate through `profile-load`; for a later revision, freeze the active Standards version and selected profile manifest, and separately admit the after Profile through the same Gate. A broken current Profile is impact evidence, not a prerequisite that can deadlock correction. In both branches freeze affected modules, incoming links, changed predicates, active-task impact, and rollback/conservation boundary.
 - [ ] Identify the single canonical owner for every rule being changed and the existing control that is superseded.
 
