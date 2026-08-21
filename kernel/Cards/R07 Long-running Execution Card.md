@@ -46,8 +46,8 @@ readback_sources:
   - kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract.md
   - kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary.md
 readback_policy: declared
-source_hash: 'fa8a13023c7d'
-compiled_source_hash: 'fa8a13023c7d'
+source_hash: '6dcf3f22e9b9'
+compiled_source_hash: '6dcf3f22e9b9'
 ---
 # R07 Long-running Execution Card
 
@@ -71,7 +71,7 @@ Run a multi-batch task, sustain checkpoints, resume after interruption, maintain
 
 ## During
 
-Each batch follows the fixed loop: version/Guidance self-check → `check_queue.py --require-ready` → integrator records `queued -> open` → execute the frozen manifest → build one AuditPlan, finish in-batch QA, and write the delta → integrator records `open -> merge-ready` → serially applies the delta and global gates → reconciles Coverage/Queue/Progress → records `merge-ready -> closed`.
+Each batch follows the fixed loop: version/Guidance self-check → `check_queue.py --require-ready` → integrator records `queued -> open` → execute the frozen manifest → build one AuditPlan, finish in-batch QA — including one `record_batch_judgment.py` receipt per record of the activation-delivered Batch Review plan — and write the delta → integrator records `open -> merge-ready` → serially applies the delta and global gates → reconciles Coverage/Queue/Progress → records `merge-ready -> closed`.
 
 - Concurrent batches have disjoint manifests and merged prerequisites; only the integrator writes shared control state and hub pages.
 - In-batch QA is not satisfied by producing the close evidence set alone: each M-tier manifest page passes, page by page, the M-tier Gate Checklist surfaced by the kernel Single Note Authoring Card (K12/14 folds note-level acceptance into Batch Review), including the sources-role and page-contract items; the per-page conclusion is recorded in that page's attestation, not asserted once in the batch wrapper.

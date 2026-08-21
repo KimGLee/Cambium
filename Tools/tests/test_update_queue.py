@@ -3557,5 +3557,275 @@ raise SystemExit(update_queue.main(sys.argv[4:]))
             self.assertEqual(entry, transition["invalidation"])
 
 
+class BatchReviewRequirementTests(UpdateQueueTests):
+    """The Profile's frozen judgment obligations gate `open -> merge-ready`."""
+
+    REQUIREMENT_SECTION = (
+        "\n## Batch Review Requirements\n\n"
+        "- Registration: Configured\n\n"
+        "| Judgment Item ID reference | Target selector: `each-manifest-page`"
+        " or `batch` | Trigger: `before-merge-ready` | Producer kind:"
+        " `manual-attestation` | Receipt schema | Pass-authority Role ID"
+        " reference |\n"
+        "|---|---|---|---|---|---|\n"
+        "| `test-profile-foundation-depth` | `each-manifest-page` |"
+        " `before-merge-ready` | `manual-attestation` |"
+        " `page-batch-judgment-v1` | `executor` |\n"
+    )
+
+    ROLE_SECTIONS = (
+        "\n## Process Roles\n\n"
+        "| Kernel role | Bound actor or system ID/name |\n|---|---|\n"
+        "| `proposer` | Model proposal |\n"
+        "| `gatekeeper` | Harness control |\n"
+        "| `executor` | External executor |\n"
+        "| `stopper` | Human authority |\n"
+        "\n## Knowledge Host\n\n"
+        "| Kernel role | Binding |\n|---|---|\n"
+        "| `knowledge-host` | Fixture vault |\n"
+        "| `knowledge-host UI` | Fixture UI |\n"
+        "\n## Extension Roles\n\n"
+        "- Registration: None\n\n"
+        "| Role ID | Bound actor or system ID/name | Responsibility |\n"
+        "|---|---|---|\n"
+    )
+
+    def enable_requirement(self):
+        slots = self.root / "profiles/test-profile/slots.md"
+        slots.write_text(
+            slots.read_text(encoding="utf-8") + self.ROLE_SECTIONS +
+            self.REQUIREMENT_SECTION,
+            encoding="utf-8")
+
+    def activation_receipt(self):
+        queue = kblib.load_yaml_file(self.root / check_queue.QUEUE_PATH)
+        item = next(row for row in queue["required_queue"]
+                    if row["id"] == "B1")
+        records = [json.loads(line) for line in
+                   (self.root / ".cambium/receipts/gates.jsonl").read_text(
+                       encoding="utf-8").splitlines()]
+        return next(record for record in records
+                    if record["receipt_id"] == item["activation_receipt"])
+
+    def judge(self, target="Topics/A.md", *, role="executor",
+              item_id="test-profile-foundation-depth", expect=0):
+        completed = subprocess.run(
+            [sys.executable, str(TOOLS / "record_batch_judgment.py"),
+             str(self.root), "--batch", "B1", "--judgment-item", item_id,
+             "--target", target, "--reviewer-role", role,
+             "--statement", "class 4: natural prose, smoothed only",
+             "--apply", "--json"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False)
+        self.assertEqual(expect, completed.returncode, completed.stdout)
+        if expect != 0:
+            return completed.stdout
+        return json.loads(completed.stdout)[0]
+
+    def merge_with_wrapper(self, judgment_receipts, *, wrapper_extra=None,
+                           expect=0):
+        self.append_receipt("audit-page-1", target="Topics/A.md")
+        expected_sha = self.activation_receipt()[
+            "review_requirement_set_sha256"]
+        actual = [
+            {
+                "target": receipt["target"],
+                "judgment_item_id": receipt["judgment_item_id"],
+                "receipt_id": receipt["receipt_id"],
+            }
+            for receipt in judgment_receipts
+        ]
+        fields = {
+            "review_requirement_set_sha256": expected_sha,
+            "judgment_receipt_ids": sorted(
+                row["receipt_id"] for row in actual),
+            "judgment_record_set_sha256":
+                check_queue.judgment_record_set_sha256(actual),
+        }
+        fields.update(wrapper_extra or {})
+        self.append_receipt("audit-batch-1", check="batch_gate", **fields)
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-1\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8",
+        )
+        revision, fingerprint = self.expected()
+        completed = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T02:00:00Z",
+            "--apply",
+        )
+        self.assertEqual(expect, completed.returncode, completed.stdout)
+        return completed
+
+    def test_exact_judgment_set_reaches_merge_ready(self):
+        self.enable_requirement()
+        self.open_b1()
+        receipt = self.judge()
+        self.assertEqual(
+            self.activation_receipt()["review_requirement_set_sha256"],
+            receipt["review_requirement_set_sha256"])
+        self.merge_with_wrapper([receipt])
+
+    def test_missing_judgment_refuses_merge_ready(self):
+        self.enable_requirement()
+        self.open_b1()
+        completed = self.merge_with_wrapper([], expect=1)
+        self.assertIn("missing the required judgment", completed.stdout)
+
+    def test_wrapper_without_bindings_refuses_merge_ready(self):
+        self.enable_requirement()
+        self.open_b1()
+        self.judge()
+        self.append_receipt("audit-page-1", target="Topics/A.md")
+        self.append_receipt("audit-batch-1", check="batch_gate")
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-1\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8",
+        )
+        revision, fingerprint = self.expected()
+        completed = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T02:00:00Z",
+            "--apply",
+        )
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("review_requirement_set_sha256", completed.stdout)
+
+    def test_duplicate_judgment_refuses_merge_ready(self):
+        self.enable_requirement()
+        self.open_b1()
+        first = self.judge()
+        second = self.judge()
+        completed = self.merge_with_wrapper([first, second], expect=1)
+        self.assertIn("duplicates the judgment", completed.stdout)
+
+    def test_wrong_reviewer_role_is_refused_at_recording(self):
+        self.enable_requirement()
+        self.open_b1()
+        output = self.judge(role="gatekeeper", expect=1)
+        self.assertIn("cannot answer", output)
+
+    def test_forged_reviewer_role_refuses_merge_ready(self):
+        self.enable_requirement()
+        self.open_b1()
+        receipt = self.judge()
+        self.rewrite_receipt_for_negative_test(
+            receipt["receipt_id"],
+            lambda record: record.update({"reviewer_role": "gatekeeper"}))
+        completed = self.merge_with_wrapper([receipt], expect=1)
+        self.assertIn("not the registered pass authority", completed.stdout)
+
+    def test_unregistered_target_is_refused_at_recording(self):
+        self.enable_requirement()
+        self.open_b1()
+        output = self.judge(target="Topics/Missing.md", expect=1)
+        self.assertIn("not an expected obligation", output)
+
+    def test_page_drift_after_judgment_refuses_merge_ready(self):
+        self.enable_requirement()
+        self.open_b1()
+        receipt = self.judge()
+        page = self.root / "Topics/A.md"
+        page.write_text(
+            page.read_text(encoding="utf-8") + "\ndrifted after judgment\n",
+            encoding="utf-8")
+        completed = self.merge_with_wrapper([receipt], expect=1)
+        self.assertIn("judged against different page bytes",
+                      completed.stdout)
+
+    def test_reused_activation_binding_refuses_merge_ready(self):
+        self.enable_requirement()
+        self.open_b1()
+        receipt = self.judge()
+        self.rewrite_receipt_for_negative_test(
+            receipt["receipt_id"],
+            lambda record: record.update(
+                {"opening_transition_receipt": "audit-stale-activation"}))
+        completed = self.merge_with_wrapper([receipt], expect=1)
+        self.assertIn("binds a different activation", completed.stdout)
+
+    def test_requirement_free_profile_keeps_its_exact_shape(self):
+        # The whole pre-requirement suite exercises this continuously; this
+        # case pins it explicitly: no requirements, no judgment bindings,
+        # merge-ready unchanged.
+        self.merge_b1()
+
+    def test_legacy_activation_era_carries_no_obligations(self):
+        self.enable_requirement()
+        self.open_b1()
+        activation = self.activation_receipt()
+        legacy_manifest = dict(activation["activation_bundle_manifest"])
+        legacy_manifest["activation_protocol"] = "card-first-readback-v1"
+        legacy_manifest.pop("batch_review_plan", None)
+        legacy_bundle_sha = kblib.sha256_bytes(
+            kblib.canonical_json_bytes(legacy_manifest))
+
+        def downgrade(record):
+            record["activation_protocol"] = "card-first-readback-v1"
+            record.pop("review_requirement_set_sha256", None)
+            if "activation_bundle_manifest" in record:
+                record["activation_bundle_manifest"] = legacy_manifest
+            record["card_bundle_sha256"] = legacy_bundle_sha
+
+        self.rewrite_receipt_for_negative_test(
+            activation["receipt_id"], downgrade)
+        transitions = [
+            json.loads(line) for line in
+            (self.root / ".cambium/receipts/queue-transitions.jsonl"
+             ).read_text(encoding="utf-8").splitlines() if line.strip()]
+        opening = next(record for record in transitions
+                       if record.get("target") == "B1" and
+                       record.get("after_state") == "open")
+        self.rewrite_receipt_for_negative_test(
+            opening["receipt_id"], downgrade)
+        self.merge_b1_body_without_open()
+
+    def merge_b1_body_without_open(self):
+        self.append_receipt("audit-page-1", target="Topics/A.md")
+        self.append_receipt("audit-batch-1", check="batch_gate")
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-1\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8",
+        )
+        revision, fingerprint = self.expected()
+        completed = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T02:00:00Z",
+            "--apply",
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        return completed
+
+
 if __name__ == "__main__":
     unittest.main()

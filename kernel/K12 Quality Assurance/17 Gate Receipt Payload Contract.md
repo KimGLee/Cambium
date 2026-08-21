@@ -36,7 +36,7 @@ identity and MUST NOT combine the live before Task/Standards identity with the
 after manifest. A current-use receipt for the already-selected Profile carries
 all three live identity fields normally.
 
-A Gate whose owner requires more binds more, and that owner states the addition: the `batch-review` wrapper additionally binds the batch and the exact Delta page receipt IDs per [[kernel/K12 Quality Assurance/14 Batch Review#Batch Review|Batch Review]], and the close bundle binds the merged-snapshot digest and member chain per [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]].
+A Gate whose owner requires more binds more, and that owner states the addition: the `batch-review` wrapper additionally binds the batch, the exact Delta page receipt IDs, and — when the selected Profile registers Batch Review Requirements — the frozen judgment set (`review_requirement_set_sha256`, `judgment_receipt_ids`, `judgment_record_set_sha256`) per [[kernel/K12 Quality Assurance/14 Batch Review#Batch Review|Batch Review]], and the close bundle binds the merged-snapshot digest and member chain per [[kernel/K12 Quality Assurance/09 Batch-close Closed List#Batch-close Closed List|Batch-close Closed List]].
 
 A `profile-load` receipt additionally carries `profile_snapshot_sha256`,
 `profile_contract_fingerprint`, and `profile_load_inputs_sha256`. The first is

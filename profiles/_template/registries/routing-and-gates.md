@@ -30,6 +30,32 @@ there is no readiness axis, so no readiness gate is required.
 | Judgment Item ID reference | Applicability / trigger predicate | Verification procedure or existing Scan/receipt-source reference | Evidence-reuse predicate/boundary |
 |---|---|---|---|
 
+## Batch Review Requirements
+
+- Registration: None
+
+`None` keeps the table empty. A configured row makes one registered Judgment
+Item a standing per-batch obligation with machine-checked completion: at
+`queued -> open` the row expands against the frozen manifest into an exact
+expected record set delivered with the Card Activation Bundle, each expected
+record must be answered by one current `profile_batch_judgment` receipt from
+`Tools/record_batch_judgment.py`, and `open -> merge-ready` refuses the batch
+until the batch-review wrapper binds exactly that set. A requirement differs
+from an Extension Gate on purpose: a Gate changes one persisted property
+after a judgment, while a requirement proves the judgment happened for every
+applicable target and writes nothing back to any page. The first-version
+enums are closed — target selector `each-manifest-page` or `batch`, trigger
+`before-merge-ready`, producer kind `manual-attestation`, receipt schema
+`page-batch-judgment-v1` — and natural-language applicability is deliberately
+not accepted, so a declared rule can never be one the machine does not know
+when to apply. The Judgment Item and the pass-authority role must both
+resolve during `profile-load`; each Judgment Item may be required at most
+once. An absent section means no requirements and changes nothing for an
+existing Profile.
+
+| Judgment Item ID reference | Target selector: `each-manifest-page` or `batch` | Trigger: `before-merge-ready` | Producer kind: `manual-attestation` | Receipt schema | Pass-authority Role ID reference |
+|---|---|---|---|---|---|
+
 ## Extension Gates
 
 - Registration: None

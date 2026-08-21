@@ -26,8 +26,8 @@ readback_sources:
   - kernel/K12 Quality Assurance/11 Content-level Propagation.md
   - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
 readback_policy: declared
-source_hash: 'ce997729d09d'
-compiled_source_hash: 'ce997729d09d'
+source_hash: '37481f0b4cc3'
+compiled_source_hash: '37481f0b4cc3'
 ---
 # R10 Maintenance Run Card
 

@@ -5,7 +5,7 @@
 #   by hand, and a hand edit is reported by --check as a HOLD.
 # regenerate with: python3 Tools/compile_cli_contract.py .
 # verify with:     python3 Tools/compile_cli_contract.py . --check
-# `source_hash` covers the manifest of the 44 tool sources listed
+# `source_hash` covers the manifest of the 45 tool sources listed
 #   under source_files, each with its own sha256.
 # A positional argument is one whose `option_strings` is empty.
 # `choices` is the admissible SET in canonical order, not the
@@ -49,6 +49,7 @@ source_files:
   - Tools/metadata_execution_contract.py
   - Tools/profile_onboarding_status.py
   - Tools/project_page_state.py
+  - Tools/record_batch_judgment.py
   - Tools/record_corpus_acceptance.py
   - Tools/record_gate_attestation.py
   - Tools/record_gate_result.py
@@ -64,7 +65,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:89e88488109fc3a99fcd7e6fe88374d152b66a3bfcfd142ddee0d48d154f38c2
+source_hash: sha256:5405dd41b72dba2296a326f7852adb2b92074f78fa7e5c6e503710ea1e27b6c4
 receipt_shape:
   base_fields:
     - receipt_id
@@ -79,7 +80,7 @@ receipt_shape:
   conditional_fields:
     - gate_id
   extension_policy: derived-per-tool-from-source
-tool_count: 44
+tool_count: 45
 tools:
   - tool: adopt_standards
     module: Tools/adopt_standards.py
@@ -1766,7 +1767,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:60cef999292bf58f4888812a623502df76b27a18032c0dc03770bedf562d65e4
+    source_hash: sha256:5f63c7b737f54f551ca70e2cb4642892d6262d0cd9d4196659cc77b7d502e1e4
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -2969,6 +2970,124 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+  - tool: record_batch_judgment
+    module: Tools/record_batch_judgment.py
+    source_hash: sha256:ae6b734b1de1712e9967265217112a9aaf4db0941ff761c3ab464acc78ec345f
+    description: Record one snapshot-bound Batch Review judgment
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: batch
+        option_strings:
+          - --batch
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: exact open Queue batch ID
+      - dest: judgment_item
+        option_strings:
+          - --judgment-item
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: registered Batch Review Requirement Judgment Item ID
+      - dest: target
+        option_strings:
+          - --target
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: manifest page path, or the batch ID for a batch-selector requirement
+      - dest: reviewer_role
+        option_strings:
+          - --reviewer-role
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: declared pass-authority Profile role ID
+      - dest: statement
+        option_strings:
+          - --statement
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: bounded judgment statement (the concrete verdict, not "reviewed")
+      - dest: receipts
+        option_strings:
+          - --receipts
+        required: false
+        default: .cambium/receipts/batch-judgments.jsonl
+        default_type: str
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: receipt JSONL path under .cambium/receipts
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: append the evidence; omit for a dry run
+      - dest: json
+        option_strings:
+          - --json
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write the applied receipt as one JSON array
+    mutually_exclusive_groups: []
+    receipt_extensions:
+      - batch_id
+      - judgment_item_id
+      - opening_transition_receipt
+      - pass_authority_role_id
+      - profile_contract_fingerprint
+      - profile_snapshot_sha256
+      - receipt_schema
+      - review_requirement_set_sha256
+      - reviewer_role
+      - root
+      - semantic_content_sha256
+      - target_selector
+    receipt_extensions_extraction: complete
   - tool: record_corpus_acceptance
     module: Tools/record_corpus_acceptance.py
     source_hash: sha256:daf0221fda93476856e57f0047a0f95ebd6b6bb421c3705cdb4e388555548521
@@ -4083,7 +4202,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: update_queue
     module: Tools/update_queue.py
-    source_hash: sha256:d8e77856ffc69c37ac665516b376804cc53e4ad6e0e579753b975f635b679d35
+    source_hash: sha256:3680ae8592ea307542de1b86bb808cc99e1153b1b244c8aeed8680bf0f7a77ae
     description: Apply one Required Queue transition
     arguments:
       - dest: root
