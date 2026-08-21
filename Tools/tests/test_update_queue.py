@@ -3827,5 +3827,19 @@ class BatchReviewRequirementTests(UpdateQueueTests):
         return completed
 
 
+# The requirement class inherits UpdateQueueTests only for its fixture
+# helpers.  Rerunning every inherited test under the subclass doubles the
+# shard's wall clock for zero new coverage — the s-z CI shard sits near its
+# 15-minute budget — so the inherited tests are explicitly skipped here and
+# keep running exactly once, on the base class.
+for _name in dir(UpdateQueueTests):
+    if _name.startswith("test_"):
+        setattr(
+            BatchReviewRequirementTests, _name,
+            unittest.skip("runs once on UpdateQueueTests")(
+                getattr(UpdateQueueTests, _name)))
+del _name
+
+
 if __name__ == "__main__":
     unittest.main()
