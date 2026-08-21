@@ -38,8 +38,8 @@ readback_sources:
   - kernel/K12 Quality Assurance/02 Rendering Verification.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
 readback_policy: activation
-source_hash: '30f6ab17a5f6'
-compiled_source_hash: '30f6ab17a5f6'
+source_hash: 'cc47b6b15432'
+compiled_source_hash: 'cc47b6b15432'
 ---
 # R09 Standards Governance Card
 

@@ -20,8 +20,8 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
 readback_sources: []
 readback_policy: none
-source_hash: '7d03b7f04f48'
-compiled_source_hash: '7d03b7f04f48'
+source_hash: '72cd9219f1e8'
+compiled_source_hash: '72cd9219f1e8'
 ---
 # R01 Core Bootstrap Card
 

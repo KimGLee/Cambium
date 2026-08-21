@@ -22,6 +22,7 @@ SCRIPT = TOOLS_DIR / "stamp_cards.py"
 
 sys.path.insert(0, str(TOOLS_DIR))
 import stamp_cards  # noqa: E402
+import standards_state  # noqa: E402
 
 
 DEMO_TOOL = (
@@ -227,20 +228,65 @@ class StampCardsCommandGateTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
 
     def run_check(self):
+        return self.run_stamp("--check")
+
+    def run_stamp(self, *arguments):
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
         return subprocess.run(
-            [sys.executable, str(SCRIPT), str(self.root), "--check"],
+            [sys.executable, str(SCRIPT), str(self.root), *arguments],
             text=True,
             capture_output=True,
             check=False,
             env=env,
         )
 
+    def install_standards_state(self, version):
+        path = self.root / standards_state.STATE_PATH
+        path.parent.mkdir(parents=True)
+        path.write_text(standards_state.canonical_text({
+            "schema_version": 1,
+            "state_revision": 1,
+            "standards_version": version,
+            "status": "approved",
+            "effective_date": "2026-08-21",
+            "selected_profile_manifest": "profiles/example/profile.md",
+            "latest_adoption_receipt": "audit-adopt-current-0001",
+            "upstream_source_ref": "https://example.invalid/upstream",
+            "upstream_revision_id": "current-revision",
+        }), encoding="utf-8")
+
     def test_current_card_layer_has_no_command_drift(self):
         result = self.run_check()
 
         self.assertNotIn("[FAIL]", result.stdout, result.stdout + result.stderr)
         self.assertIn("runtime_cards=13", result.stdout)
+
+    def test_explicit_write_can_prepare_candidate_version_before_adoption(self):
+        self.install_standards_state("current")
+        current = self.run_stamp(
+            "--set-version", "current", "--acknowledge-compiled")
+        self.assertEqual(current.returncode, 0, current.stdout + current.stderr)
+
+        candidate = self.run_stamp(
+            "--set-version", "candidate", "--acknowledge-compiled")
+
+        self.assertEqual(candidate.returncode, 0,
+                         candidate.stdout + candidate.stderr)
+        for card in (self.root / "kernel" / "Cards").glob("*.md"):
+            self.assertIn("compiled_from: 'candidate'",
+                          card.read_text(encoding="utf-8"))
+
+        active_check = self.run_check()
+        self.assertEqual(active_check.returncode, 2,
+                         active_check.stdout + active_check.stderr)
+        self.assertIn("compiled_from candidate -> current",
+                      active_check.stdout)
+
+        candidate_check = self.run_stamp(
+            "--check", "--set-version", "candidate")
+        self.assertEqual(candidate_check.returncode, 1,
+                         candidate_check.stdout + candidate_check.stderr)
+        self.assertIn("--check cannot judge candidate", candidate_check.stdout)
 
     def test_a_flag_before_the_positional_does_not_fail_the_layer(self):
         """Reordering a legal command must not turn into a Card layer failure."""

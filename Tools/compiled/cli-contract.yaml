@@ -66,7 +66,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:443790228b15aa418befe790527ba7f1d625e7729b5d9b672a562f0666ede300
+source_hash: sha256:627dd50413056001cdb60554fe44a69abaac8211c9d655b5943fe2ed37e494a4
 receipt_shape:
   base_fields:
     - receipt_id
@@ -4154,7 +4154,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: stamp_cards
     module: Tools/stamp_cards.py
-    source_hash: sha256:19fdf534a22f95d93106d86ca73d3fdbf08d65bfc8adb53cc93b3e9ec03f35e5
+    source_hash: sha256:d1fc2ede40b0e4389e824e60b14d97332d8631d7983ad06addc8e693b12c4cf1
     description: Stamp kernel Runtime Cards
     arguments:
       - dest: root
