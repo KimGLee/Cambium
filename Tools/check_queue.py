@@ -273,7 +273,14 @@ LOCK_STATE_FINGERPRINTS = {
         "planned_after": ("planned_after_progress_sha256",),
     },
     "standards": {
-        "before": ("before_standards_state_sha256",),
+        # Ordinary writers do not change adopter Standards state, but their
+        # frozen runtime-authority context already records the exact active
+        # bytes.  Treat that existing field as the before-image alias so
+        # interrupted-write recovery does not call a bound authority input
+        # unavailable. Standards adoption supplies its explicit before/after
+        # pair and therefore retains the four-state transaction distinction.
+        "before": ("before_standards_state_sha256",
+                   "active_standards_sha256"),
         "planned_after": ("planned_after_standards_state_sha256",),
     },
 }

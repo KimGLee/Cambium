@@ -39,6 +39,7 @@ The core distribution tools are `check_links`, `check_vocab`, `check_moc`,
 `update_queue`, `register_amendment`, `apply_amendment`, `adopt_standards`,
 `seal_receipts`,
 `apply_profile_adoption`,
+`migrate_standards_state`,
 `render_queue`, `apply_delta`, `compose_vocab`, `check_profile`,
 `check_structure`, `compose_page_contract`, `check_page_contract`,
 `check_boundary_contract`, `render_boundary_projection`,
@@ -51,6 +52,7 @@ The core distribution tools are `check_links`, `check_vocab`, `check_moc`,
 `mcp_server`, `card_activation`,
 `amendment_policy`, `batch_settlement`, `candidate_lifecycle`,
 `coverage_delta`, `freshness_engine`, `maintenance_candidates`, and `kblib`.
+The shared canonical-state library is `standards_state`.
 `check_freshness` and `duplicate_check` are maintenance-run tools.
 This list and the inventory table below name every `Tools/*.py` file shipped
 with Cambium; a script absent from both is not part of the distribution.
@@ -101,6 +103,7 @@ returned Addendum is bound to the parent Bundle and refuses source drift.
 | `profile_onboarding_status.py` | Read-only onboarding status projector 1.1.0: derives one machine-readable `next_action` from the presence/validity of `.cambium/governance/standards_state.yaml`, candidate Profile admission, corpus state, and `.cambium/state/` task-runtime presence. A governance-only `.cambium/` is pre-runtime state, not a task to resume. It writes nothing and owns no ledger | `python3 Tools/profile_onboarding_status.py . --json` |
 | `apply_profile_adoption.py` | Sole no-task-runtime R09 Profile-adoption writer 2.0.0. Initial adoption creates `.cambium/governance/standards_state.yaml`; a pre-task Profile revision advances it. The plan binds unchanged K00/03 rule bytes, the absent/current state, upstream identity, and exact `profile-load` evidence. The transaction appends `.cambium/receipts/standards-adoptions.jsonl`, regenerates vocabulary/page-contract/Cards, and rolls back every touched byte on failure. It never adds history to Kernel Markdown or Cards; an existing `.cambium/state/` routes to `adopt_standards.py` | `python3 Tools/apply_profile_adoption.py . --plan adoption-plans/PA-001.yaml --apply` |
 | `migrate_standards_state.py` | One-time compatibility bridge 1.0.0 for an existing task runtime whose current Standards/Profile identity is still repeated only across Coverage, Queue, and Progress. It requires those three values to agree and a committed adoption receipt to account for the live version, then materializes the canonical state without rewriting history or K00/03. Dry-run by default | `python3 Tools/migrate_standards_state.py . --apply` |
+| `standards_state.py` | Shared closed-schema owner for `.cambium/governance/standards_state.yaml`. It parses, validates, snapshots, and deterministically renders one adopter's current Standards/Profile identity; it never falls back to K00/03, writes files, or stores history | imported by governance and runtime consumers; no command-line entry point |
 | `check_profile.py` | Sole `profile-load` Gate producer 2.0.0. It derives the slot list from `profiles/README.md`; verifies identity/directory agreement, slot bindings, sparse execution overrides, `Configured`/inactive table consistency, invalid UTF-8, sentinels, reserved IDs, and the Structure Registry's closed shape. It then calls `profile_contract.py` once to authorize the machine-active self-path closure from the selected manifest through the Audit Dimension Registry extension dimensions and Judgment Item owner headings and the Registered Scan Registry verifier, optional config, predicate, semantics, and Judgment Item references. Extension Gate rows compile as typed producer, receipt-schema, consumer, owner-field, transition, enum, and pass-authority bindings and must resolve to the installed generic Profile-enum writer capability. Every Profile-owned path must remain lexically and physically inside the selected Profile, exact heading references resolve once, and symlink/hardlink aliases fail closed. A pass summary uses check `profile-check-summary`, Gate ID `profile-load`, dimension `guidance_and_contract`, and binds `selected_profile_manifest`, the complete Profile-tree `profile_snapshot_sha256`, `profile_contract_fingerprint`, and the canonical root-input `profile_load_inputs_sha256`. Receipt output is refused inside the Profile itself so validation cannot mutate the package whose snapshot it binds. The checker parses one immutable Profile-tree snapshot and rechecks both that tree and the canonical inputs before authorization. It checks authority and structure, never answer quality, and is not run against `_template` itself. `--json` writes one deterministic structured-diagnostics object to stdout (tool, root, result, findings), each finding carrying a category from the closed classification map: `mechanical` (an assisting agent can fix it directly and rerun — path resolution, identity/directory agreement, table and manifest shape, self-reference containment, declaration word shape) vs `semantic-unresolved` (an operator answer is missing or unconfirmed — `unfilled-placeholder` sentinels and other open decisions); human output, receipts, and exit codes are unchanged | `python3 Tools/check_profile.py profiles/<profile-id> --root . --receipts Tools/receipts/profile.jsonl` |
 | `check_structure.py` | Sole `structure-registry` gate 1.1.0 (K01/05, K01/06): resolves the selected profile's Structure Registry against the vault — unit and support-layer roots, canonical entries and `expected_type` frontmatter, embedded headings, per-mode role declarations, Profile Scope layer membership, module-inside-parent containment, flat/grouped layout consistency with declared class-to-directory agreement, Corpus Planning Global Map entry bindings, and Coverage Ledger `structural_unit` references; `--profile` overrides the active-state selection; fails closed on an unresolved profile, unbound or unreadable registry, or a configured registry with no units. It proves structure declarations, never content quality or class-assignment semantics | `python3 Tools/check_structure.py . --profile profiles/<profile-id> --receipts Tools/receipts/structure.jsonl` |
 | `compose_page_contract.py` | Deterministic page-contract compiler 1.2.0 (K08/06): composes the kernel `applicability-base.yaml` and `relationship-base.yaml` with the selected profile's `Metadata Contract` and `Vocabulary Extensions` and the K07 `sources-role-base.yaml` into `Tools/page_contract.yaml`, including the profile-bound section-role display titles; a profile difference may only tighten a kernel mode, extensions must not collide with kernel fields, and `--check` verifies the artifact is byte-current; the K08/09 boundary projection display labels compose as kernel defaults overlaid by the profile's `boundary_projection.labels`; `--profile` names a profile for a validation run without selecting it | `python3 Tools/compose_page_contract.py --profile profiles/<profile-id>` |
@@ -139,7 +142,7 @@ Every ordinary runtime writer (`compile_queue`, `update_queue`, `apply_delta`,
 `register_amendment`, and `apply_amendment`) carries one indivisible authority
 context from its first successful `check_queue.validate_runtime` call.  The
 context contains the exact authorized Profile snapshot/contract/root-input
-view and approved K00/03 byte view.  Proposed, locked, post-write, and
+view, approved Standards-rule bytes, and canonical adopter-state view. Proposed, locked, post-write, and
 persisted-state validations inject those same objects instead of rerunning
 `profile-load`; state and receipt publication CAS-check both views before and
 after each boundary.  The lock owner records their durable fingerprints so a
@@ -687,6 +690,11 @@ evidence silently.
   is admission-only rather than batch-scoped. Its empty after-load lists are
   placeholders; a real plan supplies the complete derived Read Set/module
   closure
+- `standards_state.template.yaml` -- the closed canonical current-state
+  document under `.cambium/governance/`: one adopter Standards/Profile
+  identity, effective date, upstream provenance, state revision, and latest
+  adoption receipt. It is not a chronological register; history stays in the
+  append-only Standards-adoption receipt stream
 - `profile_adoption_plan.template.yaml` -- the closed restricted-YAML plan
   consumed by `apply_profile_adoption.py`, the no-runtime sibling of the
   active-task adoption plan above (rule owner: K00/03; R09 both branches).

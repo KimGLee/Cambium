@@ -732,7 +732,8 @@ raise SystemExit(apply_delta.main(sys.argv[3:]))
                          lock["operation_receipt"]["status"])
         self.assertTrue(lock["operation_receipt"]["matching_receipt"])
         self.assertEqual(
-            {"coverage": "before", "progress": "before", "queue": "before"},
+            {"coverage": "before", "progress": "before", "queue": "before",
+             "standards": "before"},
             {name: phase["phase"] for name, phase in
              lock["state_phases"].items()},
         )
