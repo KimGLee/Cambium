@@ -22,8 +22,8 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/13 Final Handoff.md
 readback_sources: []
 readback_policy: none
-source_hash: '5e7e83b4f3fd'
-compiled_source_hash: '5e7e83b4f3fd'
+source_hash: '8f92a0342036'
+compiled_source_hash: '8f92a0342036'
 ---
 # R08 Audit and Completion Card
 

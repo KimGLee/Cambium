@@ -21,8 +21,8 @@ source_files:
 readback_sources:
   - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
 readback_policy: declared
-source_hash: '310095f12ef5'
-compiled_source_hash: '310095f12ef5'
+source_hash: '097458e2711b'
+compiled_source_hash: '097458e2711b'
 ---
 # R11 Large-scale Work Admission Card
 
