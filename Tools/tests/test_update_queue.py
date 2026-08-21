@@ -1699,7 +1699,7 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertTrue(lock["operation_receipt"]["matching_receipt"])
         self.assertEqual(
             {"coverage": "before", "progress": "planned-after",
-             "queue": "planned-after", "standards": "unavailable"},
+             "queue": "planned-after", "standards": "before"},
             {name: phase["phase"] for name, phase in
              lock["state_phases"].items()},
         )
