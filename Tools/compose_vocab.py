@@ -6,8 +6,8 @@ Deterministically composes the selected-profile vocabulary artifact
 
   --base        kernel vocabulary base
                 (default: "kernel/K08 Metadata and Status/vocabulary-base.yaml")
-  --extensions  selected profile's vocabulary extensions. The active
-                `selected_profile_manifest` in K00/03 determines the one
+  --extensions  selected profile's vocabulary extensions. The canonical
+                adopter Standards state determines the one
                 allowed `Vocabulary Extensions` binding. The flag may repeat
                 that path
                 explicitly; it cannot choose a different profile. The
@@ -57,7 +57,7 @@ TOOL_VERSION = "1.7.0"
 
 DEFAULT_BASE = "kernel/K08 Metadata and Status/vocabulary-base.yaml"
 DEFAULT_OUTPUT = "Tools/vocab.yaml"
-ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
+ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
 UNINSTANTIATED_RE = re.compile(r"\{\{.*?\}\}")
 
 # There is deliberately no DEFAULT_EXTENSIONS. Naming one profile here would
@@ -183,7 +183,7 @@ def report_inactive_selection(errors):
     candidates = discover_profiles()
     if candidates:
         print("  Profile manifest candidates found (candidates are not active "
-              "until K00/03 selects one):")
+              "until canonical adopter Standards state selects one):")
         for item in candidates:
             print("    %s" % item)
     else:
@@ -577,8 +577,9 @@ def main(argv=None):
     parser.add_argument(
         "--extensions",
         default=None,
-        help="the active profile's %s. K00/03 selects the path; when this "
-        "flag is present it must name that same path"
+        help="the active profile's %s. Canonical adopter Standards state "
+             "selects the path; when this "
+             "flag is present it must name that same path"
         % EXTENSIONS_BASENAME,
     )
     parser.add_argument("--output", default=DEFAULT_OUTPUT,

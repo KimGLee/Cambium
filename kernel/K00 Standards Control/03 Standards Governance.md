@@ -4,18 +4,25 @@
 - Previous: [[kernel/K00 Standards Control/02 Task Routing|Task Routing]].
 - Next: [[kernel/K00 Standards Control/04 Control State and Scope|Control State and Scope]].
 
-## Standards Control
+## Standards State And Adoption History
 
-| Field | Value |
-|---|---|
-| Standards version | `{{ standards_version }}` |
-| Status | `{{ standards_status }}` |
-| Effective date | `{{ standards_effective_date }}` |
-| Selected profile manifest | `{{ selected_profile_manifest }}` |
-| Change authority | User's explicit governance instruction |
-| Content-task behavior | Frozen; read-only control plane |
+This page owns governance rules only. It MUST NOT carry an adopter's current
+version/Profile values or a chronological adoption register.
 
-The four `{{ ... }}` entries are placeholders. Initial adoption is the first governance release: fill a copy of `profiles/_template/`; pass the `profile-load` Gate against that candidate; record exactly one `profiles/<profile-id>/profile.md`, a version, `approved` status, and date here; record upstream tag, commit, or archive checksum in the Change Summary; compose vocabulary; stamp Cards; pass governance checks. This is adopter state, not Cambium release metadata. Until all four values are instantiated, the standard is pre-release and content tasks cannot freeze a Task Contract.
+The canonical current adopter identity is the closed restricted-YAML document
+`.cambium/governance/standards_state.yaml`, whose schema is shipped at
+`Tools/schemas/standards_state.template.yaml`. It records exactly one current
+version, approval status, effective date, selected Profile manifest, upstream
+identity, state revision, and latest adoption receipt. Its absence means the
+public distribution or an uninstantiated adopter; content tasks cannot freeze
+a Task Contract until the initial R09 transaction creates it.
+
+The canonical history is the append-only Standards-adoption receipt stream.
+Each adoption receipt binds its plan, before/after identity, upstream
+provenance, deterministic Kernel/Profile snapshots, and transaction outcome.
+No Kernel page, Card, Profile slot, or second Markdown table may reproduce
+that chronology as authority. A human history view, if rendered, is a
+disposable projection from receipts.
 
 The Standards lifecycle is:
 
@@ -30,20 +37,19 @@ When modifying rules, you MUST:
 1. Make explicit that this is a governance change, not ordinary content editing.
 2. Record the affected Standards and the reason.
 3. Bump `standards_version`; changing the selected profile manifest always requires a bump.
-4. Update the routing and change summary in `K00`.
+4. Update affected routing and normative owners; never append history to a
+   Kernel page or Card.
 5. For every existing affected runtime task, publish the changed-predicate input required by [[kernel/K12 Quality Assurance/10 Standards Version Adoption|K12/10]]. R09 owns the governance revision; R07 later executes or resumes the active-task adoption through the sole K13/15 writer. An empty changed-predicate list takes K12/10's no-predicate-change branch rather than bypassing state synchronization.
 
 For an active-task adoption, the restricted-YAML adoption plan is the canonical
-machine revision record. Its `governance_revision_ref` must point back to this
-file and its SHA-256 must bind these complete approved governance bytes. The
-plan additionally binds deterministic after snapshots of the whole `kernel/`
-tree and selected Profile directory. The after Profile MUST pass
-`profile-load`; because that Gate closes every Profile-owned dependency inside
-the directory, the directory snapshot binds the resolved dependency bytes and
-the Gate's contract fingerprint binds their typed ownership edges. Its changed-predicate rows are the
-machine-consumed list; the Change Summary remains the governance register and
-must agree in meaning, but no second Markdown adoption checklist or copied
-revision record is created.
+machine revision record. It binds deterministic after snapshots of the whole
+`kernel/` tree and selected Profile directory and the exact current Standards
+state before-image. The after Profile MUST pass `profile-load`; because that
+Gate closes every Profile-owned dependency inside the directory, the directory
+snapshot binds the resolved dependency bytes and the Gate's contract
+fingerprint binds their typed ownership edges. Its changed-predicate rows are
+the machine-consumed list. The single-writer transaction advances the adopter
+state, task Ledgers, and append-only adoption receipts as one state change.
 
 User approval of the Standards does not equal approval of an immediate bulk Frontmatter migration of all legacy pages. The migration scope still needs to enter a specific task contract.
 
@@ -105,10 +111,3 @@ For any structural migration of the standards corpus (splits, moves, renames, or
 
 - The `K02 Knowledge Work Construction` standard module holds knowledge-work principles and trigger points; `K13 Task Runtime and Execution Control` holds persistent state and transitions; the `K12 Quality Assurance` standard module holds acceptance checklists.
 - The same item MUST NOT be held in full text on both sides; the execution side references the acceptance side's detail items via Wiki Link and does not copy checklist content.
-
-## Change Summary
-
-The upstream register is empty; initial adoption creates its first entry. Each entry MUST record version, date, change (including profile selection and upstream provenance when applicable), changed predicates, and the IDs of any active-task adoption plans it requires. An empty predicate list selects K12/10's no-predicate-change branch; it does not authorize direct runtime-state edits.
-
-| Version | Date | Change | Changed predicates | Adoption requirement |
-|---|---|---|---|---|

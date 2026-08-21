@@ -1,22 +1,21 @@
-"""`Tools/apply_profile_adoption.py` — the no-runtime R09 adoption writer.
+"""`Tools/apply_profile_adoption.py` — the no-task-runtime R09 writer.
 
-The writer is the sibling of `adopt_standards.py` for the case where no
-`.cambium/` runtime exists: initial adoption instantiates the four K00/03
-Standards Control placeholders and creates the first Change Summary row; a
-pre-runtime profile revision updates the cells and appends a second row.
-Both branches then drive the existing producers (`compose_vocab`,
-`compose_page_contract`, `stamp_cards --set-version`, `stamp_cards --check`)
-against the new K00/03 state. This module pins the transaction's safety
-contract:
+The writer is the sibling of `adopt_standards.py`: initial adoption creates
+the canonical adopter Standards state, while a pre-runtime Profile revision
+advances it. Both branches append immutable receipt history and drive the
+existing producers (`compose_vocab`, `compose_page_contract`,
+`stamp_cards --set-version`, `stamp_cards --check`) against the new state.
+K00/03 remains unchanged normative governance. This module pins the
+transaction's safety contract:
 
 1. dry-run writes nothing anywhere (tree byte-hash unchanged, no staging
    directory) and reports the complete planned change;
-2. both happy paths leave the exact promised state: cells instantiated,
-   Change Summary rows appended and preserved, vocab.yaml/page_contract.yaml
-   composed, cards stamped, `stamp_cards --check` exit 0, two receipts
+2. both happy paths leave the exact promised state: canonical state advanced,
+   receipt history appended, vocab.yaml/page_contract.yaml composed, Cards
+   stamped, `stamp_cards --check` exit 0, two receipts
    appended (the canonical `profile-load` pass receipt plus the commit
    receipt, which registers no Gate ID of its own);
-3. every refusal (existing `.cambium/` anywhere, K00/03 drift, candidate
+3. every refusal (existing task runtime, K00/03 drift, candidate
    byte drift, failing profile-load, nonempty changed_predicates, branch /
    state mismatch) performs zero writes;
 4. an injected mid-transaction failure restores every touched byte (tree
@@ -54,6 +53,7 @@ sys.path.insert(0, str(TOOLS))
 import apply_profile_adoption  # noqa: E402
 import check_profile  # noqa: E402
 import kblib  # noqa: E402
+import standards_state  # noqa: E402
 import test_profile_onboarding_status as tpos  # noqa: E402
 import test_template_fill  # noqa: E402  (reused semantic fill + scan config)
 
@@ -134,7 +134,7 @@ def evaluation_of(root):
 def initial_plan(root, **overrides):
     evaluation = evaluation_of(root)
     plan = {
-        "schema_version": 1,
+        "schema_version": 2,
         "plan_id": "PA-001",
         "branch": "initial-adoption",
         "standards_version_after": "1.0.0",
@@ -149,6 +149,9 @@ def initial_plan(root, **overrides):
         "changed_predicates": [],
         "adoption_requirement": "none",
         "k00_03_sha256_before": kblib.sha256_file(root / GOVERNANCE),
+        "standards_state_sha256_before": None,
+        "upstream_source_ref": "https://example.test/corpus.git",
+        "upstream_revision_id": "0123456789abcdef",
         "profile_snapshot_sha256_after": evaluation.profile_snapshot_sha256,
         "profile_contract_fingerprint_after":
             evaluation.profile_contract_fingerprint,
@@ -168,6 +171,10 @@ def revision_plan(root, **overrides):
         "standards_effective_date_after": "2026-08-14",
         "standards_version_before": "1.0.0",
         "selected_profile_manifest_before": MANIFEST,
+        "standards_state_sha256_before": (
+            kblib.sha256_file(root / standards_state.STATE_PATH)
+            if (root / standards_state.STATE_PATH).exists()
+            else "sha256:" + "0" * 64),
         "change_summary": "Profile revision inside %s: corpus-planning "
                           "reason updated" % MANIFEST,
     })
@@ -225,23 +232,19 @@ def journal_of(root, staging_name):
 
 
 def governance_state(root):
-    state, errors = kblib.active_standards_state(
-        (root / GOVERNANCE).read_text(encoding="utf-8"))
+    state, _view, errors = standards_state.snapshot(root)
     assert not errors, errors
     return state
 
 
 def change_summary_rows(root):
-    lines = (root / GOVERNANCE).read_text(encoding="utf-8").splitlines()
-    index = lines.index(
-        "| Version | Date | Change | Changed predicates "
-        "| Adoption requirement |")
-    rows = []
-    for line in lines[index + 2:]:
-        if not line.startswith("|"):
-            break
-        rows.append(line)
-    return rows
+    path = root / ".cambium/receipts/standards-adoptions.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(
+        encoding="utf-8").splitlines()
+        if line.strip() and json.loads(line).get("tool") ==
+        "apply_profile_adoption"]
 
 
 def mutate_candidate(root):
@@ -282,7 +285,7 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
                 plan["profile_snapshot_sha256_after"],
                 plan["profile_contract_fingerprint_after"],
                 plan["profile_load_inputs_sha256_after"],
-                "Change Summary row:", "compose-vocab", "stamp-check",
+                "history: append one transaction record", "compose-vocab", "stamp-check",
                 "dry run"):
             self.assertIn(expected, out)
 
@@ -298,13 +301,12 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
 
         state = governance_state(root)
         self.assertEqual("1.0.0", state["standards_version"])
-        self.assertEqual("approved", state["standards_status"])
-        self.assertEqual("2026-08-13", state["standards_effective_date"])
+        self.assertEqual("approved", state["status"])
+        self.assertEqual("2026-08-13", state["effective_date"])
         self.assertEqual(MANIFEST, state["selected_profile_manifest"])
         rows = change_summary_rows(root)
         self.assertEqual(1, len(rows))
-        self.assertIn("Initial adoption", rows[0])
-        self.assertIn("| none | none |", rows[0])
+        self.assertIn("Initial adoption", rows[0]["change_summary"])
 
         self.assertTrue((root / "Tools" / "vocab.yaml").is_file())
         self.assertTrue((root / "Tools" / "page_contract.yaml").is_file())
@@ -320,7 +322,7 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
 
         receipts = [
             json.loads(line) for line in
-            (root / "adoption-plans" / "PA-001.receipts.jsonl")
+            (root / ".cambium/receipts/standards-adoptions.jsonl")
             .read_text(encoding="utf-8").splitlines()]
         self.assertEqual(2, len(receipts))
         gate, commit = receipts
@@ -349,9 +351,9 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
                       "profile_load_inputs_sha256_after"):
             self.assertEqual(plan[field], commit[field])
 
-        # Hard prohibitions: no runtime appears, the candidate Profile is
+        # Hard prohibitions: no task runtime appears, the candidate Profile is
         # byte-untouched, and the staging directory is gone.
-        self.assertFalse((root / ".cambium").exists())
+        self.assertFalse((root / ".cambium/state").exists())
         self.assertEqual(profile_before,
                          tree_state(root / "profiles" / PROFILE_ID))
         self.assertEqual([], stagings(root))
@@ -368,13 +370,13 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
 
         state = governance_state(root)
         self.assertEqual("1.1.0", state["standards_version"])
-        self.assertEqual("2026-08-14", state["standards_effective_date"])
+        self.assertEqual("2026-08-14", state["effective_date"])
         self.assertEqual(MANIFEST, state["selected_profile_manifest"])
         rows = change_summary_rows(root)
         self.assertEqual(2, len(rows))
-        self.assertEqual(first_rows[0], rows[0],
-                         "the first Change Summary row must be preserved")
-        self.assertIn("Profile revision", rows[1])
+        self.assertEqual(first_rows[0]["receipt_id"], rows[0]["receipt_id"],
+                         "the first adoption receipt must be preserved")
+        self.assertIn("Profile revision", rows[1]["change_summary"])
         card = (root / "kernel" / "Cards" /
                 "R09 Standards Governance Card.md").read_text(
                     encoding="utf-8")
@@ -386,7 +388,7 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         self.assertEqual(0, check.returncode, check.stdout)
         self.assertEqual(profile_before,
                          tree_state(root / "profiles" / PROFILE_ID))
-        self.assertFalse((root / ".cambium").exists())
+        self.assertFalse((root / ".cambium/state").exists())
 
     # ---- refusals (zero writes) --------------------------------------
 
@@ -446,13 +448,13 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         adopted = self.clone(_ADOPTED)
         write_plan(adopted, initial_plan(adopted),
                    "adoption-plans/PA-003.yaml")
-        self.assert_refused(adopted, "already instantiated",
+        self.assert_refused(adopted, "current state already exists",
                             plan="adoption-plans/PA-003.yaml")
 
         pristine = self.clone()
         plan = revision_plan(pristine)
         write_plan(pristine, plan, "adoption-plans/PA-004.yaml")
-        self.assert_refused(pristine, "still placeholders",
+        self.assert_refused(pristine, "requires an existing adopter",
                             plan="adoption-plans/PA-004.yaml")
 
     # ---- abort and recovery ------------------------------------------
@@ -475,6 +477,9 @@ class ApplyProfileAdoptionTests(unittest.TestCase):
         self.assertIn("restored", out)
         self.assertEqual(before, tree_state(root),
                          "abort must leave the repository byte-identical")
+        self.assertFalse(
+            (root / ".cambium").exists(),
+            "aborted initial adoption must not leave an empty namespace")
         names = stagings(root)
         self.assertEqual(1, len(names))
         journal = journal_of(root, names[0])

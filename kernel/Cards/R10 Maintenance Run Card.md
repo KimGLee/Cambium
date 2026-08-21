@@ -26,8 +26,8 @@ readback_sources:
   - kernel/K12 Quality Assurance/11 Content-level Propagation.md
   - kernel/K12 Quality Assurance/12 Substantive Correctness Review.md
 readback_policy: declared
-source_hash: '37481f0b4cc3'
-compiled_source_hash: '37481f0b4cc3'
+source_hash: 'ef73059497be'
+compiled_source_hash: 'ef73059497be'
 ---
 # R10 Maintenance Run Card
 
@@ -41,11 +41,12 @@ Perform periodic freshness, re-verification, watermark, `needs_rereview`, or can
 
 - [ ] Confirm the activation Bundle contains R01, R10, and the exact frozen
   maintenance reading plan before selecting candidates.
-- [ ] Inspect the repository root for `.cambium/` before any write. If it
+- [ ] Inspect the repository root for `.cambium/state/` before any write. If it
   exists, run `python3 Tools/check_queue.py . --resume-status` and follow its
   exact `next_action`; never initialize a replacement or restart candidate age.
-- [ ] If `.cambium/` is absent, initialize it only for a persistent, resumable,
-  or multi-batch run, with `completion_semantics: maintenance`. A bounded
+- [ ] If task state is absent, initialize it only for a persistent, resumable,
+  or multi-batch run, preserving governance/history under `.cambium/`, with
+  `completion_semantics: maintenance`. A bounded
   single-note run does not create an empty runtime namespace.
 - [ ] Choose exactly one budget envelope: N pages, N batches, or N hours.
 - [ ] Build the candidate manifest from the complete freshness candidate set

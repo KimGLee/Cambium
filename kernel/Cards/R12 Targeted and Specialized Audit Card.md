@@ -18,8 +18,8 @@ source_files:
   - kernel/K02 Knowledge Work Construction/07 Gap Register Contract.md
 readback_sources: []
 readback_policy: none
-source_hash: '01046cfca948'
-compiled_source_hash: '01046cfca948'
+source_hash: 'ec85207eaa7d'
+compiled_source_hash: 'ec85207eaa7d'
 ---
 # R12 Targeted and Specialized Audit Card
 

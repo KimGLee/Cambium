@@ -43,6 +43,7 @@ import maintenance_candidates
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
+import standards_state
 
 TOOL = "check_queue"
 TOOL_VERSION = "1.23.0"
@@ -87,8 +88,7 @@ OPERATIONAL_AMENDMENT_OPERATIONS = frozenset((
 QUEUE_PATH = ".cambium/state/required_queue.yaml"
 COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
 PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
-ACTIVE_STANDARDS_PATH = (
-    "kernel/K00 Standards Control/03 Standards Governance.md")
+ACTIVE_STANDARDS_PATH = standards_state.STATE_PATH
 WORK_SPEC_PREFIX = ".cambium/work_specs"
 WORK_SPEC_FIELDS = frozenset(("work_spec_path", "work_spec_sha256"))
 WORK_SPEC_TOP_LEVEL_FIELDS = frozenset((
@@ -271,6 +271,17 @@ LOCK_STATE_FINGERPRINTS = {
     "progress": {
         "before": ("before_progress_sha256",),
         "planned_after": ("planned_after_progress_sha256",),
+    },
+    "standards": {
+        # Ordinary writers do not change adopter Standards state, but their
+        # frozen runtime-authority context already records the exact active
+        # bytes.  Treat that existing field as the before-image alias so
+        # interrupted-write recovery does not call a bound authority input
+        # unavailable. Standards adoption supplies its explicit before/after
+        # pair and therefore retains the four-state transaction distinction.
+        "before": ("before_standards_state_sha256",
+                   "active_standards_sha256"),
+        "planned_after": ("planned_after_standards_state_sha256",),
     },
 }
 GENERIC_WRITER_TOOLS = frozenset((
@@ -493,7 +504,7 @@ AMENDMENT_COMMON_FIELDS = frozenset((
     "id", "date", "summary", "status", "writeback_done",
 ))
 STANDARDS_ADOPTION_TOOL = "adopt_standards"
-STANDARDS_ADOPTION_TOOL_VERSION = "1.6.0"
+STANDARDS_ADOPTION_TOOL_VERSION = "1.7.0"
 STANDARDS_ADOPTION_PROFILE_CONTRACT_MIN_VERSION = (1, 3, 0)
 # The 1.5 producer records where the adopted revision came from: the
 # distribution has no version numbers by design, so upstream/downstream
@@ -599,6 +610,8 @@ STANDARDS_ADOPTION_PLAN_FIELDS = frozenset((
     # (for a git upstream, the commit hash), or both null, which DECLARES
     # that this adoption tracks no upstream.  Absent is not an answer.
     "upstream_source_ref", "upstream_revision_id",
+    # 1.7 producer: instance state is no longer embedded in K00/03.
+    "standards_state_sha256_before", "standards_effective_date_after",
 ))
 STANDARDS_CHANGED_PREDICATE_FIELDS = frozenset((
     "predicate_id", "owner_path", "change_kind", "affected_gate_ids",
@@ -632,6 +645,8 @@ STANDARDS_ADOPTION_RECORD_FIELDS = frozenset((
     "immediate_gate_reruns", "immediate_gate_receipts",
     "boundary_gate_reruns",
     "upstream_source_ref", "upstream_revision_id",
+    "standards_state_sha256_before", "standards_effective_date_after",
+    "after_standards_state_sha256",
 ))
 
 
@@ -3880,6 +3895,17 @@ def _standards_adoption_owner_projection_required(producer_tool_version):
         STANDARDS_ADOPTION_OWNER_PROJECTION_MIN_VERSION
 
 
+def _standards_adoption_state_file_required(producer_tool_version):
+    """Return whether this era owns adopter identity in the state file."""
+    match = re.fullmatch(
+        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
+        str(producer_tool_version),
+    )
+    if match is None:
+        return True
+    return tuple(int(part) for part in match.groups()) >= (1, 7, 0)
+
+
 def standards_adoption_plan_errors(
         root, plan, catalog=None, queue=None, progress=None,
         validate_current=True,
@@ -3901,6 +3927,8 @@ def standards_adoption_plan_errors(
         _standards_adoption_upstream_required(producer_tool_version)
     owner_projection_era = validate_current or \
         _standards_adoption_owner_projection_required(producer_tool_version)
+    state_file_required = validate_current or \
+        _standards_adoption_state_file_required(producer_tool_version)
     optional_fields = []
     if not profile_contract_required:
         optional_fields.append("profile_contract_fingerprint_after")
@@ -3909,13 +3937,20 @@ def standards_adoption_plan_errors(
     if not upstream_required:
         optional_fields.extend(
             ("upstream_source_ref", "upstream_revision_id"))
+    if not state_file_required:
+        optional_fields.extend((
+            "standards_state_sha256_before",
+            "standards_effective_date_after",
+        ))
     errors = _closed_mapping_errors(
         plan, "Standards adoption plan", STANDARDS_ADOPTION_PLAN_FIELDS,
         optional_fields=tuple(optional_fields))
     if not isinstance(plan, dict):
         return errors
-    if plan.get("schema_version") != 1:
-        errors.append("Standards adoption plan schema_version must be 1")
+    expected_schema = 2 if state_file_required else 1
+    if plan.get("schema_version") != expected_schema:
+        errors.append("Standards adoption plan schema_version must be %d" %
+                      expected_schema)
     for field in (
             "adoption_id", "task_id", "task_state_before",
             "contract_version_before", "contract_version_after",
@@ -3944,6 +3979,16 @@ def standards_adoption_plan_errors(
                 "Standards adoption plan upstream_source_ref and "
                 "upstream_revision_id must be non-empty strings or an "
                 "explicit null pair declaring no upstream")
+    if state_file_required:
+        effective = plan.get("standards_effective_date_after")
+        try:
+            parsed_effective = datetime.date.fromisoformat(str(effective))
+        except ValueError:
+            parsed_effective = None
+        if parsed_effective is None or parsed_effective.isoformat() != effective:
+            errors.append(
+                "Standards adoption plan standards_effective_date_after "
+                "must be YYYY-MM-DD")
     if (plan.get("standards_version_before") ==
             plan.get("standards_version_after")):
         errors.append("Standards adoption must change standards_version")
@@ -3966,6 +4011,8 @@ def standards_adoption_plan_errors(
             "profile_snapshot_sha256_after", "coverage_sha256_before",
             "required_queue_sha256_before", "progress_sha256_before",
     ]
+    if state_file_required:
+        digest_fields.append("standards_state_sha256_before")
     if (profile_contract_required or
             "profile_contract_fingerprint_after" in plan):
         digest_fields.append("profile_contract_fingerprint_after")
@@ -3999,29 +4046,33 @@ def standards_adoption_plan_errors(
             try:
                 governance_path = kblib.repository_path(
                     root, governance, must_exist=True, reject_symlink=True)
-                with open(governance_path, encoding="utf-8") as fh:
-                    governance_text = fh.read()
                 governance_sha = kblib.sha256_file(governance_path)
-                active_state, state_errors = kblib.active_standards_state(
-                    governance_text)
-                errors.extend("governance revision: %s" % error
-                              for error in state_errors)
                 if governance_sha != plan.get("governance_revision_sha256"):
                     errors.append("governance_revision_sha256 does not bind "
-                                  "the active K00/03 bytes")
-                if active_state.get("standards_status") != "approved":
-                    errors.append("K00/03 Standards status must be approved")
-                if active_state.get("standards_version") != plan.get(
-                        "standards_version_after"):
-                    errors.append("K00/03 Standards version does not match the "
-                                  "plan after version")
-                if active_state.get("selected_profile_manifest") != plan.get(
-                        "selected_profile_manifest_after"):
-                    errors.append("K00/03 selected profile does not match the "
-                                  "plan after profile")
+                                  "the approved K00/03 rule bytes")
             except (OSError, UnicodeError, ValueError) as exc:
                 errors.append("governance revision is unsafe or unreadable: %s" %
                               exc)
+        if state_file_required:
+            current_state, current_view, state_errors = \
+                standards_state.snapshot(root)
+            errors.extend("active Standards state: %s" % error
+                          for error in state_errors)
+            if current_view is not None:
+                if current_view["active_standards_sha256"] != plan.get(
+                        "standards_state_sha256_before"):
+                    errors.append(
+                        "standards_state_sha256_before is stale")
+                if current_state.get("standards_version") != plan.get(
+                        "standards_version_before"):
+                    errors.append(
+                        "active Standards state does not match plan before "
+                        "version")
+                if current_state.get("selected_profile_manifest") != plan.get(
+                        "selected_profile_manifest_before"):
+                    errors.append(
+                        "active Standards state does not match plan before "
+                        "Profile")
         after_profile = plan.get("selected_profile_manifest_after")
         if _nonempty_string(after_profile):
             profile_evidence, profile_errors = profile_load_evidence(
@@ -4700,7 +4751,8 @@ def standards_adoption_plan_errors(
     return errors
 
 
-def _standards_adoption_errors(root, progress, catalog, queue):
+def _standards_adoption_errors(
+        root, progress, catalog, queue, active_standards_view=None):
     """Validate plan/record/commit bindings for all persisted adoptions."""
     records = progress.get("standards_adoptions")
     if not isinstance(records, list):
@@ -4774,6 +4826,17 @@ def _standards_adoption_errors(root, progress, catalog, queue):
                         "adoption record is what makes upstream and "
                         "downstream comparable" %
                         (label, field, producer_tool_version))
+        state_file_required = _standards_adoption_state_file_required(
+            producer_tool_version)
+        if state_file_required:
+            for field in (
+                    "standards_effective_date_after",
+                    "standards_state_sha256_before",
+                    "after_standards_state_sha256"):
+                if field not in record:
+                    errors.append(
+                        "%s misses %s required by adopt_standards %s" %
+                        (label, field, producer_tool_version))
         errors.extend("%s %s" % (label, error)
                       for error in standards_adoption_plan_errors(
                           root, plan, catalog=catalog, queue=queue,
@@ -4825,6 +4888,13 @@ def _standards_adoption_errors(root, progress, catalog, queue):
             "immediate_gate_reruns": "immediate_gate_reruns",
             "boundary_gate_reruns": "boundary_gate_reruns",
         }
+        if state_file_required:
+            record_plan_fields.update({
+                "standards_effective_date_after":
+                    "standards_effective_date_after",
+                "standards_state_sha256_before":
+                    "standards_state_sha256_before",
+            })
         for record_field, plan_field in record_plan_fields.items():
             if record.get(record_field) != plan.get(plan_field):
                 errors.append("%s %s does not match its plan" %
@@ -4882,6 +4952,15 @@ def _standards_adoption_errors(root, progress, catalog, queue):
                 "upstream_source_ref": "upstream_source_ref",
                 "upstream_revision_id": "upstream_revision_id",
             }
+            if state_file_required:
+                receipt_bindings.update({
+                    "before_standards_state_sha256":
+                        "standards_state_sha256_before",
+                    "after_standards_state_sha256":
+                        "after_standards_state_sha256",
+                    "standards_effective_date_after":
+                        "standards_effective_date_after",
+                })
             for receipt_field, record_field in receipt_bindings.items():
                 if receipt.get(receipt_field) != record.get(record_field):
                     errors.append("%s receipt %s does not match record %s" %
@@ -4939,6 +5018,20 @@ def _standards_adoption_errors(root, progress, catalog, queue):
         previous = record
     if records and isinstance(records[-1], dict):
         latest = records[-1]
+        if active_standards_view is not None:
+            if (active_standards_view.get("latest_adoption_receipt") !=
+                    latest.get("verification_receipt")):
+                errors.append(
+                    "canonical Standards state latest_adoption_receipt does "
+                    "not match latest Progress adoption")
+            expected_state_sha = latest.get(
+                "after_standards_state_sha256")
+            if (expected_state_sha is not None and
+                    active_standards_view.get("active_standards_sha256") !=
+                    expected_state_sha):
+                errors.append(
+                    "canonical Standards state bytes do not match latest "
+                    "Progress adoption")
         contract = progress.get("contract") if isinstance(
             progress.get("contract"), dict) else {}
         # A K13/06 Contract Amendment is the other guarded writer of the
@@ -10381,67 +10474,54 @@ def _public_profile_load_evidence(authorized_view):
 
 
 def active_standards_authorized_view(root, standards_version,
-                                     selected_profile_manifest):
-    """Return one immutable approved K00/03 identity view and its errors."""
-    root = os.path.realpath(os.path.abspath(os.fspath(root)))
-    try:
-        snapshot = kblib.repository_file_snapshot(
-            root, ACTIVE_STANDARDS_PATH, singly_linked=True)
-        state, parse_errors = kblib.active_standards_state(
-            snapshot.read_text())
-    except (OSError, UnicodeError, ValueError) as exc:
-        return None, [
-            "active Standards Control is unsafe or unreadable: %s" % exc]
-    errors = [
-        "active Standards Control: %s" % error for error in parse_errors]
-    if state.get("standards_status") != "approved":
-        errors.append(
-            "active Standards Control Status must be approved; found %r" %
-            state.get("standards_status"))
+                                     selected_profile_manifest,
+                                     state_override=None):
+    """Return one immutable approved adopter-state view and its errors."""
+    state, view, errors = standards_state.snapshot(
+        root, override_text=state_override)
+    errors = ["active Standards state: %s" % error for error in errors]
+    if state is None:
+        return None, errors
     if state.get("standards_version") != standards_version:
         errors.append(
-            "runtime standards_version %r differs from active K00/03 %r" %
+            "runtime standards_version %r differs from active state %r" %
             (standards_version, state.get("standards_version")))
     if (state.get("selected_profile_manifest") !=
             selected_profile_manifest):
         errors.append(
             "runtime selected_profile_manifest %r differs from active "
-            "K00/03 %r" %
+            "state %r" %
             (selected_profile_manifest,
              state.get("selected_profile_manifest")))
     if errors:
         return None, errors
-    return {
-        "active_standards_path": ACTIVE_STANDARDS_PATH,
-        "active_standards_sha256": snapshot.sha256,
-        "standards_version": state.get("standards_version"),
-        "selected_profile_manifest": state.get(
-            "selected_profile_manifest"),
-    }, []
+    return view, []
 
 
 def active_standards_alignment_errors(root, standards_version,
                                       selected_profile_manifest):
-    """Compare runtime identity to the one approved K00/03 authority."""
+    """Compare runtime identity to the canonical adopter Standards state."""
     _view, errors = active_standards_authorized_view(
         root, standards_version, selected_profile_manifest)
     return errors
 
 
-def active_standards_view_currency_errors(root, authorized_view):
-    """Fail when K00/03 bytes no longer equal one authorized identity view."""
+def active_standards_view_currency_errors(root, authorized_view,
+                                          state_override=None):
+    """Fail when current-state bytes no longer equal an authorized view."""
     if not isinstance(authorized_view, dict):
         return ["active Standards authorized view must be a mapping"]
     expected = authorized_view.get("active_standards_sha256")
     view, errors = active_standards_authorized_view(
         root, authorized_view.get("standards_version"),
-        authorized_view.get("selected_profile_manifest"))
+        authorized_view.get("selected_profile_manifest"),
+        state_override=state_override)
     if errors:
         return errors
     if view.get("active_standards_sha256") != expected:
         return [
-            "active Standards Control changed after identity admission; "
-            "rerun against one stable K00/03 revision"
+            "active Standards state changed after identity admission; "
+            "rerun against one stable state revision"
         ]
     return []
 
@@ -14066,6 +14146,7 @@ def validate_runtime(root, allowed_open_delta=None,
                      allow_invalid_current_profile_for_corrective_adoption=
                      False,
                      allow_active_standards_mismatch_for_adoption=False,
+                     active_standards_state_override=None,
                      authorized_profile_view=None,
                      authorized_active_standards_view=None):
     """Return a validation result dict without writing any state.
@@ -14090,6 +14171,12 @@ def validate_runtime(root, allowed_open_delta=None,
     if type(allow_active_standards_mismatch_for_adoption) is not bool:
         raise TypeError(
             "allow_active_standards_mismatch_for_adoption must be boolean")
+    if (active_standards_state_override is not None and
+            (not isinstance(active_standards_state_override, str) or
+             state_overrides is None)):
+        raise ValueError(
+            "active_standards_state_override must be text and requires "
+            "proposed state_overrides")
     if page_projection_overrides is not None:
         if state_overrides is None or not isinstance(state_overrides, dict) or \
                 COVERAGE_PATH not in state_overrides:
@@ -14270,7 +14357,8 @@ def validate_runtime(root, allowed_open_delta=None,
             active_standards_view, active_errors = \
                 active_standards_authorized_view(
                     root, queue.get("standards_version"),
-                    queue.get("selected_profile_manifest"))
+                    queue.get("selected_profile_manifest"),
+                    state_override=active_standards_state_override)
         else:
             active_standards_view = authorized_active_standards_view
             active_errors = []
@@ -14342,6 +14430,8 @@ def validate_runtime(root, allowed_open_delta=None,
         "coverage": coverage_sha,
         "queue": queue_sha,
         "progress": progress_sha,
+        "standards": (active_standards_view or {}).get(
+            "active_standards_sha256"),
     })
     _bind_lock_delta_archives(root, writer_locks)
     _bind_generic_lock_receipts(root, writer_locks, catalog)
@@ -14357,7 +14447,7 @@ def validate_runtime(root, allowed_open_delta=None,
             continue
         catalog[receipt_id] = ("<pending-write>", receipt)
     errors.extend(_standards_adoption_errors(
-        root, progress, catalog, queue))
+        root, progress, catalog, queue, active_standards_view))
     invalidated_evidence_receipt_ids = {
         receipt_id
         for adoption in (progress.get("standards_adoptions") or [])
@@ -15070,7 +15160,8 @@ def validate_runtime(root, allowed_open_delta=None,
                           final_profile_error)
     if active_standards_view is not None:
         errors.extend(active_standards_view_currency_errors(
-            root, active_standards_view))
+            root, active_standards_view,
+            state_override=active_standards_state_override))
     return {
         "root": root, "errors": errors, "ready": ready, "blocked": blocked,
         "hub_page_admission": hub_admission,

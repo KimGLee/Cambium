@@ -10,7 +10,7 @@
 # Coverage dispositions.
 # =============================================================================
 
-schema_version: 1
+schema_version: 2
 adoption_id: "SA-001"
 task_id: "kb-build-2026-xx"
 task_state_before: paused
@@ -18,10 +18,12 @@ contract_version_before: "c1"
 contract_version_after: "c2"
 standards_version_before: TODO(adoption-before)
 standards_version_after: TODO(adoption-after)
+standards_effective_date_after: TODO(adoption-after)
 selected_profile_manifest_before: "profiles/my-profile/profile.md"
 selected_profile_manifest_after: "profiles/my-profile/profile.md"
 governance_revision_ref: "kernel/K00 Standards Control/03 Standards Governance.md"
 governance_revision_sha256: "sha256:replace-with-current-governance-file-fingerprint"
+standards_state_sha256_before: "sha256:replace-with-current-standards-state-fingerprint"
 # Where the adopted revision came from.  The distribution publishes no
 # version numbers by design, so this pair is what makes upstream and
 # downstream comparable: name the upstream source (repository URL or name)

@@ -23,6 +23,7 @@ import maintenance_candidates
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
+import standards_state
 from profile_fixture import install_loadable_profile
 
 
@@ -552,25 +553,20 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         (tools_root / "schemas").mkdir(parents=True, exist_ok=True)
         for name in ("check_profile.py", "profile_contract.py",
                      "check_residual_content.py", "check_queue.py", "kblib.py",
-                     "maintenance_candidates.py"):
+                     "maintenance_candidates.py", "standards_state.py"):
             shutil.copy2(TOOLS / name, tools_root / name)
         shutil.copy2(
             TOOLS / "schemas/execution_defaults.template.yaml",
             tools_root / "schemas/execution_defaults.template.yaml")
 
         manifest = "profiles/test-profile/profile.md"
-        active_path = (
-            self.root /
-            "kernel/K00 Standards Control/03 Standards Governance.md"
-        )
-        active = active_path.read_text(encoding="utf-8")
-        for placeholder, value in (
-                ("{{ standards_version }}", "3.0.0"),
-                ("{{ standards_status }}", "approved"),
-                ("{{ standards_effective_date }}", "2026-08-04"),
-                ("{{ selected_profile_manifest }}", manifest)):
-            active = active.replace(placeholder, value)
-        active_path.write_text(active, encoding="utf-8")
+        active_path = self.root / standards_state.STATE_PATH
+        active, _view, errors = standards_state.snapshot(self.root)
+        self.assertEqual([], errors)
+        active = dict(active)
+        active["selected_profile_manifest"] = manifest
+        active_path.write_text(
+            standards_state.canonical_text(active), encoding="utf-8")
 
         coverage_path = self.root / check_queue.COVERAGE_PATH
         queue_path = self.root / check_queue.QUEUE_PATH

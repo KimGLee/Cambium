@@ -15,8 +15,8 @@ A. Flow behavior over scratch roots (scaffold -> interview fill ->
    check_profile -> R09 initial adoption -> bounded founding -> candidate
    preparation -> R09 revision -> init_state -> apply_task_plan ->
    compile_queue), asserting at every stage which writer owns which bytes
-   and that founding/adoption create no `.cambium/`, no Coverage, and no
-   Queue.
+   and that founding/adoption create governance state but no task runtime,
+   Coverage, or Queue.
 B. Lifecycle text pins across the English and Chinese READMEs, the profiles
    docs, and the kernel — the anti-drift net for the flow's load-bearing
    sentences (no `cp -R` teaching, no "first batch" language, candidate
@@ -176,10 +176,11 @@ def run_check_profile(root, profile_id):
 
 
 def runtime_offenders(root):
-    """Every `.cambium/` directory or canonical runtime state file anywhere."""
+    """Every task-runtime directory or canonical task-state file anywhere."""
     offenders = []
     for path in sorted(Path(root).rglob("*")):
-        if path.name == ".cambium" and path.is_dir():
+        if (path.name == "state" and path.is_dir() and
+                path.parent.name == ".cambium"):
             offenders.append(path.relative_to(root).as_posix())
         elif path.is_file() and path.name in RUNTIME_STATE_FILES:
             offenders.append(path.relative_to(root).as_posix())
@@ -639,9 +640,9 @@ class FoundingFlowTests(unittest.TestCase):
     def test_initial_adoption_creates_no_runtime_and_no_coverage(self):
         self.assertEqual(
             [], self.offenders_after_initial,
-            "R09 initial adoption wrote runtime state; adoption is a "
-            "control-plane change and any .cambium/, Coverage, or Queue "
-            "it creates would predate the user-confirmed Task Plan")
+            "R09 initial adoption wrote task-runtime state; governance state "
+            "and history may precede a Task Plan, but Coverage and Queue may "
+            "not")
         self.assertEqual("found-empty-corpus",
                          self.status_before_founding["next_action"])
         self.assertEqual("adopted",
@@ -758,7 +759,7 @@ class FoundingFlowTests(unittest.TestCase):
         self.assertEqual(
             [], self.offenders_after_revision,
             "an adoption branch (initial or profile-revision) produced "
-            "runtime state or a Coverage/Queue file; Coverage rows may "
+            "task-runtime state or a Coverage/Queue file; Coverage rows may "
             "appear only through init_state + apply_task_plan with a "
             "user-confirmed Task Plan")
 
@@ -783,6 +784,7 @@ class RuntimeCreationTests(unittest.TestCase):
                 (ttp.OTHER_CARD, ttp.CARD_TEXT),
                 (ttp.R01_CARD, ttp.CARD_TEXT),
                 (ttp.R01_READ_SET, ttp.READ_SET_TEXT),
+                (ttp.MODULE, "# Fixture Standards Governance\n"),
                 (ttp.CARD_INDEX, ttp.CARD_INDEX_TEXT),
                 (ttp.READ_SET_INDEX, ttp.READ_SET_INDEX_TEXT)):
             path = root / relative
@@ -935,7 +937,7 @@ class RecoveryPrecedenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = tpos.make_root(tmp)
             tpos.fill_candidate(root)
-            (root / ".cambium").mkdir()
+            (root / ".cambium" / "state").mkdir(parents=True)
             code, view, _ = tpos.run_status_json(
                 root, "--profile-id", tpos.FILLED_ID)
             self.assertEqual(0, code)
@@ -947,7 +949,7 @@ class RecoveryPrecedenceTests(unittest.TestCase):
                 "precedence claim is actually exercised")
             self.assertEqual(
                 "resume-existing-task", view["next_action"],
-                "a passing candidate must not outrank .cambium/; "
+                "a passing candidate must not outrank .cambium/state/; "
                 "onboarding over live runtime state is how a half-done "
                 "task gets silently orphaned")
 

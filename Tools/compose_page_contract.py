@@ -11,7 +11,7 @@ page contract (Tools/page_contract.yaml by default) from:
                    (default "kernel/K08 Metadata and Status/relationship-base.yaml";
                    semantic owner K08/08)
   the selected profile's `Metadata Contract` and `Vocabulary Extensions`
-  slots. The active `selected_profile_manifest` in K00/03 determines the
+  slots. The canonical adopter Standards state determines the
   selection; `--profile` names a profile directory explicitly for
   validation runs and never selects it for the vault.
 
@@ -61,7 +61,7 @@ DEFAULT_SOURCES_ROLE = (
     "kernel/K07 Sources and Accuracy/sources-role-base.yaml"
 )
 DEFAULT_OUTPUT = "Tools/page_contract.yaml"
-ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
+ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
 METADATA_SLOT = "Metadata Contract"
 VOCAB_SLOT = "Vocabulary Extensions"
 PROVENANCE_RE = re.compile(

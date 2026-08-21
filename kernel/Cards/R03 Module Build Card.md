@@ -38,8 +38,8 @@ readback_sources:
   - kernel/K10 Writing and Formatting/01 Naming Language and Prose.md
   - kernel/K12 Quality Assurance/11 Content-level Propagation.md
 readback_policy: declared
-source_hash: '18b36ade39d3'
-compiled_source_hash: '18b36ade39d3'
+source_hash: '9d5947b6e0fa'
+compiled_source_hash: '9d5947b6e0fa'
 ---
 # R03 Module Build Card
 

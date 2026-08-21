@@ -14,7 +14,8 @@ This tool is strictly a projection:
 
 * it never writes, never creates receipts, never mutates state, and keeps
   no second authoritative ledger -- every reported value is derived from
-  bytes owned elsewhere (K00/03, profiles/, the corpus tree, `.cambium/`);
+  bytes owned elsewhere (adopter Standards state, profiles/, the corpus tree,
+  `.cambium/`);
 * it evaluates a targeted candidate through ``check_profile``'s in-process
   ``evaluate_profile_load`` (which itself writes nothing) and classifies its
   findings through ``check_profile.FINDING_CATEGORIES``, so an assisting
@@ -25,10 +26,10 @@ This tool is strictly a projection:
 ``next_action`` precedence (first match wins):
 
 1. root lacks kernel/ + profiles/ + Tools/     -> ``not-a-cambium-root``
-2. `.cambium/` present                         -> ``resume-existing-task``
+2. `.cambium/state/` present                   -> ``resume-existing-task``
    (existing-task recovery always wins; scaffolding or adoption must not
    proceed over runtime state)
-3. K00/03 partially instantiated or unreadable -> ``repair-control-state``
+3. Standards state malformed or unreadable     -> ``repair-control-state``
 4. pre-adoption, no candidate, a missing targeted candidate, or several
    candidates without ``--profile-id``         -> ``confirm-profile-identity``
 5. pre-adoption, targeted candidate fails
@@ -58,13 +59,12 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_profile
 import kblib
+import standards_state
 
 TOOL = "profile_onboarding_status"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 
-ACTIVE_STATE_RELATIVE = (
-    "kernel/K00 Standards Control/03 Standards Governance.md"
-)
+ACTIVE_STATE_RELATIVE = standards_state.STATE_PATH
 DEFAULTS_RELATIVE = "Tools/schemas/execution_defaults.template.yaml"
 CORPUS_PLANNING_SLOT = "Corpus Planning"
 MANIFEST_NAME = "profile.md"
@@ -98,38 +98,32 @@ def unfilled_sentinel(root):
 
 
 def standards_view(root):
-    """Project K00/03's four adopter placeholders into one state token.
+    """Project the canonical adopter state into one onboarding token.
 
     Returns ``(state, values, uninstantiated, problems)`` where ``state`` is
-    ``pre-adoption`` (all four uninstantiated), ``adopted`` (all four
-    instantiated), or ``inconsistent`` (partial instantiation, an unreadable
-    control file, or a malformed Standards Control table).
+    ``pre-adoption`` (state absent), ``adopted`` (valid state), or
+    ``inconsistent`` (unsafe, unreadable, or malformed state).
     """
     path = os.path.join(root, *ACTIVE_STATE_RELATIVE.split("/"))
+    fields = ["effective_date", "selected_profile_manifest", "status",
+              "standards_version"]
+    if not os.path.lexists(path):
+        return "pre-adoption", None, fields, []
     try:
         text = read_text(path)
     except (OSError, UnicodeError) as exc:
-        return ("inconsistent", None, sorted(
-            kblib.ACTIVE_STANDARDS_STATE_LABELS.values()), [
+        return ("inconsistent", None, fields, [
             "cannot read %s: %s" % (ACTIVE_STATE_RELATIVE, exc)])
-    state, parse_errors = kblib.active_standards_state(text)
+    try:
+        state, parse_errors = standards_state.parse(text)
+    except (TypeError, ValueError, kblib.YamlSubsetError) as exc:
+        return "inconsistent", None, fields, [
+            "%s: %s" % (ACTIVE_STATE_RELATIVE, exc)]
     problems = ["%s: %s" % (ACTIVE_STATE_RELATIVE, error)
                 for error in parse_errors]
-    fields = sorted(kblib.ACTIVE_STANDARDS_STATE_LABELS.values())
-    uninstantiated = sorted(
-        field for field in fields
-        if not str(state.get(field) or "").strip()
-        or "{{" in str(state.get(field) or ""))
     if problems:
-        return "inconsistent", None, uninstantiated, problems
-    if not uninstantiated:
-        return ("adopted", {field: state[field] for field in fields},
-                [], [])
-    if uninstantiated == fields:
-        return "pre-adoption", None, uninstantiated, []
-    return "inconsistent", None, uninstantiated, [
-        "K00/03 is partially instantiated; still uninstantiated: %s"
-        % ", ".join(uninstantiated)]
+        return "inconsistent", None, [], problems
+    return ("adopted", {field: state[field] for field in fields}, [], [])
 
 
 def corpus_planning_state(root, profile_dir):
@@ -252,10 +246,10 @@ def corpus_page_count(root):
 
 def runtime_view(root):
     cambium = os.path.join(root, ".cambium")
-    present = os.path.isdir(cambium)
+    state_dir = os.path.join(cambium, "state")
+    present = os.path.isdir(state_dir)
     state_has_content = False
     if present:
-        state_dir = os.path.join(cambium, "state")
         try:
             state_has_content = bool(os.listdir(state_dir))
         except OSError:
@@ -350,16 +344,9 @@ def derive_status(root, targeted_id):
         view["next_action"] = "repair-control-state"
         for problem in problems:
             notes.append(problem)
-        if uninstantiated and len(uninstantiated) < 4:
+        if not problems:
             notes.append(
-                "K00/03 Standards Control is partially instantiated; "
-                "uninstantiated field(s): %s -- repair the control table "
-                "to one coherent state (all four placeholders, or all four "
-                "adopted values) before anything else"
-                % ", ".join(uninstantiated))
-        elif not problems:
-            notes.append(
-                "K00/03 Standards Control is not in a coherent state; "
+                "the canonical adopter Standards state is not coherent; "
                 "repair it before anything else")
         return view
 
@@ -392,8 +379,8 @@ def derive_status(root, targeted_id):
             view["next_action"] = "authorize-r09"
             notes.append(
                 "candidate profiles/%s passes profile-load; selection and "
-                "adoption remain an R09 governance decision: instantiate "
-                "the four K00/03 values against %s/profile.md, then run "
+                "adoption remain an R09 governance decision: create the "
+                "canonical adopter Standards state for %s/profile.md, then run "
                 "the write-back checklist" % (targeted, entry["directory"]))
         else:
             view["next_action"] = "complete-profile-interview"

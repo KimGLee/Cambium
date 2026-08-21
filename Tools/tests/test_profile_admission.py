@@ -13,6 +13,7 @@ TOOLS = REPOSITORY / "Tools"
 sys.path.insert(0, str(TOOLS))
 
 import profile_admission
+import standards_state
 
 from Tools.tests.profile_fixture import install_loadable_profile
 
@@ -25,21 +26,19 @@ class ProfileAdmissionTests(unittest.TestCase):
         self.profile = install_loadable_profile(self.root)
 
     def install_active_state(self):
-        source = (
-            REPOSITORY /
-            "kernel/K00 Standards Control/03 Standards Governance.md"
-        )
-        target = self.root / source.relative_to(REPOSITORY)
+        target = self.root / standards_state.STATE_PATH
         target.parent.mkdir(parents=True, exist_ok=True)
-        text = source.read_text(encoding="utf-8")
-        for old, new in (
-                ("{{ standards_version }}", "1.0.0"),
-                ("{{ standards_status }}", "approved"),
-                ("{{ standards_effective_date }}", "2026-08-11"),
-                ("{{ selected_profile_manifest }}",
-                 "profiles/test-profile/profile.md")):
-            text = text.replace(old, new)
-        target.write_text(text, encoding="utf-8")
+        target.write_text(standards_state.canonical_text({
+            "schema_version": 1,
+            "state_revision": 1,
+            "standards_version": "1.0.0",
+            "status": "approved",
+            "effective_date": "2026-08-11",
+            "selected_profile_manifest": "profiles/test-profile/profile.md",
+            "latest_adoption_receipt": "audit-profile-admission-fixture",
+            "upstream_source_ref": None,
+            "upstream_revision_id": None,
+        }), encoding="utf-8")
         return target
 
     def test_one_evaluation_supplies_all_typed_slot_bytes(self):
@@ -100,7 +99,7 @@ class ProfileAdmissionTests(unittest.TestCase):
             evaluation = real(*args, **kwargs)
             state.write_text(
                 state.read_text(encoding="utf-8").replace(
-                    "| Status | `approved` |", "| Status | `draft` |"),
+                    "status: approved", "status: draft"),
                 encoding="utf-8")
             return evaluation
 
@@ -118,7 +117,7 @@ class ProfileAdmissionTests(unittest.TestCase):
         self.assertEqual([], errors)
         state.write_text(
             state.read_text(encoding="utf-8").replace(
-                "| Status | `approved` |", "| Status | `draft` |"),
+                "status: approved", "status: draft"),
             encoding="utf-8")
         self.assertIn("active Standards state changed",
                       "\n".join(profile_admission.currency_errors(
@@ -131,7 +130,7 @@ class ProfileAdmissionTests(unittest.TestCase):
         admission, errors = profile_admission.admit_profile(self.root)
 
         self.assertIsNone(admission)
-        self.assertIn("cannot read the active Standards state",
+        self.assertIn("unsafe, absent, or unreadable",
                       "\n".join(errors))
 
     def test_canonical_profile_load_input_change_invalidates_admission(self):

@@ -115,13 +115,15 @@ configuration and does not contain the Atlas knowledge corpus.
 
 ## Adopter Runtime State
 
-Long-running, resumable, or multi-batch work uses one fixed namespace in the
-adopting repository. Every task first checks whether that namespace already
-exists, because a seemingly bounded new request may enter a repository whose
-earlier persistent task was interrupted:
+Long-running, resumable, or multi-batch work uses one fixed task namespace in
+the adopting repository. Every task first checks whether `.cambium/state/`
+already exists, because a seemingly bounded new request may enter a repository
+whose earlier persistent task was interrupted. Governance may already exist
+without a task runtime:
 
 ```text
 .cambium/
+├── governance/  # canonical current Standards/Profile identity
 ├── state/       # Coverage, Required Queue, and Progress
 ├── work_specs/  # immutable restricted-YAML contracts for complex batches
 ├── deltas/      # worker deltas and restricted-YAML controlled-operation plans
@@ -139,8 +141,9 @@ planned rather than shipped, and this repository carries none today (see
 its own runtime state with `Tools/init_state.py` after selecting a profile and
 defining a task. The tool
 requires an explicit objective and exclusions, does not invent Required work,
-and does not overwrite any existing `.cambium/` namespace.
-If the namespace already exists, a restarted or newly assigned Agent first
+and does not overwrite any existing `.cambium/state/` task runtime; a valid
+governance/history namespace is preserved.
+If task state already exists, a restarted or newly assigned Agent first
 runs `Tools/check_queue.py . --resume-status` to discover the recorded task,
 its `build` or `maintenance` completion semantics, checkpoint binding, latest
 task transition, in-flight batches, pending control inputs/deltas, the
@@ -301,14 +304,14 @@ in [`profiles/README.md`](profiles/README.md).
    python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml --apply
    ```
 
-   The transaction instantiates the four K00/03 values, creates the first
-   Change Summary entry, composes the profile vocabulary and the frontmatter
-   page contract, stamps the Runtime Cards for the adopted version, and
+   The transaction creates the canonical adopter Standards state, appends the
+   first immutable adoption receipts, composes the Profile vocabulary and the
+   frontmatter page contract, stamps the Runtime Cards for the adopted version, and
    re-verifies the gates; a failure at any step restores the previous control
    plane rather than leaving a partial adoption. The same steps remain
    runnable by hand (`compose_vocab.py`, `compose_page_contract.py`,
    `stamp_cards.py --set-version` / `--check`) as the no-agent fallback. An
-   existing `.cambium/` runtime is refused here: an active task adopts through
+   existing `.cambium/state/` task runtime is refused here: an active task adopts through
    `adopt_standards.py` (next section).
 5. Complete the R09 governance gates before beginning corpus-content work.
    [`Tools/README.md`](Tools/README.md) documents the individual commands,
@@ -348,7 +351,7 @@ ordinary authoring work.
 
 Creating the first pages of an empty corpus is bounded authoring work. It is
 not the large-scale creation `K00/13` admits, so it selects neither R11 nor
-Corpus Planning, and — being bounded — it initializes no `.cambium/` runtime
+Corpus Planning, and — being bounded — it initializes no `.cambium/state/` task runtime
 state at all.
 
 1. Adopt the profile through R09.
@@ -435,7 +438,7 @@ guessing a verdict.
 ## Adopt A New Standards Version Into An Active Task
 
 R09 governs the Standards revision and records its exact changed predicates.
-When an existing `.cambium/` task still freezes the prior Standards/Profile
+When an existing `.cambium/state/` task still freezes the prior Standards/Profile
 identity, R09 produces one restricted-YAML plan using
 [`Tools/schemas/standards_adoption_plan.template.yaml`](Tools/schemas/standards_adoption_plan.template.yaml):
 
@@ -444,7 +447,8 @@ identity, R09 produces one restricted-YAML plan using
 ```
 
 That plan is the task's canonical machine revision record. It binds the
-complete approved K00/03 bytes, deterministic after snapshots of `kernel/` and
+complete approved K00/03 rule bytes, the exact canonical adopter-state
+before-image, deterministic after snapshots of `kernel/` and
 the selected Profile directory, and the exact changed-predicate,
 invalidated-evidence dimension/boundary, and rerun scope. There is no second
 revision YAML or prose adoption copy.
@@ -504,17 +508,19 @@ route, profile bindings, and source modules required by the current task.
 Combine additional routes only when their Card Index triggers apply; they do
 not replace the route for the work itself.
 
-For every task, first inspect the target repository for `.cambium/`. If it
-exists, do not write content or state and do not initialize or overwrite it:
-inspect and reconcile its current task first. If it is absent, only a
-long-running, resumable, or multi-batch task initializes it; bounded work
-continues without creating empty runtime state.
+For every task, first inspect the target repository for `.cambium/state/`. If
+it exists, do not write content or task state and do not initialize or
+overwrite it: inspect and reconcile its current task first. If task state is
+absent, only a long-running, resumable, or multi-batch task initializes it;
+bounded work continues without creating empty task state. A valid
+`.cambium/governance/` and adoption history may already exist and are
+preserved.
 
 ```text
 # Existing runtime state: always inspect before writing.
 python3 Tools/check_queue.py . --resume-status
 
-# No .cambium/ exists and persistent state applies: initialize once.
+# No .cambium/state/ exists and persistent state applies: initialize once.
 python3 Tools/init_state.py . \
   --task-id YOUR_TASK \
   --objective "State the concrete outcome this task must achieve" \

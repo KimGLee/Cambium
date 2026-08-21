@@ -133,7 +133,7 @@ JSON_FLAG_HELP = ("write the receipts this run produced to stdout as one "
                   "unchanged")
 
 
-ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
+ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
 SCOPE_SLOT = "Profile Scope"
 BEGIN = kblib.BOUNDARY_PROJECTION_BEGIN
 END = kblib.BOUNDARY_PROJECTION_END

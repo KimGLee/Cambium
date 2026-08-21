@@ -3,6 +3,7 @@ from contextlib import redirect_stdout
 import io
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -389,6 +390,9 @@ class InitPublicationTests(unittest.TestCase):
             code = init_state.main(self.command()[2:])
         return code, output.getvalue()
 
+    def assert_no_task_runtime(self):
+        self.assertFalse((self.root / ".cambium/state").exists())
+
     def poison_profile_closure(self):
         slots = self.root / "profiles/sample/slots.md"
         owned = "profiles/sample/slots.md#Synthetic Predicate"
@@ -423,7 +427,7 @@ class InitPublicationTests(unittest.TestCase):
                     stderr=subprocess.STDOUT, check=False)
                 self.assertEqual(1, completed.returncode, completed.stdout)
                 self.assertIn(expected, completed.stdout)
-                self.assertFalse((self.root / ".cambium").exists())
+                self.assert_no_task_runtime()
 
     def test_a_manifest_override_row_is_read_and_frozen(self):
         self.write_overrides("| `concurrency_cap` | `8` |\n")
@@ -486,7 +490,7 @@ class InitPublicationTests(unittest.TestCase):
         self.assertIn("selected Profile failed profile-load", completed.stdout)
         self.assertIn("override-row-shape", completed.stdout)
         self.assertNotIn("concurrency_cap=3", completed.stdout)
-        self.assertFalse((self.root / ".cambium").exists())
+        self.assert_no_task_runtime()
 
     def test_competing_initializers_publish_exactly_one_complete_tree(self):
         first = subprocess.Popen(
@@ -504,7 +508,8 @@ class InitPublicationTests(unittest.TestCase):
 
         runtime = self.root / ".cambium"
         self.assertEqual(
-            {"state", "work_specs", "deltas", "receipts", "reports", "tmp"},
+            {"state", "work_specs", "deltas", "receipts", "reports", "tmp",
+             "governance"},
             {entry.name for entry in runtime.iterdir()},
         )
         state_names = {entry.name for entry in (runtime / "state").iterdir()}
@@ -517,20 +522,20 @@ class InitPublicationTests(unittest.TestCase):
         self.assertEqual([], list(self.root.glob(".cambium-init-*")))
 
     def test_profile_drift_before_publication_leaves_no_runtime(self):
-        real_publish = init_state.publish_runtime
+        real_publish = init_state.publish_runtime_into_governance_namespace
 
         def poison_before_publish(*args, **kwargs):
             self.poison_profile_closure()
             return real_publish(*args, **kwargs)
 
         with mock.patch.object(
-                init_state, "publish_runtime",
+                init_state, "publish_runtime_into_governance_namespace",
                 side_effect=poison_before_publish):
             code, output = self.run_main()
 
         self.assertEqual(1, code, output)
         self.assertIn("pre-publication selected Profile failed", output)
-        self.assertFalse((self.root / ".cambium").exists())
+        self.assert_no_task_runtime()
         self.assertEqual([], list(self.root.glob(".cambium-init-*")))
 
     def test_profile_drift_after_publication_is_atomically_rolled_back(self):
@@ -549,9 +554,9 @@ class InitPublicationTests(unittest.TestCase):
             code, output = self.run_main()
 
         self.assertEqual(1, code, output)
-        self.assertEqual(2, calls["count"])
+        self.assertEqual(12, calls["count"])
         self.assertIn("post-publication selected Profile failed", output)
-        self.assertFalse((self.root / ".cambium").exists())
+        self.assert_no_task_runtime()
         self.assertEqual([], list(self.root.glob(".cambium-init-*")))
 
     def test_failed_postpublication_rollback_leaves_recovery_lock(self):
@@ -581,6 +586,7 @@ class InitPublicationTests(unittest.TestCase):
         self.assertEqual([], list(self.root.glob(".cambium-init-*")))
 
     def test_changed_initialization_lock_owner_is_never_released(self):
+        shutil.rmtree(self.root / ".cambium")
         documents = {
             "coverage_ledger.yaml": "schema_version: 1\n",
             "required_queue.yaml": "schema_version: 1\n",
@@ -616,6 +622,7 @@ class InitPublicationTests(unittest.TestCase):
         self.assertEqual("different-task", persisted["operation"]["task_id"])
 
     def test_staging_write_failure_leaves_no_runtime_or_staging_tree(self):
+        shutil.rmtree(self.root / ".cambium")
         arguments = SimpleNamespace(
             task_id="new-task", scope_version="s1", standards_version="3.0.0",
             profile_manifest="profiles/sample/profile.md", at="2026-08-04T00:00:00Z",
@@ -639,10 +646,11 @@ class InitPublicationTests(unittest.TestCase):
             with self.assertRaisesRegex(OSError, "injected staging failure"):
                 init_state.publish_runtime(str(self.root), documents)
 
-        self.assertFalse((self.root / ".cambium").exists())
+        self.assert_no_task_runtime()
         self.assertEqual([], list(self.root.glob(".cambium-init-*")))
 
     def test_empty_runtime_winning_publication_race_is_never_replaced(self):
+        shutil.rmtree(self.root / ".cambium")
         arguments = SimpleNamespace(
             task_id="new-task", scope_version="s1", standards_version="3.0.0",
             profile_manifest="profiles/sample/profile.md",
@@ -679,7 +687,7 @@ class InitPublicationTests(unittest.TestCase):
         )
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertIn("timezone-aware RFC 3339", completed.stdout)
-        self.assertFalse((self.root / ".cambium").exists())
+        self.assert_no_task_runtime()
         self.assertEqual([], list(self.root.glob(".cambium-init-*")))
 
     def test_missing_or_invalid_task_contract_never_publishes(self):
@@ -703,10 +711,11 @@ class InitPublicationTests(unittest.TestCase):
                     stderr=subprocess.STDOUT, check=False,
                 )
                 self.assertNotEqual(0, completed.returncode, completed.stdout)
-                self.assertFalse((self.root / ".cambium").exists())
+                self.assert_no_task_runtime()
                 self.assertEqual([], list(self.root.glob(".cambium-init-*")))
 
     def test_preexisting_empty_namespace_is_not_replaced(self):
+        shutil.rmtree(self.root / ".cambium")
         (self.root / ".cambium").mkdir()
         completed = subprocess.run(
             self.command(), text=True, stdout=subprocess.PIPE,
@@ -714,9 +723,8 @@ class InitPublicationTests(unittest.TestCase):
         )
         self.assertEqual(1, completed.returncode, completed.stdout)
         self.assertEqual([], list((self.root / ".cambium").iterdir()))
-        self.assertIn("existing_runtime_summary=unavailable", completed.stdout)
-        self.assertIn("Tools/check_queue.py", completed.stdout)
-        self.assertIn("--resume-status", completed.stdout)
+        self.assertIn("active Standards state", completed.stdout)
+        self.assertIn("standards_state.yaml", completed.stdout)
 
 
 class RepositoryTargetSnapshotTests(unittest.TestCase):

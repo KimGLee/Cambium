@@ -21,8 +21,8 @@ source_files:
 readback_sources:
   - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
 readback_policy: declared
-source_hash: '097458e2711b'
-compiled_source_hash: '097458e2711b'
+source_hash: 'e3e0aed9df30'
+compiled_source_hash: 'e3e0aed9df30'
 ---
 # R11 Large-scale Work Admission Card
 
@@ -38,7 +38,7 @@ Load before large-scale creation, moves, or deletion, together with [[kernel/Car
   Bundle before the admission checklist is used to authorize work.
 - [ ] Record contract, scope, initial batch, Standards version, exact `selected_profile_manifest`, selected routes and Cards, the derived loading envelope, target scope, exclusions, and latest user requirements; delivery receipts, not the frozen envelope, record actual context delivery.
 - [ ] Make `minimum_run_until`, `checkpoint_at`, `hard_stop_at`, and the Completion Gate explicit; leave unspecified fields explicitly empty.
-- [ ] Initialize `.cambium/` only when absent. If it exists, first run `check_queue.py --resume-status` and reconcile the recorded task; bind Coverage, Required Queue, and Progress to the same task, scope, Standards version, and selected profile.
+- [ ] Initialize task state only when `.cambium/state/` is absent. If it exists, first run `check_queue.py --resume-status` and reconcile the recorded task; preserve a governance-only `.cambium/` parent, and bind Coverage, Required Queue, and Progress to the same task, scope, Standards version, and selected Profile.
 - [ ] Reconcile Coverage with the file system and exclusions; inventory ownership, incoming links, user modifications, explicit batch manifests, and dependencies.
 - [ ] Require Corpus Planning `applicability.state: configured`; reconcile the bound Global Map, Capability Matrix, and Gap Register and pass `Tools/check_corpus_plan.py`. Use R13 to create or repair them; R11 only consumes this admission condition.
 - [ ] Compile the Queue from explicit Coverage inputs, record its path/revisions/fingerprint, and require `python3 Tools/check_queue.py .` plus `--require-ready <initial-batch-id>` to pass.

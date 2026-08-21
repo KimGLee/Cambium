@@ -32,9 +32,10 @@ REPOSITORY = TOOLS.parent
 
 sys.path.insert(0, str(TOOLS))
 import kblib  # noqa: E402
+import standards_state  # noqa: E402
 from Tools.tests.profile_fixture import install_loadable_profile
 
-ACTIVE_STATE = "kernel/K00 Standards Control/03 Standards Governance.md"
+ACTIVE_STATE = standards_state.STATE_PATH
 VOCABULARY_BASE = "kernel/K08 Metadata and Status/vocabulary-base.yaml"
 PROFILE_ID = "agent-atlas"
 
@@ -54,7 +55,8 @@ def build_composable_tree(destination):
             "check_freshness.py", "freshness_engine.py",
             "maintenance_candidates.py",
             "profile_admission.py", "check_profile.py",
-            "profile_contract.py", "metadata_execution_contract.py"):
+            "profile_contract.py", "metadata_execution_contract.py",
+            "standards_state.py"):
         shutil.copy2(TOOLS / name, tools / name)
 
     source_profile = install_loadable_profile(
@@ -84,16 +86,13 @@ def build_composable_tree(destination):
     shutil.copy2(REPOSITORY / VOCABULARY_BASE, destination / VOCABULARY_BASE)
 
     state = destination / ACTIVE_STATE
-    state.parent.mkdir(parents=True, exist_ok=True)
-    text = (REPOSITORY / ACTIVE_STATE).read_text(encoding="utf-8")
-    for placeholder, value in (
-            ("{{ standards_version }}", "1.0.0"),
-            ("{{ standards_status }}", "approved"),
-            ("{{ standards_effective_date }}", "2026-01-01"),
-            ("{{ selected_profile_manifest }}",
-             "profiles/examples/%s/profile.md" % PROFILE_ID)):
-        text = text.replace(placeholder, value)
-    state.write_text(text, encoding="utf-8")
+    current, _view, errors = standards_state.snapshot(destination)
+    assert not errors, errors
+    current = dict(current)
+    current["selected_profile_manifest"] = (
+        "profiles/examples/%s/profile.md" % PROFILE_ID)
+    state.write_text(
+        standards_state.canonical_text(current), encoding="utf-8")
     return destination
 
 
@@ -372,17 +371,13 @@ class ProducerPublishesAtomically(unittest.TestCase):
 
 
 class UnselectedProfileStaysLegal(unittest.TestCase):
-    """K00/03: a distribution with no selected profile carries no artifact."""
+    """A distribution with no adopter state carries no selected artifact."""
 
     def test_compose_refuses_without_selecting_one_and_writes_nothing(self):
         with tempfile.TemporaryDirectory() as temporary:
             tree = build_composable_tree(Path(temporary))
             state = tree / ACTIVE_STATE
-            state.write_text(
-                state.read_text(encoding="utf-8").replace(
-                    "`profiles/examples/%s/profile.md`" % PROFILE_ID,
-                    "`{{ selected_profile_manifest }}`"),
-                encoding="utf-8")
+            state.unlink()
             completed = compose(tree)
             self.assertEqual(1, completed.returncode, completed.stdout)
             self.assertFalse(

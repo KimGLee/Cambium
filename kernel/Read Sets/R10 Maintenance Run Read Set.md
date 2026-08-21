@@ -22,10 +22,11 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 
 Before starting, the budget envelope MUST be declared (N pages, N batches, or N hours — choose one of the three), and the candidate manifest merged from four sources: complete freshness candidate set ∪ watermark increment ∪ `needs_rereview` marks ∪ candidates pool (duplicate / vocab / language). Consume every freshness `candidate` outcome; do not filter the source back to overdue pages or treat an unresolved active page as absent. A candidate not selected by the budget for 3 consecutive maintenance runs is automatically demoted to log-only, and re-enters the pool when hit again by a new scan; at the start of a maintenance run, output the deferred age distribution, and items lingering more than 3 runs MUST be explicitly dispositioned. The owner of fusion, ordering, and deferral is [[kernel/K00 Standards Control/08 Maintenance Run Envelope|K00/08]]; freshness outcome semantics remain in [[kernel/K08 Metadata and Status/05 Review Source and Migration Metadata|K08/05]]. This Read Set is an execution summary.
 
-Before any write, probe the adopting repository for `.cambium/`. If it exists,
-resume its recorded task through `check_queue.py --resume-status`; do not
-initialize or overwrite it. If it is absent, initialize only when this run is
-persistent, resumable, or multi-batch, and declare
+Before any write, probe the adopting repository for `.cambium/state/`. If it
+exists, resume its recorded task through `check_queue.py --resume-status`; do
+not initialize or overwrite it. If task state is absent, initialize only when
+this run is persistent, resumable, or multi-batch, preserving any canonical
+governance/history already under `.cambium/`, and declare
 `--completion-semantics maintenance`. A bounded single-note maintenance run
 does not create an empty runtime namespace merely to use R10.
 

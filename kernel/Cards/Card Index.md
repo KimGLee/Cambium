@@ -7,8 +7,8 @@ source_files:
   - kernel/K00 Standards Control/01 Operating Role and Reading Protocol.md
   - kernel/K00 Standards Control/02 Task Routing.md
   - kernel/K00 Standards Control/03 Standards Governance.md
-source_hash: '04058244f69a'
-compiled_source_hash: '04058244f69a'
+source_hash: '9fb29e8300cc'
+compiled_source_hash: '9fb29e8300cc'
 route_registry:
   - route_id: R01
     path: "kernel/Cards/R01 Core Bootstrap Card.md"
@@ -100,7 +100,7 @@ the same `route_id`.
 - A profile extension uses its own namespaced identity and loads alongside a
   kernel route. It cannot reuse an Rxx identity or weaken the kernel gate.
 
-Record the active `selected_profile_manifest`, selected `route_id` values,
+Record the canonical-state `selected_profile_manifest`, selected `route_id` values,
 Card paths, and the derived Read Set/module loading envelope. Those frozen
 paths state what must be available; they do not prove delivery. Batch
 activation carries the exact selected Card bytes in a content-addressed Bundle,

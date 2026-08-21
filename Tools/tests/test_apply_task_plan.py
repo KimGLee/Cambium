@@ -176,6 +176,7 @@ class TaskPlanTransactionTests(unittest.TestCase):
         for relative, text in ((READ_SET, READ_SET_TEXT), (CARD, CARD_TEXT),
                                (OTHER_CARD, CARD_TEXT),
                                (R01_READ_SET, READ_SET_TEXT),
+                               (MODULE, "# Fixture Standards Governance\n"),
                                (CARD_INDEX, CARD_INDEX_TEXT),
                                (READ_SET_INDEX, READ_SET_INDEX_TEXT)):
             path = self.root / relative

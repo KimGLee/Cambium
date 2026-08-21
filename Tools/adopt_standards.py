@@ -5,7 +5,7 @@ The restricted-YAML plan is the canonical machine revision record.  The
 default is a dry run.  ``--apply --actor-role integrator`` is the only write
 path; it holds the shared runtime writer lock, appends prepare/commit/abort
 evidence, preserves unrelated state exactly, and rolls ordinary failures back
-to the three frozen before images.
+to the four frozen before images (the three task Ledgers plus adopter state).
 """
 
 import contextlib
@@ -17,9 +17,10 @@ import uuid
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
+import standards_state
 
 TOOL = "adopt_standards"
-TOOL_VERSION = "1.6.0"
+TOOL_VERSION = "1.7.0"
 GATE_ID = "standards-adoption"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -182,6 +183,9 @@ def _state_paths(root, current):
         "progress": kblib.managed_repository_path(
             root, check_queue.PROGRESS_PATH, ".cambium/state",
             suffixes=(".yaml",), must_exist=True),
+        "standards": kblib.managed_repository_path(
+            root, standards_state.STATE_PATH, ".cambium/governance",
+            suffixes=(".yaml",), must_exist=True),
     }
 
 
@@ -217,6 +221,13 @@ def _non_adoption_projection(name, document):
                     "contract_version", "standards_version",
                     "selected_profile_manifest") + LOAD_FIELDS:
                 contract.pop(field, None)
+    elif name == "standards":
+        for field in (
+                "state_revision", "standards_version", "status",
+                "effective_date", "selected_profile_manifest",
+                "latest_adoption_receipt", "upstream_source_ref",
+                "upstream_revision_id"):
+            value.pop(field, None)
     return value
 
 
@@ -226,7 +237,7 @@ def _projection_sha(name, document):
 
 
 def _assert_only_permitted_changes(before, after):
-    for name in ("coverage", "queue", "progress"):
+    for name in ("coverage", "queue", "progress", "standards"):
         if _non_adoption_projection(name, before[name]) != \
                 _non_adoption_projection(name, after[name]):
             raise ValueError(
@@ -268,9 +279,11 @@ def _new_receipt(phase, result, plan, transaction_id, plan_path, plan_sha,
         "before_coverage_sha256": before_sha["coverage"],
         "before_queue_sha256": before_sha["queue"],
         "before_progress_sha256": before_sha["progress"],
+        "before_standards_state_sha256": before_sha["standards"],
         "after_coverage_sha256": after_sha["coverage"],
         "after_queue_sha256": after_sha["queue"],
         "after_progress_sha256": after_sha["progress"],
+        "after_standards_state_sha256": after_sha["standards"],
         "before_contract_sha256": check_queue._contract_sha256(
             before["progress"]),
         "after_contract_sha256": check_queue._contract_sha256(
@@ -283,6 +296,8 @@ def _new_receipt(phase, result, plan, transaction_id, plan_path, plan_sha,
         "contract_version_after": plan["contract_version_after"],
         "standards_version_before": plan["standards_version_before"],
         "standards_version_after": plan["standards_version_after"],
+        "standards_effective_date_after":
+            plan["standards_effective_date_after"],
         "selected_profile_manifest_before":
             plan["selected_profile_manifest_before"],
         "selected_profile_manifest_after":
@@ -376,10 +391,19 @@ def _prepare_result(root, plan_relative):
         "coverage": plan["coverage_sha256_before"],
         "queue": plan["required_queue_sha256_before"],
         "progress": plan["progress_sha256_before"],
+        "standards": plan["standards_state_sha256_before"],
     }
-    for name in ("coverage", "queue", "progress"):
+    for name in ("coverage", "queue", "progress", "standards"):
         if before_sha[name] != expected_sha[name]:
             raise ValueError("plan %s SHA does not match current bytes" % name)
+    try:
+        standards_before, standards_errors = standards_state.parse(
+            before_raw["standards"].decode("utf-8"))
+    except UnicodeDecodeError as exc:
+        raise ValueError("current Standards state is not UTF-8: %s" % exc)
+    if standards_errors:
+        raise ValueError("current Standards state is invalid: %s" %
+                         "; ".join(standards_errors))
     contract = progress["contract"]
     expected_identity = {
         "task_id": plan["task_id"],
@@ -404,6 +428,13 @@ def _prepare_result(root, plan_relative):
         if actual_identity[field] != expected:
             raise ValueError("plan before %s=%r, current value is %r" %
                              (field, expected, actual_identity[field]))
+    if (standards_before["standards_version"] !=
+            plan["standards_version_before"] or
+            standards_before["selected_profile_manifest"] !=
+            plan["selected_profile_manifest_before"]):
+        raise ValueError(
+            "current adopter Standards state differs from the plan before "
+            "identity")
     existing = progress.get("standards_adoptions")
     if not isinstance(existing, list):
         raise ValueError("Progress standards_adoptions is malformed")
@@ -415,6 +446,7 @@ def _prepare_result(root, plan_relative):
         "coverage": copy.deepcopy(coverage),
         "queue": copy.deepcopy(queue),
         "progress": copy.deepcopy(progress),
+        "standards": copy.deepcopy(standards_before),
     }
     after = copy.deepcopy(before)
     after["coverage"]["standards_version"] = plan["standards_version_after"]
@@ -448,6 +480,17 @@ def _prepare_result(root, plan_relative):
         GATE_CHECK, plan["adoption_id"],
         "pass", "Standards adoption commit", 2,
         identity=_plan_identity(plan))
+    standards_after = standards_state.next_state(
+        standards_before,
+        standards_version=plan["standards_version_after"],
+        effective_date=plan["standards_effective_date_after"],
+        selected_profile_manifest=plan["selected_profile_manifest_after"],
+        latest_adoption_receipt=commit_stub["receipt_id"],
+        upstream_source_ref=plan["upstream_source_ref"],
+        upstream_revision_id=plan["upstream_revision_id"],
+    )
+    standards_text = standards_state.canonical_text(standards_after)
+    after["standards"] = standards_after
     # The immediate consistency receipt is produced against the committed
     # after-image.  Allocate it after the commit identity so its timestamp is
     # never earlier than ``record.adopted_at``; the same receipt can then
@@ -470,6 +513,12 @@ def _prepare_result(root, plan_relative):
         "contract_version_after": plan["contract_version_after"],
         "standards_version_before": plan["standards_version_before"],
         "standards_version_after": plan["standards_version_after"],
+        "standards_effective_date_after":
+            plan["standards_effective_date_after"],
+        "standards_state_sha256_before":
+            plan["standards_state_sha256_before"],
+        "after_standards_state_sha256":
+            kblib.sha256_bytes(standards_text),
         "selected_profile_manifest_before":
             plan["selected_profile_manifest_before"],
         "selected_profile_manifest_after":
@@ -516,6 +565,7 @@ def _prepare_result(root, plan_relative):
         "coverage": coverage_text,
         "queue": queue_text,
         "progress": progress_text,
+        "standards": standards_text,
     }
     after_sha = {name: kblib.sha256_bytes(text)
                  for name, text in after_text.items()}
@@ -560,7 +610,9 @@ def _prepare_result(root, plan_relative):
         check_queue.PROGRESS_PATH: (progress_text, after["progress"]),
     }
     final = check_queue.validate_runtime(
-        root, state_overrides=overrides, extra_receipts=[gate, commit])
+        root, state_overrides=overrides,
+        active_standards_state_override=standards_text,
+        extra_receipts=[gate, commit])
     if final["errors"]:
         raise ValueError("planned final state fails check_queue: %s" %
                          "; ".join(final["errors"]))
@@ -578,7 +630,7 @@ def _prepare_result(root, plan_relative):
 
 def _restore(paths, before_raw):
     failures = []
-    for name in ("coverage", "queue", "progress"):
+    for name in ("coverage", "queue", "progress", "standards"):
         try:
             kblib.atomic_write_text(
                 paths[name], before_raw[name].decode("utf-8"),
@@ -617,6 +669,10 @@ def _lock_operation(prepared, receipt_path, abort_id):
         "planned_after_required_queue_sha256": prepared["after_sha"]["queue"],
         "before_progress_sha256": prepared["before_sha"]["progress"],
         "planned_after_progress_sha256": prepared["after_sha"]["progress"],
+        "before_standards_state_sha256":
+            prepared["before_sha"]["standards"],
+        "planned_after_standards_state_sha256":
+            prepared["after_sha"]["standards"],
         "selected_profile_manifest_after":
             prepared["profile_evidence"]["selected_profile_manifest"],
         "profile_snapshot_sha256_after":
@@ -680,7 +736,7 @@ def _commit_transaction(prepared, receipt_path):
                 receipt_path, final_receipts)
             commit_before = kblib.receipt_append_observation(
                 receipt_path, [prepared["commit"]])
-            for name in ("coverage", "queue", "progress"):
+            for name in ("coverage", "queue", "progress", "standards"):
                 kblib.atomic_write_text(
                     prepared["paths"][name], prepared["after_text"][name],
                     validator=kblib.parse_yaml_subset)
@@ -788,7 +844,7 @@ def _run(args):
         plan["adoption_id"], plan["standards_version_before"],
         plan["standards_version_after"], plan["queue_revision_before"],
         plan["queue_revision_after"]))
-    for name in ("coverage", "queue", "progress"):
+    for name in ("coverage", "queue", "progress", "standards"):
         print("%s_sha256=%s -> %s" % (
             name, prepared["before_sha"][name], prepared["after_sha"][name]))
     if not args.apply:

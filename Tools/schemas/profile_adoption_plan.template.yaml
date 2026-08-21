@@ -3,29 +3,27 @@
 # Owner standard: kernel/K00 Standards Control/03 Standards Governance.md
 # Implemented by: Tools/apply_profile_adoption.py
 # Location: any repository-contained path outside kernel/, the candidate
-#   profile directory, and .cambium/ (which must not exist for this writer);
+#   profile directory and .cambium/;
 #   e.g. adoption-plans/<plan-id>.yaml
 #
 # The plan is restricted YAML and binds one exact before-state.  It drives the
 # sole writer for the two R09 branches that exist BEFORE any runtime does:
-# initial adoption (all four K00/03 placeholders uninstantiated) and a later
-# profile revision (all four instantiated).  It changes only the four K00/03
-# Standards Control cells, appends one Change Summary row, re-measures the
-# K00/16 register cell for K00/03, and recomposes the generated artifacts
+# initial adoption (adopter Standards state absent) and a later pre-runtime
+# profile revision (state present). It advances only the canonical adopter
+# state, appends receipt history, and recomposes the generated artifacts
 # (vocab.yaml, page_contract.yaml, kernel/Cards) through their own producers.
-# It never touches `.cambium/`; an existing runtime routes the revision to
-# adopt_standards.py instead.
+# It never creates task-runtime state; an existing task runtime routes the
+# revision to adopt_standards.py instead.
 # =============================================================================
 
-schema_version: 1
+schema_version: 2
 plan_id: "PA-001"
-# `initial-adoption` requires all four K00/03 placeholders uninstantiated and
-# null `*_before` fields below; `profile-revision` requires all four
-# instantiated and both `*_before` fields matching the current K00/03 cells.
+# `initial-adoption` requires adopter Standards state absent and null before
+# identity; `profile-revision` requires state present and matching before data.
 branch: initial-adoption
 standards_version_after: TODO(profile-adoption)
 # The no-runtime writer records only released governance; `approved` is the
-# sole admissible status (K00/03 lifecycle: draft -> approved -> superseded).
+# sole admissible current-state status.
 standards_status_after: approved
 standards_effective_date_after: TODO(profile-adoption)
 selected_profile_manifest_after: "profiles/my-profile/profile.md"
@@ -34,11 +32,15 @@ selected_profile_manifest_after: "profiles/my-profile/profile.md"
 standards_version_before: null
 selected_profile_manifest_before: null
 
-# The complete Change cell of the new Change Summary row, verbatim: the change
-# description including the profile selection and, when applicable, the
-# upstream tag, commit, or archive checksum.  One Markdown table cell: no `|`
-# and no newline.
+# Human-readable change detail embedded in the append-only adoption receipt,
+# including the profile selection and, when applicable, upstream provenance.
+# It is not copied into K00 or a Card. One scalar: no `|` and no newline.
 change_summary: TODO(profile-adoption)
+
+# Upstream provenance belongs to receipt history, not Kernel prose. Both
+# values are nonempty or both null when no upstream is tracked.
+upstream_source_ref: TODO(profile-adoption)
+upstream_revision_id: TODO(profile-adoption)
 
 # This writer exists for the no-runtime case, where no task state can consume
 # a changed predicate.  The list MUST be empty; a revision with changed
@@ -54,6 +56,8 @@ adoption_requirement: none
 # tool never adopts unseen bytes.
 # Exact current K00/03 governance file bytes (kblib.sha256_file).
 k00_03_sha256_before: "sha256:replace-with-current-governance-file-fingerprint"
+# null for initial adoption; exact current state SHA for profile-revision.
+standards_state_sha256_before: null
 # The next three come from one passing check_profile.evaluate_profile_load of
 # the candidate: the deterministic candidate Profile directory tree snapshot,
 # the typed dependency-contract fingerprint, and the root-owned profile-load

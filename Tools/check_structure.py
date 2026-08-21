@@ -126,7 +126,7 @@ JSON_FLAG_HELP = ("write the receipts this run produced to stdout as one "
                   "unchanged")
 
 
-ACTIVE_STATE_PATH = "kernel/K00 Standards Control/03 Standards Governance.md"
+ACTIVE_STATE_PATH = ".cambium/governance/standards_state.yaml"
 STRUCTURE_SLOT = "Structure Registry"
 CORPUS_SLOT = "Corpus Planning"
 SCOPE_SLOT = "Profile Scope"

@@ -33,9 +33,10 @@ unused—the first runtime action is:
 python3 Tools/check_queue.py . --resume-status
 ```
 
-If `.cambium/` is absent, there is no persistent state to resume and an
-authorized task may initialize it. If it exists, `init_state.py` MUST NOT be
-used to replace it. The status view identifies the recorded task and profile,
+If `.cambium/state/` is absent, there is no persistent task state to resume and
+an authorized task may initialize it beside any valid governance/history
+namespace. If task state exists, `init_state.py` MUST NOT be used to replace
+it. The status view identifies the recorded task and Profile,
 task state/checkpoint, Queue revisions and fingerprint, lifecycle groups, Work Spec bindings,
 holds, pending deltas, writer locks, latest task transition, pending Guidance
 or Amendments, Terminal Audit state, and one machine-readable `next_action`.

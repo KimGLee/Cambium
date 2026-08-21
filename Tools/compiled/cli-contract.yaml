@@ -5,7 +5,7 @@
 #   by hand, and a hand edit is reported by --check as a HOLD.
 # regenerate with: python3 Tools/compile_cli_contract.py .
 # verify with:     python3 Tools/compile_cli_contract.py . --check
-# `source_hash` covers the manifest of the 45 tool sources listed
+# `source_hash` covers the manifest of the 46 tool sources listed
 #   under source_files, each with its own sha256.
 # A positional argument is one whose `option_strings` is empty.
 # `choices` is the admissible SET in canonical order, not the
@@ -47,6 +47,7 @@ source_files:
   - Tools/duplicate_check.py
   - Tools/init_state.py
   - Tools/metadata_execution_contract.py
+  - Tools/migrate_standards_state.py
   - Tools/profile_onboarding_status.py
   - Tools/project_page_state.py
   - Tools/record_batch_judgment.py
@@ -65,7 +66,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:0851f552ac8080f96d888a5a236abf93aa1b7af5fa541b1bf6e62dfe690a23f6
+source_hash: sha256:443790228b15aa418befe790527ba7f1d625e7729b5d9b672a562f0666ede300
 receipt_shape:
   base_fields:
     - receipt_id
@@ -80,11 +81,11 @@ receipt_shape:
   conditional_fields:
     - gate_id
   extension_policy: derived-per-tool-from-source
-tool_count: 45
+tool_count: 46
 tools:
   - tool: adopt_standards
     module: Tools/adopt_standards.py
-    source_hash: sha256:38a3854317419437b0fe116051a5511a346f12f35e0fa1a4f38459d60afcd2a7
+    source_hash: sha256:40802fbb9a64aca85547656c1bdd10eccbb7fd92fb6b3cea9e79db54cd0fd1c0
     description: Adopt one approved Standards/Profile revision
     arguments:
       - dest: root
@@ -164,12 +165,14 @@ tools:
       - after_coverage_sha256
       - after_progress_sha256
       - after_queue_sha256
+      - after_standards_state_sha256
       - before_contract_scope_version
       - before_contract_sha256
       - before_contract_version
       - before_coverage_sha256
       - before_progress_sha256
       - before_queue_sha256
+      - before_standards_state_sha256
       - boundary_gate_reruns
       - changed_predicate_ids
       - contract_version_after
@@ -204,6 +207,7 @@ tools:
       - selected_read_sets_before
       - selected_route_ids_after
       - selected_route_ids_before
+      - standards_effective_date_after
       - standards_snapshot_sha256_after
       - standards_version_after
       - standards_version_before
@@ -773,7 +777,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_profile_adoption
     module: Tools/apply_profile_adoption.py
-    source_hash: sha256:d845170185e1b29cbc50565a446cc40e7b8d97ea9184e305cc08ba8861871b3c
+    source_hash: sha256:a0186cbb61beb0db7de6febda5df0b2bb148ec4e3435549c1c5e72e91aa1ab94
     description: Apply one no-runtime R09 Profile adoption (initial adoption or pre-runtime profile revision) from a restricted-YAML plan
     arguments:
       - dest: root
@@ -785,7 +789,7 @@ tools:
         nargs: null
         action: store
         type: null
-        help: repository root (no .cambium/ may exist anywhere under it)
+        help: repository root (no task runtime may exist; governance state may exist)
       - dest: plan
         option_strings:
           - --plan
@@ -829,29 +833,10 @@ tools:
         nargs: null
         action: store
         type: null
-        help: "transaction receipt JSONL destination (default: <plan>.receipts.jsonl beside the plan; never .cambium/)"
+        help: must be the canonical Standards history stream .cambium/receipts/standards-adoptions.jsonl
     mutually_exclusive_groups: []
     receipt_extensions:
-      - adoption_requirement
-      - branch
-      - change_summary
-      - changed_predicate_ids
       - identity
-      - k00_03_sha256_after
-      - k00_03_sha256_before
-      - plan_path
-      - plan_sha256
-      - profile_contract_fingerprint_after
-      - profile_load_gate_id
-      - profile_load_inputs_sha256_after
-      - profile_load_receipt_id
-      - profile_snapshot_sha256_after
-      - selected_profile_manifest_after
-      - selected_profile_manifest_before
-      - standards_effective_date_after
-      - standards_status_after
-      - standards_version_after
-      - standards_version_before
       - transaction_id
     receipt_extensions_extraction: complete
   - tool: apply_task_plan
@@ -1100,7 +1085,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_boundary_contract
     module: Tools/check_boundary_contract.py
-    source_hash: sha256:81450450580a51ff9d53420b6f5dd456dc5fd64a15bb2adabe28f82bc0266640
+    source_hash: sha256:988500b4e7992395bbd2d8aed27158ab1e2ec26c07cdb049d04bc1468fce367c
     description: "Validate page boundary blocks against the K08/09 page boundary contract (gate: boundary-contract; advisory by default)."
     arguments:
       - dest: vault_root
@@ -1487,7 +1472,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_page_contract
     module: Tools/check_page_contract.py
-    source_hash: sha256:3696d3b0024a5f2e96dd7012f47ecf91caa430ddafe50c177f8cdfbe1c4c0492
+    source_hash: sha256:e2397cfd5950eaf96cc6e565d9e3c1bc3ad071a346b3a82e6c2635e5479f84c4
     description: "Validate pages against the compiled frontmatter page contract (gate: page-contract; advisory by default)."
     arguments:
       - dest: vault_root
@@ -1676,7 +1661,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_proof
     module: Tools/check_proof.py
-    source_hash: sha256:644a925c631d7fd25cb85b3a62209796e89927b1444de98074a902b8377a1934
+    source_hash: sha256:dca5bc6433324a2a90ebedf1ba969ced14da867cc1225d0e478d81f09eb1cb86
     description: Terminal Proof completeness and zero-condition check
     arguments:
       - dest: proof
@@ -1767,7 +1752,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:137aeeffc12be70bb699b7a8243c07a95dce6c2bf2a37228b655c3fe44c639ce
+    source_hash: sha256:5eff5f82b39e03669c346931c6b42236d7eb7acfe9d711e327e895bcf78b32a1
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -2074,7 +2059,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_structure
     module: Tools/check_structure.py
-    source_hash: sha256:0b5a64dbc630ca2e624d5b73dc96dbf6684420eb1025cf9f9d0f1895ae144b80
+    source_hash: sha256:0b0a6ad449bf8fad25d27b6a3f716d590c519d448e13ab2dd62cb51e5737285e
     description: "Validate the selected profile's Structure Registry against the vault (gate: structure-registry)."
     arguments:
       - dest: vault_root
@@ -2489,7 +2474,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: compose_page_contract
     module: Tools/compose_page_contract.py
-    source_hash: sha256:98b335a9c9d6486ce1b7413a4ba057bb2dade2ca976fb9d0ae506a267d1eee17
+    source_hash: sha256:d5bdd1fab7c26126e0139f9940c3808b287de663d585732e286e2a0b1b3a267a
     description: Compose the effective frontmatter page contract from the kernel bases and the selected profile's Metadata Contract.
     arguments:
       - dest: root
@@ -2574,7 +2559,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: compose_vocab
     module: Tools/compose_vocab.py
-    source_hash: sha256:3ce870bb000813eedf466e11e639e059c7196a5dae33dd7f504541cb91a3f978
+    source_hash: sha256:ad43f632d5ccb129dc905de45821583111020e5ab3e6aac3e61dcd404cbdf697
     description: Deterministically compose the vocabulary artifact from the kernel base and the selected profile's extensions.
     arguments:
       - dest: base
@@ -2598,7 +2583,7 @@ tools:
         nargs: null
         action: store
         type: null
-        help: the active profile's vocabulary-extensions.yaml. K00/03 selects the path; when this flag is present it must name that same path
+        help: the active profile's vocabulary-extensions.yaml. Canonical adopter Standards state selects the path; when this flag is present it must name that same path
       - dest: output
         option_strings:
           - --output
@@ -2688,7 +2673,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: init_state
     module: Tools/init_state.py
-    source_hash: sha256:cb8cf12d1442c341d58539f3cd0998f883bebe88fabc7d2b09ae551f818f7e80
+    source_hash: sha256:971e2809f737f8fe1d60cde2dfe4ec6bdccbf31818806ec44336c8280574540d
     description: Initialize empty Cambium runtime state
     arguments:
       - dest: root
@@ -2755,7 +2740,7 @@ tools:
         nargs: null
         action: store
         type: null
-        help: Standards version this runtime adopts; must equal the approved standards_version of the active K00/03 Standards Control
+        help: Standards version this runtime adopts; must equal the approved standards_version of the canonical adopter Standards state
       - dest: profile_manifest
         option_strings:
           - --profile-manifest
@@ -2766,7 +2751,7 @@ tools:
         nargs: null
         action: store
         type: null
-        help: repository-relative selected profile manifest; must equal the selected_profile_manifest of the active K00/03 Standards Control
+        help: repository-relative selected profile manifest; must equal the selected_profile_manifest of the canonical adopter Standards state
       - dest: contract_version
         option_strings:
           - --contract-version
@@ -2890,9 +2875,38 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+  - tool: migrate_standards_state
+    module: Tools/migrate_standards_state.py
+    source_hash: sha256:91a6569657b53dce5cb5d8d8fbf437460922425c1cdf03624edb09a4f35184b4
+    description: Migrate existing runtime identity to Standards state
+    arguments:
+      - dest: root
+        option_strings: []
+        required: true
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: adopting repository root
+      - dest: apply
+        option_strings:
+          - --apply
+        required: false
+        default: false
+        default_type: bool
+        choices: null
+        nargs: 0
+        action: store_true
+        type: null
+        help: write state; omit for a dry run
+    mutually_exclusive_groups: []
+    receipt_extensions: []
+    receipt_extensions_extraction: complete
   - tool: profile_onboarding_status
     module: Tools/profile_onboarding_status.py
-    source_hash: sha256:cde3d167db14066a1b1325f16666451dc473bc83f88e47927edcce0f7510c6c8
+    source_hash: sha256:3cf70ce7b7406cd32ed90a659b34356a4eb247d2659c9ba27307c31531ef822d
     description: "Read-only onboarding status projector: derives the adoption/onboarding state of one root and exactly one next_action token; writes nothing and owns no ledger"
     arguments:
       - dest: root
@@ -3599,7 +3613,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: render_boundary_projection
     module: Tools/render_boundary_projection.py
-    source_hash: sha256:fc3bff597fafd3babe80e0f32c80df2de406861d679f99b0b3481a326385f48b
+    source_hash: sha256:e60e7f6744b7c0daff72394eb68f2459056c2bb07559833a700f7a91f77efcbb
     description: Render the K08/09 boundary projection blocks from page `boundary` frontmatter.
     arguments:
       - dest: vault_root
@@ -3905,7 +3919,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: render_structure_projection
     module: Tools/render_structure_projection.py
-    source_hash: sha256:85ab09f2e199bbf2bd181ba1858e97091e21484f7d98392caa4fe2cf8aee377f
+    source_hash: sha256:b985e3c17787afc4e3f2dd12f8a01d83f542b2d66c1993134f6c5df11bad8fc1
     description: Render derived Structure Registry coverage projections (K01/05 derived roles).
     arguments:
       - dest: vault_root
@@ -4140,7 +4154,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: stamp_cards
     module: Tools/stamp_cards.py
-    source_hash: sha256:2837efc108d6fc15663aa0aa66e9a49c16c6cccf704d34a213492bc8d8122e62
+    source_hash: sha256:19fdf534a22f95d93106d86ca73d3fdbf08d65bfc8adb53cc93b3e9ec03f35e5
     description: Stamp kernel Runtime Cards
     arguments:
       - dest: root

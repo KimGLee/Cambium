@@ -38,8 +38,8 @@ readback_sources:
   - kernel/K12 Quality Assurance/02 Rendering Verification.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
 readback_policy: activation
-source_hash: '618c93c9da94'
-compiled_source_hash: '618c93c9da94'
+source_hash: '30f6ab17a5f6'
+compiled_source_hash: '30f6ab17a5f6'
 ---
 # R09 Standards Governance Card
 
@@ -55,12 +55,12 @@ Modify kernel rules, Read Sets, Cards, versions, directories, ownership, tooling
 - [ ] Load [[kernel/Cards/R01 Core Bootstrap Card|Core Bootstrap]], then verify
   the activation Bundle delivered [[kernel/Read Sets/R09 Standards Governance Read Set|R09 Read Set]]
   and its Start list in full under `readback_policy: activation`.
-- [ ] Choose the branch: for initial adoption, freeze the four K00/03 placeholders and upstream provenance, then admit the candidate through `profile-load`; for a later revision, freeze the active Standards version and selected profile manifest, and separately admit the after Profile through the same Gate. A broken current Profile is impact evidence, not a prerequisite that can deadlock correction. In both branches freeze affected modules, incoming links, changed predicates, active-task impact, and rollback/conservation boundary.
+- [ ] Choose the branch: for initial adoption, prove the canonical adopter Standards state is absent, freeze upstream provenance, then admit the candidate through `profile-load`; for a later revision, freeze the current state bytes and separately admit the after Profile through the same Gate. A broken current Profile is impact evidence, not a prerequisite that can deadlock correction. In both branches freeze affected modules, incoming links, changed predicates, active-task impact, and rollback/conservation boundary.
 - [ ] Identify the single canonical owner for every rule being changed and the existing control that is superseded.
 
 ## During
 
-- Record the affected Standards and reason, update version/state, routing, Change Summary, and changed predicates. Initial adoption instantiates K00/03; later changes record old/new manifests. Both recompose vocabulary and stamp Cards. For each affected task, declare the Contract-version edge, ensure Work Specs are compatible, and bind its K12/10 YAML to approved K00/03 bytes plus deterministic Kernel/Profile snapshots and the after Profile's typed-contract fingerprint. Keep that derived closure outside Read Set load lists; never write task Ledgers or create a second revision/prose copy.
+- Record the affected Standards and reason, update rules/routing and changed predicates, and let the adoption transaction append history receipts. Initial adoption creates `.cambium/governance/standards_state.yaml`; later changes advance it. Both recompose vocabulary and stamp Cards. For each affected task, declare the Contract-version edge, ensure Work Specs are compatible, and bind its K12/10 YAML to unchanged K00/03 rule bytes, the exact state before-image, deterministic Kernel/Profile snapshots, and the after Profile's typed-contract fingerprint. Keep that derived closure outside Read Set load lists; never write task Ledgers or create a second revision/prose copy.
 - For a structural migration, map every original H2 block to exactly one new owner. Never use splitting as reduction, summary, or silent deletion.
 - Keep the Overview, Standard Module MOCs, Read Sets, rule registry, control registry, links, and module paths synchronized.
 - For a new or re-scoped check, register its receipt dimension, audit layer, object, evidence role, and acceptance owner before closure.

@@ -46,8 +46,8 @@ readback_sources:
   - kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract.md
   - kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary.md
 readback_policy: declared
-source_hash: '6dcf3f22e9b9'
-compiled_source_hash: '6dcf3f22e9b9'
+source_hash: 'bd12dc944665'
+compiled_source_hash: 'bd12dc944665'
 ---
 # R07 Long-running Execution Card
 
@@ -59,8 +59,8 @@ Run a multi-batch task, sustain checkpoints, resume after interruption, maintain
 
 ## Before Start
 
-- [ ] If `.cambium/` exists, run `python3 Tools/check_queue.py . --resume-status` before any state write; resume the recorded task instead of initializing a replacement.
-- [ ] If persistent runtime state is authorized and `.cambium/` is absent, create the empty namespace with `init_state.py`, commit the exact initial Task Plan with `apply_task_plan.py`, then derive Queue views with `compile_queue.py`. Never materialize Coverage or Queue by hand.
+- [ ] If `.cambium/state/` exists, run `python3 Tools/check_queue.py . --resume-status` before any state write; resume the recorded task instead of initializing a replacement.
+- [ ] If persistent runtime state is authorized and `.cambium/state/` is absent, create the empty task namespace with `init_state.py` while preserving any adopter governance/history, commit the exact initial Task Plan with `apply_task_plan.py`, then derive Queue views with `compile_queue.py`. Never materialize Coverage or Queue by hand.
 - [ ] Freeze the long-run Task Contract: Standards/Profile fingerprints, time semantics, route/Card paths, derived source-delivery boundary, completion semantics, and Queue identity. Delivery is evidenced separately; Profile closure members remain derived Gate output.
 - [ ] Reconcile `.cambium/` Coverage, Queue, and Progress with the file system and user modifications. Ready, open, and merge-ready lists are derived from the Queue, never edited in Progress as a second authority.
 - [ ] For persistent multi-batch corpus work, require Corpus Planning `applicability.state: configured` and pass `check_corpus_plan.py`; use its on-demand `--json` projection for recovery and R13 for any planning edit.

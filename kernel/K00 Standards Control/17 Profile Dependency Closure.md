@@ -54,7 +54,7 @@ passing evaluation as a compare value, not a lease. It MUST carry the same
 authorized in-process view through every proposed, locked, post-write, and
 receipt-producing check in one transaction, then compare the exact manifest,
 Profile-tree snapshot, typed-contract fingerprint, root-input fingerprint,
-and approved K00/03 selection at each write boundary. A Profile-derived
+and approved canonical adopter Standards state at each write boundary. A Profile-derived
 compiled artifact additionally MUST be byte-equal to the deterministic output
 of that view and bind its artifact fingerprint; provenance prose alone is not
 authorization. Initial runtime publication stages the shared writer lock in
