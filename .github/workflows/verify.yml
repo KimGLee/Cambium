@@ -15,16 +15,67 @@ permissions:
   contents: read
 
 jobs:
+  plan:
+    name: plan affected verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      run_tests: ${{ steps.plan.outputs.run_tests }}
+      check_matrix: ${{ steps.plan.outputs.check_matrix }}
+      test_matrix: ${{ steps.plan.outputs.test_matrix }}
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up planning Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Compute fail-closed impact plan
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python .github/scripts/ci_impact.py plan \
+            --root . \
+            --event "${{ github.event_name }}" \
+            --base "$BASE_SHA" \
+            --head "$HEAD_SHA" \
+            --plan-path "$RUNNER_TEMP/ci-plan.json" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Publish selection rationale
+        run: |
+          echo '## CI impact plan' >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/ci-plan.json" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Planning must leave the tree unchanged
+        if: ${{ always() }}
+        run: |
+          git status --porcelain=v1 --untracked-files=all > "$RUNNER_TEMP/worktree-status"
+          if test -s "$RUNNER_TEMP/worktree-status"; then
+            echo "CI planning modified tracked or untracked non-ignored files:"
+            cat "$RUNNER_TEMP/worktree-status"
+            exit 1
+          fi
+
   verify_check:
     name: verify check (${{ matrix.python-version }})
+    needs:
+      - plan
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      matrix:
-        # Exercise deterministic checks at both ends of the supported range,
-        # once per interpreter rather than once per unit-test shard.
-        python-version: ["3.10", "3.14"]
+      matrix: ${{ fromJSON(needs.plan.outputs.check_matrix) }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -51,16 +102,14 @@ jobs:
 
   verify_tests:
     name: verify tests (${{ matrix.python-version }}, ${{ matrix.shard }})
+    if: ${{ needs.plan.outputs.run_tests == 'true' }}
+    needs:
+      - plan
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      matrix:
-        # Exercise both ends of the supported interpreter range.
-        python-version: ["3.10", "3.14"]
-        # Keep complete coverage while bounding the slowest job.  The Makefile
-        # checks that these four disjoint patterns cover every test file once.
-        shard: ["a-b", "c-m", "n-r", "s-z"]
+      matrix: ${{ fromJSON(needs.plan.outputs.test_matrix) }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -73,7 +122,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Run required unit tests
-        run: make "test-${{ matrix.shard }}"
+        env:
+          TEST_FILES: ${{ matrix.test-files }}
+        run: make test-selected PYTHON=python TEST_FILES="$TEST_FILES"
 
       - name: Tracked and untracked non-ignored tree must be unchanged
         if: ${{ always() }}
@@ -89,6 +140,7 @@ jobs:
     name: ci-required
     if: ${{ always() }}
     needs:
+      - plan
       - verify_check
       - verify_tests
     runs-on: ubuntu-latest
@@ -96,16 +148,28 @@ jobs:
     steps:
       - name: Require every matrix job to succeed
         env:
+          PLAN_RESULT: ${{ needs.plan.result }}
           CHECK_RESULT: ${{ needs.verify_check.result }}
           TEST_RESULT: ${{ needs.verify_tests.result }}
+          RUN_TESTS: ${{ needs.plan.outputs.run_tests }}
+          VERIFICATION_MODE: ${{ needs.plan.outputs.mode }}
         run: |
+          if test "$PLAN_RESULT" != "success"; then
+            echo "impact plan result: $PLAN_RESULT"
+            exit 1
+          fi
           if test "$CHECK_RESULT" != "success"; then
             echo "verify check matrix result: $CHECK_RESULT"
             exit 1
           fi
-          if test "$TEST_RESULT" != "success"; then
+          if test "$RUN_TESTS" = "true" && test "$TEST_RESULT" != "success"; then
             echo "verify test matrix result: $TEST_RESULT"
             exit 1
           fi
+          if test "$RUN_TESTS" != "true" && test "$TEST_RESULT" != "skipped"; then
+            echo "checks-only plan expected skipped tests, got: $TEST_RESULT"
+            exit 1
+          fi
+          echo "verification mode: $VERIFICATION_MODE"
           echo "verify check matrix result: success"
-          echo "verify test matrix result: success"
+          echo "verify test matrix result: $TEST_RESULT"
