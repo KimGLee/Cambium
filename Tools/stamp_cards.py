@@ -8,9 +8,13 @@ Read Set Index and Card Index share registry_id `kernel-runtime-routes`; their
 route registries, the Read Set files, and the Runtime Cards must agree exactly
 on the continuous route set R01-R13. A Read Set and its Card share route_id;
 indexes have no route identity of their own. Every Card's `compiled_from` must
-equal the canonical adopter `standards_version`; in the uninstantiated public
-distribution, the explicit template/version supplied by the release workflow
-is authoritative. Uniform but obsolete version stamps are stale, not
+equal the canonical adopter `standards_version` in verification mode.  An
+explicit write-time `--set-version` may instead prepare the complete Card
+after-image for a not-yet-committed Standards adoption; that preparation does
+not advance canonical state, and ordinary `--check` continues to judge the
+active version until the adoption writer commits it.  In the uninstantiated
+public distribution, the explicit template/version supplied by the release
+workflow is authoritative. Uniform but obsolete version stamps are stale, not
 synchronized.
 
 `source_hash` is the first 12 hexadecimal digits of SHA-256 over each source
@@ -893,11 +897,19 @@ def main():
         # stamps therefore retain the template token until an adopter's
         # initial transaction supplies --set-version and creates state.
         active_version = args.set_version or "{{ standards_version }}"
-    if args.set_version and active_version and args.set_version != active_version:
+    if (args.check and args.set_version and active_version and
+            args.set_version != active_version):
         failures.append(
-            "--set-version %r does not equal active standards_version %r in %s"
+            "--check cannot judge candidate --set-version %r while active "
+            "standards_version is %r in %s"
             % (args.set_version, active_version, ACTIVE_STATE_PATH)
         )
+    if args.set_version and not args.check:
+        # Candidate Card bytes are part of the Standards after-image that the
+        # adoption transaction must hash before it can advance active state.
+        # Preparing them is not itself an adoption, so verification without
+        # this explicit write option still uses the canonical active version.
+        active_version = args.set_version
     if failures:
         for failure in failures:
             print("  [FAIL] %s" % failure)
