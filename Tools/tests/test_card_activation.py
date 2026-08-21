@@ -71,6 +71,43 @@ class CardActivationTests(unittest.TestCase):
         self.assertTrue(all(card["content"] for card in bundle["cards"]))
         self.assertEqual(1, len(bundle["readback_plan"]))
 
+    def test_batch_provenance_does_not_select_runtime_cards(self):
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        coverage = kblib.load_yaml_file(coverage_path)
+        coverage["batch_specs"][0]["source_route"] = (
+            "SOURCE-AUDIT-001-S001")
+        coverage_path.write_text(kblib.canonical_yaml(coverage), encoding="utf-8")
+
+        queue_path = self.root / check_queue.QUEUE_PATH
+        queue = kblib.load_yaml_file(queue_path)
+        queue["required_queue"][0]["source_route"] = (
+            "SOURCE-AUDIT-001-S001")
+        queue_path.write_text(kblib.canonical_yaml(queue), encoding="utf-8")
+
+        progress_path = self.root / check_queue.PROGRESS_PATH
+        progress = kblib.load_yaml_file(progress_path)
+        progress["required_queue_sha256"] = kblib.sha256_file(queue_path)
+        progress_path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
+
+        receipt_path = (
+            self.root / ".cambium/receipts/task-transitions.jsonl")
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        receipt["before_coverage_sha256"] = kblib.sha256_file(coverage_path)
+        receipt["after_coverage_sha256"] = kblib.sha256_file(coverage_path)
+        receipt["after_required_queue_sha256"] = kblib.sha256_file(queue_path)
+        receipt["after_progress_sha256"] = kblib.sha256_file(progress_path)
+        receipt_path.write_text(
+            json.dumps(receipt, separators=(",", ":")) + "\n",
+            encoding="utf-8")
+
+        context = self.context()
+
+        self.assertEqual([], card_activation.activation_context_errors(context))
+        self.assertEqual(
+            ["R01", "R03", "R07"],
+            [card["route_id"] for card in
+             context["activation_delivery_payload"]["cards"]])
+
     def test_machine_delivery_is_bound_to_one_execution_context(self):
         context = self.context("mcp:fixture-context")
 

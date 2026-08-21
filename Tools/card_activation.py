@@ -280,11 +280,6 @@ def build_activation_context(root, progress, item, *, runtime_state,
                              "selected_route_ids", nonempty=True))
     if "R01" not in routes:
         raise ActivationError("selected_route_ids must include R01")
-    source_route = item.get("source_route")
-    if isinstance(source_route, str) and source_route and source_route not in routes:
-        raise ActivationError(
-            "batch %s source_route %s is absent from selected_route_ids" %
-            (batch_id, source_route))
     declared_cards = _strings(contract.get("selected_card_paths"),
                               "selected_card_paths", nonempty=True)
     registry, registry_sha = _route_registry(root)
