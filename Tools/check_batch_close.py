@@ -69,7 +69,7 @@ import profile_contract
 
 
 TOOL = "check_batch_close"
-TOOL_VERSION = "1.11.0"
+TOOL_VERSION = "1.12.0"
 GATE_ID = "batch-close"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -341,23 +341,11 @@ def _assert_work_spec_unchanged(root, item):
 
 
 def _repo_files(root, suffixes):
-    """Yield deterministic repository files outside Git/Cambium state."""
-    root = os.path.realpath(os.path.abspath(root))
-    for current, directories, files in os.walk(root, topdown=True,
-                                               followlinks=False):
-        relative_dir = os.path.relpath(current, root)
-        if relative_dir == ".":
-            directories[:] = sorted(
-                name for name in directories
-                if name not in (".git", ".cambium")
-            )
-        else:
-            directories[:] = sorted(directories)
-        for name in sorted(files):
-            if not name.lower().endswith(tuple(suffixes)):
-                continue
-            absolute = os.path.join(current, name)
-            relative = os.path.relpath(absolute, root).replace(os.sep, "/")
+    """Yield Git-managed content outside Git/Cambium control state."""
+    for absolute, relative in kblib.repository_content_files(root):
+        if relative.split("/", 1)[0] in (".git", ".cambium"):
+            continue
+        if relative.lower().endswith(tuple(suffixes)):
             yield absolute, relative
 
 

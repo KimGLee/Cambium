@@ -34,13 +34,14 @@ import json
 import os
 import re
 import stat
+import subprocess
 import sys
 import tempfile
 import time
 from types import MappingProxyType
 import uuid
 
-LIB_VERSION = "1.9.0"
+LIB_VERSION = "1.10.0"
 
 # ---------------------------------------------------------------------------
 # Restricted YAML subset parser
@@ -456,6 +457,109 @@ def strip_code(text):
         re.sub(r"`[^`]*`", "", line)
         for _line_number, line in markdown_authority_lines(text)
     )
+
+
+def repository_content_files(root):
+    """Return the deterministic content-working-set files below ``root``.
+
+    A Git worktree owns an explicit distinction between repository content
+    and ignored local material. In that case the content set is exactly the
+    union reported by ``git ls-files --cached --others --exclude-standard``:
+    tracked files remain included even when an ignore rule also matches, while
+    ignored untracked files never become Gate inputs. Exported distributions
+    without a ``.git`` control entry retain the prior deterministic filesystem
+    walk.
+
+    The function does not decide which hidden/control namespaces a consumer
+    audits; callers keep their existing policy and filter the returned
+    repository-relative paths.
+    """
+    root_real = os.path.realpath(os.path.abspath(root))
+    if not os.path.isdir(root_real):
+        raise ValueError("repository content root must be a directory")
+
+    rows = []
+    if os.path.lexists(os.path.join(root_real, ".git")):
+        try:
+            completed = subprocess.run(
+                ["git", "-C", root_real, "ls-files", "-z", "--cached",
+                 "--others", "--exclude-standard"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+        except OSError as exc:
+            raise OSError(
+                exc.errno, "Git-managed content set cannot be enumerated",
+                root_real) from exc
+        if completed.returncode != 0:
+            detail = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise ValueError(
+                "Git-managed content set cannot be enumerated: %s" %
+                (detail or "git ls-files failed"))
+        seen = set()
+        for encoded in completed.stdout.split(b"\0"):
+            if not encoded:
+                continue
+            try:
+                relative = encoded.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ValueError(
+                    "Git-managed content path is not strict UTF-8") from exc
+            if (not relative or relative.startswith("/") or
+                    "\\" in relative or
+                    any(part in ("", ".", "..")
+                        for part in relative.split("/")) or
+                    relative in seen):
+                raise ValueError(
+                    "Git returned a non-canonical or repeated content path: "
+                    "%s" % relative)
+            seen.add(relative)
+            absolute = os.path.join(root_real, *relative.split("/"))
+            # A tracked deletion is not present in the working snapshot.
+            # Broken symlinks remain visible so the consuming Gate can reject
+            # them rather than silently shrinking its input set.
+            if os.path.lexists(absolute):
+                rows.append((absolute, relative))
+        return sorted(rows, key=lambda row: row[1])
+
+    for dirpath, dirnames, filenames in os.walk(
+            root_real, topdown=True, followlinks=False):
+        dirnames[:] = sorted(dirnames)
+        for name in sorted(filenames):
+            absolute = os.path.join(dirpath, name)
+            relative = os.path.relpath(
+                absolute, root_real).replace(os.sep, "/")
+            rows.append((absolute, relative))
+    return rows
+
+
+def iter_managed_md_files(vault_root, scope=None):
+    """Return Markdown in the Git-managed content set or exported-tree fallback."""
+    root_real = os.path.realpath(os.path.abspath(vault_root))
+    target = os.path.normpath(
+        os.path.join(root_real, scope) if scope else root_real)
+    try:
+        inside = os.path.commonpath((root_real, os.path.abspath(target)))
+    except ValueError as exc:
+        raise ValueError("Markdown scope escapes the repository root") from exc
+    if inside != root_real:
+        raise ValueError("Markdown scope escapes the repository root")
+    scope_relative = os.path.relpath(target, root_real).replace(os.sep, "/")
+
+    result = []
+    for absolute, relative in repository_content_files(root_real):
+        if scope_relative != ".":
+            prefix = scope_relative.rstrip("/") + "/"
+            if relative != scope_relative and not relative.startswith(prefix):
+                continue
+            nested = relative[len(scope_relative):].lstrip("/")
+        else:
+            nested = relative
+        components = nested.split("/") if nested else []
+        if any(part.startswith(".") for part in components[:-1]):
+            continue
+        if relative.lower().endswith(".md"):
+            result.append((absolute, relative))
+    return result
 
 
 def iter_md_files(vault_root, scope=None):

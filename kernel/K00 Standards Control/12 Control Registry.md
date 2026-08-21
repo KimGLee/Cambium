@@ -127,7 +127,7 @@ moves its own cell.
 | `profile-load` | `check_profile` | `2.0.0` | `profile-check-summary` | `*` | `guidance_and_contract` | `not-batch-scoped` |
 | `runtime-startup-recovery` | `check_queue` | `1.23.0` | `required_queue` | `resume-status` | `*` | `not-batch-scoped` |
 | `large-scale-execution-admission` | `manual-attestation` | `1.0.0` | `large-scale-execution-admission` | `*` | `guidance_and_contract` | `not-batch-scoped` |
-| `wiki-link-integrity` | `check_links` | `1.5.0` | `link-check-summary` | `*` | `*` | `not-batch-scoped` |
+| `wiki-link-integrity` | `check_links` | `1.6.0` | `link-check-summary` | `*` | `*` | `not-batch-scoped` |
 | `frontmatter-vocabulary` | `check_vocab` | `1.8.0` | `vocab-check-summary` | `*` | `*` | `not-batch-scoped` |
 | `priority-quota-distribution` | `check_vocab` | `1.8.0` | `priority-quota-distribution` | `*` | `*` | `not-batch-scoped` |
 | `required-queue-consistency` | `check_queue` | `1.23.0` | `required_queue` | `consistency` | `*` | `not-batch-scoped` |
@@ -135,7 +135,7 @@ moves its own cell.
 | `required-queue-completion` | `check_queue` | `1.23.0` | `required_queue` | `require-complete` | `*` | `queue-exhausted` |
 | `maintenance-completion` | `check_queue` | `1.23.0` | `required_queue` | `require-maintenance-complete` | `*` | `queue-exhausted` |
 | `batch-review` | `manual-attestation` | `1.0.0` | `batch_gate` | `*` | `none` | `open` |
-| `batch-close` | `check_batch_close` | `1.11.0` | `batch_close_gate` | `*` | `*` | `merge-ready` |
+| `batch-close` | `check_batch_close` | `1.12.0` | `batch_close_gate` | `*` | `*` | `merge-ready` |
 | `structure-registry` | `check_structure` | `1.1.0` | `structure-registry-summary` | `*` | `*` | `not-batch-scoped` |
 | `page-contract` | `check_page_contract` | `1.5.0` | `page-contract-summary` | `*` | `*` | `not-batch-scoped` |
 | `boundary-contract` | `check_boundary_contract` | `1.1.0` | `boundary-contract-summary` | `*` | `*` | `not-batch-scoped` |

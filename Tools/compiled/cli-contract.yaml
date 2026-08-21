@@ -64,7 +64,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:b89cf8dbcb8cde230f1eda43cf8d833232efc9dfd889f96ce2e0b1cc83b88757
+source_hash: sha256:89e88488109fc3a99fcd7e6fe88374d152b66a3bfcfd142ddee0d48d154f38c2
 receipt_shape:
   base_fields:
     - receipt_id
@@ -919,7 +919,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_batch_close
     module: Tools/check_batch_close.py
-    source_hash: sha256:b887f5a22666a417e47a4625b77b5c1b5164d8595fe26cec15f332665e67e2b9
+    source_hash: sha256:bc2326400a6dde7863fd1384382475ea98fa78592cd0b67d84e3c817b5bf4d16
     description: Run and publish the K12/09 batch-close evidence bundle
     arguments:
       - dest: root
@@ -1371,7 +1371,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_links
     module: Tools/check_links.py
-    source_hash: sha256:1b2f6da42c83f52263b86b75aa9fca8401fde460088485736e2bee0f095ec53f
+    source_hash: sha256:48c9049d6bc44aa57ce8c26bf4001474b947e709d45f74ab2edd54e0b1475b36
     description: Wiki link missing/ambiguous/heading check
     arguments:
       - dest: vault_root
@@ -1435,7 +1435,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_moc
     module: Tools/check_moc.py
-    source_hash: sha256:a5c095355fcf30b9099f59e22c69cb5c236a37ca28671471c8c4abed4e288a86
+    source_hash: sha256:bf3e830bda2bd641885848954a7df6267d0b9013f63bfaedfb4d51fbeb8772ec
     description: MOC Module Index consistency candidate detection
     arguments:
       - dest: root
@@ -1766,7 +1766,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:f07fc3628d1aa0c2ff351415f0070f7de6526344b163bb8981e74ef36ed2f2e9
+    source_hash: sha256:60cef999292bf58f4888812a623502df76b27a18032c0dc03770bedf562d65e4
     description: Validate canonical Required Queue state
     arguments:
       - dest: root

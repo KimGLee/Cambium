@@ -370,7 +370,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
         """A pre-column table is a parse failure, not a defaulted column."""
         registry, errors = self.parsed_registry(
             self.SIX_CELL_HEADER,
-            "| wiki-link-integrity | check_links | 1.5.0 "
+            "| wiki-link-integrity | check_links | 1.6.0 "
             "| link-check-summary | * | * |")
         self.assertEqual({}, registry)
         self.assertTrue(any("must have seven cells" in error
@@ -380,7 +380,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
         """Only a batch lifecycle state or the not-batch-scoped marker."""
         registry, errors = self.parsed_registry(
             self.SEVEN_CELL_HEADER,
-            "| wiki-link-integrity | check_links | 1.5.0 "
+            "| wiki-link-integrity | check_links | 1.6.0 "
             "| link-check-summary | * | * | under-review |")
         self.assertEqual({}, registry)
         self.assertTrue(any(
@@ -395,7 +395,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
             with self.subTest(cell=cell):
                 registry, errors = self.parsed_registry(
                     self.SEVEN_CELL_HEADER,
-                    "| wiki-link-integrity | check_links | 1.5.0 "
+                    "| wiki-link-integrity | check_links | 1.6.0 "
                     "| link-check-summary | * | * | %s |" % cell)
                 self.assertEqual({}, registry)
                 self.assertTrue(any("mixes" in error and
@@ -406,7 +406,7 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
         """A Queue-level position is a registrable cell, not an error."""
         registry, errors = self.parsed_registry(
             self.SEVEN_CELL_HEADER,
-            "| wiki-link-integrity | check_links | 1.5.0 "
+            "| wiki-link-integrity | check_links | 1.6.0 "
             "| link-check-summary | * | * | queue-exhausted |")
         self.assertEqual([], errors)
         self.assertEqual(("queue-exhausted",),

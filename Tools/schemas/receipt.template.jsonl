@@ -63,7 +63,7 @@
 #   positive_control_fingerprint : `sha256:<64 lowercase hex>` over the exact
 #                                  verifier-owned control set
 # These shared evidence fields do not prescribe the verifier's control-input
-# representation. `check_batch_close.py` 1.11.0 requires the two final pass
+# representation. `check_batch_close.py` 1.12.0 requires the two final pass
 # summaries to agree exactly on tool, tool_version, check, scan_id,
 # config_fingerprint, and every positive_control_* field. Each scan_id must
 # also equal the admitted Registered Scan ID; when that row declares an
@@ -127,11 +127,11 @@
 # Examples of current stable-Gate producer protocols -- not the complete set;
 # the Stable Gate ID Registry in K00/12 is the only complete enumeration of
 # registered Gate IDs and their producers: check_profile 2.0.0 / profile-load;
-# check_links 1.5.0 / wiki-link-integrity; check_vocab 1.8.0 /
+# check_links 1.6.0 / wiki-link-integrity; check_vocab 1.8.0 /
 # frontmatter-vocabulary and priority-quota-distribution;
 # check_residual_content 1.2.0 /
 # registered-residual-content; check_queue 1.23.0 / its registered
-# Required-Queue modes; check_batch_close 1.11.0 / batch-close; check_proof
+# Required-Queue modes; check_batch_close 1.12.0 / batch-close; check_proof
 # 1.17.0 / terminal-proof; and adopt_standards 1.6.0 /
 # standards-adoption. Deterministic producers not shown above -- among them
 # check_corpus_plan and record_corpus_acceptance -- follow the same rule. Every receipt
@@ -243,7 +243,7 @@
 # three current state SHAs/revisions, Delta SHA/application receipt, Queue
 # consistency receipt, unchanged before/after state SHAs, the registered
 # gate_id=batch-close, explicit Work Spec binding, and Corpus Planning
-# applicability/child binding. Version 1.11.0 is the current producer;
+# applicability/child binding. Version 1.12.0 is the current producer;
 # versions 1.4.0 through 1.10.0 remain supported only while replaying already-
 # closed producer-era history and cannot authorize a new close. Older JSONL
 # remains immutable but is not accepted as close authority. A failed run
@@ -374,5 +374,5 @@
 # contract and never projects today's fields backward onto immutable history.
 # Existing receipt IDs remain valid append-only protocol references after generator-format changes; never rewrite historical IDs.
 # =============================================================================
-{"receipt_id": "audit-check_links-20260721T000000Z-4f9c2a7d6e8b4a10b3c5d7e9f1023456-0001", "check": "link-missing", "target": "Topics/Example Topic.md:42", "result": "fail", "details": "[[Example Dependency]] has no matching target (missing)", "checked_at": "2026-07-21T00:00:00Z", "tool": "check_links", "tool_version": "1.5.0", "gate_id": "wiki-link-integrity", "invalidated_by": null}
+{"receipt_id": "audit-check_links-20260721T000000Z-4f9c2a7d6e8b4a10b3c5d7e9f1023456-0001", "check": "link-missing", "target": "Topics/Example Topic.md:42", "result": "fail", "details": "[[Example Dependency]] has no matching target (missing)", "checked_at": "2026-07-21T00:00:00Z", "tool": "check_links", "tool_version": "1.6.0", "gate_id": "wiki-link-integrity", "invalidated_by": null}
 {"receipt_id": "audit-check_profile-20260811T000000Z-7a6b5c4d3e2f109876543210abcdef12-0001", "check": "profile-check-summary", "target": "profiles/example/profile.md", "result": "pass", "details": "profile_id=example; all interface slots and typed Profile dependencies are authorized", "checked_at": "2026-08-11T00:00:00Z", "tool": "check_profile", "tool_version": "2.0.0", "gate_id": "profile-load", "dimension": "guidance_and_contract", "selected_profile_manifest": "profiles/example/profile.md", "profile_snapshot_sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "profile_contract_fingerprint": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "profile_load_inputs_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "invalidated_by": null}

@@ -42,6 +42,12 @@ fails before a verifier subprocess starts and no close bundle is published.
 This use-site resolution is consumption of the one Profile contract, not a
 ninth Closed List member and not a second registry parser.
 
+Items 1 through 3 scan the Git-managed set: tracked files plus untracked files
+not excluded by standard Git ignore rules. Tracked files remain in scope even
+when an ignore rule matches. An export without Git metadata scans the
+filesystem outside control namespaces. Ignored untracked notes MUST NOT affect
+these verdicts.
+
 Item 6 is the only member whose predicate is supplied entirely by the selected profile, so its registered verifier MUST be shown to be live and not merely present. Any registered verifier whose clean result depends on finding no candidate MUST provide executable positive controls that exercise the same production classification path and collectively represent every required structure the verifier claims to recognise. A positive control that is rejected, skipped, or evaluated only by a separate test-only predicate invalidates the run. The verifier owns the representation and schema of its control inputs.
 
 The two Gate objects remain distinct. `profile-load` proves that the selected

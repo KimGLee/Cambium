@@ -30,7 +30,7 @@ import os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
-TOOL, TOOL_VERSION = "check_moc", "1.3.0"
+TOOL, TOOL_VERSION = "check_moc", "1.4.0"
 
 SECTION_RE = re.compile(r"^## Module Index\s*\n(.*?)(?=\n## |\Z)", re.S | re.M)
 LINK_RE = re.compile(r"\[\[([^\]\\|]+)")
@@ -56,17 +56,16 @@ def h2s(path):
 def find_mocs(root, excludes):
     """Return sorted root-relative paths of .md files with a Module Index section."""
     mocs = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(d for d in dirnames
-                             if not d.startswith(".") and d not in excludes)
-        for name in sorted(filenames):
-            if not name.endswith(".md"):
-                continue
-            full = os.path.join(dirpath, name)
-            rel = os.path.relpath(full, root).replace(os.sep, "/")
-            text = open(full, encoding="utf-8", errors="replace").read()
-            if SECTION_RE.search(text):
-                mocs.append(rel)
+    for full, rel in kblib.repository_content_files(root):
+        components = rel.split("/")
+        if (not rel.endswith(".md") or
+                any(part.startswith(".") or part in excludes
+                    for part in components[:-1])):
+            continue
+        with open(full, encoding="utf-8", errors="replace") as handle:
+            text = handle.read()
+        if SECTION_RE.search(text):
+            mocs.append(rel)
     return sorted(mocs)
 
 
