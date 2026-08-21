@@ -65,7 +65,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:5405dd41b72dba2296a326f7852adb2b92074f78fa7e5c6e503710ea1e27b6c4
+source_hash: sha256:0851f552ac8080f96d888a5a236abf93aa1b7af5fa541b1bf6e62dfe690a23f6
 receipt_shape:
   base_fields:
     - receipt_id
@@ -1589,7 +1589,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_profile
     module: Tools/check_profile.py
-    source_hash: sha256:cda331e1d5afd149bd006b009e09cf9293095a2e9e07f15895815a579646b7e5
+    source_hash: sha256:0e61d05d11252616881369f348140b8840a15b5f84bec4c77ef82e5795d19106
     description: Profile manifest completeness and unfilled-template check
     arguments:
       - dest: profile_dir
@@ -1767,7 +1767,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:5f63c7b737f54f551ca70e2cb4642892d6262d0cd9d4196659cc77b7d502e1e4
+    source_hash: sha256:137aeeffc12be70bb699b7a8243c07a95dce6c2bf2a37228b655c3fe44c639ce
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
