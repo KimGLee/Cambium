@@ -461,6 +461,67 @@ class CorpusPlanEraMapTests(unittest.TestCase):
                 "every consistency run" % version)
 
 
+class EvidenceIdentityLifecycleTests(unittest.TestCase):
+    """One policy separates live authority from producer-era facts."""
+
+    def setUp(self):
+        self.receipt = {
+            "selected_profile_manifest": "profiles/old/profile.md",
+            "profile_snapshot_sha256": "sha256:" + "1" * 64,
+            "profile_contract_fingerprint": "sha256:" + "2" * 64,
+            "profile_load_inputs_sha256": "sha256:" + "3" * 64,
+            "metadata_execution_contract_fingerprint":
+                "sha256:" + "4" * 64,
+        }
+        self.live_profile = {
+            "selected_profile_manifest": "profiles/new/profile.md",
+            "profile_snapshot_sha256": "sha256:" + "5" * 64,
+            "profile_contract_fingerprint": "sha256:" + "6" * 64,
+            "profile_load_inputs_sha256": "sha256:" + "7" * 64,
+        }
+        self.live_metadata = "sha256:" + "8" * 64
+
+    def errors(self, use, receipt=None):
+        return check_queue._evidence_identity_errors(
+            receipt or self.receipt, "fixture evidence", use=use,
+            profile_view=self.live_profile,
+            metadata_contract_fingerprint=self.live_metadata)
+
+    def test_current_authority_and_active_transaction_require_live_identity(self):
+        for use in (
+                check_queue.EVIDENCE_USE_CURRENT_AUTHORIZATION,
+                check_queue.EVIDENCE_USE_ACTIVE_TRANSACTION):
+            with self.subTest(use=use):
+                errors = self.errors(use)
+                self.assertTrue(any(
+                    "expected authorized Profile" in error
+                    for error in errors), errors)
+                self.assertTrue(any(
+                    "stale relative to the live contract" in error
+                    for error in errors), errors)
+
+    def test_completed_event_and_terminal_history_replay_producer_identity(self):
+        for use in (
+                check_queue.EVIDENCE_USE_COMPLETED_EVENT,
+                check_queue.EVIDENCE_USE_TERMINAL_HISTORY):
+            with self.subTest(use=use):
+                self.assertEqual([], self.errors(use))
+
+    def test_every_lifecycle_rejects_malformed_producer_identity(self):
+        malformed = dict(self.receipt)
+        malformed["profile_snapshot_sha256"] = "not-a-sha"
+        malformed["metadata_execution_contract_fingerprint"] = "not-a-sha"
+        for use in check_queue.EVIDENCE_IDENTITY_USES:
+            with self.subTest(use=use):
+                errors = self.errors(use, malformed)
+                self.assertTrue(any(
+                    "invalid producer-era profile_snapshot_sha256" in error
+                    for error in errors), errors)
+                self.assertTrue(any(
+                    "invalid producer-era metadata execution fingerprint" in
+                    error for error in errors), errors)
+
+
 class CurrentPropertyStateTests(unittest.TestCase):
     """Current owner state is strict without reinterpreting absent history."""
 
@@ -722,7 +783,7 @@ class CurrentPropertyStateTests(unittest.TestCase):
         self.assertEqual([], self.errors_with_projection(
             row, catalog, text))
 
-    def test_current_content_pointer_rejects_closed_shape_and_stale_evidence(self):
+    def test_content_pointer_replays_canonical_producer_era_bindings(self):
         text = (
             "---\ntitle: A\nlast_content_modified: 2026-08-20\n"
             "---\nBody\n")
@@ -747,18 +808,20 @@ class CurrentPropertyStateTests(unittest.TestCase):
         self.assertTrue(any("not closed" in error for error in closed), closed)
 
         row["property_state"]["last_content_modified"] = dict(record)
-        receipt["metadata_execution_contract_fingerprint"] = (
-            "sha256:" + "9" * 64)
+        receipt["metadata_execution_contract_fingerprint"] = "not-a-sha"
         stale = self.errors(row, self.content_catalog(receipt))
         self.assertTrue(any(
-            "metadata_execution_contract_fingerprint" in error
+            "metadata execution fingerprint" in error
             for error in stale), stale)
-        receipt["metadata_execution_contract_fingerprint"] = self.META_SHA
-        receipt["profile_snapshot_sha256"] = "sha256:" + "0" * 64
-        stale_profile = self.errors(row, self.content_catalog(receipt))
-        self.assertTrue(any(
-            "profile_snapshot_sha256" in error
-            for error in stale_profile), stale_profile)
+        old_meta = "sha256:" + "9" * 64
+        old_profile = "sha256:" + "0" * 64
+        receipt["metadata_execution_contract_fingerprint"] = old_meta
+        receipt["profile_snapshot_sha256"] = old_profile
+        catalog = self.content_catalog(receipt)
+        opening = catalog[receipt["opening_transition_receipt"]][1]
+        opening["metadata_execution_contract_fingerprint"] = old_meta
+        opening["profile_snapshot_sha256"] = old_profile
+        self.assertEqual([], self.errors(row, catalog))
 
     def test_content_event_must_bind_exact_opening_before_image(self):
         text = (
@@ -827,7 +890,7 @@ class CurrentPropertyStateTests(unittest.TestCase):
             "tombstone without the content-change state" in error
             for error in orphan), orphan)
 
-    def test_review_and_profile_gate_receipts_bind_current_profile(self):
+    def test_review_replays_producer_era_while_profile_gate_stays_live(self):
         text = (
             "---\ntitle: A\nlast_reviewed: 2026-08-20\n"
             "readiness_state: accepted\n---\nBody\n")
@@ -980,11 +1043,13 @@ class CurrentPropertyStateTests(unittest.TestCase):
         self.assertEqual([], self.errors(row, catalog))
 
         review["profile_contract_fingerprint"] = "sha256:" + "7" * 64
+        self.assertEqual([], self.errors(row, catalog))
+        gate["profile_contract_fingerprint"] = "sha256:" + "7" * 64
         stale = self.errors(row, catalog)
         self.assertTrue(any(
             "profile_contract_fingerprint" in error for error in stale),
             stale)
-        review["profile_contract_fingerprint"] = self.PROFILE_CONTRACT_SHA
+        gate["profile_contract_fingerprint"] = self.PROFILE_CONTRACT_SHA
         gate["requested_completion_value"] = "rejected"
         wrong_value = self.errors(row, catalog)
         self.assertTrue(any(
@@ -1195,7 +1260,7 @@ class CurrentOpenSemanticBaselineTests(unittest.TestCase):
             "metadata_execution_contract_fingerprint": self.META_SHA,
         }
 
-    def errors(self, transition):
+    def errors(self, transition, *, require_live_authority=True):
         contract = SimpleNamespace(contract_fingerprint=self.META_SHA)
         with mock.patch.object(
                 check_queue.metadata_execution_contract,
@@ -1204,7 +1269,8 @@ class CurrentOpenSemanticBaselineTests(unittest.TestCase):
                 "/fixture", transition,
                 {"id": "B1", "manifest": [
                     "Topics/A.md", "Topics/B.md"]},
-                self.profile_view())
+                self.profile_view(),
+                require_live_authority=require_live_authority)
 
     def test_current_open_binds_exact_manifest_before_set(self):
         self.assertEqual([], self.errors(self.transition()))
@@ -1247,6 +1313,18 @@ class CurrentOpenSemanticBaselineTests(unittest.TestCase):
                             {"id": "B1", "manifest": ["Topics/A.md"]},
                             self.profile_view()))
                 loader.assert_not_called()
+
+    def test_terminal_current_era_open_replays_producer_bindings(self):
+        transition = self.transition()
+        transition["profile_snapshot_sha256"] = "sha256:" + "8" * 64
+        transition["metadata_execution_contract_fingerprint"] = (
+            "sha256:" + "7" * 64)
+        with mock.patch.object(
+                check_queue.metadata_execution_contract,
+                "load_metadata_execution_contract") as loader:
+            self.assertEqual([], self.errors(
+                transition, require_live_authority=False))
+        loader.assert_not_called()
 
     def test_public_resolver_returns_only_current_latest_opening(self):
         current = self.transition()
@@ -1314,7 +1392,7 @@ class CurrentCloseTransitionMetadataTests(unittest.TestCase):
             return check_queue._current_close_transition_metadata_errors(
                 "/fixture", transition, catalog or self.catalog(), "B1")
 
-    def test_current_close_binds_exact_children_and_live_metadata(self):
+    def test_current_close_binds_exact_children_and_producer_metadata(self):
         self.assertEqual([], self.errors(self.transition()))
 
         malformed = self.transition()
@@ -1334,8 +1412,22 @@ class CurrentCloseTransitionMetadataTests(unittest.TestCase):
                         errors)
         self.assertTrue(any("differs from its close Gate" in error
                             for error in errors), errors)
-        self.assertTrue(any("stale relative" in error for error in errors),
-                        errors)
+
+    def test_terminal_current_era_close_survives_metadata_upgrade(self):
+        transition = self.transition()
+        catalog = self.catalog()
+        old_fingerprint = "sha256:" + "b" * 64
+        transition["metadata_execution_contract_fingerprint"] = \
+            old_fingerprint
+        catalog["audit-close-gate"][1][
+            "metadata_execution_contract_fingerprint"] = old_fingerprint
+        with mock.patch.object(
+                check_queue.metadata_execution_contract,
+                "load_metadata_execution_contract") as loader:
+            self.assertEqual([], check_queue.
+                _current_close_transition_metadata_errors(
+                    "/fixture", transition, catalog, "B1"))
+        loader.assert_not_called()
 
     def test_historical_close_is_not_reinterpreted(self):
         for version in ("1.2.0", "1.3.0", "1.4.0"):
