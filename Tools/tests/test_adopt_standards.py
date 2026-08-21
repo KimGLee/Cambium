@@ -1068,6 +1068,11 @@ class AdoptStandardsTests(unittest.TestCase):
         record = progress["standards_adoptions"][-1]
         record["plan_sha256"] = legacy_plan_sha
         record["boundary_gate_reruns"] = legacy_required
+        for field in (
+                "standards_effective_date_after",
+                "standards_state_sha256_before",
+                "after_standards_state_sha256"):
+            record.pop(field, None)
         progress_path.write_text(
             kblib.canonical_yaml(progress), encoding="utf-8")
         legacy_progress_sha = kblib.sha256_file(progress_path)
@@ -1081,6 +1086,11 @@ class AdoptStandardsTests(unittest.TestCase):
                 receipt["plan_sha256"] = legacy_plan_sha
                 receipt["after_progress_sha256"] = legacy_progress_sha
                 receipt["boundary_gate_reruns"] = legacy_required
+                for field in (
+                        "before_standards_state_sha256",
+                        "after_standards_state_sha256",
+                        "standards_effective_date_after"):
+                    receipt.pop(field, None)
             if receipt.get("receipt_id") in record["immediate_gate_receipts"]:
                 receipt["progress_ledger_sha256"] = legacy_progress_sha
         receipt_path.write_text(

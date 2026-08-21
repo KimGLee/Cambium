@@ -1731,7 +1731,10 @@ def _standards_adoption_shape_errors(progress):
             optional_fields=("profile_contract_fingerprint_after",
                              "profile_load_inputs_sha256_after",
                              "upstream_source_ref",
-                             "upstream_revision_id")))
+                             "upstream_revision_id",
+                             "standards_effective_date_after",
+                             "standards_state_sha256_before",
+                             "after_standards_state_sha256")))
         if not isinstance(record, dict):
             continue
         for field in (
