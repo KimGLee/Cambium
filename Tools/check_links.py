@@ -56,7 +56,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 
 TOOL = "check_links"
-TOOL_VERSION = "1.5.0"
+TOOL_VERSION = "1.6.0"
 GATE_ID = "wiki-link-integrity"
 # The `Check` cell K00/12 registers for this Gate; every receipt this
 # tool offers as gate evidence carries it verbatim.
@@ -230,11 +230,11 @@ def _main():
         return not any(part in excludes
                        for part in rel.replace(os.sep, "/").split("/"))
 
-    every_file = kblib.iter_md_files(args.vault_root)
+    every_file = kblib.iter_managed_md_files(args.vault_root)
     all_files = [(f, r) for f, r in every_file if keep(r)]
     excluded_files = [(f, r) for f, r in every_file if not keep(r)]
     if args.scope:
-        scan_files = [(f, r) for f, r in kblib.iter_md_files(args.vault_root, args.scope)
+        scan_files = [(f, r) for f, r in kblib.iter_managed_md_files(args.vault_root, args.scope)
                       if keep(r)]
     else:
         scan_files = all_files

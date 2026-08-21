@@ -61,7 +61,7 @@ class AdoptStandardsTests(unittest.TestCase):
             "| Lifecycle |\n"
             "|---|---|---|---|---|---|---|\n"
             "| profile-load | check_profile | %s | profile-check-summary | * | guidance_and_contract | not-batch-scoped |\n"
-            "| wiki-link-integrity | check_links | 1.5.0 | link-check-summary | * | * | not-batch-scoped |\n"
+            "| wiki-link-integrity | check_links | 1.6.0 | link-check-summary | * | * | not-batch-scoped |\n"
             "| required-queue-consistency | check_queue | %s | required_queue | consistency | * | not-batch-scoped |\n"
             "| required-queue-admission | check_queue | %s | required_queue | require-ready:* | * | queued |\n"
             "| batch-close | check_batch_close | %s | batch_close_gate | * | * | merge-ready |\n\n"
@@ -910,7 +910,7 @@ class AdoptStandardsTests(unittest.TestCase):
         if "| wiki-link-integrity | check_links |" not in text:
             text = text.replace(
                 "\n## Standards Revalidation Capability Registry\n",
-                "\n| wiki-link-integrity | check_links | 1.5.0 "
+                "\n| wiki-link-integrity | check_links | 1.6.0 "
                 "| link-check-summary | * | * | not-batch-scoped |\n\n"
                 "## Standards Revalidation Capability Registry\n")
             text += (

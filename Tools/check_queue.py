@@ -279,7 +279,7 @@ GENERIC_WRITER_TOOLS = frozenset((
     "apply_contract_amendment", "apply_task_plan", "seal_receipts",
 ))
 BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.11.0"
+BATCH_CLOSE_TOOL_VERSION = "1.12.0"
 # Queue-transition *evidence protocol* emitted by
 # ``kblib.make_queue_receipt``.  This is deliberately independent from
 # ``Tools/update_queue.py``'s CLI/distribution TOOL_VERSION: changing the
@@ -297,7 +297,7 @@ SUPPORTED_APPLY_DELTA_TOOL_VERSIONS = frozenset((
 # recorded closed edge.  Other historical receipts are judged through
 # :func:`accounted_standards_versions` instead of an unbounded version list.
 SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((
-    BATCH_CLOSE_TOOL_VERSION, "1.10.0", "1.9.0", "1.8.0", "1.7.0",
+    BATCH_CLOSE_TOOL_VERSION, "1.11.0", "1.10.0", "1.9.0", "1.8.0", "1.7.0",
     "1.6.0", "1.5.0",
     *LEGACY_CLOSED_LIST_VERSIONS,
 ))
@@ -307,6 +307,7 @@ CORPUS_PLAN_TOOL_VERSION = "1.7.0"
 # Batch-close 1.7 is the first protocol that consumes corpus-plan 1.7; older
 # supported bundles retain their 1.6 child identity during historical replay.
 HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
+    "1.11.0": "1.7.0",
     "1.10.0": "1.7.0",
     "1.9.0": "1.7.0",
     "1.8.0": "1.7.0",
@@ -430,7 +431,7 @@ POLICY_EXCEPTION_SCOPE_KINDS = frozenset(("task", "repository-snapshot"))
 # to carry evidence its era could not have produced.  A 1.7 bundle claiming a
 # policy-exception disposition is a forgery, not history.
 POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset((
-    "1.8.0", "1.9.0", "1.10.0", "1.11.0",
+    "1.8.0", "1.9.0", "1.10.0", "1.11.0", "1.12.0",
 ))
 # Producer eras whose close bundles externalize full candidate detail to a
 # born-cold evidence file and keep only counts, the accepted-set fingerprint,
@@ -444,9 +445,10 @@ SEAL_TOOL = "seal_receipts"
 SUPPORTED_SEAL_TOOL_VERSIONS = frozenset(("1.2.0", "1.3.0", "1.4.0"))
 
 COMPACT_CLOSE_EVIDENCE_VERSIONS = frozenset((
-    "1.9.0", "1.10.0", "1.11.0",
+    "1.9.0", "1.10.0", "1.11.0", "1.12.0",
 ))
-CANDIDATE_CONTINUATION_VERSIONS = frozenset(("1.10.0", "1.11.0"))
+CANDIDATE_CONTINUATION_VERSIONS = frozenset((
+    "1.10.0", "1.11.0", "1.12.0"))
 SEALED_POLICY_EXCEPTION_FIELDS = frozenset((
     "decision_id", "policy_id", "limit", "scope_kind", "scope_ref",
     "policy_fingerprint", "pages", "total",
