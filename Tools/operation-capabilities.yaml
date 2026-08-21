@@ -96,7 +96,7 @@ capabilities:
 
   - capability_id: card-context-delivery-v1
     kind: producer
-    capability_version: 1.0.1
+    capability_version: 1.0.2
     implementation_paths:
       - Tools/card_activation.py
       - Tools/check_queue.py

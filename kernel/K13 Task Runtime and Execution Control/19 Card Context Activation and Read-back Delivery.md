@@ -45,6 +45,8 @@ past behavior. Their canonical Task Contract fingerprint becomes
 - task, batch, Standards, Profile, Task Contract, Card Index, reading-plan,
   and read-back-plan identities;
 - full bytes plus hashes for R01 and every Card selected by the contract;
+- exact Card Index startup bytes when selected; it remains a registry, not an
+  Rxx route;
 - each Card's paired Read Set hash and equal `source_hash` /
   `compiled_source_hash`, so unacknowledged semantic drift blocks activation;
 - full bytes for a selected Profile supplemental Read Set, because it has no
