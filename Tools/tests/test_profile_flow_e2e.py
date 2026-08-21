@@ -781,6 +781,8 @@ class RuntimeCreationTests(unittest.TestCase):
                 (ttp.READ_SET, ttp.READ_SET_TEXT),
                 (ttp.CARD, ttp.CARD_TEXT),
                 (ttp.OTHER_CARD, ttp.CARD_TEXT),
+                (ttp.R01_CARD, ttp.CARD_TEXT),
+                (ttp.R01_READ_SET, ttp.READ_SET_TEXT),
                 (ttp.CARD_INDEX, ttp.CARD_INDEX_TEXT),
                 (ttp.READ_SET_INDEX, ttp.READ_SET_INDEX_TEXT)):
             path = root / relative
@@ -896,9 +898,9 @@ class RuntimeCreationTests(unittest.TestCase):
             [ttp.PAGE["path"]],
             [page["path"] for page in self.coverage_after_plan["pages"]],
             "Coverage rows must be exactly the confirmed plan's own")
-        self.assertEqual([ttp.CARD],
+        self.assertEqual([ttp.R01_CARD, ttp.CARD],
                          self.contract_after_plan["selected_card_paths"])
-        self.assertEqual([ttp.READ_SET],
+        self.assertEqual([ttp.R01_READ_SET, ttp.READ_SET],
                          self.contract_after_plan["selected_read_sets"])
         self.assertTrue(self.contract_after_plan["loaded_module_paths"])
         self.assertEqual(
