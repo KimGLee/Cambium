@@ -29,8 +29,8 @@ readback_sources:
   - kernel/K12 Quality Assurance/02 Rendering Verification.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
 readback_policy: declared
-source_hash: '40bc9ac959a8'
-compiled_source_hash: '40bc9ac959a8'
+source_hash: '903f5e26fda4'
+compiled_source_hash: '903f5e26fda4'
 ---
 # R05 Expression Layer Card
 

@@ -43,8 +43,8 @@ readback_sources:
   - kernel/K12 Quality Assurance/11 Content-level Propagation.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
 readback_policy: declared
-source_hash: '2c50b6abf23c'
-compiled_source_hash: '2c50b6abf23c'
+source_hash: '5f0f7919a9ed'
+compiled_source_hash: '5f0f7919a9ed'
 ---
 # R02 Single Note Authoring Card
 
