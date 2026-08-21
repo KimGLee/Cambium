@@ -40,3 +40,4 @@ These bindings apply when Atlas reports evaluated metrics, whether the measureme
 | Role ID | Bound actor or system ID/name | Responsibility |
 |---|---|---|
 | `interview-reviewer` | Human authority or explicitly delegated qualified reviewer | Judge Interview Card acceptance and authorize promotion to `interview-ready`. |
+| `content-reviewer` | Human authority or explicitly delegated qualified reviewer | Judge the per-page content-form classification a batch must complete before `merge-ready`. |

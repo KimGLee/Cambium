@@ -84,6 +84,24 @@ still be written by a human integrator because it is admission, not worker
 execution. A runtime or adapter MUST NOT claim machine-enforced Card delivery
 from that degraded record.
 
+## Frozen Review Plan
+
+Protocol `card-first-readback-v2` adds one delivery-independent commitment to
+the Bundle: the Profile's Batch Review Requirements expanded against the
+frozen manifest. The expansion is deterministic — each `each-manifest-page`
+row over the sorted manifest, each `batch` row over the batch itself — and
+its identity hash is `review_requirement_set_sha256`, carried in the
+admission receipt and recompiled to exact equality at `queued -> open`. The
+Bundle's `batch_review_plan` delivers the same records readably, so the
+executing Agent starts with its judgment obligations in context rather than
+discovering them at refusal. Per-record evidence is produced by
+`Tools/record_batch_judgment.py` while the batch is `open`;
+`open -> merge-ready` consumes the exact set through the batch-review
+wrapper per [[kernel/K12 Quality Assurance/14 Batch Review|K12/14]]. A v1
+activation predates the plan: it replays under its own protocol, carries no
+review field, and imposes no judgment obligations — reactivation under the
+current protocol is what upgrades an in-flight batch.
+
 ## Progressive Read-back
 
 Each Runtime Card declares one closed policy alongside `readback_sources`:

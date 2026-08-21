@@ -26,6 +26,14 @@ Interface: [Routing And Gate Registry slot](../../../README.md#routing-and-gate-
 |---|---|---|---|
 | `agent-atlas-profile-wide-interview-acceptance` | A terminal or release claim declares the Agent Systems Atlas Interview layer profile-wide complete. | Apply `profiles/examples/agent-atlas/registries/audit-dimensions.md#Profile-wide Interview Acceptance`, including the latest residual-scan evidence. | Reuse only still-valid canonical content, source, link, residual, and coverage receipts whose fingerprints cover the complete in-scope snapshot; never infer profile-wide Interview acceptance from a Card-level or other status-axis verdict. |
 
+## Batch Review Requirements
+
+- Registration: Configured
+
+| Judgment Item ID reference | Target selector: `each-manifest-page` or `batch` | Trigger: `before-merge-ready` | Producer kind: `manual-attestation` | Receipt schema | Pass-authority Role ID reference |
+|---|---|---|---|---|---|
+| `agent-atlas-content-form-classification` | `each-manifest-page` | `before-merge-ready` | `manual-attestation` | `page-batch-judgment-v1` | `content-reviewer` |
+
 ## Extension Gates
 
 - Registration: Configured

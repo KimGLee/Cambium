@@ -26,7 +26,7 @@ import metadata_execution_contract
 import metadata_property_state
 import project_page_state
 
-TOOL_VERSION = "1.7.0"
+TOOL_VERSION = "1.8.0"
 # The lifecycle map moved to `kblib` so `check_queue` can read it without
 # importing this writer, which imports it.  The name stays here because it is
 # this tool's transition guard and every existing reference reads it here.
@@ -612,6 +612,22 @@ def _transition_item(item, args, result):
             raise ValueError(
                 "open -> merge-ready requires the K12/12 substantive "
                 "review evidence: %s" % "; ".join(review_errors))
+        # Batch Review Requirements: the Profile's frozen per-target
+        # judgment obligations are counted here, not attested in prose.
+        # The activation froze the expected set; the wrapper must bind the
+        # exact actual set.  A batch activated before the review era
+        # carries no obligations and must carry no judgment bindings —
+        # sealed evidence keeps its own shape, exactly like the K12/12
+        # guard above.
+        wrapper_entry = check_queue.current_receipt_catalog(result).get(
+            args.batch_receipt[0])
+        wrapper_receipt = wrapper_entry[1] if wrapper_entry else None
+        judgment_errors = check_queue.batch_review_judgment_errors(
+            result, item, wrapper_receipt)
+        if judgment_errors:
+            raise ValueError(
+                "open -> merge-ready requires the Profile batch-review "
+                "judgment set: %s" % "; ".join(judgment_errors))
         item["state"] = "merge-ready"
         item["merge_ready_at"] = now
         item["delta_path"] = args.delta_path

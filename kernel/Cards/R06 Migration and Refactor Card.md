@@ -27,8 +27,8 @@ source_files:
 readback_sources:
   - kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes.md
 readback_policy: declared
-source_hash: 'bc854fe288cf'
-compiled_source_hash: 'bc854fe288cf'
+source_hash: '73ce5eb88eaa'
+compiled_source_hash: '73ce5eb88eaa'
 ---
 # R06 Migration and Refactor Card
 

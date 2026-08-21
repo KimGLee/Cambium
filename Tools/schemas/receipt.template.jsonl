@@ -176,6 +176,19 @@
 #                             gate_receipts
 # Page receipts may be valid historical evidence. They never authorize the
 # lifecycle edge without this current wrapper, and invalidated IDs are rejected.
+# When the selected Profile registers Batch Review Requirements the wrapper
+# additionally binds the frozen judgment set:
+#   review_requirement_set_sha256 : the expansion hash the activation froze
+#   judgment_receipt_ids          : sorted unique profile_batch_judgment IDs
+#   judgment_record_set_sha256    : hash over the exact actual records
+# Each member receipt is produced by `record_batch_judgment` (check:
+# profile_batch_judgment) and binds batch_id, judgment_item_id,
+# target_selector, receipt_schema, reviewer_role, the batch's current
+# activation as opening_transition_receipt, the target's
+# semantic_content_sha256 (page targets), and the Profile contract
+# fingerprint; `open -> merge-ready` refuses one missing, extra, duplicated,
+# drifted, mis-roled, or reused record. A requirement-free Profile and any
+# pre-review-era activation carry none of these fields.
 # Receipt cold chain (K12/07): `.cambium/receipts/cold/` is never scanned
 # by the hot catalog.  `cold/manifest.jsonl` binds each sealed segment's
 # exact bytes/hash/record count and seal identity; `cold/index.jsonl` keeps

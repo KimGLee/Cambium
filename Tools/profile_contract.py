@@ -106,6 +106,19 @@ EXTENSION_ROLE_HEADER = (
     "Bound actor or system ID/name",
     "Responsibility",
 )
+BATCH_REVIEW_SECTION = "Batch Review Requirements"
+BATCH_REVIEW_HEADER = (
+    "Judgment Item ID reference",
+    "Target selector: `each-manifest-page` or `batch`",
+    "Trigger: `before-merge-ready`",
+    "Producer kind: `manual-attestation`",
+    "Receipt schema",
+    "Pass-authority Role ID reference",
+)
+BATCH_REVIEW_TARGET_SELECTORS = frozenset(("each-manifest-page", "batch"))
+BATCH_REVIEW_TRIGGERS = frozenset(("before-merge-ready",))
+BATCH_REVIEW_PRODUCER_KINDS = frozenset(("manual-attestation",))
+BATCH_REVIEW_RECEIPT_SCHEMAS = frozenset(("page-batch-judgment-v1",))
 
 BASE_DIMENSIONS = frozenset((
     "structure_and_links",
@@ -273,6 +286,26 @@ class ExtensionGate:
 
 
 @dataclass(frozen=True)
+class BatchReviewRequirement:
+    """One Profile obligation the batch-review wrapper must prove complete.
+
+    Unlike an Extension Gate, a requirement changes no persisted property.
+    It declares that one registered Judgment Item must be judged for every
+    applicable target of a batch before that batch may leave ``open``, and
+    binds the producer class, receipt schema, and pass-authority role its
+    per-target evidence must carry.
+    """
+
+    judgment_item_id: str
+    target_selector: str
+    trigger: str
+    producer_kind: str
+    receipt_schema: str
+    pass_authority_role_id: str
+    source: SourceCell
+
+
+@dataclass(frozen=True)
 class ProfileContract:
     root: str
     manifest_path: str
@@ -291,6 +324,8 @@ class ProfileContract:
     dependency_edges: Tuple[DependencyEdge, ...]
     source_cells: Tuple[SourceCell, ...]
     diagnostics: Tuple[Diagnostic, ...]
+    batch_review_registration: Optional[str] = None
+    batch_review_requirements: Tuple[BatchReviewRequirement, ...] = ()
 
     @property
     def authorized(self):
@@ -349,6 +384,21 @@ class ProfileContract:
                 for gate in self.extension_gates
             ],
         }
+        if self.batch_review_requirements:
+            # Conditional inclusion keeps every requirement-free Profile's
+            # fingerprint byte-identical to its pre-requirement value, so
+            # shipping this slot forces no adopter re-fingerprint.
+            value["batch_review_requirements"] = [
+                {
+                    "judgment_item_id": row.judgment_item_id,
+                    "target_selector": row.target_selector,
+                    "trigger": row.trigger,
+                    "producer_kind": row.producer_kind,
+                    "receipt_schema": row.receipt_schema,
+                    "pass_authority_role_id": row.pass_authority_role_id,
+                }
+                for row in self.batch_review_requirements
+            ]
         encoded = json.dumps(
             value, ensure_ascii=False, sort_keys=True,
             separators=(",", ":"),
@@ -1678,6 +1728,137 @@ def _capability_supports(builder, supports, capability_id, operation, source,
     return result
 
 
+def _parse_batch_review_requirements(builder, text, source_path,
+                                     role_text, role_path, judgments):
+    """Parse the Batch Review Requirements registry into typed IR.
+
+    A configured row is an executable per-batch obligation, not a prose
+    reminder: its Judgment Item must be registered, its role must resolve,
+    and every enum cell comes from a closed first-version set.  Natural-
+    language applicability is deliberately excluded so a declared rule can
+    never again be one the machine does not know when to apply.
+    """
+    # An absent section is the unregistered state, not a defect: this slot
+    # ships after profiles already exist, and forcing every routing registry
+    # to grow an empty table would turn the rollout itself into a break.
+    matches = [item for item in _sections(text)
+               if item.heading == BATCH_REVIEW_SECTION]
+    if not matches:
+        return None, ()
+    if len(matches) > 1:
+        builder.add(
+            "batch-review-requirements-section-count", source_path,
+            "expected at most one `## %s` section; found %d" %
+            (BATCH_REVIEW_SECTION, len(matches)))
+        return None, ()
+    section = matches[0]
+    registration = _section_registration(
+        builder, section, source_path, "batch-review-requirements")
+    rows = builder.table(
+        section, BATCH_REVIEW_HEADER, source_path,
+        "batch-review-requirements")
+    if registration == "None" and rows:
+        builder.add(
+            "batch-review-none-with-rows", source_path,
+            "`Registration: None` requires an empty Batch Review "
+            "Requirements table; found %d data row(s)" % len(rows))
+    if registration == "Configured" and not rows:
+        builder.add(
+            "batch-review-configured-empty", source_path,
+            "`Registration: Configured` requires at least one Batch Review "
+            "Requirement row")
+    if not rows:
+        return registration, ()
+
+    if role_text is None:
+        builder.add(
+            "batch-review-role-registry", source_path,
+            "configured Batch Review Requirements require a readable Role "
+            "Registry")
+        role_ids = frozenset(KERNEL_ROLE_IDS)
+    else:
+        role_ids = _extension_role_ids(builder, role_text, role_path)
+    judgment_ids = {item.judgment_item_id for item in judgments}
+
+    parsed = []
+    seen = set()
+    for row_number, row in enumerate(rows, 1):
+        cells = builder.cells(
+            row, BATCH_REVIEW_HEADER, source_path,
+            BATCH_REVIEW_SECTION, row_number, "batch-review-requirements")
+        if cells is None:
+            continue
+        judgment_id = _literal(cells[0].raw)
+        target_selector = _literal(cells[1].raw)
+        trigger = _literal(cells[2].raw)
+        producer_kind = _literal(cells[3].raw)
+        receipt_schema = _literal(cells[4].raw)
+        role_id = _literal(cells[5].raw)
+        valid = True
+        if judgment_id not in judgment_ids:
+            builder.add(
+                "batch-review-judgment-reference", cells[0].target,
+                "Judgment Item ID %r is not registered in this Profile's "
+                "Judgment Items" % judgment_id, cells[0])
+            valid = False
+        if judgment_id in seen:
+            builder.add(
+                "batch-review-judgment-duplicate", cells[0].target,
+                "Judgment Item ID %r is required more than once" %
+                judgment_id, cells[0])
+            valid = False
+        seen.add(judgment_id)
+        if target_selector not in BATCH_REVIEW_TARGET_SELECTORS:
+            builder.add(
+                "batch-review-target-selector", cells[1].target,
+                "target selector %r must be one of: %s" %
+                (target_selector,
+                 ", ".join(sorted(BATCH_REVIEW_TARGET_SELECTORS))), cells[1])
+            valid = False
+        if trigger not in BATCH_REVIEW_TRIGGERS:
+            builder.add(
+                "batch-review-trigger", cells[2].target,
+                "trigger %r must be one of: %s" %
+                (trigger, ", ".join(sorted(BATCH_REVIEW_TRIGGERS))), cells[2])
+            valid = False
+        if producer_kind not in BATCH_REVIEW_PRODUCER_KINDS:
+            builder.add(
+                "batch-review-producer-kind", cells[3].target,
+                "producer kind %r must be one of: %s" %
+                (producer_kind,
+                 ", ".join(sorted(BATCH_REVIEW_PRODUCER_KINDS))), cells[3])
+            valid = False
+        if receipt_schema not in BATCH_REVIEW_RECEIPT_SCHEMAS:
+            builder.add(
+                "batch-review-receipt-schema", cells[4].target,
+                "receipt schema %r must be one of: %s" %
+                (receipt_schema,
+                 ", ".join(sorted(BATCH_REVIEW_RECEIPT_SCHEMAS))), cells[4])
+            valid = False
+        if role_id not in role_ids:
+            builder.add(
+                "batch-review-role-reference", cells[5].target,
+                "Pass-authority Role ID %r is not a registered role" %
+                role_id, cells[5])
+            valid = False
+        if not valid:
+            continue
+        builder.edges.append(DependencyEdge(
+            kind="batch-review-judgment",
+            owner_id="batch-review:%s" % judgment_id,
+            target_id=judgment_id))
+        parsed.append(BatchReviewRequirement(
+            judgment_item_id=judgment_id,
+            target_selector=target_selector,
+            trigger=trigger,
+            producer_kind=producer_kind,
+            receipt_schema=receipt_schema,
+            pass_authority_role_id=role_id,
+            source=cells[0],
+        ))
+    return registration, tuple(parsed)
+
+
 def _parse_extension_gates(builder, text, source_path, profile_repo_dir,
                            profile_id, role_text, role_path,
                            vocabulary_text, vocabulary_path,
@@ -2246,6 +2427,7 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
                 target_id=scan.judgment_item_id,
             ))
 
+    review_registration, review_requirements = None, ()
     if routing_text is not None:
         declared_profile_id, _identity_errors = kblib.profile_identity(
             manifest_text, os.path.basename(profile_repo_dir))
@@ -2256,6 +2438,10 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
             metadata_text, metadata_path,
             judgments, scans,
             root_input_snapshots=root_input_snapshots)
+        review_registration, review_requirements = \
+            _parse_batch_review_requirements(
+                builder, routing_text, routing_path,
+                role_text, role_path, judgments)
 
     edges = tuple(sorted(
         builder.edges,
@@ -2278,6 +2464,8 @@ def load_profile_contract(root, manifest_path, sentinel="TODO(profile)",
         registered_scans=tuple(scans),
         extension_gate_registration=gate_registration,
         extension_gates=tuple(gates),
+        batch_review_registration=review_registration,
+        batch_review_requirements=tuple(review_requirements),
         dependency_edges=edges,
         source_cells=tuple(builder.source_cells),
         diagnostics=tuple(builder.diagnostics),

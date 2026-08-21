@@ -5842,6 +5842,199 @@ def substantive_review_errors(result, item):
     return errors
 
 
+def judgment_record_set_sha256(records):
+    """Hash the exact actual judgment set the batch-review wrapper binds."""
+    identity = sorted(
+        (
+            {
+                "target": row["target"],
+                "judgment_item_id": row["judgment_item_id"],
+                "receipt_id": row["receipt_id"],
+            }
+            for row in records
+        ),
+        key=lambda row: (row["judgment_item_id"], row["target"],
+                         row["receipt_id"]),
+    )
+    return kblib.sha256_bytes(kblib.canonical_json_bytes(identity))
+
+
+def batch_review_judgment_errors(result, item, wrapper_receipt):
+    """Prove the Profile's frozen judgment obligations are exactly answered.
+
+    Expected records come from the authorized Profile's Batch Review
+    Requirements expanded over the frozen manifest — the same expansion the
+    activation receipt froze at `queued -> open`.  Actual records come from
+    the current `profile_batch_judgment` receipts the wrapper binds.  One
+    missing, extra, duplicated, drifted, mis-roled, or reused record refuses
+    the transition.  A batch activated under the pre-review era carries no
+    obligations and must carry no judgment bindings: sealed history keeps
+    its own shape.
+    """
+    errors = []
+    item_id = item.get("id")
+    catalog = current_receipt_catalog(result)
+    activation_entry = catalog.get(item.get("activation_receipt")) if         isinstance(item.get("activation_receipt"), str) else None
+    activation = activation_entry[1] if activation_entry else None
+    protocol = activation.get("activation_protocol") if isinstance(
+        activation, dict) else None
+    # A batch whose activation predates delivery receipts entirely — or
+    # was activated under v1 — predates the review era.  It owes nothing
+    # and must carry nothing; the runtime validator, not this gate, is
+    # what guarantees a current-era batch cannot shed its activation
+    # receipt to slip into this branch.
+    legacy = protocol != card_activation.ACTIVATION_PROTOCOL
+    wrapper_fields = (
+        "review_requirement_set_sha256", "judgment_receipt_ids",
+        "judgment_record_set_sha256")
+    if legacy:
+        for field in wrapper_fields:
+            if field in (wrapper_receipt or {}):
+                errors.append(
+                    "%s was activated under %s; its batch-review wrapper "
+                    "must not carry %s" % (item_id, protocol, field))
+        return errors
+
+    view = result.get("_profile_authorized_view") or {}
+    contract = view.get("_contract")
+    if contract is None or not getattr(contract, "authorized", False):
+        errors.append(
+            "%s judgment validation requires one authorized typed Profile "
+            "contract" % item_id)
+        return errors
+    try:
+        expected = card_activation.expand_batch_review_requirements(
+            contract, item)
+    except (TypeError, ValueError) as exc:
+        errors.append("%s requirement expansion failed: %s" % (item_id, exc))
+        return errors
+    expected_sha = card_activation.review_requirement_set_sha256(expected)
+    if activation.get("review_requirement_set_sha256") != expected_sha:
+        errors.append(
+            "%s current Profile/manifest expansion no longer matches the "
+            "activation-frozen requirement set; the batch must be "
+            "reactivated" % item_id)
+        return errors
+    requirements = {
+        row.judgment_item_id: row
+        for row in getattr(contract, "batch_review_requirements", ())
+    }
+
+    wrapper = wrapper_receipt or {}
+    if not expected:
+        # A Profile with no requirements owes nothing: an absent binding IS
+        # the empty set, so requirement-free adopters keep their exact
+        # current wrapper shape.  A wrapper that does carry the fields must
+        # still carry them correctly.
+        if not any(field in wrapper for field in wrapper_fields):
+            return errors
+    if wrapper.get("review_requirement_set_sha256") != expected_sha:
+        errors.append(
+            "%s batch review wrapper must bind "
+            "review_requirement_set_sha256=%s" % (item_id, expected_sha))
+    bound = wrapper.get("judgment_receipt_ids")
+    if not isinstance(bound, list) or not all(
+            _nonempty_string(value) for value in bound):
+        errors.append(
+            "%s batch review wrapper judgment_receipt_ids must be an "
+            "explicit string list" % item_id)
+        return errors
+    if bound != sorted(set(bound)):
+        errors.append(
+            "%s batch review wrapper judgment_receipt_ids must be sorted "
+            "and unique" % item_id)
+        return errors
+
+    current_fingerprint = view.get("profile_contract_fingerprint")
+    actual = []
+    seen = {}
+    for receipt_id in bound:
+        entry = catalog.get(receipt_id)
+        receipt = entry[1] if entry else None
+        if not isinstance(receipt, dict):
+            errors.append(
+                "%s judgment receipt %s is absent from the current catalog" %
+                (item_id, receipt_id))
+            continue
+        label = "%s judgment receipt %s" % (item_id, receipt_id)
+        if receipt.get("invalidated_by") is not None:
+            errors.append("%s is invalidated" % label)
+            continue
+        if (receipt.get("tool") != "record_batch_judgment" or
+                receipt.get("check") != "profile_batch_judgment" or
+                receipt.get("result") != "pass"):
+            errors.append("%s is not a passing profile_batch_judgment" %
+                          label)
+            continue
+        if receipt.get("task_id") != result["queue"].get("task_id"):
+            errors.append("%s binds a different task" % label)
+        if receipt.get("batch_id") != item_id:
+            errors.append("%s binds a different batch" % label)
+        if receipt.get("opening_transition_receipt") != item.get(
+                "activation_receipt"):
+            errors.append(
+                "%s binds a different activation; a reopened batch redoes "
+                "its judgments" % label)
+        if receipt.get("review_requirement_set_sha256") != expected_sha:
+            errors.append("%s binds a different requirement set" % label)
+        if receipt.get("profile_contract_fingerprint") !=                 current_fingerprint:
+            errors.append("%s binds a superseded Profile contract" % label)
+        target = receipt.get("target")
+        judgment_item_id = receipt.get("judgment_item_id")
+        requirement = requirements.get(judgment_item_id)
+        if requirement is None:
+            errors.append("%s names an unregistered Judgment Item" % label)
+            continue
+        if receipt.get("reviewer_role") !=                 requirement.pass_authority_role_id:
+            errors.append(
+                "%s reviewer_role %r is not the registered pass authority "
+                "%r" % (label, receipt.get("reviewer_role"),
+                        requirement.pass_authority_role_id))
+        if receipt.get("receipt_schema") != requirement.receipt_schema:
+            errors.append("%s carries the wrong receipt schema" % label)
+        if requirement.target_selector == "each-manifest-page":
+            try:
+                _snapshot, semantic_sha = metadata_property_state.                    semantic_page_snapshot(result["root"], target)
+            except (OSError, TypeError, UnicodeError, ValueError) as exc:
+                errors.append("%s target cannot be snapshotted: %s" %
+                              (label, exc))
+                semantic_sha = None
+            if semantic_sha is not None and receipt.get(
+                    "semantic_content_sha256") != semantic_sha:
+                errors.append(
+                    "%s was judged against different page bytes; the "
+                    "changed page must be re-judged" % label)
+        key = (target, judgment_item_id)
+        if key in seen:
+            errors.append(
+                "%s duplicates the judgment %s already bound for %r" %
+                (label, seen[key], key))
+            continue
+        seen[key] = receipt_id
+        actual.append({
+            "target": target,
+            "judgment_item_id": judgment_item_id,
+            "receipt_id": receipt_id,
+        })
+
+    expected_keys = {(row["target"], row["judgment_item_id"])
+                     for row in expected}
+    actual_keys = set(seen)
+    for target, judgment_item_id in sorted(expected_keys - actual_keys):
+        errors.append(
+            "%s is missing the required judgment (%s, %s)" %
+            (item_id, target, judgment_item_id))
+    for target, judgment_item_id in sorted(actual_keys - expected_keys):
+        errors.append(
+            "%s binds the unexpected judgment (%s, %s)" %
+            (item_id, target, judgment_item_id))
+    if not errors and wrapper.get("judgment_record_set_sha256") !=             judgment_record_set_sha256(actual):
+        errors.append(
+            "%s batch review wrapper judgment_record_set_sha256 does not "
+            "bind the exact actual judgment set" % item_id)
+    return errors
+
+
 def batch_review_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                                 delta_page_receipt_ids):
     """Validate the current batch-level authorization around page evidence.

@@ -20,19 +20,45 @@ import re
 import kblib
 
 
-ACTIVATION_PROTOCOL = "card-first-readback-v1"
+# v1 delivered the Card Bundle alone.  v2 additionally freezes the Profile's
+# Batch Review Requirement expansion at admission and carries its set hash, so
+# `open` can bind the exact judgment obligations the batch was activated with.
+# Sealed v1 receipts replay under their own era and never gain the field.
+ACTIVATION_PROTOCOL = "card-first-readback-v2"
+LEGACY_ACTIVATION_PROTOCOL = "card-first-readback-v1"
+SUPPORTED_ACTIVATION_PROTOCOLS = frozenset((
+    LEGACY_ACTIVATION_PROTOCOL, ACTIVATION_PROTOCOL))
+BATCH_REVIEW_PLAN_PROTOCOL = "batch-review-plan-v1"
 READBACK_PROTOCOL = "card-readback-addendum-v1"
 EXECUTION_CONTEXT_ENV = "CAMBIUM_EXECUTION_CONTEXT_ID"
 CARD_INDEX_PATH = "kernel/Cards/Card Index.md"
 SHA12_RE = re.compile(r"[0-9a-f]{12}")
+SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
 READBACK_POLICIES = frozenset(("none", "declared", "activation"))
-ACTIVATION_CONTEXT_FIELDS = (
+LEGACY_ACTIVATION_CONTEXT_FIELDS = (
     "activation_protocol", "task_contract_sha256", "reading_plan_sha256",
     "readback_plan_sha256", "card_bundle_sha256",
     "activation_bundle_manifest", "delivery_mode", "delivery_assurance",
     "execution_context_id",
 )
-ACTIVATION_BUNDLE_FIELDS = ACTIVATION_CONTEXT_FIELDS[:6]
+ACTIVATION_CONTEXT_FIELDS = (
+    "activation_protocol", "task_contract_sha256", "reading_plan_sha256",
+    "readback_plan_sha256", "review_requirement_set_sha256",
+    "card_bundle_sha256",
+    "activation_bundle_manifest", "delivery_mode", "delivery_assurance",
+    "execution_context_id",
+)
+ACTIVATION_BUNDLE_FIELDS = ACTIVATION_CONTEXT_FIELDS[:7]
+
+
+def activation_context_fields(context_or_protocol):
+    """Return the closed field tuple for one activation era."""
+    protocol = context_or_protocol
+    if isinstance(context_or_protocol, dict):
+        protocol = context_or_protocol.get("activation_protocol")
+    if protocol == LEGACY_ACTIVATION_PROTOCOL:
+        return LEGACY_ACTIVATION_CONTEXT_FIELDS
+    return ACTIVATION_CONTEXT_FIELDS
 RUNTIME_STATE_BINDING_FIELDS = (
     "required_queue_sha256", "coverage_ledger_sha256",
     "progress_ledger_sha256", "queue_revision", "queue_state_revision",
@@ -258,11 +284,82 @@ def _activation_bundle_manifest(bundle):
     return manifest
 
 
+def expand_batch_review_requirements(profile_contract, item):
+    """Expand the Profile's requirements against one frozen batch manifest.
+
+    The result is deterministic: sorted records of exactly the (batch,
+    target, judgment item) obligations this batch must answer before
+    `merge-ready`.  A page-selector row expands over the manifest; a
+    batch-selector row expands to the batch itself.  No natural-language
+    applicability exists by construction.
+    """
+    batch_id = item.get("id") if isinstance(item, dict) else None
+    if not isinstance(batch_id, str) or not batch_id:
+        raise ActivationError("review expansion batch has no id")
+    requirements = ()
+    if profile_contract is not None:
+        if not getattr(profile_contract, "authorized", False):
+            raise ActivationError(
+                "review expansion requires one authorized typed Profile "
+                "contract")
+        requirements = getattr(
+            profile_contract, "batch_review_requirements", ())
+    manifest = item.get("manifest")
+    if not isinstance(manifest, list) or not all(
+            isinstance(page, str) and page for page in manifest):
+        raise ActivationError("review expansion manifest must be a string list")
+    records = []
+    for requirement in requirements:
+        if requirement.target_selector == "each-manifest-page":
+            targets = sorted(set(manifest))
+        elif requirement.target_selector == "batch":
+            targets = [batch_id]
+        else:
+            raise ActivationError(
+                "review expansion target selector %r is unsupported" %
+                requirement.target_selector)
+        for target in targets:
+            records.append({
+                "batch_id": batch_id,
+                "target": target,
+                "judgment_item_id": requirement.judgment_item_id,
+                "target_selector": requirement.target_selector,
+                "trigger": requirement.trigger,
+                "producer_kind": requirement.producer_kind,
+                "receipt_schema": requirement.receipt_schema,
+                "pass_authority_role_id": requirement.pass_authority_role_id,
+            })
+    records.sort(key=lambda row: (row["judgment_item_id"], row["target"]))
+    return records
+
+
+def review_requirement_set_sha256(records):
+    """Hash only the closed obligation identity of one expansion."""
+    identity = [
+        {
+            "batch_id": row["batch_id"],
+            "target": row["target"],
+            "judgment_item_id": row["judgment_item_id"],
+        }
+        for row in records
+    ]
+    return kblib.sha256_bytes(kblib.canonical_json_bytes(identity))
+
+
 def build_activation_context(root, progress, item, *, runtime_state,
-                             execution_context_id=None):
+                             execution_context_id=None,
+                             profile_contract=None):
     """Return receipt extension fields for one exact activation delivery."""
     contract, contract_sha = _contract_fingerprint(progress)
     runtime_bindings = _runtime_bindings(runtime_state)
+    if profile_contract is None:
+        view = runtime_state.get("_profile_authorized_view")
+        profile_contract = (view or {}).get("_contract") if isinstance(
+            view, dict) else None
+    if profile_contract is None or not getattr(
+            profile_contract, "authorized", False):
+        raise ActivationError(
+            "activation requires one authorized typed Profile contract")
     batch_id = item.get("id") if isinstance(item, dict) else None
     if not isinstance(batch_id, str) or not batch_id:
         raise ActivationError("activation batch has no id")
@@ -380,6 +477,8 @@ def build_activation_context(root, progress, item, *, runtime_state,
         kblib.canonical_json_bytes(reading_plan))
     readback_plan_sha = kblib.sha256_bytes(
         kblib.canonical_json_bytes(readback_plan))
+    review_records = expand_batch_review_requirements(profile_contract, item)
+    review_set_sha = review_requirement_set_sha256(review_records)
     bundle = {
         "activation_protocol": ACTIVATION_PROTOCOL,
         "task_id": progress.get("task_id"),
@@ -396,6 +495,11 @@ def build_activation_context(root, progress, item, *, runtime_state,
         "cards": cards,
         "startup_readbacks": startup,
         "readback_plan": readback_plan,
+        "batch_review_plan": {
+            "protocol": BATCH_REVIEW_PLAN_PROTOCOL,
+            "review_requirement_set_sha256": review_set_sha,
+            "requirements": review_records,
+        },
     }
     manifest = _activation_bundle_manifest(bundle)
     bundle_sha = kblib.sha256_bytes(kblib.canonical_json_bytes(manifest))
@@ -404,6 +508,7 @@ def build_activation_context(root, progress, item, *, runtime_state,
         "task_contract_sha256": contract_sha,
         "reading_plan_sha256": reading_plan_sha,
         "readback_plan_sha256": readback_plan_sha,
+        "review_requirement_set_sha256": review_set_sha,
         "card_bundle_sha256": bundle_sha,
         "activation_bundle_manifest": manifest,
         "activation_delivery_payload": bundle,
@@ -416,13 +521,57 @@ def activation_context_errors(context):
     errors = []
     if not isinstance(context, dict):
         return ["activation context must be a mapping"]
-    if context.get("activation_protocol") != ACTIVATION_PROTOCOL:
-        errors.append("activation_protocol is not %s" % ACTIVATION_PROTOCOL)
+    protocol = context.get("activation_protocol")
+    if protocol not in SUPPORTED_ACTIVATION_PROTOCOLS:
+        errors.append("activation_protocol is not one of %s" %
+                      ", ".join(sorted(SUPPORTED_ACTIVATION_PROTOCOLS)))
+        return errors
     manifest = context.get("activation_bundle_manifest")
     if not isinstance(manifest, dict):
         return errors + ["activation_bundle_manifest must be a mapping"]
-    if manifest.get("activation_protocol") != ACTIVATION_PROTOCOL:
+    if manifest.get("activation_protocol") != protocol:
         errors.append("activation bundle protocol is invalid")
+    if protocol == LEGACY_ACTIVATION_PROTOCOL:
+        # Sealed v1 evidence replays under its own era: the review fields
+        # must be absent rather than null, exactly as they were written.
+        if "review_requirement_set_sha256" in context:
+            errors.append(
+                "a %s context must not carry review_requirement_set_sha256" %
+                LEGACY_ACTIVATION_PROTOCOL)
+        if "batch_review_plan" in manifest:
+            errors.append(
+                "a %s bundle must not carry batch_review_plan" %
+                LEGACY_ACTIVATION_PROTOCOL)
+    else:
+        review_sha = context.get("review_requirement_set_sha256")
+        plan = manifest.get("batch_review_plan")
+        if not isinstance(review_sha, str) or not SHA256_RE.fullmatch(
+                review_sha or ""):
+            errors.append(
+                "review_requirement_set_sha256 must be a sha256 value")
+        if not isinstance(plan, dict):
+            errors.append("activation bundle batch_review_plan must be a "
+                          "mapping")
+        else:
+            if plan.get("protocol") != BATCH_REVIEW_PLAN_PROTOCOL:
+                errors.append("batch_review_plan protocol is invalid")
+            records = plan.get("requirements")
+            if not isinstance(records, list):
+                errors.append("batch_review_plan requirements must be a list")
+            else:
+                try:
+                    recomputed = review_requirement_set_sha256(records)
+                except (KeyError, TypeError) as exc:
+                    recomputed = None
+                    errors.append(
+                        "batch_review_plan requirements are malformed: %s" %
+                        exc)
+                if recomputed is not None and (
+                        plan.get("review_requirement_set_sha256") !=
+                        recomputed or review_sha != recomputed):
+                    errors.append(
+                        "review_requirement_set_sha256 does not bind the "
+                        "frozen requirement expansion")
     expected_bundle_sha = kblib.sha256_bytes(
         kblib.canonical_json_bytes(manifest))
     if context.get("card_bundle_sha256") != expected_bundle_sha:
@@ -502,7 +651,8 @@ def activation_context_errors(context):
 
 def activation_receipt_binding(context):
     """Return the closed manifest fields persisted in receipt JSONL."""
-    return {field: context.get(field) for field in ACTIVATION_CONTEXT_FIELDS}
+    return {field: context.get(field)
+            for field in activation_context_fields(context)}
 
 
 def activation_bundle_binding(context):
@@ -539,7 +689,8 @@ def context_from_receipt(receipt):
     """Project only the closed activation extension from a gate receipt."""
     if not isinstance(receipt, dict):
         return None
-    return {field: receipt.get(field) for field in ACTIVATION_CONTEXT_FIELDS}
+    return {field: receipt.get(field)
+            for field in activation_context_fields(receipt)}
 
 
 def build_readback_addendum(root, activation_context, rule_id, *,
