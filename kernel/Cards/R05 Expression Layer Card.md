@@ -28,6 +28,7 @@ source_files:
 readback_sources:
   - kernel/K12 Quality Assurance/02 Rendering Verification.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
+readback_policy: declared
 source_hash: '76d695a14fa5'
 compiled_source_hash: '76d695a14fa5'
 ---

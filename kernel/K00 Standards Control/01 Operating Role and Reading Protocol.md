@@ -45,14 +45,11 @@ All tasks enter through the kernel-owned [[kernel/Cards/Card Index|Card Index]],
 
 A large-scale task MUST pass [[kernel/Cards/R11 Large-scale Work Admission Card|Large-scale Work Admission]] before execution begins. A long-running task MUST combine the Card corresponding to the actual content type with [[kernel/Cards/R07 Long-running Execution Card|Long-running Execution]]; when reading back the source text, combine the corresponding Read Sets. A targeted or specialized audit loads [[kernel/Cards/R12 Targeted and Specialized Audit Card|Targeted and Specialized Audit]] combined with the affected task route, while a task completion candidate loads [[kernel/Cards/R08 Audit and Completion Card|Audit and Completion]] combined with R12 and every route relevant to the completion predicates; the combinations themselves are owned by [[kernel/K00 Standards Control/02 Task Routing|Task Routing]]. Quality rules enter the contract at task start via the Gate list; the full gate procedure is read only when the corresponding checkpoint is reached.
 
-The Task Contract or Progress Ledger MUST record:
-
-- `standards_version`.
-- `selected_profile_manifest`, copied exactly from the active Standards state.
-- The actual loaded set: selected Rxx route IDs and Runtime Card paths, any namespaced profile route explicitly combined with them, and every Read Set or leaf path actually read back.
-- The Runtime Cards used and the Read Sets actually read back.
-- Gate modules registered but not yet triggered.
-- Re-resolution results after Standards or task scope changes.
+The Task Contract or Progress Ledger MUST freeze the Standards/Profile identity,
+selected routes and Cards, derived Read Set/module boundary, registered Gates,
+and any re-resolution. These are plan obligations, not evidence that an
+execution context received exact bytes; only activation and read-back delivery
+receipts provide that behavioral evidence.
 
 ## Card-first Reading Mode
 
@@ -66,5 +63,11 @@ In the following cases the Standards source text MUST be read back; cards alone 
 - Governance tasks: the R09 Read Set source text MUST be read in full; cards MUST NOT serve as the basis for a revision.
 
 Runtime Cards are compiled artifacts shipped under `kernel/Cards` and must not be hand-edited. The kernel owns the continuous R01-R13 route set, every Runtime Card, and their synchronization contract. A profile may add only a namespaced supplemental route, Read Set, or gate through its `Routing And Gate Registry`, using `P:<profile_id>:<route_name>` rather than the Rxx namespace; it cannot replace, shadow, or disable a kernel route or Runtime Card. When a Card conflicts with the Standards source text, the source text prevails, and regeneration is triggered per the Revision Write-back Checklist of [[kernel/K00 Standards Control/03 Standards Governance|Standards Governance]].
+
+## Card-first Context Delivery
+
+Worker execution is Card-first: deliver exact selected Cards first and
+registered source addenda only when triggered. An unbound CLI result is
+degraded; exact Bundle, resume, and failure rules are owned by [[kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery|K13/19]].
 
 The section skeleton these compiled artifacts follow is owned by [[kernel/K00 Standards Control/14 Card And Read Set Skeleton|Card And Read Set Skeleton]], and the loading boundaries that name every leaf module are owned by [[kernel/K00 Standards Control/15 Read Set Loading Boundaries|Read Set Loading Boundaries]].

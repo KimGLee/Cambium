@@ -1,6 +1,7 @@
 """Shared complete Profile package for runtime-control test repositories."""
 
 from pathlib import Path
+import json
 import shutil
 import sys
 
@@ -24,6 +25,114 @@ PROFILE_INTERFACE = "# Profiles\n\n" + "".join(
     "## %s Slot\n\n" % name
     for name in profile_contract.PROFILE_FILE_SLOTS
 )
+
+
+RUNTIME_ROUTES = ["R%02d" % number for number in range(1, 14)]
+RUNTIME_SELECTED_ROUTES = ("R01", "R03", "R07")
+
+
+def _runtime_route_paths(route_id):
+    names = {
+        "R01": "Core Bootstrap",
+        "R03": "Module Build",
+        "R07": "Long-running Execution",
+    }
+    label = names.get(route_id, "Fixture")
+    return (
+        "kernel/Cards/%s %s Card.md" % (route_id, label),
+        "kernel/Read Sets/%s %s Read Set.md" % (route_id, label),
+    )
+
+
+def _runtime_index_text(document_type, card_index):
+    rows = []
+    for route_id in RUNTIME_ROUTES:
+        card, read_set = _runtime_route_paths(route_id)
+        rows.append("  - route_id: %s" % route_id)
+        rows.append('    path: "%s"' % (card if card_index else read_set))
+        if card_index:
+            rows.append('    read_set: "%s"' % read_set)
+    return (
+        "---\ntype: %s\nregistry_id: kernel-runtime-routes\n"
+        "route_registry:\n%s\n---\n# Fixture Runtime Route Index\n" %
+        (document_type, "\n".join(rows))
+    )
+
+
+def _install_runtime_activation_fixture(root):
+    """Install a small but exact Card-first boundary into runtime fixtures."""
+    card_index = root / "kernel/Cards/Card Index.md"
+    card_index.parent.mkdir(parents=True, exist_ok=True)
+    card_index.write_text(
+        _runtime_index_text("card-index", True), encoding="utf-8")
+    read_index = root / "kernel/Read Sets/Read Sets Index.md"
+    read_index.parent.mkdir(parents=True, exist_ok=True)
+    read_index.write_text(
+        _runtime_index_text("route-index", False), encoding="utf-8")
+    conditional = "kernel/K03 Fixture/01 Conditional Review.md"
+    conditional_path = root / conditional
+    conditional_path.parent.mkdir(parents=True, exist_ok=True)
+    conditional_path.write_text(
+        "# Conditional Review\n\nRead this source after the Card declares the "
+        "fixture trigger.\n", encoding="utf-8")
+    for route_id in RUNTIME_SELECTED_ROUTES:
+        card_relative, read_relative = _runtime_route_paths(route_id)
+        read_path = root / read_relative
+        read_path.parent.mkdir(parents=True, exist_ok=True)
+        read_path.write_text(
+            "---\ntype: read-set\nroute_id: %s\n---\n"
+            "# %s Fixture Read Set\n\n## Purpose\n\n"
+            "Bound the fixture route without transitive leaves.\n" %
+            (route_id, route_id), encoding="utf-8")
+        sources = [conditional] if route_id == "R03" else []
+        card = {
+            "type": "runtime-card",
+            "route_id": route_id,
+            "read_set": read_relative,
+            "compiled_from": "3.0.0",
+            "source_files": [read_relative],
+            "readback_sources": sources,
+            "readback_policy": "declared" if sources else "none",
+            "source_hash": "0123456789ab",
+            "compiled_source_hash": "0123456789ab",
+        }
+        card_path = root / card_relative
+        card_path.parent.mkdir(parents=True, exist_ok=True)
+        card_path.write_text(
+            "---\n%s---\n# %s Fixture Card\n\n"
+            "This compact Card is the exact activation payload.\n" %
+            (kblib.canonical_yaml(card), route_id), encoding="utf-8")
+
+    # The shared valid runtime predates Task Plan derivation.  Give only that
+    # fixture the complete frozen envelope that a current task-plan writer
+    # would have produced, and move its initial immutable anchor with it.
+    progress_path = root / ".cambium/state/progress_ledger.yaml"
+    receipt_path = root / ".cambium/receipts/task-transitions.jsonl"
+    if not progress_path.exists() or not receipt_path.exists():
+        return
+    progress = kblib.load_yaml_file(progress_path)
+    contract = progress.get("contract")
+    if not isinstance(contract, dict) or contract.get("selected_route_ids"):
+        return
+    contract["selected_route_ids"] = list(RUNTIME_SELECTED_ROUTES)
+    contract["selected_card_paths"] = sorted(
+        _runtime_route_paths(route_id)[0]
+        for route_id in RUNTIME_SELECTED_ROUTES)
+    contract["selected_read_sets"] = sorted(
+        _runtime_route_paths(route_id)[1]
+        for route_id in RUNTIME_SELECTED_ROUTES)
+    contract["loaded_module_paths"] = []
+    progress_path.write_text(kblib.canonical_yaml(progress), encoding="utf-8")
+    records = [json.loads(line) for line in receipt_path.read_text(
+        encoding="utf-8").splitlines() if line.strip()]
+    for record in records:
+        if record.get("receipt_id") == "audit-fixture-initial-queue":
+            record["contract_sha256"] = kblib.sha256_bytes(
+                kblib.canonical_yaml(contract))
+            record["after_progress_sha256"] = kblib.sha256_file(progress_path)
+    receipt_path.write_text(
+        "".join(json.dumps(record, separators=(",", ":")) + "\n"
+                for record in records), encoding="utf-8")
 
 
 def install_loadable_profile(root, profile_id="test-profile",
@@ -140,4 +249,5 @@ def install_loadable_profile(root, profile_id="test-profile",
             "| Selected profile manifest | `profiles/%s/profile.md` |\n" %
             (standards_version, profile_id),
             encoding="utf-8")
+    _install_runtime_activation_fixture(root)
     return profile

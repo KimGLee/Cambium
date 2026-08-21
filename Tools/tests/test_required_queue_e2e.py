@@ -582,9 +582,10 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         queue["selected_profile_manifest"] = manifest
         progress["contract"]["selected_profile_manifest"] = manifest
         progress["contract"].update({
-            "selected_route_ids": ["R01", "R08", "R12"],
+            "selected_route_ids": ["R01", "R03", "R08", "R12"],
             "selected_card_paths": [
                 "kernel/Cards/R01 Core Bootstrap Card.md",
+                "kernel/Cards/R03 Module Build Card.md",
                 "kernel/Cards/R08 Audit and Completion Card.md",
                 "kernel/Cards/R12 Targeted and Specialized Audit Card.md",
             ],

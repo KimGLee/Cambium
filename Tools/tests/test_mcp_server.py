@@ -70,7 +70,9 @@ FAKE_TOOLS = {
         "import json, os, sys\n"
         "print(json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd(),\n"
         "                  'workspace': os.environ.get("
-        "'CAMBIUM_WORKSPACE_ROOT')}))\n"
+        "'CAMBIUM_WORKSPACE_ROOT'),\n"
+        "                  'execution_context': os.environ.get("
+        "'CAMBIUM_EXECUTION_CONTEXT_ID')}))\n"
         "sys.exit(0)\n"
     ),
     "odd_tool": (
@@ -267,7 +269,10 @@ class LayerBoundaryTests(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_every_import_is_standard_library(self):
-        allowed = {"hashlib", "json", "os", "subprocess", "sys", "traceback"}
+        allowed = {
+            "hashlib", "json", "os", "subprocess", "sys", "traceback",
+            "uuid",
+        }
 
         self.assertEqual(self.imported_module_names() - allowed, set())
 
@@ -641,6 +646,23 @@ class ArgvTests(SyntheticCase):
 
         self.assertEqual(envelope["argv"][0], mcp_server.interpreter())
         self.assertTrue(envelope["argv"][1].endswith("echo_tool.py"))
+
+    def test_one_mcp_session_injects_one_stable_execution_context(self):
+        server = started(self.dist)
+
+        first = self.envelope(
+            "echo_tool", {"first": "a", "second": "b"},
+            server=server)["stdout_json"]["execution_context"]
+        second = self.envelope(
+            "echo_tool", {"first": "c", "second": "d"},
+            server=server)["stdout_json"]["execution_context"]
+        other = self.envelope(
+            "echo_tool", {"first": "e", "second": "f"})[
+                "stdout_json"]["execution_context"]
+
+        self.assertTrue(first.startswith("mcp:"), first)
+        self.assertEqual(first, second)
+        self.assertNotEqual(first, other)
 
 
 class SeamTests(SyntheticCase):

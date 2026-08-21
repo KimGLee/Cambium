@@ -130,7 +130,7 @@
 # check_links 1.5.0 / wiki-link-integrity; check_vocab 1.8.0 /
 # frontmatter-vocabulary and priority-quota-distribution;
 # check_residual_content 1.2.0 /
-# registered-residual-content; check_queue 1.22.0 / its registered
+# registered-residual-content; check_queue 1.23.0 / its registered
 # Required-Queue modes; check_batch_close 1.11.0 / batch-close; check_proof
 # 1.17.0 / terminal-proof; and adopt_standards 1.6.0 /
 # standards-adoption. Deterministic producers not shown above -- among them
@@ -149,11 +149,22 @@
 # after it. A run outside any Cambium runtime (no `.cambium/state/`) omits the
 # three fields rather than writing null: an omitted field claims nothing, while
 # an explicit null would satisfy consumers that only test field presence.
-# Public R01 `check_queue.py` 1.22.0 admission reruns the complete
+# Public R01 `check_queue.py` 1.23.0 admission reruns the complete
 # `profile-load` closure. The lower-level runtime view used to construct a
 # corrective Standards adoption retains only the selected Profile's
 # identity/sentinel guard, so an invalid current Profile does not prevent a
 # transaction whose candidate after-image passes full `profile-load`.
+# A passing `require-ready:*` receipt additionally carries
+# `activation_protocol: card-first-readback-v1`, the Task Contract, reading
+# plan, read-back plan and Card Bundle SHA-256 values, plus the closed
+# `activation_bundle_manifest`. It stores paths and content hashes, never Card
+# text. The tool result carries transient `activation_delivery_payload` bytes
+# for Host injection. `delivery_assurance: machine-delivered` requires
+# `delivery_mode: host-context-injection` and a nonempty
+# `execution_context_id`; an unbound CLI result uses `degraded`,
+# `cli-tool-result`, and null. `deliver-readback:*` carries a
+# `card-readback-addendum-v1` manifest, parent Bundle hash, and registered rule;
+# its exact source bytes exist only in transient `readback_delivery_payload`.
 # `open -> merge-ready` additionally consumes one current in-batch wrapper:
 #   tool                    : manual-attestation
 #   tool_version            : 1.0.0

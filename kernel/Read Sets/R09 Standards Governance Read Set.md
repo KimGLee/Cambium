@@ -46,7 +46,7 @@ First read:
 - A structural migration MUST establish a complete mapping from old content blocks to new owners.
 - A split MUST NOT be used as reduction, summarization, or silent deletion of rules.
 - Read Sets and the overall Index MUST stay synchronized with module paths.
-- Affected active, paused, and completion-candidate tasks MUST re-resolve their loaded set (selected Rxx route IDs and Runtime Card paths, any combined namespaced profile route, and every Read Set or leaf path actually read back).
+- Affected active, paused, and completion-candidate tasks MUST re-resolve their frozen reading plan (selected Rxx route IDs, Runtime Card paths, any combined namespaced Profile route, and the derived Read Set / leaf delivery boundary).
 - Governance changes still follow the deterministic-first rendering boundary; modifying only Markdown rules does not automatically trigger the selected knowledge-host role's interactive UI, screenshots, or recordings.
 - A current Profile that fails the new load contract blocks ordinary execution, not correction. R09 may inspect its exact before identity and produce a corrective plan, but only an after Profile that passes `profile-load` may be admitted; K13/15 remains the sole runtime writer.
 

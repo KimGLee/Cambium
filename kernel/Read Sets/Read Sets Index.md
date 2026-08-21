@@ -91,7 +91,7 @@ A task MAY combine routes. For example, expanding a system topic from primary so
 - R08 is reserved for task completion candidates and Terminal Audit; page, batch, module, and maintenance gates remain with their owning routes.
 - A module's prerequisites take precedence over the current module. When a dependency cannot be satisfied, record the gap first.
 - After the Standards version or route paths change, the affected loaded set MUST be re-resolved.
-- Record the `route_id`, Card path, and every Read Set or leaf path actually read back; do not record a broad K-module number as if it proved loading.
+- Freeze each `route_id`, Card path, and derived Read Set / leaf delivery boundary; do not record a broad K-module number. Actual delivery belongs to the activation/read-back receipt chain.
 
 ## Related
 

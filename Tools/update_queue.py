@@ -17,6 +17,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import check_corpus_plan
+import card_activation
 import kblib
 import update_task
 import apply_delta
@@ -469,7 +470,8 @@ def _transition_item(item, args, result):
             raise ValueError("batch is not ready: %s" % "; ".join(remaining))
         if not _nonempty(args.gate_receipt):
             raise ValueError("queued -> open requires --gate-receipt")
-        _receipt(result, args.gate_receipt, "activation gate", expected={
+        activation_receipt = _receipt(
+            result, args.gate_receipt, "activation gate", expected={
             "tool": check_queue.TOOL,
             "tool_version": check_queue.TOOL_VERSION,
             "gate_id": "required-queue-admission",
@@ -484,6 +486,18 @@ def _transition_item(item, args, result):
             **({"confirmation_receipt": args.confirmation_receipt}
                if item.get("confirmation_required") else {}),
         })
+        expected_activation_context = \
+            card_activation.build_activation_context(
+                result["root"], result["progress"], item,
+                runtime_state=result)
+        actual_activation_context = card_activation.context_from_receipt(
+            activation_receipt)
+        activation_errors = card_activation.exact_context_errors(
+            expected_activation_context, actual_activation_context)
+        if activation_errors:
+            raise ValueError("invalid Card activation delivery: %s" %
+                             "; ".join(activation_errors))
+        args.activation_context = actual_activation_context
         if item.get("confirmation_required") and not _nonempty(
                 args.confirmation_receipt):
             raise ValueError("queued -> open requires --confirmation-receipt")
@@ -1105,6 +1119,14 @@ def _run(args, produced):
     receipt["checked_at"] = args.at
     if args.transition == "open":
         receipt.update({
+            **{
+                field: getattr(args, "activation_context", {}).get(field)
+                for field in (
+                    "activation_protocol", "task_contract_sha256",
+                    "reading_plan_sha256", "readback_plan_sha256",
+                    "card_bundle_sha256", "delivery_mode",
+                    "delivery_assurance", "execution_context_id")
+            },
             "semantic_content_protocol":
                 project_page_state.SEMANTIC_FINGERPRINT_PROTOCOL,
             "manifest_semantic_before_records": [

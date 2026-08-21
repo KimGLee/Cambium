@@ -113,10 +113,16 @@ Track the mapping between durable work and temporary execution contexts:
 - `execution_context_id` and optional parent context;
 - role (`integrator`, `writer`, `reviewer`, or `researcher`);
 - permitted write scope;
-- runtime status and handoff checkpoint.
+- runtime status and handoff checkpoint;
+- the Card Activation Bundle and ordered Read-back Addendum delivery chain
+  injected into that execution context.
 
 Batch identity must survive an agent interruption or reassignment. Agent and
 subagent topology remains runtime metadata rather than profile configuration.
+No assignment enters `running` until its host adapter has delivered the exact
+Bundle bound by Queue admission. Resume and reassignment inject it again into
+the new context; a manual or unbound CLI attestation is degraded and cannot
+claim this capability.
 
 Where the host allows, a role's permitted write scope is enforced
 structurally rather than only recorded: each role receives an operation
@@ -132,7 +138,8 @@ Implement the single-writer control path before automating parallel workers:
 
 - admit only dependency-ready batches with disjoint manifests;
 - consume Queue readiness, use the integrator-only transition tool for batch
-  activation, and own guidance disposition without bypassing canonical state;
+  activation, deliver its exact Card Bundle before dispatch, and own guidance
+  disposition without bypassing canonical state;
 - collect each batch's receipts and delta;
 - merge one batch at a time and run the global checks after each merge;
 - checkpoint, pause, resume, and reassign interrupted work safely.
@@ -158,6 +165,11 @@ host part of the kernel. An adapter may provide agent creation, workspace
 isolation, cancellation, event delivery, and context identifiers. It must
 declare unsupported capabilities and fall back safely rather than simulating
 evidence it cannot produce.
+
+The bundled stdio MCP interface already supplies the host-neutral primitive:
+one session identity, exact Card Bundle tool results, and content-addressed
+Read-back Addenda. Adapters reuse that primitive; they do not reparse Card
+prose or invent a parallel reading ledger.
 
 ## Operation Capability Registry
 

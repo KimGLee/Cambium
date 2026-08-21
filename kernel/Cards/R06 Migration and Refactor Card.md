@@ -26,8 +26,9 @@ source_files:
   - kernel/K12 Quality Assurance/06 Completion Gate and Reporting.md
 readback_sources:
   - kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes.md
-source_hash: '4b88a1426fd2'
-compiled_source_hash: '4b88a1426fd2'
+readback_policy: declared
+source_hash: '3fc65b6bb9e5'
+compiled_source_hash: '3fc65b6bb9e5'
 ---
 # R06 Migration and Refactor Card
 
@@ -39,6 +40,9 @@ Move, rename, split, merge, retire, or restructure files or directories. Load [[
 
 ## Before Start
 
+- [ ] Confirm the current execution context received the exact R01/R06 Card
+  Bundle; a Queue admission receipt without its delivery binding is not a
+  worker-start signal.
 - [ ] Freeze a migration manifest containing every source path, target path, incoming link, heading anchor, canonical owner, user modification, and rollback boundary.
 - [ ] Reconcile the manifest with the file system and Coverage Ledger.
 - [ ] Establish an explicit old-content-block → new-owner mapping; every original block has exactly one destination.

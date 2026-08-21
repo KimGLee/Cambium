@@ -10,6 +10,12 @@ A Runtime Card and a kernel Read Set carry their material in named `##` sections
 
 The two sides correspond by role, not by literal name, so a deviation on one side does not require one on the other. Every Read Set section other than `Purpose` and `Related` is a loading boundary. A `- [ ]` item compiles a `MUST` obligation of the source text; `SHOULD` guidance stays prose, because the checkbox form reads as mandatory and would raise the modality its owner assigned.
 
+Every Runtime Card also declares `readback_policy`.  `none` is required when
+`readback_sources` is empty.  A nonempty set uses `declared` when its sources
+are delivered only after the Card's condition is declared, or `activation`
+when every listed source must enter startup context.  The policy controls
+delivery timing, not authority: each source remains owned by its Kernel leaf.
+
 | Role | Runtime Card | Kernel Read Set |
 |---|---|---|
 | When the route applies and what loads with it | `Use When` | `Purpose` |

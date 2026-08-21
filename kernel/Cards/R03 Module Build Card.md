@@ -37,8 +37,9 @@ readback_sources:
   - kernel/K08 Metadata and Status/03 Status Axes.md
   - kernel/K10 Writing and Formatting/01 Naming Language and Prose.md
   - kernel/K12 Quality Assurance/11 Content-level Propagation.md
-source_hash: 'ea331362495c'
-compiled_source_hash: 'ea331362495c'
+readback_policy: declared
+source_hash: '3183b2660798'
+compiled_source_hash: '3183b2660798'
 ---
 # R03 Module Build Card
 
@@ -50,6 +51,8 @@ Build or systematically expand a complete module. Load [[kernel/Cards/R01 Core B
 
 ## Before Start
 
+- [ ] Confirm the activation Bundle contains R01, R03, and every other route
+  frozen by the Task Contract before module work begins.
 - [ ] Freeze module scope, exclusions, logical architecture, knowledge spine, foundation boundary, and shared ownership.
 - [ ] When the selected profile's Structure Registry is `configured`, resolve the module's registered unit — kind, parent, root, canonical entry, and explicit role modes. A directory that fails the K01/05 admission test stays covered by its parent's entry and is not silently promoted to a module; a support-layer module also loads the K01/06 layer interface.
 - [ ] Inventory files and required knowledge objects; assign one canonical owner and one Coverage Ledger record to each in-scope object.

@@ -167,9 +167,9 @@ deterministic: the composed frontmatter page contract (K08/06-08, advisory
 `structure-registry` gate) with its marker-block coverage projections, and the
 page boundary contract (K08/09, advisory `boundary-contract` gate) with its
 tool-owned boundary projection blocks.
-They do not dispatch agents. Worker dispatch, workspace isolation, event
-delivery, and the integrator loop must still be supplied by the adopting
-runtime or a human operator.
+They do not dispatch agents. Worker dispatch, workspace isolation, lifecycle
+event delivery beyond the Card/read-back tool result, and the integrator loop
+must still be supplied by the adopting runtime or a human operator.
 
 Those operations are now callable from an agent host without host-specific
 code. A compiled CLI invocation contract is derived by introspecting each
@@ -179,6 +179,16 @@ projection; and one registration file per host is rendered from a single server
 definition. Every one of those artifacts is generated at build time, written
 into the repository, and guarded by `--check` recompute-and-compare, exactly as
 Runtime Cards and the composed vocabulary already are.
+
+Queue admission is Card-first on that interface. A successful
+`check_queue --require-ready` result carries a content-addressed Bundle with
+R01, every selected task Card, startup read-backs, and the remaining Addendum
+plan. The stdio MCP server gives each session an execution-context identity;
+the opening transition accepts a machine-delivered admission only in that same
+session and preserves the Bundle binding. A direct CLI invocation returns the
+same bytes but declares degraded assurance because no host context can be
+proved. `check_queue --deliver-readback <batch> --readback-rule <rule>` adds
+one registered conditional source without loading the whole Kernel.
 
 That interface layer is deliberately thin, and the boundary is held
 mechanically rather than by convention. It does not decide whether an operation

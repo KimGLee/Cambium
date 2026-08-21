@@ -16,10 +16,12 @@ source_files:
   - kernel/K00 Standards Control/07 Effort Tiering and Priority Quota.md
   - kernel/K00 Standards Control/15 Read Set Loading Boundaries.md
   - kernel/K00 Standards Control/17 Profile Dependency Closure.md
+  - kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery.md
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
 readback_sources: []
-source_hash: '070d1659df88'
-compiled_source_hash: '070d1659df88'
+readback_policy: none
+source_hash: 'eb0073b00b62'
+compiled_source_hash: 'eb0073b00b62'
 ---
 # R01 Core Bootstrap Card
 
@@ -41,6 +43,9 @@ The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Co
 
 ## Before Start
 
+- [ ] Enter through a `card-first-readback-v1` activation result that carries
+  R01 plus every selected task Card. Treat an unbound CLI delivery as
+  degraded; it does not prove injection into an Agent execution context.
 - [ ] State the objective, target scope, exclusions, and latest user instructions.
 - [ ] Inspect the repository root for `.cambium/` before any content or state
   write. If it exists, run `python3 Tools/check_queue.py . --resume-status`,
@@ -57,7 +62,7 @@ The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Co
 - [ ] Confirm modification authority, especially for the Standards and other protected paths.
 - [ ] Do not roll back, overwrite, or delete user modifications whose origin cannot be confirmed. A large-scale task additionally inventories ownership, incoming links, and user modifications in the target scope under R11.
 - [ ] Resolve the task Card, triggered modules, future Gate modules, selected profile slots, and any profile extension route.
-- [ ] Record Standards version, exact `selected_profile_manifest`, selected Rxx route IDs and Runtime Card paths, and every Read Set or leaf path actually read back. Keep the derived Profile dependency closure in its `profile-load` result; do not copy those dependencies into `loaded_module_paths`.
+- [ ] Freeze Standards version, exact `selected_profile_manifest`, selected route/Card paths, and the derived Read Set / leaf delivery boundary. Delivery belongs to the activation/read-back receipt chain. Keep Profile closure dependencies in `profile-load`, not `loaded_module_paths`.
 - [ ] Keep the prerequisite chain continuous; foundational knowledge is not deleted, compressed, or reduced to an empty shell for the application mainline. A large-scale task additionally identifies foundational dependencies under R11.
 - [ ] If the task is large-scale creation, moves, or deletion, load and pass [[kernel/Cards/R11 Large-scale Work Admission Card|R11 Large-scale Work Admission]] before execution.
 

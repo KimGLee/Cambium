@@ -1253,8 +1253,25 @@ def main():
                         "%s readback_sources must contain only numbered Kernel "
                         "leaf modules: %s" % (rel, readback_rel)
                     )
+            readback_policy = data.get("readback_policy")
+            allowed_readback_policies = frozenset((
+                "none", "declared", "activation",
+            ))
+            if readback_policy not in allowed_readback_policies:
+                failures.append(
+                    "%s readback_policy must be one of %s" %
+                    (rel, ", ".join(sorted(allowed_readback_policies)))
+                )
+            elif (not readback_rels and readback_policy != "none") or (
+                    readback_rels and readback_policy == "none"):
+                failures.append(
+                    "%s readback_policy %s disagrees with its "
+                    "readback_sources" % (rel, readback_policy)
+                )
         elif "readback_sources" in data:
             failures.append("%s must not declare readback_sources" % rel)
+        elif "readback_policy" in data:
+            failures.append("%s must not declare readback_policy" % rel)
 
         read_set = str(data.get("read_set") or "")
         if expected_type == "runtime-card":

@@ -71,6 +71,8 @@ MODULE = "kernel/K00 Standards Control/03 Standards Governance.md"
 READ_SET = "kernel/Read Sets/R02 Sample Read Set.md"
 CARD = "kernel/Cards/R02 Sample Card.md"
 OTHER_CARD = "kernel/Cards/R03 Unselected Card.md"
+R01_CARD = "kernel/Cards/R01 Fixture Card.md"
+R01_READ_SET = "kernel/Read Sets/R01 Fixture Read Set.md"
 CARD_INDEX = "kernel/Cards/Card Index.md"
 READ_SET_INDEX = "kernel/Read Sets/Read Sets Index.md"
 
@@ -173,6 +175,7 @@ class TaskPlanTransactionTests(unittest.TestCase):
         install_loadable_profile(self.root, profile_id="sample")
         for relative, text in ((READ_SET, READ_SET_TEXT), (CARD, CARD_TEXT),
                                (OTHER_CARD, CARD_TEXT),
+                               (R01_READ_SET, READ_SET_TEXT),
                                (CARD_INDEX, CARD_INDEX_TEXT),
                                (READ_SET_INDEX, READ_SET_INDEX_TEXT)):
             path = self.root / relative
@@ -361,8 +364,10 @@ class TaskPlanTransactionTests(unittest.TestCase):
         self.write_plan(plan)
         self.assertEqual(0, self.run_tool(apply=True))
         contract = self.document(check_queue.PROGRESS_PATH)["contract"]
-        self.assertEqual([CARD], contract["selected_card_paths"])
-        self.assertEqual([READ_SET], contract["selected_read_sets"])
+        self.assertEqual(sorted([R01_CARD, CARD]),
+                         contract["selected_card_paths"])
+        self.assertEqual(sorted([R01_READ_SET, READ_SET]),
+                         contract["selected_read_sets"])
         self.assertEqual(
             [MODULE], contract["loaded_module_paths"],
             "the module comes from the Read Set's own loading boundary, so the "
