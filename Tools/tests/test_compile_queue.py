@@ -239,7 +239,11 @@ class CompileQueueTests(unittest.TestCase):
         # current-era fields do not silently turn old evidence into a new
         # receipt shape.
         batch_close_version = "1.10.0"
-        queue_gate_version = check_queue.TOOL_VERSION
+        # The fixture predates Card-first activation.  Keep its admission
+        # receipt in the last producer era whose closed history did not carry
+        # an activation bundle; using the current version would falsely claim
+        # the new protocol while omitting its mandatory manifest.
+        queue_gate_version = "1.22.0"
         evidence_relative = "%s/B1-fixture.jsonl" % (
             kblib.RECEIPT_COLD_EVIDENCE_PREFIX)
         evidence_file = self.root / evidence_relative
