@@ -5952,6 +5952,148 @@ def substantive_review_errors(result, item):
     return errors
 
 
+def activation_phase_delivery_errors(result, item, phase_id, *,
+                                     actor_context_id=None):
+    """Prove one phase's frozen set reached the context that is acting now.
+
+    Three separate things have to hold, and the reason each is here is a
+    distinct failure it rules out:
+
+    * the ack set covers every part of the phase -- a partial delivery would
+      otherwise let an action proceed on a Card it never received;
+    * every ack carries the attempt id derived from the *current* activation
+      bundle -- a complete chain from a superseded bundle is internally
+      consistent and still worthless, so consistency alone cannot be the
+      test;
+    * when the caller is the actor (a judgment, a governance write), the
+      attempt id must derive from the actor's own context -- borrowing
+      somebody else's ack chain would prove that a different context read
+      the Card.
+
+    An integrator checking history at a queue edge is not the actor: it
+    passes no ``actor_context_id`` and the second condition alone applies.
+    An activation that never bound a host context is `prepared`/`degraded`
+    and stays exempt (v3 D7): it may proceed, but nothing it produces may
+    claim machine-enforced delivery.
+    """
+    errors = []
+    if not isinstance(item, dict):
+        return ["phase delivery check requires one Queue item"]
+    catalog = current_receipt_catalog(result)
+    entry = catalog.get(item.get("activation_receipt"))
+    activation = entry[1] if isinstance(entry, tuple) else entry
+    if not isinstance(activation, dict):
+        return errors
+    if activation.get("activation_protocol") not in \
+            card_activation.PHASED_PROTOCOLS:
+        # Pre-phase eras owe their own era's obligation, replayed as written.
+        return errors
+    if activation.get("delivery_assurance") != "host-bound":
+        return errors
+    context = card_activation.context_from_receipt(activation)
+    expected_ids = set(card_activation.phase_piece_ids(context, phase_id))
+    if not expected_ids:
+        return errors
+    record = card_activation.phase_record(context, phase_id) or {}
+    part_count = record.get("part_count")
+    bundle_sha = activation.get("card_bundle_sha256")
+    acked_ids = set()
+    acked_parts = set()
+    attempts = set()
+    for candidate in catalog.values():
+        receipt = candidate[1] if isinstance(candidate, tuple) else candidate
+        if not isinstance(receipt, dict):
+            continue
+        if receipt.get("phase_ack_protocol") != \
+                card_activation.PHASE_ACK_PROTOCOL:
+            continue
+        if receipt.get("phase_id") != phase_id:
+            continue
+        if receipt.get("card_bundle_sha256") != bundle_sha:
+            continue
+        if receipt.get("result") not in (None, "pass"):
+            continue
+        if receipt.get("invalidated_by") is not None:
+            continue
+        acked_ids.update(
+            piece_id for piece_id in receipt.get("phase_piece_ids") or []
+            if isinstance(piece_id, str))
+        acked_parts.add(receipt.get("part_index"))
+        attempts.add(receipt.get("delivery_attempt_id"))
+    missing = sorted(expected_ids - acked_ids)
+    if missing:
+        errors.append(
+            "phase %s is not delivered to this activation: %d of %d frozen "
+            "piece(s) have no current ack (%s)" %
+            (phase_id, len(missing), len(expected_ids),
+             ", ".join(missing[:4]) + ("..." if len(missing) > 4 else "")))
+        return errors
+    if isinstance(part_count, int) and len(acked_parts) != part_count:
+        errors.append(
+            "phase %s acknowledges %d of %d frozen part(s)" %
+            (phase_id, len(acked_parts), part_count))
+    if actor_context_id:
+        expected_attempt = card_activation.expected_delivery_attempt_id(
+            bundle_sha, actor_context_id)
+        foreign = sorted(str(value) for value in attempts
+                         if value != expected_attempt)
+        if foreign:
+            errors.append(
+                "phase %s was delivered to another execution context; this "
+                "actor holds no delivery evidence of its own (attempt %s)" %
+                (phase_id, ", ".join(foreign[:2])))
+    elif len(attempts) > 1:
+        errors.append(
+            "phase %s mixes %d delivery attempts; one phase is earned by one "
+            "attempt" % (phase_id, len(attempts)))
+    return errors
+
+
+CONTROL_PLANE_PREFIXES = ("kernel/", "profiles/", "Tools/")
+
+
+def batch_touches_control_plane(item):
+    """Say whether one batch's own manifest edits the control plane.
+
+    This is the governance predicate, and it is deliberately about the
+    objects a batch changes rather than about which tool it runs.  A tool
+    name can be avoided -- a file is editable without any writer -- while a
+    batch that carries `kernel/`, `profiles/` or `Tools/` in its manifest is
+    doing governance whatever it invokes, and it still has to reach
+    merge-ready through the one edge no editor can route around.
+    """
+    if not isinstance(item, dict):
+        return False
+    for path in item.get("manifest") or []:
+        if isinstance(path, str) and path.startswith(CONTROL_PLANE_PREFIXES):
+            return True
+    return False
+
+
+def task_phase_delivery_errors(result, phase_id, *, actor_context_id=None):
+    """Check one phase across every batch that still carries an activation.
+
+    Some phases are entered by a task-level act rather than a batch one: a
+    completion-candidate transition, a Standards governance write.  Those
+    acts have no batch of their own, and a phase plan is frozen per batch,
+    so the honest scope is every batch currently holding an activation.
+    When none does the obligation has no carrier and this returns nothing --
+    the gate declines to invent evidence it has no place to look for, which
+    is the same reason K13/20 refuses to treat an admission receipt as
+    delivery.
+    """
+    errors = []
+    for item in (result.get("queue") or {}).get("required_queue") or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("state") not in ("open", "merge-ready"):
+            continue
+        for message in activation_phase_delivery_errors(
+                result, item, phase_id, actor_context_id=actor_context_id):
+            errors.append("%s: %s" % (item.get("id"), message))
+    return errors
+
+
 def judgment_record_set_sha256(records):
     """Hash the exact actual judgment set the batch-review wrapper binds."""
     identity = sorted(
@@ -15210,6 +15352,8 @@ def make_check_receipt(result, outcome, details, mode,
                        readback_context=None,
                        piece_context=None,
                        piece_ack_context=None,
+                       phase_context=None,
+                       phase_ack_context=None,
                        resume_activation_contexts=None):
     """Build the canonical receipt for one already-evaluated Queue result.
 
@@ -15255,6 +15399,12 @@ def make_check_receipt(result, outcome, details, mode,
         if mode.startswith("ack-activation-piece:") and piece_ack_context:
             receipt.update(card_activation.piece_ack_receipt_binding(
                 piece_ack_context))
+        if mode.startswith("deliver-phase:") and phase_context:
+            receipt.update(card_activation.phase_receipt_binding(
+                phase_context))
+        if mode.startswith("ack-activation-phase:") and phase_ack_context:
+            receipt.update(card_activation.phase_ack_receipt_binding(
+                phase_ack_context))
         if mode.startswith("deliver-readback:") and readback_context:
             receipt.update(card_activation.readback_receipt_binding(
                 readback_context))
@@ -15358,7 +15508,8 @@ def _emit_json_receipts(receipts):
 
 
 def _delivery_result(receipt, activation_context=None, readback_context=None,
-                     piece_context=None, resume_activation_contexts=None):
+                     piece_context=None, phase_context=None,
+                     resume_activation_contexts=None):
     """Attach transient bytes to the tool result, never the receipt register."""
     emitted = dict(receipt)
     if activation_context and "activation_delivery_payload" in \
@@ -15368,6 +15519,9 @@ def _delivery_result(receipt, activation_context=None, readback_context=None,
     if readback_context:
         emitted["readback_delivery_payload"] = readback_context.get(
             "readback_delivery_payload")
+    if phase_context:
+        emitted["activation_phase_payload"] = phase_context.get(
+            "activation_phase_payload")
     if piece_context:
         emitted["activation_piece_payload"] = piece_context.get(
             "activation_piece_payload")
@@ -15395,7 +15549,8 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
                    standards_revalidation_context=None,
                    hub_page_candidates=None, activation_context=None,
                    readback_context=None, piece_context=None,
-                   piece_ack_context=None, resume_activation_contexts=None,
+                   piece_ack_context=None, phase_context=None,
+                   phase_ack_context=None, resume_activation_contexts=None,
                    build_unwritten=False):
     """Append the small receipt and return its delivery-enriched tool result.
 
@@ -15419,11 +15574,13 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
             readback_context=readback_context,
             piece_context=piece_context,
             piece_ack_context=piece_ack_context,
+            phase_context=phase_context,
+            phase_ack_context=phase_ack_context,
             resume_activation_contexts=resume_activation_contexts,
         )
         return _delivery_result(
             receipt, activation_context, readback_context, piece_context,
-            resume_activation_contexts)
+            phase_context, resume_activation_contexts)
     path = kblib.managed_repository_path(
         root, relative_path, ".cambium/receipts",
         suffixes=(".jsonl",), must_exist=False,
@@ -15439,12 +15596,14 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
         readback_context=readback_context,
         piece_context=piece_context,
         piece_ack_context=piece_ack_context,
+        phase_context=phase_context,
+        phase_ack_context=phase_ack_context,
         resume_activation_contexts=resume_activation_contexts,
     )
     kblib.write_receipts(path, [receipt])
     return _delivery_result(
         receipt, activation_context, readback_context, piece_context,
-        resume_activation_contexts)
+        phase_context, resume_activation_contexts)
 
 
 def _maintenance_gate_inventory(result):
@@ -16271,9 +16430,32 @@ def main(argv=None):
         "--ack-activation-piece", metavar="BATCH_ID",
         help="return one delivered piece nonce as same-context delivery "
              "evidence")
+    group.add_argument(
+        "--deliver-phase", metavar="BATCH_ID",
+        help="deliver one frozen activation phase part of BATCH_ID inside "
+             "the protocol delivery budget")
+    group.add_argument(
+        "--ack-activation-phase", metavar="BATCH_ID",
+        help="return one delivered phase part nonce as same-context delivery "
+             "evidence")
     parser.add_argument(
         "--readback-rule", metavar="RULE_ID",
         help="registered rule selected with --deliver-readback")
+    parser.add_argument(
+        "--phase", metavar="PHASE_ID",
+        help="frozen activation phase selected with --deliver-phase or "
+             "--ack-activation-phase")
+    parser.add_argument(
+        "--phase-part", metavar="INDEX", type=int, default=0,
+        help="part index inside the selected phase (default 0)")
+    parser.add_argument(
+        "--phase-nonce", metavar="NONCE",
+        help="nonce returned from the delivered phase part, supplied to "
+             "--ack-activation-phase")
+    parser.add_argument(
+        "--phase-delivery-receipt", metavar="RECEIPT_ID",
+        help="delivery receipt the acknowledged phase nonce came from, "
+             "supplied to --ack-activation-phase")
     parser.add_argument(
         "--piece", metavar="PIECE_ID",
         help="frozen activation piece selected with "
@@ -16335,6 +16517,8 @@ def _run(args, produced):
     readback_context = None
     piece_context = None
     piece_ack_context = None
+    phase_context = None
+    phase_ack_context = None
     resume_activation_contexts = []
 
     if args.confirmation_receipt and not args.require_ready:
@@ -16363,6 +16547,28 @@ def _run(args, produced):
         if value and not args.ack_activation_piece:
             errors.append("%s is only valid with --ack-activation-piece" %
                           flag)
+    if args.phase and not (args.deliver_phase or args.ack_activation_phase):
+        errors.append("--phase is only valid with --deliver-phase or "
+                      "--ack-activation-phase")
+    if args.deliver_phase and not args.phase:
+        errors.append("--deliver-phase requires --phase")
+    if args.ack_activation_phase and not (
+            args.phase and args.phase_nonce and args.phase_delivery_receipt):
+        errors.append(
+            "--ack-activation-phase requires --phase, --phase-nonce and "
+            "--phase-delivery-receipt")
+    for flag, value in (("--phase-nonce", args.phase_nonce),
+                        ("--phase-delivery-receipt",
+                         args.phase_delivery_receipt)):
+        if value and not args.ack_activation_phase:
+            errors.append("%s is only valid with --ack-activation-phase" %
+                          flag)
+    if args.phase_part and not (args.deliver_phase or
+                                args.ack_activation_phase):
+        errors.append("--phase-part is only valid with --deliver-phase or "
+                      "--ack-activation-phase")
+    if args.phase_part < 0:
+        errors.append("--phase-part must not be negative")
     maintenance_evidence = (
         args.budget_manifest_receipt, args.ledger_advance_receipt,
         args.watermark_advance_receipt,
@@ -16551,6 +16757,67 @@ def _run(args, produced):
                 except (OSError, UnicodeError, ValueError) as exc:
                     errors.append("cannot acknowledge activation piece: %s" %
                                   exc)
+    elif not errors and (args.deliver_phase or args.ack_activation_phase):
+        batch_id = args.deliver_phase or args.ack_activation_phase
+        item = result.get("items_by_id", {}).get(batch_id)
+        activation_receipt = None
+        if item is None:
+            errors.append("requested batch %s does not exist" % batch_id)
+        elif item.get("state") not in ("open", "merge-ready"):
+            errors.append(
+                "activation phase delivery requires an open or merge-ready "
+                "batch; %s is %s" % (batch_id, item.get("state")))
+        else:
+            catalog = result.get(
+                "current_receipt_catalog", result.get("receipt_catalog", {}))
+            entry = catalog.get(item.get("activation_receipt"))
+            activation_receipt = entry[1] if entry is not None else None
+            if (not isinstance(activation_receipt, dict) or
+                    activation_receipt.get("tool") != TOOL or
+                    activation_receipt.get("tool_version") != TOOL_VERSION):
+                errors.append(
+                    "batch %s has no current Card-first activation receipt; "
+                    "reopen it before phase delivery" % batch_id)
+                activation_receipt = None
+        if activation_receipt is not None and args.deliver_phase:
+            try:
+                phase_context = card_activation.build_phase_delivery(
+                    result["root"],
+                    card_activation.context_from_receipt(activation_receipt),
+                    args.phase, args.phase_part)
+            except (OSError, UnicodeError, ValueError) as exc:
+                errors.append("cannot deliver activation phase: %s" % exc)
+        elif activation_receipt is not None:
+            catalog = result.get(
+                "current_receipt_catalog", result.get("receipt_catalog", {}))
+            delivery_entry = catalog.get(args.phase_delivery_receipt)
+            delivery = delivery_entry[1] if delivery_entry is not None else None
+            if not isinstance(delivery, dict):
+                errors.append(
+                    "phase delivery receipt %s is absent from the current "
+                    "catalog" % args.phase_delivery_receipt)
+            elif delivery.get("phase_id") != args.phase:
+                errors.append(
+                    "phase delivery receipt %s does not deliver %s" %
+                    (args.phase_delivery_receipt, args.phase))
+            elif delivery.get("part_index") != args.phase_part:
+                errors.append(
+                    "phase delivery receipt %s delivers part %s, not %s" %
+                    (args.phase_delivery_receipt, delivery.get("part_index"),
+                     args.phase_part))
+            elif delivery.get("card_bundle_sha256") != activation_receipt.get(
+                    "card_bundle_sha256"):
+                errors.append(
+                    "phase delivery receipt %s belongs to another activation "
+                    "bundle" % args.phase_delivery_receipt)
+            else:
+                try:
+                    phase_ack_context = card_activation.build_phase_ack(
+                        dict(delivery, receipt_id=args.phase_delivery_receipt),
+                        args.phase_nonce)
+                except (OSError, UnicodeError, ValueError) as exc:
+                    errors.append("cannot acknowledge activation phase: %s" %
+                                  exc)
     elif not errors and args.require_maintenance_complete:
         maintenance_errors, maintenance_context = \
             _maintenance_completion_gate_errors(
@@ -16710,11 +16977,17 @@ def _run(args, produced):
             ("ack-activation-piece:%s:%s" % (
                 args.ack_activation_piece, args.piece)
              if args.ack_activation_piece else
+            ("deliver-phase:%s:%s:%d" % (
+                args.deliver_phase, args.phase, args.phase_part)
+             if args.deliver_phase else
+            ("ack-activation-phase:%s:%s:%d" % (
+                args.ack_activation_phase, args.phase, args.phase_part)
+             if args.ack_activation_phase else
             ("require-complete" if args.require_complete else
              ("require-maintenance-complete"
               if args.require_maintenance_complete else
               ("resume-status" if args.resume_status else
-               "consistency"))))))))
+               "consistency"))))))))))
     try:
         receipt = _write_receipt(
             args.root, args.receipts, result, outcome, details, mode,
@@ -16727,6 +17000,8 @@ def _run(args, produced):
             readback_context=readback_context,
             piece_context=piece_context,
             piece_ack_context=piece_ack_context,
+            phase_context=phase_context,
+            phase_ack_context=phase_ack_context,
             resume_activation_contexts=resume_activation_contexts,
             build_unwritten=produced is not None,
         )

@@ -94,6 +94,17 @@ def build_judgment_receipt(runtime, contract, item, judgment_item_id,
             "activation-frozen requirement set; reactivate the batch "
             "before judging")
 
+    # Judging is the first act of the gate phase, so this is where that
+    # phase's delivery is owed.  The actor's own execution context is passed
+    # deliberately: a judgment is somebody's judgment, and evidence that
+    # another context received the Gate Card proves nothing about this one.
+    phase_errors = check_queue.activation_phase_delivery_errors(
+        runtime, item, card_activation.PHASE_BATCH_GATE,
+        actor_context_id=os.environ.get(
+            card_activation.EXECUTION_CONTEXT_ENV))
+    if phase_errors:
+        raise ValueError("; ".join(phase_errors))
+
     semantic_sha = None
     if requirement.target_selector == "each-manifest-page":
         _snapshot, semantic_sha = metadata_property_state.\

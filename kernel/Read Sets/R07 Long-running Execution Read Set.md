@@ -26,6 +26,7 @@ First read [[kernel/Read Sets/R01 Core Bootstrap Read Set|Core Bootstrap]], then
 - [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]]
 - [[kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery|Card Context Activation and Read-back Delivery]]
 - [[kernel/K13 Task Runtime and Execution Control/20 Assignment State and Delivery Gate|Assignment State and Delivery Gate]]
+- [[kernel/K13 Task Runtime and Execution Control/21 Phased Reading Plan|Phased Reading Plan]]
 - [[kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover|Interruption Recovery and Rollover]]
 - [[kernel/K12 Quality Assurance/03 Module and Coverage Review|Module and Coverage Review]]
 - [[kernel/K12 Quality Assurance/14 Batch Review|Batch Review]]

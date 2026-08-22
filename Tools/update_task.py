@@ -17,6 +17,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import card_activation
 import check_queue
 import kblib
 
@@ -562,6 +563,17 @@ def build_task_transition(result, after_state, at, summary, evidence_receipt,
             )
         if not _nonempty(evidence_receipt):
             raise ValueError("completion-candidate requires --queue-check-receipt")
+        # R08 travels in the task-completion phase.  Its carrier is whatever
+        # batch still holds an activation; with zero remaining work there is
+        # usually none, and then the phase has nothing to prove against.
+        phase_errors = check_queue.task_phase_delivery_errors(
+            result, card_activation.PHASE_TASK_COMPLETION,
+            actor_context_id=os.environ.get(
+                card_activation.EXECUTION_CONTEXT_ENV))
+        if phase_errors:
+            raise ValueError(
+                "completion-candidate requires the task-completion phase: %s"
+                % "; ".join(phase_errors))
         completion_receipt = _completion_gate_receipt(
             result, evidence_receipt)
         completion_time = check_queue._timestamp_value(

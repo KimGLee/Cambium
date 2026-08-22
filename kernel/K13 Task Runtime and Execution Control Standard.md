@@ -31,7 +31,8 @@ This page is the stable entry point of the Task Runtime and Execution Control st
 | [[kernel/K13 Task Runtime and Execution Control/17 Escalation Policy\|Escalation Policy]] | `Purpose And Boundary`, `The Kernel Trigger`, `Profile-declared Triggers`, `Firing And Resuming`, `A Trigger Is Not A Gate`, `Control Accretion Decision`, `Related` |
 | [[kernel/K13 Task Runtime and Execution Control/18 Initial Task Planning Transaction\|Initial Task Planning Transaction]] | `Purpose And Boundary`, `What The Plan Supplies And What It May Never Infer`, `Where The Transaction Stops`, `Guarded Write Protocol`, `Applying It Twice`, `Control Accretion Decision`, `Related` |
 | [[kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery\|Card Context Activation and Read-back Delivery]] | `Purpose And Boundary`, `Frozen Reading Plan`, `Card Activation Bundle`, `Execution-context Delivery`, `Budgeted Piece Delivery`, `Frozen Review Plan`, `Progressive Read-back`, `Resume Reassignment And Failure`, `Related` |
-| [[kernel/K13 Task Runtime and Execution Control/20 Assignment State and Delivery Gate\|Assignment State and Delivery Gate]] | `Purpose And Boundary`, `Why This Is A Separate Gate`, `Assignment Record`, `Delivery States`, `Attempt Invalidation`, `What This Gate Does Not Prove`, `Related` |
+| [[kernel/K13 Task Runtime and Execution Control/20 Assignment State and Delivery Gate\|Assignment State and Delivery Gate]] | `Purpose And Boundary`, `Why This Is A Separate Gate`, `Assignment Record`, `Delivery States`, `Phase Scope`, `Attempt Invalidation`, `What This Gate Does Not Prove`, `Related` |
+| [[kernel/K13 Task Runtime and Execution Control/21 Phased Reading Plan\|Phased Reading Plan]] | `Purpose And Boundary`, `Phase Set`, `Route To Phase Mapping`, `Frozen Phase Plan`, `Phase Packages`, `Invalidation`, `Related` |
 
 ## Applicable Read Sets
 

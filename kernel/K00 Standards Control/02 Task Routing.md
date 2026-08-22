@@ -8,6 +8,8 @@
 
 All tasks first select R01 Core Bootstrap, then combine the Rxx route for the actual work and any event modules shown below. The Card is loaded first; its paired Read Set is read back when the Card-first protocol requires source text.
 
+Selecting a route is not the same as loading it at every batch startup: a selected route's Card enters the execution context when that route's phase predicate holds, and the phase set, the route-to-phase mapping, and their freezing are owned by [[kernel/K13 Task Runtime and Execution Control/21 Phased Reading Plan|Phased Reading Plan]].
+
 | Task | Required Read Set Or Module | Main Decision |
 |---|---|---|
 | Create a concept page or extend one in a targeted way | [[kernel/Read Sets/R02 Single Note Authoring Read Set\|Single Note Authoring]] | note type, owner, depth, sources, links, and the note gate |

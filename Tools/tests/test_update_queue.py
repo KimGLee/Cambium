@@ -3781,6 +3781,8 @@ class BatchReviewRequirementTests(UpdateQueueTests):
         legacy_manifest = dict(activation["activation_bundle_manifest"])
         legacy_manifest["activation_protocol"] = "card-first-readback-v1"
         legacy_manifest.pop("batch_review_plan", None)
+        legacy_manifest.pop("phase_plan", None)
+        legacy_manifest.pop("phase_plan_sha256", None)
         pieces = legacy_manifest.pop("pieces", [])
         legacy_manifest.pop("piece_count", None)
         legacy_manifest.pop("max_piece_envelope_bytes", None)
@@ -3798,6 +3800,7 @@ class BatchReviewRequirementTests(UpdateQueueTests):
         def downgrade(record):
             record["activation_protocol"] = "card-first-readback-v1"
             record.pop("review_requirement_set_sha256", None)
+            record.pop("phase_plan_sha256", None)
             if "activation_bundle_manifest" in record:
                 record["activation_bundle_manifest"] = legacy_manifest
             record["card_bundle_sha256"] = legacy_bundle_sha
