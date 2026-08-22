@@ -492,8 +492,21 @@ def _transition_item(item, args, result):
                 runtime_state=result)
         actual_activation_context = card_activation.context_from_receipt(
             activation_receipt)
-        activation_errors = card_activation.exact_context_errors(
-            expected_activation_context, actual_activation_context)
+        # v1/v2 additionally required the admission to be consumed by the same
+        # execution context that received it.  That rule protected a claim v3
+        # no longer makes here: a v3 admission freezes a manifest and asserts
+        # no delivery, so binding the Queue edge to one host session would
+        # re-couple the Queue lifecycle to the context lifecycle that K13/19
+        # keeps separate.  The protection moves to the Assignment delivery
+        # gate, which consumes the piece ack set.  What `open` still proves is
+        # that the frozen Bundle equals current Card/Read Set bytes.
+        if actual_activation_context.get("activation_protocol") == \
+                card_activation.ACTIVATION_PROTOCOL:
+            activation_errors = card_activation.exact_bundle_errors(
+                expected_activation_context, actual_activation_context)
+        else:
+            activation_errors = card_activation.exact_context_errors(
+                expected_activation_context, actual_activation_context)
         if activation_errors:
             raise ValueError("invalid Card activation delivery: %s" %
                              "; ".join(activation_errors))

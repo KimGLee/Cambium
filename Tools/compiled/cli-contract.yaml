@@ -66,7 +66,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:817a50981c3a7a36947af4811ab753c2791e691e5c3f474c9f62185fca5ba4de
+source_hash: sha256:4f4385918e933e211b3676c0f85df847388ee7318fb76f208eae061ec40a476f
 receipt_shape:
   base_fields:
     - receipt_id
@@ -1752,7 +1752,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:1ecaec9019b013358f2afda142585d3ca48360eebf90633da7b6d149ebc5c523
+    source_hash: sha256:4ec7f2dc3727c35688ec89105a396d4421ae52568b14e8b7db7c373b870f7904
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -1831,6 +1831,28 @@ tools:
         action: store
         type: null
         help: deliver one registered conditional Card read-back source for an already-open batch
+      - dest: deliver_activation_piece
+        option_strings:
+          - --deliver-activation-piece
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: deliver one frozen activation piece of BATCH_ID inside the protocol delivery budget
+      - dest: ack_activation_piece
+        option_strings:
+          - --ack-activation-piece
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: return one delivered piece nonce as same-context delivery evidence
       - dest: readback_rule
         option_strings:
           - --readback-rule
@@ -1842,6 +1864,39 @@ tools:
         action: store
         type: null
         help: registered rule selected with --deliver-readback
+      - dest: piece
+        option_strings:
+          - --piece
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: frozen activation piece selected with --deliver-activation-piece or --ack-activation-piece
+      - dest: piece_nonce
+        option_strings:
+          - --piece-nonce
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: nonce returned from the delivered piece, supplied to --ack-activation-piece
+      - dest: piece_delivery_receipt
+        option_strings:
+          - --piece-delivery-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: delivery receipt the acknowledged nonce came from, supplied to --ack-activation-piece
       - dest: confirmation_receipt
         option_strings:
           - --confirmation-receipt
@@ -1928,6 +1983,8 @@ tools:
           - require_maintenance_complete
           - resume_status
           - deliver_readback
+          - deliver_activation_piece
+          - ack_activation_piece
     receipt_extensions:
       - activation_context
       - active_card_context_deliveries
@@ -1950,6 +2007,8 @@ tools:
       - pending_amendments
       - pending_delta_applies
       - pending_guidance
+      - piece_ack_context
+      - piece_context
       - progress_ledger_sha256
       - queue_check_mode
       - queue_revision
@@ -4216,7 +4275,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: update_queue
     module: Tools/update_queue.py
-    source_hash: sha256:3680ae8592ea307542de1b86bb808cc99e1153b1b244c8aeed8680bf0f7a77ae
+    source_hash: sha256:f691748b42ac0252cc7ecf948af01f593845242e2dc28f2ad462977f426a564f
     description: Apply one Required Queue transition
     arguments:
       - dest: root

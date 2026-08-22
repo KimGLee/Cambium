@@ -64,25 +64,77 @@ does not reinterpret an already-opened batch using new Card bytes.
 ## Execution-context Delivery
 
 The stdio MCP server assigns one non-reused ID to each initialized session and
-passes it to every child tool as `CAMBIUM_EXECUTION_CONTEXT_ID`. A successful
-admission result reached through that interface records:
+passes it to every child tool as `CAMBIUM_EXECUTION_CONTEXT_ID`, together with
+the host's declared `clientInfo` name and version as
+`CAMBIUM_HOST_CLIENT_NAME` and `CAMBIUM_HOST_CLIENT_VERSION`. Those are
+declared labels: they identify which adapter build ran, not who ran it.
+
+An admission records what it prepared, never what a later reader received:
 
 ```text
 delivery_mode: host-context-injection
-delivery_assurance: machine-delivered
+delivery_assurance: host-bound
 execution_context_id: mcp:<session-id>
 ```
 
-The same MCP session must consume the admission at `queued -> open`; another
-session receives a different ID and is refused. This proves that the exact
-tool-result payload entered the named host session. It does not authenticate
-the human/Agent identity or prove cognition.
+A direct CLI admission records `cli-tool-result`, `prepared`, and no
+execution-context ID. Queue `open` consumes either, because `open` is
+admission and not worker execution; what it still proves is that the frozen
+Bundle equals current Card and Read Set bytes.
 
-A direct CLI result still carries the complete Bundle, but records
-`cli-tool-result`, `degraded`, and no execution-context ID. Queue `open` may
-still be written by a human integrator because it is admission, not worker
-execution. A runtime or adapter MUST NOT claim machine-enforced Card delivery
-from that degraded record.
+Earlier eras claimed more here than the transport could support. A v1/v2
+admission that reached a bound session recorded `machine-delivered` and
+required the same session to consume it at `queued -> open`. That claim was
+minted before the result left the server, so a host that externalized an
+oversized tool result left the payload outside the model context while the
+receipt still asserted delivery, and no gate could observe the divergence.
+Under v3 the session-identity rule is retired -- keeping it would re-couple
+the Queue lifecycle to the context lifecycle this module separates -- and
+delivery completion is earned per piece, by the Assignment delivery gate of
+[[kernel/K13 Task Runtime and Execution Control/20 Assignment State and Delivery Gate|K13/20]].
+
+## Budgeted Piece Delivery
+
+Protocol `card-first-readback-v3` stops embedding Card and read-back bytes in
+the admission result. Admission freezes a piece manifest -- one record per
+deliverable file, carrying `piece_id`, `kind`, `path`, `sha256`, and `bytes`
+-- and the bytes travel afterwards, one file per tool result.
+
+A piece is always a whole file. Splitting one file across results is invalid:
+the frozen hash binds the complete file, a receiving model cannot rehash
+fragments, and no party could then prove a reassembly was faithful.
+
+`MAX_ACTIVATION_PIECE_ENVELOPE_BYTES` is 49152 and is owned here. The measured
+object is the complete serialized delivery, not the source file: envelope,
+JSON escaping, nonce, and transport wrapper all count. Admission fails closed
+when any frozen piece would exceed the budget, so an oversized leaf is caught
+as a governance problem at its own boundary rather than as a transport
+accident mid-batch. [[kernel/K00 Standards Control/16 Leaf Module Size Register|K00/16]]
+carries the derived check for `activation` leaves; it consumes this budget and
+does not own it.
+
+`check_queue --deliver-activation-piece <batch> --piece <piece-id>` returns one
+piece for an already-open batch. The server re-reads the current bytes and
+refuses when they differ from the frozen hash, so a source that drifts during
+delivery is rejected rather than shipped. Each delivery carries a single-use
+nonce placed after the content, and
+`check_queue --ack-activation-piece <batch> --piece <piece-id> --piece-nonce
+<nonce> --piece-delivery-receipt <id>` returns it from the same execution
+context.
+
+The nonce is one part of a three-part guarantee and never the whole of it:
+
+- the server hash proves the delivered object is the frozen file;
+- a Host Adapter that has passed inline-delivery conformance proves a
+  within-budget result is inlined rather than truncated or externalized;
+- the same-context ack proves this execution context consumed the delivery.
+
+Only all three together constitute piece delivery evidence. The ack alone
+proves that a nonce was seen, not that the body ahead of it entered the model
+context: a host may show a head-and-tail summary, keep structural fields while
+externalizing content, surface the nonce separately, or leave an agent reading
+only the tail of a spilled file. A host that cannot supply the middle part is
+`degraded`, and no runtime may claim machine-enforced delivery from it.
 
 ## Frozen Review Plan
 
@@ -123,10 +175,13 @@ whole-Kernel injection are both invalid fallbacks.
 
 ## Resume Reassignment And Failure
 
-`check_queue --resume-status --json` includes a fresh Bundle delivery for
-every active batch. A new MCP session therefore receives the current Cards
-before it acts on `next_action`; future Assignment State records the delivery
-chain before entering `running`.
+`check_queue --resume-status --json` re-freezes a current Bundle manifest for
+every active batch, so a new MCP session learns which pieces it must pull
+before it acts on `next_action`; the bytes follow one budgeted piece at a
+time. A new execution context invalidates every earlier ack: delivery evidence
+never transfers between contexts, and
+[[kernel/K13 Task Runtime and Execution Control/20 Assignment State and Delivery Gate|K13/20]]
+requires the full set to be re-earned.
 
 Activation or read-back fails closed when R01 or a selected Card is absent,
 the Card Index disagrees with the contract, semantic hashes differ, a path is
@@ -142,3 +197,4 @@ transition, never to restamp the receipt.
 - [[kernel/K00 Standards Control/15 Read Set Loading Boundaries|Read Set Loading Boundaries]]
 - [[kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration|Batch Admission Transitions and Serial Integration]]
 - [[kernel/K13 Task Runtime and Execution Control/14 Interruption Recovery and Rollover|Interruption Recovery and Rollover]]
+- [[kernel/K13 Task Runtime and Execution Control/20 Assignment State and Delivery Gate|Assignment State and Delivery Gate]]

@@ -200,6 +200,14 @@ PROJECTION_RELATIVE = "Tools/compiled/mcp-tools.json"
 
 WORKSPACE_ENV = "CAMBIUM_WORKSPACE_ROOT"
 EXECUTION_CONTEXT_ENV = "CAMBIUM_EXECUTION_CONTEXT_ID"
+# The host's own identity, taken from `initialize`.  Inline-delivery
+# conformance is established by test against one adapter build, while a host
+# updates itself underneath a passing registration.  Exporting the declared
+# name and version lets delivery evidence bind the adapter it actually ran
+# against, so an unregistered build degrades instead of inheriting a stale
+# pass.  These are declared labels, not authentication.
+HOST_CLIENT_NAME_ENV = "CAMBIUM_HOST_CLIENT_NAME"
+HOST_CLIENT_VERSION_ENV = "CAMBIUM_HOST_CLIENT_VERSION"
 SOURCE_HASH_ENV = "CAMBIUM_INTERFACE_SOURCE_HASH"
 
 # What the projection must claim about itself before it is served.
@@ -740,6 +748,8 @@ class Server(object):
         self.workspace_root = None
         self.projection = None
         self.execution_context_id = None
+        self.client_name = None
+        self.client_version = None
 
     # -- lifecycle --------------------------------------------------------
 
@@ -750,6 +760,13 @@ class Server(object):
         self.projection = load_projection(self.distribution_root,
                                           self.environ)
         self.execution_context_id = "mcp:%s" % uuid.uuid4().hex
+        client = params.get("clientInfo")
+        if isinstance(client, dict):
+            name = client.get("name")
+            version = client.get("version")
+            self.client_name = name if isinstance(name, str) and name else None
+            self.client_version = (version if isinstance(version, str) and
+                                   version else None)
         requested = params.get("protocolVersion")
         agreed = (requested if requested in SUPPORTED_PROTOCOL_VERSIONS
                   else LATEST_PROTOCOL_VERSION)
@@ -810,6 +827,14 @@ class Server(object):
         workspace_root = resolve_workspace_root(self.environ)
         execution_env = dict(self.environ)
         execution_env[EXECUTION_CONTEXT_ENV] = self.execution_context_id
+        # Absent rather than empty: an unset variable claims nothing, while an
+        # empty one would satisfy a consumer that only tests presence.
+        for name, value in ((HOST_CLIENT_NAME_ENV, self.client_name),
+                            (HOST_CLIENT_VERSION_ENV, self.client_version)):
+            if value:
+                execution_env[name] = value
+            else:
+                execution_env.pop(name, None)
         return run_tool(tool, arguments, workspace_root, execution_env)
 
     def handle_ping(self, params):
