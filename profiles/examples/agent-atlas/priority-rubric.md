@@ -11,4 +11,16 @@ Interface: [Priority Rubric slot](../../README.md#priority-rubric-slot)
 
 ## Priority Quota
 
-- Registration: None
+The standing quota targets this corpus holds its P0/P1 shares to. K00/07 owns
+the quota model; this registration replaces the retired
+`priority_quota.*` execution-default override rows (same values, now the
+instrument K00/07 names for long-lived shares). A temporary excess is not
+registered here -- it is a bounded contract policy exception via
+`apply_contract_amendment.py`, and it dies with its task.
+
+- Registration: Configured
+
+| Class | Maximum corpus share | Rationale |
+|---|---|---|
+| `P0` | `17%` | The P0 predicate binds this class to sole canonical contracts for the end-to-end Agent/Harness control path and to Capability Matrix P0 rows. That path spans goal and plan, context and state, tool effects, permission and policy, completion and recovery, evaluation evidence, and production operation, each with its own canonical owner. The 17% ceiling accommodates that registered owner set rather than padding the class. |
+| `P1` | `37%` | P1 carries direct prerequisites of P0 owners and the interview-preparation target topics registered in the Capability Matrix. The 37% ceiling accommodates that prerequisite-and-target band while reserving the remaining 46% for P2 content. |

@@ -1,33 +1,29 @@
-# Agent Atlas metadata-contract slot: the configured branch.
+# Agent Systems Atlas metadata-contract slot: the configured branch.
 # Interface: profiles/README.md#Metadata-Contract-Slot
 # Kernel defaults stay in kernel/K08 Metadata and Status/applicability-base.yaml
 # and relationship-base.yaml; only Atlas differences and extensions appear
-# here. The two Interview fields are the profile's Expression Layer bindings
-# (K08/07: `interview_card` needs a resolvable reciprocal binding once the
-# page is mapped; readiness itself is granted by the Expression gate, never
-# inferred). `canonical_bindings` is the expression-to-canonical relation and
-# never enters `evidence_sources`.
+# here. `interview_card` and `interview_status`
+# are the Expression Layer bindings under K08/07 authority: a mapped-class
+# value needs a resolvable reciprocal binding, and interview-ready is granted
+# only by the registered expression gate. `canonical_bindings` is the
+# expression-to-canonical relation and never enters `evidence_sources`.
+# `source_class` is the L-SOURCES grouped-taxonomy page field of the
+# Structure Registry; `case_class` is the L-CASES evidence-form class. The
+# bilingual section-role titles project the Language Contract's
+# display binding; the prose owner stays language-contract.md.
 
 schema_version: 1
 
 applicability:
   state: configured
 
-applicability_differences:
-  - field: last_verified
-    mode: conditional
-    condition:
-      all:
-        - field: volatility
-          in:
-            - fast
-    note: "Fast-decaying pages must carry their last external verification date; kernel default is optional."
+applicability_differences: []
 
 extension_fields:
   - field: interview_status
     mode: optional
     shape: nonempty-string
-    owner: "profiles/agent-atlas/expression-layer.md"
+    owner: "profiles/examples/agent-atlas/expression-layer.md"
   - field: interview_card
     mode: conditional
     shape: path
@@ -37,7 +33,25 @@ extension_fields:
           in:
             - mapped
             - interview-ready
-    owner: "profiles/agent-atlas/expression-layer.md"
+    owner: "profiles/examples/agent-atlas/expression-layer.md"
+  - field: case_class
+    mode: conditional
+    shape: nonempty-string
+    condition:
+      all:
+        - field: type
+          in:
+            - case-study
+    owner: "profiles/examples/agent-atlas/structure-registry.yaml"
+  - field: source_class
+    mode: conditional
+    shape: nonempty-string
+    condition:
+      all:
+        - field: type
+          in:
+            - source-note
+    owner: "profiles/examples/agent-atlas/structure-registry.yaml"
 
 relationship_extensions:
   - field: canonical_bindings
@@ -45,7 +59,7 @@ relationship_extensions:
     direction: expression-to-canonical
     target: page
     shape: list-of-paths
-    owner: "profiles/agent-atlas/expression-layer.md"
+    owner: "profiles/examples/agent-atlas/expression-layer.md"
 
 section_roles:
   - role: sources
@@ -54,11 +68,12 @@ section_roles:
       - "来源"
     aliases:
       - "Sources"
-    owner: "profiles/agent-atlas/language-contract.md"
+    owner: "profiles/examples/agent-atlas/language-contract.md"
   - role: related
     titles:
       - "Related（相关）"
       - "相关"
     aliases:
       - "Related"
-    owner: "profiles/agent-atlas/language-contract.md"
+      - "Related（相关内容）"
+    owner: "profiles/examples/agent-atlas/language-contract.md"

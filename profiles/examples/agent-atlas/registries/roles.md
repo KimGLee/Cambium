@@ -6,16 +6,16 @@ Interface: [Role Registry slot](../../../README.md#role-registry-slot)
 
 | Kernel role | Bound actor or system ID/name |
 |---|---|
-| `proposer` | Model proposal |
-| `gatekeeper` | Harness control |
-| `executor` | External executor |
+| `proposer` | Model-proposal actor |
+| `gatekeeper` | Harness-control system |
+| `executor` | External-executor actor |
 | `stopper` | Human authority |
 
 ## Knowledge Host
 
 | Kernel role | Binding |
 |---|---|
-| `knowledge-host` | Obsidian vault |
+| `knowledge-host` | Agent Systems Atlas Obsidian vault |
 | `knowledge-host UI` | Obsidian desktop UI |
 
 ## Metric Traceability Roles
@@ -40,4 +40,4 @@ These bindings apply when Atlas reports evaluated metrics, whether the measureme
 | Role ID | Bound actor or system ID/name | Responsibility |
 |---|---|---|
 | `interview-reviewer` | Human authority or explicitly delegated qualified reviewer | Judge Interview Card acceptance and authorize promotion to `interview-ready`. |
-| `content-reviewer` | Human authority or explicitly delegated qualified reviewer | Judge the per-page content-form classification a batch must complete before `merge-ready`. |
+| `content-reviewer` | Human authority or explicitly delegated qualified reviewer | Judge the per-page four-class content-form classification a batch must complete before `merge-ready`. |
