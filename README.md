@@ -2,633 +2,328 @@
 
 English | [简体中文](README.zh-CN.md)
 
-Cambium is a governance standard and reference toolset for knowledge corpora
-maintained with LLM agents. It defines how an agent loads rules, scopes work,
-preserves canonical ownership, incorporates sources, manages long-running
-changes, and produces auditable evidence before claiming completion.
+Cambium is a governance standard and reference toolset for knowledge
+repositories maintained with LLM agents.
 
-Cambium does not provide a knowledge corpus, a RAG engine, or a default domain
-policy. It governs how an operator and an agent maintain a corpus over time.
+It helps an operator answer five practical questions:
 
-## Architecture
+1. What rules apply to this repository?
+2. What work is required, and who may change shared state?
+3. What evidence must exist before work can close?
+4. How can an interrupted task resume without guessing?
+5. Which decisions belong to the operator rather than the agent?
+
+Cambium is not a knowledge base, a RAG engine, an agent scheduler, or a default
+domain policy. It governs work; it does not supply the corpus or decide its
+meaning.
+
+## Start Here
+
+- To understand the model, read [The Mental Model](#the-mental-model).
+- To adopt Cambium for a repository, follow [Adopt Cambium](#adopt-cambium).
+- To resume existing work, run the command in
+  [Start Or Resume A Task](#start-or-resume-a-task) before writing anything.
+- To connect an agent host, see
+  [Use Cambium From An Agent Host](#use-cambium-from-an-agent-host).
+- For every tool and its exact arguments, see [Tools/README.md](Tools/README.md).
+- For what is complete, in progress, or only conditional, see
+  [ROADMAP.md](ROADMAP.md).
+
+## The Mental Model
 
 ```text
-effective standard = domain-neutral kernel + exactly one selected profile
+effective governance
+  = Cambium kernel
+  + exactly one selected profile
+  + adopter-owned runtime state
 ```
 
-The kernel owns the cross-domain rules. A profile supplies one corpus's
-concrete scope, language, architecture, corpus-planning bindings and scale,
-priorities, sources, roles, expression artifacts, audit bindings, scans, and
-supplemental gates. A profile may extend defined interfaces, but it cannot
-replace, disable, or weaken the kernel.
-
-| Component | Responsibility |
+| Layer | What it owns |
 |---|---|
-| Kernel modules (`K00`-`K13`) | Normative, cross-domain rule text |
-| Runtime routes (`R01`-`R13`) | Task-specific loading and execution paths; `Kxx` and `Rxx` are independent namespaces |
-| Read Sets | Route-specific source-loading boundary used when a Runtime Card requires read-back |
-| Runtime Cards | Kernel-owned, compiled shortcuts for routine agent execution; never a second source of rules |
-| Selected profile | The adopter's concrete answers to the profile interface |
-| Adopter runtime namespace (`.cambium/`) | Coverage object state, the canonical Required Queue, task-level Progress, hash-bound complex-batch Work Specs, controlled plans including active-task Standards adoption, deltas, receipts, and derived reports |
-| Tools | Deterministic checks, controlled state writers, schemas, receipts, and derived/compiled-artifact generators; not final semantic judgment |
+| `kernel/` | Cross-domain rules, gates, routes, Read Sets, and Runtime Cards |
+| Selected profile | One repository's scope, language, architecture, sources, priorities, roles, scans, and allowed extensions |
+| `.cambium/` | The adopter's current governance identity, task state, Queue, plans, deltas, receipts, and recovery evidence |
+| `Tools/` | Deterministic checks, controlled writers, schemas, and generated projections |
 
-Within the kernel module namespace, [K02 Knowledge Work Construction](<kernel/K02 Knowledge Work Construction Standard.md>)
-owns knowledge-object inventory, Coverage semantics, Corpus Planning,
-architecture and dependency planning, knowledge-batch production, and
-migration safety. [K13 Task Runtime
-and Execution Control](<kernel/K13 Task Runtime and Execution Control Standard.md>)
-owns the persistent runtime namespace, Task Contract and task state,
-Guidance/Amendments, Progress Ledger, Required Queue, batch transitions,
-hash-bound batch Work Specs, controlled active-task Standards-adoption state
-writes, completion bindings, handoff, and interruption recovery. K12 remains
-the sole owner of which changed Standards predicates affect a live task and
-which gates must rerun. This boundary keeps
-knowledge-object disposition separate from batch/work-unit lifecycle while
-requiring the two state layers to reconcile.
+The kernel is normative. A profile can fill or tighten an extension point, but
+cannot disable a kernel rule. Tools execute declared rules; they do not make
+the final semantic judgment.
 
-Routine work starts from Runtime Cards. When a Card is incomplete, disputed,
-or insufficient for an exception, the agent reads back its Read Set and the
-referenced kernel modules. Normative source text always wins.
+Runtime Cards are short execution routes, not a second copy of the standard.
+When a Card is insufficient or disputed, its Read Set leads back to the
+normative kernel text.
 
-This repository is intentionally uninstantiated. The adopter-specific active
-state in
-[`K00/03 Standards Governance`](<kernel/K00 Standards Control/03 Standards Governance.md>)
-still contains placeholders and no profile is selected. It therefore defines
-no active standard for a particular knowledge corpus and distributes no
-profile-specific `Tools/vocab.yaml` or fabricated `.cambium/state/`.
+This repository is intentionally uninstantiated. It contains templates and
+examples, but selects no adopter profile and creates no fabricated task state.
 
-## Execution Model
+## What Ships Today
 
-Cambium separates durable work units from execution contexts.
+Cambium currently provides:
 
-- A **batch** is an independently accepted unit of work with its own manifest,
-  dependencies, receipts, delta, and lifecycle.
-- The **Required Queue** is the model-neutral, persistent owner of those batch
-  manifests, their deterministic order, dependencies, holds, and lifecycle.
-- An **agent** is an execution context assigned to work. One agent may execute
-  several batches sequentially, while isolated agents may execute disjoint
-  batches concurrently.
-- A **subagent** is a child execution context created by a runtime. It is not a
-  separate Cambium work unit or authority class and may act as a worker,
-  researcher, or independent reviewer. Acting as the independent reviewer is
-  the narrowest of those roles: [`K12/12 Substantive Correctness
-  Review`](<kernel/K12 Quality Assurance/12 Substantive Correctness Review.md>)
-  requires a subagent started with a clean context and carrying no author
-  context, whose input is only the note body and its Sources. An ordinary child
-  context that inherits the author's context does not satisfy it.
-- A logical **integrator** exclusively controls the shared state named in
-  [`K13/10 Batch Admission Transitions and Serial Integration`](<kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md>):
-  guidance disposition, Queue structural revision, Queue state transition,
-  contract changes, Standards adoption, batch activation, and merging. That
-  module states the enumeration; this list is a reader's summary of it.
+- a single pre-closed profile template, a safe scaffolder, a machine-readable
+  adoption interview, a read-only onboarding status view, and profile checks;
+- persistent Coverage, Required Queue, and Progress state for resumable work;
+- deterministic task and batch transitions, controlled Amendments, active-task
+  Standards adoption, interruption recovery, and build or maintenance closure;
+- append-only receipts and Terminal Proof bindings;
+- explicit Global Map, Capability Matrix, and Gap Register validation;
+- deterministic page, structure, vocabulary, link, boundary, freshness, and
+  residual-content checks;
+- a generated host-neutral interface: each tool's own CLI declaration compiles
+  into the agent-facing MCP projection and per-host configuration;
+- Card-first activation and progressive Read Set delivery primitives.
 
-The active-batch concurrency limit is not an agent-count limit. Concurrent
-workers produce isolated batch outputs; the integrator merges those outputs
-one at a time and runs the global checks after each merge.
+The generated MCP surface is a call surface, not an orchestrator. The tools
+still decide whether an operation is valid and whether its evidence counts.
 
-Three machine-readable control objects deliberately have different jobs:
+## What Does Not Ship Yet
 
-| State object | Owns |
+Cambium does not currently bundle:
+
+- agent dispatch or scheduling;
+- isolated worker workspaces;
+- a complete single-writer integrator loop;
+- durable Assignment lifecycle management;
+- authenticated actor or reviewer identity;
+- automatic corpus-wide dependency propagation;
+- an independent evaluator that re-derives the complete expected corpus;
+- an installable OpenAI Plugin package, Hooks, UI, or marketplace entry.
+
+These boundaries are intentional. A host may add capabilities, but it must not
+claim evidence for a capability it cannot prove. See [ROADMAP.md](ROADMAP.md)
+for the delivery order.
+
+## The Three Runtime Ledgers
+
+Long-running work uses three state objects with different owners:
+
+| State object | What it answers |
 |---|---|
-| Coverage Ledger | Knowledge objects, dispositions, canonical owners, and object-side batch assignment |
-| Required Queue | Batch/work-unit manifests, order, dependencies, lifecycle, holds, and transition evidence |
-| Progress Ledger | Task Contract, whole-task state, Guidance/Amendments, checkpoints, and the accepted Queue fingerprint |
+| Coverage Ledger | Which knowledge objects exist, what disposition they have, and which batch currently owns unfinished work? |
+| Required Queue | Which batches exist, what are their manifests and dependencies, and what lifecycle state is each batch in? |
+| Progress Ledger | What is the task contract, whole-task state, checkpoint, Standards identity, and accepted Queue fingerprint? |
 
-They are reconciled rather than treated as interchangeable task lists.
+They must agree, but they are not interchangeable task lists.
 
-## Repository Layout
-
-| Path | Contents |
-|---|---|
-| [`kernel/`](kernel/) | Cross-domain standards, Read Sets, and compiled Runtime Cards |
-| [`profiles/README.md`](profiles/README.md) | The authoritative profile-slot interface and filling rules |
-| [`profiles/_template/`](profiles/_template/) | A domain-neutral form to copy and fill; not a runnable or default profile |
-| [`profiles/examples/`](profiles/examples/) | Non-normative completed references; examples are not adoption starting points and cannot be selected in place |
-| [`Tools/`](Tools/) | Standard-library Python checks, schemas, receipts, and compiled-artifact generators |
-| [`Tools/compiled/`](Tools/compiled/) | Generated artifacts: the CLI invocation contract, its agent-facing MCP projection, and one registration file per supported host. Never hand-edited; `--check` recomputes and compares |
-| [`ROADMAP.md`](ROADMAP.md) | Non-normative implementation directions; not a statement of current capability |
-
-The included
-[`Agent Systems Atlas`](profiles/examples/agent-atlas/README.md) profile is an
-example of answer shape and specificity. It is not Cambium's default
-configuration and does not contain the Atlas knowledge corpus.
-
-## Adopter Runtime State
-
-Long-running, resumable, or multi-batch work uses one fixed task namespace in
-the adopting repository. Every task first checks whether `.cambium/state/`
-already exists, because a seemingly bounded new request may enter a repository
-whose earlier persistent task was interrupted. Governance may already exist
-without a task runtime:
+The adopter-owned namespace is:
 
 ```text
 .cambium/
-├── governance/  # canonical current Standards/Profile identity
+├── governance/  # current Standards and selected-profile identity
 ├── state/       # Coverage, Required Queue, and Progress
-├── work_specs/  # immutable restricted-YAML contracts for complex batches
-├── deltas/      # worker deltas and restricted-YAML controlled-operation plans
-├── receipts/    # deterministic and transition evidence
-├── reports/     # derived human-readable views
-└── tmp/         # recovery locks and incomplete-write metadata
+├── work_specs/  # immutable contracts for complex batches
+├── deltas/      # proposed and batch-local changes
+├── receipts/    # evidence and transition history
+├── reports/     # derived views; never authority
+└── tmp/         # locks and interrupted-write recovery evidence
 ```
 
-`state/`, `work_specs/`, `deltas/`, and `receipts/` are durable. Reports are
-projections, not tool inputs, and `tmp/` is ignored by Git; a surviving writer
-lock remains recovery evidence until its operation is reconciled. Cambium
-publishes the schemas under `Tools/schemas/`; a conformance fixture suite is
-planned rather than shipped, and this repository carries none today (see
-[`ROADMAP.md`](ROADMAP.md) `Observability And Conformance`). An adopter creates
-its own runtime state with `Tools/init_state.py` after selecting a profile and
-defining a task. The tool
-requires an explicit objective and exclusions, does not invent Required work,
-and does not overwrite any existing `.cambium/state/` task runtime; a valid
-governance/history namespace is preserved.
-If task state already exists, a restarted or newly assigned Agent first
-runs `Tools/check_queue.py . --resume-status` to discover the recorded task,
-its `build` or `maintenance` completion semantics, checkpoint binding, latest
-task transition, in-flight batches, pending control inputs/deltas, the
-applicable completion block, maintenance candidate SHA/partition and prior
-completion anchor, holds, writer-lock evidence, and the exact
-machine-readable `next_action`. A complete open-batch handoff is reported as
-`admit-delta`; a merge-ready batch without an apply receipt becomes
-`apply-delta`, and an applied batch without a current close bundle becomes
-`run-batch-close-gate`. Only a current bundle authorizes the four-ID
-`close-applied-batch` action and its exact copyable close command. This prevents
-a fresh Agent context from mistaking an interrupted repository for an unused
-one.
-
-## Current Implementation Boundaries
-
-The kernel and tools now provide persistent task and Required Queue state,
-optional hash-bound complex-batch Work Specs, explicit Global Map / Capability
-Matrix / Gap Register validation, and deterministic initialization,
-compilation, validation, task/batch transitions, active-task Standards/Profile
-adoption, interruption recovery, build Terminal closure, bounded maintenance
-closure, and derived report generation. The page-level contract family is also
-deterministic: the composed frontmatter page contract (K08/06-08, advisory
-`page-contract` gate), the Structure Registry resolution (K01/05-06,
-`structure-registry` gate) with its marker-block coverage projections, and the
-page boundary contract (K08/09, advisory `boundary-contract` gate) with its
-tool-owned boundary projection blocks.
-They do not dispatch agents. Worker dispatch, workspace isolation, lifecycle
-event delivery beyond the Card/read-back tool result, and the integrator loop
-must still be supplied by the adopting runtime or a human operator.
-
-Those operations are now callable from an agent host without host-specific
-code. A compiled CLI invocation contract is derived by introspecting each
-tool's own parser rather than being maintained by hand; an agent-facing MCP
-projection is generated from that contract; a stdio server serves the
-projection; and one registration file per host is rendered from a single server
-definition. Every one of those artifacts is generated at build time, written
-into the repository, and guarded by `--check` recompute-and-compare, exactly as
-Runtime Cards and the composed vocabulary already are.
-
-Queue admission is Card-first on that interface. A successful
-`check_queue --require-ready` result carries a content-addressed Bundle with
-R01, every selected task Card, startup read-backs, and the remaining Addendum
-plan. The stdio MCP server gives each session an execution-context identity;
-the opening transition accepts a machine-delivered admission only in that same
-session and preserves the Bundle binding. A direct CLI invocation returns the
-same bytes but declares degraded assurance because no host context can be
-proved. `check_queue --deliver-readback <batch> --readback-rule <rule>` adds
-one registered conditional source without loading the whole Kernel.
-
-That interface layer is deliberately thin, and the boundary is held
-mechanically rather than by convention. It does not decide whether an operation
-may run, whether a result counts, or whether evidence is kept — those remain
-kernel questions answered by the tools themselves. It must not re-implement any
-kernel rule, and a test asserts that the server imports only the standard
-library, so no judgment module can be reached from it. A kernel refusal reaches
-the caller unchanged: the layer never rewrites a refusal into an error, never
-presents a failure as a refusal, and reports a result it cannot parse as
-unparseable rather than inventing a verdict.
-
-The shipped Amendment interface first registers an approved operational
-decision against the exact current state, then consumes that authorization in
-a scope/disposition replan or batch-cancellation transaction. Pending
-registration receipts authorize current execution; after verified write-back
-they prove history only. A separate Standards-adoption transaction synchronizes
-only the three Standards/Profile identities, the Progress load set, and the
-structural Queue revision while preserving the task and every batch
-lifecycle/hold. After
-Queue materialization, a change to any other Task Contract field is rejected
-unless a host supplies an equivalent controlled writer; the
-baseline recovery path is to pause or cancel the current task, preserve its
-runtime, and begin a successor task. One non-scope contract field has its
-guarded writer today: `apply_contract_amendment.py` amends the contract's
-`policy_exceptions` register of bounded K00/07 policy exceptions in a single
-anchored transaction. A generic writer for the remaining non-scope fields
-(objective, acceptance, timing) remains roadmap work.
-
-These writers accept only the current public schema and receipt protocols. An
-existing adopter runtime with older or unregistered operational Amendment
-state must be converted outside the public execution path before it is loaded;
-Standards adoption does not guess or silently upgrade that state.
-
-Profile setup is agent-conducted over explicit contracts: `scaffold_profile.py`
-creates the candidate package from the version-controlled whitelist, the
-machine-readable interview contract (`profiles/interview.yaml`) carries the
-questions any assisting agent asks and projects the operator's confirmed
-answers, and `check_profile.py` validates the result. Filling in a text editor
-against the same contracts remains the no-agent fallback. This release does not
-bundle an automated interview runner; whatever conducts the interview produces
-only a candidate and never invents domain policy, approves a profile, or
-selects one for use. Planned convenience and runtime layers are described in
-[`ROADMAP.md`](ROADMAP.md).
-
-Cambium's receipts and Terminal Proof operate inside the adopting repository's
-local trust boundary. The shipped checks can validate receipt structure,
-declared producer and version labels, exact SHA-256 bindings to current state
-and content, transition-chain agreement, and whether evidence is stale. Those
-hashes are integrity bindings, not signatures: without an external signing or
-controlled-execution system, Cambium does not authenticate which executable
-ran, which operating-system account supplied an actor label, or whether the
-recorded reviewer was a different person or process. An adversary who may
-rewrite the repository, its tools, and its evidence can construct an
-internally consistent history. The baseline therefore detects accidental
-drift, incomplete transitions, and stale or inconsistent evidence; stronger
-provenance requires controls outside this repository.
+Do not edit canonical state by hand. Use the owning writer so revisions,
+hashes, receipts, and recovery evidence move together.
 
 ## Adopt Cambium
 
-Profile adoption follows one process whether the target corpus already exists
-or will be built from zero, and Cambium never creates the corpus during setup.
-The two differ in exactly one place, described under **Adopting into an empty
-corpus** below: a corpus with pages is described from what it contains, and a
-corpus without them is described from what bounded founding will create. Start
-by confirming the corpus location and profile ID, then scaffold a candidate
-profile for that corpus. Do not edit the shared template in place and do not
-copy an example as the starting point.
+Adoption creates and approves one profile for one repository. Copying a
+template or example does not select it.
+
+### 1. Create a candidate profile
 
 ```text
-python3 Tools/scaffold_profile.py . --profile-id my-profile           # dry-run
+python3 Tools/scaffold_profile.py . --profile-id my-profile
 python3 Tools/scaffold_profile.py . --profile-id my-profile --apply
 ```
 
-The scaffolder copies exactly the whitelist in
-[`profiles/template-files.yaml`](profiles/template-files.yaml), derives the
-mechanical identity and self-path cells, and refuses an existing target; a
-manual whitelist copy is the no-agent fallback.
+The first command is a dry run. The second copies only the version-controlled
+whitelist and refuses to overwrite an existing candidate.
 
-The template ships pre-closed: every slot switch with a legal exit state is
-already in it, operational answers are pre-filled for confirmation, and only
-the decisions no template can make remain open. To answer every switch now
-instead, the adoption interview walks the closed ones in the same sitting.
-Either route produces a fully conformant profile; the fill-depth contract is
-in [`profiles/README.md`](profiles/README.md).
+### 2. Answer the open decisions and validate
 
-1. Answer the remaining `TODO(profile)` decisions in `profiles/my-profile/` —
-   by the [adoption interview](profiles/interview.yaml) or by hand. Keep
-   `profile_id` equal to the directory name and use
-   [`profiles/README.md`](profiles/README.md) as the interface authority.
-2. Validate the filled copy:
-
-   ```text
-   python3 Tools/check_profile.py profiles/my-profile
-   ```
-
-3. Perform initial adoption through the full
-   [`R09 Standards Governance Read Set`](<kernel/Read Sets/R09 Standards Governance Read Set.md>).
-   Prepare a restricted-YAML adoption plan from
-   [`Tools/schemas/profile_adoption_plan.template.yaml`](Tools/schemas/profile_adoption_plan.template.yaml) —
-   it binds the adopter's Standards version, status `approved`, effective
-   date, the exact `profiles/my-profile/profile.md` path, and the candidate's
-   exact `profile-load` fingerprints. Directory presence, profile discovery,
-   an example, or a generated file never selects a profile.
-4. With the user's explicit authorization, run the no-runtime adoption
-   transaction. Dry-run first; `--apply` executes prepare/commit/abort with
-   full restoration on any failure:
-
-   ```text
-   python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml
-   python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml --apply
-   ```
-
-   The transaction creates the canonical adopter Standards state, appends the
-   first immutable adoption receipts, composes the Profile vocabulary and the
-   frontmatter page contract, stamps the Runtime Cards for the adopted version, and
-   re-verifies the gates; a failure at any step restores the previous control
-   plane rather than leaving a partial adoption. The same steps remain
-   runnable by hand (`compose_vocab.py`, `compose_page_contract.py`,
-   `stamp_cards.py --set-version` / `--check`) as the no-agent fallback. An
-   existing `.cambium/state/` task runtime is refused here: an active task adopts through
-   `adopt_standards.py` (next section).
-5. Complete the R09 governance gates before beginning corpus-content work.
-   [`Tools/README.md`](Tools/README.md) documents the individual commands,
-   receipts, and exit semantics; tool success alone is not proof that the
-   complete governance gate passed.
-
-### Adopting into an empty corpus
-
-Some of the profile's answers describe a corpus, and a corpus with no pages
-cannot yet supply them. None of it needs a relaxed contract or a mechanism that
-does not exist; what an empty corpus needs is to be founded first, which is
-ordinary authoring work.
-
-- **The residual scan.** Its matchers normally come from strings real pages
-  carry. With no pages, declare the structure class you will use, and have
-  bounded founding create one page under the accepted root that carries it —
-  the residual witness, authored before any batch or runtime state exists. The
-  production scan refuses a configuration that recognises nothing in the
-  repository, so a declared class must be materialized; the positive control
-  proves only that matchers and `mandated_headings` agree and passes on an
-  empty repository.
-- **Coverage.** Knowledge objects that do not exist yet still get records, so
-  the first Queue is compiled from pages you intend rather than pages you
-  have. Those intended pages enter Coverage through the user-confirmed Task
-  Plan of the large-scale task; the profile never generates Coverage.
-- **Corpus Planning** stays `not-applicable` at initial adoption, with a
-  reason that authorizes bounded founding and defers — not forbids —
-  large-scale work. The Global Map names existing canonical owners, so the
-  plan becomes provable once founding creates some, through a second R09
-  revision, and
-  [`K00/13`](<kernel/K00 Standards Control/13 Runtime Admission and Recovery.md>)
-  admits large-scale work only against a proved one. That is the sequence
-  below, not an obstruction. (A corpus that already has pages skips this: its
-  owners exist, so the initial adoption can configure the slot directly.)
-
-### Founding a corpus, then building it
-
-Creating the first pages of an empty corpus is bounded authoring work. It is
-not the large-scale creation `K00/13` admits, so it selects neither R11 nor
-Corpus Planning, and — being bounded — it initializes no `.cambium/state/` task runtime
-state at all.
-
-1. Adopt the profile through R09.
-2. Author one canonical owner per `Profile Scope` layer, plus the residual
-   witness declared during the interview (one page may serve as both owner and
-   witness when that is semantically natural, never merged only to save
-   files). Ordinary single-note and module routes; no Queue, no Coverage, no
-   admission gate.
-3. With owners on disk, a second R09 revision configures the Corpus Planning
-   slot: R13 prepares the Global Map, Capability Matrix, and Gap Register
-   inside that open revision against the `configured` after Profile
-   ([`K02/03`](<kernel/K02 Knowledge Work Construction/03 Corpus Planning Applicability and Lifecycle.md>)
-   candidate preparation), validated with `check_profile.py` and
-   `check_corpus_plan.py --profile <candidate manifest>`; the revision closes
-   through the same `apply_profile_adoption.py` transaction (its
-   `profile-revision` branch), and the artifacts become authoritative then.
-4. The large-scale build is the task that follows: initialize runtime state,
-   pass the `K00/13` admission conditions, compile the Queue, run batches.
-
-The founding pages are ordinary Required objects from step 4 onward and enter
-batches for review like any other page. Nothing is built twice; the sequence
-costs one task boundary and the R09 that configures the slot.
-
-Copying, filling, validating, or recording a manifest path does not activate a
-profile by itself. The manifest becomes the selected profile for content work
-only when the complete R09 initial-adoption change closes. Validate the filled
-copy, not `_template`; the composed vocabulary does not exist before adoption.
-
-## Call Cambium From An Agent Host
-
-Cambium's operations are reachable from Claude Code, Codex, Kimi Code, and dsh
-without writing host-specific code. What each host reads is a generated file,
-never a hand-written one.
-
-Render the registration for your corpus. Both roots are absolute paths; leave
-either out and its placeholder stays in the product:
-
-```bash
-python3 Tools/render_host_configs.py . \
-  --distribution-root /absolute/path/to/corpus \
-  --workspace-root /absolute/path/to/corpus
-```
-
-The products land in `Tools/compiled/host-configs/`. Install the one your host
-reads:
-
-| Host | Destination | Carries |
-|---|---|---|
-| Claude Code | `<corpus>/.mcp.json` | registration + binding |
-| Kimi Code | `<corpus>/.kimi-code/mcp.json` | registration + binding |
-| Codex | `<corpus>/.codex/config.toml` | registration + binding |
-| dsh | `<corpus>/.env` | binding only |
-| dsh | `$DSH_HOME/profiles/<name>/cordis.patch.yml`, or `dsh --patch <path>` | registration only, once per machine |
-
-Registration and binding are two different questions — where the server is, and
-which corpus this session governs. Three hosts happen to answer both in one
-file; dsh separates them, which is what makes the distinction visible. The
-binding travels as `CAMBIUM_WORKSPACE_ROOT`, set by the host and read from the
-environment only. It is never inferred from an inherited working directory:
-every host starts a stdio server in the session's own directory, but none of
-them documents that behaviour, and an undocumented default is not something a
-governance binding may rest on.
-
-**First contact is manual on three of the four hosts.** Claude Code asks a
-person to trust the workspace before it loads a project-level `.mcp.json`;
-Codex reads a project-level `.codex/config.toml` only while the project is
-trusted; Kimi loads project-level MCP config only after the workspace is marked
-trusted. A repository that was just cloned cannot approve itself, and that is
-the point. Each approval is one time per corpus. dsh needs no approval because
-its registration lives in the operator's own profile rather than in the
-repository.
-
-Verify a rendered product before or after installing it:
-
-```bash
-python3 Tools/render_host_configs.py . --check
-```
-
-The server exposes exactly the operations the compiled projection declares. It
-decides nothing: it reads exit codes and receipts, passes a kernel refusal
-through unchanged, and reports an unparseable result as unparseable rather than
-guessing a verdict.
-
-## Adopt A New Standards Version Into An Active Task
-
-R09 governs the Standards revision and records its exact changed predicates.
-When an existing `.cambium/state/` task still freezes the prior Standards/Profile
-identity, R09 produces one restricted-YAML plan using
-[`Tools/schemas/standards_adoption_plan.template.yaml`](Tools/schemas/standards_adoption_plan.template.yaml):
+Use [profiles/interview.yaml](profiles/interview.yaml) with an assisting agent,
+or fill the same contract by hand. The authoritative slot guide is
+[profiles/README.md](profiles/README.md).
 
 ```text
-.cambium/deltas/standards-adoptions/<adoption-id>.yaml
+python3 Tools/profile_onboarding_status.py . --profile-id my-profile --json
+python3 Tools/check_profile.py profiles/my-profile
 ```
 
-That plan is the task's canonical machine revision record. It binds the
-complete approved K00/03 rule bytes, the exact canonical adopter-state
-before-image, deterministic after snapshots of `kernel/` and
-the selected Profile directory, and the exact changed-predicate,
-invalidated-evidence dimension/boundary, and rerun scope. There is no second
-revision YAML or prose adoption copy.
+The template pre-closes choices that have a safe legal default. The remaining
+questions require operator-confirmed repository decisions. An agent may prepare
+a candidate, but may not approve it or invent domain policy.
 
-R07 executes or resumes that plan. Dry-run first; only the integrator writes:
+### 3. Approve the profile through R09
+
+Prepare a plan from
+[Tools/schemas/profile_adoption_plan.template.yaml](Tools/schemas/profile_adoption_plan.template.yaml),
+then dry-run and apply it:
 
 ```text
-python3 Tools/adopt_standards.py . \
-  --plan .cambium/deltas/standards-adoptions/SA-001.yaml
-
-python3 Tools/adopt_standards.py . \
-  --plan .cambium/deltas/standards-adoptions/SA-001.yaml \
-  --apply --actor-role integrator
+python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml
+python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml --apply
 ```
 
-The writer accepts only an `active` or `paused` task. If a build task is already
-`completion-candidate`, first use the legal Task transition to return it to
-`paused` or `active`; if the new Standards cannot validate a bound Work Spec,
-upgrade that specification through its owning process before adoption. The
-same preparation formally rolls back any affected `merge-ready` batch and
-places every affected `open` batch under `revalidation-required`; the writer
-verifies but does not create lifecycle/hold changes. The
-transaction then preserves that Task state and every batch state/hold, keeps
-Queue membership/order fixed, increments the structural `queue_revision`,
-updates the synchronized Contract/Standards/Profile/load set, and appends
-recoverable evidence. Historical receipt bytes remain unchanged.
+The transaction binds the approved Standards version, selected profile,
+generated contracts, Runtime Cards, and adoption receipts. It restores the
+previous control plane if any step fails.
 
-Every adoption consumes immediate Queue consistency on staged after bytes.
-Changed predicates select any additional deferred evidence boundaries: a
-batch-close or Terminal gate reruns only when that boundary is reached and does
-not block unrelated earlier work. Historical closed transitions continue to
-verify under the identity that produced them; declared invalidated evidence cannot
-be reused as current evidence under the new predicate. Current-use receipt
-catalogs exclude every invalidated-evidence receipt ID accumulated by committed
-adoptions.
+An empty corpus follows the same adoption contract. First perform bounded
+founding work to create real canonical owners and the residual-scan witness;
+then adopt a Profile revision that configures Corpus Planning before starting
+large-scale work. The exact sequence is documented in
+[profiles/README.md](profiles/README.md#adoption-flow).
 
-The plan and append-only receipts are the Agent interface. Cambium does not
-create or consume a persistent Markdown adoption report.
+## Start Or Resume A Task
 
-## Start A Governed Task
-
-After initial adoption:
+Always check for existing runtime state before writing:
 
 ```text
-Standards Overview
-  -> Card Index
-  -> R01 Core Bootstrap Card + the task-specific Runtime Card
-  -> selected-profile bindings
-  -> Read Set and kernel source read-back when required
-  -> applicable gates, deterministic checks, and receipts
-```
-
-Begin with the
-[`Standards Overview`](<kernel/K00 Standards Overview.md>) and
-[`Kernel Runtime Card Index`](<kernel/Cards/Card Index.md>). Load only the
-route, profile bindings, and source modules required by the current task.
-Combine additional routes only when their Card Index triggers apply; they do
-not replace the route for the work itself.
-
-For every task, first inspect the target repository for `.cambium/state/`. If
-it exists, do not write content or task state and do not initialize or
-overwrite it: inspect and reconcile its current task first. If task state is
-absent, only a long-running, resumable, or multi-batch task initializes it;
-bounded work continues without creating empty task state. A valid
-`.cambium/governance/` and adoption history may already exist and are
-preserved.
-
-```text
-# Existing runtime state: always inspect before writing.
 python3 Tools/check_queue.py . --resume-status
+```
 
-# No .cambium/state/ exists and persistent state applies: initialize once.
+If `.cambium/state/` exists, this command reports the recorded task, locks,
+holds, in-flight batches, recovery state, and exact `next_action`. Do not
+initialize over it.
+
+Bounded work does not need empty persistent state. For long-running, resumable,
+or multi-batch work, initialize once after profile adoption:
+
+```text
 python3 Tools/init_state.py . \
   --task-id YOUR_TASK \
-  --objective "State the concrete outcome this task must achieve" \
-  --exclude "State one explicit out-of-scope boundary" \
+  --objective "State the concrete outcome" \
+  --exclude "State one explicit boundary" \
   --completion-semantics build \
   --scope-version s1 \
   --standards-version YOUR_VERSION \
-  --profile-manifest profiles/my-profile/profile.md \
-  --apply
+  --profile-manifest profiles/my-profile/profile.md
 ```
 
-Choose `build` for corpus-building work that closes through
-`completion-candidate`, R08, and Terminal Proof. Choose `maintenance` for an
-R10 budget-envelope run that closes through the maintenance completion gate
-without entering `completion-candidate`. The choice is required and frozen in
-the Task Contract; initialization never guesses it. A bounded single-note task
-does not initialize `.cambium/` merely to record this choice.
+Review the dry run, then repeat the command with `--apply`.
 
-A reported writer lock may belong to a live writer or an interrupted write.
-Do not delete it until no writer remains and the state files, receipts,
-revisions/fingerprint, pending deltas, and any recorded archive move have been
-reconciled. JSONL receipts are append-only; an uncertain receipt append keeps
-the lock instead of deleting or rewriting evidence. A new task does
-not reuse an old namespace, even when the old task is complete or cancelled;
-an explicit archive/rollover process must handle that history. Within one
-task, `Tools/seal_receipts.py` is that process for verified frozen history:
-it moves already-revalidated rows of closed batches into the cold chain
-(`.cambium/receipts/cold/`, K12/07), so hot registers stop growing with
-every close while every byte and receipt ID stays resolvable. Cross-task
-namespace rollover remains manual.
-
-Once the current task is known and valid, inventory Required objects into
-Coverage, declare explicit `batch_specs`, compile the Queue, and run
-`check_queue.py` before activating a batch. Simple single-note work does not
-need an empty Queue merely to satisfy a formality. The initial compile stores
-an immutable origin receipt in Progress; later same-scope replans use a staged
-Coverage proposal, register its approved exact diff, and never require editing
-canonical Coverage in advance.
-
-Large-scale construction, migration, or persistent multi-batch corpus work
-also configures the selected Profile's `Corpus Planning` slot. Maintain its
-restricted-YAML Global Map, Capability Matrix, and Gap Register through R13,
-then run `check_corpus_plan.py`. Agents consume its deterministic JSON
-projection and the separate semantic-acceptance status instead of storing a
-copied report. A Profile-bound authority records accepted/rejected Capability
-decisions from restricted YAML with `record_corpus_acceptance.py`; evidence is
-append-only JSONL. These artifacts supply explicit topology, capability,
-priority, evidence, and gap-handoff inputs. They do not schedule Queue work or
-replace Coverage.
-
-A simple batch records `work_spec_path: null` and `work_spec_sha256: null`.
-Only a complex batch creates a restricted-YAML contract directly under
-`.cambium/work_specs/` from `Tools/schemas/batch_work_spec.template.yaml`, then
-binds that exact path and SHA-256 in Coverage `batch_specs` before Queue
-compilation. The Work Spec carries batch-specific outcome, instructions,
-acceptance conditions, and constraints; Queue order, lifecycle, holds, and
-receipts remain in the Required Queue.
-
-`init_state.py` infers nothing, so the Task Contract's five selection fields
-and the Coverage Ledger come up empty. Do not fill them by hand. Write one plan
-from `Tools/schemas/task_plan.template.yaml`, get it confirmed, and apply it:
-the transaction is the record of what was agreed, and hand-edited state is not.
-Objects not yet created belong in the plan too — the Queue is compiled from
-what the task intends to build, not only from what the file system holds.
-
-The plan names routes, not paths. `selected_card_paths`, `selected_read_sets`,
-and `loaded_module_paths` are resolved from `selected_route_ids` through the
-canonical indexes and the transitive loading-boundary closure; selecting R01
-alone reaches every other route and well over a hundred modules. List a path
-only to add a profile supplemental Read Set, which has no registry to resolve
-it from.
+`init_state.py` deliberately leaves work selection empty. Put the confirmed
+Task Contract and Coverage choices in one task plan, then materialize the Queue:
 
 ```text
-# One confirmed plan fills the Task Contract and Coverage (K13/18).
 cp Tools/schemas/task_plan.template.yaml \
   .cambium/deltas/task-plans/TP-001.yaml
-# Edit it, replace every TODO(plan), then dry-run and apply:
-python3 Tools/apply_task_plan.py . --plan .cambium/deltas/task-plans/TP-001.yaml
-python3 Tools/apply_task_plan.py . --plan .cambium/deltas/task-plans/TP-001.yaml --apply
-# It prints the next command, with the Queue revision and SHA already filled in:
+
+python3 Tools/apply_task_plan.py . \
+  --plan .cambium/deltas/task-plans/TP-001.yaml
+
+python3 Tools/apply_task_plan.py . \
+  --plan .cambium/deltas/task-plans/TP-001.yaml --apply
+
+# Use the revision and SHA printed by apply_task_plan.py.
 python3 Tools/compile_queue.py . --apply --actor-role integrator \
-  --expected-queue-revision 1 \
-  --expected-sha256 SHA_PRINTED_BY_APPLY_TASK_PLAN
+  --expected-queue-revision REVISION \
+  --expected-sha256 SHA256
+
 python3 Tools/check_queue.py .
 python3 Tools/render_queue.py .
 ```
 
-Lifecycle writes are dry runs unless `--apply` is supplied, and an apply also
-requires the current revision/fingerprint printed by the state tools. See
-[`Tools/README.md`](Tools/README.md) for transition commands, exit code 2
-holds, receipts, Amendment registration and execution (including the
-contract-amendment writer for bounded K00/07 policy exceptions), interruption
-recovery, and both completion paths.
+Use `build` when the task closes through Terminal Proof. Use `maintenance`
+when it closes through the bounded maintenance gate. The choice is frozen in
+the Task Contract.
+
+## Controlled Changes
+
+After the Queue exists, shared state changes go through a controlled writer:
+
+- `register_amendment.py` and `apply_amendment.py` handle approved operational
+  replans such as bounded scope/disposition changes and batch cancellation;
+- `apply_contract_amendment.py` handles the two supported Task Contract fields:
+  `policy_exceptions` and `amendment_authority`;
+- `adopt_standards.py` moves an active task to an approved Standards/Profile
+  revision without rewriting its lifecycle history;
+- `apply_delta.py`, `update_queue.py`, and `update_task.py` own batch and task
+  progression.
+
+Writers are dry runs unless `--apply` is present. Shared-state writes are
+integrator-only and require current revisions or hashes where the tool asks for
+them. Exact commands, schemas, and recovery procedures are in
+[Tools/README.md](Tools/README.md).
+
+## Use Cambium From An Agent Host
+
+Cambium renders registration and corpus binding for Claude Code, Codex, Kimi
+Code, and dsh from one canonical server definition:
+
+```bash
+python3 Tools/render_host_configs.py . \
+  --distribution-root /absolute/path/to/cambium \
+  --workspace-root /absolute/path/to/corpus
+
+python3 Tools/render_host_configs.py . \
+  --distribution-root /absolute/path/to/cambium \
+  --workspace-root /absolute/path/to/corpus \
+  --check
+```
+
+Generated files land under `Tools/compiled/host-configs/`.
+
+| Host | Install the generated configuration at |
+|---|---|
+| Claude Code | `<corpus>/.mcp.json` |
+| Codex | `<corpus>/.codex/config.toml` |
+| Kimi Code | `<corpus>/.kimi-code/mcp.json` |
+| dsh | the operator profile for registration and `<corpus>/.env` for binding |
+
+Registration answers “where is the server?” Corpus binding answers “which
+repository does this session govern?” They are separate capabilities.
+
+Installing a host configuration is not Cambium adoption. It does not approve a
+profile, create task state, or migrate Standards. The MCP server exposes the
+generated CLI projection and passes tool verdicts through; it does not create a
+second policy engine.
+
+Card delivery also has a strict evidence boundary. A server can prove what it
+sent, but not by itself what a host placed in the model context or what an agent
+read. Machine-enforced Assignment delivery remains an in-progress roadmap
+capability; until its gate is complete, do not turn transport metadata into a
+claim of cognition or independent execution.
+
+## Safety And Trust Boundary
+
+- A surviving writer lock is recovery evidence. Do not delete it until the
+  writer, state files, receipts, pending deltas, and archive moves are
+  reconciled.
+- JSONL receipts are append-only. An uncertain append keeps the lock rather
+  than guessing whether the receipt landed.
+- Exit code `2` is a hold, not success and not an ordinary failure.
+- Reports and generated projections are views, never canonical input.
+- Repository-provided verifier code is not run automatically; its source and
+  effects require explicit authorization.
+
+SHA-256 bindings detect drift and inconsistent history inside the adopter's
+local trust domain. They are not signatures. Without a protected runner or
+external attestation, Cambium does not authenticate actor labels, reviewer
+labels, operating-system identities, or workspace isolation. A party that can
+rewrite the repository, tools, and evidence can construct a new internally
+consistent history.
+
+## Repository Map
+
+| Path | Purpose |
+|---|---|
+| [`kernel/`](kernel/) | Normative standards, Read Sets, and Runtime Cards |
+| [`profiles/`](profiles/) | Profile interface, template, interview, and examples |
+| [`Tools/`](Tools/) | Checks, writers, schemas, receipts, and generators |
+| [`Tools/compiled/`](Tools/compiled/) | Generated CLI, MCP, metadata, and host projections |
+| [`ROADMAP.md`](ROADMAP.md) | Status-based implementation roadmap |
+
+Examples show answer shape; they are not defaults and must not be selected in
+place of an adopter-owned profile.
 
 ## License
 
-Cambium assigns licenses by path to its maintained, tracked release files:
+Cambium uses path-based licensing:
 
-- Software and implementation materials under [`Tools/`](Tools/) are licensed
-  under the Apache License 2.0.
-- The standards, profile materials, and project documentation under
-  [`kernel/`](kernel/), [`profiles/`](profiles/), this README, and
-  [`ROADMAP.md`](ROADMAP.md) are licensed under CC BY 4.0.
+- software and implementation material under `Tools/` uses Apache-2.0;
+- standards, profiles, README files, and roadmap documentation use CC BY 4.0.
 
-See [`LICENSE.md`](LICENSE.md) for the authoritative scope,
-[`ATTRIBUTION.md`](ATTRIBUTION.md) for attribution guidance, and
-[`LICENSES/`](LICENSES/) for the complete license texts.
+See [LICENSE.md](LICENSE.md), [ATTRIBUTION.md](ATTRIBUTION.md), and
+[LICENSES/](LICENSES/) for the authoritative terms and notices.
 
-Adopter-generated profiles, vocabularies, receipts, and runtime evidence do
-not acquire a Cambium license merely because they are stored inside these
-directories.
+Adopter-generated profiles, state, receipts, and evidence do not acquire a
+Cambium license merely because Cambium tools manage them.

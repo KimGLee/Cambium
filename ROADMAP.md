@@ -1,1010 +1,518 @@
 # Cambium Roadmap
 
-This roadmap is non-normative. It describes product implementation directions,
-not kernel rules, profile requirements, current capabilities, or release
-commitments. A feature is available only when the repository contains its
-implementation and the current documentation says how to use it.
+This roadmap describes product direction. It is not a kernel rule, a Profile
+requirement, or a release promise.
 
-The kernel and profile interface remain the authority for governed knowledge
-work. Future convenience layers may collect, project, and execute decisions;
-they may not invent domain policy, approve a profile, weaken a kernel gate, or
-bypass R09 adoption.
+A capability is available only when its implementation, documentation, and
+tests are present in the repository. A roadmap paragraph alone never makes a
+feature available.
 
-## Current Baseline
+## How To Read This Roadmap
 
-| Area | Current state |
+Every item has one of four states:
+
+| State | Meaning |
 |---|---|
-| Profile setup | `scaffold_profile.py` creates the candidate from the version-controlled whitelist `profiles/template-files.yaml` (16 copied files; the orientation README is never copied) and derives the mechanical identity/self-path cells; the interview contract `profiles/interview.yaml` collects the remaining decisions; `check_profile.py` validates. Manual whitelist copy remains the no-agent fallback |
-| Execution | The kernel defines sequential work, concurrent disjoint batches, independent review contexts, and serial integration |
-| Persistent work state | `.cambium/` separates object-level Coverage, the canonical Required Queue, task-level Progress, and hash-bound restricted-YAML complex-batch Work Specs; standard-library tools initialize, compile, validate, transition, apply Amendment-bound cross-Ledger changes, recover interrupted-write evidence, and render Queue state |
-| Active-task Standards adoption | One restricted-YAML plan binds approved governance bytes, deterministic Kernel/Profile snapshots, old/new Contract/Standards/Profile/load set, changed predicates, and dimension/boundary-specific invalidated evidence. Current admission projects semantic leaf impacts to registered owner Gates: Queue consistency is the only raw immediate receipt, while review/close/completion owners remain mandatory at their native transitions. After required pre-rollbacks/holds, `adopt_standards.py` synchronizes all three runtime identities without changing lifecycle/holds; append-only receipts preserve producer-era history, filter invalidated-evidence receipt IDs from current use, recover interruption, and avoid a prose duplicate |
-| Runtime | No bundled orchestrator, scheduler, or workspace manager. The shipped agent interface below is a call surface, not a runtime: it dispatches nothing, schedules nothing, and owns no assignment state |
-| Agent interface | Shipped. `compile_cli_contract.py` derives the CLI invocation contract by introspecting each tool's own parser; `render_interface_projection.py` projects it into the agent-facing MCP tool list (40 operations); `mcp_server.py` serves that list over stdio at protocol `2025-11-25` and decides nothing — it reads exit codes and receipts and never infers a verdict; `render_host_configs.py` renders registration and corpus binding for Claude Code, Codex, Kimi Code, and dsh from one canonical server definition. All four artifacts are build-time generated with `--check` recompute-and-compare. Adopting an already-supported host is configuration only; supporting a new host adds one renderer |
-| OpenAI Plugin adapter | MCP configuration now ships through the host-neutral agent interface above. No Plugin manifest, Skills, Hooks, or marketplace entry. Measured while building that interface: the Agent Plugins shell cannot determine which corpus a session governs at handshake — it declares no roots, resolves an omitted `cwd` to the plugin root rather than the session workdir, and rejects `env_vars` whitelist forwarding. A per-corpus binding and that shell are not simultaneously available; Codex is therefore registered through its project-level `.codex/config.toml`. The candidate design remains a host-specific adapter over the host-neutral Core, not a replacement for the kernel, selected Profile, or adopter-owned state |
-| Corpus planning and impact inputs | A configured Profile explicitly binds restricted-YAML Global Map, Capability Matrix, and Gap Register artifacts; `check_corpus_plan.py` validates structure/reconciliation and emits deterministic JSON, while `record_corpus_acceptance.py` records the distinct Profile-authorized semantic decision as append-only JSONL; no duplicate Markdown report is persisted |
-| Automatic dependency propagation | The kernel defines semantic dependency invalidation and downstream `needs_rereview`, but no bundled compiler or change detector yet calculates an affected set from the explicit planning inputs |
-| Independent completeness and consistency evaluation | Current gates prove integrity within the declared Coverage, Queue, Delta, receipt, and snapshot boundaries. No bundled independent pass yet re-derives the expected corpus or impact set without trusting those declarations, or evaluates paraphrased cross-document contradictions as a general capability |
-| Tools | Deterministic checks, schemas, receipts, vocabulary/Card compilation, Corpus Planning validation/semantic acceptance/on-demand Agent projection, Required Queue and Work Spec control, guarded Amendment and active-task Standards-adoption transactions, single-delta application, and the four agent-interface generators. The 27 receipt-producing tools carry `--json`: the receipt they already build is serialized to stdout while the human summary moves to stderr, and behaviour without the flag is unchanged. A tool that produces no receipt has nothing to serialize and carries no flag |
-| Page-level contract family | The composed frontmatter page contract (K08/06-08; `compose_page_contract.py` + advisory `page-contract` gate), Structure Registry resolution (K01/05-06; `structure-registry` gate) with marker-block coverage projections, and the page boundary contract (K08/09; advisory `boundary-contract` gate) with its tool-owned boundary projection — all deterministic, with advisory gates awaiting per-adopter promotion decisions under K12/10 |
+| **Complete** | Shipped in the repository and documented for use |
+| **In progress** | Active implementation work; not available until the complete change lands |
+| **Next** | Intended next capability with a defined boundary and completion test |
+| **Conditional** | Built only if its trigger occurs or a separate product decision is made |
 
-## Profile Adoption Reform And Onboarding
+The current user-facing capability summary lives in [README.md](README.md).
+This file records what changes next and why.
 
-Reduce profile adoption cost without shrinking the interface. The 14-slot
-interface stays; the reform ships one template that pre-closes every switch
-with a legal exit state and pre-fills the operational answers that generalize,
-and moves fill depth into the adoption interview, which walks those closed
-switches on request. Taking a default is full conformance, never a lower
-conformance tier. Acceptance target: a real small corpus reaches a checked
-candidate profile with at most 15 operator decisions in at most 30 minutes.
+## Status At A Glance
 
-### Pre-closed Template
+| Capability | State | Short version |
+|---|---|---|
+| Profile onboarding reform | Complete | One pre-closed template, scaffolder, interview contract, status view, checks, and end-to-end tests ship |
+| Persistent task and Queue runtime | Complete | Coverage, Required Queue, Progress, controlled writers, receipts, recovery, and closure paths ship |
+| Workflow progression MVP | Complete | Exact candidate carry, bounded delegated Amendments, and routed-gap settlement ship |
+| Host-neutral agent interface | Complete | CLI contract, MCP projection, stdio server, and four host renderers ship |
+| Activation transport and Assignment delivery | In progress | Replace an unprovable “server sent it” claim with budgeted delivery, host conformance, acknowledgements, and a delivery gate |
+| Reference execution runtime | Next | Add durable Assignment state, a single-writer integrator loop, then isolated workers and reviewers |
+| State-aware operation discovery | Next | Its scope has changed: the shipped MCP surface comes from tool CLIs, and any future discovery view must not become a second policy engine |
+| Typed dependency runtime | Next | Compile explicit corpus relationships and produce bounded change-impact plans |
+| Independent completeness and consistency evaluation | Next | Re-derive expected scope without trusting the executor's own Queue or Delta |
+| Machine-readable review rulings | Next | Make finding, confirmation, conditional fix, and close-gate evidence one load-bearing chain |
+| Receipt ledger integrity chain | Next | Add linked receipt history with an external tail anchor and era-aware replay |
+| Observability and broader Contract Amendments | Next | Runtime status and two amendment fields ship; orchestration views and additional contract fields remain |
+| OpenAI Plugin packaging | Conditional | Consider only after per-corpus binding and package lifecycle requirements are solved |
+| Detached state transactions | Conditional | Needed only when an authoritative writer cannot finish on its normal execution channel |
+| Concurrent receipt sealing | Conditional | Needed only if Cambium expands beyond the current single-writer maintenance window |
+| Sealed-evidence follow-ups | Next | The reported reachability defect is fixed; protected-set derivation, rehydration, and declared projections remain |
 
-One template in which every slot with a legal exit state (`None`,
-`Not applicable`, `kernel-defaults`, empty override table) ships already
-closed with scenario-accurate reasons, and the shapes for each closed branch
-travel as comments in the slot file that closes it. Identity remains
-unfilled, so the template is not selectable. An adopter who wants every
-switch answered explicitly gets that from the interview's expansion packs,
-not from a second directory to keep in step.
+## Authority Boundaries That Do Not Change
 
-### Pre-filled Defaults, Answer Patterns, And Kernel Absorption
-
-Operational answers — process and host role bindings, audit starter judgment
-items, no-grants priority, language display/naming/length defaults, and a
-generic volatility domain — ship pre-filled in the template with
-generalized wording and are confirmed or replaced during the interview; the
-kernel is not changed for them. Once real adoptions show a pre-filled answer
-is stable, it is harvested into a kernel-owned default-declaration state
-through ordinary standards work, so later improvements propagate instead of
-freezing in copied text.
-
-Required slots without a legal exit state — Knowledge Spine, Terminology
-Structure, Foundation Depth Requirements, and Source Authority — are answered
-through lightweight answer patterns rather than new degenerate kernel states:
-the interview proposes a shape (one line per pattern — for example, an
-own-observation source class recorded with a retrieval date), and the adopter
-instantiates it with their own content. Patterns are shapes, never copied
-answers, and none reads as an exemption from kernel behavior: a profile with
-a minimal source table remains fully bound by K07. Residual-scan
-configuration is deliberately excluded from static defaults: the production
-scan requires the repository to contain at least one file the matchers
-recognise, so scan parameters are derived from corpus inspection — or, on an
-empty corpus, declared and then materialized by the first batch — and
-confirmed by the operator instead.
-
-One kernel absorption is already decided: `last_verified` becomes conditional
-on `volatility: fast` in the K08 applicability base, promoting a field-proven
-adopter tightening into the kernel default. The originating profile removes
-its now-redundant difference row when adopting the revised standard.
-
-### Interview Contract
-
-Each decision that remains open in the template carries
-machine-readable question metadata — question, answer shape, validation,
-target slot and field, and trigger — embedded alongside the placeholder. Any
-agent can conduct the interview, project confirmed answers into the canonical
-profile files, and validate with `check_profile.py`. Questions are layered: a
-core pack collected at adoption, whose membership is chosen by change cost
-(decisions that are migration-grade to reverse — body language, layer
-directories, identity — are always asked and never defaulted), and per-slot
-expansion packs opened either electively or when a fail-closed gate names the
-slot a task needs. Deepening a profile later flows through ordinary Standards
-adoption and does not interrupt an active task.
-
-An onboarding assistant, where provided, is one execution mode of the
-interview contract, not a second profile interface. Whatever conducts the
-interview must produce only a candidate: it must not infer unconfirmed domain
-policy, copy example answers as defaults, write the active K00 state, approve
-the profile, or bypass R09. It should support both an existing corpus and a
-corpus built from zero, show the resulting diff and unresolved decisions
-before writing, and report structural failures in user-facing terms.
-
-## Reference Execution Runtime
-
-Implement the existing batch protocol as a host-neutral reference runtime.
-The runtime consumes the existing `.cambium/state/required_queue.yaml`; it does
-not create a parallel scheduler-owned batch ledger.
-
-### Assignment State
-
-Track the mapping between durable work and temporary execution contexts:
-
-- `batch_id`;
-- `execution_context_id` and optional parent context;
-- role (`integrator`, `writer`, `reviewer`, or `researcher`);
-- permitted write scope;
-- runtime status and handoff checkpoint;
-- the Card Activation Bundle and ordered Read-back Addendum delivery chain
-  injected into that execution context.
-
-Batch identity must survive an agent interruption or reassignment. Agent and
-subagent topology remains runtime metadata rather than profile configuration.
-No assignment enters `running` until its host adapter has delivered the exact
-Bundle bound by Queue admission. Resume and reassignment inject it again into
-the new context; a manual or unbound CLI attestation is degraded and cannot
-claim this capability.
-
-Where the host allows, a role's permitted write scope is enforced
-structurally rather than only recorded: each role receives an operation
-surface containing only its permitted operations, so a worker's surface has
-no integrator transition and a clean-context reviewer's surface exposes only
-review inputs and verdict submission. Interface scoping is defence in depth
-against misoperation, not authentication; the evidence trust boundary is
-unchanged.
-
-### Integrator Loop
-
-Implement the single-writer control path before automating parallel workers:
-
-- admit only dependency-ready batches with disjoint manifests;
-- consume Queue readiness, use the integrator-only transition tool for batch
-  activation, deliver its exact Card Bundle before dispatch, and own guidance
-  disposition without bypassing canonical state;
-- collect each batch's receipts and delta;
-- merge one batch at a time and run the global checks after each merge;
-- checkpoint, pause, resume, and reassign interrupted work safely.
-
-### Parallel Workers And Independent Review
-
-Add isolated worker execution after the integrator loop is reliable:
-
-- one write owner for each active batch;
-- isolated workspaces and batch-private receipt/delta locations;
-- parallel research and deterministic checks where they do not create shared
-  writes;
-- clean-context reviewers for L-tier substantive correctness review;
-- explicit escalation when dependencies, review rounds, or merge checks do not
-  converge.
-
-The active-batch cap remains separate from the number of agent contexts.
-
-### Host Adapters
-
-Map the reference runtime onto concrete environments without making any one
-host part of the kernel. An adapter may provide agent creation, workspace
-isolation, cancellation, event delivery, and context identifiers. It must
-declare unsupported capabilities and fall back safely rather than simulating
-evidence it cannot produce.
-
-The bundled stdio MCP interface already supplies the host-neutral primitive:
-one session identity, exact Card Bundle tool results, and content-addressed
-Read-back Addenda. Adapters reuse that primitive; they do not reparse Card
-prose or invent a parallel reading ledger.
-
-## Operation Capability Registry
-
-Make the kernel's implicit "which controlled operations are permitted in
-which runtime state" knowledge an explicit kernel asset. Today that mapping
-exists only as the `next_action` derivation inside
-`check_queue.py --resume-status` and as prose distributed across the
-standards; no single artifact owns it.
-
-- A restricted-YAML registry maps each task and batch state to the permitted
-  controlled operations, the writer tool that owns each operation, its
-  required parameters, and the receipt or gate evidence it consumes.
-- The registry follows the existing compose/check idiom (vocabulary, page
-  contract, Card stamping): a deterministic checker verifies that the
-  registry, each tool's declared CLI contract, and the kernel's transition
-  rules agree, and fails closed on drift.
-- The registry is the single generation source for any adapter's closed
-  operation surface, including the MCP surface below and capability
-  discovery responses. An adapter must not maintain an independent
-  hand-written operation list.
-- `--resume-status` `next_action` output must agree with the registry; the
-  registry makes that vocabulary canonical rather than replacing the
-  derivation.
-
-This is standards-layer work and precedes the adapter surfaces generated
-from it. The kernel leaf that owns the registry passes the normal admission,
-size-budget, and Read Set registration requirements, and reaches an active
-task only through Standards adoption.
-
-## OpenAI Plugin Host Adapter
-
-Implement a single `cambium` OpenAI Plugin as the first concrete Cambium host
-adapter and distribution surface. This capability is planned and is not
-currently shipped. The Plugin may package Skills, a local MCP adapter, and
-generated release resources, but it is not a new normative layer. The kernel,
-exactly one selected Profile, and the target repository's `.cambium/` state
-remain authoritative.
-
-The host-neutral half of this capability has since shipped separately, and it
-changes what remains here. Cambium is now callable from Claude Code, Codex,
-Kimi Code, and dsh through generated per-host configuration; the operation
-surface those hosts see is a build-time projection of the compiled CLI
-contract, not a hand-listed one. Several boundaries stated below are therefore
-already held by that interface rather than pending: the MCP surface is a closed
-set of typed operations with no arbitrary command runner and no second
-state-writing implementation, and registration is explicitly not adoption.
-What a Plugin would still add is packaging and distribution — a manifest,
-Skills, Hooks, and a marketplace entry — not the call surface itself.
-
-One measured constraint belongs on the record. The Agent Plugins shell cannot
-determine which corpus a session governs at handshake: it declares no roots, it
-resolves an omitted `cwd` to the plugin resource root rather than the session
-workdir (the native dialect and `config.toml` resolve to the workdir), and it
-rejects `env_vars` whitelist forwarding. All three channels were tested. A
-per-corpus binding and that shell are not simultaneously available, so Codex is
-registered through its project-level `.codex/config.toml` instead. A Plugin
-release that wants per-corpus governance must first close that gap upstream or
-carry the binding some other way; it cannot be assumed.
-
-OpenAI currently documents Plugins as an installable package that may combine
-Skills, MCP servers, Hooks, and assets. Its package contract is an evolving
-product contract rather than a versioned Cambium dependency. Every Cambium
-Plugin release must therefore be checked against the current
-[OpenAI Plugins documentation](https://developers.openai.com/plugins) and
-[builder contract](https://developers.openai.com/plugins/build/plugins), then
-tested through real installation and ingestion.
-
-### Architecture And Authority Boundary
-
-The adapter must preserve these boundaries:
-
-- Plugin installation or enablement is not Cambium adoption, activation, or
-  Profile approval.
-- Plugin reinstall, upgrade, downgrade, or removal must not migrate, replace,
-  or delete an adopter's active Standard, selected Profile, task state, or
-  receipt history.
-- Kernel or Profile changes continue through the explicit Standards-adoption
-  path and may not bypass R09.
-- `plugin_resource_root`, `workspace_root`, and `state_root` are distinct
-  capabilities. Plugin cache or `PLUGIN_DATA` may contain disposable caches,
-  preferences, and indexes only.
-- The adopter repository owns the adopted governance snapshot and canonical
-  `.cambium/` Coverage, Queue, Progress, Work Specs, receipts, and evidence.
-- Skills describe workflows, decision points, and user interaction. They do
-  not enforce invariants, own normative rules, or prove conformance.
-- MCP exposes a closed set of typed, high-level Core operations. It must not
-  expose an arbitrary command runner, unrestricted path access, or a second
-  state-writing implementation.
-- The adapter consumes the canonical Required Queue. It must not create a
-  scheduler-owned task or batch ledger in Plugin state.
-- A generic adoption mode may inspect a repository and produce a candidate
-  Profile when no Profile is selected. Runtime operations require exactly one
-  selected and validated Profile.
-- Hooks are optional defence-in-depth interaction controls. They require user
-  trust and are neither protocol authority nor audit evidence.
-- Repository-provided Profile verifiers are not executed automatically. Their
-  source, requested capability, and effect must be disclosed and explicitly
-  authorized, with allowlisting or isolation where applicable.
-- Host-provided actor names, reviewer labels, or context identifiers do not by
-  themselves prove authenticated execution or independent review.
-- Plugin release artifacts are generated from canonical Core and adapter
-  sources. Normative files are not maintained as independent manual copies
-  inside the package.
-
-An adapter must declare missing filesystem, isolation, cancellation, identity,
-or controlled-writer capabilities and fail safely. It must not fabricate the
-evidence that an unavailable Host capability would have produced.
-
-### Initial Package Shape
-
-The first release candidate should contain one `cambium` Plugin rather than a
-suite of interdependent Plugins. Its source and generated artifact should be
-separate so that package construction cannot silently fork the Core:
+Every roadmap item must preserve the same control plane:
 
 ```text
-adapters/openai-plugin/             # adapter source
-  mcp_server/
-  skills/
-  tests/
-packaging/                          # reproducible package builder
-dist/plugins/cambium/               # generated installable artifact
-  .codex-plugin/plugin.json
-  skills/
-  .mcp.json
-  assets/
-.agents/plugins/marketplace.json    # repository distribution metadata
+authority
+  = Cambium kernel
+  + exactly one selected Profile
+  + adopter-owned .cambium state
 ```
 
-New adapter and distribution paths require an explicit licensing and
-attribution decision. A Plugin bundle that contains differently licensed
-Tools, standards, documentation, or examples must retain the applicable
-per-path notices rather than collapsing them into an inaccurate package-wide
-claim.
-
-The initial interaction surface should remain small:
-
-- `adopt`: inspect the repository, execute the interview contract's question
-  packs to collect operator-confirmed decisions, produce a candidate Profile
-  and diff, and run structural validation without selecting or approving the
-  Profile;
-- `operate`: inspect or resume existing state, explain the deterministic next
-  action, and route any later write through a controlled Core transaction;
-- `audit`: inspect receipts, invalidations, batch-close evidence, and Terminal
-  Proof while distinguishing deterministic results, semantic judgment,
-  candidate findings, and unavailable evidence.
-
-The first MCP adapter is local and read-only. Candidate operations include
-capability discovery (the state-dependent permitted-operation set generated
-from the Operation Capability Registry), workspace inspection, Profile
-validation, resume status, Queue validation, receipt inspection, audit
-preview, and Terminal Proof verification. UI, remote
-repository access, automatic agent dispatch, and public-directory distribution
-remain deferred.
-
-### Phase 0 — Core And Packaging Stabilization
-
-Prepare Cambium for adapter use without changing kernel or Profile semantics:
-
-- extract a stable, typed Core API from repository-layout-dependent scripts;
-- ship per-tool `--json` output as the first increment of that Core API:
-  each tool derives its human-readable text and its JSON from one internal
-  result object, replaces overloaded exit-code meanings with enumerated
-  error codes, and declares an output schema covered by tests; a second
-  rendering path is a defect, and receipts remain the evidence of record
-  while `--json` remains a projection;
-- normalize filesystem roots and path aliases across supported platforms;
-- separate Plugin resources, target workspace, and canonical state;
-- define Plugin, protocol, receipt, and minimum-Core compatibility;
-- add platform CI and conformance fixtures for empty scans, path aliases,
-  symlinks, hardlinks, stale revisions, concurrent writers, and interrupted
-  writes;
-- define generated-package, attribution, upgrade, rollback, and support rules.
-
-Exit requires the complete supported test matrix and negative fixtures to
-pass, a documented compatibility contract, and no critical verifier depending
-on an ambiguous repository-relative `Tools/` root.
-
-### Phase 1 — Read-only Private Alpha
-
-Validate Plugin discovery and interaction without accepting write risk:
-
-- package the three Skills and a read-only local MCP adapter;
-- support workspace inspection, Profile validation, existing-state resume,
-  status explanation, and audit explanation;
-- distribute through a local or repository marketplace;
-- omit Hooks, UI, remote MCP, and automatic agent dispatch.
-
-Exit requires successful manifest validation, real installation and new-task
-loading, positive and negative Skill activation tests, zero target-state
-mutation, and proof that reinstall or upgrade leaves canonical state
-unchanged.
-
-### Phase 2 — Guarded Local Beta
-
-Add writes only through Core transactions:
-
-- expose explicit dry-run and apply operations; a dry-run response returns
-  the complete apply envelope, including the exact expected revisions and
-  SHAs it read, so a caller replays it rather than re-transcribing
-  parameters;
-- require exact workspace roots, expected revisions, locks, receipts, and
-  interruption recovery;
-- support candidate Profile onboarding and the bounded
-  initialize/compile/transition/apply/close/complete lifecycle;
-- preserve single-writer integration and explicit user authority.
-
-Exit requires successful clean adoption, existing-state resume, interrupted
-writer recovery, build and maintenance completion paths, and fail-closed tests
-for stale revisions, path escape, prompt injection, unauthorized verifier
-execution, and arbitrary-command input. Uninstall or reinstall must not lose
-target state.
-
-### Phase 3 — Codex Execution Adapter
-
-Implement the execution capabilities defined by the Reference Execution
-Runtime, in this order:
-
-1. durable assignment state;
-2. the single-writer integrator loop;
-3. isolated workers;
-4. clean-context reviewers;
-5. cancellation, interruption, reassignment, and observability.
-
-Exit requires replayable parallel batch work with serial integration, explicit
-safe failure for unsupported Host capabilities, and evidence-backed actor and
-reviewer claims. An inherited-context agent must not be represented as an
-independent reviewer.
-
-### Phase 4 — Workspace And Ecosystem Distribution
-
-Only after the Core API, compatibility model, and permission boundary are
-stable, evaluate:
-
-- Workspace sharing;
-- host-specific source and event connectors;
-- a read-only observer or status UI;
-- a public Skills-only educational package that makes no conformance claim;
-- remote MCP and Universal Plugin Directory submission.
-
-A connector may contribute source, event, or authenticated identity evidence.
-It must not become Profile authority, dependency policy, semantic ownership,
-or completion authority. Public remote MCP remains blocked until the local
-repository data path, authorization, retention, and threat model are complete.
-
-### Release Gates
-
-- **G0 — Current Plugin contract:** validate against current official
-  documentation and real ingestion; test manifest, MCP, Hooks, cache, new-task,
-  upgrade, and rollback behavior; do not claim a frozen Plugin "v1".
-- **G1 — Protocol and Core:** all supported tests and negative fixtures pass;
-  plain-filesystem and Host-adapter fixtures produce equivalent Cambium
-  semantics.
-- **G2 — Plugin archive:** install, reinstall, upgrade, and new-task loading
-  pass; package resources are complete; Plugin lifecycle cannot migrate active
-  Cambium state.
-- **G3 — Adapter E2E:** adoption, resume, interrupted-write recovery, batch
-  integration, Terminal Proof, maintenance completion, Standards adoption, and
-  uninstall/reinstall persistence pass.
-- **G4 — Security and trust:** no arbitrary-command surface; exact workspace
-  capabilities; prompt-injection and path-escape coverage; no credentials in
-  logs or receipts; accurate tool side-effect annotations; no actor, reviewer,
-  or isolation claim without Host evidence.
-- **G5 — Public distribution:** immutable release, support matrix, changelog,
-  migration guide, conformance bundle, licensing and attribution review,
-  security and privacy policies, sufficient positive and negative tool cases,
-  and a closed local-repository or remote-MCP data architecture.
-
-### Non-goals
-
-This roadmap item does not:
-
-- rewrite Cambium as one large Skill or prompt;
-- make Plugin files, cache, or a remote service the owner of the active
-  Standard or canonical state;
-- let Plugin updates silently migrate the kernel, Profile, or an active task;
-- claim Cambium conformance from prompt-level behavior;
-- provide an arbitrary shell-command MCP tool;
-- make UI or Hooks part of the trust boundary;
-- auto-execute adopter-controlled verifier code;
-- bundle automatic agent dispatch before the Reference Execution Runtime is
-  implemented;
-- claim authenticated actors, independent review, or workspace isolation
-  without corresponding Host evidence;
-- require remote MCP or Universal Directory publication for the local MVP;
-- split Cambium into multiple dependent Plugins before the single-adapter API
-  and upgrade model are stable.
-
-## Typed Dependency Runtime
-
-Turn the kernel's existing dependency, invalidation, and downstream re-review
-semantics into a host-independent executable projection. This runtime is an
-implementation of current governance rules, not a new source of dependency
-policy and not a requirement that every knowledge link become an invalidation
-edge.
-
-### Compiled Dependency Model
-
-Compile explicit relationship sources into a normalized typed dependency
-graph. Eligible inputs include:
-
-- the configured Global Map's explicit typed dependencies;
-- the Capability Matrix's explicit capability priorities, canonical paths,
-  evidence, and Gap IDs;
-- the Gap Register's explicit capability links and promoted Coverage paths;
-- frontmatter `prerequisites`;
-- canonical-to-derived-artifact bindings;
-- source and supported-claim bindings;
-- registered MOC or collection membership;
-- schema, profile, and Standards contract bindings;
-- profile-registered relationship extensions that do not redefine kernel
-  semantics.
-
-Each normalized edge identifies the dependency, the dependent object, the
-relationship type, its invalidation policy, and the declaration from which the
-edge was compiled. The generated graph is a deterministic artifact. Knowledge
-pages, profiles, registries, and ledgers remain authoritative, and rebuilding
-the graph from the same accepted inputs must produce the same result.
-
-Raw backlinks are discovery input, not dependency authority. A wiki link may
-mean prerequisite, ownership, evidence, comparison, alternative, application,
-or navigation. Only an explicit kernel relationship or profile-registered
-extension participates in automatic semantic propagation. This prevents a
-popular navigation target from invalidating every page that merely mentions
-it.
-
-### Change-impact Planning
-
-Compare the latest accepted snapshot with the current candidate snapshot and
-classify changes to content, paths, headings, aliases, governed metadata,
-canonical ownership, evidence, schemas, profiles, or Standards contracts.
-Resolve the directly affected dependents through the compiled graph and emit
-an explainable impact plan containing:
-
-- the changed object and change kind;
-- the dependency edge that caused propagation;
-- the affected object;
-- the invalidated quality dimension;
-- the required deterministic check or semantic review;
-- the evidence needed to close or reuse the affected receipt.
-
-The impact plan must integrate with the existing AuditPlan, Coverage Delta,
-`needs_rereview` candidate pool, and AuditReceipt reconciliation contracts. It
-discovers and plans affected work; it does not edit knowledge pages or write
-the canonical ledgers directly.
-
-Propagation remains bounded. Direct dependents are the default affected set.
-Further expansion requires a registered transitive relationship, an observed
-systemic failure, or explicit task authority. A local change must not trigger
-an unconditional full-corpus LLM review, while a declared dependency must not
-be ignored merely to reduce review cost.
-
-### Host Independence
-
-The core compiler and impact planner must operate on ordinary Markdown, YAML
-frontmatter, profiles, registries, ledgers, and receipts without requiring
-Obsidian or another knowledge host.
-
-A host adapter may contribute wiki-link extraction, backlinks, rename events,
-or host-specific identities. It must normalize them into the same dependency
-model and must not make host configuration an authority for semantic edges.
-In particular, the runtime must not depend on Obsidian Graph View state or
-`.obsidian/graph.json`. A plain filesystem corpus and a host-backed corpus with
-equivalent declarations must compile to equivalent normalized relationships.
-
-### Runtime Boundary
-
-The Typed Dependency Runtime may compile relationships, detect changes,
-validate declared targets, produce affected sets, and emit receipts. It must
-not:
-
-- infer an unconfirmed domain dependency from semantic similarity alone;
-- treat every backlink as a dependency;
-- rewrite affected content automatically;
-- promote authoring, evidence, learning, or expression-readiness status;
-- bypass AuditPlan, Coverage Delta, or integrator authority;
-- perform unbounded transitive review;
-- declare batch or task completion.
-
-This roadmap item is limited to note- and governed-object-level dependencies.
-Inline or block-level dependency markup is outside its scope.
-
-### Acceptance
-
-The capability is complete only when:
-
-1. identical accepted inputs produce a byte-identical normalized graph;
-2. every declared dependency resolves or carries an explicit future, deferred,
-   retired, or otherwise profile-authorized disposition;
-3. an upstream change finds every directly affected dependent and explains
-   each propagation path;
-4. ordinary comparison, alternative, and navigation links do not trigger
-   semantic invalidation;
-5. path, heading, alias, content, evidence, and contract changes invalidate
-   only their applicable dimensions;
-6. the output can be consumed by existing AuditPlan and Coverage Delta flows;
-7. empty scans, malformed declarations, and missing required inputs fail
-   closed;
-8. the runtime never modifies knowledge content while calculating impact;
-9. bounded propagation and receipt reuse remain consistent with the kernel;
-10. the conformance suite passes against both a plain Markdown fixture and a
-    host-adapter fixture without host-specific semantic differences.
-
-## Independent Completeness And Consistency Evaluation
-
-Add a read-only evaluation boundary that does not let the execution plan grade
-its own completeness. Existing gates remain authoritative for the consistency
-of declared Coverage, Queue, Delta, receipt, and snapshot state. This evaluator
-addresses the different question of whether those declarations describe the
-whole expected scope and impact set.
-
-### Independent Expected-set Re-derivation
-
-At initial inventory, applicable batch close, and Terminal Audit, independently
-derive the expected set from upstream accepted inputs. Eligible authorities
-include the frozen Task Contract, selected Profile Scope and exclusions,
-accepted Global Map, Capability Matrix and Gap Register, baseline and candidate
-repository snapshots, accepted Guidance and Amendments, and the compiled typed
-dependency projection.
-
-The re-derivation pass must not use the worker's Queue manifest, Delta, changed
-file list, completion claim, or self-authored rationale as the authority for
-what should be in scope. It may read those artifacts only after deriving the
-expected set, in order to compare:
-
-- the independently discovered in-scope corpus with Coverage inventory records;
-- the independently derived affected set with planned Queue manifests;
-- the planned manifest with the actual Delta and changed-file set;
-- the affected set with current review, invalidation, and receipt coverage.
-
-The result reports exact missing, unexpected, deferred, excluded, and
-unresolved members. Set disagreement cannot be collapsed into a passing count,
-and a zero-member result is not a pass unless an independently verifiable empty
-scope predicate applies. When the accepted inputs are insufficient to derive a
-member or disposition, the evaluator fails closed or raises an explicit
-adjudication candidate rather than silently accepting the executor's choice.
-
-### Cross-document Concept Consistency
-
-Add a bounded evaluation over documents that explicitly share a canonical
-concept, owner, dependency edge, capability, Gap, source-supported claim, or
-canonical-to-expression binding. It should detect at least:
-
-- incompatible definitions or mechanisms attributed to the same concept;
-- conflicting defaults, constants, thresholds, state transitions, or exception
-  conditions;
-- a derived or expression artifact contradicting its canonical owner;
-- two apparent canonical owners for one responsibility;
-- a downstream page that still asserts an invalidated upstream conclusion.
-
-Deterministic comparisons over registered fields, identifiers, constants, and
-relationships run first. A semantic evaluator may review paraphrases only over
-the bounded, explainable concept group and must return the compared passages,
-canonical owner, finding rationale, and confidence or adjudication status. It
-does not acquire authority to invent dependencies, rewrite content, or approve
-its own findings. Lexical duplicate detection remains candidate discovery and
-does not substitute for contradiction evaluation.
-
-### Separation And Trust Boundary
-
-The evaluator is a separate read-only pass with independently constructed
-inputs and no authority to modify Coverage, Queue, Progress, content, or its own
-acceptance threshold. A clean-context reviewer may satisfy the procedural
-separation in a local deployment; stronger deployments may use an isolated
-runner, protected baseline, signed receipt, or authenticated reviewer identity
-through a host adapter. Actor labels and repository-local hashes alone remain
-integrity evidence, not proof of independent execution.
-
-External evaluation libraries may be optional adapters for semantic metrics,
-datasets, and experiment execution. They must not become the owner of Cambium's
-scope, dependency, canonical-ownership, or completion semantics, and an adopter
-must be able to run the deterministic expected-set checks without a hosted
-service.
-
-### Acceptance
-
-The capability is complete only when:
-
-1. a fresh filesystem inventory independently detects an in-scope Markdown
-   file omitted from Coverage;
-2. an independently derived impact set detects an affected object omitted from
-   the Queue, Delta, review scope, or invalidation set;
-3. a negative fixture that updates only half of the true expected set fails
-   even when its Coverage, Queue, Delta, receipts, and proof are internally
-   consistent with that incomplete half;
-4. paraphrased cross-document contradictions are surfaced without treating
-   consistent paraphrases as failures;
-5. exclusions, deferrals, and not-applicable decisions are explicit,
-   authority-bound, and independently checkable;
-6. empty scans, missing upstream inputs, ambiguous ownership, and unresolved
-   dependency targets cannot produce a green result;
-7. evaluation receipts bind the baseline and candidate snapshots, accepted
-   upstream authorities, derived expected sets, evaluator version, and exact
-   findings;
-8. the evaluator is read-only and cannot reuse the executor's expected-set
-   artifact as its own derivation;
-9. the deterministic layer works on a plain filesystem corpus without a
-   particular agent host or external evaluation service; and
-10. existing Queue, batch-close, Corpus Planning, and Terminal Proof gates
-    continue to validate their current ownership boundaries rather than being
-    duplicated inside the evaluator.
-
-## Observability And Conformance
-
-Make orchestration inspectable and testable:
-
-- batch, agent-context, queue, receipt, and blocker status views;
-- conflict, timeout, cancellation, and handoff diagnostics;
-- interrupted-run and serial-merge recovery tests;
-- equivalence tests between sequential and concurrent execution;
-- conformance fixtures for profile generation, independent review, receipts,
-  delta application, and host-adapter capability claims.
-
-The local baseline deliberately treats repository/tool/evidence writers as a
-trust domain. Deployments that include adversarial writers may add signed
-receipts, protected-runner attestations, and authenticated actor/reviewer
-identity through a host adapter; those controls must strengthen the existing
-byte and state bindings rather than replace them.
-
-Add a guarded non-scope Task Contract Amendment transaction for objective,
-exclusion, acceptance, timing, and pause-policy changes. The
-`policy_exceptions` field shipped its writer first
-(`Tools/apply_contract_amendment.py`, K13/06 Contract Amendment): one anchored
-transaction with resolver-validated policy fingerprints and effective joint
-quota bounds, and the pattern the remaining fields' writer extends. The
-current baseline still fails closed on direct post-materialization edits of
-every other field; until the generic writer exists, such a change rolls into
-a preserved successor task rather than mutating live Contract bytes.
-
-## Receipt Ledger Integrity Chain
-
-Receipt files are plain append-only JSONL with no integrity structure of
-their own. Tamper evidence today is earned field by field through cross
-binding: a receipt field is immutable only because a second durable record
--- an amendment row, the contract anchor chain, a persisted plan, live state
-bytes -- also records it, and replay compares the two. Every field that
-AUTHORIZES anything is covered this way. The structural residue is the class
-of fields with only one carrier, of which `after_progress_sha256` on the
-K13/06 contract-amendment and K13/15 adoption commit receipts is the
-canonical example: the durable row lives inside the progress document, so it
-cannot record the hash of bytes that contain it, and replay can verify the
-field's format but never its historical value. Per-field cross binding can
-never close this class, because its members are exactly the fields for which
-no second carrier can exist.
-
-This item closes the class wholesale by giving the canonical receipt ledgers
-an integrity structure:
-
-- Every receipt in a chained ledger carries `prev_receipt_sha256`, the
-  SHA-256 of the previous line's exact bytes; the first line anchors to a
-  declared per-file genesis value. Editing any landed line breaks every
-  subsequent link.
-- A self-contained chain is NOT sufficient: whoever can edit the file can
-  re-derive the whole chain. The chain tail must be pinned outside the file
-  it protects -- each authoritative writer records the tail hash of every
-  ledger it appended to in the same state write it already compare-and-swaps
-  (e.g. a `receipts_tail_sha256` map in the Progress Ledger), so rewriting a
-  ledger consistently would also have to rewrite state that IS cross-bound.
-- Producer-era split, K12/10 discipline: receipts written by pre-chain
-  producer eras carry no link and replay forever under today's rules; the
-  chain requirement binds only eras that declare it. No historical ledger is
-  retro-invalidated for a reason its producer could not have anticipated.
-- Recovery semantics extend the existing uncertain-append rule: an uncertain
-  tail blocks further appends to that ledger and retains the writer lock
-  until reconciliation decides whether the line landed; a broken link marks
-  the ledger's suffix suspect as a whole, and distinguishing corruption from
-  tampering -- and repairing either -- needs its own guarded path, since an
-  unguarded repair channel would be the new tampering channel.
-
-Scope, when adopted: the canonical `.cambium/receipts/` ledgers consumed by
-runtime validation (task transitions, queue transitions, contract
-amendments, adoption, delta application, batch-close bundles). Adoption is a
-Standards revision under K12/10 with a coordinated version bump of every
-producer, not a tool patch.
-
-This roadmap item does not:
-
-- change what any receipt authorizes -- authorization already rests on
-  double-carrier bindings, and the chain adds forensic integrity, not new
-  authority;
-- defend against an adversary with unrestricted repository write access,
-  who can alter state, plans, and anchors together; the Evidence trust
-  boundary is unchanged, and deployments needing that defense layer signed
-  receipts or host-adapter attestations on top (see Observability And
-  Conformance);
-- replace version-control history where the adopter has it -- a
-  git-managed corpus already carries file-level tamper evidence the runtime
-  simply does not consume;
-- ship the cheaper partial forms (per-line self-hash without a chain, or a
-  chain without an external anchor); both detect less than they appear to
-  and would read as "closed" when the class is not.
-
-## Detached State Transaction Protocol
-
-An adopter runtime can live on an execution channel that terminates a
-command before a state writer's full validation finishes. During the
-incident, the active `device_bash` tool channel exposed `timeout_ms <=
-45000` and terminated commands at that limit. This is a property of that
-execution channel, not a general device, mount, or bridge guarantee. The
-historical 75-second close duration is unverified. The 2026-08-13
-incident: a close transition that could not finish on the device was
-executed against a byte-identical replica of the runtime in another
-environment and the after-image installed back, verified by before/after
-hashes of the three state files and the close gate's repository snapshot
-binding. The result was correct and the user ratified it as a one-time
-procedural exception — explicitly NOT a reusable precedent, because the
-writer lock taken in the replica protects the replica, not the
-authoritative namespace, and the state-file hashes do not cover the receipt
-append frontier, pending deltas, archive moves, or recovery locks.
-
-Receipt sealing (K12/07) removed the known unbounded hot-ledger
-deserialization cost, but the surviving measurements do not establish that
-cost as the incident's proximate cause; the detached-execution class remains.
-If detached execution is ever needed again, it must be a protocol, not an
-improvisation:
-
-- `detached prepare`: acquire the REAL writer lock on the authoritative
-  namespace, record the complete before-image (three state files, every
-  receipt register tail, pending-delta and lock inventory) in the lock
-  owner metadata, and export it.
-- Compute the transaction elsewhere against exactly that before-image.
-- `detached commit`: under the still-held authoritative lock, CAS the full
-  before-image (not just the three state files), append only new receipt
-  bytes, install the explicit after-image, and write prepare/commit/abort
-  receipts exactly as the in-place writers do.
-- Any drift between prepare and commit aborts; the lock and the recorded
-  intent drive the same `--resume-status` recovery every other writer uses.
-
-Do not ship the shortcut form (copy out, compute, copy back with state-file
-hash checks alone); it reads as safe exactly until a concurrent writer,
-receipt append, or archive move lands between the copies.
-
-## Concurrent Sealing Protocol
-
-Receipt sealing ships with a deliberately narrow operating boundary: a declared
-maintenance window with a single writer, stated in K12/07 and enforced socially
-rather than mechanically. The receipt append mutex makes the ordinary accident —
-a checker or writer running beside a seal — fail loudly instead of dropping a
-receipt, and that is all it claims. The following are known and accepted at that
-boundary. None of them blocks the current version; each is listed so that a
-later version widening the boundary knows what it has to close, and so that
-nobody rediscovers them as surprises.
-
-- **Intra-process concurrency.** Mutex acquisition is re-entrant through a
-  module-level counter, which is what lets a writer append its own receipts
-  while holding it. The cost is that threads, and forked children sharing the
-  interpreter state, are not separated from each other.
-- **Bypassing appenders.** The mutex binds only writers that go through
-  `kblib.write_receipts`. Anything appending bytes to a register directly is
-  unaffected. The rewrite's tail-preservation is the second line of defence
-  here, and it is a mitigation, not an exclusion.
-- **Marker aliasing.** `receipt-append.free` / `.held` are ordinary paths under
-  `.cambium/tmp/` and are not themselves checked for symlink or hardlink
-  aliasing before use.
-- **Cross-host writers.** Reclaiming an abandoned mutex rests on the recorded
-  pid being absent from *this* host. That is sound for a crashed local writer
-  and says nothing about a writer elsewhere.
-- **Cold-path containment is detection, not prevention.** The symlink-component
-  and hard-link checks over `cold/` are evaluated once per consistency run.
-  They catch a stale working copy or an ordinary mistake; they do not defend
-  against a party who can change the filesystem between the check and its use.
-- **Coordinated tampering.** The journal binds the pending record by hash and
-  the cold registers are bound by the seal receipt, so editing any one of them
-  alone fails closed. An edit to journal and pending together, by someone who
-  can also write the receipt register, is not defended — consistent with the
-  standing trust boundary that a party controlling the repository, the tools,
-  and all evidence can fabricate an internally consistent history.
-- **Recovery scope.** `--reconcile` deterministically finishes the publication
-  paths the sealing writer implements. Other interruptions are required only to
-  fail closed and preserve recoverable evidence; the operator runbook in
-  `Tools/README.md` covers them, and restoring the pre-seal `.cambium/` copy is
-  always a valid answer.
-
-Widening this boundary means a real concurrent protocol: an epoch or cutover
-that appenders participate in rather than a marker they cooperate with, with the
-exclusion property stated as an invariant and tested against genuine racing
-writers. That is a separate change with its own acceptance criteria, not an
-incremental hardening of the above.
-
-## Sealed Evidence Reachability
-
-Sealing now keeps the aggregate a recorded Queue transition consumed out of the
-cold namespace, gives the consumption replay an explicit sealed branch that
-re-proves the record's own hash at the read, and fails a run closed when a
-recorded consumption's evidence resolves in neither namespace. That closes the
-defect an adopter hit: its transitions stayed hot, what they bind went cold, and
-obligations those transitions had discharged silently reopened while every run
-reported zero errors. Three things about the shape of that defect are not closed.
-
-- **The protected set is still enumerated by hand.** `_hot_reference_ids` lists
-  fields; consumers resolve receipt IDs from wherever they like. The defect was
-  never one missing field — it was that nothing compared the two sets. The
-  regression test now asserts that no reachable hot body resolves a sealed
-  receipt outside a declared sealed-branch field, which catches the whole class,
-  but only over what a fixture reaches. Deriving the protected set from the
-  consumers themselves would remove the enumeration rather than guard it.
-- **Nothing moves a row back.** `seal_receipts.py` moves rows cold and has no
-  rehydration path. Body resolution makes an already-sealed archive survivable
-  for consumers that have a sealed branch; a consumer that genuinely requires a
-  row hot — because it needs a field no projection carries and no branch exists
-  — has no sanctioned repair short of restoring a pre-seal copy.
-- **The projection schema is fixed and identity-only.** Each new body-level
-  consumer therefore faces a binary choice: keep its evidence hot, or re-read
-  the sealed record. A projection whose fields consumers declare against would
-  let the seal carry what its readers actually need, and would make "this field
-  is not in the projection" a planning-time answer rather than a runtime one.
-
-## Workflow Progression MVP Boundaries
-
-Three workflow debts are closed together because each was making ordinary
-batch progress ask for a semantic decision after the relevant decision had
-already been made. Their implementations share existing state, receipt, and
-writer transactions; none introduces a parallel control plane.
-
-### Batch-close candidate continuation
-
-`exact-carry-v1` keeps the complete repository scan on every close and reuses
-only the review disposition of an exact unchanged observation. The sole
-baseline is the immediately preceding successful close, resolved through the
-same verified hot/cold receipt catalog. A row carries only when its prior
-disposition was `accept-while-unchanged`, its stable ID, complete observation
-hash, and producer version still match, and it is not manifest-local
-page-contract debt. A disappearance breaks continuity; legacy evidence grants
-no carry; a producer or detail change is fresh; and a type selector expands
-only the exact rows present in the current fresh set. Priority quota continues
-to use its bounded policy-exception path.
-
-This is intentionally not scan caching, a global candidate ledger, semantic
-equivalence, a time-to-live policy, or revival across a disappearance interval.
-Those mechanisms can be proposed later if exact carry proves too conservative;
-they are not required to stop stable advisory debt becoming every batch's new
-manual ticket.
-
-### Delegated operational Amendments
-
-The Task Contract may carry a closed `amendment_authority`. Its safe state is
-absent or `user-only`; `delegated-integrator` names only registered bounded
-change classes. The registration writer derives the complete impact from the
-proposed Coverage and live Queue, binds the exact class set and authority
-fingerprint, and every consuming writer derives it again under lock. The first
-delegatable set is limited to Required-object addition/promotion/rerouting,
-batch addition, and queued-batch update. Unknown effects, removal/demotion,
-terminal-history changes, and unsupported metadata changes fail closed or
-require an explicit user decision through an implemented writer.
-
-Delegation never authorizes its own expansion. Changing or revoking the
-allowlist remains a confirmed Contract Amendment. This MVP does not infer
-semantic scope from prose, create a generic arbitrary-diff capability, or let
-an Agent edit Queue/Coverage directly.
-
-### Routed-gap settlement before freeze
-
-Every gap routed to a batch is now an explicit obligation before that batch
-enters `merge-ready`. A read-only Delta preflight computes the prospective
-Coverage after-image; the transition binds the obligation set and proves that
-none remains routed to the batch, then apply and close re-prove the same facts.
-A newly created gap may target only an existing actionable later batch. An
-existing gap reroute uses the controlled Amendment path before freeze.
-
-The close gate is therefore a verifier, not the first place unfinished routing
-is discovered. This MVP does not edit a frozen Delta, treat
-`merge-ready -> open` as routine bookkeeping, reopen terminal history, or
-invent a successor batch when none exists.
-
-## Machine-readable Review Rulings
-
-A K12/12 substantive review currently ends in prose. Its findings, their
-grades, and the confirmation round's verdict on each are written for a
-person; nothing a gate reads carries them. The 2026-08-13 incident: a
-confirmation round ruled one finding not-closed while issuing the exact
-five-character fix, the fix was applied correctly by hand, and the receipt
-that recorded the batch wrote `result: pass` at top level with the deviation
-admitted only in its prose. The machine gates read the field.
-
-A first attempt at the carrier — a `closed-conditional` ruling executed by a
-tool that verifies pre-image, patch uniqueness and post-image — was written
-and then withdrawn before release, because it verified a shape no producer
-emits: no review tool writes a machine-readable verdict, so the tool's
-`review_receipt` field could only ever have been filled in by the same
-executor it was meant to constrain, and no gate consumed the resulting
-receipt. Shipping it would have repeated the original error one level up:
-a rule whose enforcement is prose.
-
-The order this work has to follow:
-
-- A review round writes machine-readable findings — stable finding ID,
-  grade, target page and the bytes judged — into a review register, as a
-  receipt from the reviewing context.
-- The confirmation round writes a verdict per finding against those IDs,
-  with reviewer identity distinct from the executor's, in the same way
-  `check_batch_close` already requires distinct integrator and reviewer
-  labels.
-- Only then can a conditional close mean anything: an executor tool
-  resolves the reviewer's verdict receipt, refuses one it cannot resolve or
-  that names itself as reviewer, applies the literal patch under the writer
-  lock with pre-image CAS, and writes a receipt a close gate reads.
-- The batch-close gate then refuses to close a batch with an unexecuted
-  `closed-conditional` finding, which is the consumer that makes the whole
-  chain load-bearing.
-
-Until the first step exists, a round-2 not-closed escalates. That is the
-current rule and it is not a gap.
-
-## Implementation Order
-
-Profile onboarding and typed dependency compilation can progress independently
-of agent orchestration. Within the onboarding line, the pre-closed template and
-the kernel-default/degenerate-state work precede the interview contract, which
-in turn precedes the Plugin `adopt` operation that consumes its question
-packs. The persistent Required Queue is already the execution
-interface; the future reference runtime consumes it rather than redefining it.
-The dependency runtime consumes accepted corpus state and emits plans; the
-reference execution runtime may later schedule those plans without owning their
-semantic policy. Filesystem-to-Coverage inventory re-derivation can be delivered
-before the full typed dependency runtime; impact-set and bounded semantic
-consistency evaluation follow the compiled dependency model so they do not
-invent a second relationship authority. Within the orchestration line,
-assignment state and the deterministic integrator loop precede parallel worker
-automation; observability and recovery tests accompany every stage. This order
-protects the shared control plane while still making multi-context execution
-the intended scaling path.
-
-The host-neutral agent interface is complete and sits before the Plugin line
-rather than inside it: the compiled CLI contract, its projection, the MCP
-server, and the per-host configs are all host-neutral, so a Plugin release
-consumes them rather than reimplementing them. A new host is adopted by adding
-one renderer, which is why the per-host configuration piece is the acceptance
-test for the three before it rather than a fourth feature.
-
-Core stabilization precedes every state-writing Plugin capability. The
-Operation Capability Registry is standards-layer work that precedes the
-read-only alpha's operation surface, which is generated from the registry
-rather than hand-listed. The read-only Plugin alpha may progress alongside
-Profile onboarding and typed dependency work because it does not own
-canonical state. Guarded writers follow
-the stable Core API, while the full Codex execution adapter follows the
-single-writer integrator loop. Workspace and public distribution are downstream
-delivery choices and do not define completion of the host-neutral Cambium
+Convenience layers may collect decisions, render views, or call controlled
+operations. They may not:
+
+- invent domain policy or approve a Profile;
+- weaken a kernel gate or bypass R09 Standards adoption;
+- create a second Queue, Progress ledger, or receipt authority;
+- expose an arbitrary shell runner or unrestricted repository paths;
+- run adopter-provided verifier code without explicit authorization;
+- claim authenticated identity, isolation, independent review, or delivery
+  without evidence from the host that provides it.
+
+## Complete Foundations
+
+These items used to be future roadmap work. They are now part of the current
+baseline and remain here only to make the transition visible.
+
+### Profile Onboarding Reform
+
+Cambium now ships one template rather than “minimal” and “full” template
+families. The template pre-closes switches that have a safe legal exit state
+and leaves repository-specific decisions open.
+
+The shipped flow includes:
+
+- `profiles/template-files.yaml` as the exact-copy whitelist;
+- `Tools/scaffold_profile.py` for safe candidate creation;
+- `profiles/interview.yaml` as the machine-readable question contract;
+- `Tools/profile_onboarding_status.py` as a read-only state and `next_action`
+  view;
+- `Tools/check_profile.py` for structural and dependency validation;
+- end-to-end fixtures for existing and empty corpora.
+
+An assisting agent may prepare a candidate. It may not approve the Profile,
+select it, or infer unconfirmed domain policy.
+
+The former target of “at most 15 operator decisions in 30 minutes” is now a
+product-experience measurement, not an implementation claim. It remains
+unproven until measured with real adopters. An automated interview runner is a
+possible convenience layer, not a missing governance mechanism.
+
+### Persistent Runtime And Workflow Progression
+
+The adopter-owned runtime now separates:
+
+- object state in Coverage;
+- batch state in the Required Queue;
+- whole-task state in Progress;
+- complex-batch instructions in immutable Work Specs;
+- proposed changes in Deltas and controlled plans;
+- append-only evidence in receipts.
+
+Three workflow debts are also closed:
+
+1. `exact-carry-v1` reuses only the review disposition of an exact unchanged
+   observation from the immediately previous successful close.
+2. `amendment_authority` can delegate only registered bounded operational
+   change classes; delegation cannot expand itself.
+3. Every gap routed to a batch must be settled or rerouted before that batch
+   reaches `merge-ready`.
+
+These mechanisms reuse the existing ledgers and writers. They do not create a
+parallel control plane.
+
+### Host-neutral Agent Interface
+
+The host-neutral interface is complete:
+
+```text
+each tool's argparse declaration
+  -> Tools/compiled/cli-contract.yaml
+  -> Tools/compiled/mcp-tools.json
+  -> Tools/mcp_server.py
+  -> generated host configuration
+```
+
+Claude Code, Codex, Kimi Code, and dsh consume generated registration and
+workspace binding. The MCP server runs tools as subprocesses and passes their
+verdicts through. It does not decide whether an operation is allowed or whether
+evidence is sufficient.
+
+This delivery changed the Plugin plan: Cambium no longer needs an OpenAI Plugin
+to obtain a callable agent interface. A Plugin would add packaging and
+distribution only.
+
+### Sealed Evidence Reachability Fix
+
+Receipt sealing now preserves the evidence a recorded Queue transition
+consumed, resolves the required body from verified cold storage, and fails
+closed when evidence exists in neither hot nor cold storage.
+
+That closes the reported defect where sealing could silently reopen an already
+discharged obligation. The broader follow-ups are listed under
+[Sealed-evidence Hardening](#sealed-evidence-hardening).
+
+## In Progress
+
+### Activation Transport And Assignment Delivery
+
+**State: In progress; not shipped until the complete standards, tools,
+generated artifacts, and tests land together.**
+
+The original activation protocol treated a server result delivered to an MCP
+session as proof that the model context received the complete Card bundle. A
+real host measurement showed that an oversized result could be externalized
+while the receipt still claimed machine delivery. The server could prove what
+it sent, but not what the host placed in context.
+
+The replacement design separates four facts:
+
+1. Queue admission freezes the exact Card and startup Read Set manifest.
+2. Content travels one complete file at a time under a measured result-size
+   budget.
+3. The receiving execution context returns a nonce for each delivered piece.
+4. A current Host Adapter conformance record proves that a within-budget result
+   is delivered inline rather than truncated or externalized.
+
+An Assignment then moves through:
+
+```text
+pending -> delivering -> delivered -> running
+```
+
+Only the Assignment delivery gate may authorize `running`. Queue `open` still
+means the batch is admitted; it does not mean a worker has received its Cards.
+
+Delivery evidence is bound to one Assignment, one execution context, one
+Bundle, and one attempt. Reassignment or Profile/Bundle change requires
+delivery again. Even a valid `delivered` state proves delivery, not that the
+agent read, understood, or obeyed the material.
+
+This item is complete when:
+
+- the piece budget is derived from reproducible positive and negative host
+  measurements;
+- oversized leaves fail during admission rather than mid-delivery;
+- every piece is hash-bound, delivered, and acknowledged in one context;
+- a versioned Host Adapter conformance record is current;
+- a durable Assignment writer and gate consume the complete acknowledgement
+  set;
+- resume and reassignment invalidate old delivery evidence;
+- unsupported hosts fall back to an explicit degraded state;
+- the generated CLI/MCP artifacts and negative fixtures agree with the new
+  protocol.
+
+## Next Capabilities
+
+### Reference Execution Runtime
+
+Cambium defines batch lifecycle and serial integration, but does not yet run
+agents. The reference runtime will consume the existing Required Queue rather
+than inventing a scheduler-owned ledger.
+
+Delivery order:
+
+1. **Durable Assignment state** — map one admitted batch to one temporary
+   execution context, role, write scope, delivery attempt, and checkpoint.
+2. **Single-writer integrator loop** — admit ready disjoint batches, collect
+   Deltas and receipts, merge one batch at a time, and run global checks after
+   each merge.
+3. **Isolated workers** — one write owner per active batch with batch-private
+   outputs.
+4. **Clean-context reviewers** — receive only the review inputs required by
+   the governing review contract.
+5. **Recovery and observability** — cancellation, interruption, reassignment,
+   conflict, timeout, and handoff diagnostics.
+
+The active-batch limit remains separate from the number of agent contexts.
+Host adapters must declare unsupported isolation, cancellation, identity, or
+filesystem capabilities and fall back safely.
+
+This capability is complete when parallel disjoint work is replayable, shared
+integration remains serial, interrupted work resumes from durable state, and
+no actor, reviewer, delivery, or isolation claim exceeds Host evidence.
+
+### State-aware Operation Discovery
+
+The earlier roadmap proposed one Operation Capability Registry as the source of
+the MCP tool list. Delivery proved that two different questions were being
+mixed:
+
+- **What can this distribution call?** The shipped compiled CLI contract owns
+  this answer.
+- **What may this state do next?** Kernel rules and each controlled tool own
+  this answer; `check_queue --resume-status` projects `next_action`.
+
+The existing `Tools/operation-capabilities.yaml` has a narrower job: it binds
+metadata fields and transitions to installed writers, consumers, producers,
+and receipt schemas. K00/12 separately owns Gate capability and revalidation
+mapping. Neither is a universal task-state permission table.
+
+A future capability-discovery view is justified only if a runtime needs one.
+If built, it must compose the compiled CLI contract with current state and
+return an explainable permitted-operation set. It must not hand-list tools,
+replace a writer's validation, or become a second transition authority.
+
+This item is no longer a prerequisite for the MCP surface or Plugin packaging.
+
+### Typed Dependency Runtime
+
+Cambium already validates explicit Corpus Planning inputs and Profile
+dependency closure. The missing capability is a host-independent compiler for
+corpus relationships and change impact.
+
+Eligible inputs include explicit Global Map dependencies, Capability and Gap
+links, frontmatter prerequisites, canonical-to-derived bindings, source and
+claim bindings, MOC membership, schemas, Profiles, Standards, and registered
+relationship extensions.
+
+The compiler will produce a deterministic graph. Every edge must name:
+
+- the dependency and dependent object;
+- the relationship type and invalidation policy;
+- the declaration that authorized the edge.
+
+A change-impact planner will compare accepted and candidate snapshots, explain
+which edge caused each affected object, name the invalidated quality dimension,
+and identify the required check or review.
+
+Raw backlinks and semantic similarity are discovery inputs, not dependency
+authority. The runtime must not rewrite content, promote status, perform
+unbounded review, or declare completion.
+
+This capability is complete when identical inputs produce byte-identical
+graphs, every declared edge resolves or has an authorized disposition, direct
+impact is complete and explainable, ordinary navigation links do not trigger
+invalidation, and plain-filesystem and host-backed fixtures produce equivalent
+semantics.
+
+### Independent Completeness And Consistency Evaluation
+
+Current gates prove that declared Coverage, Queue, Delta, receipt, and snapshot
+state agree. They do not independently prove that the declarations cover the
+whole expected corpus.
+
+The new evaluator will first derive the expected set from upstream accepted
+inputs such as the Task Contract, Profile scope, Corpus Planning artifacts,
+repository snapshots, accepted Amendments, and the typed dependency graph. It
+will then compare that set with Coverage, Queue manifests, Deltas, changed
+files, invalidations, and receipts.
+
+It must not use the executor's Queue, Delta, changed-file list, or completion
+claim as the authority for what should exist.
+
+The same read-only boundary will perform bounded cross-document checks for
+conflicting definitions, defaults, thresholds, ownership, mechanisms, and
+stale downstream conclusions. Deterministic comparisons run first; semantic
+review is limited to explicit concept groups and returns the exact passages and
+rationale.
+
+This capability is complete when an internally consistent but incomplete half
+of the true expected set fails, missing or ambiguous inputs cannot pass, empty
+scope needs an independently verifiable predicate, and the evaluator cannot
+modify state or approve its own findings.
+
+### Machine-readable Review Rulings
+
+Batch Review Requirements and judgment receipts now provide a machine-readable
+batch-level foundation. K12/12 substantive review findings and confirmation
+rulings are still prose.
+
+The load-bearing sequence must be:
+
+1. A review context writes stable finding IDs, grade, target, and judged bytes.
+2. A distinct confirmation context writes one verdict per finding.
+3. A conditional-fix writer resolves that verdict, checks the pre-image, applies
+   the literal bounded patch under lock, and writes a receipt.
+4. The batch-close gate refuses an unresolved or unexecuted conditional finding.
+
+Until the first producer exists, a second-round `not-closed` result escalates.
+An executor-created field that no independent producer writes and no close gate
+consumes would not solve the problem.
+
+### Receipt Ledger Integrity Chain
+
+Receipts are append-only JSONL and many authorizing fields are already
+cross-bound to state, plans, or anchors. A remaining structural class has only
+one durable carrier and therefore cannot prove its own historical value.
+
+The planned integrity layer adds:
+
+- `prev_receipt_sha256` on each receipt in a chained producer era;
+- a declared genesis value for the first line;
+- an external tail anchor written into the canonical state transaction that
+  appended the receipt;
+- producer-era replay so pre-chain receipts remain valid under their original
+  rules;
+- fail-closed uncertain-tail and broken-suffix recovery.
+
+A chain without an external anchor is insufficient because a writer could
+rebuild the whole file. This feature adds forensic integrity; it does not grant
+new authority or defend against an adversary who can rewrite state, tools,
+plans, and evidence together.
+
+### Observability And Contract Amendments
+
+State-level observability already ships through `check_queue --resume-status`
+and derived Queue reports. The reference runtime still needs views for
+Assignments, agent contexts, delivery attempts, conflicts, cancellation,
+timeouts, and handoffs.
+
+The guarded Contract Amendment writer currently supports:
+
+- `policy_exceptions`;
+- `amendment_authority`.
+
+Objective, exclusions, acceptance, timing, and pause policy still require a
+successor task. Each field may gain a guarded transaction only with an explicit
+authority rule, complete before/after binding, lock-time revalidation, recovery,
+and consumer tests. A generic arbitrary Contract diff is not a goal.
+
+### Sealed-evidence Hardening
+
+The original hot-to-cold reachability defect is fixed. Three broader debts
+remain:
+
+1. The protected hot-reference set is still enumerated by hand rather than
+   derived from consumers.
+2. No sanctioned rehydration path moves a required cold row back to hot state.
+3. The cold projection schema is fixed instead of being declared by consumers.
+
+These are bounded follow-ups. They must extend the existing verified hot/cold
+catalog rather than introduce a second receipt store.
+
+## Conditional Extensions
+
+### OpenAI Plugin Packaging
+
+Cambium already works through generated MCP configuration. An OpenAI Plugin is
+therefore an optional packaging and distribution layer, not part of Cambium
+Core or the reference runtime.
+
+The measured Agent Plugins shell cannot currently establish the adopter's
+per-corpus workspace binding at handshake: it exposes no roots, an omitted
+working directory resolves to the Plugin resource root, and environment
+whitelist forwarding is unavailable. Codex therefore uses project-level
+`.codex/config.toml` today.
+
+Plugin work should resume only when that binding is solved upstream or another
+explicit, tested carrier exists. If resumed, the first package should contain
+one `cambium` Plugin with small `adopt`, `operate`, and `audit` Skills over the
+existing host-neutral interface.
+
+Required boundaries:
+
+- install, update, downgrade, or removal never changes adopter-owned Standards,
+  Profile, task state, or receipts;
+- Plugin cache stores only disposable preferences, indexes, and caches;
+- no arbitrary command runner or unrestricted path access;
+- adoption produces a candidate and diff, never automatic approval;
+- repository-provided verifiers require disclosed, explicit authorization;
+- package contents are generated from canonical sources with correct
+  per-path licensing and attribution.
+
+Before any release, validate against the current
+[OpenAI Plugins documentation](https://developers.openai.com/plugins) and
+[builder contract](https://developers.openai.com/plugins/build/plugins), then
+test real installation, new-task loading, upgrade, rollback, and removal.
+
+Public marketplace distribution, remote MCP, UI, and Workspace sharing remain
+later product decisions. They do not define completion of the host-neutral
 runtime.
+
+### Detached State Transactions
+
+This protocol is needed only if the authoritative execution channel cannot
+allow a state writer to finish.
+
+The safe design is:
+
+1. `detached prepare` locks the real authoritative namespace and records the
+   complete before-image, including state files, receipt tails, pending Deltas,
+   archive moves, and locks.
+2. Another environment computes against exactly that before-image.
+3. `detached commit` rechecks the full before-image under the still-held real
+   lock, appends only new receipt bytes, and installs the explicit after-image.
+4. Any drift aborts and follows normal recovery.
+
+Copying state out, computing elsewhere, and copying it back with only three
+state-file hashes is not a reusable protocol. It does not protect the
+authoritative receipt frontier or concurrent namespace changes.
+
+### Concurrent Receipt Sealing
+
+Current receipt sealing deliberately requires a maintenance window with one
+writer. The append mutex catches ordinary competing appenders but does not
+claim cross-host, adversarial, or fully concurrent exclusion.
+
+A true concurrent version is required only if Cambium chooses to widen that
+boundary. It would need a shared epoch or cutover protocol that every appender
+participates in, explicit exclusion invariants, cross-host recovery, and tests
+with real racing writers.
+
+This is not incremental hardening of the current marker. Until the product
+boundary changes, the single-writer maintenance window remains the supported
+contract.
+
+## Adjusted Or Retired Directions
+
+The following older directions should not be revived without a new decision:
+
+- **Plugin-first delivery.** The host-neutral CLI/MCP interface shipped first;
+  Plugin work is now optional packaging.
+- **One universal Operation Capability Registry as the MCP source.** The CLI
+  contract owns callable shape; state permission remains with kernel rules and
+  controlled tools.
+- **Two Profile template depths.** One pre-closed template plus interview
+  expansion packs is the supported design.
+- **A scheduler-owned batch ledger.** The Required Queue remains the only
+  canonical batch lifecycle.
+- **Queue admission as proof of worker delivery.** Admission and Assignment
+  delivery are separate facts.
+- **Automatic execution of adopter verifiers.** Verifier code stays disclosed
+  and explicitly authorized.
+- **Prompt behavior as conformance evidence.** Skills and prompts guide use;
+  gates, writers, receipts, and host evidence carry claims.
+
+## Delivery Order
+
+The current critical path is:
+
+```text
+activation transport assurance
+  -> durable Assignment state and delivery gate
+  -> single-writer integrator loop
+  -> isolated workers
+  -> clean-context reviewers
+  -> cancellation, reassignment, and orchestration observability
+```
+
+Two lines can progress in parallel:
+
+```text
+explicit planning inputs
+  -> typed dependency graph
+  -> change-impact plans
+  -> independent expected-set and consistency evaluation
+
+batch-level review evidence
+  -> per-finding review rulings
+  -> conditional fix writer
+  -> close-gate consumption
+```
+
+Receipt-chain integrity, Contract Amendment expansion, and sealed-evidence
+hardening are independent control-plane improvements, but each must preserve
+producer-era replay and existing authority boundaries.
+
+Plugin packaging, remote MCP, UI, and ecosystem distribution remain downstream
+choices. None is a prerequisite for completing the host-neutral Cambium
+runtime.
+
+## Definition Of Complete
+
+No roadmap item is complete merely because its happy path works. Completion
+requires:
+
+- tracked implementation and current user documentation;
+- deterministic or explicitly bounded semantic authority;
+- negative fixtures for stale state, malformed input, missing evidence, path
+  escape, interruption, and unsupported Host capabilities where applicable;
+- recovery behavior that preserves evidence rather than guessing;
+- generated artifacts recomputed and checked;
+- no new policy owner, ledger, or trust claim hidden in an adapter or view.
