@@ -28,12 +28,15 @@ Interface: [Expression Layer Entry slot](../../README.md#expression-layer-entry-
 | Artifact role/type | `roadmap` |
 | Reader-facing display label | Interview Roadmap |
 | Entry point (target-corpus relative) | `Interview Preparation/Roadmaps/` |
-| Current pre-adoption target-corpus paths | `Agent Knowledge/Agent Interview Roadmap.md`; `Deep Learning Knowledge/DL Interview Roadmap.md`; `LLM Knowledge/LLM Interview Roadmap.md`; `Machine Learning Knowledge/ML Interview Roadmap.md` |
 | Profile-rule owner | `profiles/examples/agent-atlas/expression-layer.md#Interview Roadmap` |
 | Existing canonical dependency-map path | `Interview Preparation/Interview Overview.md` |
 | Testable regeneration/invalidation predicate | Re-evaluate an affected roadmap when its ordered topic set, prerequisite graph, or linked Interview Card inventory changes. |
 | Vocabulary Extensions readiness-field ID | `None` |
 | Routing/Gate Registry supplemental Gate ID | `None` |
+
+## Terminology Extraction Extension
+
+For a proper noun, satisfying the profile's [[profiles/examples/agent-atlas/expression-layer#Card Granularity|independent-Card predicate]] is an additional reason to consider a standalone Term Note under [[kernel/K05 Terminology/01 Terminology Extraction#Extraction Criteria|K05/01 Terminology Extraction]]. The Card still does not own the term's definition, and this trigger does not bypass the kernel's Do Not Extract or terminology-acceptance rules.
 
 ### Artifact: Interview Cheat Sheet
 
@@ -43,16 +46,11 @@ Interface: [Expression Layer Entry slot](../../README.md#expression-layer-entry-
 | Artifact role/type | `cheat-sheet` |
 | Reader-facing display label | Interview Cheat Sheet |
 | Entry point (target-corpus relative) | `Interview Preparation/Cheat Sheets/` |
-| Current pre-adoption target-corpus paths | `Agent Knowledge/Agent Basics Cheat Sheet.md`; `LLM Knowledge/LLM Basics Cheat Sheet.md`; `Machine Learning Knowledge/Algorithms/ML Algorithms Checklist.md` |
 | Profile-rule owner | `profiles/examples/agent-atlas/expression-layer.md#Interview Cheat Sheet` |
 | Existing canonical dependency-map path | `Interview Preparation/Interview Overview.md` |
 | Testable regeneration/invalidation predicate | Re-evaluate an affected cheat sheet when a summarized canonical owner, linked card, or high-priority retrieval route changes. |
 | Vocabulary Extensions readiness-field ID | `None` |
 | Routing/Gate Registry supplemental Gate ID | `None` |
-
-## Terminology Extraction Extension
-
-For a proper noun, satisfying the profile's [[profiles/examples/agent-atlas/expression-layer#Card Granularity|independent-Card predicate]] is an additional reason to consider a standalone Term Note under [[kernel/K05 Terminology/01 Terminology Extraction#Extraction Criteria|K05/01 Terminology Extraction]]. The Card still does not own the term's definition, and this trigger does not bypass the kernel's Do Not Extract or terminology-acceptance rules.
 
 ## Interview Card Contract
 
@@ -192,15 +190,31 @@ A source note or public case cannot be presented as personal project evidence. Q
 
 ## Interview Roadmap
 
-An Interview Roadmap orders preparation by prerequisites, role relevance, priority, and verification milestones. The canonical entry for new Roadmaps is `Interview Preparation/Roadmaps/`; the pre-adoption paths listed in the artifact registration above remain migration inputs until moved. Roadmaps link to both canonical knowledge and applicable Interview Cards. They may name a practice or review checkpoint, but they do not contain the complete answers owned by Cards.
+An Interview Roadmap orders preparation by prerequisites, role relevance,
+priority, and verification milestones. Its canonical entry is
+`Interview Preparation/Roadmaps/`. Roadmaps link to both canonical knowledge
+and applicable Interview Cards. They may name a practice or review checkpoint,
+but they do not contain the complete answers owned by Cards.
 
 A roadmap checkbox reports the learner's progress on that roadmap only. It does not promote `authoring_status`, `interview_status`, evidence maturity, or corpus completion; the governing progress semantics are [[kernel/K11 Expression Layer/06 Sequence and Progress Semantics|K11/06 Sequence and Progress Semantics]].
 
 ## Interview Cheat Sheet
 
-An Interview Cheat Sheet is a compact retrieval aid whose canonical entry for new files is `Interview Preparation/Cheat Sheets/`; the pre-adoption paths listed in the artifact registration above remain migration inputs until moved. It may contain concise distinctions, decision cues, failure cues, formula reminders, and links to the canonical page and Interview Card. It does not own definitions, mechanisms, evidence, complete 30/90-second answers, or readiness decisions.
+An Interview Cheat Sheet is a compact retrieval aid whose canonical entry is
+`Interview Preparation/Cheat Sheets/`. It may contain concise distinctions,
+decision cues, failure cues, formula reminders, and links to the canonical
+page and Interview Card. It does not own definitions, mechanisms, evidence,
+complete 30/90-second answers, or readiness decisions.
 
 When a Cheat Sheet conflicts with a canonical owner or an accepted Card, it is stale and must be corrected from those owners; it is never used as the authority for resolving the conflict.
+
+`Interview Preparation/Cheat Sheets/ML Algorithms Cheat Sheet.md` derives from
+the canonical `Machine Learning Knowledge/Algorithms/ML Algorithms Checklist.md`
+and records that relation in its `canonical_bindings` frontmatter. The derived
+page keeps only interview retrieval cues, key distinctions, and links to
+canonical owners. When the canonical page's selection or acceptance criteria
+change, the derived page enters revalidation; the derived page's continued
+existence never proves synchronization.
 
 ## Related
 

@@ -19,7 +19,7 @@ Interface: [Audit Dimension Registry slot](../../../README.md#audit-dimension-re
 | `agent-atlas-interview-readiness-acceptance` | `interview` | `Single Note Review` | One Interview Card and its bound canonical topics presented for `interview-ready` promotion satisfy the registered readiness predicate. | `emits` | `profiles/examples/agent-atlas/registries/audit-dimensions.md#Interview Readiness Acceptance` |
 | `agent-atlas-profile-wide-interview-acceptance` | `interview` | `Specialized Audit` | The complete in-scope Agent Systems Atlas snapshot satisfies the registered profile-wide Interview-layer acceptance predicate. | `emits` | `profiles/examples/agent-atlas/registries/audit-dimensions.md#Profile-wide Interview Acceptance` |
 | `agent-atlas-interview-residual-disposition` | `coverage_and_integration` | `Batch Review` | The merged in-scope snapshot's Interview-answer residual candidates outside `Interview Preparation/` all have an accepted disposition. | `emits` | `profiles/examples/agent-atlas/registries/audit-dimensions.md#Residual-content Disposition` |
-| `agent-atlas-content-form-classification` | `content_and_depth` | `Batch Review` | Every page on one batch's frozen manifest carries an explicit four-class content-form classification judged against the registered criteria. | `emits` | `profiles/examples/agent-atlas/registries/audit-dimensions.md#Content Form Classification` |
+| `agent-atlas-content-form-classification` | `content_and_depth` | `Batch Review` | Every page on one batch's frozen manifest carries an explicit four-class content-form classification judged against the Content Form Review criteria. | `emits` | `profiles/examples/agent-atlas/language-contract.md#Content Form Review` |
 
 ## Interview Card Review
 
@@ -67,19 +67,3 @@ The Agent Systems Atlas interview layer is profile-wide complete only when:
 - the Interview Overview reflects the actual artifact set without becoming a second answer owner.
 
 This profile-wide verdict consumes the applicable Card, link, residual-scan, source, and coverage evidence; it does not replace their individual judgments.
-## Content Form Classification
-
-Judge one manifest page against the four-class content-form criteria:
-
-- class 1: contract enumerations (goals, non-goals, ownership assertions) sink
-  into the frontmatter `boundary` block and the body cites its projection;
-- class 2: natural tables, diagrams, code, formulas, and closed query-style
-  enumerations keep their form;
-- class 3: flattened causal or layered narratives — entries a reader must
-  understand in order — are rewritten as causal prose;
-- class 4: natural prose is only smoothed, applying the Term Band Rule per
-  word.
-
-An explicit "judged natural record, no migration needed" verdict is a pass;
-an absent verdict is not. The judgment covers every page of the frozen
-manifest exactly once.

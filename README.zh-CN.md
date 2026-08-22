@@ -161,7 +161,8 @@ python3 Tools/apply_profile_adoption.py . --plan <plan>.yaml --apply
 采用 receipt 绑定在一起。任何一步失败，工具都会恢复之前的控制面。
 
 空语料库也使用同一份采用合同。先进行有界的 founding 工作，创建真实的
-canonical owner 和残留扫描见证；然后再次修订 Profile，配置 Corpus Planning，
+canonical owner 和残留扫描见证——语义自然时一页可以同时充当 owner 和见证，
+但绝不为了少建文件而强行合并；随后由第二次 R09 修订配置 Corpus Planning，
 之后才能开始大规模工作。完整顺序见
 [profiles/README.md](profiles/README.md#adoption-flow)。
 

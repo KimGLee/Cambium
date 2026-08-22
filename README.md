@@ -167,9 +167,11 @@ generated contracts, Runtime Cards, and adoption receipts. It restores the
 previous control plane if any step fails.
 
 An empty corpus follows the same adoption contract. First perform bounded
-founding work to create real canonical owners and the residual-scan witness;
-then adopt a Profile revision that configures Corpus Planning before starting
-large-scale work. The exact sequence is documented in
+founding work to create real canonical owners and the residual-scan witness —
+one page may serve as both owner and witness when that is semantically
+natural, but pages are never merged only to save files. Then a second R09
+revision configures the Corpus Planning slot before large-scale work begins.
+The exact sequence is documented in
 [profiles/README.md](profiles/README.md#adoption-flow).
 
 ## Start Or Resume A Task

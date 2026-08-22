@@ -20,8 +20,8 @@ Normative interface: [Profile interface](../../README.md). Example namespace rul
 - `Role Registry`: `registries/roles.md`
 - `Audit Dimension Registry`: `registries/audit-dimensions.md`
 - `Registered Scan Registry`: `registries/registered-scans.md`
-- `Routing And Gate Registry`: `registries/routing-and-gates.md`
 - `Escalation Policy`: `escalation-policy.md`
+- `Routing And Gate Registry`: `registries/routing-and-gates.md`
 
 ## Execution Default Overrides
 

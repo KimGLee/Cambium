@@ -23,6 +23,21 @@ fields:
       - missing
       - mapped
       - interview-ready
+  case_class:
+    owner: "profiles/examples/agent-atlas/structure-registry.yaml"
+    values:
+      - reported-system
+      - controlled-study
+      - composite-reconstruction
+  source_class:
+    owner: "profiles/examples/agent-atlas/structure-registry.yaml"
+    values:
+      - official-engineering
+      - paper
+      - standard
+      - book
+      - ecosystem-implementation
+      - community-engineering
 
 volatility_defaults:
   modeling-fundamentals: stable

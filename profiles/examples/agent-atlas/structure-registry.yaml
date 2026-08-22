@@ -1,12 +1,15 @@
-# Agent Atlas structure-registry slot: the configured branch.
+# Agent Atlas Structure Registry — the selected profile's structural units
+# (K01/05) and support layers (K01/06).
 # Interface: profiles/README.md#Structure-Registry-Slot
-# Semantics owners: kernel/K01 Scope and Architecture/05 Structural Unit
-# Interface.md and 06 Support Layer Structural Interfaces.md. Layer IDs come
-# from this profile's Profile Scope; paths are the adopting vault's own and,
-# as with corpus-planning.yaml, do not resolve inside the Cambium repository.
-# This example registers a representative subset: two domains, one admitted
-# module, and the four support layers. A real adoption registers every domain
-# and every admitted module.
+# The registry declares the current target state, and
+# Tools/check_structure.py is the structure-registry gate that proves the
+# adopting repository agrees with it.
+# The eleven Global Map submodule entries satisfy the K01/05 admission test:
+# each has a unique registered
+# responsibility, a canonical entry, one parent, Coverage projectability,
+# and independent maintenance history, so all eleven register as modules.
+# No other first-level directory passes the test; unregistered directories
+# stay ordinary groupings covered by their parent's entry.
 
 schema_version: 1
 
@@ -30,16 +33,91 @@ units:
         heading: "Prerequisite Map"
       coverage:
         mode: derived
-        generator: "Tools/render_coverage_projection.py"
+        generator: "Tools/render_structure_projection.py"
         inputs_owner: "Corpus Planning/capability_matrix.yaml"
         path: "Modeling Fundamentals/Modeling Fundamentals Overview.md"
         heading: "Coverage Reader View"
       quick_reference:
         mode: not-applicable
-        reason: "No general-audience quick reference exists; the interview cheat sheet is an expression artifact, not this role."
+        reason: "No general-audience quick reference is maintained; the interview cheat sheet is an expression artifact, not this role."
       expression:
         mode: standalone
         path: "Interview Preparation/Roadmaps/Modeling Fundamentals Roadmap.md"
+  - id: U-ML
+    kind: domain
+    parent: null
+    root: "Machine Learning Knowledge"
+    entry:
+      path: "Machine Learning Knowledge/Machine Learning Overview.md"
+      expected_type: overview
+    global_map_entry: E-ML
+    roles:
+      sequence:
+        mode: embedded
+        path: "Machine Learning Knowledge/Machine Learning Overview.md"
+        heading: "Prerequisite Map（前置依赖图）"
+      coverage:
+        mode: derived
+        generator: "Tools/render_structure_projection.py"
+        inputs_owner: "Corpus Planning/capability_matrix.yaml"
+        path: "Machine Learning Knowledge/Machine Learning Overview.md"
+        heading: "Coverage Reader View（Coverage 读者视图）"
+      quick_reference:
+        mode: standalone
+        path: "Machine Learning Knowledge/Algorithms/ML Algorithms Checklist.md"
+      expression:
+        mode: standalone
+        path: "Interview Preparation/Roadmaps/ML Interview Roadmap.md"
+  - id: U-DL
+    kind: domain
+    parent: null
+    root: "Deep Learning Knowledge"
+    entry:
+      path: "Deep Learning Knowledge/Deep Learning Overview.md"
+      expected_type: overview
+    global_map_entry: E-DL
+    roles:
+      sequence:
+        mode: embedded
+        path: "Deep Learning Knowledge/Deep Learning Overview.md"
+        heading: "Prerequisite Map（前置依赖图）"
+      coverage:
+        mode: derived
+        generator: "Tools/render_structure_projection.py"
+        inputs_owner: "Corpus Planning/capability_matrix.yaml"
+        path: "Deep Learning Knowledge/Deep Learning Overview.md"
+        heading: "Coverage Reader View（Coverage 读者视图）"
+      quick_reference:
+        mode: not-applicable
+        reason: "No general-audience quick reference is maintained for this domain."
+      expression:
+        mode: standalone
+        path: "Interview Preparation/Roadmaps/DL Interview Roadmap.md"
+  - id: U-LLM
+    kind: domain
+    parent: null
+    root: "LLM Knowledge"
+    entry:
+      path: "LLM Knowledge/LLM Overview.md"
+      expected_type: overview
+    global_map_entry: E-LLM
+    roles:
+      sequence:
+        mode: embedded
+        path: "LLM Knowledge/LLM Overview.md"
+        heading: "Prerequisite And Lifecycle Flow（前置与生命周期）"
+      coverage:
+        mode: derived
+        generator: "Tools/render_structure_projection.py"
+        inputs_owner: "Corpus Planning/capability_matrix.yaml"
+        path: "LLM Knowledge/LLM Overview.md"
+        heading: "Coverage Reader View（覆盖状态读者视图）"
+      quick_reference:
+        mode: not-applicable
+        reason: "No general-audience quick reference is maintained for this domain."
+      expression:
+        mode: standalone
+        path: "Interview Preparation/Roadmaps/LLM Interview Roadmap.md"
   - id: U-AGENT
     kind: domain
     parent: null
@@ -52,19 +130,65 @@ units:
       sequence:
         mode: embedded
         path: "Agent Knowledge/Agent Overview.md"
-        heading: "Reader Route"
+        heading: "Reader Route（读者路线）"
       coverage:
         mode: derived
-        generator: "Tools/render_coverage_projection.py"
+        generator: "Tools/render_structure_projection.py"
         inputs_owner: "Corpus Planning/capability_matrix.yaml"
         path: "Agent Knowledge/Agent Overview.md"
+        heading: "Coverage Reader View（Coverage 读者视图）"
+      quick_reference:
+        mode: not-applicable
+        reason: "No general-audience quick reference is maintained; the Agent Basics Cheat Sheet is an expression artifact."
+      expression:
+        mode: standalone
+        path: "Interview Preparation/Roadmaps/Agent Interview Roadmap.md"
+  - id: U-AISE
+    kind: domain
+    parent: null
+    root: "AI Systems Engineering"
+    entry:
+      path: "AI Systems Engineering/AI Systems Engineering Overview.md"
+      expected_type: overview
+    global_map_entry: E-AI-SYSTEMS
+    roles:
+      sequence:
+        mode: embedded
+        path: "AI Systems Engineering/AI Systems Engineering Overview.md"
+        heading: "Study Order"
+      coverage:
+        mode: derived
+        generator: "Tools/render_structure_projection.py"
+        inputs_owner: "Corpus Planning/capability_matrix.yaml"
+        path: "AI Systems Engineering/AI Systems Engineering Overview.md"
         heading: "Coverage Reader View"
       quick_reference:
         mode: not-applicable
         reason: "No general-audience quick reference is maintained for this domain."
       expression:
-        mode: standalone
-        path: "Interview Preparation/Roadmaps/Agent Interview Roadmap.md"
+        mode: not-applicable
+        reason: "The profile allows but does not require an Interview Roadmap per domain; none is maintained here."
+  - id: U-LLM-RAG
+    kind: module
+    parent: U-LLM
+    root: "LLM Knowledge/Retrieval"
+    entry:
+      path: "LLM Knowledge/Retrieval/RAG Pipeline.md"
+      expected_type: system-design
+    global_map_entry: E-RAG
+    roles:
+      sequence:
+        mode: not-applicable
+        reason: "The parent domain's lifecycle flow covers reading order."
+      coverage:
+        mode: not-applicable
+        reason: "Coverage stores this module as the finest owner; the parent domain's derived view presents it."
+      quick_reference:
+        mode: not-applicable
+        reason: "The parent entry routes here."
+      expression:
+        mode: not-applicable
+        reason: "Expression binds per page through interview_card, not per module."
   - id: U-AGENT-HARNESS
     kind: module
     parent: U-AGENT
@@ -75,19 +199,206 @@ units:
     global_map_entry: E-HARNESS
     roles:
       sequence:
-        mode: embedded
-        path: "Agent Knowledge/Harness/Agent Harness.md"
-        heading: "Execution Path"
+        mode: not-applicable
+        reason: "The parent domain's System Spine covers execution order."
       coverage:
-        mode: derived
-        generator: "Tools/render_coverage_projection.py"
-        inputs_owner: "Corpus Planning/capability_matrix.yaml"
+        mode: not-applicable
+        reason: "Coverage stores this module as the finest owner; the parent domain's derived view presents it."
       quick_reference:
         mode: not-applicable
-        reason: "The parent domain entry covers routing to this module."
+        reason: "The parent entry routes here."
       expression:
-        mode: standalone
-        path: "Interview Preparation/Topic Cards/Agent/Agent Harness Interview Card.md"
+        mode: not-applicable
+        reason: "Expression binds per page through interview_card, not per module."
+  - id: U-AGENT-MEMORY
+    kind: module
+    parent: U-AGENT
+    root: "Agent Knowledge/Memory"
+    entry:
+      path: "Agent Knowledge/Memory/Memory Overview.md"
+      expected_type: roadmap
+    global_map_entry: E-MEMORY
+    roles:
+      sequence:
+        mode: not-applicable
+        reason: "The parent domain's System Spine covers execution order."
+      coverage:
+        mode: not-applicable
+        reason: "Coverage stores this module as the finest owner; the parent domain's derived view presents it."
+      quick_reference:
+        mode: not-applicable
+        reason: "The parent entry routes here."
+      expression:
+        mode: not-applicable
+        reason: "Expression binds per page through interview_card, not per module."
+  - id: U-AGENT-LONG-HORIZON
+    kind: module
+    parent: U-AGENT
+    root: "Agent Knowledge/Reliability"
+    entry:
+      path: "Agent Knowledge/Reliability/Long-Horizon Agent Reliability Overview.md"
+      expected_type: overview
+    global_map_entry: E-LONG-HORIZON
+    roles:
+      sequence:
+        mode: not-applicable
+        reason: "The parent domain's System Spine covers execution order."
+      coverage:
+        mode: not-applicable
+        reason: "Coverage stores this module as the finest owner; the parent domain's derived view presents it."
+      quick_reference:
+        mode: not-applicable
+        reason: "The parent entry routes here."
+      expression:
+        mode: not-applicable
+        reason: "Expression binds per page through interview_card, not per module."
+  - id: U-AISE-OPERATIONS
+    kind: module
+    parent: U-AISE
+    root: "AI Systems Engineering/Operations"
+    entry:
+      path: "AI Systems Engineering/Operations/Agent Production Operations Overview.md"
+      expected_type: overview
+    global_map_entry: E-OPERATIONS
+    roles:
+      sequence:
+        mode: not-applicable
+        reason: "The parent domain's Study Order covers reading order."
+      coverage:
+        mode: not-applicable
+        reason: "Coverage stores this module as the finest owner; the parent domain's derived view presents it."
+      quick_reference:
+        mode: not-applicable
+        reason: "The parent entry routes here."
+      expression:
+        mode: not-applicable
+        reason: "Expression binds per page through interview_card, not per module."
+  - id: U-AISE-CACHE
+    kind: module
+    parent: U-AISE
+    root: "AI Systems Engineering/Caching"
+    entry:
+      path: "AI Systems Engineering/Caching/Cache Management Overview.md"
+      expected_type: overview
+    global_map_entry: E-CACHE
+    roles:
+      sequence:
+        mode: not-applicable
+        reason: "The parent domain's Study Order covers reading order."
+      coverage:
+        mode: not-applicable
+        reason: "Coverage stores this module as the finest owner; the parent domain's derived view presents it."
+      quick_reference:
+        mode: not-applicable
+        reason: "The parent entry routes here."
+      expression:
+        mode: not-applicable
+        reason: "Expression binds per page through interview_card, not per module."
+  - id: U-AISE-RAG
+    kind: module
+    parent: U-AISE
+    root: "AI Systems Engineering/RAG"
+    entry:
+      path: "AI Systems Engineering/RAG/RAG Production System Overview.md"
+      expected_type: overview
+    global_map_entry: E-PRODUCTION-RAG
+    roles:
+      sequence:
+        mode: not-applicable
+        reason: "The parent domain's Study Order covers reading order."
+      coverage:
+        mode: not-applicable
+        reason: "Coverage stores this module as the finest owner; the parent domain's derived view presents it."
+      quick_reference:
+        mode: not-applicable
+        reason: "The parent entry routes here."
+      expression:
+        mode: not-applicable
+        reason: "Expression binds per page through interview_card, not per module."
+  - id: U-AISE-COST-CAPACITY
+    kind: module
+    parent: U-AISE
+    root: "AI Systems Engineering/Cost and Capacity"
+    entry:
+      path: "AI Systems Engineering/Cost and Capacity/AI Cost and Capacity Engineering Overview.md"
+      expected_type: overview
+    global_map_entry: E-COST-CAPACITY
+    roles:
+      sequence:
+        mode: not-applicable
+        reason: "The parent domain's Study Order covers reading order."
+      coverage:
+        mode: not-applicable
+        reason: "Coverage stores this module as the finest owner; the parent domain's derived view presents it."
+      quick_reference:
+        mode: not-applicable
+        reason: "The parent entry routes here."
+      expression:
+        mode: not-applicable
+        reason: "Expression binds per page through interview_card, not per module."
+  - id: U-AISE-DATA-FEEDBACK
+    kind: module
+    parent: U-AISE
+    root: "AI Systems Engineering/Data and Feedback"
+    entry:
+      path: "AI Systems Engineering/Data and Feedback/Agent Data Feedback and Learning System Overview.md"
+      expected_type: overview
+    global_map_entry: E-DATA-FEEDBACK
+    roles:
+      sequence:
+        mode: not-applicable
+        reason: "The parent domain's Study Order covers reading order."
+      coverage:
+        mode: not-applicable
+        reason: "Coverage stores this module as the finest owner; the parent domain's derived view presents it."
+      quick_reference:
+        mode: not-applicable
+        reason: "The parent entry routes here."
+      expression:
+        mode: not-applicable
+        reason: "Expression binds per page through interview_card, not per module."
+  - id: U-AISE-TOOLS-MCP
+    kind: module
+    parent: U-AISE
+    root: "AI Systems Engineering/Tools and MCP"
+    entry:
+      path: "AI Systems Engineering/Tools and MCP/Tool and MCP Trust Boundary Overview.md"
+      expected_type: system-design
+    global_map_entry: E-TOOLS-MCP
+    roles:
+      sequence:
+        mode: not-applicable
+        reason: "The parent domain's Study Order covers reading order."
+      coverage:
+        mode: not-applicable
+        reason: "Coverage stores this module as the finest owner; the parent domain's derived view presents it."
+      quick_reference:
+        mode: not-applicable
+        reason: "The parent entry routes here."
+      expression:
+        mode: not-applicable
+        reason: "Expression binds per page through interview_card, not per module."
+  - id: U-AISE-EVALUATION
+    kind: module
+    parent: U-AISE
+    root: "AI Systems Engineering/Evaluation"
+    entry:
+      path: "AI Systems Engineering/Evaluation/Evaluation Overview.md"
+      expected_type: overview
+    global_map_entry: E-EVALUATION
+    roles:
+      sequence:
+        mode: not-applicable
+        reason: "The parent domain's Study Order covers reading order."
+      coverage:
+        mode: not-applicable
+        reason: "Coverage stores this module as the finest owner; the parent domain's derived view presents it."
+      quick_reference:
+        mode: not-applicable
+        reason: "The parent entry routes here."
+      expression:
+        mode: not-applicable
+        reason: "Expression binds per page through interview_card, not per module."
 
 support_layers:
   - layer_id: L-CASES
@@ -110,10 +421,10 @@ support_layers:
           directory: "Industry Cases/Composite Reconstructions"
     coverage:
       mode: derived
-      generator: "Tools/render_coverage_projection.py"
+      generator: "Tools/render_structure_projection.py"
       inputs_owner: "Corpus Planning/capability_matrix.yaml"
     bindings:
-      evidence_binding_owner: "kernel/K08 Metadata and Status/04 Evidence and Relationship Metadata.md"
+      evidence_binding_owner: "kernel/K08 Metadata and Status/08 Relationship Metadata Contract.md"
   - layer_id: L-SOURCES
     role: sources
     root: "Knowledge Sources"
@@ -124,7 +435,7 @@ support_layers:
     layout: grouped
     taxonomy:
       axis: source-authority
-      page_field: source_type
+      page_field: source_class
       classes:
         - class: official-engineering
           directory: "Knowledge Sources/Official Engineering"
@@ -140,12 +451,12 @@ support_layers:
           directory: "Knowledge Sources/Community Engineering"
     coverage:
       mode: derived
-      generator: "Tools/render_coverage_projection.py"
+      generator: "Tools/render_structure_projection.py"
       inputs_owner: "Corpus Planning/capability_matrix.yaml"
     bindings:
-      authority_taxonomy_ref: "profiles/agent-atlas/source-policy.md#Source Authority"
-      intake_policy_ref: "profiles/agent-atlas/source-policy.md#Verification Entry Points"
-      freshness_policy_ref: "profiles/agent-atlas/vocabulary-extensions.yaml"
+      authority_taxonomy_ref: "profiles/examples/agent-atlas/source-policy.md"
+      intake_policy_ref: "profiles/examples/agent-atlas/source-policy.md"
+      freshness_policy_ref: "profiles/examples/agent-atlas/vocabulary-extensions.yaml"
       index_mode: derived
   - layer_id: L-SYNTHESIS
     role: synthesis
@@ -158,7 +469,7 @@ support_layers:
     taxonomy: null
     coverage:
       mode: derived
-      generator: "Tools/render_coverage_projection.py"
+      generator: "Tools/render_structure_projection.py"
       inputs_owner: "Corpus Planning/capability_matrix.yaml"
     bindings:
       question_identity_field: "claim_scope"
@@ -168,27 +479,27 @@ support_layers:
     root: "Interview Preparation"
     entry:
       path: "Interview Preparation/Interview Overview.md"
-      expected_type: overview
+      expected_type: roadmap
     global_map_entry: E-INTERVIEW
     layout: grouped
     taxonomy:
       axis: artifact-kind
       page_field: type
       classes:
-        - class: interview-roadmap
+        - class: roadmap
           directory: "Interview Preparation/Roadmaps"
         - class: interview-card
           directory: "Interview Preparation/Topic Cards"
-        - class: interview-cheat-sheet
+        - class: cheat-sheet
           directory: "Interview Preparation/Cheat Sheets"
     coverage:
       mode: derived
-      generator: "Tools/render_coverage_projection.py"
+      generator: "Tools/render_structure_projection.py"
       inputs_owner: "Corpus Planning/capability_matrix.yaml"
     bindings:
-      artifact_registry_ref: "profiles/agent-atlas/expression-layer.md"
-      preparation_route_ref: "Interview Preparation/Interview Overview.md#Preparation Routes"
+      artifact_registry_ref: "profiles/examples/agent-atlas/expression-layer.md"
+      preparation_route_ref: "Interview Preparation/Interview Overview.md"
       readiness_projection:
         mode: derived
-        generator: "Tools/render_coverage_projection.py"
+        generator: "Tools/render_structure_projection.py"
         inputs_owner: ".cambium/state/coverage_ledger.yaml"

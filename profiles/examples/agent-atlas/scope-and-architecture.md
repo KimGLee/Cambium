@@ -71,7 +71,7 @@ Interview Preparation/
 | `Shared Foundation Layer` | Layer ID | `L-FOUNDATION` |
 | `Production Systems Layer` | Layer ID | `L-PRODUCTION` |
 | `Cross-domain Concepts Layer` | Layer ID | `None` — fallback `L-FOUNDATION`; place the concept with the closest reusable mechanism owner. |
-| `Expression Layer Predicate` | Predicate | The page has `type: interview-card`, `roadmap`, or `cheat-sheet` and either lives under `Interview Preparation/` or is one of the pre-adoption Roadmap/Cheat Sheet paths registered in `profiles/examples/agent-atlas/expression-layer.md`. |
+| `Expression Layer Predicate` | Predicate | The page has `type: interview-card`, `roadmap`, or `cheat-sheet` and lives under `Interview Preparation/`. |
 | `Case Study Layer` | Layer ID | `L-CASES` |
 | `Source Note Layer` | Layer ID | `L-SOURCES` |
 | `Research Synthesis Layer` | Layer ID | `L-SYNTHESIS` |

@@ -2,17 +2,21 @@
 
 ## What This Example Is
 
-This directory is a non-normative, filled example of the Cambium profile interface for a real Chinese-first engineering knowledge corpus. It is not a template, default configuration, or adoption certificate. Because it lives under `profiles/examples/`, its manifest is intentionally not selectable in place.
+This directory is a non-normative snapshot of the real, selected Agent Systems
+Atlas Profile for a Chinese-first engineering knowledge corpus. It is not a
+template, default configuration, or adoption certificate. Because it lives
+under `profiles/examples/`, its manifest is intentionally not selectable in
+place.
 
 The normative interface is [profiles/README.md](../../README.md), and cross-domain rules remain in the kernel. A real adopter copies [profiles/_template/](../../_template/profile.md) to `profiles/<profile-id>/`, fills and validates that copy, and selects it through governance.
 
-The example does not contain or synchronize an adopter corpus, runtime state,
-or gate evidence. It remains a reference profile rather than an adoption
-certificate or proof of corpus-wide acceptance.
+The example does not contain the adopter corpus, runtime state, or gate
+evidence. It remains a reference profile rather than an adoption certificate
+or proof of corpus-wide acceptance.
 
 ## Directory Structure
 
-The directory contains 14 published files:
+The directory contains 17 published files:
 
 | Role | Count | Meaning |
 |---|---:|---|
@@ -23,6 +27,27 @@ The directory contains 14 published files:
 [profile.md](profile.md) is the authoritative file map. Its Execution Default Overrides table is empty, so this example keeps every kernel execution default.
 
 The scan configuration is not another slot or standard. This example has no separate Interview standards directory, supplemental Profile Read Set, profile-owned executable, or plugin.
+
+## Snapshot Provenance
+
+The 16 machine-active files in this directory were synchronized from the
+selected Profile in Agent Systems Atlas at commit
+`15df10eac89cafd381b145c48659c4a525f93f6d`. The source package was adopted
+under Cambium Standards 3.12.0.
+
+Only location-preserving adaptations are allowed in this example copy:
+
+- the Profile root changes from `profiles/agent-atlas/` to
+  `profiles/examples/agent-atlas/`;
+- relative links to the Profile interface and kernel execution-default
+  registry gain the additional `examples/` directory level;
+- the manifest title and introduction identify the package as a non-selectable
+  example.
+
+No Atlas rule, enum, trigger, role, judgment requirement, corpus path,
+structure declaration, scan predicate, or escalation threshold is abridged for
+the example. The orientation README is Cambium-owned and is not part of the
+selected Profile snapshot.
 
 ## Atlas-specific Bindings
 
