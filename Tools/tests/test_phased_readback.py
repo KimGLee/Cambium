@@ -447,7 +447,7 @@ class PhaseGateConsumerTests(unittest.TestCase):
         self.assertTrue(check_queue.batch_touches_control_plane(
             {"manifest": ["Topics/A.md", "kernel/K00 Standards Overview.md"]}))
         self.assertTrue(check_queue.batch_touches_control_plane(
-            {"manifest": ["profiles/agent-atlas/profile.md"]}))
+            {"manifest": ["profiles/some-adopter/profile.md"]}))
 
 
 class PhaseCliTests(unittest.TestCase):
