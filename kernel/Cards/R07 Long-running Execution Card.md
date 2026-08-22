@@ -67,7 +67,7 @@ Run a multi-batch task, sustain checkpoints, resume after interruption, maintain
 - [ ] Define batch manifests, tier-derived caps, concurrency admission, write partitions, merge order, and acceptance conditions.
 - [ ] Declare every batch simple with null/null or bind its complex Work Spec path/hash; read a complex spec after activation and never treat it as Queue state or proof.
 - [ ] Load the Audit Receipt Register and classify evidence as reusable, invalidated, overdue, or missing.
-- [ ] State the next checkpoint and exact recovery action; a vague “continue improving” is not resumable state.
+- [ ] State the next checkpoint and exact recovery action; a vague “continue improving” is not a resumable state.
 
 ## During
 
