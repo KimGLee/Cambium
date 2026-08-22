@@ -17000,6 +17000,8 @@ def _run(args, produced):
             readback_context=readback_context,
             piece_context=piece_context,
             piece_ack_context=piece_ack_context,
+            phase_context=phase_context,
+            phase_ack_context=phase_ack_context,
             resume_activation_contexts=resume_activation_contexts,
             build_unwritten=produced is not None,
         )

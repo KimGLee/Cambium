@@ -11,6 +11,7 @@ evidence is matched by somebody else's evidence being refused.
 import copy
 import json
 import os
+import subprocess
 from pathlib import Path
 import shutil
 import sys
@@ -447,6 +448,201 @@ class PhaseGateConsumerTests(unittest.TestCase):
             {"manifest": ["Topics/A.md", "kernel/K00 Standards Overview.md"]}))
         self.assertTrue(check_queue.batch_touches_control_plane(
             {"manifest": ["profiles/agent-atlas/profile.md"]}))
+
+
+class PhaseCliTests(unittest.TestCase):
+    """The CLI round trip, because the library round trip is not the same one.
+
+    The first phase delivery through the CLI produced a receipt with every
+    phase field missing: the library call was correct and the tool simply
+    never handed its result to the receipt writer.  A library-only suite
+    cannot see that, so this exercises the actual command.
+    """
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name).resolve() / "repo"
+        shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root)
+        add_conditional_routes(self.root)
+
+    def run_tool(self, name, *arguments, context_id=CONTEXT):
+        environ = dict(os.environ)
+        environ[card_activation.EXECUTION_CONTEXT_ENV] = context_id
+        return subprocess.run(
+            [sys.executable, str(TOOLS / name), str(self.root), *arguments],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env=environ, check=False)
+
+    def open_b1(self):
+        ready = self.run_tool(
+            "check_queue.py", "--require-ready", "B1",
+            "--receipts", ".cambium/receipts/ready.jsonl", "--json")
+        self.assertEqual(0, ready.returncode, ready.stderr)
+        receipt = json.loads(ready.stdout)[0]
+        self.assertEqual("host-bound", receipt["delivery_assurance"])
+        self.assertIn("phase_plan_sha256", receipt)
+        queue = kblib.load_yaml_file(self.root / check_queue.QUEUE_PATH)
+        opened = self.run_tool(
+            "update_queue.py", "--id", "B1", "--transition", "open",
+            "--gate-receipt", receipt["receipt_id"],
+            "--expected-state-revision", str(queue["state_revision"]),
+            "--expected-sha256",
+            kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+            "--actor-role", "integrator", "--apply")
+        self.assertEqual(0, opened.returncode, opened.stdout + opened.stderr)
+        return receipt
+
+    def test_phase_delivery_and_ack_round_trip_through_the_cli(self):
+        self.open_b1()
+        delivered = self.run_tool(
+            "check_queue.py", "--deliver-phase", "B1",
+            "--phase", card_activation.PHASE_BATCH_PREFLIGHT,
+            "--receipts", ".cambium/receipts/phase.jsonl", "--json")
+        self.assertEqual(0, delivered.returncode, delivered.stderr)
+        delivery = json.loads(delivered.stdout)[0]
+        # The regression this pins: the tool result and the receipt both
+        # have to carry the phase, not just the library return value.
+        self.assertEqual(card_activation.PHASE_BATCH_PREFLIGHT,
+                         delivery["phase_id"])
+        self.assertEqual(0, delivery["part_index"])
+        self.assertTrue(delivery["phase_piece_ids"])
+        self.assertTrue(delivery["delivery_nonce"])
+        payload = delivery["activation_phase_payload"]
+        self.assertEqual(len(delivery["phase_piece_ids"]),
+                         len(payload["pieces"]))
+
+        persisted = json.loads((
+            self.root / ".cambium/receipts/phase.jsonl"
+        ).read_text(encoding="utf-8").splitlines()[0])
+        self.assertEqual(card_activation.PHASE_BATCH_PREFLIGHT,
+                         persisted["phase_id"])
+        # Bytes ride the tool result; the register keeps identities only.
+        self.assertNotIn("activation_phase_payload", persisted)
+        self.assertNotIn("content", json.dumps(persisted, sort_keys=True))
+
+        acked = self.run_tool(
+            "check_queue.py", "--ack-activation-phase", "B1",
+            "--phase", card_activation.PHASE_BATCH_PREFLIGHT,
+            "--phase-nonce", delivery["delivery_nonce"],
+            "--phase-delivery-receipt", delivery["receipt_id"],
+            "--receipts", ".cambium/receipts/phase-ack.jsonl", "--json")
+        self.assertEqual(0, acked.returncode, acked.stderr)
+        ack = json.loads(acked.stdout)[0]
+        self.assertEqual(card_activation.PHASE_ACK_PROTOCOL,
+                         ack["phase_ack_protocol"])
+        self.assertEqual(delivery["delivery_attempt_id"],
+                         ack["delivery_attempt_id"])
+        self.assertEqual(sorted(delivery["phase_piece_ids"]),
+                         sorted(ack["phase_piece_ids"]))
+
+    def test_the_cli_refuses_an_ack_from_another_context(self):
+        self.open_b1()
+        delivered = self.run_tool(
+            "check_queue.py", "--deliver-phase", "B1",
+            "--phase", card_activation.PHASE_BATCH_PREFLIGHT,
+            "--receipts", ".cambium/receipts/phase.jsonl", "--json")
+        self.assertEqual(0, delivered.returncode, delivered.stderr)
+        delivery = json.loads(delivered.stdout)[0]
+        refused = self.run_tool(
+            "check_queue.py", "--ack-activation-phase", "B1",
+            "--phase", card_activation.PHASE_BATCH_PREFLIGHT,
+            "--phase-nonce", delivery["delivery_nonce"],
+            "--phase-delivery-receipt", delivery["receipt_id"],
+            "--receipts", ".cambium/receipts/phase-ack.jsonl",
+            context_id=OTHER_CONTEXT)
+        self.assertEqual(1, refused.returncode)
+        self.assertIn("delivering execution context", refused.stdout)
+
+
+class ProducerEraReplayTests(unittest.TestCase):
+    """A sealed receipt is judged by the rules of the era that wrote it.
+
+    The v4 constant rename made this concrete: two era checks compared
+    against "the current protocol" rather than against the shape they meant,
+    so shipping v4 silently re-filed every sealed v3 receipt under the
+    embedded-payload rules of v1.  These tests pin the shapes themselves.
+    """
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name).resolve() / "repo"
+        shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root)
+        add_conditional_routes(self.root)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"], result["errors"])
+        self.current = card_activation.build_activation_context(
+            self.root, result["progress"], result["items_by_id"]["B1"],
+            runtime_state=result, execution_context_id=CONTEXT)
+
+    def as_v3(self):
+        """Rebuild the v3 shape: pieces without phases, no phase plan."""
+        context = copy.deepcopy(self.current)
+        manifest = context["activation_bundle_manifest"]
+        manifest["activation_protocol"] = card_activation.\
+            V3_ACTIVATION_PROTOCOL
+        manifest.pop("phase_plan", None)
+        manifest.pop("phase_plan_sha256", None)
+        for piece in manifest["pieces"]:
+            piece.pop("phase", None)
+        context["activation_protocol"] = card_activation.\
+            V3_ACTIVATION_PROTOCOL
+        context.pop("phase_plan_sha256", None)
+        context["card_bundle_sha256"] = kblib.sha256_bytes(
+            kblib.canonical_json_bytes(manifest))
+        return context
+
+    def test_a_sealed_v3_context_still_validates(self):
+        self.assertEqual(
+            [], card_activation.activation_context_errors(self.as_v3()))
+
+    def test_a_sealed_v3_context_keeps_its_own_field_set(self):
+        v3 = self.as_v3()
+        self.assertEqual(card_activation.ACTIVATION_CONTEXT_FIELDS,
+                         card_activation.activation_context_fields(v3))
+        self.assertNotIn(
+            "phase_plan_sha256",
+            card_activation.activation_receipt_binding(v3))
+        self.assertIn("phase_plan_sha256",
+                      card_activation.activation_receipt_binding(self.current))
+
+    def test_v3_may_still_deliver_single_pieces(self):
+        v3 = self.as_v3()
+        piece_id = v3["activation_bundle_manifest"]["pieces"][0]["piece_id"]
+        delivery = card_activation.build_activation_piece(
+            self.root, v3, piece_id, execution_context_id=CONTEXT)
+        self.assertEqual(card_activation.PIECE_PROTOCOL,
+                         delivery["piece_protocol"])
+
+    def test_v3_has_no_phases_to_deliver(self):
+        with self.assertRaisesRegex(ValueError, "phase delivery requires"):
+            card_activation.build_phase_delivery(
+                self.root, self.as_v3(),
+                card_activation.PHASE_BATCH_PREFLIGHT, 0,
+                execution_context_id=CONTEXT)
+
+    def test_a_pre_phase_era_must_not_carry_a_phase_plan(self):
+        forged = self.as_v3()
+        forged["phase_plan_sha256"] = "sha256:" + ("0" * 64)
+        self.assertTrue(card_activation.activation_context_errors(forged))
+
+    def test_a_pre_phase_era_gate_owes_nothing(self):
+        # An old batch does not acquire a new obligation retroactively.
+        result = check_queue.validate_runtime(self.root)
+        catalog = dict(check_queue.current_receipt_catalog(result))
+        catalog["audit-activation-v3"] = ("x", dict(
+            card_activation.activation_receipt_binding(self.as_v3()),
+            tool=check_queue.TOOL, tool_version=check_queue.TOOL_VERSION))
+        view = dict(result, current_receipt_catalog=catalog,
+                    receipt_catalog=catalog)
+        item = dict(result["items_by_id"]["B1"],
+                    activation_receipt="audit-activation-v3")
+        self.assertEqual([], check_queue.activation_phase_delivery_errors(
+            view, item, card_activation.PHASE_BATCH_GATE,
+            actor_context_id=CONTEXT))
 
 
 if __name__ == "__main__":

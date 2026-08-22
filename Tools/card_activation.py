@@ -1104,17 +1104,22 @@ def activation_context_errors(context):
     elif manifest.get("readback_plan_sha256") != kblib.sha256_bytes(
             kblib.canonical_json_bytes(plan)):
         errors.append("readback_plan_sha256 does not bind readback_plan")
-    if protocol == ACTIVATION_PROTOCOL:
+    # The question here is which era's shape the bundle has, not whether it
+    # is the newest protocol: v3 and v4 both freeze a piece manifest and
+    # embed nothing, so testing against the current constant would silently
+    # re-file every sealed v3 receipt under the embedded-payload rules the
+    # moment a v4 lands.
+    if protocol in PIECE_DELIVERY_PROTOCOLS:
         errors.extend(_piece_manifest_errors(manifest))
         for field in ("cards", "startup_readbacks"):
             if field in manifest:
                 errors.append(
                     "a %s bundle must not embed %s; content travels as "
-                    "budgeted pieces" % (ACTIVATION_PROTOCOL, field))
+                    "budgeted pieces" % (protocol, field))
         if "activation_delivery_payload" in context:
             errors.append(
                 "a %s admission must not carry an embedded delivery payload" %
-                ACTIVATION_PROTOCOL)
+                protocol)
     else:
         cards = manifest.get("cards")
         if not isinstance(cards, list) or not cards:
@@ -1165,7 +1170,7 @@ def activation_context_errors(context):
     assurance = context.get("delivery_assurance")
     mode = context.get("delivery_mode")
     context_id = context.get("execution_context_id")
-    if protocol == ACTIVATION_PROTOCOL:
+    if protocol in PIECE_DELIVERY_PROTOCOLS:
         if assurance == "host-bound":
             if mode != "host-context-injection" or not isinstance(
                     context_id, str) or not context_id:
@@ -1178,8 +1183,7 @@ def activation_context_errors(context):
         else:
             errors.append(
                 "a %s admission records host-bound or prepared; delivery "
-                "completion is earned by the Assignment delivery gate" %
-                ACTIVATION_PROTOCOL)
+                "completion is earned by the phase delivery gate" % protocol)
     elif assurance == "machine-delivered":
         if mode != "host-context-injection" or not isinstance(
                 context_id, str) or not context_id:

@@ -66,7 +66,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:d606edf7ce62d4ce5a8941652c9a17e8cc6b69093eeb6381dfba915333feac1d
+source_hash: sha256:290d21438a77d803aec886b7596dc5f2c34c1aa5d61068907ed12dbc12892067
 receipt_shape:
   base_fields:
     - receipt_id
@@ -1752,7 +1752,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:0caca06ae0acc4869a7642815db0881a1ea0cd95f54c49866808bb223bd9b369
+    source_hash: sha256:3467bec37aa3c7be3cb6df0e7d5f5400d6cbde8a2da3b96cc38fdc44b416a2e0
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
