@@ -641,6 +641,28 @@ def _transition_item(item, args, result):
             raise ValueError(
                 "open -> merge-ready requires the Profile batch-review "
                 "judgment set: %s" % "; ".join(judgment_errors))
+        # The gate phase had to be delivered for this batch to have reached
+        # a merge-ready claim at all.  The integrator checks history here
+        # rather than acting on the Cards itself, so it binds no actor
+        # context: what it verifies is that one attempt of the current
+        # activation earned the phase.
+        phase_errors = check_queue.activation_phase_delivery_errors(
+            result, item, card_activation.PHASE_BATCH_GATE)
+        if phase_errors:
+            raise ValueError(
+                "open -> merge-ready requires the batch gate phase: %s" %
+                "; ".join(phase_errors))
+        # A batch whose own manifest edits the control plane did governance,
+        # whichever writer it used.  Enforcing that here rather than inside
+        # each governance tool puts the check on the edge no file edit can
+        # route around, and keeps the predicate on what the batch changed.
+        if check_queue.batch_touches_control_plane(item):
+            governance_errors = check_queue.activation_phase_delivery_errors(
+                result, item, card_activation.PHASE_GOVERNANCE)
+            if governance_errors:
+                raise ValueError(
+                    "a batch that edits the control plane requires the "
+                    "governance phase: %s" % "; ".join(governance_errors))
         item["state"] = "merge-ready"
         item["merge_ready_at"] = now
         item["delta_path"] = args.delta_path

@@ -37,7 +37,12 @@ An Assignment binds, for one execution context:
 - the role (`integrator`, `writer`, `reviewer`, or `researcher`) and that
   role's permitted write scope;
 - the frozen `card_bundle_sha256` taken from Queue admission;
-- the current `delivery_attempt_id`;
+- the current `delivery_attempt_id`, derived rather than stored: the hash of
+  the current `card_bundle_sha256` and the acting `execution_context_id`, so
+  a consumer recomputes the one value that pair could produce. A complete
+  chain from a superseded bundle or another context stays self-consistent
+  and stops matching that derivation, which is why consistency alone cannot
+  license reuse;
 - the delivery state below, and the handoff checkpoint if one exists.
 
 Role topology is runtime metadata. It is never Profile configuration, and an
@@ -47,34 +52,50 @@ Assignment never widens a scope the Queue and Profile did not already grant.
 
 ```text
 pending      Assignment created against an admitted batch
-delivering   at least one piece delivered, ack set incomplete
-delivered    ack set complete and Adapter conformance current
+delivering   at least one part of a phase delivered, that phase incomplete
+delivered    one phase's ack set complete and Adapter conformance current
 running      worker may execute
 ```
 
-`pending -> delivering` requires one delivered piece. `delivering -> delivered`
-requires all of:
+The states are per phase, not per task. `pending -> delivering` requires one
+delivered part. `delivering -> delivered(phase)` requires all of:
 
-- the ack set equals the frozen piece manifest exactly -- no missing, extra,
-  duplicated, or foreign record;
+- the ack set equals that phase's frozen piece set exactly -- no missing,
+  extra, duplicated, or foreign record, and every part accounted for;
 - every ack binds the same `assignment_id`, `execution_context_id`,
-  `card_bundle_sha256`, and `delivery_attempt_id`;
+  `card_bundle_sha256`, `phase_plan_sha256`, and `delivery_attempt_id`;
 - the host's declared adapter identity resolves to a current
   inline-delivery conformance registration.
 
-Only `delivered` admits `running`. A runtime that cannot reach `delivered`
+`delivered(batch-preflight)` admits `running`. A runtime that cannot reach `delivered`
 may still work, but records `degraded` and MUST NOT claim machine-enforced
 Card delivery. Queue `open` is unaffected either way: a human integrator
 admits batches without any Assignment at all.
+
+## Phase Scope
+
+Admitting `running` on preflight changes timing, not obligation: later
+phases are owed at the point that consumes them rather than banked at
+startup. Which writer refuses which phase is owned by
+[[kernel/K13 Task Runtime and Execution Control/21 Phased Reading Plan|K13/21]].
+
+`running` itself still has no executable carrier: no writer computes an
+Assignment state, so it remains a definition the phase consumers
+approximate at their own edges. Recording that keeps the distance between
+definition and enforcement visible -- the distance this module exists to
+stop hiding.
 
 ## Attempt Invalidation
 
 Delivery evidence is bound to one attempt in one context, and does not
 transfer. A new execution context, a reassignment, a reopened batch, a new
-`card_bundle_sha256`, or a revised Profile contract each start a new
-`delivery_attempt_id` and void every earlier ack. Recovery is to deliver the
-current pieces again, never to carry evidence across the boundary that
-invalidated it.
+`card_bundle_sha256`, a revised Profile contract, or any change to a frozen
+input of the phase plan -- which moves `phase_plan_sha256` -- each start a
+new `delivery_attempt_id` and void every earlier ack. Recovery is to deliver
+the current phases again, never to carry evidence across the boundary that
+invalidated it. Re-delivery is scoped to the preflight phase plus the phase
+being resumed into: phases already earned remain proved by their own
+receipts under the plan hash they were earned against.
 
 This is deliberately expensive to fake and cheap to redo: re-delivery is
 idempotent reading, while a transferable ack would let a context claim

@@ -29,9 +29,44 @@
 # Only the restricted YAML subset (Tools/kblib.py parse_yaml_subset).
 # =============================================================================
 
-schema_version: 1
+# Schema 2 groups registrations by delivery channel.  Schema 1 had one
+# global conformance_version and one minimum, both meaning "inline tool
+# result"; a second channel with different physics cannot borrow either.
+# Each channel therefore declares what it can prove, using the three
+# independent dimensions the protocol records -- content identity, transport
+# assurance, and subject acknowledgement.  A channel that cannot prove
+# transport says so here rather than being read as if it could.
+schema_version: 2
 conformance_version: activation-inline-v1
 minimum_bytes: 49152
+
+channels:
+  - channel_id: inline-mcp
+    conformance_version: activation-inline-v1
+    minimum_bytes: 49152
+    proves_identity: true
+    proves_transport: true
+    proves_acknowledgement: true
+    probe: Tools/tests/host_conformance_probe.py
+    note: "Bytes ride inside the tool result and the trailing nonce returns from the same context. Registration requires both controls: a within-budget payload arriving whole, and a larger one observed to be externalized."
+
+  - channel_id: remote-bundle
+    conformance_version: activation-inline-v1
+    minimum_bytes: 49152
+    proves_identity: true
+    proves_transport: true
+    proves_acknowledgement: true
+    probe: Tools/tests/host_conformance_probe.py
+    note: "A phase part is one tool result, so this channel is inline-mcp measured over a part instead of a single file. It shares the probe and the budget because it shares the physics."
+
+  - channel_id: agent-native-file-read
+    conformance_version: activation-native-read-v1
+    minimum_bytes: 0
+    proves_identity: true
+    proves_transport: false
+    proves_acknowledgement: true
+    probe: null
+    note: "The Core names paths and hashes and the host reads them with its own file access. Identity is checkable and the actor can acknowledge, but nothing observes that the bytes entered the model context, so this channel never mints transport assurance. Raising it requires trusted host read telemetry -- an adapter report of what was actually read -- carried by its own probe with both controls. A trailing-bytes challenge does not qualify: it shows the tail was seen, which is acknowledgement, not transport."
 
 adapters:
   - client_name: claude-code

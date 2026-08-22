@@ -66,7 +66,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:4f4385918e933e211b3676c0f85df847388ee7318fb76f208eae061ec40a476f
+source_hash: sha256:d606edf7ce62d4ce5a8941652c9a17e8cc6b69093eeb6381dfba915333feac1d
 receipt_shape:
   base_fields:
     - receipt_id
@@ -1752,7 +1752,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:4ec7f2dc3727c35688ec89105a396d4421ae52568b14e8b7db7c373b870f7904
+    source_hash: sha256:0caca06ae0acc4869a7642815db0881a1ea0cd95f54c49866808bb223bd9b369
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -1853,6 +1853,28 @@ tools:
         action: store
         type: null
         help: return one delivered piece nonce as same-context delivery evidence
+      - dest: deliver_phase
+        option_strings:
+          - --deliver-phase
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: deliver one frozen activation phase part of BATCH_ID inside the protocol delivery budget
+      - dest: ack_activation_phase
+        option_strings:
+          - --ack-activation-phase
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: return one delivered phase part nonce as same-context delivery evidence
       - dest: readback_rule
         option_strings:
           - --readback-rule
@@ -1864,6 +1886,50 @@ tools:
         action: store
         type: null
         help: registered rule selected with --deliver-readback
+      - dest: phase
+        option_strings:
+          - --phase
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: frozen activation phase selected with --deliver-phase or --ack-activation-phase
+      - dest: phase_part
+        option_strings:
+          - --phase-part
+        required: false
+        default: 0
+        default_type: int
+        choices: null
+        nargs: null
+        action: store
+        type: int
+        help: part index inside the selected phase (default 0)
+      - dest: phase_nonce
+        option_strings:
+          - --phase-nonce
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: nonce returned from the delivered phase part, supplied to --ack-activation-phase
+      - dest: phase_delivery_receipt
+        option_strings:
+          - --phase-delivery-receipt
+        required: false
+        default: null
+        default_type: NoneType
+        choices: null
+        nargs: null
+        action: store
+        type: null
+        help: delivery receipt the acknowledged phase nonce came from, supplied to --ack-activation-phase
       - dest: piece
         option_strings:
           - --piece
@@ -1985,6 +2051,8 @@ tools:
           - deliver_readback
           - deliver_activation_piece
           - ack_activation_piece
+          - deliver_phase
+          - ack_activation_phase
     receipt_extensions:
       - activation_context
       - active_card_context_deliveries
@@ -2007,6 +2075,8 @@ tools:
       - pending_amendments
       - pending_delta_applies
       - pending_guidance
+      - phase_ack_context
+      - phase_context
       - piece_ack_context
       - piece_context
       - progress_ledger_sha256
@@ -3045,7 +3115,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: record_batch_judgment
     module: Tools/record_batch_judgment.py
-    source_hash: sha256:ae6b734b1de1712e9967265217112a9aaf4db0941ff761c3ab464acc78ec345f
+    source_hash: sha256:33d65be54777d0f6b4abf2f9b1d76ac0bbea5eb51d416f6782fb5111c529b7e2
     description: Record one snapshot-bound Batch Review judgment
     arguments:
       - dest: root
@@ -4275,7 +4345,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: update_queue
     module: Tools/update_queue.py
-    source_hash: sha256:f691748b42ac0252cc7ecf948af01f593845242e2dc28f2ad462977f426a564f
+    source_hash: sha256:87aa7219da2ff93d1024062b0e605e0a308f63342a92b9beb49ccd0268ff2a01
     description: Apply one Required Queue transition
     arguments:
       - dest: root
@@ -4541,7 +4611,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: update_task
     module: Tools/update_task.py
-    source_hash: sha256:1078591b16b485f34184d41e486e033ccb56bdc1ae8e8aa146baaff2f61c6767
+    source_hash: sha256:35bd0045eb56f50de497e61df1f7aa481178a3bf831b18f72d829b873232bdfe
     description: Apply one canonical task-state transition
     arguments:
       - dest: root

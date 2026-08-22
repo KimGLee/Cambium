@@ -96,10 +96,20 @@ capabilities:
 
   - capability_id: card-context-delivery-v1
     kind: producer
-    capability_version: 1.0.2
+    capability_version: 1.0.3
     implementation_paths:
       - Tools/card_activation.py
       - Tools/check_queue.py
       - Tools/mcp_server.py
       - Tools/update_queue.py
+    operations: []
+
+  - capability_id: phase-delivery-consumer-v1
+    kind: consumer
+    capability_version: 1.0.0
+    implementation_paths:
+      - Tools/check_queue.py
+      - Tools/record_batch_judgment.py
+      - Tools/update_queue.py
+      - Tools/update_task.py
     operations: []

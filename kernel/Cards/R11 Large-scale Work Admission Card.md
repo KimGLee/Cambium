@@ -21,8 +21,8 @@ source_files:
 readback_sources:
   - kernel/K12 Quality Assurance/19 Incremental Audit Planning.md
 readback_policy: declared
-source_hash: 'e3e0aed9df30'
-compiled_source_hash: 'e3e0aed9df30'
+source_hash: 'ecf549f1db1b'
+compiled_source_hash: 'ecf549f1db1b'
 ---
 # R11 Large-scale Work Admission Card
 
@@ -36,7 +36,7 @@ Load before large-scale creation, moves, or deletion, together with [[kernel/Car
 
 - [ ] Confirm the execution context received the exact R01/R11 activation
   Bundle before the admission checklist is used to authorize work.
-- [ ] Record contract, scope, initial batch, Standards version, exact `selected_profile_manifest`, selected routes and Cards, the derived loading envelope, target scope, exclusions, and latest user requirements; delivery receipts, not the frozen envelope, record actual context delivery.
+- [ ] Record contract, scope, initial batch, Standards version, exact `selected_profile_manifest`, selected routes and Cards, the frozen batch-phase reading plan, target scope, exclusions, and latest user requirements; delivery receipts, not the frozen plan, record actual context delivery.
 - [ ] Make `minimum_run_until`, `checkpoint_at`, `hard_stop_at`, and the Completion Gate explicit; leave unspecified fields explicitly empty.
 - [ ] Initialize task state only when `.cambium/state/` is absent. If it exists, first run `check_queue.py --resume-status` and reconcile the recorded task; preserve a governance-only `.cambium/` parent, and bind Coverage, Required Queue, and Progress to the same task, scope, Standards version, and selected Profile.
 - [ ] Reconcile Coverage with the file system and exclusions; inventory ownership, incoming links, user modifications, explicit batch manifests, and dependencies.

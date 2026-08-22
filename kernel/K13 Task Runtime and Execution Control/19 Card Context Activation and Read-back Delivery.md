@@ -88,26 +88,38 @@ required the same session to consume it at `queued -> open`. That claim was
 minted before the result left the server, so a host that externalized an
 oversized tool result left the payload outside the model context while the
 receipt still asserted delivery, and no gate could observe the divergence.
-Under v3 the session-identity rule is retired -- keeping it would re-couple
-the Queue lifecycle to the context lifecycle this module separates -- and
-delivery completion is earned per piece, by the Assignment delivery gate of
-[[kernel/K13 Task Runtime and Execution Control/20 Assignment State and Delivery Gate|K13/20]].
+The session-identity rule is retired -- keeping it would re-couple the Queue
+lifecycle to the context lifecycle this module separates -- and delivery
+completion is earned per piece rather than asserted at admission.
+[[kernel/K13 Task Runtime and Execution Control/20 Assignment State and Delivery Gate|K13/20]]
+defines completion;
+[[kernel/K13 Task Runtime and Execution Control/21 Phased Reading Plan|K13/21]]
+names the writers that refuse to act without it.
 
 ## Budgeted Piece Delivery
 
-Protocol `card-first-readback-v3` stops embedding Card and read-back bytes in
-the admission result. Admission freezes a piece manifest -- one record per
+Protocol `card-first-readback-v3` stopped embedding Card and read-back bytes
+in the admission result. Admission freezes a piece manifest -- one record per
 deliverable file, carrying `piece_id`, `kind`, `path`, `sha256`, and `bytes`
--- and the bytes travel afterwards, one file per tool result.
+-- and the bytes travel afterwards.
 
-A piece is always a whole file. Splitting one file across results is invalid:
-the frozen hash binds the complete file, a receiving model cannot rehash
-fragments, and no party could then prove a reassembly was faithful.
+`card-first-phased-readback-v4` freezes the same records and adds the phase
+each belongs to, so bytes travel one phase part per result rather than one
+file per result. Grouping changes no commitment: every file in a part keeps
+its own frozen hash and is re-proved against current bytes at delivery. The
+phase set is owned by
+[[kernel/K13 Task Runtime and Execution Control/21 Phased Reading Plan|K13/21]].
+
+A piece is always a whole file, and a part holds whole files only. Splitting
+one file across results is invalid: the frozen hash binds the complete file,
+a receiving model cannot rehash fragments, and no party could then prove a
+reassembly was faithful.
 
 `MAX_ACTIVATION_PIECE_ENVELOPE_BYTES` is 49152 and is owned here. The measured
 object is the complete serialized delivery, not the source file: envelope,
-JSON escaping, nonce, and transport wrapper all count. Admission fails closed
-when any frozen piece would exceed the budget, so an oversized leaf is caught
+JSON escaping, nonce, and transport wrapper all count. Under v4 that object
+is the phase part. Admission fails closed when any frozen piece would exceed
+the budget alone, so an oversized leaf is caught
 as a governance problem at its own boundary rather than as a transport
 accident mid-batch. [[kernel/K00 Standards Control/16 Leaf Module Size Register|K00/16]]
 carries the derived check for `activation` leaves; it consumes this budget and
@@ -181,7 +193,10 @@ before it acts on `next_action`; the bytes follow one budgeted piece at a
 time. A new execution context invalidates every earlier ack: delivery evidence
 never transfers between contexts, and
 [[kernel/K13 Task Runtime and Execution Control/20 Assignment State and Delivery Gate|K13/20]]
-requires the full set to be re-earned.
+requires the set to be re-earned. Under v4 that set is the preflight phase
+plus the phase being resumed into: phases already earned stay proved by
+their own receipts under the plan hash they were earned against, and
+re-earning unused phases would make resume cost grow with task progress.
 
 Activation or read-back fails closed when R01 or a selected Card is absent,
 the Card Index disagrees with the contract, semantic hashes differ, a path is

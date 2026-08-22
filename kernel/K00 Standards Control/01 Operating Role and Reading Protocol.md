@@ -55,6 +55,8 @@ receipts provide that behavioral evidence.
 
 The default reading mode is to read the task's kernel Runtime Card. A Card is a faithful compression of the corresponding Read Set's Start/Triggered/Gate modules, covering the determinations, procedures, and Gate lists needed for routine tasks.
 
+A Card is the minimal executable checklist for the current work phase: the operating surface of the Standards, not the Standards in full, not a knowledge-loading container, not a compliance receipt, and not a transport unit. The system delivers only the minimal Card set an action requires, and delivers it before that action occurs; the source Standards behind a Card are expanded on demand when a determination is traced back.
+
 In the following cases the Standards source text MUST be read back; cards alone MUST NOT be relied on:
 
 - The card does not cover the current situation, or the card content is in doubt.
