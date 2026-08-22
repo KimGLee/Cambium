@@ -21,6 +21,7 @@ Read in order:
 8. [[kernel/K00 Standards Control/15 Read Set Loading Boundaries|Read Set Loading Boundaries]]
 9. [[kernel/K00 Standards Control/17 Profile Dependency Closure|Profile Dependency Closure]]
 10. [[kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery|Card Context Activation and Read-back Delivery]]
+11. [[kernel/K13 Task Runtime and Execution Control/20 Assignment State and Delivery Gate|Assignment State and Delivery Gate]]
 
 Then select the task-specific Read Set from the [[kernel/Read Sets/Read Sets Index|Read Sets Index]].
 

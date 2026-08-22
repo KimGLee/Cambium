@@ -3774,9 +3774,24 @@ class BatchReviewRequirementTests(UpdateQueueTests):
         self.enable_requirement()
         self.open_b1()
         activation = self.activation_receipt()
+        # A v1 artifact is not today's manifest with an older label on it: the
+        # era embedded Card and read-back arrays and asserted delivery in the
+        # admission itself. Reconstruct that shape from the frozen pieces, or
+        # this test would only prove that a malformed record is rejected.
         legacy_manifest = dict(activation["activation_bundle_manifest"])
         legacy_manifest["activation_protocol"] = "card-first-readback-v1"
         legacy_manifest.pop("batch_review_plan", None)
+        pieces = legacy_manifest.pop("pieces", [])
+        legacy_manifest.pop("piece_count", None)
+        legacy_manifest.pop("max_piece_envelope_bytes", None)
+        legacy_manifest["cards"] = [
+            {key: value for key, value in piece.items()
+             if key not in ("piece_id", "kind", "bytes")}
+            for piece in pieces if piece.get("kind") == "card"]
+        legacy_manifest["startup_readbacks"] = [
+            {key: value for key, value in piece.items()
+             if key not in ("piece_id", "kind", "bytes")}
+            for piece in pieces if piece.get("kind") == "activation-readback"]
         legacy_bundle_sha = kblib.sha256_bytes(
             kblib.canonical_json_bytes(legacy_manifest))
 
@@ -3786,6 +3801,10 @@ class BatchReviewRequirementTests(UpdateQueueTests):
             if "activation_bundle_manifest" in record:
                 record["activation_bundle_manifest"] = legacy_manifest
             record["card_bundle_sha256"] = legacy_bundle_sha
+            if "delivery_assurance" in record:
+                record["delivery_assurance"] = "degraded"
+                record["delivery_mode"] = "cli-tool-result"
+                record["execution_context_id"] = None
 
         self.rewrite_receipt_for_negative_test(
             activation["receipt_id"], downgrade)

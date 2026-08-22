@@ -130,7 +130,7 @@
 # check_links 1.6.0 / wiki-link-integrity; check_vocab 1.8.0 /
 # frontmatter-vocabulary and priority-quota-distribution;
 # check_residual_content 1.2.0 /
-# registered-residual-content; check_queue 1.24.0 / its registered
+# registered-residual-content; check_queue 1.25.0 / its registered
 # Required-Queue modes; check_batch_close 1.12.0 / batch-close; check_proof
 # 1.17.0 / terminal-proof; and adopt_standards 1.7.0 /
 # standards-adoption. Deterministic producers not shown above -- among them
@@ -149,20 +149,44 @@
 # after it. A run outside any Cambium runtime (no `.cambium/state/`) omits the
 # three fields rather than writing null: an omitted field claims nothing, while
 # an explicit null would satisfy consumers that only test field presence.
-# Public R01 `check_queue.py` 1.24.0 admission reruns the complete
+# Public R01 `check_queue.py` 1.25.0 admission reruns the complete
 # `profile-load` closure. The lower-level runtime view used to construct a
 # corrective Standards adoption retains only the selected Profile's
 # identity/sentinel guard, so an invalid current Profile does not prevent a
 # transaction whose candidate after-image passes full `profile-load`.
 # A passing `require-ready:*` receipt additionally carries
-# `activation_protocol: card-first-readback-v1`, the Task Contract, reading
-# plan, read-back plan and Card Bundle SHA-256 values, plus the closed
-# `activation_bundle_manifest`. It stores paths and content hashes, never Card
-# text. The tool result carries transient `activation_delivery_payload` bytes
-# for Host injection. `delivery_assurance: machine-delivered` requires
-# `delivery_mode: host-context-injection` and a nonempty
-# `execution_context_id`; an unbound CLI result uses `degraded`,
-# `cli-tool-result`, and null. `deliver-readback:*` carries a
+# `activation_protocol`, the Task Contract, reading plan, read-back plan and
+# Card Bundle SHA-256 values, plus the closed `activation_bundle_manifest`. It
+# stores paths and content hashes, never Card text.
+#   card-first-readback-v3 (current): the manifest carries a `pieces` list --
+#     one `{piece_id, kind, path, sha256, bytes}` record per deliverable file,
+#     plus `piece_count` and `max_piece_envelope_bytes` -- and NO `cards` or
+#     `startup_readbacks` arrays. No `activation_delivery_payload` accompanies
+#     it in the receipt or the tool result: admission delivers nothing. It
+#     records `delivery_assurance: host-bound` with
+#     `delivery_mode: host-context-injection` and a nonempty
+#     `execution_context_id`, or `prepared` with `cli-tool-result` and null.
+#     Neither value claims delivery; completion is `machine-delivery-complete`
+#     and is earned by the K13/20 Assignment delivery gate.
+#   card-first-readback-v1 / v2 (sealed history): the manifest carries `cards`
+#     and `startup_readbacks`, the tool result carries transient
+#     `activation_delivery_payload` bytes, and admission itself recorded
+#     `machine-delivered`/`degraded`. Those eras replay under their own shape
+#     and never acquire the v3 fields.
+# `deliver-activation-piece:<batch>:<piece>` carries an `activation-piece-v1`
+# delivery: `piece_id`, `piece_sha256`, `piece_envelope_bytes`,
+# `delivery_attempt_id` and a single-use `delivery_nonce`, with the exact file
+# bytes only in the transient `activation_piece_payload`. The server re-reads
+# current bytes and refuses a source that drifted since admission, and refuses
+# any delivery serializing above the K13/19 budget.
+# `ack-activation-piece:<batch>:<piece>` carries an `activation-piece-ack-v1`
+# record binding the delivery receipt, its nonce, `delivery_attempt_id` and the
+# answering `execution_context_id`. An ack proves this context consumed that
+# delivery; on its own it does not prove the body ahead of the nonce entered
+# the model context. Only the server hash, a conformant Host Adapter (see
+# `Tools/host-conformance.yaml`), and this ack together are piece delivery
+# evidence.
+# `deliver-readback:*` carries a
 # `card-readback-addendum-v1` manifest, parent Bundle hash, and registered rule;
 # its exact source bytes exist only in transient `readback_delivery_payload`.
 # `open -> merge-ready` additionally consumes one current in-batch wrapper:

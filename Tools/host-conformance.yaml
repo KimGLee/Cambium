@@ -1,0 +1,47 @@
+# =============================================================================
+# Host Adapter conformance registry
+# Owner standard: "kernel/K13 Task Runtime and Execution Control/19 Card
+#   Context Activation and Read-back Delivery.md" (Budgeted Piece Delivery)
+#
+# A server can prove what it sent.  It cannot prove what the host put in the
+# model context.  This file records which adapter builds have demonstrated,
+# by test, that a within-budget tool result is delivered inline rather than
+# truncated or externalized -- the middle part of the three-part guarantee
+# K13/19 defines.  An adapter absent from this registry is `degraded`; that
+# is a statement about measurement, not about quality.
+#
+# Registration is earned by the probe in
+# `Tools/tests/host_conformance_probe.py`, which requires BOTH controls:
+#   positive -- a payload of exactly `minimum_bytes` arrives whole, proven by
+#               the model reporting a nonce placed at its very end;
+#   negative -- a larger payload is OBSERVED to be externalized, proving the
+#               probe can detect the failure it claims to rule out.
+# A positive result alone is not a pass: a probe that cannot fail cannot
+# certify.
+#
+# `version_range` is inclusive-exclusive over the host's declared
+# `clientInfo` name/version, exported to tools as CAMBIUM_HOST_CLIENT_NAME
+# and CAMBIUM_HOST_CLIENT_VERSION.  Hosts update themselves underneath a
+# passing registration, so evidence binds the build it ran against and an
+# unlisted build degrades instead of inheriting a stale pass.  These are
+# declared labels, not authentication.
+#
+# Only the restricted YAML subset (Tools/kblib.py parse_yaml_subset).
+# =============================================================================
+
+schema_version: 1
+conformance_version: activation-inline-v1
+minimum_bytes: 49152
+
+adapters:
+  - client_name: claude-code
+    version_range_from: 2.1.223
+    version_range_before: 2.2.0
+    inline_tool_result_supported: true
+    measured_inline_bytes: 49152
+    measured_externalized_bytes: 57344
+    externalization_below_limit: forbidden
+    conformance_version: activation-inline-v1
+    measured_on: 2026-08-22
+    evidence: "Tools/tests/host_conformance_probe.py; positive control 49152 B delivered inline with the trailing nonce reported by the model; negative control 57344 B and 65536 B both observed externalized to a persisted-output file with the nonce absent"
+    note: "The measured inline ceiling sits between 49152 and 57344 bytes, so the registered minimum has no headroom above it. Re-measure before raising MAX_ACTIVATION_PIECE_ENVELOPE_BYTES; this adapter would externalize a larger budget rather than refuse it."

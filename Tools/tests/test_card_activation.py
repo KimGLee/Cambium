@@ -59,17 +59,120 @@ class CardActivationTests(unittest.TestCase):
             text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             env=environ, check=False)
 
-    def test_bundle_carries_r01_and_every_selected_card(self):
+    def pieces(self, context):
+        return context["activation_bundle_manifest"]["pieces"]
+
+    def test_admission_freezes_pieces_and_embeds_no_content(self):
         context = self.context()
 
         self.assertEqual([], card_activation.activation_context_errors(context))
-        self.assertEqual("degraded", context["delivery_assurance"])
-        bundle = context["activation_delivery_payload"]
+        self.assertEqual("prepared", context["delivery_assurance"])
+        self.assertNotIn("activation_delivery_payload", context)
+        manifest = context["activation_bundle_manifest"]
+        self.assertNotIn("cards", manifest)
+        self.assertNotIn("startup_readbacks", manifest)
         self.assertEqual(
             ["R01", "R03", "R07"],
-            [card["route_id"] for card in bundle["cards"]])
-        self.assertTrue(all(card["content"] for card in bundle["cards"]))
-        self.assertEqual(1, len(bundle["readback_plan"]))
+            [row["route_id"] for row in self.pieces(context)
+             if row["kind"] == "card"])
+        self.assertNotIn("content", json.dumps(manifest, sort_keys=True))
+        self.assertEqual(1, len(manifest["readback_plan"]))
+
+    def test_admission_result_stays_far_inside_the_piece_budget(self):
+        context = self.context()
+
+        envelope = len(kblib.canonical_json_bytes(context))
+
+        self.assertLess(
+            envelope, card_activation.MAX_ACTIVATION_PIECE_ENVELOPE_BYTES)
+
+    def test_every_frozen_piece_delivers_within_the_budget(self):
+        context = self.context()
+
+        for record in self.pieces(context):
+            delivery = card_activation.build_activation_piece(
+                self.root, context, record["piece_id"])
+            payload = delivery["activation_piece_payload"]
+            self.assertEqual(record["sha256"],
+                             kblib.sha256_bytes(payload["content"]))
+            self.assertEqual(
+                (self.root / record["path"]).read_text(encoding="utf-8"),
+                payload["content"])
+            self.assertLessEqual(
+                delivery["piece_envelope_bytes"],
+                card_activation.MAX_ACTIVATION_PIECE_ENVELOPE_BYTES)
+
+    def test_frozen_piece_ids_are_the_exact_delivery_obligation(self):
+        context = self.context()
+
+        identifiers = card_activation.frozen_piece_ids(context)
+
+        self.assertEqual(sorted(identifiers), identifiers)
+        self.assertEqual(
+            sorted(row["piece_id"] for row in self.pieces(context)),
+            identifiers)
+        # Every named piece must actually deliver, or the set the delivery
+        # gate compares against would be unsatisfiable by construction.
+        for piece_id in identifiers:
+            card_activation.build_activation_piece(
+                self.root, context, piece_id)
+
+    def test_admission_budget_check_measures_the_real_envelope(self):
+        # A piece measured without its bundle hash, nonce and attempt id would
+        # be under-reported at admission and refused later at delivery.
+        context = self.context()
+        for record in self.pieces(context):
+            delivery = card_activation.build_activation_piece(
+                self.root, context, record["piece_id"])
+            self.assertLessEqual(
+                delivery["piece_envelope_bytes"],
+                card_activation.MAX_ACTIVATION_PIECE_ENVELOPE_BYTES)
+
+    def test_oversized_leaf_fails_closed_at_admission(self):
+        card = self.root / "kernel/Cards/R03 Module Build Card.md"
+        text = card.read_text(encoding="utf-8")
+        card.write_text(
+            text + ("\nfiller " * 12000), encoding="utf-8")
+        stamp = text.split("source_hash: ")[1].split("\n")[0]
+        rewritten = card.read_text(encoding="utf-8")
+        card.write_text(rewritten, encoding="utf-8")
+        self.assertTrue(stamp)
+
+        with self.assertRaisesRegex(ValueError, "delivery budget"):
+            self.context()
+
+    def test_piece_delivery_refuses_a_source_that_drifted(self):
+        context = self.context()
+        card = self.root / "kernel/Cards/R01 Core Bootstrap Card.md"
+        card.write_text(card.read_text(encoding="utf-8") + "\nDrift.\n",
+                        encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "drifted since admission"):
+            card_activation.build_activation_piece(
+                self.root, context, "card:R01")
+
+    def test_piece_ack_binds_the_delivering_context_and_nonce(self):
+        context = self.context("mcp:ack")
+        delivery = card_activation.build_activation_piece(
+            self.root, context, "card:R01", execution_context_id="mcp:ack")
+        delivery["receipt_id"] = "audit-check_queue-fixture-0001"
+
+        ack = card_activation.build_piece_ack(
+            delivery, delivery["delivery_nonce"],
+            execution_context_id="mcp:ack")
+
+        self.assertEqual("card:R01", ack["piece_id"])
+        self.assertEqual(delivery["delivery_attempt_id"],
+                         ack["delivery_attempt_id"])
+        self.assertEqual("audit-check_queue-fixture-0001",
+                         ack["delivery_receipt_id"])
+        with self.assertRaisesRegex(ValueError, "nonce does not match"):
+            card_activation.build_piece_ack(
+                delivery, "0" * 32, execution_context_id="mcp:ack")
+        with self.assertRaisesRegex(ValueError, "delivering execution context"):
+            card_activation.build_piece_ack(
+                delivery, delivery["delivery_nonce"],
+                execution_context_id="mcp:other")
 
     def test_frozen_card_index_is_delivered_as_startup_navigation(self):
         progress = self.progress()
@@ -86,15 +189,17 @@ class CardActivationTests(unittest.TestCase):
             runtime_state=runtime)
 
         self.assertEqual([], card_activation.activation_context_errors(context))
-        startup = context["activation_delivery_payload"]["startup_readbacks"]
-        index_rows = [row for row in startup
+        index_rows = [row for row in self.pieces(context)
                       if row["path"] == card_activation.CARD_INDEX_PATH]
         self.assertEqual(1, len(index_rows))
         self.assertEqual("kernel-card-index", index_rows[0]["route_id"])
+        self.assertEqual("activation-readback", index_rows[0]["kind"])
+        delivered = card_activation.build_activation_piece(
+            self.root, context, index_rows[0]["piece_id"])
         self.assertEqual(
             (self.root / card_activation.CARD_INDEX_PATH).read_text(
                 encoding="utf-8"),
-            index_rows[0]["content"])
+            delivered["activation_piece_payload"]["content"])
 
     def test_unregistered_extra_selected_card_path_is_rejected(self):
         progress = self.progress()
@@ -144,13 +249,13 @@ class CardActivationTests(unittest.TestCase):
         self.assertEqual([], card_activation.activation_context_errors(context))
         self.assertEqual(
             ["R01", "R03", "R07"],
-            [card["route_id"] for card in
-             context["activation_delivery_payload"]["cards"]])
+            [row["route_id"] for row in self.pieces(context)
+             if row["kind"] == "card"])
 
-    def test_machine_delivery_is_bound_to_one_execution_context(self):
+    def test_admission_records_host_binding_not_delivery(self):
         context = self.context("mcp:fixture-context")
 
-        self.assertEqual("machine-delivered", context["delivery_assurance"])
+        self.assertEqual("host-bound", context["delivery_assurance"])
         self.assertEqual("host-context-injection", context["delivery_mode"])
         self.assertEqual("mcp:fixture-context",
                          context["execution_context_id"])
@@ -178,13 +283,14 @@ class CardActivationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "semantic source drift"):
             self.context()
 
-    def test_embedded_byte_tampering_is_detected(self):
+    def test_an_admission_that_embeds_a_payload_is_rejected(self):
         context = self.context()
-        context["activation_delivery_payload"]["cards"][0]["content"] += "x"
+        context["activation_delivery_payload"] = {"cards": []}
 
         errors = card_activation.activation_context_errors(context)
 
-        self.assertTrue(any("Card 0 bytes" in error for error in errors))
+        self.assertTrue(any("embedded delivery payload" in error
+                            for error in errors), errors)
 
     def test_declared_readback_is_one_parent_bound_addendum(self):
         context = self.context("mcp:readback")
@@ -208,8 +314,10 @@ class CardActivationTests(unittest.TestCase):
             "--receipts", relative, "--json", context_id=context_id)
         self.assertEqual(0, result.returncode, result.stderr)
         receipt = json.loads(result.stdout)[0]
-        self.assertEqual("machine-delivered", receipt["delivery_assurance"])
-        self.assertTrue(receipt["activation_delivery_payload"]["cards"])
+        self.assertEqual("host-bound", receipt["delivery_assurance"])
+        self.assertNotIn("activation_delivery_payload", receipt)
+        self.assertTrue(
+            receipt["activation_bundle_manifest"]["pieces"])
         persisted = json.loads(
             (self.root / relative).read_text(encoding="utf-8").splitlines()[0])
         self.assertNotIn("activation_delivery_payload", persisted)
@@ -228,14 +336,14 @@ class CardActivationTests(unittest.TestCase):
             "--actor-role", "integrator", "--at",
             "2026-08-21T00:00:00Z", "--apply", context_id=context_id)
 
-    def test_open_consumes_only_the_same_machine_delivery_context(self):
+    def test_open_binds_the_bundle_and_no_longer_binds_the_session(self):
+        # v1/v2 refused an admission consumed by a second host session.  A v3
+        # admission asserts no delivery, so `open` is admission only and the
+        # context binding moves to the Assignment delivery gate.
         _relative, receipt = self._persist_machine_gate()
 
-        wrong = self._open_command(receipt, "mcp:activation-b")
-        self.assertEqual(1, wrong.returncode, wrong.stdout + wrong.stderr)
-        self.assertIn("invalid Card activation delivery", wrong.stdout)
+        opened = self._open_command(receipt, "mcp:activation-b")
 
-        opened = self._open_command(receipt, "mcp:activation-a")
         self.assertEqual(0, opened.returncode, opened.stdout + opened.stderr)
         runtime = check_queue.validate_runtime(self.root)
         self.assertEqual([], runtime["errors"], runtime["errors"])
@@ -243,8 +351,63 @@ class CardActivationTests(unittest.TestCase):
             self.item()["transition_receipts"][0]][1]
         self.assertEqual(receipt["card_bundle_sha256"],
                          transition["card_bundle_sha256"])
-        self.assertEqual("mcp:activation-a",
-                         transition["execution_context_id"])
+
+    def test_open_still_refuses_a_bundle_whose_bytes_drifted(self):
+        _relative, receipt = self._persist_machine_gate()
+        card = self.root / "kernel/Cards/R01 Core Bootstrap Card.md"
+        card.write_text(card.read_text(encoding="utf-8") + "\nDrift.\n",
+                        encoding="utf-8")
+
+        refused = self._open_command(receipt, "mcp:activation-a")
+
+        self.assertEqual(1, refused.returncode)
+        self.assertIn("invalid Card activation delivery", refused.stdout)
+
+    def test_piece_delivery_and_ack_round_trip_through_the_cli(self):
+        _relative, receipt = self._persist_machine_gate("mcp:pieces")
+        opened = self._open_command(receipt, "mcp:pieces")
+        self.assertEqual(0, opened.returncode, opened.stdout + opened.stderr)
+
+        delivered = self.run_tool(
+            "check_queue.py", "--deliver-activation-piece", "B1",
+            "--piece", "card:R01",
+            "--receipts", ".cambium/receipts/piece.jsonl", "--json",
+            context_id="mcp:pieces")
+        self.assertEqual(0, delivered.returncode, delivered.stderr)
+        delivery = json.loads(delivered.stdout)[0]
+        payload = delivery["activation_piece_payload"]
+        self.assertEqual(
+            (self.root / "kernel/Cards/R01 Core Bootstrap Card.md").read_text(
+                encoding="utf-8"),
+            payload["content"])
+        self.assertEqual(payload["delivery_nonce"],
+                         delivery["delivery_nonce"])
+        persisted = json.loads((
+            self.root / ".cambium/receipts/piece.jsonl"
+        ).read_text(encoding="utf-8").splitlines()[0])
+        self.assertNotIn("activation_piece_payload", persisted)
+        self.assertNotIn("content", json.dumps(persisted, sort_keys=True))
+
+        acked = self.run_tool(
+            "check_queue.py", "--ack-activation-piece", "B1",
+            "--piece", "card:R01",
+            "--piece-nonce", delivery["delivery_nonce"],
+            "--piece-delivery-receipt", delivery["receipt_id"],
+            "--receipts", ".cambium/receipts/ack.jsonl", "--json",
+            context_id="mcp:pieces")
+        self.assertEqual(0, acked.returncode, acked.stderr)
+        ack = json.loads(acked.stdout)[0]
+        self.assertEqual("card:R01", ack["piece_id"])
+        self.assertEqual(delivery["receipt_id"], ack["delivery_receipt_id"])
+
+        wrong = self.run_tool(
+            "check_queue.py", "--ack-activation-piece", "B1",
+            "--piece", "card:R01", "--piece-nonce", "0" * 32,
+            "--piece-delivery-receipt", delivery["receipt_id"],
+            "--receipts", ".cambium/receipts/ack.jsonl", "--json",
+            context_id="mcp:pieces")
+        self.assertEqual(1, wrong.returncode)
+        self.assertIn("nonce does not match", wrong.stdout + wrong.stderr)
 
     def test_public_readback_mode_returns_exact_source_content(self):
         _relative, receipt = self._persist_machine_gate("mcp:readback")
@@ -287,8 +450,10 @@ class CardActivationTests(unittest.TestCase):
         delivery = status["active_card_context_deliveries"][0]
         self.assertEqual("B1", delivery["batch_id"])
         self.assertEqual("mcp:replacement", delivery["execution_context_id"])
-        self.assertEqual("machine-delivered", delivery["delivery_assurance"])
-        self.assertTrue(delivery["activation_delivery_payload"]["cards"])
+        self.assertEqual("host-bound", delivery["delivery_assurance"])
+        self.assertNotIn("activation_delivery_payload", delivery)
+        self.assertTrue(
+            delivery["activation_bundle_manifest"]["pieces"])
 
     def test_resume_refuses_card_bytes_that_drifted_after_open(self):
         _relative, receipt = self._persist_machine_gate("mcp:original")

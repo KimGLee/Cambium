@@ -46,12 +46,12 @@ import project_page_state
 import standards_state
 
 TOOL = "check_queue"
-TOOL_VERSION = "1.24.0"
+TOOL_VERSION = "1.25.0"
 # 1.20.1 remains a producer-era identity for already-consumed maintenance
-# gates. Current gate production and all live gate admission use 1.24.0;
+# gates. Current gate production and all live gate admission use 1.25.0;
 # historical consumption replays the older receipt's own promised shape.
 SUPPORTED_CHECK_QUEUE_TOOL_VERSIONS = frozenset((
-    "1.20.1", "1.21.0", "1.22.0", "1.23.0", "1.24.0",
+    "1.20.1", "1.21.0", "1.22.0", "1.23.0", "1.24.0", "1.25.0",
 ))
 # The `Check` cell K00/12 registers for every Gate this tool produces; each
 # such Gate is distinguished by `Mode`, not by a second check name.
@@ -15208,6 +15208,8 @@ def make_check_receipt(result, outcome, details, mode,
                        hub_page_candidates=None,
                        activation_context=None,
                        readback_context=None,
+                       piece_context=None,
+                       piece_ack_context=None,
                        resume_activation_contexts=None):
     """Build the canonical receipt for one already-evaluated Queue result.
 
@@ -15247,6 +15249,12 @@ def make_check_receipt(result, outcome, details, mode,
             if activation_context:
                 receipt.update(card_activation.activation_receipt_binding(
                     activation_context))
+        if mode.startswith("deliver-activation-piece:") and piece_context:
+            receipt.update(card_activation.piece_receipt_binding(
+                piece_context))
+        if mode.startswith("ack-activation-piece:") and piece_ack_context:
+            receipt.update(card_activation.piece_ack_receipt_binding(
+                piece_ack_context))
         if mode.startswith("deliver-readback:") and readback_context:
             receipt.update(card_activation.readback_receipt_binding(
                 readback_context))
@@ -15350,22 +15358,30 @@ def _emit_json_receipts(receipts):
 
 
 def _delivery_result(receipt, activation_context=None, readback_context=None,
-                     resume_activation_contexts=None):
+                     piece_context=None, resume_activation_contexts=None):
     """Attach transient bytes to the tool result, never the receipt register."""
     emitted = dict(receipt)
-    if activation_context:
-        emitted["activation_delivery_payload"] = activation_context.get(
-            "activation_delivery_payload")
+    if activation_context and "activation_delivery_payload" in \
+            activation_context:
+        emitted["activation_delivery_payload"] = activation_context[
+            "activation_delivery_payload"]
     if readback_context:
         emitted["readback_delivery_payload"] = readback_context.get(
             "readback_delivery_payload")
+    if piece_context:
+        emitted["activation_piece_payload"] = piece_context.get(
+            "activation_piece_payload")
     if resume_activation_contexts:
         persisted = emitted.get("active_card_context_deliveries") or []
         emitted["active_card_context_deliveries"] = [
             {
                 **dict(binding),
-                "activation_delivery_payload": delivery.get(
-                    "activation_delivery_payload"),
+                # A v3 resume re-freezes the manifest for the new context and
+                # names the pieces it must pull; the bytes travel one budgeted
+                # piece at a time, never inside this status result.
+                **({"activation_delivery_payload": delivery[
+                    "activation_delivery_payload"]}
+                   if "activation_delivery_payload" in delivery else {}),
             }
             for binding, delivery in zip(
                 persisted, resume_activation_contexts)
@@ -15378,7 +15394,8 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
                    maintenance_context=None,
                    standards_revalidation_context=None,
                    hub_page_candidates=None, activation_context=None,
-                   readback_context=None, resume_activation_contexts=None,
+                   readback_context=None, piece_context=None,
+                   piece_ack_context=None, resume_activation_contexts=None,
                    build_unwritten=False):
     """Append the small receipt and return its delivery-enriched tool result.
 
@@ -15400,10 +15417,12 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
             hub_page_candidates=hub_page_candidates,
             activation_context=activation_context,
             readback_context=readback_context,
+            piece_context=piece_context,
+            piece_ack_context=piece_ack_context,
             resume_activation_contexts=resume_activation_contexts,
         )
         return _delivery_result(
-            receipt, activation_context, readback_context,
+            receipt, activation_context, readback_context, piece_context,
             resume_activation_contexts)
     path = kblib.managed_repository_path(
         root, relative_path, ".cambium/receipts",
@@ -15418,11 +15437,13 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
         hub_page_candidates=hub_page_candidates,
         activation_context=activation_context,
         readback_context=readback_context,
+        piece_context=piece_context,
+        piece_ack_context=piece_ack_context,
         resume_activation_contexts=resume_activation_contexts,
     )
     kblib.write_receipts(path, [receipt])
     return _delivery_result(
-        receipt, activation_context, readback_context,
+        receipt, activation_context, readback_context, piece_context,
         resume_activation_contexts)
 
 
@@ -16242,9 +16263,29 @@ def main(argv=None):
         "--deliver-readback", metavar="BATCH_ID",
         help="deliver one registered conditional Card read-back source for an "
              "already-open batch")
+    group.add_argument(
+        "--deliver-activation-piece", metavar="BATCH_ID",
+        help="deliver one frozen activation piece of BATCH_ID inside the "
+             "protocol delivery budget")
+    group.add_argument(
+        "--ack-activation-piece", metavar="BATCH_ID",
+        help="return one delivered piece nonce as same-context delivery "
+             "evidence")
     parser.add_argument(
         "--readback-rule", metavar="RULE_ID",
         help="registered rule selected with --deliver-readback")
+    parser.add_argument(
+        "--piece", metavar="PIECE_ID",
+        help="frozen activation piece selected with "
+             "--deliver-activation-piece or --ack-activation-piece")
+    parser.add_argument(
+        "--piece-nonce", metavar="NONCE",
+        help="nonce returned from the delivered piece, supplied to "
+             "--ack-activation-piece")
+    parser.add_argument(
+        "--piece-delivery-receipt", metavar="RECEIPT_ID",
+        help="delivery receipt the acknowledged nonce came from, supplied to "
+             "--ack-activation-piece")
     parser.add_argument("--confirmation-receipt",
                         help="confirmation evidence supplied to --require-ready")
     parser.add_argument(
@@ -16292,6 +16333,8 @@ def _run(args, produced):
     revalidation_context = None
     activation_context = None
     readback_context = None
+    piece_context = None
+    piece_ack_context = None
     resume_activation_contexts = []
 
     if args.confirmation_receipt and not args.require_ready:
@@ -16303,6 +16346,23 @@ def _run(args, produced):
         errors.append("--readback-rule is only valid with --deliver-readback")
     if args.deliver_readback and not args.readback_rule:
         errors.append("--deliver-readback requires --readback-rule")
+    if args.piece and not (args.deliver_activation_piece or
+                           args.ack_activation_piece):
+        errors.append("--piece is only valid with --deliver-activation-piece "
+                      "or --ack-activation-piece")
+    if args.deliver_activation_piece and not args.piece:
+        errors.append("--deliver-activation-piece requires --piece")
+    if args.ack_activation_piece and not (
+            args.piece and args.piece_nonce and args.piece_delivery_receipt):
+        errors.append(
+            "--ack-activation-piece requires --piece, --piece-nonce and "
+            "--piece-delivery-receipt")
+    for flag, value in (("--piece-nonce", args.piece_nonce),
+                        ("--piece-delivery-receipt",
+                         args.piece_delivery_receipt)):
+        if value and not args.ack_activation_piece:
+            errors.append("%s is only valid with --ack-activation-piece" %
+                          flag)
     maintenance_evidence = (
         args.budget_manifest_receipt, args.ledger_advance_receipt,
         args.watermark_advance_receipt,
@@ -16434,6 +16494,63 @@ def _run(args, produced):
                     )
                 except (OSError, UnicodeError, ValueError) as exc:
                     errors.append("cannot deliver Card read-back: %s" % exc)
+    elif not errors and (args.deliver_activation_piece or
+                         args.ack_activation_piece):
+        batch_id = args.deliver_activation_piece or args.ack_activation_piece
+        item = result.get("items_by_id", {}).get(batch_id)
+        activation_receipt = None
+        if item is None:
+            errors.append("requested batch %s does not exist" % batch_id)
+        elif item.get("state") not in ("open", "merge-ready"):
+            errors.append(
+                "activation piece delivery requires an open or merge-ready "
+                "batch; %s is %s" % (batch_id, item.get("state")))
+        else:
+            catalog = result.get(
+                "current_receipt_catalog", result.get("receipt_catalog", {}))
+            entry = catalog.get(item.get("activation_receipt"))
+            activation_receipt = entry[1] if entry is not None else None
+            if (not isinstance(activation_receipt, dict) or
+                    activation_receipt.get("tool") != TOOL or
+                    activation_receipt.get("tool_version") != TOOL_VERSION):
+                errors.append(
+                    "batch %s has no current Card-first activation receipt; "
+                    "reopen it before piece delivery" % batch_id)
+                activation_receipt = None
+        if activation_receipt is not None and args.deliver_activation_piece:
+            try:
+                piece_context = card_activation.build_activation_piece(
+                    result["root"],
+                    card_activation.context_from_receipt(activation_receipt),
+                    args.piece)
+            except (OSError, UnicodeError, ValueError) as exc:
+                errors.append("cannot deliver activation piece: %s" % exc)
+        elif activation_receipt is not None:
+            catalog = result.get(
+                "current_receipt_catalog", result.get("receipt_catalog", {}))
+            delivery_entry = catalog.get(args.piece_delivery_receipt)
+            delivery = delivery_entry[1] if delivery_entry is not None else None
+            if not isinstance(delivery, dict):
+                errors.append(
+                    "piece delivery receipt %s is absent from the current "
+                    "catalog" % args.piece_delivery_receipt)
+            elif delivery.get("piece_id") != args.piece:
+                errors.append(
+                    "piece delivery receipt %s does not deliver %s" %
+                    (args.piece_delivery_receipt, args.piece))
+            elif delivery.get("card_bundle_sha256") != activation_receipt.get(
+                    "card_bundle_sha256"):
+                errors.append(
+                    "piece delivery receipt %s belongs to another activation "
+                    "bundle" % args.piece_delivery_receipt)
+            else:
+                try:
+                    piece_ack_context = card_activation.build_piece_ack(
+                        dict(delivery, receipt_id=args.piece_delivery_receipt),
+                        args.piece_nonce)
+                except (OSError, UnicodeError, ValueError) as exc:
+                    errors.append("cannot acknowledge activation piece: %s" %
+                                  exc)
     elif not errors and args.require_maintenance_complete:
         maintenance_errors, maintenance_context = \
             _maintenance_completion_gate_errors(
@@ -16587,10 +16704,17 @@ def _run(args, produced):
             ("deliver-readback:%s:%s" % (
                 args.deliver_readback, args.readback_rule)
              if args.deliver_readback else
+            ("deliver-activation-piece:%s:%s" % (
+                args.deliver_activation_piece, args.piece)
+             if args.deliver_activation_piece else
+            ("ack-activation-piece:%s:%s" % (
+                args.ack_activation_piece, args.piece)
+             if args.ack_activation_piece else
             ("require-complete" if args.require_complete else
              ("require-maintenance-complete"
               if args.require_maintenance_complete else
-              ("resume-status" if args.resume_status else "consistency"))))))
+              ("resume-status" if args.resume_status else
+               "consistency"))))))))
     try:
         receipt = _write_receipt(
             args.root, args.receipts, result, outcome, details, mode,
@@ -16601,6 +16725,8 @@ def _run(args, produced):
             standards_revalidation_context=revalidation_context,
             activation_context=activation_context,
             readback_context=readback_context,
+            piece_context=piece_context,
+            piece_ack_context=piece_ack_context,
             resume_activation_contexts=resume_activation_contexts,
             build_unwritten=produced is not None,
         )

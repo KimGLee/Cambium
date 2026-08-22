@@ -17,11 +17,12 @@ source_files:
   - kernel/K00 Standards Control/15 Read Set Loading Boundaries.md
   - kernel/K00 Standards Control/17 Profile Dependency Closure.md
   - kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery.md
+  - kernel/K13 Task Runtime and Execution Control/20 Assignment State and Delivery Gate.md
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
 readback_sources: []
 readback_policy: none
-source_hash: '72cd9219f1e8'
-compiled_source_hash: '72cd9219f1e8'
+source_hash: '2025ae92d192'
+compiled_source_hash: '2025ae92d192'
 ---
 # R01 Core Bootstrap Card
 
@@ -43,9 +44,16 @@ The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Co
 
 ## Before Start
 
-- [ ] Enter through a `card-first-readback-v1` activation result that carries
-  R01 plus every selected task Card. Treat an unbound CLI delivery as
-  degraded; it does not prove injection into an Agent execution context.
+- [ ] Enter through a `card-first-readback-v3` admission result. It freezes a
+  piece manifest naming R01 and every selected task Card; the bytes arrive
+  afterwards, one budgeted piece per tool result, each acknowledged from this
+  execution context. Admission records `host-bound` or `prepared` and claims
+  no delivery of its own.
+- [ ] Treat delivery as incomplete until the ack set matches the frozen
+  manifest and the host adapter is a registered conformant build. Only then
+  may a runtime call this context `running`. An unbound CLI delivery, or any
+  unregistered adapter, is `degraded`: work may proceed, but no layer may
+  claim machine-enforced Card delivery.
 - [ ] State the objective, target scope, exclusions, and latest user instructions.
 - [ ] Inspect the repository root for `.cambium/state/` before any content or
   task-state write. If it exists, run `python3 Tools/check_queue.py . --resume-status`,

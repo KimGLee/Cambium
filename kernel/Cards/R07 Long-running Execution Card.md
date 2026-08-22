@@ -22,6 +22,7 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/09 Queue Compilation Replanning and Views.md
   - kernel/K13 Task Runtime and Execution Control/10 Batch Admission Transitions and Serial Integration.md
   - kernel/K13 Task Runtime and Execution Control/19 Card Context Activation and Read-back Delivery.md
+  - kernel/K13 Task Runtime and Execution Control/20 Assignment State and Delivery Gate.md
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
   - kernel/K13 Task Runtime and Execution Control/12 Completion Gate Bindings.md
   - kernel/K13 Task Runtime and Execution Control/13 Final Handoff.md
@@ -46,8 +47,8 @@ readback_sources:
   - kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract.md
   - kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary.md
 readback_policy: declared
-source_hash: 'bd12dc944665'
-compiled_source_hash: 'bd12dc944665'
+source_hash: 'b66901b13a27'
+compiled_source_hash: 'b66901b13a27'
 ---
 # R07 Long-running Execution Card
 
@@ -71,7 +72,7 @@ Run a multi-batch task, sustain checkpoints, resume after interruption, maintain
 
 ## During
 
-Each batch follows the fixed loop: version/Guidance self-check → `check_queue.py --require-ready` → integrator records `queued -> open` → execute the frozen manifest → build one AuditPlan, finish in-batch QA — including one `record_batch_judgment.py` receipt per record of the activation-delivered Batch Review plan — and write the delta → integrator records `open -> merge-ready` → serially applies the delta and global gates → reconciles Coverage/Queue/Progress → records `merge-ready -> closed`.
+Each batch follows the fixed loop: version/Guidance self-check → `check_queue.py --require-ready` (freezes the piece manifest; delivers no bytes) → integrator records `queued -> open` → pull every frozen piece with `check_queue.py --deliver-activation-piece` and return each nonce with `--ack-activation-piece`, which is what lets a runtime call this context `running` → execute the frozen manifest → build one AuditPlan, finish in-batch QA — including one `record_batch_judgment.py` receipt per record of the activation-delivered Batch Review plan — and write the delta → integrator records `open -> merge-ready` → serially applies the delta and global gates → reconciles Coverage/Queue/Progress → records `merge-ready -> closed`.
 
 - Concurrent batches have disjoint manifests and merged prerequisites; only the integrator writes shared control state and hub pages.
 - In-batch QA is not satisfied by producing the close evidence set alone: each M-tier manifest page passes, page by page, the M-tier Gate Checklist surfaced by the kernel Single Note Authoring Card (K12/14 folds note-level acceptance into Batch Review), including the sources-role and page-contract items; the per-page conclusion is recorded in that page's attestation, not asserted once in the batch wrapper.

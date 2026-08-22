@@ -24,10 +24,28 @@ import kblib
 # Batch Review Requirement expansion at admission and carries its set hash, so
 # `open` can bind the exact judgment obligations the batch was activated with.
 # Sealed v1 receipts replay under their own era and never gain the field.
-ACTIVATION_PROTOCOL = "card-first-readback-v2"
+# v3 stops embedding Card and read-back bytes in the admission result.  A
+# host that externalizes an oversized tool result leaves the payload outside
+# the model context while the receipt still claims delivery, and nothing in
+# v1/v2 could detect that divergence.  v3 therefore freezes a small piece
+# manifest at admission, delivers one file per tool result inside a protocol
+# byte budget, and leaves `machine-delivery-complete` to be earned by the
+# Assignment delivery gate rather than asserted here.
+ACTIVATION_PROTOCOL = "card-first-readback-v3"
+V2_ACTIVATION_PROTOCOL = "card-first-readback-v2"
 LEGACY_ACTIVATION_PROTOCOL = "card-first-readback-v1"
 SUPPORTED_ACTIVATION_PROTOCOLS = frozenset((
-    LEGACY_ACTIVATION_PROTOCOL, ACTIVATION_PROTOCOL))
+    LEGACY_ACTIVATION_PROTOCOL, V2_ACTIVATION_PROTOCOL, ACTIVATION_PROTOCOL))
+EMBEDDED_PAYLOAD_PROTOCOLS = frozenset((
+    LEGACY_ACTIVATION_PROTOCOL, V2_ACTIVATION_PROTOCOL))
+PIECE_PROTOCOL = "activation-piece-v1"
+PIECE_ACK_PROTOCOL = "activation-piece-ack-v1"
+# One delivered piece must fit one tool result.  The measured object is the
+# canonical serialization of the whole delivery, not the source file: the
+# 2026-08-22 host measurement saw 50,495 bytes of Card source arrive as a
+# 231,164-byte result, so envelope overhead exceeded the payload itself.
+MAX_ACTIVATION_PIECE_ENVELOPE_BYTES = 49152
+PIECE_KINDS = frozenset(("card", "activation-readback"))
 BATCH_REVIEW_PLAN_PROTOCOL = "batch-review-plan-v1"
 READBACK_PROTOCOL = "card-readback-addendum-v1"
 EXECUTION_CONTEXT_ENV = "CAMBIUM_EXECUTION_CONTEXT_ID"
@@ -190,19 +208,41 @@ def _runtime_bindings(runtime_state):
     return bindings
 
 
-def _delivery_binding(execution_context_id=None):
+def _delivery_binding(execution_context_id=None, *, protocol=None):
+    """Record what this result is, not what a later reader will receive.
+
+    Under v1/v2 an admission that reached a bound host context claimed
+    `machine-delivered` outright.  That claim was minted before the result
+    left the server, so it survived a host that never put the bytes in the
+    model context.  v3 records only the preparation state: `host-bound` when
+    an execution context is bound, `prepared` otherwise.  Completion is
+    earned per piece and recorded by the Assignment delivery gate.
+    """
     context_id = execution_context_id
     if context_id is None:
         context_id = os.environ.get(EXECUTION_CONTEXT_ENV)
-    if isinstance(context_id, str) and context_id:
+    bound = isinstance(context_id, str) and bool(context_id)
+    if protocol in EMBEDDED_PAYLOAD_PROTOCOLS:
+        if bound:
+            return {
+                "delivery_mode": "host-context-injection",
+                "delivery_assurance": "machine-delivered",
+                "execution_context_id": context_id,
+            }
+        return {
+            "delivery_mode": "cli-tool-result",
+            "delivery_assurance": "degraded",
+            "execution_context_id": None,
+        }
+    if bound:
         return {
             "delivery_mode": "host-context-injection",
-            "delivery_assurance": "machine-delivered",
+            "delivery_assurance": "host-bound",
             "execution_context_id": context_id,
         }
     return {
         "delivery_mode": "cli-tool-result",
-        "delivery_assurance": "degraded",
+        "delivery_assurance": "prepared",
         "execution_context_id": None,
     }
 
@@ -268,7 +308,7 @@ def _card_record(root, route_id, registered, declared_path):
 
 
 def _activation_bundle_manifest(bundle):
-    """Project a delivery payload into its small content-addressed manifest."""
+    """Project a v1/v2 delivery payload into its content-addressed manifest."""
     manifest = {
         key: value for key, value in bundle.items()
         if key not in ("cards", "startup_readbacks")
@@ -282,6 +322,52 @@ def _activation_bundle_manifest(bundle):
         for row in bundle.get("startup_readbacks", [])
     ]
     return manifest
+
+
+def _piece_envelope_bytes(piece):
+    """Measure one delivery exactly as it will be serialized to the host."""
+    return len(kblib.canonical_json_bytes(piece))
+
+
+def _piece_records(cards, startup):
+    """Freeze one addressable record per deliverable file.
+
+    A piece is always a whole file.  Splitting one file across results would
+    break the only verification the receiving end can perform: the frozen
+    SHA binds the complete file, a model cannot rehash fragments, and no
+    party could then prove a reassembly was faithful.
+    """
+    pieces = []
+    for card in cards:
+        pieces.append({
+            "piece_id": "card:%s" % card["route_id"],
+            "kind": "card",
+            "path": card["path"],
+            "sha256": card["sha256"],
+            "bytes": len(card["content"].encode("utf-8")),
+            "route_id": card["route_id"],
+            "read_set": card["read_set"],
+            "read_set_sha256": card["read_set_sha256"],
+            "source_hash": card["source_hash"],
+            "compiled_source_hash": card["compiled_source_hash"],
+            "readback_policy": card["readback_policy"],
+            "readback_sources": list(card["readback_sources"]),
+        })
+    for row in startup:
+        pieces.append({
+            "piece_id": "readback:%s" % row["rule_id"],
+            "kind": "activation-readback",
+            "path": row["path"],
+            "sha256": row["sha256"],
+            "bytes": len(row["content"].encode("utf-8")),
+            "route_id": row["route_id"],
+            "rule_id": row["rule_id"],
+        })
+    pieces.sort(key=lambda row: row["piece_id"])
+    identifiers = [row["piece_id"] for row in pieces]
+    if len(identifiers) != len(set(identifiers)):
+        raise ActivationError("activation piece identifiers are not unique")
+    return pieces
 
 
 def expand_batch_review_requirements(profile_contract, item):
@@ -479,7 +565,8 @@ def build_activation_context(root, progress, item, *, runtime_state,
         kblib.canonical_json_bytes(readback_plan))
     review_records = expand_batch_review_requirements(profile_contract, item)
     review_set_sha = review_requirement_set_sha256(review_records)
-    bundle = {
+    pieces = _piece_records(cards, startup)
+    manifest = {
         "activation_protocol": ACTIVATION_PROTOCOL,
         "task_id": progress.get("task_id"),
         "batch_id": batch_id,
@@ -492,8 +579,9 @@ def build_activation_context(root, progress, item, *, runtime_state,
         "reading_plan_sha256": reading_plan_sha,
         "readback_plan_sha256": readback_plan_sha,
         "reading_plan": reading_plan,
-        "cards": cards,
-        "startup_readbacks": startup,
+        "pieces": pieces,
+        "piece_count": len(pieces),
+        "max_piece_envelope_bytes": MAX_ACTIVATION_PIECE_ENVELOPE_BYTES,
         "readback_plan": readback_plan,
         "batch_review_plan": {
             "protocol": BATCH_REVIEW_PLAN_PROTOCOL,
@@ -501,7 +589,26 @@ def build_activation_context(root, progress, item, *, runtime_state,
             "requirements": review_records,
         },
     }
-    manifest = _activation_bundle_manifest(bundle)
+    # Fail closed at admission rather than at delivery: a manifest that
+    # cannot be delivered inside the budget is a governance problem for the
+    # oversized leaf, not a transport accident to discover mid-batch.
+    oversized = []
+    # The stand-ins are length-exact: the real delivery carries a 71-character
+    # bundle hash, a 32-character nonce and a 32-character attempt id, so
+    # measuring with None here would under-report the envelope and let a piece
+    # on the boundary pass admission and fail delivery.
+    sha_placeholder = "sha256:" + ("0" * 64)
+    for record, text in zip(pieces, _piece_texts(cards, startup, pieces)):
+        envelope = _piece_envelope_bytes(
+            _piece_delivery_payload(manifest, record, text, nonce="0" * 32,
+                                    delivery_attempt_id="0" * 32,
+                                    card_bundle_sha256=sha_placeholder))
+        if envelope > MAX_ACTIVATION_PIECE_ENVELOPE_BYTES:
+            oversized.append("%s (%d bytes)" % (record["piece_id"], envelope))
+    if oversized:
+        raise ActivationError(
+            "activation piece(s) exceed the %d-byte delivery budget: %s" %
+            (MAX_ACTIVATION_PIECE_ENVELOPE_BYTES, ", ".join(oversized)))
     bundle_sha = kblib.sha256_bytes(kblib.canonical_json_bytes(manifest))
     return {
         "activation_protocol": ACTIVATION_PROTOCOL,
@@ -511,8 +618,45 @@ def build_activation_context(root, progress, item, *, runtime_state,
         "review_requirement_set_sha256": review_set_sha,
         "card_bundle_sha256": bundle_sha,
         "activation_bundle_manifest": manifest,
-        "activation_delivery_payload": bundle,
-        **_delivery_binding(execution_context_id),
+        **_delivery_binding(execution_context_id,
+                            protocol=ACTIVATION_PROTOCOL),
+    }
+
+
+def _piece_texts(cards, startup, pieces):
+    """Return each piece's exact text in the frozen piece order."""
+    by_id = {}
+    for card in cards:
+        by_id["card:%s" % card["route_id"]] = card["content"]
+    for row in startup:
+        by_id["readback:%s" % row["rule_id"]] = row["content"]
+    return [by_id[record["piece_id"]] for record in pieces]
+
+
+def _piece_delivery_payload(manifest, record, text, *, nonce,
+                            delivery_attempt_id, card_bundle_sha256=None):
+    """Assemble one piece delivery exactly as the host will receive it.
+
+    The nonce sits after the content.  That placement is defence in depth
+    against the specific failure this protocol exists to catch -- a host that
+    shows only a leading preview -- and nothing more: an ack proves the
+    delivery reached this context, never that the whole body was read.  The
+    complete guarantee needs the server SHA, a conformant Host Adapter, and
+    this ack together.
+    """
+    return {
+        "piece_protocol": PIECE_PROTOCOL,
+        "card_bundle_sha256": card_bundle_sha256,
+        "batch_id": manifest.get("batch_id"),
+        "task_id": manifest.get("task_id"),
+        "piece_id": record["piece_id"],
+        "kind": record["kind"],
+        "path": record["path"],
+        "sha256": record["sha256"],
+        "bytes": record["bytes"],
+        "delivery_attempt_id": delivery_attempt_id,
+        "content": text,
+        "delivery_nonce": nonce,
     }
 
 
@@ -592,28 +736,44 @@ def activation_context_errors(context):
     elif manifest.get("readback_plan_sha256") != kblib.sha256_bytes(
             kblib.canonical_json_bytes(plan)):
         errors.append("readback_plan_sha256 does not bind readback_plan")
-    cards = manifest.get("cards")
-    if not isinstance(cards, list) or not cards:
-        errors.append("activation bundle must carry at least one Card")
+    if protocol == ACTIVATION_PROTOCOL:
+        errors.extend(_piece_manifest_errors(manifest))
+        for field in ("cards", "startup_readbacks"):
+            if field in manifest:
+                errors.append(
+                    "a %s bundle must not embed %s; content travels as "
+                    "budgeted pieces" % (ACTIVATION_PROTOCOL, field))
+        if "activation_delivery_payload" in context:
+            errors.append(
+                "a %s admission must not carry an embedded delivery payload" %
+                ACTIVATION_PROTOCOL)
     else:
-        routes = []
-        for index, card in enumerate(cards):
-            if not isinstance(card, dict):
-                errors.append("activation Card %d must be a mapping" % index)
-                continue
-            routes.append(card.get("route_id"))
-            if "content" in card or not isinstance(card.get("sha256"), str):
-                errors.append("activation Card %d manifest is malformed" %
-                              index)
-            if card.get("source_hash") != card.get("compiled_source_hash"):
-                errors.append("activation Card %d semantic hashes disagree" %
-                              index)
-        if "R01" not in routes:
-            errors.append("activation bundle omits R01")
-    for index, row in enumerate(manifest.get("startup_readbacks") or []):
-        if (not isinstance(row, dict) or "content" in row or
-                not isinstance(row.get("sha256"), str)):
-            errors.append("startup readback %d manifest is malformed" % index)
+        cards = manifest.get("cards")
+        if not isinstance(cards, list) or not cards:
+            errors.append("activation bundle must carry at least one Card")
+        else:
+            routes = []
+            for index, card in enumerate(cards):
+                if not isinstance(card, dict):
+                    errors.append("activation Card %d must be a mapping" %
+                                  index)
+                    continue
+                routes.append(card.get("route_id"))
+                if "content" in card or not isinstance(card.get("sha256"),
+                                                       str):
+                    errors.append(
+                        "activation Card %d manifest is malformed" % index)
+                if card.get("source_hash") != card.get(
+                        "compiled_source_hash"):
+                    errors.append(
+                        "activation Card %d semantic hashes disagree" % index)
+            if "R01" not in routes:
+                errors.append("activation bundle omits R01")
+        for index, row in enumerate(manifest.get("startup_readbacks") or []):
+            if (not isinstance(row, dict) or "content" in row or
+                    not isinstance(row.get("sha256"), str)):
+                errors.append(
+                    "startup readback %d manifest is malformed" % index)
 
     payload = context.get("activation_delivery_payload")
     if payload is not None:
@@ -637,7 +797,22 @@ def activation_context_errors(context):
     assurance = context.get("delivery_assurance")
     mode = context.get("delivery_mode")
     context_id = context.get("execution_context_id")
-    if assurance == "machine-delivered":
+    if protocol == ACTIVATION_PROTOCOL:
+        if assurance == "host-bound":
+            if mode != "host-context-injection" or not isinstance(
+                    context_id, str) or not context_id:
+                errors.append(
+                    "host-bound admission requires one execution context")
+        elif assurance == "prepared":
+            if mode != "cli-tool-result" or context_id is not None:
+                errors.append(
+                    "prepared admission must be an unbound CLI result")
+        else:
+            errors.append(
+                "a %s admission records host-bound or prepared; delivery "
+                "completion is earned by the Assignment delivery gate" %
+                ACTIVATION_PROTOCOL)
+    elif assurance == "machine-delivered":
         if mode != "host-context-injection" or not isinstance(
                 context_id, str) or not context_id:
             errors.append("machine delivery requires one execution context")
@@ -646,6 +821,53 @@ def activation_context_errors(context):
             errors.append("degraded delivery must be an unbound CLI result")
     else:
         errors.append("delivery_assurance must be machine-delivered or degraded")
+    return errors
+
+
+def _piece_manifest_errors(manifest):
+    """Validate the frozen piece set of a v3 bundle."""
+    errors = []
+    pieces = manifest.get("pieces")
+    if not isinstance(pieces, list) or not pieces:
+        return ["activation bundle must freeze at least one piece"]
+    budget = manifest.get("max_piece_envelope_bytes")
+    if budget != MAX_ACTIVATION_PIECE_ENVELOPE_BYTES:
+        errors.append("activation bundle binds a foreign delivery budget")
+    if manifest.get("piece_count") != len(pieces):
+        errors.append("piece_count does not match the frozen piece list")
+    seen = set()
+    routes = []
+    for index, row in enumerate(pieces):
+        if not isinstance(row, dict):
+            errors.append("activation piece %d must be a mapping" % index)
+            continue
+        piece_id = row.get("piece_id")
+        if not isinstance(piece_id, str) or not piece_id:
+            errors.append("activation piece %d has no identity" % index)
+            continue
+        if piece_id in seen:
+            errors.append("activation piece %s is duplicated" % piece_id)
+        seen.add(piece_id)
+        if row.get("kind") not in PIECE_KINDS:
+            errors.append("activation piece %s has an unregistered kind" %
+                          piece_id)
+        if "content" in row:
+            errors.append("activation piece %s must not embed content" %
+                          piece_id)
+        if not isinstance(row.get("sha256"), str) or not isinstance(
+                row.get("bytes"), int):
+            errors.append("activation piece %s manifest is malformed" %
+                          piece_id)
+        if row.get("kind") == "card":
+            routes.append(row.get("route_id"))
+            if row.get("source_hash") != row.get("compiled_source_hash"):
+                errors.append("activation piece %s semantic hashes disagree" %
+                              piece_id)
+    if sorted(seen) != [row.get("piece_id") for row in pieces
+                        if isinstance(row, dict)]:
+        errors.append("activation pieces are not in canonical order")
+    if "R01" not in routes:
+        errors.append("activation bundle omits R01")
     return errors
 
 
@@ -749,3 +971,133 @@ def build_readback_addendum(root, activation_context, rule_id, *,
 def readback_receipt_binding(context):
     """Return the content-addressed Addendum manifest stored in JSONL."""
     return {field: context.get(field) for field in READBACK_CONTEXT_FIELDS}
+
+
+def build_activation_piece(root, activation_context, piece_id, *,
+                           execution_context_id=None,
+                           delivery_attempt_id=None, nonce=None):
+    """Deliver one frozen piece as its own budgeted tool result."""
+    errors = activation_context_errors(activation_context)
+    if errors:
+        raise ActivationError("activation context is invalid: %s" %
+                              "; ".join(errors))
+    if activation_context.get("activation_protocol") != ACTIVATION_PROTOCOL:
+        raise ActivationError(
+            "piece delivery requires a %s activation" % ACTIVATION_PROTOCOL)
+    manifest = activation_context["activation_bundle_manifest"]
+    records = [row for row in manifest.get("pieces") or []
+               if isinstance(row, dict) and row.get("piece_id") == piece_id]
+    if len(records) != 1:
+        raise ActivationError("activation piece %s is not uniquely frozen" %
+                              piece_id)
+    record = records[0]
+    # Re-prove the object against current bytes.  v1/v2 performed this
+    # equality once, at `queued -> open`; delivering file by file moves the
+    # same check onto every piece, so a source that drifts mid-delivery is
+    # refused instead of silently shipped.
+    snapshot, text = _snapshot_text(root, record["path"])
+    if snapshot.sha256 != record["sha256"]:
+        raise ActivationError(
+            "activation piece %s drifted since admission (%s)" %
+            (piece_id, record["path"]))
+    attempt = delivery_attempt_id or kblib.sha256_bytes(
+        kblib.canonical_json_bytes([
+            activation_context["card_bundle_sha256"],
+            execution_context_id or os.environ.get(EXECUTION_CONTEXT_ENV),
+        ]))[7:39]
+    payload = _piece_delivery_payload(
+        manifest, record, text, nonce=nonce or _mint_nonce(),
+        delivery_attempt_id=attempt,
+        card_bundle_sha256=activation_context["card_bundle_sha256"])
+    envelope = _piece_envelope_bytes(payload)
+    if envelope > MAX_ACTIVATION_PIECE_ENVELOPE_BYTES:
+        raise ActivationError(
+            "activation piece %s serializes to %d bytes, over the %d-byte "
+            "delivery budget" %
+            (piece_id, envelope, MAX_ACTIVATION_PIECE_ENVELOPE_BYTES))
+    return {
+        "piece_protocol": PIECE_PROTOCOL,
+        "card_bundle_sha256": activation_context["card_bundle_sha256"],
+        "piece_id": piece_id,
+        "piece_sha256": record["sha256"],
+        "piece_envelope_bytes": envelope,
+        "delivery_attempt_id": attempt,
+        "delivery_nonce": payload["delivery_nonce"],
+        "activation_piece_payload": payload,
+        **_delivery_binding(execution_context_id,
+                            protocol=ACTIVATION_PROTOCOL),
+    }
+
+
+def _mint_nonce():
+    return os.urandom(16).hex()
+
+
+PIECE_RECEIPT_FIELDS = (
+    "piece_protocol", "card_bundle_sha256", "piece_id", "piece_sha256",
+    "piece_envelope_bytes", "delivery_attempt_id", "delivery_nonce",
+    "delivery_mode", "delivery_assurance", "execution_context_id",
+)
+PIECE_ACK_RECEIPT_FIELDS = (
+    "piece_ack_protocol", "card_bundle_sha256", "piece_id", "piece_sha256",
+    "delivery_attempt_id", "acked_nonce", "delivery_receipt_id",
+    "delivery_mode", "delivery_assurance", "execution_context_id",
+)
+
+
+def piece_receipt_binding(context):
+    """Return the closed piece-delivery fields persisted in receipt JSONL."""
+    return {field: context.get(field) for field in PIECE_RECEIPT_FIELDS}
+
+
+def build_piece_ack(delivery_receipt, nonce, *, execution_context_id=None):
+    """Turn one returned nonce into same-context delivery evidence.
+
+    This is the third of three parts, never the whole proof.  It shows the
+    delivery was consumed by this execution context; it cannot show that the
+    body ahead of the nonce entered the model context.  Only a Host Adapter
+    that has passed inline-delivery conformance supplies that half.
+    """
+    if not isinstance(delivery_receipt, dict):
+        raise ActivationError("piece ack requires one delivery receipt")
+    if delivery_receipt.get("piece_protocol") != PIECE_PROTOCOL:
+        raise ActivationError("piece ack requires a %s delivery" %
+                              PIECE_PROTOCOL)
+    expected = delivery_receipt.get("delivery_nonce")
+    if not isinstance(expected, str) or not expected or nonce != expected:
+        raise ActivationError(
+            "piece ack nonce does not match delivery %s" %
+            delivery_receipt.get("piece_id"))
+    bound = delivery_receipt.get("execution_context_id")
+    current = execution_context_id
+    if current is None:
+        current = os.environ.get(EXECUTION_CONTEXT_ENV)
+    if bound != current:
+        raise ActivationError(
+            "piece ack must return to the delivering execution context")
+    return {
+        "piece_ack_protocol": PIECE_ACK_PROTOCOL,
+        "card_bundle_sha256": delivery_receipt.get("card_bundle_sha256"),
+        "piece_id": delivery_receipt.get("piece_id"),
+        "piece_sha256": delivery_receipt.get("piece_sha256"),
+        "delivery_attempt_id": delivery_receipt.get("delivery_attempt_id"),
+        "acked_nonce": nonce,
+        "delivery_receipt_id": delivery_receipt.get("receipt_id"),
+        **_delivery_binding(execution_context_id,
+                            protocol=ACTIVATION_PROTOCOL),
+    }
+
+
+def piece_ack_receipt_binding(context):
+    """Return the closed ack fields persisted in receipt JSONL."""
+    return {field: context.get(field) for field in PIECE_ACK_RECEIPT_FIELDS}
+
+
+def frozen_piece_ids(activation_context):
+    """Return the exact piece identity set one activation must deliver."""
+    manifest = (activation_context or {}).get("activation_bundle_manifest")
+    if not isinstance(manifest, dict):
+        return []
+    return sorted(
+        row.get("piece_id") for row in manifest.get("pieces") or []
+        if isinstance(row, dict) and isinstance(row.get("piece_id"), str))
