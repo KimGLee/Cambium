@@ -38,6 +38,11 @@ effective governance
   + adopter-owned runtime state
 ```
 
+The diagram shows how these layers connect to runtime routes, deterministic
+tools, and agent execution contexts.
+
+![Cambium architecture overview](docs/cambium-architecture-en.png)
+
 | Layer | What it owns |
 |---|---|
 | `kernel/` | Cross-domain rules, gates, routes, Read Sets, and Runtime Cards |

@@ -38,6 +38,10 @@ Cambium 的有效治理由三部分组成：
   + 采用方自己拥有的运行时状态
 ```
 
+下图展示了这些层如何连接运行时路由、确定性工具和 Agent 执行上下文。
+
+![Cambium 架构总览](docs/cambium-architecture-zh.png)
+
 | 层 | 负责什么 |
 |---|---|
 | `kernel/` | 跨领域规则、门禁、执行路线、Read Sets 和 Runtime Cards |
