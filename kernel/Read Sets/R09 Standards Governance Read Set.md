@@ -29,6 +29,7 @@ First read:
 - [[kernel/K00 Standards Control/15 Read Set Loading Boundaries|Read Set Loading Boundaries]]
 - [[kernel/K00 Standards Control/16 Leaf Module Size Register|Leaf Module Size Register]]
 - [[kernel/K00 Standards Control/17 Profile Dependency Closure|Profile Dependency Closure]]
+- [[kernel/K00 Standards Control/18 Tool Module Boundary Contract|Tool Module Boundary Contract]]
 - [[kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis|Guidance Classification and Impact Analysis]], [[kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching|Guidance Disposition and Safe Switching]], and [[kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning|Amendment Log and Controlled Replanning]] (when the revision involves an active-task Amendment; preserve the current-registration versus historical-verification boundary)
 - [[kernel/K09 Wiki Link and Navigation/03 Path Alias and Heading Links|Path Alias and Heading Links]]
 - Profile input for the applicable branch:

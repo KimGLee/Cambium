@@ -66,7 +66,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:f63b34451d40271298fbec3967e36285efdea7f1b3c693e416a7d3ae8e41ae11
+source_hash: sha256:c6b5481e114f289794aced2a9f8638ed1a3fb3fe157866525be4cf4bd8c9c26f
 receipt_shape:
   base_fields:
     - receipt_id
@@ -613,7 +613,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: apply_metadata_transition
     module: Tools/apply_metadata_transition.py
-    source_hash: sha256:71d687f1a2afb4006dc19b90bcb27e886ca46ce6e577d294802925523e7ae0cd
+    source_hash: sha256:a613d4db1d4a86873421169e2d194c6201fc5fae7a832b0f2e19e2a0a23dcb53
     description: Apply one receipt-backed Profile metadata transition
     arguments:
       - dest: root
@@ -1752,7 +1752,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:9258e2af9511702fbb91ed37ae2daeab1fd9761158d558e6281017a745e9453d
+    source_hash: sha256:69ad06aeee9d6afe658622a7d931d3928b8e26edc079252aaf357d27f925c576
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -3307,7 +3307,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: record_gate_attestation
     module: Tools/record_gate_attestation.py
-    source_hash: sha256:73e8ad584a4c8e77f3510c09666496c2c7f2a2dd4b24b8394d6f41f9b9a81e3e
+    source_hash: sha256:11dd382ce16d52dce53e989f46f7003f37442e468767c5e872194f0261fac4ac
     description: Record snapshot-bound manual Extension Gate evidence
     arguments:
       - dest: root
@@ -3436,7 +3436,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: record_gate_result
     module: Tools/record_gate_result.py
-    source_hash: sha256:6111c6ff8bd5bf28fdb659cc891db318c314bd878cc9b75d86c6e2b9a97ed8d0
+    source_hash: sha256:fd18fb87b2985de4a5af7b5a58181ba43aad5fbdf80f0c0db9dd2c32c92abbce
     description: Run a registered scan and record a deterministic Extension Gate result
     arguments:
       - dest: root

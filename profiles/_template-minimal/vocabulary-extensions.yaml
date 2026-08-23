@@ -1,0 +1,22 @@
+# Minimal-depth vocabulary extensions.
+# Interface: profiles/README.md#Vocabulary-Extensions-Slot
+#
+# No kernel-field extension and no profile-owned field are registered; the
+# readiness-axis mapping shipped by profiles/_template/ is deleted because no
+# registered expression artifact uses a readiness axis (see
+# expression-layer.md). `volatility_defaults` is the only required
+# registration; the composer derives the domain vocabulary from its keys.
+# Rename `general`, or split it into real domains, during the interview —
+# the keys become this corpus's `domain` values.
+
+schema_version: 1
+
+# No freeform profile fields.
+frontmatter_extensions:
+  fields: []
+
+fields:
+
+# key = domain ID; value = fast | slow | stable
+volatility_defaults:
+  general: slow

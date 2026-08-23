@@ -1,0 +1,62 @@
+# Machine matching parameters for this profile's `K12/09 item 6` residual-content
+# scan. This is the profile-owned copy of
+# ../../../Tools/schemas/residual_scan_config.template.yaml.
+# ../registries/registered-scans.md stays the owner of the scan ID, activation,
+# invocation, candidate predicate, and Judgment Item binding; this file contains
+# only machine matching parameters. Pass that registry ID separately through
+# `--scan-id`; each receipt binds it to this file's SHA-256 fingerprint.
+#
+# Replace every unfilled sentinel below. Keep this file: the Registered Scan
+# Registry slot is Required, so an unfilled or deleted configuration leaves that
+# slot with no runnable verifier.
+
+residual_scan_config_version: 1
+
+# Vault-relative roots under which the registered structures legitimately live.
+# Every root must exist as a real directory when the scan runs, and it doubles as
+# the known-residual positive control required by K12/09 item 6: a run that finds
+# no candidate outside these roots must still recognise at least one Markdown
+# file inside them, otherwise the configuration is inert and the run fails.
+# Answer the matchers below with text that really occurs under these roots.
+allowed_roots:
+  - TODO(profile)
+
+# Vault-relative subtrees outside the scan scope. The profile must name every
+# content/control subtree it excludes; the tool only omits VCS metadata
+# directories named .git/.hg/.svn. Missing excluded roots are allowed;
+# absolute paths, parent traversal, and overlaps are rejected.
+excluded_roots: []
+
+# The cheapest matcher to keep non-inert: name the controlled field value that
+# the accepted roots' own pages already carry. Leave `values: []` only when this
+# profile has no such controlled value.
+frontmatter_match:
+  field: type
+  values:
+    - TODO(profile)
+
+heading_match:
+  # Any one exact heading is enough to report a candidate. The generic matcher
+  # strips Markdown heading syntax only; numbering, parentheticals, and
+  # bilingual or glossed suffixes are NOT removed. When this profile's own
+  # structure rules mandate a decorated heading form, register that exact
+  # string - the bare form is a different heading and will never fire.
+  any:
+    - TODO(profile)
+  # These weaker headings report a candidate only in combination. Keep this list
+  # and `minimum_distinct` consistent: `minimum_distinct` is an integer between
+  # 2 and the length of this list, or exactly 0 when the list is `[]`.
+  combination:
+    - TODO(profile)
+    - TODO(profile)
+  minimum_distinct: 2
+
+# The heading forms this profile's own structure rules mandate, transcribed
+# verbatim from the page that mandates them. Recognising *something* is not
+# enough for K12/09 item 6: a matcher list that misses the mandated form
+# reports "clean" over exactly the pages the scan was registered to find. The
+# tool proves every entry here is registered above and that a page carrying
+# exactly this set classifies as a candidate; it does not judge whether the
+# list is complete, which stays this profile's call. List at least one entry.
+mandated_headings:
+  - TODO(profile)

@@ -11812,10 +11812,10 @@ def _gate_property_evidence_errors(
             (label, receipt_id, len(transition_matches)))
         return errors
     try:
-        # Lazy import avoids a module-initialization cycle: the Gate runtime
-        # uses check_queue for admission, while current property validation
-        # reuses its closed post-transition schema only after this module has
-        # fully loaded.
+        # Imported inside the function: this is the only place check_queue
+        # needs the Gate runtime, and the dependency runs one way.  The Gate
+        # runtime does not import check_queue, so current property validation
+        # may reuse its closed post-transition schema without a cycle.
         import metadata_gate_runtime
         page_snapshot = kblib.repository_target_snapshot(
             root, path, suffixes=(".md", ".MD"), singly_linked=True)

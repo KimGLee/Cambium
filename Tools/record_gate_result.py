@@ -30,6 +30,22 @@ DEFAULT_RECEIPTS = ".cambium/receipts/gate-results.jsonl"
 SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
+def _require_context_current(context, phase, *, runtime=None):
+    """Run the facade's authority CAS, then the Gate runtime's own.
+
+    ``check_queue`` owns the runtime-authority compare-and-swap and the Gate
+    runtime no longer reaches back for it, so the two halves are sequenced
+    here instead.  The order is the one the single call had: a moved
+    Profile-load or active-Standards view is reported as an authority change
+    before any metadata-contract, manifest or target difference derived from
+    it.
+    """
+    check_queue.require_runtime_authority_current(
+        context.root, context.authority, phase)
+    metadata_gate_runtime.require_context_current(
+        context, phase, runtime=runtime)
+
+
 def _same_target_snapshot(left, right):
     """Return whether two observations name the same exact file generation."""
     return (
@@ -334,8 +350,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
     root = os.path.realpath(os.path.abspath(args.root))
     try:
+        runtime = check_queue.validate_runtime(root)
+        metadata_gate_runtime.require_admitted_runtime(runtime)
+        authority = check_queue.runtime_authority_context(runtime)
         context = metadata_gate_runtime.load_gate_context(
-            root, args.gate_id, args.page)
+            root, args.gate_id, args.page, runtime=runtime,
+            authority=authority)
         receipt_path = kblib.managed_repository_path(
             root, args.receipts, ".cambium/receipts",
             suffixes=(".jsonl",), must_exist=False)
@@ -346,7 +366,7 @@ def main(argv=None):
     if not args.apply:
         try:
             result, _receipt = _produce(context)
-            metadata_gate_runtime.require_context_current(
+            _require_context_current(
                 context, "deterministic Gate dry-run completion")
         except (OSError, subprocess.SubprocessError, TypeError,
                 UnicodeError, ValueError) as exc:
@@ -401,7 +421,7 @@ def main(argv=None):
                     raise ValueError(
                         "runtime changed before registered Gate scan: %s" %
                         "; ".join(locked["errors"]))
-                metadata_gate_runtime.require_context_current(
+                _require_context_current(
                     context, "deterministic Gate locked preflight",
                     runtime=locked)
             scan_boundary = kblib.repository_snapshot_sha256(root)
@@ -420,7 +440,7 @@ def main(argv=None):
                         kblib.repository_snapshot_sha256(root) ==
                         scan_boundary)
                     if unchanged:
-                        metadata_gate_runtime.require_context_current(
+                        _require_context_current(
                             context,
                             "failed deterministic Gate scan reconciliation")
                 except (OSError, TypeError, UnicodeError, ValueError):
@@ -428,7 +448,7 @@ def main(argv=None):
                 else:
                     lease.mark_reconciled()
                 raise
-            metadata_gate_runtime.require_context_current(
+            _require_context_current(
                 context, "deterministic Gate scan completion")
             before = kblib.receipt_append_observation(
                 receipt_path, [receipt])

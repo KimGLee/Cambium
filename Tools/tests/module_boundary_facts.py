@@ -1,0 +1,272 @@
+"""Derive the module facts the boundary contract and its report both read.
+
+`K00/18` states one rule set over three axes -- module identity, declared
+public surface, and dependency direction -- and requires a machine guard.  A
+guard and a report that each measured the tree their own way would drift into
+two truths about the same bytes, so both read this module and neither parses
+Python a second time.
+
+What is measured here is what the codebase actually does, not what a tidier
+codebase would do.  Every cross-module consumption in this distribution is
+`import module` followed by attribute access -- `from x import y` appears
+nowhere -- so an import-statement scan sees the dependency and none of the
+symbols.  The edge this module reports is therefore `(consumer, module,
+symbol)`, resolved by binding import names (including aliases and imports
+written inside a function body) and then walking attribute access on those
+names.
+
+Two consumption forms stay deliberately outside: a subprocess invoking
+another tool's command line consumes that tool's registered CLI surface,
+owned by `cli-contract.yaml`; and the registry-driven producer resolution in
+`check_queue.producer_module()` is a declared control inversion, not a static
+edge.  Both are named in the contract rather than silently omitted.
+"""
+
+import ast
+import os
+
+
+TOOLS_DIRNAME = "Tools"
+EXCLUDED_DIRS = frozenset(("tests", "__pycache__", "compiled", "schemas"))
+
+# This module lives beside its only consumers, the distribution's own guard and
+# report, because both are declared distribution-only.  Shipping it under
+# `Tools/` would hand every adopter a module no adopter runtime consumes -- the
+# exact shape the Distribution Boundary refuses -- and would also make the
+# thing that decides what is shipped one of the things it decides about.
+
+
+def shipped_modules(tools_root):
+    """Return every shipped module path, relative to the Tools root.
+
+    Membership is a rule over the tree rather than a list, because a list is
+    exactly what a new file slips past.  Subpackages are walked so that code
+    moved into one stays inside the contract.
+    """
+    found = []
+    for base, dirnames, filenames in os.walk(tools_root):
+        dirnames[:] = sorted(
+            name for name in dirnames
+            if name not in EXCLUDED_DIRS and not name.startswith("."))
+        for filename in sorted(filenames):
+            if not filename.endswith(".py"):
+                continue
+            path = os.path.relpath(os.path.join(base, filename), tools_root)
+            found.append(path.replace(os.sep, "/"))
+    return sorted(found)
+
+
+def module_name(relative_path):
+    """Map a Tools-relative path to the name importers actually write."""
+    stem = relative_path[:-3] if relative_path.endswith(".py") else relative_path
+    parts = [part for part in stem.split("/") if part]
+    if parts and parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(parts)
+
+
+def _import_bindings(tree, known):
+    """Map each local name bound by an import to the shipped module it names.
+
+    Aliases and function-body imports are both included: the lazy import that
+    hid one dependency cycle in this tree was written inside a function, and a
+    guard that only reads module-level statements would have called that tree
+    acyclic.
+    """
+    bindings = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                target = alias.name.split(".")[0]
+                if target in known:
+                    bindings[alias.asname or target] = target
+        elif isinstance(node, ast.ImportFrom):
+            if node.level or not node.module:
+                continue
+            root = node.module.split(".")[0]
+            if root in known:
+                for alias in node.names:
+                    # `from pkg import submodule` binds the submodule itself
+                    # when the package ships one; otherwise it binds a symbol,
+                    # which is already a direct consumption of that name.
+                    bindings[alias.asname or alias.name] = root
+    return bindings
+
+
+def module_facts(tools_root, relative_path, known):
+    """Parse one module into the facts every consumer of this module reads."""
+    path = os.path.join(tools_root, relative_path)
+    with open(path, encoding="utf-8") as handle:
+        source = handle.read()
+    tree = ast.parse(source, filename=relative_path)
+    name = module_name(relative_path)
+
+    bindings = _import_bindings(tree, known)
+    edges = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Attribute):
+            continue
+        value = node.value
+        if not isinstance(value, ast.Name):
+            continue
+        target = bindings.get(value.id)
+        if target is None or target == name:
+            continue
+        edges.add((target, node.attr))
+    # A `from module import symbol` is consumption of that symbol even though
+    # no attribute node exists for it.
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or node.level or not node.module:
+            continue
+        target = node.module.split(".")[0]
+        if target not in known or target == name:
+            continue
+        for alias in node.names:
+            edges.add((target, alias.name))
+
+    defs, classes = [], []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            defs.append(node.name)
+        elif isinstance(node, ast.ClassDef):
+            classes.append(node.name)
+
+    return {
+        "path": relative_path,
+        "module": name,
+        "lines": source.count("\n") + 1,
+        "imports": sorted(set(bindings.values())),
+        "consumes": sorted(edges),
+        "top_level_defs": sorted(defs),
+        "top_level_classes": sorted(classes),
+    }
+
+
+def collect(repo_root):
+    """Parse the whole shipped tree once and index it by module name."""
+    tools_root = os.path.join(repo_root, TOOLS_DIRNAME)
+    paths = shipped_modules(tools_root)
+    known = {module_name(path).split(".")[0] for path in paths}
+    facts = {}
+    for path in paths:
+        entry = module_facts(tools_root, path, known)
+        facts[entry["module"]] = entry
+    return facts
+
+
+def consumption_pairs(facts):
+    """Return every (consumer, module, symbol) edge, sorted."""
+    pairs = []
+    for consumer, entry in facts.items():
+        for target, symbol in entry["consumes"]:
+            pairs.append((consumer, target, symbol))
+    return sorted(pairs)
+
+
+def private_pairs(facts):
+    """Cross-module consumption of a name the owner marked internal."""
+    return [row for row in consumption_pairs(facts)
+            if row[2].startswith("_")]
+
+
+def import_graph(facts):
+    """Adjacency over shipped modules, keyed by the first name segment."""
+    graph = {}
+    for name, entry in facts.items():
+        root = name.split(".")[0]
+        edges = graph.setdefault(root, set())
+        for target in entry["imports"]:
+            if target != root:
+                edges.add(target)
+    return {name: sorted(targets) for name, targets in graph.items()}
+
+
+def strongly_connected(graph):
+    """Return every cycle-bearing component, largest first (Tarjan).
+
+    Reported rather than merely detected: a contract that says "no cycles"
+    owes its reader the actual set when it refuses.
+    """
+    index = {}
+    low = {}
+    stack = []
+    on_stack = set()
+    counter = [0]
+    components = []
+
+    def visit(node):
+        # Iterative: this tree is small, but a recursive Tarjan would tie the
+        # guard's reliability to the interpreter's stack depth.
+        work = [(node, iter(graph.get(node, ())))]
+        index[node] = low[node] = counter[0]
+        counter[0] += 1
+        stack.append(node)
+        on_stack.add(node)
+        while work:
+            current, children = work[-1]
+            advanced = False
+            for child in children:
+                if child not in index:
+                    index[child] = low[child] = counter[0]
+                    counter[0] += 1
+                    stack.append(child)
+                    on_stack.add(child)
+                    work.append((child, iter(graph.get(child, ()))))
+                    advanced = True
+                    break
+                if child in on_stack:
+                    low[current] = min(low[current], index[child])
+            if advanced:
+                continue
+            work.pop()
+            if work:
+                parent = work[-1][0]
+                low[parent] = min(low[parent], low[current])
+            if low[current] == index[current]:
+                component = []
+                while True:
+                    member = stack.pop()
+                    on_stack.discard(member)
+                    component.append(member)
+                    if member == current:
+                        break
+                if len(component) > 1:
+                    components.append(sorted(component))
+
+    for node in sorted(graph):
+        if node not in index:
+            visit(node)
+    return sorted(components, key=lambda members: (-len(members), members))
+
+
+def def_span_sha256(repo_root, module, symbol):
+    """Hash the source span of one definition, for exception content binding.
+
+    An excepted private symbol carries no compatibility promise, so the ledger
+    binds what it excepted: if the definition is rewritten the entry stops
+    matching and the exception must be re-argued rather than silently
+    inherited.  Returns None when the symbol is not a module-level definition
+    -- a constant's value is bound by the manifest review, not by a span.
+    """
+    import hashlib
+
+    facts_path = None
+    tools_root = os.path.join(repo_root, TOOLS_DIRNAME)
+    for path in shipped_modules(tools_root):
+        if module_name(path) == module:
+            facts_path = os.path.join(tools_root, path)
+            break
+    if facts_path is None:
+        return None
+    with open(facts_path, encoding="utf-8") as handle:
+        lines = handle.read().split("\n")
+    tree = ast.parse("\n".join(lines), filename=module)
+    for node in tree.body:
+        name = getattr(node, "name", None)
+        if name != symbol:
+            continue
+        start = node.lineno - 1
+        end = getattr(node, "end_lineno", node.lineno)
+        span = "\n".join(lines[start:end])
+        return "sha256:" + hashlib.sha256(span.encode("utf-8")).hexdigest()
+    return None

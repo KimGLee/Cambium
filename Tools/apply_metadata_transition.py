@@ -44,13 +44,38 @@ def _page_after_data(plan, page_path):
             else page.snapshot.data)
 
 
+def _require_authorities_current(context, phase, *, runtime=None):
+    """Run the facade's authority CAS, then the Gate runtime's own.
+
+    ``check_queue`` owns the runtime-authority compare-and-swap and the Gate
+    runtime no longer reaches back for it, so the two halves are sequenced
+    here instead.  The order is the one the single call had: a moved
+    Profile-load or active-Standards view is reported as an authority change
+    before any metadata-contract or manifest difference derived from it.
+    """
+    check_queue.require_runtime_authority_current(
+        context.root, context.authority, phase)
+    metadata_gate_runtime.require_authorities_current(
+        context, phase, runtime=runtime)
+
+
+def _require_context_current(context, phase, *, runtime=None):
+    """The same sequencing for the authority-and-target CAS."""
+    check_queue.require_runtime_authority_current(
+        context.root, context.authority, phase)
+    metadata_gate_runtime.require_context_current(
+        context, phase, runtime=runtime)
+
+
 def prepare_transition(context, gate_receipt_id, requested_value,
                        actor_role="integrator", seq=1):
     """Return proposed Coverage, projection plan and Integrator receipt."""
     if actor_role != "integrator":
         raise ValueError("only actor-role integrator may apply metadata state")
     gate_receipt = metadata_gate_runtime.current_gate_receipt(
-        context, gate_receipt_id, requested_value)
+        context, gate_receipt_id, requested_value,
+        current_receipt_catalog=check_queue.current_receipt_catalog(
+            context.runtime))
     proposed = metadata_property_state.apply_gate_transition(
         context.runtime["coverage"], context.page_path,
         context.gate.field_id, requested_value, gate_receipt_id,
@@ -139,6 +164,7 @@ def _current_receipt_from(runtime, context, receipt_id, value, *,
     )
     return metadata_gate_runtime.current_gate_receipt(
         copied, receipt_id, value,
+        current_receipt_catalog=check_queue.current_receipt_catalog(runtime),
         require_current_repository=require_current_repository)
 
 
@@ -174,7 +200,7 @@ def _post_state_errors(root, context, receipt, expected_coverage_sha,
         if not page.exists or page.sha256 != expected_page_sha:
             errors.append("page after-image fingerprint differs")
     try:
-        metadata_gate_runtime.require_authorities_current(
+        _require_authorities_current(
             context, "metadata transition post-write authority")
     except ValueError as exc:
         errors.append(str(exc))
@@ -247,8 +273,12 @@ def main(argv=None):
 
     root = os.path.realpath(os.path.abspath(args.root))
     try:
+        runtime = check_queue.validate_runtime(root)
+        metadata_gate_runtime.require_admitted_runtime(runtime)
+        authority = check_queue.runtime_authority_context(runtime)
         context = metadata_gate_runtime.load_gate_context(
-            root, args.gate_id, args.page)
+            root, args.gate_id, args.page, runtime=runtime,
+            authority=authority)
         proposed, coverage_text, plan, receipt = prepare_transition(
             context, args.gate_receipt, args.value,
             actor_role=args.actor_role)
@@ -344,7 +374,7 @@ def main(argv=None):
                     raise ValueError(
                         "runtime changed before metadata write: %s" %
                         "; ".join(locked["errors"]))
-                metadata_gate_runtime.require_context_current(
+                _require_context_current(
                     context, "metadata transition locked preflight",
                     runtime=locked)
                 _current_receipt_from(
@@ -367,7 +397,7 @@ def main(argv=None):
             transaction = project_page_state.stage_projection_plan(
                 root, plan, lease, receipt["receipt_id"])
             try:
-                metadata_gate_runtime.require_context_current(
+                _require_context_current(
                     context, "metadata transition before owner write")
                 _require_repository_snapshot(
                     root, receipt["before_repository_snapshot_sha256"],
@@ -379,7 +409,7 @@ def main(argv=None):
                 if kblib.sha256_file(coverage_path) != \
                         receipt["after_coverage_sha256"]:
                     raise ValueError("Coverage after-image was not published")
-                metadata_gate_runtime.require_authorities_current(
+                _require_authorities_current(
                     context, "metadata transition after owner write")
                 _require_repository_snapshot(
                     root, receipt["before_repository_snapshot_sha256"],
@@ -423,7 +453,7 @@ def main(argv=None):
                 _current_receipt_from(
                     persisted, context, args.gate_receipt, args.value,
                     require_current_repository=False)
-                metadata_gate_runtime.require_authorities_current(
+                _require_authorities_current(
                     context, "metadata transition before commit")
                 _require_repository_snapshot(
                     root, receipt["after_repository_snapshot_sha256"],

@@ -11,6 +11,11 @@ Both the manual evidence producer and the Integrator use this module.  Keeping
 receipt construction and receipt consumption on the same closed binding is
 what prevents a prose Gate row, a stale Profile revision, or a role supplied
 by a callback from becoming write authority.
+
+The admission itself is not performed here.  ``check_queue`` owns runtime
+validation, the authority context, the current receipt catalog and the
+runtime-authority CAS; every one of those observations is passed in by the
+caller that already holds it, so this module never imports the CLI facade.
 """
 
 from dataclasses import dataclass
@@ -19,7 +24,6 @@ import os
 from pathlib import Path
 import re
 
-import check_queue
 import kblib
 import metadata_execution_contract
 import metadata_property_state
@@ -205,12 +209,15 @@ def deterministic_scan_input_binding(context, scan):
     }
 
 
-def load_gate_context(root, gate_id, page_path, *, runtime=None,
-                      authority=None, allow_writer_lock=False):
-    """Load one current runtime/Profile/Gate/page authority observation."""
-    canonical_root = os.path.realpath(os.path.abspath(os.fspath(root)))
-    if runtime is None:
-        runtime = check_queue.validate_runtime(canonical_root)
+def require_admitted_runtime(runtime, *, allow_writer_lock=False):
+    """Refuse a runtime observation that may not authorize a Gate decision.
+
+    Running the admission is the facade's job; refusing its result is this
+    module's.  The three refusals are kept in one place, and in the order
+    they have always run, because the caller has to apply them before it
+    builds the authority context: a runtime carrying errors must be reported
+    as an invalid runtime, not as an unavailable authority context.
+    """
     if not isinstance(runtime, dict):
         raise ValueError("runtime admission did not return a mapping")
     errors = runtime.get("errors") or []
@@ -218,10 +225,51 @@ def load_gate_context(root, gate_id, page_path, *, runtime=None,
         raise ValueError("current runtime is invalid: %s" % "; ".join(errors))
     if runtime.get("writer_locks") and not allow_writer_lock:
         raise ValueError("runtime has an active or interrupted writer lock")
-    if authority is None:
-        authority = check_queue.runtime_authority_context(runtime)
+    return runtime
+
+
+def require_paired_authority(runtime, authority):
+    """Refuse an authority frozen from a different admission than ``runtime``.
+
+    While this module derived the authority itself, the pairing was structural:
+    the views could only come from the observation they were derived from.
+    Taking both from the caller buys the one-way dependency at the cost of that
+    guarantee, and the guarantee is not incidental -- the producer of this
+    context exists to close a split-revision window, where a Profile view from
+    one admission travels beside an active-Standards binding from another.
+
+    Identity rather than equality is the right test here, and it is available:
+    the producer passes both views out by reference from the result it read, so
+    a pair that came from one admission shares those objects, and a pair
+    assembled from two does not.  Equality would accept two admissions that
+    merely happened to observe the same bytes -- which is the case this refuses
+    to reason about, since the second observation was never admitted alongside
+    this runtime.
+    """
+    for field, source in (("profile_view", "_profile_authorized_view"),
+                          ("active_standards_view",
+                           "_active_standards_authorized_view")):
+        if authority.get(field) is not runtime.get(source):
+            raise ValueError(
+                "runtime authority was frozen from a different admission "
+                "than the supplied runtime (%s)" % field)
+
+
+def load_gate_context(root, gate_id, page_path, *, runtime, authority,
+                      allow_writer_lock=False):
+    """Load one current runtime/Profile/Gate/page authority observation.
+
+    ``runtime`` and ``authority`` are the caller's own admitted observations:
+    one ``check_queue.validate_runtime`` result and the
+    ``check_queue.runtime_authority_context`` frozen from that same result.
+    Both are mandatory, so a Gate decision cannot silently run against an
+    admission this module fetched for itself.
+    """
+    canonical_root = os.path.realpath(os.path.abspath(os.fspath(root)))
+    require_admitted_runtime(runtime, allow_writer_lock=allow_writer_lock)
     if authority.get("root") != canonical_root:
         raise ValueError("runtime authority belongs to a different repository")
+    require_paired_authority(runtime, authority)
 
     profile_view = authority.get("profile_view") or {}
     contract = profile_view.get("_contract")
@@ -462,10 +510,16 @@ def validate_gate_receipt(context, receipt, requested_value, *,
 
 
 def current_gate_receipt(context, receipt_id, requested_value, *,
+                         current_receipt_catalog,
                          require_current_repository=True):
-    """Resolve only the filtered current receipt catalog, never history."""
-    catalog = check_queue.current_receipt_catalog(context.runtime)
-    entry = catalog.get(receipt_id)
+    """Resolve only the filtered current receipt catalog, never history.
+
+    The catalog is supplied by the caller as
+    ``check_queue.current_receipt_catalog`` of the exact runtime observation
+    carried by ``context``.  It is a pure projection of that already frozen
+    result, so nothing here may reach past it into the historical catalog.
+    """
+    entry = current_receipt_catalog.get(receipt_id)
     if entry is None:
         raise ValueError(
             "Gate receipt %r is absent from the current receipt catalog" %
@@ -571,9 +625,14 @@ def validate_persisted_gate_owner(context, gate_receipt,
 
 
 def require_authorities_current(context, phase, *, runtime=None):
-    """CAS Profile, K00, metadata-contract and the three runtime Ledgers."""
-    check_queue.require_runtime_authority_current(
-        context.root, context.authority, phase)
+    """CAS the metadata contract, the Profile manifest and three Ledgers.
+
+    The runtime-authority CAS that used to open this function is now run by
+    the caller immediately before it, under the same ``phase`` label.  That
+    order is load-bearing: a moved ``profile-load`` or active-Standards view
+    has to be reported as an authority change, not as the metadata-contract
+    or manifest difference it would otherwise surface as.
+    """
     metadata_contract = \
         metadata_execution_contract.load_metadata_execution_contract(
             context.root)
@@ -607,6 +666,7 @@ __all__ = [
     "CONSUMER_OPERATION", "GATE_CHECK", "GateRuntimeContext",
     "current_gate_receipt", "deterministic_scan_input_binding",
     "load_gate_context", "receipt_bindings",
+    "require_admitted_runtime",
     "require_authorities_current", "require_context_current",
     "synthetic_projection_rule",
     "validate_gate_receipt", "validate_persisted_gate_owner",

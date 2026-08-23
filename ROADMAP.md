@@ -31,6 +31,7 @@ This file records what changes next and why.
 | Host-neutral agent interface | Complete | CLI contract, MCP projection, stdio server, and four host renderers ship |
 | Activation transport and Assignment delivery | In progress | Replace an unprovable “server sent it” claim with budgeted delivery, host conformance, acknowledgements, and a delivery gate |
 | Reference execution runtime | Next | Add durable Assignment state, a single-writer integrator loop, then isolated workers and reviewers |
+| Git-backed workspace and diff adapter | Next | Bind one Assignment to an isolated worktree, reviewable diff, named sources, exact Git snapshots, and serial post-merge read-back without making Git a second Queue |
 | State-aware operation discovery | Next | Its scope has changed: the shipped MCP surface comes from tool CLIs, and any future discovery view must not become a second policy engine |
 | Typed dependency runtime | Next | Compile explicit corpus relationships and produce bounded change-impact plans |
 | Independent completeness and consistency evaluation | Next | Re-derive expected scope without trusting the executor's own Queue or Delta |
@@ -209,14 +210,17 @@ Delivery order:
 
 1. **Durable Assignment state** — map one admitted batch to one temporary
    execution context, role, write scope, delivery attempt, and checkpoint.
-2. **Single-writer integrator loop** — admit ready disjoint batches, collect
+2. **Git-backed workspace and diff adapter** — bind that Assignment to an
+   exact base commit/tree, batch-private worktree, admitted write surface,
+   reviewable diff, and recoverable before/after identities.
+3. **Single-writer integrator loop** — admit ready disjoint batches, collect
    Deltas and receipts, merge one batch at a time, and run global checks after
    each merge.
-3. **Isolated workers** — one write owner per active batch with batch-private
+4. **Isolated workers** — one write owner per active batch with batch-private
    outputs.
-4. **Clean-context reviewers** — receive only the review inputs required by
+5. **Clean-context reviewers** — receive only the review inputs required by
    the governing review contract.
-5. **Recovery and observability** — cancellation, interruption, reassignment,
+6. **Recovery and observability** — cancellation, interruption, reassignment,
    conflict, timeout, and handoff diagnostics.
 
 The active-batch limit remains separate from the number of agent contexts.
@@ -226,6 +230,87 @@ filesystem capabilities and fall back safely.
 This capability is complete when parallel disjoint work is replayable, shared
 integration remains serial, interrupted work resumes from durable state, and
 no actor, reviewer, delivery, or isolation claim exceeds Host evidence.
+
+### Git-backed Workspace And Diff Adapter
+
+**State: Next; a reference adapter under the Reference Execution Runtime, not
+a new control plane.**
+
+Git already owns version history, textual diffs, commits, trees, and rollback.
+Cambium must not recreate those mechanisms or treat a branch as a second task
+ledger. The Required Queue remains the only canonical batch lifecycle, the
+Assignment remains the execution-context record, and receipts remain the
+evidence history. The adapter's job is to bind those existing authorities to
+reviewable repository effects.
+
+The reference flow is:
+
+```text
+Required batch + durable Assignment
+  -> declared base commit and tree
+  -> batch-private branch and worktree
+  -> worker changes inside the admitted manifest
+  -> reviewable diff bound to named sources
+  -> batch-local checks and Delta/receipt publication
+  -> single-writer serial integration
+  -> exact post-merge tree read-back and global checks
+```
+
+For each attempt the adapter will record or bind, at minimum:
+
+- repository identity, declared base commit, and base tree;
+- Assignment, Task, Batch, Work Spec, admitted manifest, and allowed paths;
+- the named sources or source-receipt IDs the change claims to use;
+- branch/worktree identity without treating its name as authenticated actor
+  identity;
+- head commit, resulting tree, canonical diff bytes or patch ID, and their
+  hashes;
+- dirty, untracked, ignored, submodule, symlink, hard-link, and unsafe-file
+  observations relevant to the admitted write surface;
+- the exact merge or apply result, canonical post-merge commit/tree read-back,
+  and the global check receipts run against that resulting repository state.
+
+The worker may propose a commit or diff, but it may not advance shared Queue,
+Progress, Standards, Profile, or integration state. Only the logical
+integrator may accept one current attempt, apply it to the current canonical
+tree, re-read the resulting tree, run the required global checks, and advance
+the existing lifecycle. A tool or Agent transcript saying that a write or
+merge succeeded is not evidence of the resulting repository state.
+
+The adapter must fail closed on a stale base, out-of-manifest path, dirty or
+unbound effect, partial commit, missing named-source binding, changed diff,
+unexpected tree, unresolved textual conflict, interrupted merge, or
+post-merge read-back mismatch. Recovery must preserve the branch, worktree,
+lock, diff, and before/after identities until the integrator can reconcile the
+attempt; cleanup must never discard unintegrated user or Agent bytes merely
+because an Assignment was cancelled.
+
+Git provides visibility and rollback, not semantic governance. A clean merge
+does not prove correctness, completeness, reviewer independence, or actor
+identity. In particular, Git may merge two Agents editing the same concept in
+different files without a textual conflict. Canonical ownership, typed
+dependencies, source review, cross-file consistency checks, and completion
+gates remain Cambium responsibilities. External database or API side effects
+are outside this adapter; an external-system adapter must perform an
+authoritative post-action read-back and bind that observation before claiming
+success.
+
+This capability is complete when:
+
+- one admitted Assignment can create or recover one isolated worktree from an
+  exact declared base without modifying the operator's working tree;
+- allowed-path and named-source checks bind a deterministic reviewable diff to
+  its Assignment, Batch, Work Spec, base commit/tree, and head commit/tree;
+- the integrator can serially apply one accepted attempt to the current
+  canonical tree, re-read the exact result, and bind global checks to it;
+- stale-base, path-escape, dirty-state, untracked/ignored-file, interrupted
+  commit/merge, textual-conflict, and post-merge-drift fixtures fail without
+  losing recoverable bytes;
+- documentation states explicitly that Git detects textual repository changes,
+  not cross-file semantic conflicts or whole-task completion;
+- no Git branch, commit message, author label, generated graph, diff view, or
+  adapter record becomes a second Queue, Progress ledger, receipt authority,
+  Profile authority, or identity proof.
 
 ### State-aware Operation Discovery
 
@@ -476,6 +561,7 @@ The current critical path is:
 ```text
 activation transport assurance
   -> durable Assignment state and delivery gate
+  -> Git-backed workspace and reviewable-diff adapter
   -> single-writer integrator loop
   -> isolated workers
   -> clean-context reviewers

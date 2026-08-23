@@ -44,6 +44,7 @@ This registry governs rule text. The three conditions do not authorize a view of
 | Runtime Card and kernel Read Set section skeleton and its registered variants | [[kernel/K00 Standards Control/14 Card And Read Set Skeleton\|Card And Read Set Skeleton]] |
 | The current Read Sets and leaf coverage of the loading boundaries | [[kernel/K00 Standards Control/15 Read Set Loading Boundaries\|Read Set Loading Boundaries]] |
 | Candidate and selected Profile dependency closure | [[kernel/K00 Standards Control/17 Profile Dependency Closure\|Profile Dependency Closure]] |
+| Shipped tool module identity, public surface, and dependency direction | [[kernel/K00 Standards Control/18 Tool Module Boundary Contract\|Tool Module Boundary Contract]] |
 | Leaf module size budget, its disposition classes, and the register of approved exceptions | [[kernel/K00 Standards Control/03 Standards Governance#Leaf Module Size Budget\|Leaf Module Size Budget]], registered in [[kernel/K00 Standards Control/16 Leaf Module Size Register\|Leaf Module Size Register]] |
 | Runtime namespace startup and interrupted-state recovery | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Runtime Startup Gate\|Runtime Startup Gate]] |
 | Large-scale creation, move, or deletion admission | [[kernel/K00 Standards Control/13 Runtime Admission and Recovery#Large-scale Pre-execution Gate\|Large-scale Pre-execution Gate]] |
