@@ -3,6 +3,7 @@ import contextlib
 import importlib.util
 import io
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -60,6 +61,38 @@ class CiImpactTests(unittest.TestCase):
         self.assertEqual("checks-only", plan["mode"])
         self.assertEqual(["3.14"], plan["check_versions"])
         self.assertFalse(plan["run_tests"])
+
+    def test_readme_assets_are_checks_only_but_local_docs_fail_closed(self):
+        allowed = self._plan(("A", "assets/readme/diagram.png"))
+        forbidden = self._plan(("A", "docs/private.md"))
+        self.assertEqual("checks-only", allowed["mode"])
+        self.assertEqual("full", forbidden["mode"])
+
+    def test_forbidden_tracked_paths_are_exactly_local_only_roots(self):
+        self.assertEqual(
+            ["_to_delete/old.md", "docs/private.md"],
+            ci_impact.forbidden_tracked_paths([
+                "README.md",
+                "assets/readme/diagram.png",
+                "docs/private.md",
+                "_to_delete/old.md",
+            ]),
+        )
+
+    def test_repository_layout_catches_force_added_ignored_file(self):
+        repo = self.root / "layout-repository"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        self._write("layout-repository/.gitignore", "docs/\n")
+        self._write("layout-repository/docs/private.md", "private\n")
+        subprocess.run(
+            ["git", "add", ".gitignore"], cwd=repo, check=True)
+        subprocess.run(
+            ["git", "add", "-f", "docs/private.md"],
+            cwd=repo, check=True,
+        )
+        with self.assertRaisesRegex(ValueError, "docs/private.md"):
+            ci_impact.validate_repository_layout(repo)
 
     def test_direct_test_change_selects_only_that_module_on_both_versions(self):
         plan = self._plan(("M", "Tools/tests/test_charlie.py"))

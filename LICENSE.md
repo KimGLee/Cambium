@@ -34,6 +34,7 @@ to the following Cambium-maintained files in the official distribution:
 - Files tracked under `kernel/**`.
 - Files tracked under `profiles/**`, except adopter-created profile content
   described below.
+- Files tracked under `assets/readme/**`.
 - `README.md` and `README.zh-CN.md`.
 - `ROADMAP.md`.
 - `LICENSE.md` and `ATTRIBUTION.md`.
