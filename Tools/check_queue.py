@@ -5956,25 +5956,28 @@ def activation_phase_delivery_errors(result, item, phase_id, *,
                                      actor_context_id=None):
     """Prove one phase's frozen set reached the context that is acting now.
 
-    Three separate things have to hold, and the reason each is here is a
-    distinct failure it rules out:
+    Completeness is judged per attempt, never over their union.  One attempt
+    has to cover the phase by itself, because the claim being tested is that
+    a single reader received the whole thing: two half-deliveries to two
+    contexts leave neither able to say it read the Card, and unioning them
+    manufactures a reader that never existed.
 
-    * the ack set covers every part of the phase -- a partial delivery would
-      otherwise let an action proceed on a Card it never received;
-    * every ack carries the attempt id derived from the *current* activation
-      bundle -- a complete chain from a superseded bundle is internally
-      consistent and still worthless, so consistency alone cannot be the
-      test;
-    * when the caller is the actor (a judgment, a governance write), the
-      attempt id must derive from the actor's own context -- borrowing
-      somebody else's ack chain would prove that a different context read
-      the Card.
+    Which attempt has to be the covering one is what separates the callers:
 
-    An integrator checking history at a queue edge is not the actor: it
-    passes no ``actor_context_id`` and the second condition alone applies.
-    An activation that never bound a host context is `prepared`/`degraded`
-    and stays exempt (v3 D7): it may proceed, but nothing it produces may
-    claim machine-enforced delivery.
+    * an actor (a judgment, a governance write) must be covered by the
+      attempt derived from its *own* context -- borrowing another context's
+      ack chain would prove that somebody else read the Card.  Another
+      context's chain sitting in the same history is not itself a fault;
+      the actor's own absence is;
+    * an integrator checking history at a queue edge is not the actor: it
+      passes no ``actor_context_id`` and needs some one attempt to cover
+      the phase, whichever context earned it.
+
+    Every ack is already scoped to the current ``card_bundle_sha256``, so a
+    complete chain from a superseded bundle -- internally consistent and
+    worthless -- never enters the count.  An activation that never bound a
+    host context is `prepared`/`degraded` and stays exempt (v3 D7): it may
+    proceed, but nothing it produces may claim machine-enforced delivery.
     """
     errors = []
     if not isinstance(item, dict):
@@ -5997,9 +6000,7 @@ def activation_phase_delivery_errors(result, item, phase_id, *,
     record = card_activation.phase_record(context, phase_id) or {}
     part_count = record.get("part_count")
     bundle_sha = activation.get("card_bundle_sha256")
-    acked_ids = set()
-    acked_parts = set()
-    attempts = set()
+    by_attempt = {}
     for candidate in catalog.values():
         receipt = candidate[1] if isinstance(candidate, tuple) else candidate
         if not isinstance(receipt, dict):
@@ -6015,37 +6016,58 @@ def activation_phase_delivery_errors(result, item, phase_id, *,
             continue
         if receipt.get("invalidated_by") is not None:
             continue
-        acked_ids.update(
+        earned = by_attempt.setdefault(
+            receipt.get("delivery_attempt_id"),
+            {"pieces": set(), "parts": set()})
+        earned["pieces"].update(
             piece_id for piece_id in receipt.get("phase_piece_ids") or []
             if isinstance(piece_id, str))
-        acked_parts.add(receipt.get("part_index"))
-        attempts.add(receipt.get("delivery_attempt_id"))
-    missing = sorted(expected_ids - acked_ids)
-    if missing:
-        errors.append(
-            "phase %s is not delivered to this activation: %d of %d frozen "
-            "piece(s) have no current ack (%s)" %
-            (phase_id, len(missing), len(expected_ids),
-             ", ".join(missing[:4]) + ("..." if len(missing) > 4 else "")))
-        return errors
-    if isinstance(part_count, int) and len(acked_parts) != part_count:
-        errors.append(
-            "phase %s acknowledges %d of %d frozen part(s)" %
-            (phase_id, len(acked_parts), part_count))
+        earned["parts"].add(receipt.get("part_index"))
+
+    def _shortfall(earned):
+        """Say how one attempt falls short of the phase, or None if it does not."""
+        if earned is None:
+            return "holds no ack of it at all"
+        missing = sorted(expected_ids - earned["pieces"])
+        if missing:
+            return "covers %d of %d frozen piece(s), missing %s" % (
+                len(expected_ids) - len(missing), len(expected_ids),
+                ", ".join(missing[:4]) + ("..." if len(missing) > 4 else ""))
+        if isinstance(part_count, int) and len(earned["parts"]) != part_count:
+            return "acknowledges %d of %d frozen part(s)" % (
+                len(earned["parts"]), part_count)
+        return None
+
     if actor_context_id:
         expected_attempt = card_activation.expected_delivery_attempt_id(
             bundle_sha, actor_context_id)
-        foreign = sorted(str(value) for value in attempts
-                         if value != expected_attempt)
-        if foreign:
+        shortfall = _shortfall(by_attempt.get(expected_attempt))
+        if shortfall:
             errors.append(
-                "phase %s was delivered to another execution context; this "
-                "actor holds no delivery evidence of its own (attempt %s)" %
-                (phase_id, ", ".join(foreign[:2])))
-    elif len(attempts) > 1:
-        errors.append(
-            "phase %s mixes %d delivery attempts; one phase is earned by one "
-            "attempt" % (phase_id, len(attempts)))
+                "phase %s is not delivered to this actor: attempt %s %s%s" %
+                (phase_id, expected_attempt, shortfall,
+                 "" if not by_attempt else
+                 "; %d other attempt(s) hold acks, and none of them is this "
+                 "actor's" % len(
+                     [key for key in by_attempt if key != expected_attempt])))
+        return errors
+    covering = [key for key, earned in by_attempt.items()
+                if _shortfall(earned) is None]
+    if not covering:
+        if not by_attempt:
+            errors.append(
+                "phase %s is not delivered to this activation: none of its "
+                "%d frozen piece(s) has a current ack" %
+                (phase_id, len(expected_ids)))
+        else:
+            errors.append(
+                "phase %s is not delivered to this activation: no single "
+                "attempt covers it (%s)" %
+                (phase_id, "; ".join(
+                    "%s %s" % (key, _shortfall(earned))
+                    for key, earned in sorted(
+                        by_attempt.items(),
+                        key=lambda row: str(row[0]))[:2])))
     return errors
 
 

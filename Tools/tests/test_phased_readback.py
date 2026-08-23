@@ -229,6 +229,44 @@ class PhasedActivationTests(unittest.TestCase):
         self.assertEqual(card_activation.PHASE_BATCH_PREFLIGHT,
                          assignment["R05"])
 
+    def test_a_batch_that_is_not_a_targeted_audit_does_not_owe_r12(self):
+        # R12's Card states scenarios and the Work Spec is where a batch says
+        # which one it is.  Without this, selecting R12 once at task level
+        # charges every batch for an audit almost none of them run -- the
+        # exact waste this protocol exists to remove.
+        assignment = card_activation.resolve_route_phases(
+            ["R01", "R05", "R12"], narrowing=["R01", "R05"])
+        self.assertEqual(card_activation.PHASE_BATCH_RUNNING,
+                         assignment["R12"])
+
+    def test_a_batch_that_names_r12_owes_the_gate_phase(self):
+        assignment = card_activation.resolve_route_phases(
+            ["R01", "R05", "R12"], narrowing=["R01", "R12"])
+        self.assertEqual(card_activation.PHASE_BATCH_GATE, assignment["R12"])
+        self.assertEqual(card_activation.PHASE_BATCH_RUNNING,
+                         assignment["R05"])
+
+    def test_narrowing_cannot_waive_a_task_level_obligation(self):
+        # R08/R09 are entered by a transition no Work Spec decides, and R01
+        # is presumed by every phase.  A batch may narrow what it is doing,
+        # never what the task may do.
+        assignment = card_activation.resolve_route_phases(
+            ["R01", "R08", "R09", "R12"], narrowing=["R05"])
+        self.assertEqual(card_activation.PHASE_BATCH_PREFLIGHT,
+                         assignment["R01"])
+        self.assertEqual(card_activation.PHASE_TASK_COMPLETION,
+                         assignment["R08"])
+        self.assertEqual(card_activation.PHASE_GOVERNANCE, assignment["R09"])
+        self.assertEqual(card_activation.PHASE_BATCH_RUNNING,
+                         assignment["R12"])
+        self.assertEqual(frozenset(("R12",)),
+                         card_activation.NARROWABLE_PHASE_OVERRIDES)
+
+    def test_an_unrevised_work_spec_still_owes_r12(self):
+        assignment = card_activation.resolve_route_phases(
+            ["R01", "R12"], narrowing=None)
+        self.assertEqual(card_activation.PHASE_BATCH_GATE, assignment["R12"])
+
     # ---- delivery and ack ----------------------------------------------
 
     def deliver(self, phase_id, part=0, context=None,
@@ -400,11 +438,66 @@ class PhaseGateConsumerTests(unittest.TestCase):
             view, item, card_activation.PHASE_BATCH_GATE,
             actor_context_id=CONTEXT)
         self.assertTrue(errors)
-        self.assertIn("another execution context", errors[0])
+        self.assertIn("not delivered to this actor", errors[0])
         # The same chain is still valid history for an integrator, which
         # checks that the phase was earned, not that it earned it.
         self.assertEqual([], check_queue.activation_phase_delivery_errors(
             view, item, card_activation.PHASE_BATCH_GATE))
+
+    def test_two_complete_chains_do_not_block_each_other(self):
+        # A bound edge asks whether THIS actor read the Card, which another
+        # context's chain cannot answer either way.  Reading foreignness as
+        # the fault rather than one's own absence wedged both contexts at
+        # once, and wedged the integrator on top of them.
+        gate = card_activation.phase_record(
+            self.context, card_activation.PHASE_BATCH_GATE)
+        if not gate["piece_ids"]:
+            self.skipTest("fixture gate phase is empty")
+        acks = []
+        for context_id in (CONTEXT, OTHER_CONTEXT):
+            acks.extend(
+                self.ack_for(card_activation.PHASE_BATCH_GATE, index,
+                             context_id=context_id)
+                for index in range(gate["part_count"]))
+        view, item = self.catalog_with(*acks)
+        for context_id in (CONTEXT, OTHER_CONTEXT):
+            self.assertEqual(
+                [], check_queue.activation_phase_delivery_errors(
+                    view, item, card_activation.PHASE_BATCH_GATE,
+                    actor_context_id=context_id),
+                "%s earned the phase and must not be refused for the "
+                "existence of the other chain" % context_id)
+        self.assertEqual([], check_queue.activation_phase_delivery_errors(
+            view, item, card_activation.PHASE_BATCH_GATE))
+
+    def test_a_union_of_two_partial_chains_is_not_a_delivery(self):
+        # Completeness is per attempt.  Two half-deliveries to two contexts
+        # leave neither able to say it read the phase, and unioning them
+        # manufactures a reader that never existed.
+        # Preflight is the phase the fixture gives more than one piece, so it
+        # is the one that can be halved at all.
+        phase_id = card_activation.PHASE_BATCH_PREFLIGHT
+        record = card_activation.phase_record(self.context, phase_id)
+        pieces = list(record["piece_ids"])
+        self.assertGreaterEqual(
+            len(pieces), 2,
+            "this test needs a phase with something to split; if the fixture "
+            "shrank, move it to one that still has two pieces rather than "
+            "letting it skip")
+        cut = len(pieces) // 2
+        halves = (pieces[:cut], pieces[cut:])
+        acks = []
+        for context_id, half in zip((CONTEXT, OTHER_CONTEXT), halves):
+            for index in range(record["part_count"]):
+                ack = self.ack_for(phase_id, index, context_id=context_id)
+                acks.append(dict(ack, phase_piece_ids=list(half)))
+        view, item = self.catalog_with(*acks)
+        for actor in (CONTEXT, OTHER_CONTEXT, None):
+            errors = check_queue.activation_phase_delivery_errors(
+                view, item, phase_id, actor_context_id=actor)
+            self.assertTrue(
+                errors, "a union across attempts must not read as delivered "
+                        "(actor=%s)" % actor)
 
     def test_a_prepared_activation_is_exempt(self):
         prepared = card_activation.build_activation_context(

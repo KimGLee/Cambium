@@ -96,6 +96,15 @@ ROUTE_PHASE_OVERRIDES = {
     "R09": PHASE_GOVERNANCE,
     "R12": PHASE_BATCH_GATE,
 }
+# Of those, the one a batch may narrow away.  R08 and R09 are reached by a
+# task-level transition, which a batch's Work Spec does not decide, and R01
+# is presumed by every phase -- narrowing either would let a batch opt out
+# of an obligation that is not its to waive.  R12 is different in kind: its
+# Card states scenarios, and the Work Spec is where a batch says which
+# scenario it is.  Without that, selecting R12 once at task level charges
+# every batch for a targeted audit almost none of them run, which is the
+# waste this protocol exists to remove.
+NARROWABLE_PHASE_OVERRIDES = frozenset(("R12",))
 # One delivered piece must fit one tool result.  The measured object is the
 # canonical serialization of the whole delivery, not the source file: the
 # 2026-08-22 host measurement saw 50,495 bytes of Card source arrive as a
@@ -455,16 +464,24 @@ def resolve_route_phases(routes, *, narrowing=None):
     presumes.  Everything else is work: it starts in preflight unless the
     batch narrowed itself, and a narrowed-away route stays available on
     demand during `batch-running` rather than disappearing.
+
+    A Work Spec narrowing reaches R12 and no other override, because R12's
+    predicate is about what this batch is doing while the rest are about
+    what the task is doing.  Absent a narrowing every override holds as
+    written, so an unrevised Work Spec behaves exactly as it did before.
     """
     narrowed = narrowing is not None
     keep = set(narrowing or ())
     assignment = {}
     for route_id in routes:
+        narrowed_away = narrowed and route_id not in keep
         override = ROUTE_PHASE_OVERRIDES.get(route_id)
         if override is not None:
-            assignment[route_id] = override
-            continue
-        if narrowed and route_id not in keep:
+            assignment[route_id] = (
+                PHASE_BATCH_RUNNING
+                if narrowed_away and route_id in NARROWABLE_PHASE_OVERRIDES
+                else override)
+        elif narrowed_away:
             assignment[route_id] = PHASE_BATCH_RUNNING
         else:
             assignment[route_id] = PHASE_BATCH_PREFLIGHT
