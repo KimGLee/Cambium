@@ -22,8 +22,8 @@ source_files:
   - kernel/K13 Task Runtime and Execution Control/11 Completion Policy.md
 readback_sources: []
 readback_policy: none
-source_hash: '3550fde7adbb'
-compiled_source_hash: '3550fde7adbb'
+source_hash: '04e71c21ee25'
+compiled_source_hash: '04e71c21ee25'
 ---
 # R01 Core Bootstrap Card
 
@@ -53,10 +53,12 @@ The selected profile's `Priority Rubric` grants P0/P1. Record the tier in the Co
 - [ ] Pull the `batch-preflight` phase before working, and each later phase
   before the act that owes it: the gate phase before the first judgment or
   merge-ready request, the governance phase before a batch that edits the
-  control plane can reach merge-ready. Treat a phase as incomplete until its
-  ack set matches that phase's frozen manifest. An unbound CLI delivery, or
-  any unregistered adapter, is `degraded`: work may proceed, but no layer may
-  claim machine-enforced Card delivery.
+  control plane can reach merge-ready. Treat a phase as incomplete until one
+  attempt's ack set matches that phase's frozen manifest on its own; halves
+  from two contexts do not add up to a delivery, and deliver each phase from
+  one context per batch. An unbound CLI delivery, or any unregistered
+  adapter, is `degraded`: work may proceed, but no layer may claim
+  machine-enforced Card delivery.
 - [ ] State the objective, target scope, exclusions, and latest user instructions.
 - [ ] Inspect the repository root for `.cambium/state/` before any content or
   task-state write. If it exists, run `python3 Tools/check_queue.py . --resume-status`,

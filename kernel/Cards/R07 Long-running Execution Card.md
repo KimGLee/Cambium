@@ -48,8 +48,8 @@ readback_sources:
   - kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract.md
   - kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary.md
 readback_policy: declared
-source_hash: '4cf500e4297a'
-compiled_source_hash: '4cf500e4297a'
+source_hash: 'c3655e685332'
+compiled_source_hash: 'c3655e685332'
 ---
 # R07 Long-running Execution Card
 
@@ -75,6 +75,7 @@ Run a multi-batch task, sustain checkpoints, resume after interruption, maintain
 
 Each batch follows the fixed loop: version/Guidance self-check → `check_queue.py --require-ready` (freezes every phase's manifest and the environment that resolved it; delivers no bytes) → integrator records `queued -> open` → pull the preflight phase with `check_queue.py --deliver-phase --phase batch-preflight` and return its nonce with `--ack-activation-phase`, which is what lets a runtime call this context `running` → execute the frozen manifest → pull `batch-gate` before judging → build one AuditPlan, finish in-batch QA — including one `record_batch_judgment.py` receipt per record of the activation-delivered Batch Review plan — and write the delta → integrator records `open -> merge-ready` → serially applies the delta and global gates → reconciles Coverage/Queue/Progress → records `merge-ready -> closed`.
 
+- A batch says what it is doing in its Work Spec `required_route_ids`, and that is what decides how much it pays at startup: routes it does not name move to `batch-running` and stay available on demand instead of arriving at preflight. Naming R12 is the claim that this batch is a targeted audit; a batch that does not name it owes no R12 Card at the gate. Omit the field entirely and every selected non-conditional route arrives at preflight, exactly as before — silence is not a narrowing claim, and R01, R08, and R09 are never narrowable.
 - Concurrent batches have disjoint manifests and merged prerequisites; only the integrator writes shared control state and hub pages.
 - In-batch QA is not satisfied by producing the close evidence set alone: each M-tier manifest page passes, page by page, the M-tier Gate Checklist surfaced by the kernel Single Note Authoring Card (K12/14 folds note-level acceptance into Batch Review), including the sources-role and page-contract items; the per-page conclusion is recorded in that page's attestation, not asserted once in the batch wrapper.
 - After one canonical delta apply passes, perform checks and close that batch before any other Queue/Coverage write; the apply receipt opens a strict serial critical section.
