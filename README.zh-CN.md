@@ -40,7 +40,7 @@ Cambium 的有效治理由三部分组成：
 
 下图展示了这些层如何连接运行时路由、确定性工具和 Agent 执行上下文。
 
-![Cambium 架构总览](docs/cambium-architecture-zh.png)
+![Cambium 架构总览](assets/readme/cambium-architecture-zh.png)
 
 | 层 | 负责什么 |
 |---|---|
@@ -297,6 +297,7 @@ SHA-256 绑定可以在采用方的本地信任域中发现漂移和不一致历
 | [`profiles/`](profiles/) | Profile 接口、模板、访谈和示例 |
 | [`Tools/`](Tools/) | 检查、写入器、schema、receipt 和生成器 |
 | [`Tools/compiled/`](Tools/compiled/) | 生成的 CLI、MCP、元数据和宿主投影 |
+| [`assets/readme/`](assets/readme/) | 根目录双语 README 使用的公共结构图 |
 | [`ROADMAP.md`](ROADMAP.md) | 按状态组织的实现路线图 |
 
 示例只说明答案应写成什么形式，不是默认配置，也不能代替采用方自己拥有的
@@ -307,7 +308,8 @@ Profile。
 Cambium 按路径使用不同许可证：
 
 - `Tools/` 下的软件和实现材料使用 Apache-2.0；
-- 标准、Profile、README 和路线图文档使用 CC BY 4.0。
+- 标准、Profile、README、路线图文档和 `assets/readme/` 下的结构图使用
+  CC BY 4.0。
 
 权威条款和声明见 [LICENSE.md](LICENSE.md)、[ATTRIBUTION.md](ATTRIBUTION.md)
 和 [LICENSES/](LICENSES/)。

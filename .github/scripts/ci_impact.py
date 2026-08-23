@@ -11,6 +11,8 @@ boundary narrow:
   Tool modules that depend on it.
 * Shared authority, schemas, generated contracts, CI policy, unknown paths,
   deletions, and renames fall back to the complete suite.
+* Local-only process directories fail validation if any path under them enters
+  the Git index, even when an ignore rule was bypassed with force-add.
 
 Pushes to the default branch and manual dispatches always receive the complete
 Python 3.10/3.14 suite.  The emitted plan is JSON so every selection decision
@@ -46,8 +48,9 @@ FULL_PREFIXES = (
     "Tools/schemas/",
     "Tools/tests/fixtures/",
 )
-CHECK_ONLY_PREFIXES = ("docs/", "LICENSES/")
+CHECK_ONLY_PREFIXES = ("assets/readme/", "LICENSES/")
 CHECK_ONLY_MARKDOWN_PREFIXES = ("kernel/", "profiles/")
+FORBIDDEN_TRACKED_PREFIXES = ("docs/", "_to_delete/")
 CHECK_ONLY_ROOT_FILES = {
     "CONTRIBUTING.md",
     "LICENSE",
@@ -100,6 +103,36 @@ def parse_name_status(raw):
             changes.append(Change(kind, _normal_path(fields[index])))
             index += 1
     return changes
+
+
+def forbidden_tracked_paths(paths):
+    """Return tracked paths that belong to local-only repository roots."""
+    return sorted(
+        path for path in paths
+        if path.startswith(FORBIDDEN_TRACKED_PREFIXES)
+    )
+
+
+def validate_repository_layout(root):
+    """Fail when the Git index contains a local-only process path."""
+    result = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=str(root),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise ValueError("cannot inspect Git index: %s" %
+                         (detail or "git ls-files failed"))
+    paths = [
+        path for path in result.stdout.decode(
+            "utf-8", errors="surrogateescape").split("\0")
+        if path
+    ]
+    violations = forbidden_tracked_paths(paths)
+    if violations:
+        raise ValueError(
+            "local-only paths are tracked: %s" % ", ".join(violations))
+    return len(paths)
 
 
 def git_changes(root, base, head):
@@ -421,8 +454,14 @@ def main(argv=None):
     args = _parser().parse_args(argv)
     root = Path(args.root).resolve()
     if args.command == "validate":
+        try:
+            tracked_count = validate_repository_layout(root)
+        except (OSError, ValueError) as error:
+            print("ci-impact: %s" % error, file=sys.stderr)
+            return 1
         tests = discover_tests(root)
         _full_groups(tests)
+        print("repository_layout_tracked_files = %d" % tracked_count)
         print("ci_impact_tests = %d" % len(tests))
         return 0
     if args.command == "run-tests":

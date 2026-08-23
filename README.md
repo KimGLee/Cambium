@@ -41,7 +41,7 @@ effective governance
 The diagram shows how these layers connect to runtime routes, deterministic
 tools, and agent execution contexts.
 
-![Cambium architecture overview](docs/cambium-architecture-en.png)
+![Cambium architecture overview](assets/readme/cambium-architecture-en.png)
 
 | Layer | What it owns |
 |---|---|
@@ -317,6 +317,7 @@ consistent history.
 | [`profiles/`](profiles/) | Profile interface, template, interview, and examples |
 | [`Tools/`](Tools/) | Checks, writers, schemas, receipts, and generators |
 | [`Tools/compiled/`](Tools/compiled/) | Generated CLI, MCP, metadata, and host projections |
+| [`assets/readme/`](assets/readme/) | Public diagrams embedded by the root READMEs |
 | [`ROADMAP.md`](ROADMAP.md) | Status-based implementation roadmap |
 
 Examples show answer shape; they are not defaults and must not be selected in
@@ -327,7 +328,8 @@ place of an adopter-owned profile.
 Cambium uses path-based licensing:
 
 - software and implementation material under `Tools/` uses Apache-2.0;
-- standards, profiles, README files, and roadmap documentation use CC BY 4.0.
+- standards, profiles, README files, roadmap documentation, and diagrams under
+  `assets/readme/` use CC BY 4.0.
 
 See [LICENSE.md](LICENSE.md), [ATTRIBUTION.md](ATTRIBUTION.md), and
 [LICENSES/](LICENSES/) for the authoritative terms and notices.
