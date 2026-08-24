@@ -54,22 +54,6 @@ class QueueFixture(unittest.TestCase):
     def queue(self):
         return kblib.load_yaml_file(self.queue_path)
 
-    def test_runtime_identity_must_match_approved_active_standards(self):
-        baseline = check_queue.validate_runtime(self.root)
-        self.assertEqual([], baseline["errors"])
-        active = self.root / standards_state.STATE_PATH
-        state = kblib.load_yaml_file(active)
-        state["standards_version"] = "9.9.9"
-        state["state_revision"] += 1
-        active.write_text(
-            standards_state.canonical_text(state), encoding="utf-8")
-
-        result = check_queue.validate_runtime(self.root)
-
-        self.assertTrue(any(
-            "runtime standards_version" in error and "9.9.9" in error
-            for error in result["errors"]), result["errors"])
-
     def write_queue(self, queue, sync_progress=True):
         text = kblib.canonical_yaml(queue)
         self.queue_path.write_text(text, encoding="utf-8")
@@ -350,6 +334,32 @@ class QueueFixture(unittest.TestCase):
         self.assertEqual([], result["errors"])
         return result, dict(result["blocked"]).get(batch_id, [])
 
+
+class QueueRuntimeIdentityTests(QueueFixture):
+    """Runs on the plain fixture; the three subclasses below re-skin it.
+
+    These assertions live on a leaf rather than on QueueFixture because a
+    fixture base that declares tests runs them again under every subclass.
+    A subclass that wants them against its own fixture subclasses this
+    class explicitly instead of inheriting them by accident.
+    """
+
+    def test_runtime_identity_must_match_approved_active_standards(self):
+        baseline = check_queue.validate_runtime(self.root)
+        self.assertEqual([], baseline["errors"])
+        active = self.root / standards_state.STATE_PATH
+        state = kblib.load_yaml_file(active)
+        state["standards_version"] = "9.9.9"
+        state["state_revision"] += 1
+        active.write_text(
+            standards_state.canonical_text(state), encoding="utf-8")
+
+        result = check_queue.validate_runtime(self.root)
+
+        self.assertTrue(any(
+            "runtime standards_version" in error and "9.9.9" in error
+            for error in result["errors"]), result["errors"])
+
     def test_live_legacy_property_state_requires_migration_admission(self):
         coverage = kblib.load_yaml_file(self.coverage_path)
         for page in coverage["pages"]:
@@ -442,7 +452,6 @@ class QueueFixture(unittest.TestCase):
             "legacy_property_state.last_reviewed" in error and
             "still has a persisted page copy" in error
             for error in drifted["errors"]), drifted["errors"])
-
 
 class CorpusPlanEraMapTests(unittest.TestCase):
     """Every supported close era must resolve a corpus-plan child protocol.

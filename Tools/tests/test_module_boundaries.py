@@ -403,6 +403,115 @@ class SuiteCollectsEachTestOnce(unittest.TestCase):
             % "\n  ".join(sorted(set(duplicated))[:12]))
 
 
+    def test_no_fixture_base_runs_its_own_tests_again(self):
+        """A fixture base that declares tests runs them under every subclass.
+
+        The check above keys on the defining module, so it is blind to this
+        one: when the base and its subclasses share a file, the tests that
+        run four times are defined exactly where they are collected, and
+        nothing is borrowed across a file line.  Keying on the function
+        object catches it.
+
+        The sameness clause keeps a genuine parametrise-by-subclass base
+        legal.  A base whose subclasses each build different state is asking
+        for its assertions to run against each of them, and gets them; a base
+        whose subclasses differ in nothing the test can observe is not
+        parametrising anything, it is just running the same test again.
+        """
+        import unittest.loader
+
+        here = os.path.dirname(os.path.abspath(__file__))
+        for entry in (here, TOOLS, REPO):
+            if entry not in sys.path:
+                sys.path.insert(0, entry)
+
+        def hook(cls, name):
+            """The implementation a class would actually run for a hook."""
+            found = getattr(cls, name, None)
+            return getattr(found, "__func__", found)
+
+        loader = unittest.TestLoader()
+        suite = loader.discover(here, pattern="test_*.py", top_level_dir=here)
+        cases = []
+
+        def walk(node):
+            if isinstance(node, unittest.TestSuite):
+                for child in node:
+                    walk(child)
+            elif isinstance(node, unittest.TestCase):
+                cases.append(node)
+
+        walk(suite)
+
+        bodies = {}
+        for case in cases:
+            cls = type(case)
+            method = getattr(cls, case._testMethodName, None)
+            code = getattr(method, "__code__", None)
+            if code is None:  # a _FailedTest placeholder has no body to key on
+                continue
+            key = (code.co_filename, code.co_firstlineno)
+            bodies.setdefault(key, {})[cls] = case.id()
+
+        repeated = []
+        for (path, line), owners in sorted(bodies.items()):
+            if len(owners) < 2:
+                continue
+            hooks = {
+                tuple(hook(cls, name)
+                      for name in ("setUp", "setUpClass", "tearDown"))
+                for cls in owners
+            }
+            if len(hooks) > 1:  # the subclasses really do build different state
+                continue
+            repeated.append(
+                "%s:%d runs %d times, under %s"
+                % (os.path.basename(path), line, len(owners),
+                   ", ".join(sorted(cls.__name__ for cls in owners))))
+
+        self.assertEqual(
+            [], repeated,
+            "one test body collected under several classes that build the "
+            "same state:\n  %s\n"
+            "Move the tests off the fixture base onto a leaf class that "
+            "subclasses it.  A base that declares tests runs them again "
+            "under every subclass, for no coverage a subclass can observe."
+            % "\n  ".join(repeated[:12]))
+
+    def test_every_test_file_is_actually_inspected(self):
+        """A file that cannot import must fail loudly, not vanish quietly.
+
+        Discovery does not raise on an unimportable file -- it substitutes a
+        `_FailedTest` whose module is `unittest.loader`, which both checks
+        above skip because it is not a `test_` module.  The file then
+        contributes nothing and reads exactly like a file with no findings.
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        for entry in (here, TOOLS, REPO):
+            if entry not in sys.path:
+                sys.path.insert(0, entry)
+
+        loader = unittest.TestLoader()
+        suite = loader.discover(here, pattern="test_*.py", top_level_dir=here)
+        failed = []
+
+        def walk(node):
+            if isinstance(node, unittest.TestSuite):
+                for child in node:
+                    walk(child)
+            elif isinstance(node, unittest.TestCase):
+                if type(node).__module__ == "unittest.loader":
+                    failed.append(node.id())
+
+        walk(suite)
+
+        self.assertEqual(
+            [], sorted(failed),
+            "test files that discovery could not import:\n  %s\n"
+            "These contribute no cases and no complaint, so every check in "
+            "this file silently stops covering them."
+            % "\n  ".join(sorted(failed)[:12]))
+
 class DependencyDirection(unittest.TestCase):
     """No static import cycle, with no exception available.
 
