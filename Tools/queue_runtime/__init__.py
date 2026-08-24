@@ -96,3 +96,23 @@ from queue_runtime.evidence_identity import (  # noqa: F401
     evidence_identity_errors,
     property_receipt_utc_date,
 )
+from queue_runtime.gate_registry import (  # noqa: F401
+    BASE_RECEIPT_DIMENSIONS,
+    NOT_BATCH_SCOPED_GATE,
+    QUEUE_EXHAUSTED_GATE,
+    STANDARDS_GATE_REGISTRY_PATH,
+    gate_registry_producer_errors,
+    partition_boundary_gates_by_lifecycle,
+    partition_revalidation_owner_claims,
+    producer_module,
+    project_adoption_gate_ids,
+    projected_revalidation_owners,
+    queue_gate_id_for_mode,
+    receipt_matches_gate_id,
+    registered_gate_dimensions,
+    registered_gate_position,
+    standards_gate_capability_registry,
+    standards_gate_registry,
+    standards_revalidation_capabilities,
+    standards_revalidation_owner,
+)

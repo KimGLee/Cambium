@@ -736,6 +736,7 @@ modules:
       - ANY_PRODUCER_ERA_VERSION
       - APPLY_AMENDMENT_TOOL_VERSION
       - APPLY_DELTA_TOOL_VERSION
+      - BASE_RECEIPT_DIMENSIONS
       - BATCH_CLOSE_TOOL
       - BATCH_CLOSE_TOOL_VERSION
       - BATCH_ID_RE
@@ -755,7 +756,9 @@ modules:
       - LEGACY_PROPERTY_ADOPTION_OPERATION
       - MANUAL_ATTESTATION_TOOL
       - MANUAL_ATTESTATION_TOOL_VERSION
+      - NOT_BATCH_SCOPED_GATE
       - PROGRESS_PATH
+      - QUEUE_EXHAUSTED_GATE
       - QUEUE_PATH
       - REGISTER_AMENDMENT_TOOL
       - REGISTER_AMENDMENT_TOOL_VERSION
@@ -764,6 +767,7 @@ modules:
       - STANDARDS_ADOPTION_PLAN_PREFIX
       - STANDARDS_ADOPTION_TOOL
       - STANDARDS_ADOPTION_TOOL_VERSION
+      - STANDARDS_GATE_REGISTRY_PATH
       - STATES
       - SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS
       - SUPPORTED_CHECK_QUEUE_TOOL_VERSIONS
@@ -776,7 +780,21 @@ modules:
       - TOOL_VERSION
       - UPDATE_QUEUE_TOOL_VERSION
       - evidence_identity_errors
+      - gate_registry_producer_errors
+      - partition_boundary_gates_by_lifecycle
+      - partition_revalidation_owner_claims
+      - producer_module
+      - project_adoption_gate_ids
+      - projected_revalidation_owners
       - property_receipt_utc_date
+      - queue_gate_id_for_mode
+      - receipt_matches_gate_id
+      - registered_gate_dimensions
+      - registered_gate_position
+      - standards_gate_capability_registry
+      - standards_gate_registry
+      - standards_revalidation_capabilities
+      - standards_revalidation_owner
     exceptions:
       - consumer: check_queue
         symbol: _acyclic
@@ -843,6 +861,9 @@ modules:
     public: []
   - module: queue_runtime.evidence_identity
     path: Tools/queue_runtime/evidence_identity.py
+    public: []
+  - module: queue_runtime.gate_registry
+    path: Tools/queue_runtime/gate_registry.py
     public: []
   - module: queue_runtime.primitives
     path: Tools/queue_runtime/primitives.py
