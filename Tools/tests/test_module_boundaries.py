@@ -235,6 +235,117 @@ class StagedTreesAreDerived(unittest.TestCase):
             % "; ".join(sorted(offenders)))
 
 
+# The declared rank of every `queue_runtime` submodule, and the one rule that
+# orders the package: an import may only run downward.  The ranks are not a
+# preference about layering -- they are the acyclicity the contract already
+# requires, written where a machine can read it, because `import_graph` keys
+# every module by its first name segment and therefore sees a package as a
+# single node.  A cycle entirely inside a package is invisible to the rule
+# whose whole purpose is forbidding cycles; a deliberate one on a probe tree
+# reported none.
+#
+# The package root sits above every submodule because `__init__.py` imports
+# all of them to re-export the facade surface.  Nothing inside may import the
+# root: that would be a submodule depending on the whole package.
+QUEUE_RUNTIME_RANKS = {
+    "queue_runtime.canon": 0,
+    "queue_runtime.primitives": 0,
+    "queue_runtime.repofs": 0,
+
+    "queue_runtime.evidence_identity": 1,
+    "queue_runtime.gate_registry": 1,
+    "queue_runtime.locks": 1,
+    "queue_runtime.policy_exceptions": 1,
+    "queue_runtime.producer_era": 1,
+    "queue_runtime.profile_view": 1,
+    "queue_runtime.receipts": 1,
+    "queue_runtime.task_contract": 1,
+    "queue_runtime.work_spec": 1,
+
+    "queue_runtime.amendments": 2,
+    "queue_runtime.authority": 2,
+    "queue_runtime.control_plane": 2,
+    "queue_runtime.coverage": 2,
+    "queue_runtime.item_history": 2,
+    "queue_runtime.property_state": 2,
+    "queue_runtime.review": 2,
+    "queue_runtime.task_record": 2,
+
+    "queue_runtime.adoption": 3,
+    "queue_runtime.delta": 3,
+    "queue_runtime.maintenance": 3,
+    "queue_runtime.revalidation": 3,
+
+    "queue_runtime.close_gate": 4,
+    "queue_runtime.task_progress": 4,
+
+    "queue_runtime.item_evidence": 5,
+    "queue_runtime.resume": 5,
+
+    "queue_runtime.runtime": 6,
+
+    "queue_runtime": 7,
+}
+
+
+class IntraPackageDirection(unittest.TestCase):
+    """A package must be ordered inside, where the module graph cannot look.
+
+    Every finding here is about direction, never about size or membership for
+    its own sake: an edge that runs upward, a submodule nobody ranked, or a
+    rank naming a file that no longer ships.  The second and third matter
+    because a rank table that has stopped describing the tree stops refusing
+    anything, which is the same silence the contract was written against.
+    """
+
+    PACKAGE = "queue_runtime"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.facts = boundary_facts.collect(REPO)
+        cls.edges = boundary_facts.package_layers(cls.facts, cls.PACKAGE)
+
+    def test_the_rank_table_matches_the_shipped_package(self):
+        if not self.edges:
+            self.skipTest("queue_runtime is not shipped")
+        shipped = set(self.edges)
+        declared = set(QUEUE_RUNTIME_RANKS)
+        unranked = sorted(shipped - declared)
+        self.assertEqual(
+            [], unranked,
+            "submodules with no declared rank: %s\n"
+            "Add each to QUEUE_RUNTIME_RANKS with the rank its imports allow. "
+            "An unranked submodule sits outside the only rule that orders the "
+            "package." % ", ".join(unranked))
+        stale = sorted(declared - shipped)
+        self.assertEqual(
+            [], stale,
+            "ranks naming modules that are not shipped: %s"
+            % ", ".join(stale))
+
+    def test_every_intra_package_import_runs_downward(self):
+        if not self.edges:
+            self.skipTest("queue_runtime is not shipped")
+        upward = []
+        for name, targets in sorted(self.edges.items()):
+            source = QUEUE_RUNTIME_RANKS.get(name)
+            if source is None:
+                continue  # the rank-table test owns this failure
+            for target in targets:
+                rank = QUEUE_RUNTIME_RANKS.get(target)
+                if rank is None or rank < source:
+                    continue
+                upward.append("%s (rank %s) -> %s (rank %s)"
+                              % (name, source, target, rank))
+        self.assertEqual(
+            [], sorted(upward),
+            "intra-package imports that do not run downward: %s\n"
+            "Either the edge is wrong, or the two responsibilities are one "
+            "and belong in the same file. Raising a rank to admit the edge is "
+            "only honest when nothing below it still reaches back up."
+            % "; ".join(sorted(upward)))
+
+
 class DependencyDirection(unittest.TestCase):
     """No static import cycle, with no exception available.
 

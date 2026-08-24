@@ -93,13 +93,55 @@ def _import_bindings(tree, known):
     return bindings
 
 
-def module_facts(tools_root, relative_path, known):
-    """Parse one module into the facts every consumer of this module reads."""
+def _imported_modules(tree, known_full):
+    """Every shipped module an import statement names, at full dotted name.
+
+    `_import_bindings` answers "which module does this local name come from"
+    and deliberately keys by the first segment, because that is the unit the
+    contract speaks about.  Inside a package that is not enough: every
+    submodule would report an import of its own package and nothing else, and
+    the direction between two submodules -- the only thing that can order a
+    package internally -- would be unreadable.  This keeps the full name.
+    """
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in known_full:
+                    found.add(alias.name)
+                elif alias.name.split(".")[0] in known_full:
+                    found.add(alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            if node.level or not node.module:
+                continue
+            for alias in node.names:
+                submodule = "%s.%s" % (node.module, alias.name)
+                if submodule in known_full:
+                    found.add(submodule)
+                elif node.module in known_full:
+                    found.add(node.module)
+    return found
+
+
+def module_facts(tools_root, relative_path, known, known_full=()):
+    """Parse one module into the facts every consumer of this module reads.
+
+    Consumption is cross-module consumption.  A module reading its own names
+    is not consumption of anything, and for a package that has to mean the
+    whole package: `import_graph`, the manifest and the exception register all
+    key by the first name segment, so a submodule reading a sibling would
+    otherwise be recorded as the package consuming itself -- hundreds of rows
+    describing a boundary that does not exist, each demanding a judgment about
+    a coupling nobody chose.  What holds a package together internally is the
+    declared direction between its submodules, which `package_layers` reports
+    and the guard checks separately.
+    """
     path = os.path.join(tools_root, relative_path)
     with open(path, encoding="utf-8") as handle:
         source = handle.read()
     tree = ast.parse(source, filename=relative_path)
     name = module_name(relative_path)
+    own = name.split(".")[0]
 
     bindings = _import_bindings(tree, known)
     edges = set()
@@ -110,7 +152,7 @@ def module_facts(tools_root, relative_path, known):
         if not isinstance(value, ast.Name):
             continue
         target = bindings.get(value.id)
-        if target is None or target == name:
+        if target is None or target == own:
             continue
         edges.add((target, node.attr))
     # A `from module import symbol` is consumption of that symbol even though
@@ -119,7 +161,7 @@ def module_facts(tools_root, relative_path, known):
         if not isinstance(node, ast.ImportFrom) or node.level or not node.module:
             continue
         target = node.module.split(".")[0]
-        if target not in known or target == name:
+        if target not in known or target == own:
             continue
         for alias in node.names:
             edges.add((target, alias.name))
@@ -136,6 +178,7 @@ def module_facts(tools_root, relative_path, known):
         "module": name,
         "lines": source.count("\n") + 1,
         "imports": sorted(set(bindings.values())),
+        "imported_modules": sorted(_imported_modules(tree, known_full)),
         "consumes": sorted(edges),
         "top_level_defs": sorted(defs),
         "top_level_classes": sorted(classes),
@@ -147,9 +190,10 @@ def collect(repo_root):
     tools_root = os.path.join(repo_root, TOOLS_DIRNAME)
     paths = shipped_modules(tools_root)
     known = {module_name(path).split(".")[0] for path in paths}
+    known_full = {module_name(path) for path in paths}
     facts = {}
     for path in paths:
-        entry = module_facts(tools_root, path, known)
+        entry = module_facts(tools_root, path, known, known_full)
         facts[entry["module"]] = entry
     return facts
 
@@ -359,6 +403,11 @@ def package_layers(facts, package):
     node, so a cycle entirely inside a package is invisible to the very rule
     that exists to forbid cycles.  This returns the edges at full name
     resolution so a caller can check the inside too.
+
+    An edge to the package root is reported as such.  It is not noise: the
+    root is the file that re-exports everything, so a submodule importing it
+    is a submodule importing the whole package, and that is precisely the
+    upward edge a layer rule has to refuse.
     """
     prefix = package + "."
     members = {name for name in facts
@@ -366,10 +415,8 @@ def package_layers(facts, package):
     edges = {}
     for name in sorted(members):
         targets = set()
-        for imported in facts[name]["imports"]:
+        for imported in facts[name].get("imported_modules", ()):
             if imported in members and imported != name:
                 targets.add(imported)
-        # An intra-package import written as `from . import x` resolves to
-        # the submodule, which `imports` records under the package root.
         edges[name] = sorted(targets)
     return edges
