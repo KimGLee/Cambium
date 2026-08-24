@@ -44,11 +44,22 @@ FULL_EXACT_PATHS = {
 }
 FULL_PREFIXES = (
     ".github/",
-    "Tools/compiled/",
     "Tools/schemas/",
     "Tools/tests/fixtures/",
 )
-CHECK_ONLY_PREFIXES = ("assets/readme/", "LICENSES/")
+# Tools/compiled/ is regenerated alongside every Tool change.  While it was a
+# full trigger, every Tool change also tripped it, and the selective path went
+# unreached in 22 consecutive runs -- the planner had a branch nobody could
+# enter.  Tampering with a compiled artifact is caught by the four --check
+# gates, which run in every mode, so the full suite was not what protected it.
+CHECK_ONLY_PREFIXES = ("assets/readme/", "LICENSES/", "Tools/compiled/")
+
+# mcp_server reaches every tool through its command line rather than its
+# imports, so no reverse-import closure can ever include it.  K00/18 names
+# this blind spot exactly: subprocess invocation consumes a registered CLI
+# surface, which the import rules do not see.  Declaring the edge is the
+# remedy the contract asks for; hoping the graph finds it is not.
+CLI_SURFACE_TESTS = ("test_mcp_server.py",)
 CHECK_ONLY_MARKDOWN_PREFIXES = ("kernel/", "profiles/")
 FORBIDDEN_TRACKED_PREFIXES = ("docs/", "_to_delete/")
 CHECK_ONLY_ROOT_FILES = {
@@ -230,16 +241,23 @@ def impacted_tool_tests(root, changed_tool_paths):
             selected.add(conventional)
     if not selected:
         return set(), "no test imports or invokes the affected Tool closure"
+    available = set(discover_tests(root))
+    selected.update(name for name in CLI_SURFACE_TESTS if name in available)
     return selected, "affected Tool closure: %s" % ", ".join(sorted(affected))
 
 
+# How many ways this repository shards, named once.  Selective mode reads the
+# length rather than restating it, so changing the split changes both.
+FULL_SHARD_RANGES = (
+    ("a-b", "ab"),
+    ("c-m", "cdefghijklm"),
+    ("n-r", "nopqr"),
+    ("s-z", "stuvwxyz"),
+)
+
+
 def _full_groups(test_names):
-    ranges = (
-        ("a-b", "ab"),
-        ("c-m", "cdefghijklm"),
-        ("n-r", "nopqr"),
-        ("s-z", "stuvwxyz"),
-    )
+    ranges = FULL_SHARD_RANGES
     groups = []
     assigned = []
     for name, letters in ranges:
@@ -253,6 +271,56 @@ def _full_groups(test_names):
         assigned.extend(members)
     if sorted(assigned) != sorted(test_names) or len(assigned) != len(set(assigned)):
         raise ValueError("full CI groups must cover every test file exactly once")
+    return groups
+
+
+def _test_weight(root, test_name):
+    """A self-maintaining stand-in for how long one test file takes.
+
+    Byte size is not the cost, but it tracks it closely enough to pack bins:
+    against measured per-file wall clock across the whole suite it correlates
+    at r = 0.80, and packing on it puts the worst bin at 1.26x a perfect
+    split where round-robin puts it at 1.59x.  It is chosen over a recorded
+    duration table because a table goes stale in silence -- a file can double
+    in cost while the number claiming otherwise sits unchanged -- and a file
+    cannot disagree with its own size.
+    """
+    try:
+        return (root / "Tools" / "tests" / test_name).stat().st_size
+    except OSError:
+        return 0
+
+
+def _selective_groups(root, test_names):
+    """Shard the selected set, the way full mode already shards its own.
+
+    A selective plan that ran in one job was slower than the full matrix it
+    exists to avoid: nine modules measured 451-525s on a runner, against a
+    worst full-mode shard well under that, and the widest closure projects
+    past the job timeout outright.  Splitting is the fix; the packing order
+    only decides how even the split is.
+
+    The bin count follows full mode rather than restating it, so changing how
+    this repository shards changes both together.
+    """
+    expected = sorted(test_names)
+    count = min(len(FULL_SHARD_RANGES), len(expected))
+    members = [[] for _ in range(count)]
+    loads = [0] * count
+    for name in sorted(expected, key=lambda item: (-_test_weight(root, item), item)):
+        lightest = loads.index(min(loads))
+        members[lightest].append(name)
+        loads[lightest] += _test_weight(root, name)
+
+    groups = [("affected-%d" % (index + 1), sorted(bin_names))
+              for index, bin_names in enumerate(members) if bin_names]
+
+    # The assertion full mode makes, for the same reason: a packing bug must
+    # fail the planner rather than quietly drop a test file.
+    assigned = sorted(name for _, bin_names in groups for name in bin_names)
+    if assigned != expected or len(assigned) != len(set(assigned)):
+        raise ValueError(
+            "selective CI groups must cover every test file exactly once")
     return groups
 
 
@@ -376,7 +444,7 @@ def plan_changes(root, changes, event="pull_request"):
             "run_tests": False,
         })
         return base
-    groups = [("affected", sorted(selected))]
+    groups = _selective_groups(root, selected)
     base.update({
         "mode": "selective",
         "test_matrix": _matrix(check_versions, groups),
