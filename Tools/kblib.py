@@ -750,55 +750,6 @@ PROFILE_CODE_BINDING_RE = re.compile(r"`([^`]+)`")
 PROFILE_INLINE_BINDING_RE = re.compile(r"\binline\b", re.IGNORECASE)
 
 
-def active_standards_state(text):
-    """Return ``(state, errors)`` from K00/03's Standards Control table.
-
-    This is deliberately a syntax-only parser.  Consumers decide whether a
-    placeholder, status, or profile path is acceptable for their own mode;
-    every consumer nevertheless reads the same four canonical fields.
-    """
-    state = {}
-    errors = []
-    inside = False
-    section_count = 0
-    for _line_number, line in markdown_authority_lines(text):
-        heading = markdown_atx_heading(line)
-        if heading is not None and heading[0] <= 2:
-            is_control = (
-                heading[0] == 2
-                and heading[1] == "Standards Control"
-            )
-            if is_control:
-                section_count += 1
-            inside = is_control and section_count == 1
-            continue
-        if not inside:
-            continue
-        row = re.match(r"^\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|\s*$", line)
-        if not row:
-            continue
-        label = row.group(1).strip()
-        if label not in ACTIVE_STANDARDS_STATE_LABELS:
-            continue
-        key = ACTIVE_STANDARDS_STATE_LABELS[label]
-        value = row.group(2).strip()
-        if len(value) >= 2 and value[0] == value[-1] == "`":
-            value = value[1:-1].strip()
-        if key in state:
-            errors.append("Standards Control repeats %s" % label)
-        else:
-            state[key] = value
-
-    if section_count != 1:
-        errors.append(
-            "document must contain exactly one non-fenced Standards Control "
-            "H2; found %d" % section_count
-        )
-    for label, key in ACTIVE_STANDARDS_STATE_LABELS.items():
-        if key not in state:
-            errors.append("Standards Control has no %s row" % label)
-    return state, errors
-
 
 def profile_slot_bindings(manifest_text, include_duplicates=False):
     """Return the Implemented Slots mapping and optionally duplicate names."""
@@ -911,9 +862,6 @@ def profile_execution_default_overrides(manifest_text):
         overrides[item] = cells[1].strip("` ")
     return overrides
 
-
-def _profile_binding_looks_like_path(value):
-    return "/" in value or value.lower().endswith((".md", ".yaml", ".yml"))
 
 
 def resolve_profile_binding(binding, root, profile_dir):

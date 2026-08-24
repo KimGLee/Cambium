@@ -1359,11 +1359,6 @@ def activation_receipt_binding(context):
             for field in activation_context_fields(context)}
 
 
-def activation_bundle_binding(context):
-    """Return the delivery-independent frozen Bundle commitment."""
-    return {field: context.get(field)
-            for field in activation_bundle_fields(context)}
-
 
 def _delivery_material_manifest(context):
     manifest = context.get("activation_bundle_manifest")

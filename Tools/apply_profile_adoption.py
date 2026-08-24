@@ -397,14 +397,6 @@ def evaluate_candidate(root, plan):
 # ---------------------------------------------------------------------------
 
 
-def _replace_exactly_once(text, old, new, label):
-    count = text.count(old)
-    if count != 1:
-        raise AdoptionRefusal(
-            "%s: anchor occurs %d time(s) instead of exactly once: %r"
-            % (label, count, old))
-    return text.replace(old, new, 1)
-
 
 def build_commit_stub(plan, transaction_id):
     identity = {
@@ -984,7 +976,7 @@ def main(argv=None):
     # a half-written adopter state must be recovered from its journal, never
     # re-diagnosed as a branch mismatch.
     try:
-        plan_path, _rel, plan_raw, _plan = load_plan(root, args.plan)
+        plan_path, _rel, plan_raw, plan = load_plan(root, args.plan)
         plan_sha = kblib.sha256_bytes(plan_raw)
         for staging_name in existing_stagings(root):
             outcome = recover_staging(

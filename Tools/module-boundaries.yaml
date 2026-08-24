@@ -1093,6 +1093,7 @@ modules:
       - COVERAGE_TOP_LEVEL_FIELDS
       - QUEUE_ITEM_FIELDS
       - required_queue_completion_errors
+      - validate_runtime
   - module: queue_runtime.task_contract
     path: Tools/queue_runtime/task_contract.py
     provisional: true

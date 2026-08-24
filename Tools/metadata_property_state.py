@@ -634,15 +634,6 @@ def validate_owner_property_records(root, row, path, *, rules,
     return snapshot, fingerprint, copy.deepcopy(state)
 
 
-def _current_binding(state, path):
-    modified = _validated_existing_record(
-        state, LAST_CONTENT_MODIFIED, path)
-    reviewed = _validated_existing_record(state, LAST_REVIEWED, path)
-    for record in (modified, reviewed):
-        if record is not None and record.get("value") is not None:
-            return record.get("content_fingerprint")
-    return None
-
 
 def apply_content_change(coverage, root, paths, receipt, *,
                          before_semantic_fingerprints, rules=None):

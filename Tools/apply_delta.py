@@ -115,10 +115,6 @@ def _parse_delta_bytes(raw):
     return value
 
 
-def load_delta(path):
-    with open(path, "rb") as handle:
-        return _parse_delta_bytes(handle.read())
-
 
 def find_page_block(lines, path):
     """Return the line range for one ``- path:`` Coverage entry."""
@@ -249,10 +245,6 @@ def _delta_policy_errors(delta):
             errors.append("%s must be a gap id or mapping" % label)
     return errors
 
-
-def _gap_key(gap):
-    """Return the stable identity used for open-gap reconciliation."""
-    return coverage_delta.gap_key(gap)
 
 
 def _merge_coverage_sections(text, delta):
@@ -910,7 +902,7 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
     return 0
 
 
-def _legacy_apply(args, delta, new_text, planned, rejected):
+def _legacy_apply(args, _delta, new_text, planned, rejected):
     result = "fail" if rejected and not args.force else (
         "pass" if planned else "candidate"
     )

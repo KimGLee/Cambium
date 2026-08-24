@@ -66,7 +66,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:cc76c231868fa74a1907c126545ef3a73b465ad08ec1517811a2546eccceba6d
+source_hash: sha256:bb686f9c346caf8fc1c1d47367bd3423fad9ec0d73e5eab061c08f04f55e6ec9
 receipt_shape:
   base_fields:
     - receipt_id
@@ -453,7 +453,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_delta
     module: Tools/apply_delta.py
-    source_hash: sha256:26645bcab57a7a9f56757fa181df25077e7c4c83aad232a50e6f4ac88e1a6c85
+    source_hash: sha256:256693e1c18463c73c66d60b5b5eec6d0b4e2ab797fb570104b9ff975f38407a
     description: Deterministic Coverage Delta application
     arguments:
       - dest: ledger
@@ -777,7 +777,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_profile_adoption
     module: Tools/apply_profile_adoption.py
-    source_hash: sha256:a0186cbb61beb0db7de6febda5df0b2bb148ec4e3435549c1c5e72e91aa1ab94
+    source_hash: sha256:f206c315a73af6c14c6a713fcbeca58fad05ae30f953037c309baceea9a08e25
     description: Apply one no-runtime R09 Profile adoption (initial adoption or pre-runtime profile revision) from a restricted-YAML plan
     arguments:
       - dest: root
@@ -841,7 +841,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_task_plan
     module: Tools/apply_task_plan.py
-    source_hash: sha256:68ae875686127fb04b49b30cfdecfd6b3a812d4bf364c5f3a84fd5c94a64869e
+    source_hash: sha256:0f97dfe7556e3c00d6817d06bf26ef628db700c46a70cb0069a6f1ad336e6059
     description: Materialize a task runtime from one confirmed plan.
     arguments:
       - dest: root
@@ -905,7 +905,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_batch_close
     module: Tools/check_batch_close.py
-    source_hash: sha256:ebdf4cc84263e944cc1c12ba9a91cc218fe8ebb5ef1f6410049b7d2eecf078a6
+    source_hash: sha256:430c7533d26b597e269b8e0d605470c2948d7cb8d5b7f58f56c857e52206b278
     description: Run and publish the K12/09 batch-close evidence bundle
     arguments:
       - dest: root
@@ -1187,7 +1187,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_corpus_plan
     module: Tools/check_corpus_plan.py
-    source_hash: sha256:5bb6f9c559528eb1831ce4bd1f73a21e81617a3b25103261a2f80c5801ec2aeb
+    source_hash: sha256:a50f52bed32af254286348809299e8966b45326e4698ebde7a5d6af37f61327f
     description: Validate explicit Corpus Planning artifacts
     arguments:
       - dest: root
@@ -1752,7 +1752,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:30c7de9c09cc787877fdf932a01d0bf04cd401bce50d2e9d02ebcbe15c2257c6
+    source_hash: sha256:256a3051dce81e09d8aeaba4b9fd45e26f862cd8cb54c904d3a206a7f9bce749
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -2188,7 +2188,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_structure
     module: Tools/check_structure.py
-    source_hash: sha256:0b0a6ad449bf8fad25d27b6a3f716d590c519d448e13ab2dd62cb51e5737285e
+    source_hash: sha256:b06683771cde0c1c9d4adc5c772f0ea106ffb72bfcd4f22e0c999fda5567582b
     description: "Validate the selected profile's Structure Registry against the vault (gate: structure-registry)."
     arguments:
       - dest: vault_root
@@ -2360,7 +2360,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: compile_cli_contract
     module: Tools/compile_cli_contract.py
-    source_hash: sha256:854927972194cac2c0aaca339e4222fc3cbbfc9897d71c476fd8b9e7cf5bee7a
+    source_hash: sha256:334de06ec6a4f6e714bc5b204a4d11ad36fa3b94a06c50a5f2c32d6cdcfb2c59
     description: Compile the machine-readable CLI invocation contract from every Tools/*.py argparse declaration.
     arguments:
       - dest: root
@@ -2603,7 +2603,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: compose_page_contract
     module: Tools/compose_page_contract.py
-    source_hash: sha256:d5bdd1fab7c26126e0139f9940c3808b287de663d585732e286e2a0b1b3a267a
+    source_hash: sha256:497e30adf894e913af8864f897788a9adee473cac2019be6c3b1de61a629b83f
     description: Compose the effective frontmatter page contract from the kernel bases and the selected profile's Metadata Contract.
     arguments:
       - dest: root
@@ -2688,7 +2688,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: compose_vocab
     module: Tools/compose_vocab.py
-    source_hash: sha256:ad43f632d5ccb129dc905de45821583111020e5ab3e6aac3e61dcd404cbdf697
+    source_hash: sha256:fed225907bb5fa9b6dfc1f241eff37d7136f61775057f70882f02c5c581c178b
     description: Deterministically compose the vocabulary artifact from the kernel base and the selected profile's extensions.
     arguments:
       - dest: base
@@ -2943,7 +2943,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: metadata_execution_contract
     module: Tools/metadata_execution_contract.py
-    source_hash: sha256:9e2f84e80bc223a896b46d527b060c90323a21c016b198db9d81130cde9c952c
+    source_hash: sha256:afa01366368cb222b671bbdd49c951951ebc4a85e902da0f16e6cfca14f0baf0
     description: Compile and load Cambium's closed metadata-execution authority contract. This module is deliberately the single authority boundary between metadata declarations and executable writers. A field rule is executable only when an installed writer capability declares the same ``(field, transition, adapter)`` operation, and every installed writer operation must be authorized by exactly one rule. Unknown keys, unknown adapters, orphan implementations, and partial evidence bindings fail closed.
     arguments:
       - dest: root
@@ -4345,7 +4345,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: update_queue
     module: Tools/update_queue.py
-    source_hash: sha256:97eed67efeb5a03c60cbf23d3bc0c6116aa6881b7436499dcb5ff09b6a5b0ca3
+    source_hash: sha256:d266021d26ce7153a18e1429bdb0ae0a1c0df167ccc7b8b4730ed79cc4dc696b
     description: Apply one Required Queue transition
     arguments:
       - dest: root

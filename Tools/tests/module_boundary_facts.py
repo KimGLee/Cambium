@@ -157,6 +157,16 @@ def module_facts(tools_root, relative_path, known, known_full=()):
         if not isinstance(node, ast.Attribute):
             continue
         value = node.value
+        # `pkg.submodule.symbol` is two attribute nodes deep.  Reading only
+        # the one-segment form makes every consumption through a package path
+        # invisible, which is how a live function reads as unreferenced.
+        if isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name):
+            base = bindings.get(value.value.id)
+            if base is not None:
+                dotted = "%s.%s" % (base, value.attr)
+                if dotted in known_full and dotted != name:
+                    edges.add((dotted, node.attr))
+                    continue
         if not isinstance(value, ast.Name):
             continue
         target = bindings.get(value.id)

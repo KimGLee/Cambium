@@ -802,7 +802,7 @@ class Server(object):
 
     # -- tools ------------------------------------------------------------
 
-    def handle_tools_list(self, params):
+    def handle_tools_list(self, _params):
         self.require_session()
         # Straight out of the artifact. Nothing is computed here.
         return {"tools": self.projection["listed"]}
@@ -837,7 +837,7 @@ class Server(object):
                 execution_env.pop(name, None)
         return run_tool(tool, arguments, workspace_root, execution_env)
 
-    def handle_ping(self, params):
+    def handle_ping(self, _params):
         return {}
 
     # -- dispatch ---------------------------------------------------------

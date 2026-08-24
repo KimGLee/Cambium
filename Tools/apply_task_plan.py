@@ -396,7 +396,7 @@ def _build_after(root, documents, plan, profile_view):
     return coverage, queue, progress, derived, adoption
 
 
-def _validate_proposed(root, coverage, progress, documents,
+def _validate_proposed(root, coverage, progress, _documents,
                        property_adoption):
     """Validate the state this transaction writes, with the Queue untouched.
 

@@ -1,0 +1,25 @@
+# Minimal-depth corpus-planning slot: the inactive branch.
+# Interface: profiles/README.md#Corpus-Planning-Slot
+# `not-applicable` requires a nonempty reason, three null bindings, an empty
+# scale, and two null authority values. K02/03 owns the applicability
+# judgment: a corpus that grows into large-scale construction, migration, or
+# persistent multi-batch work must configure this slot at that point, through
+# ordinary Standards adoption. See profiles/examples/worked-planning/ for the
+# configured branch.
+
+schema_version: 1
+
+applicability:
+  state: not-applicable
+  reason: "Bounded corpus maintained one note at a time; no corpus-wide capability plan is needed or changed, and no multi-batch construction or migration is planned."
+
+artifact_bindings:
+  global_map: null
+  capability_matrix: null
+  gap_register: null
+
+capability_scale: []
+
+pass_authority:
+  role_id: null
+  decision_scope_id: null

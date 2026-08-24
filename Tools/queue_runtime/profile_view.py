@@ -251,13 +251,6 @@ def active_standards_authorized_view(root, standards_version,
     return view, []
 
 
-def active_standards_alignment_errors(root, standards_version,
-                                      selected_profile_manifest):
-    """Compare runtime identity to the canonical adopter Standards state."""
-    _view, errors = active_standards_authorized_view(
-        root, standards_version, selected_profile_manifest)
-    return errors
-
 
 def active_standards_view_currency_errors(root, authorized_view,
                                           state_override=None):

@@ -24,6 +24,16 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Peer modules the facade holds open for its consumers.  Nothing in the
+# nine functions left here calls them: about 25 test sites patch
+# `check_queue.<peer>` and rely on that attribute being the very module
+# object in sys.modules, so a tidy-up that removes an unreferenced
+# import removes a contract instead of dead weight.
+import check_profile  # noqa: F401 - facade attribute, see above
+import maintenance_candidates  # noqa: F401 - facade attribute
+import metadata_execution_contract  # noqa: F401 - facade attribute
+import metadata_property_state  # noqa: F401 - facade attribute
+import project_page_state  # noqa: F401 - facade attribute
 import kblib
 import card_activation
 # Five peer modules this file no longer calls, and must keep importing.  The
@@ -34,11 +44,6 @@ import card_activation
 # unused breaks all of those at once with an AttributeError, so they stay, and
 # they stay with this note attached.
 import candidate_lifecycle
-import check_profile
-import maintenance_candidates
-import metadata_execution_contract
-import metadata_property_state
-import project_page_state
 # The persisted typed Gate receipt validator this runtime asks for by name.
 # It used to be defined here and reach back into the Gate runtime through a
 # function-body import; it now lives with the module whose object it

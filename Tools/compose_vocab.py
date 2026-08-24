@@ -129,10 +129,6 @@ def discover_profiles():
     return found
 
 
-def _uninstantiated(value):
-    return (not isinstance(value, str) or not value.strip() or
-            UNINSTANTIATED_RE.search(value) is not None)
-
 
 def _repo_relative_name(raw_path, relative_to_repo=False):
     """Return a lexical repo-relative path, preserving declared aliases."""
@@ -192,10 +188,6 @@ def report_inactive_selection(errors):
         print("  Copy profiles/_template/ to profiles/<your-profile-id>/ "
               "and fill it in first.")
 
-
-def sha256_file(path):
-    with open(path, "rb") as fh:
-        return hashlib.sha256(fh.read()).hexdigest()
 
 
 def load_subset(path, text=None):

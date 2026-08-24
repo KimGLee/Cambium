@@ -845,7 +845,7 @@ def _corpus_plan_close_check(root, runtime, item, snapshot, *,
     }
 
 
-def _manifest_path(root, runtime):
+def manifest_path(root, runtime):
     relative = runtime.get("queue", {}).get("selected_profile_manifest")
     return kblib.repository_path(root, relative, must_exist=True,
                                  reject_symlink=True)
@@ -853,7 +853,7 @@ def _manifest_path(root, runtime):
 
 def _profile_evaluation(root, runtime, *, authorized_profile_view=None):
     root = os.path.realpath(os.path.abspath(os.fspath(root)))
-    _manifest_path(root, runtime)
+    manifest_path(root, runtime)
     manifest_relative = runtime.get("queue", {}).get(
         "selected_profile_manifest")
     if authorized_profile_view is None:

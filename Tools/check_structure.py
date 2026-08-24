@@ -282,21 +282,6 @@ def global_map_entry_ids(path, text=None):
     return ids
 
 
-def corpus_planning_state(path):
-    """Return (state, global_map_relpath) of the Corpus Planning slot."""
-    try:
-        data = kblib.parse_yaml_subset(read_text(path))
-    except (OSError, kblib.YamlSubsetError):
-        return None, None
-    if not isinstance(data, dict):
-        return None, None
-    applicability = data.get("applicability")
-    state = applicability.get("state") \
-        if isinstance(applicability, dict) else None
-    bindings = data.get("artifact_bindings")
-    gm = bindings.get("global_map") if isinstance(bindings, dict) else None
-    return state, gm
-
 
 def md_files_under(path):
     for dirpath, dirnames, filenames in os.walk(path):
