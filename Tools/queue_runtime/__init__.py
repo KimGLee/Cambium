@@ -39,8 +39,6 @@ from queue_runtime.canon import (  # noqa: F401
     BATCH_CLOSE_TOOL_VERSION,
     BATCH_ID_RE,
     BATCH_REVIEW_GATE_ID,
-    CORPUS_PLAN_TOOL,
-    CORPUS_PLAN_TOOL_VERSION,
     COVERAGE_PATH,
     EXECUTION_MODES,
     GATE_CHECK,
@@ -58,8 +56,6 @@ from queue_runtime.canon import (  # noqa: F401
     SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS,
     SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS,
     TASK_STATES,
-    TERMINAL_PROOF_TOOL,
-    TERMINAL_PROOF_TOOL_VERSION,
     TERMINAL_STATES,
     TOOL,
     TOOL_VERSION,
@@ -67,8 +63,6 @@ from queue_runtime.canon import (  # noqa: F401
 )
 from queue_runtime.primitives import (  # noqa: F401
     _acyclic,
-    _closed_mapping_errors,
-    _explicit_string_list_errors,
     _identity,
     _nonempty_string,
     _timestamp_value,
@@ -111,7 +105,6 @@ from queue_runtime.locks import (  # noqa: F401
 )
 from queue_runtime.policy_exceptions import (  # noqa: F401
     _policy_exception_errors,
-    _sealed_policy_exception_errors,
 )
 from queue_runtime.producer_era import (  # noqa: F401
     _producer_era_errors,
@@ -134,7 +127,6 @@ from queue_runtime.profile_view import (  # noqa: F401
 from queue_runtime.receipts import (  # noqa: F401
     RECEIPT_REFERENCE_FIELDS,
     _Catalog,
-    _cold_path_within_root,
     _cold_receipt_store,
     _receipt_catalog,
     _require_receipt,
@@ -145,7 +137,6 @@ from queue_runtime.receipts import (  # noqa: F401
 from queue_runtime.task_contract import (  # noqa: F401
     _contract_anchor_chain,
     _contract_sha256,
-    _contract_sha_at_revision,
     _live_read_set_load_findings,
     _read_set_load_closure,
 )
@@ -210,7 +201,6 @@ from queue_runtime.review import (  # noqa: F401
 from queue_runtime.task_record import (  # noqa: F401
     _last_reconciled_guidance_id,
     _pending_control_ids,
-    _task_transition_receipt_record_errors,
 )
 from queue_runtime.adoption import (  # noqa: F401
     _standards_adoption_errors,
@@ -218,7 +208,6 @@ from queue_runtime.adoption import (  # noqa: F401
 )
 from queue_runtime.delta import (  # noqa: F401
     _applied_rollback_restore_errors,
-    _close_settlement_binding_errors,
     _closed_delta_apply_errors,
     _delta_apply_receipt_candidates,
     _delta_handoff_errors,
@@ -241,4 +230,26 @@ from queue_runtime.revalidation import (  # noqa: F401
     standards_revalidation_producer_eligibility,
     standards_revalidation_receipt_errors,
     standards_revalidation_requirements,
+)
+from queue_runtime.close_gate import (  # noqa: F401
+    CLOSED_LIST_EVIDENCE_FIELDS,
+    COMPACT_CLOSE_EVIDENCE_VERSIONS,
+    HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS,
+    SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS,
+    _candidate_evidence_binding_errors,
+    _close_gate_reuse_errors,
+    _closed_bundle_seal_state,
+    _closed_gate_errors,
+    _sealed_closed_bundle_errors,
+    close_gate_receipt_errors,
+)
+from queue_runtime.task_progress import (  # noqa: F401
+    CHECKPOINT_FIELDS,
+    COMPLETION_SEMANTICS,
+    CONTRACT_FIELDS,
+    CONTRACT_OPTIONAL_FIELDS,
+    GUIDANCE_DISPOSITIONS,
+    _global_transition_errors,
+    _progress_shape_errors,
+    _task_transition_errors,
 )

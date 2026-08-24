@@ -276,6 +276,9 @@ QUEUE_RUNTIME_RANKS = {
     "queue_runtime.maintenance": 3,
     "queue_runtime.revalidation": 3,
 
+    "queue_runtime.close_gate": 4,
+    "queue_runtime.task_progress": 4,
+
     "queue_runtime": 7,
 }
 

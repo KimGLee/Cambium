@@ -67,9 +67,13 @@ from queue_runtime import (
     BATCH_ID_RE,
     BATCH_REVIEW_CHECK,
     BATCH_REVIEW_GATE_ID,
+    CHECKPOINT_FIELDS,
+    CLOSED_LIST_EVIDENCE_FIELDS,
+    COMPACT_CLOSE_EVIDENCE_VERSIONS,
+    COMPLETION_SEMANTICS,
     CONTRACT_AMENDMENT_PLAN_PREFIX,
-    CORPUS_PLAN_TOOL,
-    CORPUS_PLAN_TOOL_VERSION,
+    CONTRACT_FIELDS,
+    CONTRACT_OPTIONAL_FIELDS,
     COVERAGE_BATCH_SPEC_FIELDS,
     COVERAGE_PATH,
     EVIDENCE_IDENTITY_USES,
@@ -80,6 +84,8 @@ from queue_runtime import (
     EXECUTION_MODES,
     EXPRESSION_LAYER_SLOT,
     GATE_CHECK,
+    GUIDANCE_DISPOSITIONS,
+    HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS,
     HOLDS,
     LEGACY_PROPERTY_STATE_FIELD,
     MANUAL_ATTESTATION_TOOL,
@@ -97,10 +103,9 @@ from queue_runtime import (
     STANDARDS_GATE_REGISTRY_PATH,
     STATES,
     SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS,
+    SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS,
     SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS,
     TASK_STATES,
-    TERMINAL_PROOF_TOOL,
-    TERMINAL_PROOF_TOOL_VERSION,
     TERMINAL_STATES,
     TOOL,
     TOOL_VERSION,
@@ -115,15 +120,15 @@ from queue_runtime import (
     _bind_lock_delta_archives,
     _bind_lock_receipts,
     _bind_lock_state_phases,
-    _close_settlement_binding_errors,
+    _candidate_evidence_binding_errors,
+    _close_gate_reuse_errors,
+    _closed_bundle_seal_state,
     _closed_delta_apply_errors,
-    _closed_mapping_errors,
-    _cold_path_within_root,
+    _closed_gate_errors,
     _cold_receipt_store,
     _consumed_standards_revalidation_keys,
     _contract_anchor_chain,
     _contract_sha256,
-    _contract_sha_at_revision,
     _coverage_batch_spec_errors,
     _coverage_provenance_errors,
     _coverage_records,
@@ -132,7 +137,7 @@ from queue_runtime import (
     _current_open_semantic_baseline_errors,
     _delta_apply_receipt_candidates,
     _delta_handoff_errors,
-    _explicit_string_list_errors,
+    _global_transition_errors,
     _identity,
     _initial_queue_receipt_errors,
     _last_reconciled_guidance_id,
@@ -151,16 +156,17 @@ from queue_runtime import (
     _previous_maintenance_candidate_state,
     _producer_era_errors,
     _profile_view_snapshot_error,
+    _progress_shape_errors,
     _public_profile_load_evidence,
     _queue_replan_amendment_errors,
     _read_set_load_closure,
     _receipt_catalog,
     _require_receipt,
     _review_property_evidence_errors,
-    _sealed_policy_exception_errors,
+    _sealed_closed_bundle_errors,
     _settlement_binding_errors,
     _standards_adoption_errors,
-    _task_transition_receipt_record_errors,
+    _task_transition_errors,
     _terminal_proof_profile_binding_errors,
     _timestamp_value,
     _unadmitted_profile_hub_paths,
@@ -177,6 +183,7 @@ from queue_runtime import (
     batch_review_judgment_errors,
     batch_review_receipt_errors,
     batch_touches_control_plane,
+    close_gate_receipt_errors,
     coverage_reviewed_era_exception,
     current_attempt_evidence_barrier,
     current_opening_semantic_baseline,
@@ -280,59 +287,7 @@ HUB_EXIT_HINT = ("K13/10 admits a hub-editing batch only through an exclusive "
                  "or serial-integrator execution mode")
 
 
-# K12/09 owns this closed set.  A close-gate receipt names one independently
-# persisted pass receipt for every member; no omitted or ad-hoc eighth member
-# can be hidden behind a generic "batch passed" assertion.
-CLOSED_LIST_EVIDENCE_FIELDS = (
-    "wiki_link_resolution",
-    "structural_validity",
-    "graph_and_duplicate_basenames",
-    "coverage_file_count",
-    "guidance_and_contract_continuity",
-    "registered_residual_content",
-    "controlled_vocabulary",
-    "manifest_page_contract",
-)
-# Sealed close bundles are validated against the Closed List their producer
-# era actually ran (K12/10 producer-era identity): a bundle produced before
-# ``manifest_page_contract`` joined the list carries seven members forever,
-# and re-judging it against the current list would retroactively invalidate
-# every prior close on a checker upgrade.
-LEGACY_CLOSED_LIST_VERSIONS = frozenset(("1.4.0",))
-LEGACY_CLOSED_LIST_EVIDENCE_FIELDS = CLOSED_LIST_EVIDENCE_FIELDS[:-1]
 
-# Batch-close has a finite historical protocol catalog because its 1.4 era
-# sealed a different Closed List shape.  A current action still accepts only
-# BATCH_CLOSE_TOOL_VERSION; this set is used only while replaying an already
-# recorded closed edge.  Other historical receipts are judged through
-# :func:`accounted_standards_versions` instead of an unbounded version list.
-SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((
-    BATCH_CLOSE_TOOL_VERSION, "1.11.0", "1.10.0", "1.9.0", "1.8.0", "1.7.0",
-    "1.6.0", "1.5.0",
-    *LEGACY_CLOSED_LIST_VERSIONS,
-))
-# A sealed close bundle keeps the child producer its batch-close era ran.
-# Batch-close 1.7 is the first protocol that consumes corpus-plan 1.7; older
-# supported bundles retain their 1.6 child identity during historical replay.
-HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
-    "1.11.0": "1.7.0",
-    "1.10.0": "1.7.0",
-    "1.9.0": "1.7.0",
-    "1.8.0": "1.7.0",
-    "1.7.0": "1.7.0",
-    "1.6.0": "1.6.0",
-    "1.5.0": "1.6.0",
-    "1.4.0": "1.6.0",
-}
-CORPUS_PLAN_TRIGGERS = frozenset(("R13", "manifest"))
-CORPUS_PLAN_PATH_SHA_FIELDS = (
-    ("selected_profile_manifest", "selected_profile_manifest_sha256"),
-    ("corpus_planning_slot_path", "corpus_planning_slot_sha256"),
-    ("profile_scope_path", "profile_scope_sha256"),
-    ("global_map_path", "global_map_sha256"),
-    ("capability_matrix_path", "capability_matrix_sha256"),
-    ("gap_register_path", "gap_register_sha256"),
-)
 QUEUE_TOP_LEVEL_FIELDS = frozenset((
     "schema_version", "task_id", "scope_version", "queue_revision",
     "state_revision", "standards_version", "selected_profile_manifest",
@@ -352,102 +307,8 @@ PROGRESS_TOP_LEVEL_FIELDS = frozenset((
     "standards_adoptions",
     "guidance_queue", "task_transition_receipts",
 ))
-CONTRACT_FIELDS = frozenset((
-    "contract_version", "completion_semantics", "objective", "exclusions",
-    "scope_version",
-    "concurrency_cap",
-    "standards_version", "selected_profile_manifest", "selected_route_ids",
-    "selected_card_paths", "selected_profile_route_ids",
-    "selected_read_sets", "loaded_module_paths", "minimum_run_until",
-    "checkpoint_at", "hard_stop_at", "completion_gate",
-    "policy_exceptions", "amendment_authority",
-))
-# Optional so that contracts sealed before the field existed stay valid:
-# requiring it would strand every live runtime behind a hand migration the
-# anchor chain itself forbids (editing contract bytes outside a chained
-# writer breaks the chain's binding to the current contract).  Absent means
-# exactly what an explicit empty list means.
-CONTRACT_OPTIONAL_FIELDS = frozenset((
-    "policy_exceptions", "amendment_authority",
-))
-# Producer eras whose batch-close protocol carries the policy-exception
-# disposition.  K12/10 producer-era identity cuts both ways: an older bundle
-# is never re-judged against members its era lacked, and it is never allowed
-# to carry evidence its era could not have produced.  A 1.7 bundle claiming a
-# policy-exception disposition is a forgery, not history.
-POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset((
-    "1.8.0", "1.9.0", "1.10.0", "1.11.0", "1.12.0",
-))
 
-COMPACT_CLOSE_EVIDENCE_VERSIONS = frozenset((
-    "1.9.0", "1.10.0", "1.11.0", "1.12.0",
-))
-CANDIDATE_CONTINUATION_VERSIONS = frozenset((
-    "1.10.0", "1.11.0", "1.12.0"))
-CHECKPOINT_FIELDS = frozenset((
-    "recorded_at", "summary", "task_state", "task_transition_receipt",
-    "coverage_sha256", "required_queue_sha256", "queue_revision",
-    "queue_state_revision",
-))
-TERMINAL_AUDIT_FIELDS = frozenset((
-    "state", "terminal_proof_path", "terminal_proof_sha256",
-    "terminal_proof_receipt", "queue_check_receipt",
-))
-TERMINAL_AUDIT_STATES = frozenset((
-    "not-started", "ready", "passed", "invalidated", "not-applicable",
-))
-MAINTENANCE_COMPLETION_FIELDS = frozenset((
-    "state", "completion_gate_receipt", "budget_manifest_receipt",
-    "ledger_advance_receipt", "watermark_advance_receipt",
-))
-MAINTENANCE_COMPLETION_STATES = frozenset((
-    "pending", "passed", "invalidated", "not-applicable",
-))
-COMPLETION_SEMANTICS = frozenset(("build", "maintenance"))
-# Guidance records carry the kernel's own field names.  ``guidance_id`` and
-# ``disposition`` are named by K13/06 Amendment Record; the accepted
-# dispositions are the closed list K13/05 requires for every important
-# guidance, and the accepted statuses are K13/06's recommended status values
-# plus ``not-applicable``, the disposition-closing status both this checker
-# and check_proof already treat as final.
-GUIDANCE_FIELDS = frozenset(("guidance_id", "disposition", "status"))
-GUIDANCE_DISPOSITIONS = frozenset((
-    "interrupt-now", "apply-to-current-batch", "queue-next",
-    "queue-by-dependency", "research-first", "deferred",
-    "clarification-required", "superseded", "not-applicable",
-))
-GUIDANCE_STATUSES = frozenset((
-    "received", "classified", "mapped", "in-progress", "verified",
-    "clarification-required", "deferred", "superseded", "not-applicable",
-))
-AMENDMENT_COMMON_FIELDS = frozenset((
-    "id", "date", "summary", "status", "writeback_done",
-))
 
-STANDARDS_ADOPTION_RECORD_FIELDS = frozenset((
-    "id", "adopted_at", "plan_path", "plan_sha256",
-    "verification_receipt", "transaction_id", "task_state_before",
-    "contract_version_before", "contract_version_after",
-    "standards_version_before", "standards_version_after",
-    "selected_profile_manifest_before", "selected_profile_manifest_after",
-    "governance_revision_ref", "governance_revision_sha256",
-    "standards_snapshot_sha256_after", "profile_snapshot_sha256_after",
-    "profile_contract_fingerprint_after",
-    "profile_load_inputs_sha256_after",
-    "selected_route_ids_after", "selected_card_paths_after",
-    "selected_profile_route_ids_after", "selected_read_sets_after",
-    "loaded_module_paths_after", "queue_revision_before",
-    "queue_revision_after", "queue_state_revision_before",
-    "coverage_sha256_before", "required_queue_sha256_before",
-    "progress_sha256_before", "after_coverage_sha256",
-    "after_required_queue_sha256", "changed_predicate_ids",
-    "invalidated_evidence_receipt_ids", "invalidation_boundary_ids",
-    "immediate_gate_reruns", "immediate_gate_receipts",
-    "boundary_gate_reruns",
-    "upstream_source_ref", "upstream_revision_id",
-    "standards_state_sha256_before", "standards_effective_date_after",
-    "after_standards_state_sha256",
-))
 
 
 
@@ -482,14 +343,6 @@ STANDARDS_ADOPTION_RECORD_FIELDS = frozenset((
 
 
 
-LIFECYCLE_EDGES = frozenset((
-    ("queued", "open"),
-    ("open", "merge-ready"),
-    ("merge-ready", "closed"),
-    ("merge-ready", "open"),
-    ("queued", "cancelled"),
-    ("open", "cancelled"),
-))
 
 
 
@@ -510,273 +363,14 @@ LIFECYCLE_EDGES = frozenset((
 
 
 
-def _standards_adoption_shape_errors(progress):
-    """Validate the closed append-only Progress adoption-record shape."""
-    if "standards_adoptions" not in progress:
-        return ["Progress standards_adoptions must be an explicit list"]
-    records = progress.get("standards_adoptions")
-    if not isinstance(records, list):
-        return ["Progress standards_adoptions must be an explicit list"]
-    errors = []
-    seen_ids = set()
-    seen_receipts = set()
-    for index, record in enumerate(records):
-        label = "Progress standards_adoptions[%d]" % index
-        # The typed Profile contract became durable in adopt_standards 1.3,
-        # and the root-owned profile-load inputs in 1.4.
-        # Shape validation runs before the receipt catalog is available, so it
-        # permits those two legacy omissions here. Historical replay below uses
-        # the commit receipt's producer version to require each field from its
-        # introduction onward and bind any legacy-present value across the
-        # plan/record/receipt chain.
-        errors.extend(_closed_mapping_errors(
-            record, label, STANDARDS_ADOPTION_RECORD_FIELDS,
-            optional_fields=("profile_contract_fingerprint_after",
-                             "profile_load_inputs_sha256_after",
-                             "upstream_source_ref",
-                             "upstream_revision_id",
-                             "standards_effective_date_after",
-                             "standards_state_sha256_before",
-                             "after_standards_state_sha256")))
-        if not isinstance(record, dict):
-            continue
-        for field in (
-                "id", "adopted_at", "plan_path", "plan_sha256",
-                "verification_receipt", "transaction_id",
-                "task_state_before", "standards_version_before",
-                "contract_version_before", "contract_version_after",
-                "standards_version_after", "selected_profile_manifest_before",
-                "selected_profile_manifest_after", "coverage_sha256_before",
-                "required_queue_sha256_before", "progress_sha256_before",
-                "after_coverage_sha256", "after_required_queue_sha256"):
-            if not _nonempty_string(record.get(field)):
-                errors.append("%s %s must be a non-empty string" %
-                              (label, field))
-        if not _valid_timestamp(record.get("adopted_at")):
-            errors.append("%s adopted_at must be timezone-aware RFC 3339" %
-                          label)
-        for field in (
-                "plan_sha256", "coverage_sha256_before",
-                "required_queue_sha256_before", "progress_sha256_before",
-                "after_coverage_sha256", "after_required_queue_sha256"):
-            if not SHA256_RE.fullmatch(str(record.get(field, ""))):
-                errors.append("%s %s is not sha256:<64 lowercase hex>" %
-                              (label, field))
-        for field in ("queue_revision_before", "queue_revision_after",
-                      "queue_state_revision_before"):
-            value = record.get(field)
-            if (not isinstance(value, int) or isinstance(value, bool) or
-                    value < (1 if field.startswith("queue_revision") else 0)):
-                errors.append("%s %s has an invalid revision" % (label, field))
-        if (isinstance(record.get("queue_revision_before"), int) and
-                isinstance(record.get("queue_revision_after"), int) and
-                record["queue_revision_after"] !=
-                record["queue_revision_before"] + 1):
-            errors.append("%s queue_revision must increment exactly once" %
-                          label)
-        for field in (
-                "selected_route_ids_after", "selected_card_paths_after",
-                "selected_profile_route_ids_after", "selected_read_sets_after",
-                "loaded_module_paths_after", "changed_predicate_ids",
-                "invalidated_evidence_receipt_ids", "invalidation_boundary_ids",
-                "immediate_gate_reruns", "immediate_gate_receipts",
-                "boundary_gate_reruns"):
-            errors.extend(_explicit_string_list_errors(
-                record.get(field), "%s %s" % (label, field)))
-            value = record.get(field)
-            if isinstance(value, list) and value != sorted(value):
-                errors.append("%s %s must be sorted" % (label, field))
-        adoption_id = record.get("id")
-        if _nonempty_string(adoption_id):
-            if adoption_id in seen_ids:
-                errors.append("Progress standards_adoptions repeats id %s" %
-                              adoption_id)
-            seen_ids.add(adoption_id)
-        receipt_id = record.get("verification_receipt")
-        if _nonempty_string(receipt_id):
-            if receipt_id in seen_receipts:
-                errors.append(
-                    "Progress standards_adoptions repeats verification receipt %s" %
-                    receipt_id)
-            seen_receipts.add(receipt_id)
-    return errors
 
-
-
-
-
-
-
-
-def _progress_shape_errors(progress):
-    """Close task-control records so truncation cannot mean 'nothing pending'."""
-    errors = []
-    contract = progress.get("contract")
-    errors.extend(_closed_mapping_errors(contract, "Progress contract",
-                                         CONTRACT_FIELDS,
-                                         CONTRACT_OPTIONAL_FIELDS))
-    if isinstance(contract, dict) and "policy_exceptions" in contract:
-        errors.extend(_policy_exception_errors(
-            contract.get("policy_exceptions"),
-            "Progress contract.policy_exceptions"))
-    if isinstance(contract, dict) and "amendment_authority" in contract:
-        errors.extend(amendment_policy.amendment_authority_errors(
-            contract.get("amendment_authority"),
-            "Progress contract.amendment_authority"))
-    if isinstance(contract, dict):
-        for field in ("contract_version", "objective", "scope_version",
-                      "standards_version",
-                      "selected_profile_manifest", "completion_gate"):
-            if not _nonempty_string(contract.get(field)):
-                errors.append("Progress contract.%s must be a non-empty string" %
-                              field)
-        if contract.get("completion_semantics") not in COMPLETION_SEMANTICS:
-            errors.append(
-                "Progress contract.completion_semantics must be build or maintenance"
-            )
-        cap = contract.get("concurrency_cap")
-        if not isinstance(cap, int) or isinstance(cap, bool) or cap < 1:
-            errors.append("Progress contract.concurrency_cap must be a positive integer")
-        for field in ("selected_route_ids", "selected_card_paths",
-                      "selected_profile_route_ids", "selected_read_sets",
-                      "loaded_module_paths"):
-            errors.extend(_explicit_string_list_errors(
-                contract.get(field), "Progress contract.%s" % field))
-        errors.extend(_explicit_string_list_errors(
-            contract.get("exclusions"), "Progress contract.exclusions"))
-        for field in ("minimum_run_until", "checkpoint_at", "hard_stop_at"):
-            value = contract.get(field)
-            if not isinstance(value, str) or (value and not _valid_timestamp(value)):
-                errors.append("Progress contract.%s must be empty or an RFC 3339 timestamp" %
-                              field)
-
-    checkpoint = progress.get("checkpoint")
-    errors.extend(_closed_mapping_errors(checkpoint, "Progress checkpoint",
-                                         CHECKPOINT_FIELDS))
-
-    terminal = progress.get("terminal_audit")
-    errors.extend(_closed_mapping_errors(terminal, "Progress terminal_audit",
-                                         TERMINAL_AUDIT_FIELDS))
-    if isinstance(terminal, dict):
-        if terminal.get("state") not in TERMINAL_AUDIT_STATES:
-            errors.append("Progress terminal_audit.state has invalid value %r" %
-                          terminal.get("state"))
-        for field in ("terminal_proof_path", "terminal_proof_sha256",
-                      "terminal_proof_receipt", "queue_check_receipt"):
-            value = terminal.get(field)
-            if value is not None and not _nonempty_string(value):
-                errors.append("Progress terminal_audit.%s must be null or a non-empty string" %
-                              field)
-        proof_sha = terminal.get("terminal_proof_sha256")
-        if proof_sha is not None and not SHA256_RE.fullmatch(proof_sha):
-            errors.append("Progress terminal_audit.terminal_proof_sha256 is invalid")
-
-    maintenance = progress.get("maintenance_completion")
-    errors.extend(_closed_mapping_errors(
-        maintenance, "Progress maintenance_completion",
-        MAINTENANCE_COMPLETION_FIELDS,
-    ))
-    if isinstance(maintenance, dict):
-        if maintenance.get("state") not in MAINTENANCE_COMPLETION_STATES:
-            errors.append(
-                "Progress maintenance_completion.state has invalid value %r" %
-                maintenance.get("state")
-            )
-        for field in (
-                "completion_gate_receipt", "budget_manifest_receipt",
-                "ledger_advance_receipt", "watermark_advance_receipt"):
-            value = maintenance.get(field)
-            if value is not None and not _nonempty_string(value):
-                errors.append(
-                    "Progress maintenance_completion.%s must be null or a "
-                    "non-empty string" % field
-                )
-
-    completion_semantics = (contract.get("completion_semantics")
-                            if isinstance(contract, dict) else None)
-    if completion_semantics == "build" and isinstance(maintenance, dict):
-        if maintenance.get("state") != "not-applicable":
-            errors.append(
-                "build completion semantics requires maintenance_completion "
-                "state not-applicable"
-            )
-        for field in MAINTENANCE_COMPLETION_FIELDS - {"state"}:
-            if maintenance.get(field) is not None:
-                errors.append(
-                    "build completion semantics requires "
-                    "maintenance_completion.%s=null" % field
-                )
-    if completion_semantics == "maintenance" and isinstance(terminal, dict):
-        if terminal.get("state") != "not-applicable":
-            errors.append(
-                "maintenance completion semantics requires terminal_audit "
-                "state not-applicable"
-            )
-        for field in TERMINAL_AUDIT_FIELDS - {"state"}:
-            if terminal.get(field) is not None:
-                errors.append(
-                    "maintenance completion semantics requires "
-                    "terminal_audit.%s=null" % field
-                )
-
-    guidance = progress.get("guidance_queue")
-    if not isinstance(guidance, list):
-        errors.append("Progress guidance_queue must be an explicit list")
-    else:
-        seen = set()
-        for index, entry in enumerate(guidance):
-            label = "Progress guidance_queue[%d]" % index
-            errors.extend(_closed_mapping_errors(entry, label, GUIDANCE_FIELDS))
-            if not isinstance(entry, dict):
-                continue
-            for field in GUIDANCE_FIELDS:
-                if not _nonempty_string(entry.get(field)):
-                    errors.append("%s %s must be a non-empty string" %
-                                  (label, field))
-            disposition = entry.get("disposition")
-            if (_nonempty_string(disposition) and
-                    disposition not in GUIDANCE_DISPOSITIONS):
-                errors.append("%s disposition has invalid value %r" %
-                              (label, disposition))
-            status = entry.get("status")
-            if _nonempty_string(status) and status not in GUIDANCE_STATUSES:
-                errors.append("%s status has invalid value %r" %
-                              (label, status))
-            entry_id = entry.get("guidance_id")
-            if _nonempty_string(entry_id):
-                if entry_id in seen:
-                    errors.append(
-                        "Progress guidance_queue repeats guidance_id %s" %
-                        entry_id)
-                seen.add(entry_id)
-
-    amendments = progress.get("amendments")
-    if not isinstance(amendments, list):
-        errors.append("Progress amendments must be an explicit list")
-    else:
-        seen = set()
-        for index, entry in enumerate(amendments):
-            label = "Progress amendments[%d]" % index
-            if not isinstance(entry, dict):
-                errors.append("%s must be a mapping" % label)
-                continue
-            missing = sorted(AMENDMENT_COMMON_FIELDS - set(entry))
-            if missing:
-                errors.append("%s misses explicit field(s): %s" %
-                              (label, ", ".join(missing)))
-            for field in ("id", "date", "summary", "status"):
-                if not _nonempty_string(entry.get(field)):
-                    errors.append("%s %s must be a non-empty string" %
-                                  (label, field))
-            if not isinstance(entry.get("writeback_done"), bool):
-                errors.append("%s writeback_done must be boolean" % label)
-            entry_id = entry.get("id")
-            if _nonempty_string(entry_id):
-                if entry_id in seen:
-                    errors.append("Progress amendments repeats id %s" % entry_id)
-                seen.add(entry_id)
-    errors.extend(_standards_adoption_shape_errors(progress))
-    return errors
+
+
+
+
+
+
+
 
 
 
@@ -928,1480 +522,6 @@ def _parse_boundary_gate_arguments(values):
 
 
 
-def _candidate_evidence_binding_errors(root, label, relative, expected_sha,
-                                       expected_bytes, expected_records):
-    """Prove the born-cold evidence file is the one the attestation bound.
-
-    The attestation carries this file's hash precisely because the full
-    disposition detail was moved out of it; checking only that a file of
-    the right length sits at the path re-creates the hole the externalizing
-    was supposed to be safe under.  A same-length edit to an acceptance row
-    would pass, and the next seal would then hash the edited bytes into the
-    cold manifest and make the edit permanent evidence -- laundering a
-    tamper through the very mechanism that exists to freeze history.  So
-    the bytes are compared on every run, before any seal can adopt them.
-    """
-    errors = []
-    if not _cold_path_within_root(root, relative, errors):
-        return errors
-    full = os.path.join(root, relative)
-    try:
-        descriptor = os.lstat(full)
-    except OSError:
-        return ["%s candidate evidence file %s is missing (K12/07 "
-                "fail-closed)" % (label, relative)]
-    if os.path.islink(full) or not stat.S_ISREG(descriptor.st_mode):
-        return ["%s candidate evidence file %s must be a regular file" %
-                (label, relative)]
-    if descriptor.st_nlink != 1:
-        return ["%s candidate evidence file %s has %d hard links" %
-                (label, relative, descriptor.st_nlink)]
-    try:
-        with open(full, "rb") as handle:
-            payload = handle.read()
-    except OSError as exc:
-        return ["%s candidate evidence file %s is unreadable: %s" %
-                (label, relative, exc)]
-    if expected_bytes is not None and len(payload) != expected_bytes:
-        errors.append("%s candidate evidence file %s is %d bytes on disk but "
-                      "the attestation sealed %d (K12/07 fail-closed)" %
-                      (label, relative, len(payload), expected_bytes))
-    if isinstance(expected_sha, str) and SHA256_RE.fullmatch(expected_sha):
-        actual = kblib.sha256_bytes(payload)
-        if actual != expected_sha:
-            errors.append(
-                "%s candidate evidence file %s hashes to %s but the "
-                "attestation bound %s; externalized detail is evidence only "
-                "while its attestation still names these exact bytes (K12/07 "
-                "fail-closed)" % (label, relative, actual, expected_sha))
-    if (isinstance(expected_records, int) and
-            not isinstance(expected_records, bool)):
-        actual_records = payload.count(b"\n")
-        if actual_records != expected_records:
-            errors.append(
-                "%s candidate evidence file %s holds %d record(s) but the "
-                "attestation sealed %d" %
-                (label, relative, actual_records, expected_records))
-    return errors
-
-
-def _compact_attestation_errors(attestation, attestation_id, item_id,
-                                root=None, receipt_version=None):
-    """Validate a compact-era reviewer attestation (K12/09, 1.9.0+).
-
-    A compact bundle keeps the authorization surface inline -- counts, the
-    per-type counts, the accepted-set fingerprint, and every
-    policy-exception disposition with its sealed decision facts -- and
-    externalizes the full candidate detail to one born-cold evidence file
-    that the hot path never deserializes.  What must therefore hold here:
-    the inline numbers are coherent with each other, the evidence file is
-    bound by path, byte size, record count and content hash, and when a
-    repository root is available the bound file actually exists at exactly
-    its sealed size (fail closed; the full hash is re-proven on
-    dereference and under ``seal_receipts.py --verify``).
-    """
-    errors = []
-    label = "%s declared reviewer attestation %s" % (item_id, attestation_id)
-    count = attestation.get("accepted_candidate_count")
-    if not isinstance(count, int) or isinstance(count, bool) or count < 0:
-        errors.append("%s accepted_candidate_count must be a non-negative "
-                      "integer" % label)
-        count = None
-    accepted_types = attestation.get("accepted_candidate_types")
-    if not isinstance(accepted_types, list) or any(
-            not _nonempty_string(value) for value in accepted_types):
-        errors.append("%s accepted_candidate_types must be a string list" %
-                      label)
-        accepted_types = []
-    if len(accepted_types) != len(set(accepted_types)):
-        errors.append("%s repeats an accepted candidate type" % label)
-    type_counts = attestation.get("accepted_by_type_counts")
-    if not isinstance(type_counts, dict):
-        errors.append("%s accepted_by_type_counts must be a mapping" % label)
-        type_counts = {}
-    else:
-        bad_values = [key for key, value in type_counts.items()
-                      if not isinstance(value, int) or
-                      isinstance(value, bool) or value < 0]
-        if bad_values:
-            errors.append("%s accepted_by_type_counts values must be "
-                          "non-negative integers" % label)
-        if sorted(type_counts) != sorted(set(accepted_types)):
-            errors.append("%s accepted_by_type_counts keys must equal "
-                          "accepted_candidate_types" % label)
-        elif count is not None and not bad_values and \
-                sum(type_counts.values()) != count:
-            errors.append("%s accepted_by_type_counts sum to %d, expected "
-                          "accepted_candidate_count %d" %
-                          (label, sum(type_counts.values()), count))
-    set_sha = attestation.get("candidate_set_sha256")
-    if not isinstance(set_sha, str) or not SHA256_RE.fullmatch(set_sha):
-        errors.append("%s candidate_set_sha256 must be a sha256 fingerprint "
-                      "over the sorted accepted candidate IDs" % label)
-    evidence_path = attestation.get("candidate_evidence_path")
-    evidence_sha = attestation.get("candidate_evidence_sha256")
-    evidence_bytes = attestation.get("candidate_evidence_bytes")
-    evidence_records = attestation.get("candidate_evidence_records")
-    if (not _nonempty_string(evidence_path) or
-            not evidence_path.startswith(
-                kblib.RECEIPT_COLD_EVIDENCE_PREFIX + "/") or
-            not evidence_path.endswith(".jsonl")):
-        errors.append("%s candidate_evidence_path must be a .jsonl file "
-                      "under %s" %
-                      (label, kblib.RECEIPT_COLD_EVIDENCE_PREFIX))
-        evidence_path = None
-    if not isinstance(evidence_sha, str) or not SHA256_RE.fullmatch(
-            evidence_sha):
-        errors.append("%s candidate_evidence_sha256 must be a sha256 "
-                      "fingerprint" % label)
-    if (not isinstance(evidence_bytes, int) or
-            isinstance(evidence_bytes, bool) or evidence_bytes < 0):
-        errors.append("%s candidate_evidence_bytes must be a non-negative "
-                      "integer" % label)
-        evidence_bytes = None
-    if (not isinstance(evidence_records, int) or
-            isinstance(evidence_records, bool) or evidence_records < 0):
-        errors.append("%s candidate_evidence_records must be a non-negative "
-                      "integer" % label)
-    elif count is not None and evidence_records != count:
-        errors.append("%s candidate_evidence_records=%d does not equal "
-                      "accepted_candidate_count=%d" %
-                      (label, evidence_records, count))
-    if root is not None and evidence_path is not None:
-        errors.extend(_candidate_evidence_binding_errors(
-            root, label, evidence_path, evidence_sha, evidence_bytes,
-            evidence_records))
-    dispositions = attestation.get("candidate_dispositions")
-    if not isinstance(dispositions, list):
-        errors.append("%s candidate_dispositions must be a list carrying "
-                      "exactly the policy-exception dispositions" % label)
-        dispositions = []
-    for index, disposition in enumerate(dispositions):
-        disposition_label = "%s candidate_dispositions[%d]" % (
-            item_id, index)
-        if not isinstance(disposition, dict):
-            errors.append("%s must be a mapping" % disposition_label)
-            continue
-        candidate_id = disposition.get("candidate_id")
-        candidate_type = disposition.get("candidate_type")
-        if (not _nonempty_string(candidate_id) or
-                not candidate_id.startswith("candidate-sha256:") or
-                not SHA256_RE.fullmatch(candidate_id.replace(
-                    "candidate-sha256:", "sha256:", 1))):
-            errors.append("%s has invalid stable candidate_id" %
-                          disposition_label)
-        if not _nonempty_string(candidate_type) or ":" not in candidate_type:
-            errors.append("%s has invalid candidate_type" % disposition_label)
-        accepted_by = disposition.get("accepted_by")
-        if (not isinstance(accepted_by, str) or
-                not accepted_by.startswith("policy-exception:")):
-            errors.append(
-                "%s a compact attestation carries only policy-exception "
-                "dispositions inline; ordinary dispositions live in the "
-                "bound candidate evidence file" % disposition_label)
-            continue
-        decision_id = accepted_by.split(":", 1)[1]
-        sealed = disposition.get("policy_exception")
-        if not _nonempty_string(decision_id):
-            errors.append("%s has empty policy-exception decision" %
-                          disposition_label)
-        elif not isinstance(sealed, dict):
-            errors.append("%s policy-exception disposition seals no "
-                          "decision facts" % disposition_label)
-        else:
-            errors.extend(_sealed_policy_exception_errors(
-                sealed, decision_id, candidate_type, disposition_label))
-    if receipt_version in CANDIDATE_CONTINUATION_VERSIONS:
-        errors.extend(candidate_lifecycle.continuation_attestation_errors(
-            attestation, label))
-    return errors
-
-
-def _page_review_acceptance_errors(
-        catalog, aggregate, aggregate_id, *, item_id, task_id, manifest,
-        integrator_id, reviewer_id, attestation_id, merged_snapshot_sha256,
-        root=None, historical=False, selected_profile_manifest=None,
-        profile_snapshot_sha256=None, profile_contract_fingerprint=None,
-        profile_load_inputs_sha256=None,
-        metadata_execution_contract_fingerprint=None,
-        authorized_profile_contract=None,
-        authorized_metadata_contract=None,
-        authorized_page_semantic_fingerprints=None):
-    """Validate the 1.11 exact per-page review-evidence subgraph.
-
-    ``authorized_page_semantic_fingerprints`` is a same-transaction
-    orchestration input, not persisted authority: the producer may pass the
-    hashes it just computed from its frozen target snapshots and must still
-    perform the final exact-byte/identity CAS.  Independent consumers omit it
-    and this validator re-reads every current page before accepting the hash.
-    """
-    errors = []
-    label = "%s batch-close gate receipt %s" % (item_id, aggregate_id)
-
-    if (not isinstance(manifest, list) or
-            any(not _nonempty_string(value) for value in manifest)):
-        errors.append(
-            "%s current page-review protocol requires an explicit manifest "
-            "page-path list" % label)
-        expected_targets = []
-    else:
-        expected_targets = sorted(manifest)
-        if len(expected_targets) != len(set(expected_targets)):
-            errors.append("%s manifest page paths must be unique" % label)
-    expected_target_set = set(expected_targets)
-
-    frozen_semantics = None
-    if not historical and authorized_page_semantic_fingerprints is not None:
-        if not isinstance(authorized_page_semantic_fingerprints, dict):
-            errors.append(
-                "%s authorized page semantic fingerprints must be a "
-                "target-to-sha256 mapping" % label)
-        else:
-            supplied_targets = set(authorized_page_semantic_fingerprints)
-            bad_values = sorted(
-                target for target, value in
-                authorized_page_semantic_fingerprints.items()
-                if (not _nonempty_string(target) or
-                    not isinstance(value, str) or
-                    not SHA256_RE.fullmatch(value)))
-            if supplied_targets != expected_target_set:
-                errors.append(
-                    "%s authorized page semantic fingerprint targets do not "
-                    "equal the exact manifest" % label)
-            if bad_values:
-                errors.append(
-                    "%s authorized page semantic fingerprints have invalid "
-                    "values for: %s" % (label, ", ".join(bad_values)))
-            if supplied_targets == expected_target_set and not bad_values:
-                frozen_semantics = dict(
-                    authorized_page_semantic_fingerprints)
-
-    ids = aggregate.get("page_review_receipts")
-    if (not isinstance(ids, list) or
-            any(not _nonempty_string(value) for value in ids)):
-        errors.append("%s page_review_receipts must be a string list" % label)
-        ids = []
-    elif ids != sorted(ids):
-        errors.append("%s page_review_receipts must be sorted" % label)
-    if len(ids) != len(set(ids)):
-        errors.append("%s page_review_receipts must be unique" % label)
-    reserved_receipt_ids = {
-        value for value in (
-            aggregate_id,
-            aggregate.get("global_review_receipt"),
-            aggregate.get("reviewer_attestation_receipt"),
-            aggregate.get("queue_consistency_receipt"),
-            aggregate.get("delta_apply_receipt"),
-            aggregate.get("corpus_plan_receipt"),
-        ) if _nonempty_string(value)
-    }
-    evidence = aggregate.get("closed_list_evidence")
-    if isinstance(evidence, dict):
-        reserved_receipt_ids.update(
-            value for value in evidence.values()
-            if _nonempty_string(value))
-    overlaps = sorted(set(ids).intersection(reserved_receipt_ids))
-    if overlaps:
-        errors.append(
-            "%s page review children must use receipt IDs distinct from "
-            "the aggregate and its non-page evidence: %s" %
-            (label, ", ".join(overlaps)))
-    count = aggregate.get("page_review_receipt_count")
-    if (not isinstance(count, int) or isinstance(count, bool) or
-            count < 0 or count != len(ids)):
-        errors.append(
-            "%s page_review_receipt_count must equal the exact receipt list" %
-            label)
-    set_sha = aggregate.get("page_review_receipt_set_sha256")
-    expected_set_sha = candidate_lifecycle.candidate_set_sha256(ids)
-    if (not isinstance(set_sha, str) or not SHA256_RE.fullmatch(set_sha) or
-            set_sha != expected_set_sha):
-        errors.append(
-            "%s page_review_receipt_set_sha256 does not bind the exact "
-            "sorted receipt-ID set" % label)
-
-    profile_bindings = {
-        field: aggregate.get(field)
-        for field in (
-            "selected_profile_manifest", "profile_snapshot_sha256",
-            "profile_contract_fingerprint", "profile_load_inputs_sha256")
-    }
-    expected_profile = {
-        "selected_profile_manifest": selected_profile_manifest,
-        "profile_snapshot_sha256": profile_snapshot_sha256,
-        "profile_contract_fingerprint": profile_contract_fingerprint,
-        "profile_load_inputs_sha256": profile_load_inputs_sha256,
-    }
-    live_profile_view = dict(profile_bindings)
-    live_profile_view.update({
-        field: value for field, value in expected_profile.items()
-        if value is not None
-    })
-    metadata_fingerprint = aggregate.get(
-        "metadata_execution_contract_fingerprint")
-
-    projection_rules = None
-    live_metadata_fingerprint = None
-    if not historical:
-        if root is None:
-            errors.append(
-                "%s current page-review validation requires repository root" %
-                label)
-        else:
-            try:
-                contract = authorized_metadata_contract
-                if contract is None:
-                    contract = metadata_execution_contract.\
-                        load_metadata_execution_contract(root)
-                elif not isinstance(
-                        contract,
-                        metadata_execution_contract.
-                        CompiledMetadataExecutionContract):
-                    raise ValueError(
-                        "authorized metadata contract has the wrong type")
-                live_metadata_fingerprint = contract.contract_fingerprint
-                extension_gates = getattr(
-                    authorized_profile_contract, "extension_gates", None)
-                if extension_gates is None:
-                    raise ValueError(
-                        "no authorized typed Profile contract was supplied")
-                if (getattr(authorized_profile_contract, "authorized", False)
-                        is not True or
-                        getattr(
-                            authorized_profile_contract,
-                            "manifest_repo_path", None) !=
-                        profile_bindings["selected_profile_manifest"] or
-                        getattr(
-                            authorized_profile_contract,
-                            "profile_contract_fingerprint", None) !=
-                        profile_bindings["profile_contract_fingerprint"]):
-                    raise ValueError(
-                        "typed Profile contract does not match the exact "
-                        "authorized fingerprint")
-                projection_rules = metadata_property_state.\
-                    profile_gate_projection_rules(
-                        root, extension_gates, metadata_contract=contract,
-                        authorized_profile_contract=
-                            authorized_profile_contract)
-            except (OSError, UnicodeError, ValueError) as exc:
-                errors.append(
-                    "%s cannot authorize current metadata/Profile execution "
-                    "context: %s" %
-                    (label, exc))
-    errors.extend(evidence_identity_errors(
-        aggregate, label,
-        use=(EVIDENCE_USE_TERMINAL_HISTORY if historical else
-             EVIDENCE_USE_CURRENT_AUTHORIZATION),
-        profile_view=live_profile_view,
-        metadata_contract_fingerprint=live_metadata_fingerprint))
-
-    targets = []
-    for index, page_receipt_id in enumerate(ids):
-        child_label = "%s page review child[%d]" % (item_id, index)
-        child = _require_receipt(
-            catalog, page_receipt_id, child_label, errors,
-            expected={
-                "tool": BATCH_CLOSE_TOOL,
-                "tool_version": BATCH_CLOSE_TOOL_VERSION,
-                "check": "page_review_acceptance",
-                "result": "pass",
-                "task_id": task_id,
-                "batch_id": item_id,
-                "integrator_id": integrator_id,
-                "reviewer_id": reviewer_id,
-                "reviewer_attestation_receipt": attestation_id,
-                "merged_snapshot_sha256": merged_snapshot_sha256,
-                "metadata_execution_contract_fingerprint":
-                    metadata_fingerprint,
-                **profile_bindings,
-            },
-        )
-        if not isinstance(child, dict):
-            continue
-        target = child.get("target")
-        if not _nonempty_string(target):
-            errors.append("%s target must be a non-empty page path" %
-                          child_label)
-            continue
-        targets.append(target)
-        checked_at = _timestamp_value(child.get("checked_at"))
-        reviewed_on = child.get("reviewed_on")
-        if checked_at is None:
-            errors.append("%s checked_at must be an RFC 3339 instant" %
-                          child_label)
-        expected_date = (checked_at.date().isoformat()
-                         if checked_at is not None else None)
-        try:
-            parsed_date = datetime.date.fromisoformat(reviewed_on)
-        except (TypeError, ValueError):
-            parsed_date = None
-        if parsed_date is None or reviewed_on != expected_date:
-            errors.append(
-                "%s reviewed_on must equal its own checked_at UTC date" %
-                child_label)
-        semantic = child.get("semantic_content_sha256")
-        if not isinstance(semantic, str) or not SHA256_RE.fullmatch(semantic):
-            errors.append(
-                "%s semantic_content_sha256 must be a sha256 fingerprint" %
-                child_label)
-        if (not historical and root is not None and
-                projection_rules is not None and
-                target in expected_target_set):
-            if frozen_semantics is not None:
-                current_semantic = frozen_semantics[target]
-            else:
-                try:
-                    page = kblib.repository_target_snapshot(
-                        root, target, suffixes=".md", singly_linked=True)
-                    if not page.exists:
-                        raise ValueError("page does not exist")
-                    current_semantic = \
-                        project_page_state.semantic_content_fingerprint(
-                            target, page.read_text(), projection_rules)
-                except (OSError, UnicodeError, ValueError) as exc:
-                    errors.append("%s cannot re-read exact target: %s" %
-                                  (child_label, exc))
-                    current_semantic = None
-            if (current_semantic is not None and
-                    semantic != current_semantic):
-                errors.append(
-                    "%s semantic_content_sha256 does not match the "
-                    "authorized current page content" % child_label)
-
-    if sorted(targets) != expected_targets:
-        errors.append(
-            "%s page review child targets %r do not equal exact manifest %r" %
-            (label, sorted(targets), expected_targets))
-    elif len(targets) != len(set(targets)):
-        errors.append("%s page review child targets must be unique" % label)
-    return errors, ids
-
-
-def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
-                              root=None,
-                              queue_revision, queue_state_revision,
-                              required_queue_sha256,
-                              coverage_ledger_sha256,
-                              progress_ledger_sha256, delta_sha256,
-                              queue_consistency_receipt,
-                              delta_apply_receipt,
-                              work_spec_path=None,
-                              work_spec_sha256=None,
-                              manifest=None,
-                              selected_profile_manifest=None,
-                              profile_snapshot_sha256=None,
-                              profile_contract_fingerprint=None,
-                              profile_load_inputs_sha256=None,
-                              metadata_execution_contract_fingerprint=None,
-                              authorized_profile_contract=None,
-                              authorized_metadata_contract=None,
-                              authorized_page_semantic_fingerprints=None,
-                              corpus_plan_required=None,
-                              corpus_plan_triggers=None,
-                              corpus_plan_expected_binding=None,
-                              current_repository_snapshot_sha256=None,
-                              historical=False):
-    """Validate the independent merged-snapshot gate consumed by close.
-
-    The gate is deliberately distinct from both the in-batch ``batch_gate``
-    receipts and the K13/08 Queue consistency receipt.  It binds the exact
-    post-apply/pre-close runtime bytes and the independently recomputed
-    repository-content snapshot, then closes its producer era's K12/09 set
-    with independently persisted evidence IDs.
-    """
-    errors = []
-    label = "%s batch-close gate" % item_id
-    # The producer version is validated separately below: a new close action
-    # must use the current producer, while replay of a closed edge keeps the
-    # finite protocol era whose shape its sealed bundle records.
-    expected = {
-        "tool": BATCH_CLOSE_TOOL,
-        "check": "batch_close_gate",
-        "target": item_id,
-        "batch_id": item_id,
-        "task_id": task_id,
-        "queue_revision": queue_revision,
-        "queue_state_revision": queue_state_revision,
-        "required_queue_sha256": required_queue_sha256,
-        "coverage_ledger_sha256": coverage_ledger_sha256,
-        "progress_ledger_sha256": progress_ledger_sha256,
-        "delta_sha256": delta_sha256,
-        "queue_consistency_receipt": queue_consistency_receipt,
-        "delta_apply_receipt": delta_apply_receipt,
-    }
-    receipt = _require_receipt(
-        catalog, receipt_id, label, errors,
-        expected=expected,
-    )
-    if receipt is None:
-        return errors
-    receipt_version = receipt.get("tool_version")
-    allowed_versions = (SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS
-                        if historical else
-                        frozenset((BATCH_CLOSE_TOOL_VERSION,)))
-    if receipt_version not in allowed_versions:
-        protocol = ("historical producer era" if historical else
-                    "current close action")
-        errors.append(
-            "%s receipt %s has unsupported tool_version=%r for %s; "
-            "expected one of %s" % (
-                label, receipt_id, receipt_version, protocol,
-                sorted(allowed_versions))
-        )
-    if receipt_version == BATCH_CLOSE_TOOL_VERSION:
-        errors.extend(_close_settlement_binding_errors(
-            receipt, "%s receipt %s" % (label, receipt_id)))
-    for field, value in (
-            ("work_spec_path", work_spec_path),
-            ("work_spec_sha256", work_spec_sha256)):
-        if field not in receipt:
-            errors.append(
-                "%s receipt %s misses explicit %s" %
-                (label, receipt_id, field)
-            )
-        elif receipt.get(field) != value:
-            errors.append(
-                "%s receipt %s has %s=%r, expected %r" %
-                (label, receipt_id, field, receipt.get(field), value)
-            )
-    if (corpus_plan_required is not None and
-            receipt.get("corpus_plan_required") != corpus_plan_required):
-        errors.append(
-            "%s receipt %s has corpus_plan_required=%r, expected %r" %
-            (label, receipt_id, receipt.get("corpus_plan_required"),
-             corpus_plan_required)
-        )
-    if (corpus_plan_triggers is not None and
-            receipt.get("corpus_plan_triggers") != corpus_plan_triggers):
-        errors.append(
-            "%s receipt %s has corpus_plan_triggers=%r, expected %r" %
-            (label, receipt_id, receipt.get("corpus_plan_triggers"),
-             corpus_plan_triggers)
-        )
-    entry = catalog.get(receipt_id)
-    if entry is not None and entry[0] == "<pending-write>":
-        errors.append("%s receipt %s is not persisted in the repository" %
-                      (label, receipt_id))
-
-    merged_snapshot_sha256 = receipt.get("merged_snapshot_sha256")
-    if (not isinstance(merged_snapshot_sha256, str) or
-            not SHA256_RE.fullmatch(merged_snapshot_sha256)):
-        errors.append("%s receipt %s merged_snapshot_sha256 must be a valid "
-                      "sha256 fingerprint" % (label, receipt_id))
-    elif (current_repository_snapshot_sha256 is not None and
-          merged_snapshot_sha256 != current_repository_snapshot_sha256):
-        errors.append(
-            "%s receipt %s merged_snapshot_sha256=%r does not match the "
-            "current repository snapshot %r" %
-            (label, receipt_id, merged_snapshot_sha256,
-             current_repository_snapshot_sha256)
-        )
-
-    actual_corpus_required = receipt.get("corpus_plan_required")
-    actual_corpus_triggers = receipt.get("corpus_plan_triggers")
-    corpus_receipt_id = receipt.get("corpus_plan_receipt")
-    if not isinstance(actual_corpus_required, bool):
-        errors.append(
-            "%s receipt %s corpus_plan_required must be an explicit boolean" %
-            (label, receipt_id))
-    if (not isinstance(actual_corpus_triggers, list) or
-            any(not _nonempty_string(value)
-                for value in actual_corpus_triggers)):
-        errors.append(
-            "%s receipt %s corpus_plan_triggers must be an explicit string "
-            "list" % (label, receipt_id))
-        actual_corpus_triggers = []
-    else:
-        if actual_corpus_triggers != sorted(set(actual_corpus_triggers)):
-            errors.append(
-                "%s receipt %s corpus_plan_triggers must be unique and sorted" %
-                (label, receipt_id))
-        unsupported = sorted(
-            set(actual_corpus_triggers) - CORPUS_PLAN_TRIGGERS)
-        if unsupported:
-            errors.append(
-                "%s receipt %s has unsupported corpus-plan trigger(s): %s" %
-                (label, receipt_id, ", ".join(unsupported)))
-    if actual_corpus_required is False:
-        if actual_corpus_triggers:
-            errors.append(
-                "%s receipt %s non-applicable corpus plan must use no "
-                "triggers" % (label, receipt_id))
-        if corpus_receipt_id is not None:
-            errors.append(
-                "%s receipt %s non-applicable corpus plan must use "
-                "corpus_plan_receipt=null" % (label, receipt_id))
-    elif actual_corpus_required is True:
-        if not actual_corpus_triggers:
-            errors.append(
-                "%s receipt %s required corpus plan has no trigger" %
-                (label, receipt_id))
-        corpus_tool_version = CORPUS_PLAN_TOOL_VERSION
-        if historical and receipt_version != BATCH_CLOSE_TOOL_VERSION:
-            corpus_tool_version = \
-                HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS.get(receipt_version)
-            if corpus_tool_version is None:
-                errors.append(
-                    "%s receipt %s has no registered historical Corpus "
-                    "Planning child protocol for batch-close %r" %
-                    (label, receipt_id, receipt_version))
-        corpus_expected = {
-            "tool": CORPUS_PLAN_TOOL,
-            "tool_version": corpus_tool_version,
-            "check": "corpus_plan",
-            "result": "pass",
-            "task_id": task_id,
-            "queue_revision": queue_revision,
-            "queue_state_revision": queue_state_revision,
-            "required_queue_sha256": required_queue_sha256,
-            "coverage_ledger_sha256": coverage_ledger_sha256,
-            "progress_ledger_sha256": progress_ledger_sha256,
-            "repository_snapshot_sha256": merged_snapshot_sha256,
-        }
-        if selected_profile_manifest is not None:
-            corpus_expected.update({
-                "target": selected_profile_manifest,
-                "selected_profile_manifest": selected_profile_manifest,
-            })
-        corpus_receipt = _require_receipt(
-            catalog, corpus_receipt_id,
-            "%s Corpus Planning child" % item_id, errors,
-            expected=corpus_expected,
-        )
-        if isinstance(corpus_receipt, dict):
-            if corpus_plan_expected_binding is not None:
-                if not isinstance(corpus_plan_expected_binding, dict):
-                    errors.append(
-                        "%s Corpus Planning expected binding must be a "
-                        "mapping" % item_id)
-                else:
-                    for field, value in sorted(
-                            corpus_plan_expected_binding.items()):
-                        if (field not in corpus_receipt or
-                                corpus_receipt.get(field) != value):
-                            errors.append(
-                                "%s Corpus Planning child %s has %s=%r, "
-                                "expected current %r" % (
-                                    item_id, corpus_receipt_id, field,
-                                    corpus_receipt.get(field), value))
-            applicability = corpus_receipt.get("corpus_plan_applicability")
-            if applicability not in ("configured", "not-applicable"):
-                errors.append(
-                    "%s Corpus Planning child %s has invalid applicability %r" %
-                    (item_id, corpus_receipt_id, applicability))
-            if ("R13" in actual_corpus_triggers and
-                    applicability != "configured"):
-                errors.append(
-                    "%s R13 close requires a configured Corpus Planning child" %
-                    item_id)
-            for path_field, sha_field in CORPUS_PLAN_PATH_SHA_FIELDS:
-                path_value = corpus_receipt.get(path_field)
-                sha_value = corpus_receipt.get(sha_field)
-                always_required = path_field in (
-                    "selected_profile_manifest", "corpus_planning_slot_path")
-                configured_required = applicability == "configured"
-                if always_required or configured_required:
-                    if not _nonempty_string(path_value):
-                        errors.append(
-                            "%s Corpus Planning child %s lacks %s" %
-                            (item_id, corpus_receipt_id, path_field))
-                    if (not isinstance(sha_value, str) or
-                            not SHA256_RE.fullmatch(sha_value)):
-                        errors.append(
-                            "%s Corpus Planning child %s has invalid %s" %
-                            (item_id, corpus_receipt_id, sha_field))
-                else:
-                    if (path_field not in corpus_receipt or
-                            sha_field not in corpus_receipt):
-                        errors.append(
-                            "%s inactive Corpus Planning child %s must "
-                            "explicitly bind null %s/%s" % (
-                                item_id, corpus_receipt_id, path_field,
-                                sha_field))
-                    elif path_value is not None or sha_value is not None:
-                        errors.append(
-                            "%s inactive Corpus Planning child %s must use "
-                            "null %s/%s" % (
-                                item_id, corpus_receipt_id, path_field,
-                                sha_field))
-
-    _require_receipt(
-        catalog, queue_consistency_receipt,
-        "%s Queue consistency snapshot" % item_id, errors,
-        expected={
-            "tool": TOOL,
-            # K12/10 producer-era identity: a close bundle sealed under an
-            # accounted era keeps the consistency snapshot its own runtime
-            # produced; it is never re-judged against this checker's
-            # current constant after an upgrade.
-            "tool_version": ANY_PRODUCER_ERA_VERSION,
-            "check": "required_queue",
-            "queue_check_mode": "consistency",
-            "repository_snapshot_sha256": merged_snapshot_sha256,
-        },
-    )
-
-    global_review_id = receipt.get("global_review_receipt")
-    global_review = _require_receipt(
-        catalog, global_review_id, "%s global review" % item_id, errors,
-        expected={
-            "tool": BATCH_CLOSE_TOOL,
-            "tool_version": receipt_version,
-            "check": "batch_global_review",
-            "target": item_id,
-            "batch_id": item_id,
-            "task_id": task_id,
-            "merged_snapshot_sha256": merged_snapshot_sha256,
-        },
-    )
-
-    integrator_id = receipt.get("integrator_id")
-    reviewer_id = receipt.get("reviewer_id")
-    for field, value in (("integrator_id", integrator_id),
-                         ("reviewer_id", reviewer_id)):
-        if not _nonempty_string(value):
-            errors.append("%s receipt %s %s must be a non-empty declared label" %
-                          (label, receipt_id, field))
-    if (_nonempty_string(integrator_id) and _nonempty_string(reviewer_id) and
-            integrator_id.casefold() == reviewer_id.casefold()):
-        errors.append("%s receipt %s integrator and reviewer must use "
-                      "different declared labels" % (label, receipt_id))
-
-    attestation_id = receipt.get("reviewer_attestation_receipt")
-    if isinstance(global_review, dict):
-        for field, value in (("integrator_id", integrator_id),
-                             ("reviewer_id", reviewer_id),
-                             ("reviewer_attestation_receipt", attestation_id)):
-            if global_review.get(field) != value:
-                errors.append("%s global review receipt %s has %s=%r, "
-                              "expected %r" %
-                              (item_id, global_review_id, field,
-                               global_review.get(field), value))
-    attestation = _require_receipt(
-        catalog, attestation_id, "%s declared reviewer attestation" %
-        item_id, errors,
-        expected={
-            "tool": BATCH_CLOSE_TOOL,
-            "tool_version": receipt_version,
-            "check": "batch_global_review_attestation",
-            "target": item_id,
-            "batch_id": item_id,
-            "task_id": task_id,
-            "integrator_id": integrator_id,
-            "reviewer_id": reviewer_id,
-            "merged_snapshot_sha256": merged_snapshot_sha256,
-        },
-    )
-    if (isinstance(attestation, dict) and
-            receipt_version in COMPACT_CLOSE_EVIDENCE_VERSIONS):
-        if not _nonempty_string(attestation.get("details")):
-            errors.append("%s declared reviewer attestation %s has no "
-                          "review statement" % (item_id, attestation_id))
-        errors.extend(_compact_attestation_errors(
-            attestation, attestation_id, item_id, root=root,
-            receipt_version=receipt_version))
-    elif isinstance(attestation, dict):
-        if not _nonempty_string(attestation.get("details")):
-            errors.append("%s declared reviewer attestation %s has no "
-                          "review statement" % (item_id, attestation_id))
-        accepted_ids = attestation.get("accepted_candidate_ids")
-        accepted_types = attestation.get("accepted_candidate_types")
-        dispositions = attestation.get("candidate_dispositions")
-        if not isinstance(accepted_ids, list) or any(
-                not _nonempty_string(value) for value in accepted_ids):
-            errors.append("%s declared reviewer attestation %s "
-                          "accepted_candidate_ids must be a string list" %
-                          (item_id, attestation_id))
-            accepted_ids = []
-        if not isinstance(accepted_types, list) or any(
-                not _nonempty_string(value) for value in accepted_types):
-            errors.append("%s declared reviewer attestation %s "
-                          "accepted_candidate_types must be a string list" %
-                          (item_id, attestation_id))
-            accepted_types = []
-        if len(accepted_ids) != len(set(accepted_ids)):
-            errors.append("%s declared reviewer attestation %s repeats an "
-                          "accepted candidate ID" % (item_id, attestation_id))
-        if len(accepted_types) != len(set(accepted_types)):
-            errors.append("%s declared reviewer attestation %s repeats an "
-                          "accepted candidate type" %
-                          (item_id, attestation_id))
-        if not isinstance(dispositions, list):
-            errors.append("%s declared reviewer attestation %s "
-                          "candidate_dispositions must be a list" %
-                          (item_id, attestation_id))
-            dispositions = []
-        disposition_ids = []
-        disposition_types = []
-        for index, disposition in enumerate(dispositions):
-            disposition_label = "%s candidate_dispositions[%d]" % (
-                item_id, index)
-            if not isinstance(disposition, dict):
-                errors.append("%s must be a mapping" % disposition_label)
-                continue
-            candidate_id = disposition.get("candidate_id")
-            candidate_type = disposition.get("candidate_type")
-            if (not _nonempty_string(candidate_id) or
-                    not candidate_id.startswith("candidate-sha256:") or
-                    not SHA256_RE.fullmatch(candidate_id.replace(
-                        "candidate-sha256:", "sha256:", 1))):
-                errors.append("%s has invalid stable candidate_id" %
-                              disposition_label)
-            else:
-                disposition_ids.append(candidate_id)
-            if (not _nonempty_string(candidate_type) or
-                    ":" not in candidate_type):
-                errors.append("%s has invalid candidate_type" %
-                              disposition_label)
-            else:
-                disposition_types.append(candidate_type)
-            accepted_by = disposition.get("accepted_by")
-            if isinstance(accepted_by, str) and accepted_by.startswith(
-                    "policy-exception:"):
-                # K00/07: a priority-quota excess is consumed only through a
-                # bounded contract exception.  The disposition seals the
-                # decision facts so this receipt replays as history even
-                # after the exception is revoked or the task ends; replay
-                # validates the sealed record, never current contract state.
-                decision_id = accepted_by.split(":", 1)[1]
-                if receipt_version not in \
-                        POLICY_EXCEPTION_DISPOSITION_VERSIONS:
-                    errors.append(
-                        "%s claims a policy-exception disposition, but its "
-                        "producer era %s predates that protocol; an older "
-                        "bundle cannot carry evidence its era could not "
-                        "have produced" % (disposition_label,
-                                           receipt_version))
-                sealed = disposition.get("policy_exception")
-                if not _nonempty_string(decision_id):
-                    errors.append("%s has empty policy-exception decision" %
-                                  disposition_label)
-                elif not isinstance(sealed, dict):
-                    errors.append(
-                        "%s policy-exception disposition seals no decision "
-                        "facts" % disposition_label)
-                else:
-                    errors.extend(_sealed_policy_exception_errors(
-                        sealed, decision_id, candidate_type,
-                        disposition_label))
-            elif accepted_by not in ("candidate-id", "candidate-type"):
-                errors.append("%s has invalid accepted_by" %
-                              disposition_label)
-        if sorted(disposition_ids) != sorted(accepted_ids):
-            errors.append("%s declared reviewer attestation %s accepted "
-                          "candidate IDs do not equal its dispositions" %
-                          (item_id, attestation_id))
-        if sorted(set(disposition_types)) != sorted(accepted_types):
-            errors.append("%s declared reviewer attestation %s accepted "
-                          "candidate types do not equal its dispositions" %
-                          (item_id, attestation_id))
-
-    page_review_ids = []
-    if receipt_version == BATCH_CLOSE_TOOL_VERSION:
-        page_review_errors, page_review_ids = \
-            _page_review_acceptance_errors(
-                catalog, receipt, receipt_id,
-                item_id=item_id, task_id=task_id, manifest=manifest,
-                integrator_id=integrator_id, reviewer_id=reviewer_id,
-                attestation_id=attestation_id,
-                merged_snapshot_sha256=merged_snapshot_sha256,
-                root=root, historical=historical,
-                selected_profile_manifest=selected_profile_manifest,
-                profile_snapshot_sha256=profile_snapshot_sha256,
-                profile_contract_fingerprint=profile_contract_fingerprint,
-                profile_load_inputs_sha256=profile_load_inputs_sha256,
-                metadata_execution_contract_fingerprint=
-                    metadata_execution_contract_fingerprint,
-                authorized_profile_contract=authorized_profile_contract,
-                authorized_metadata_contract=authorized_metadata_contract,
-                authorized_page_semantic_fingerprints=
-                    authorized_page_semantic_fingerprints,
-            )
-        errors.extend(page_review_errors)
-
-    evidence = receipt.get("closed_list_evidence")
-    # The Closed List a bundle answers to is the one its producer era ran:
-    # a pre-1.5.0 bundle carries seven members forever (K12/10 producer-era
-    # identity), a current bundle carries the full list.
-    era_fields = (LEGACY_CLOSED_LIST_EVIDENCE_FIELDS
-                  if receipt_version in LEGACY_CLOSED_LIST_VERSIONS
-                  else CLOSED_LIST_EVIDENCE_FIELDS)
-    expected_fields = set(era_fields)
-    if not isinstance(evidence, dict):
-        errors.append("%s receipt %s closed_list_evidence must be a mapping" %
-                      (label, receipt_id))
-        return errors
-    missing = sorted(expected_fields - set(evidence))
-    extra = sorted(set(evidence) - expected_fields)
-    if missing:
-        errors.append("%s receipt %s closed_list_evidence misses: %s" %
-                      (label, receipt_id, ", ".join(missing)))
-    if extra:
-        errors.append("%s receipt %s closed_list_evidence has unsupported "
-                      "member(s): %s" %
-                      (label, receipt_id, ", ".join(extra)))
-    evidence_ids = []
-    for field in era_fields:
-        evidence_id = evidence.get(field)
-        if not _nonempty_string(evidence_id):
-            errors.append("%s receipt %s closed_list_evidence.%s must identify "
-                          "a receipt" % (label, receipt_id, field))
-            continue
-        evidence_ids.append(evidence_id)
-        _require_receipt(
-            catalog, evidence_id,
-            "%s Closed List member %s" % (item_id, field), errors,
-            expected={
-                "tool": BATCH_CLOSE_TOOL,
-                "tool_version": receipt_version,
-                "check": "closed_list_%s" % field,
-                "target": ".",
-                "batch_id": item_id,
-                "task_id": task_id,
-                "integrator_id": integrator_id,
-                "reviewer_id": reviewer_id,
-                "merged_snapshot_sha256": merged_snapshot_sha256,
-            },
-        )
-    if len(evidence_ids) != len(set(evidence_ids)):
-        errors.append("%s receipt %s closed_list_evidence must use one "
-                      "distinct receipt ID per Closed List member" %
-                      (label, receipt_id))
-    if receipt_id in evidence_ids:
-        errors.append("%s receipt %s cannot cite itself as Closed List "
-                      "evidence" % (label, receipt_id))
-    if global_review_id in evidence_ids or global_review_id == receipt_id:
-        errors.append("%s receipt %s global_review_receipt must be a distinct "
-                      "record from the aggregator and the Closed List members" %
-                      (label, receipt_id))
-    if attestation_id in evidence_ids or attestation_id in (
-            global_review_id, receipt_id):
-        errors.append("%s receipt %s reviewer attestation must be a distinct "
-                      "record from the aggregator, global review, and the Closed "
-                      "List members" % (label, receipt_id))
-    if page_review_ids:
-        reserved = set(evidence_ids + [
-            receipt_id, global_review_id, attestation_id,
-            queue_consistency_receipt, delta_apply_receipt,
-        ])
-        if corpus_receipt_id is not None:
-            reserved.add(corpus_receipt_id)
-        reused = sorted(set(page_review_ids).intersection(reserved))
-        if reused:
-            errors.append(
-                "%s receipt %s page-review children must be distinct from "
-                "the aggregator and every other close-evidence record: %s" %
-                (label, receipt_id, ", ".join(reused)))
-    if (isinstance(global_review, dict) and
-            global_review.get("closed_list_evidence") != evidence):
-        errors.append("%s global review receipt %s does not bind the same "
-                      "Closed List evidence mapping" %
-                      (item_id, global_review_id))
-    if corpus_receipt_id is not None and corpus_receipt_id in (
-            evidence_ids + [receipt_id, global_review_id, attestation_id,
-                            queue_consistency_receipt, delta_apply_receipt]):
-        errors.append(
-            "%s receipt %s Corpus Planning child must be distinct from the "
-            "aggregator and all other close evidence" % (label, receipt_id))
-    return errors
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def _task_transition_errors(root, progress, catalog, queue, queue_sha,
-                            coverage_sha, progress_sha, remaining,
-                            items_by_id, coverage):
-    """Validate the sole task-state history and its restart checkpoint."""
-    errors = []
-    task_id = progress.get("task_id")
-    task_state = progress.get("task_state")
-    contract = progress.get("contract") if isinstance(
-        progress.get("contract"), dict) else {}
-    contract_load_errors, contract_load_set_gaps = \
-        _live_read_set_load_findings(root, contract)
-    errors.extend(contract_load_errors)
-    accounted_versions = accounted_standards_versions(progress, queue)
-    completion_semantics = contract.get("completion_semantics")
-    live_contract_sha = _contract_sha256(progress)
-    contract_chain, _ = _contract_anchor_chain(progress, catalog)
-    history = progress.get("task_transition_receipts")
-    if not isinstance(history, list):
-        errors.append("Progress task_transition_receipts must be an explicit list")
-        history = []
-    elif (not all(_nonempty_string(value) for value in history) or
-          len(history) != len(set(history))):
-        errors.append("Progress task_transition_receipts must contain unique receipt IDs")
-
-    transitions = []
-    previous = None
-    for index, receipt_id in enumerate(history):
-        receipt = _require_receipt(
-            catalog, receipt_id, "task transition[%d]" % index, errors,
-            expected={
-                "tool": "update_task",
-                "tool_version": "1.1.0",
-                "check": "task_transition",
-                "target": task_id,
-                "task_id": task_id,
-                "actor_role": "integrator",
-                "completion_semantics": completion_semantics,
-            },
-        )
-        if receipt is None:
-            continue
-        before = receipt.get("before_task_state")
-        after = receipt.get("after_task_state")
-        checked_at = receipt.get("checked_at")
-        expected_contract_sha = (_contract_sha_at_revision(
-            contract_chain, receipt.get("queue_revision")) or
-            live_contract_sha)
-        errors.extend(_task_transition_receipt_record_errors(
-            catalog, receipt_id, receipt, completion_semantics,
-            expected_contract_sha=expected_contract_sha,
-        ))
-        if previous is None:
-            if before != "planned":
-                errors.append("task transition history must begin at planned")
-        else:
-            if before != previous.get("after_task_state"):
-                errors.append("task transition history breaks before %s" %
-                              receipt_id)
-            previous_time = _timestamp_value(previous.get("checked_at"))
-            current_time = _timestamp_value(checked_at)
-            if (previous_time is not None and current_time is not None and
-                    current_time < previous_time):
-                errors.append("task transition timestamps move backward at %s" %
-                              receipt_id)
-            for field in ("queue_revision", "queue_state_revision"):
-                if (isinstance(receipt.get(field), int) and
-                        isinstance(previous.get(field), int) and
-                        receipt.get(field) < previous.get(field)):
-                    errors.append("task transition %s moves %s backward" %
-                                  (receipt_id, field))
-        transitions.append(receipt)
-        previous = receipt
-
-    direct_activation = next((
-        receipt for receipt in transitions
-        if (receipt.get("before_task_state"),
-            receipt.get("after_task_state")) == ("planned", "active")
-    ), None)
-    if direct_activation is not None:
-        activation = direct_activation
-        batch_id = activation.get("first_open_batch_id")
-        queue_transition_id = activation.get(
-            "first_open_transition_receipt")
-        if not _nonempty_string(batch_id):
-            errors.append("first task activation must identify "
-                          "first_open_batch_id")
-        if not _nonempty_string(queue_transition_id):
-            errors.append("first task activation must identify "
-                          "first_open_transition_receipt")
-        opening = _require_receipt(
-            catalog, queue_transition_id,
-            "first task activation Queue transition", errors,
-            expected={
-                "tool": "update_queue",
-                "tool_version": ANY_PRODUCER_ERA_VERSION,
-                "check": "queue_transition",
-                "target": batch_id,
-                "task_id": task_id,
-                "actor_role": "integrator",
-                "before_state": "queued",
-                "after_state": "open",
-                "before_state_revision": 0,
-                "after_state_revision": 1,
-                "queue_revision": activation.get("queue_revision"),
-                "before_required_queue_sha256":
-                    activation.get("before_required_queue_sha256"),
-                "after_required_queue_sha256":
-                    activation.get("after_required_queue_sha256"),
-                "evidence_receipt": activation.get("evidence_receipt"),
-            },
-        )
-        if (isinstance(opening, dict) and
-                opening.get("tool_version") not in
-                SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS):
-            errors.append(
-                "first task activation Queue transition has unsupported "
-                "update_queue producer version %r" %
-                opening.get("tool_version"))
-        if activation.get("queue_state_revision") != 1:
-            errors.append("first task activation must bind Queue "
-                          "state_revision 1")
-        item = items_by_id.get(batch_id)
-        if (not isinstance(item, dict) or
-                queue_transition_id not in
-                (item.get("transition_receipts") or [])):
-            errors.append("first task activation Queue transition is not "
-                          "retained by batch %s" % batch_id)
-
-    if task_state == "planned":
-        if history:
-            errors.append("task_state=planned cannot have transition history")
-    elif task_state in TASK_STATES:
-        if not transitions:
-            errors.append("task_state=%s requires task transition evidence" %
-                          task_state)
-        elif transitions[-1].get("after_task_state") != task_state:
-            errors.append("latest task transition ends in %r, live task_state is %r" %
-                          (transitions[-1].get("after_task_state"), task_state))
-
-    checkpoint = progress.get("checkpoint")
-    checkpoint_binding = "unavailable"
-    if not isinstance(checkpoint, dict):
-        errors.append("Progress checkpoint must be a mapping")
-    elif task_state == "planned" and not transitions:
-        if checkpoint.get("recorded_at") is not None:
-            errors.append("planned initial checkpoint recorded_at must be null")
-        checkpoint_binding = "initial"
-    elif transitions:
-        latest = transitions[-1]
-        latest_id = history[-1]
-        expected = {
-            "recorded_at": latest.get("checked_at"),
-            "task_state": task_state,
-            "task_transition_receipt": latest_id,
-            "coverage_sha256": latest.get("after_coverage_sha256"),
-            "required_queue_sha256":
-                latest.get("after_required_queue_sha256"),
-            "queue_revision": latest.get("queue_revision"),
-            "queue_state_revision": latest.get("queue_state_revision"),
-        }
-        for field, value in expected.items():
-            if checkpoint.get(field) != value:
-                errors.append("checkpoint %s=%r, expected %r from latest task "
-                              "transition" %
-                              (field, checkpoint.get(field), value))
-        if not _nonempty_string(checkpoint.get("summary")):
-            errors.append("checkpoint summary must be non-empty after activation")
-        live_match = (
-            checkpoint.get("coverage_sha256") == coverage_sha and
-            checkpoint.get("required_queue_sha256") == queue_sha and
-            checkpoint.get("queue_revision") == queue.get("queue_revision") and
-            checkpoint.get("queue_state_revision") == queue.get("state_revision") and
-            latest.get("after_progress_sha256") == progress_sha
-        )
-        checkpoint_binding = "current" if live_match else "historical"
-
-    pending_guidance, pending_amendments = _pending_control_ids(progress)
-    terminal_audit = progress.get("terminal_audit")
-    if not isinstance(terminal_audit, dict):
-        errors.append("Progress terminal_audit must be a mapping")
-        terminal_audit = {}
-    maintenance_completion = progress.get("maintenance_completion")
-    if not isinstance(maintenance_completion, dict):
-        errors.append("Progress maintenance_completion must be a mapping")
-        maintenance_completion = {}
-    if completion_semantics == "build":
-        terminal_state = terminal_audit.get("state")
-        if task_state in ("planned", "active", "paused", "blocked"):
-            left_candidate = any(
-                receipt.get("before_task_state") == "completion-candidate" and
-                receipt.get("after_task_state") in
-                ("active", "paused", "blocked")
-                for receipt in transitions
-            )
-            expected_terminal = "invalidated" if left_candidate else "not-started"
-            if terminal_state != expected_terminal:
-                errors.append(
-                    "build task_state=%s requires terminal_audit.state=%s" %
-                    (task_state, expected_terminal)
-                )
-        elif task_state == "cancelled" and terminal_state != "not-applicable":
-            errors.append(
-                "cancelled build task requires terminal_audit.state="
-                "not-applicable"
-            )
-        if terminal_state in ("not-started", "invalidated", "not-applicable"):
-            for field in TERMINAL_AUDIT_FIELDS - {"state"}:
-                if terminal_audit.get(field) is not None:
-                    errors.append(
-                        "build terminal_audit.state=%s requires %s=null" %
-                        (terminal_state, field)
-                    )
-        elif terminal_state == "ready":
-            for field in ("terminal_proof_path", "terminal_proof_sha256",
-                          "terminal_proof_receipt"):
-                if terminal_audit.get(field) is not None:
-                    errors.append(
-                        "ready terminal_audit requires %s=null" % field
-                    )
-    if task_state == "completion-candidate":
-        if completion_semantics != "build":
-            errors.append(
-                "completion-candidate requires completion_semantics=build"
-            )
-        if remaining != 0:
-            errors.append("completion-candidate requires zero remaining work")
-        if pending_guidance or pending_amendments:
-            errors.append("completion-candidate has pending Guidance/Amendments")
-        if terminal_audit.get("state") != "ready":
-            errors.append("completion-candidate terminal_audit state must be ready")
-        completion_id = terminal_audit.get("queue_check_receipt")
-        completion_receipt = _require_receipt(
-            catalog, completion_id, "completion-candidate Queue gate", errors,
-            expected={
-                "tool": TOOL,
-                "check": "required_queue",
-                "queue_check_mode": "require-complete",
-                "task_id": task_id,
-                "queue_revision": queue.get("queue_revision"),
-                "queue_state_revision": queue.get("state_revision"),
-                "required_queue_sha256": queue_sha,
-                "coverage_ledger_sha256": coverage_sha,
-                "progress_ledger_sha256":
-                    transitions[-1].get("before_progress_sha256")
-                    if transitions else progress_sha,
-                "remaining_required_work_units": 0,
-            },
-        )
-        # Historical: the gate that admitted the state the task is already in.
-        # A completion-candidate task cannot adopt, so it cannot re-produce
-        # this receipt under a newer producer identity either.
-        errors.extend(_producer_era_errors(
-            completion_receipt, completion_id,
-            "completion-candidate Queue gate", accounted_versions))
-        if isinstance(completion_receipt, dict):
-            completion_version = completion_receipt.get("tool_version")
-            if (completion_version == TOOL_VERSION and
-                    completion_receipt.get("gate_id") !=
-                    "required-queue-completion"):
-                errors.append("current completion-candidate Queue gate must "
-                              "bind gate_id=required-queue-completion")
-    if task_state == "complete" and completion_semantics == "build":
-        if terminal_audit.get("state") != "passed":
-            errors.append("complete terminal_audit state must be passed")
-        proof_id = terminal_audit.get("terminal_proof_receipt")
-        proof = _require_receipt(
-            catalog, proof_id, "complete Terminal Proof", errors,
-            expected={
-                "tool": TERMINAL_PROOF_TOOL,
-                "check": "proof-check-summary",
-                "task_id": task_id,
-                "coverage_ledger_sha256": coverage_sha,
-                "required_queue_path": QUEUE_PATH,
-                "queue_revision": queue.get("queue_revision"),
-                "queue_state_revision": queue.get("state_revision"),
-                "required_queue_sha256": queue_sha,
-                "remaining_required_work_units": 0,
-            },
-        )
-        # Historical: the proof a completed task already consumed.  A complete
-        # task cannot adopt, so nothing can restamp this receipt.
-        errors.extend(_producer_era_errors(
-            proof, proof_id, "complete Terminal Proof", accounted_versions))
-        if isinstance(proof, dict):
-            errors.extend(_terminal_proof_profile_binding_errors(
-                proof, proof_id))
-            proof_version = proof.get("tool_version")
-            if (proof_version == TERMINAL_PROOF_TOOL_VERSION and
-                    proof.get("gate_id") != "terminal-proof"):
-                errors.append("current Terminal Proof receipt must bind "
-                              "gate_id=terminal-proof")
-        if transitions and proof is not None:
-            latest = transitions[-1]
-            if latest.get("evidence_receipt") != proof_id:
-                errors.append("complete task transition does not consume its "
-                              "Terminal Proof receipt")
-            if proof.get("progress_ledger_sha256") != latest.get(
-                    "before_progress_sha256"):
-                errors.append("Terminal Proof must bind the pre-complete Progress "
-                              "bytes")
-            if terminal_audit.get("terminal_proof_path") != proof.get(
-                    "terminal_proof_path"):
-                errors.append("terminal_audit proof path differs from receipt")
-            if terminal_audit.get("terminal_proof_sha256") != proof.get(
-                    "terminal_proof_sha256"):
-                errors.append("terminal_audit proof SHA differs from receipt")
-            proof_path = proof.get("terminal_proof_path")
-            proof_sha = proof.get("terminal_proof_sha256")
-            try:
-                proof_file = kblib.managed_repository_path(
-                    root, proof_path, ".cambium/receipts",
-                    suffixes=(".yaml", ".yml"), must_exist=True,
-                )
-                if kblib.sha256_file(proof_file) != proof_sha:
-                    errors.append("complete Terminal Proof bytes differ from "
-                                  "the persisted proof receipt")
-            except (OSError, TypeError, ValueError) as exc:
-                errors.append("complete Terminal Proof is unsafe or missing: %s" %
-                              exc)
-    if task_state == "complete" and completion_semantics == "maintenance":
-        if remaining != 0:
-            errors.append("maintenance complete requires zero remaining work")
-        if pending_guidance or pending_amendments:
-            errors.append(
-                "maintenance complete has pending Guidance/Amendments"
-            )
-        if maintenance_completion.get("state") != "passed":
-            errors.append(
-                "maintenance complete requires maintenance_completion.state=passed"
-            )
-        gate_id = maintenance_completion.get("completion_gate_receipt")
-        gate = _require_receipt(
-            catalog, gate_id, "maintenance completion gate", errors,
-            expected={
-                "tool": TOOL,
-                "check": "required_queue",
-                "queue_check_mode": "require-maintenance-complete",
-                "task_id": task_id,
-                "completion_semantics": "maintenance",
-                "scope_version": contract.get("scope_version"),
-                "standards_version": contract.get("standards_version"),
-                "selected_profile_manifest": contract.get(
-                    "selected_profile_manifest"),
-                "queue_revision": queue.get("queue_revision"),
-                "queue_state_revision": queue.get("state_revision"),
-                "required_queue_sha256": queue_sha,
-                "coverage_ledger_sha256": coverage_sha,
-                "progress_ledger_sha256":
-                    transitions[-1].get("before_progress_sha256")
-                    if transitions else progress_sha,
-                "remaining_required_work_units": 0,
-            },
-        )
-        # Historical: the gate a completed maintenance run already consumed.
-        # No `tool_version` comparison, and none is needed -- the expected
-        # mapping above binds `standards_version` to the live contract exactly,
-        # which states the producer era without naming a producer constant.
-        if isinstance(gate, dict):
-            gate_version = gate.get("tool_version")
-            if (gate_version == TOOL_VERSION and
-                    gate.get("gate_id") != "maintenance-completion"):
-                errors.append("current maintenance completion gate must bind "
-                              "gate_id=maintenance-completion")
-        if transitions and gate is not None:
-            latest = transitions[-1]
-            if (latest.get("before_task_state") not in ("planned", "active") or
-                    latest.get("after_task_state") != "complete"):
-                errors.append(
-                    "maintenance completion must use planned/active -> complete"
-                )
-            if latest.get("evidence_receipt") != gate_id:
-                errors.append(
-                    "maintenance complete transition does not consume its gate"
-                )
-        if gate is not None:
-            for field in (
-                    "budget_manifest_receipt", "ledger_advance_receipt",
-                    "watermark_advance_receipt"):
-                if maintenance_completion.get(field) != gate.get(field):
-                    errors.append(
-                        "maintenance_completion.%s differs from its gate receipt" %
-                        field
-                    )
-                _require_receipt(
-                    catalog, gate.get(field),
-                    "maintenance completion %s" % field, errors,
-                )
-            if gate.get("terminal_batch_ids") != sorted(items_by_id):
-                errors.append(
-                    "maintenance completion gate does not bind every Queue batch"
-                )
-            evidence_errors, expected_context = \
-                _maintenance_completion_gate_errors(
-                    root, {
-                        "progress": progress,
-                        "coverage": coverage,
-                        "queue": queue,
-                        "items_by_id": items_by_id,
-                        "remaining": remaining,
-                        "coverage_sha256": coverage_sha,
-                        "queue_sha256": queue_sha,
-                        "progress_sha256": progress_sha,
-                        "receipt_catalog": catalog,
-                    },
-                    gate.get("budget_manifest_receipt"),
-                    gate.get("ledger_advance_receipt"),
-                    gate.get("watermark_advance_receipt"),
-                    allow_complete=True,
-                )
-            errors.extend(evidence_errors)
-            errors.extend(_maintenance_gate_time_errors({
-                "receipt_catalog": catalog,
-                "items_by_id": items_by_id,
-            }, gate))
-            for field, expected in expected_context.items():
-                if gate.get(field) != expected:
-                    errors.append(
-                        "maintenance completion gate %s=%r, expected %r" %
-                        (field, gate.get(field), expected)
-                    )
-
-    if completion_semantics == "maintenance" and task_state != "complete":
-        expected_state = ("invalidated" if task_state == "cancelled"
-                          else "pending")
-        if maintenance_completion.get("state") != expected_state:
-            errors.append(
-                "maintenance task_state=%s requires "
-                "maintenance_completion.state=%s" %
-                (task_state, expected_state)
-            )
-        for field in MAINTENANCE_COMPLETION_FIELDS - {"state"}:
-            if maintenance_completion.get(field) is not None:
-                errors.append(
-                    "non-complete maintenance task requires "
-                    "maintenance_completion.%s=null" % field
-                )
-
-    # Terminal admission cannot predate the last terminal batch event.
-    terminal_times = []
-    for item in items_by_id.values():
-        for field in ("closed_at", "cancelled_at"):
-            value = item.get(field)
-            if _valid_timestamp(value):
-                terminal_times.append(value)
-    if transitions and task_state in ("completion-candidate", "complete") and \
-            terminal_times:
-        candidate = (transitions[-1] if completion_semantics == "maintenance"
-                     else next((entry for entry in transitions
-                                if entry.get("after_task_state") ==
-                                "completion-candidate"), None))
-        candidate_time = _timestamp_value(
-            candidate.get("checked_at")) if candidate else None
-        terminal_instants = [
-            _timestamp_value(value) for value in terminal_times
-        ]
-        terminal_instants = [value for value in terminal_instants
-                             if value is not None]
-        if (candidate_time is not None and terminal_instants and
-                candidate_time < max(terminal_instants)):
-            errors.append(
-                "%s completion admission predates a terminal batch event" %
-                completion_semantics
-            )
-
-    return errors, {
-        "history": history,
-        "latest_receipt": transitions[-1] if transitions else None,
-        "checkpoint_binding": checkpoint_binding,
-        "pending_guidance": pending_guidance,
-        "pending_amendments": pending_amendments,
-        "last_reconciled_guidance_id": _last_reconciled_guidance_id(progress),
-        # Reported, never an error: the live contract's completeness gaps are
-        # repaired by the next admitted adoption plan, not by refusing the
-        # runtime that holds them.  Nothing in the error set reads this key.
-        "contract_load_set_gaps": contract_load_set_gaps,
-    }
 
 
 
@@ -2420,455 +540,149 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def _closed_bundle_seal_state(item, catalog):
-    """Classify one closed item's evidence trio against the cold index.
-
-    The trio -- batch-close gate, pre-close Queue consistency snapshot, and
-    Coverage delta application -- is sealed together or not at all, because
-    a half-sealed bundle can neither replay the hot revalidation nor claim
-    the sealed short-circuit.  Returns ``"hot"``, ``"sealed"``, or
-    ``"mixed"``.
-    """
-    cold = getattr(catalog, "cold", None) or {}
-    trio = [item.get("close_gate_receipt"),
-            item.get("queue_consistency_receipt"),
-            item.get("delta_apply_receipt")]
-    sealed = [receipt_id for receipt_id in trio
-              if _nonempty_string(receipt_id) and receipt_id in cold]
-    if not sealed:
-        return "hot"
-    if len(sealed) != len([r for r in trio if _nonempty_string(r)]):
-        return "mixed"
-    return "sealed"
-
-
-def _sealed_closed_bundle_errors(item, transition, catalog, queue):
-    """Validate one sealed close bundle through its thin projections.
-
-    Reading a projection is sound here only because ``_cold_receipt_store``
-    has already proved, this run, that each projection hashes to the exact
-    sealed record it names and that the seal receipt which produced it
-    still binds the whole index row set byte for byte.  Without those two
-    proofs a projection would be an editable side table asserting its own
-    correctness, and this function would be reading the claim instead of
-    the evidence.
-
-    Given them, the per-run obligation drops to identity: the projections
-    still name the receipts this item and its close transition bind, with
-    the identities their producers recorded.  Body-level bindings (snapshot
-    hashes, delta hashes, disposition schemas) were proven at seal time
-    against exactly the bytes still on disk, and sealing refuses any bundle
-    whose full frozen-history revalidation does not pass at that moment.
-    """
-    errors = []
-    item_id = item.get("id", "<unknown>")
-    cold = getattr(catalog, "cold", None) or {}
-    close_gate_id = item.get("close_gate_receipt")
-    consistency_id = item.get("queue_consistency_receipt")
-    delta_apply_id = item.get("delta_apply_receipt")
-    expectations = (
-        (close_gate_id, "%s sealed batch-close gate" % item_id, {
-            "tool": BATCH_CLOSE_TOOL,
-            "check": "batch_close_gate",
-            "target": item_id,
-            "batch_id": item_id,
-            "task_id": queue.get("task_id"),
-            "result": "pass",
-        }),
-        (consistency_id, "%s sealed Queue consistency gate" % item_id, {
-            "tool": TOOL,
-            "check": GATE_CHECK,
-            "queue_check_mode": "consistency",
-            "task_id": queue.get("task_id"),
-            "result": "pass",
-        }),
-        (delta_apply_id, "%s sealed delta application" % item_id, {
-            "tool": "apply_delta",
-            "check": "delta_apply",
-            "target": item_id,
-            "batch_id": item_id,
-            "task_id": queue.get("task_id"),
-            "result": "pass",
-        }),
-    )
-    for receipt_id, label, expected in expectations:
-        projection = cold.get(receipt_id)
-        if projection is None:
-            errors.append("%s projection is absent from the cold index" %
-                          label)
-            continue
-        for field, value in expected.items():
-            if projection.get(field) != value:
-                errors.append("%s projection has %s=%r, expected %r" %
-                              (label, field, projection.get(field), value))
-    close_projection = cold.get(close_gate_id) or {}
-    close_version = close_projection.get("tool_version")
-    if close_version not in SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS:
-        errors.append("%s sealed batch-close gate has unsupported producer "
-                      "era %r" % (item_id, close_version))
-    if transition is None:
-        return errors
-    if transition.get("queue_consistency_receipt") != consistency_id:
-        errors.append("%s close transition does not bind Queue consistency "
-                      "receipt %s" % (item_id, consistency_id))
-    if transition.get("close_gate_receipt") != close_gate_id:
-        errors.append("%s close transition does not bind batch-close gate "
-                      "receipt %s" % (item_id, close_gate_id))
-    if transition.get("evidence_receipt") != close_gate_id:
-        errors.append("%s close transition evidence_receipt must be the "
-                      "independent batch-close gate" % item_id)
-    if transition.get("delta_apply_receipt") != delta_apply_id:
-        errors.append("%s close transition does not bind delta application "
-                      "receipt %s" % (item_id, delta_apply_id))
-    return errors
-
-
-def _closed_gate_errors(item, transition, catalog, queue,
-                        accounted_versions=frozenset(), root=None):
-    """Revalidate the two independent pre-close gates from frozen history."""
-    errors = []
-    item_id = item.get("id", "<unknown>")
-    consistency_id = item.get("queue_consistency_receipt")
-    close_gate_id = item.get("close_gate_receipt")
-    close_gate_entry = catalog.get(close_gate_id)
-    close_gate_identity = (close_gate_entry[1]
-                           if close_gate_entry is not None else {})
-    consistency_expected = {
-        "tool": TOOL,
-        "check": "required_queue",
-        "queue_check_mode": "consistency",
-        "task_id": queue.get("task_id"),
-    }
-    if transition is not None:
-        consistency_expected.update({
-            "queue_revision": transition.get("queue_revision"),
-            "queue_state_revision": transition.get("before_state_revision"),
-            "required_queue_sha256":
-                transition.get("before_required_queue_sha256"),
-            "coverage_ledger_sha256":
-                transition.get("before_coverage_sha256"),
-            "progress_ledger_sha256":
-                transition.get("before_progress_sha256"),
-        })
-    consistency_receipt = _require_receipt(
-        catalog, consistency_id, "%s Queue consistency gate" % item_id,
-        errors, expected=consistency_expected,
-    )
-    # Historical: a closed batch's pre-close Queue consistency gate, bound to
-    # the frozen before-bytes of a transition that already happened.
-    errors.extend(_producer_era_errors(
-        consistency_receipt, consistency_id,
-        "%s Queue consistency gate" % item_id, accounted_versions))
-    if transition is None:
-        # Transition-history validation reports the missing edge.  Avoid
-        # inventing live-state bindings for an unanchored historical gate.
-        return errors
-    if transition.get("queue_consistency_receipt") != consistency_id:
-        errors.append("%s close transition does not bind Queue consistency "
-                      "receipt %s" % (item_id, consistency_id))
-    if transition.get("close_gate_receipt") != close_gate_id:
-        errors.append("%s close transition does not bind batch-close gate "
-                      "receipt %s" % (item_id, close_gate_id))
-    if transition.get("evidence_receipt") != close_gate_id:
-        errors.append("%s close transition evidence_receipt must be the "
-                      "independent batch-close gate" % item_id)
-    errors.extend(close_gate_receipt_errors(
-        catalog, close_gate_id,
-        item_id=item_id,
-        root=root,
-        task_id=queue.get("task_id"),
-        queue_revision=transition.get("queue_revision"),
-        queue_state_revision=transition.get("before_state_revision"),
-        required_queue_sha256=
-            transition.get("before_required_queue_sha256"),
-        coverage_ledger_sha256=transition.get("before_coverage_sha256"),
-        progress_ledger_sha256=transition.get("before_progress_sha256"),
-        delta_sha256=item.get("delta_sha256"),
-        queue_consistency_receipt=consistency_id,
-        delta_apply_receipt=transition.get("delta_apply_receipt"),
-        work_spec_path=item.get("work_spec_path"),
-        work_spec_sha256=item.get("work_spec_sha256"),
-        manifest=item.get("manifest"),
-        # Historical closure is checked against the identity frozen by its
-        # producer.  A later Standards adoption must not reinterpret a valid
-        # closed edge using the live Profile.
-        selected_profile_manifest=close_gate_identity.get(
-            "selected_profile_manifest"),
-        historical=True,
-    ))
-    return errors
-
-
-
-
-
-
-
-
-
-
-def _close_gate_reuse_errors(items_by_id):
-    """Reject one snapshot-specific close assertion owning two histories."""
-    errors = []
-    owners = {}
-    for item_id, item in sorted(items_by_id.items()):
-        receipt_id = item.get("close_gate_receipt")
-        if not _nonempty_string(receipt_id):
-            continue
-        previous = owners.get(receipt_id)
-        if previous is not None and previous != item_id:
-            errors.append("batch-close gate receipt %s is reused by %s and %s" %
-                          (receipt_id, previous, item_id))
-        else:
-            owners[receipt_id] = item_id
-    return errors
-
-
-def _global_transition_errors(items_by_id, catalog, queue, queue_sha):
-    """Prove that transition evidence is one complete global state history."""
-    errors = []
-    references = {}
-    transitions = []
-    for item_id, item in items_by_id.items():
-        receipt_ids = item.get("transition_receipts")
-        if not isinstance(receipt_ids, list):
-            continue
-        for receipt_id in receipt_ids:
-            if not _nonempty_string(receipt_id):
-                continue
-            if receipt_id in references:
-                errors.append("transition receipt %s is referenced by both %s "
-                              "and %s" %
-                              (receipt_id, references[receipt_id], item_id))
-                continue
-            references[receipt_id] = item_id
-            entry = catalog.get(receipt_id)
-            if entry is not None:
-                transitions.append((item_id, receipt_id, entry[1]))
-
-    by_revision = {}
-    for item_id, receipt_id, receipt in transitions:
-        after_revision = receipt.get("after_state_revision")
-        if isinstance(after_revision, int) and not isinstance(
-                after_revision, bool):
-            by_revision.setdefault(after_revision, []).append(
-                (item_id, receipt_id, receipt))
-        if receipt.get("actor_role") != "integrator":
-            errors.append("transition receipt %s actor_role must be integrator" %
-                          receipt_id)
-        if not _valid_timestamp(receipt.get("checked_at")):
-            errors.append("transition receipt %s checked_at must be a "
-                          "timezone-aware RFC 3339 timestamp" % receipt_id)
-        before_state = receipt.get("before_state")
-        after_state = receipt.get("after_state")
-        before_hold = receipt.get("before_hold_state")
-        after_hold = receipt.get("after_hold_state")
-        if before_state == after_state:
-            if before_hold == after_hold:
-                errors.append("transition receipt %s is a state/hold no-op" %
-                              receipt_id)
-            elif before_state in TERMINAL_STATES:
-                errors.append("transition receipt %s mutates terminal history" %
-                              receipt_id)
-        elif (before_state, after_state) not in LIFECYCLE_EDGES:
-            errors.append("transition receipt %s has illegal lifecycle edge "
-                          "%r -> %r" %
-                          (receipt_id, before_state, after_state))
-
-        evidence_id = receipt.get("evidence_receipt")
-        evidence_required = (
-            (before_state, after_state) in
-            (("queued", "open"), ("open", "merge-ready"),
-             ("merge-ready", "closed")) or
-            (before_state == after_state and
-             before_hold == "revalidation-required" and after_hold == "none")
-        )
-        if evidence_required and not _nonempty_string(evidence_id):
-            errors.append("transition receipt %s requires evidence_receipt" %
-                          receipt_id)
-        evidence_receipt = None
-        if evidence_id is not None:
-            evidence_receipt = _require_receipt(
-                catalog, evidence_id,
-                "transition %s evidence" % receipt_id, errors,
-            )
-        if (evidence_receipt is not None and
-                evidence_receipt.get("tool") == TOOL):
-            expected_evidence = {
-                "coverage_ledger_sha256":
-                    receipt.get("before_coverage_sha256"),
-                "progress_ledger_sha256":
-                    receipt.get("before_progress_sha256"),
-                "required_queue_sha256":
-                    receipt.get("before_required_queue_sha256"),
-                "queue_revision": receipt.get("queue_revision"),
-                "queue_state_revision":
-                    receipt.get("before_state_revision"),
-            }
-            for field, expected in expected_evidence.items():
-                if evidence_receipt.get(field) != expected:
-                    errors.append(
-                        "transition %s evidence %s=%r, expected %r" %
-                        (receipt_id, field,
-                         evidence_receipt.get(field), expected)
-                    )
-
-    state_revision = queue.get("state_revision")
-    if not isinstance(state_revision, int) or isinstance(state_revision, bool):
-        return errors
-    expected_revisions = set(range(1, state_revision + 1))
-    found_revisions = set(by_revision)
-    missing = sorted(expected_revisions - found_revisions)
-    extra = sorted(found_revisions - expected_revisions)
-    repeated = sorted(revision for revision, values in by_revision.items()
-                      if len(values) != 1)
-    if missing or extra or repeated:
-        errors.append("transition receipts must cover every state_revision "
-                      "1..%d exactly once; missing=%s extra=%s repeated=%s" %
-                      (state_revision, missing, extra, repeated))
-
-    ordered = []
-    for revision in sorted(expected_revisions.intersection(found_revisions)):
-        values = by_revision[revision]
-        if len(values) == 1:
-            ordered.append(values[0])
-    previous = None
-    for item_id, receipt_id, receipt in ordered:
-        revision = receipt.get("after_state_revision")
-        if receipt.get("before_state_revision") != revision - 1:
-            errors.append("transition receipt %s does not own exact revision "
-                          "edge %d -> %d" %
-                          (receipt_id, revision - 1, revision))
-        if previous is not None:
-            previous_receipt = previous[2]
-            previous_time = _timestamp_value(
-                previous_receipt.get("checked_at"))
-            current_time = _timestamp_value(receipt.get("checked_at"))
-            if (previous_time is not None and current_time is not None and
-                    current_time < previous_time):
-                errors.append("transition receipt %s moves time backward" %
-                              receipt_id)
-            previous_queue_revision = previous_receipt.get("queue_revision")
-            queue_revision = receipt.get("queue_revision")
-            if (isinstance(previous_queue_revision, int) and
-                    isinstance(queue_revision, int) and
-                    queue_revision < previous_queue_revision):
-                errors.append("transition receipt %s moves queue_revision "
-                              "backward" % receipt_id)
-            if (queue_revision == previous_queue_revision and
-                    receipt.get("before_required_queue_sha256") !=
-                    previous_receipt.get("after_required_queue_sha256")):
-                errors.append("global transition SHA chain breaks before %s" %
-                              receipt_id)
-        previous = (item_id, receipt_id, receipt)
-
-    if ordered:
-        last = ordered[-1][2]
-        if (last.get("after_state_revision") == state_revision and
-                last.get("queue_revision") == queue.get("queue_revision") and
-                last.get("after_required_queue_sha256") != queue_sha):
-            errors.append("latest transition receipt does not match live Queue "
-                          "bytes")
-    return errors
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
