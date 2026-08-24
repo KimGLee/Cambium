@@ -18,6 +18,9 @@ import check_boundary_contract
 import check_corpus_plan
 import check_proof
 import check_queue
+# The running-producer version is patched below, and the reader of
+# that name is the module that derives the requirements.
+import queue_runtime.revalidation
 import check_page_contract
 import check_profile
 import check_residual_content
@@ -136,7 +139,8 @@ class DeterministicGateReceiptIdentityTests(unittest.TestCase):
                 },
             }
             with mock.patch.object(
-                    check_queue, "STANDARDS_ADOPTION_TOOL_VERSION", "1.7.0"):
+                    queue_runtime.revalidation,
+                    "STANDARDS_ADOPTION_TOOL_VERSION", "1.7.0"):
                 requirements = check_queue.standards_revalidation_requirements(
                     root, progress, capabilities=capabilities,
                     catalog=catalog)["B1"]

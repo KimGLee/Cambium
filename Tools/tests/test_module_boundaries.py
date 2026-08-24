@@ -271,6 +271,11 @@ QUEUE_RUNTIME_RANKS = {
     "queue_runtime.review": 2,
     "queue_runtime.task_record": 2,
 
+    "queue_runtime.adoption": 3,
+    "queue_runtime.delta": 3,
+    "queue_runtime.maintenance": 3,
+    "queue_runtime.revalidation": 3,
+
     "queue_runtime": 7,
 }
 
