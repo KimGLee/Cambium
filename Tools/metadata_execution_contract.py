@@ -770,14 +770,20 @@ def compile_metadata_execution_contract(root=None, authority_path=None,
     capabilities = load_operation_capabilities(
         repository, capabilities_path=capabilities_path)
     implementation_snapshots = {}
-    for path in capability_implementation_paths(capabilities):
-        try:
-            implementation_snapshots[path] = kblib.repository_file_snapshot(
-                repository, path, singly_linked=True)
-        except (OSError, TypeError, UnicodeError, ValueError) as exc:
-            raise MetadataExecutionContractError([
-                "capability implementation is unavailable or unstable: "
-                "%s (%s)" % (path, exc)]) from exc
+    # The 47 implementations are mostly siblings, so resolving them one at a
+    # time re-lists the same handful of directories once per file.  This
+    # block already means to read one consistent view -- that is what the
+    # compiled artifact is -- so it says so.
+    with kblib.directory_listing_scope():
+        for path in capability_implementation_paths(capabilities):
+            try:
+                implementation_snapshots[path] = (
+                    kblib.repository_file_snapshot(
+                        repository, path, singly_linked=True))
+            except (OSError, TypeError, UnicodeError, ValueError) as exc:
+                raise MetadataExecutionContractError([
+                    "capability implementation is unavailable or unstable: "
+                    "%s (%s)" % (path, exc)]) from exc
     return _build_contract(
         authority, capabilities, implementation_snapshots)
 

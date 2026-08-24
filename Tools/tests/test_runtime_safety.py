@@ -896,5 +896,75 @@ class RepositorySnapshotTests(unittest.TestCase):
             kblib.repository_snapshot_sha256(self.root)
 
 
+class DirectoryListingScopeTests(unittest.TestCase):
+    """The scope may change when a directory is read, never what is proven.
+
+    Compiling the metadata execution contract resolves 47 sibling files and
+    listed five directories 129 times to do it, one of them 49 times, because
+    every path segment is compared against a fresh directory listing.  That
+    comparison is what rejects a case alias, so the saving has to come from
+    reusing the listing inside a block that already means one consistent
+    view -- not from skipping the comparison.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "Tools").mkdir()
+        for index in range(6):
+            (self.root / "Tools" / ("mod%d.py" % index)).write_text(
+                "VALUE = %d\n" % index, encoding="utf-8")
+        self.names = ["Tools/mod%d.py" % index for index in range(6)]
+
+    def _resolve_all(self):
+        listed = []
+        real_listdir = os.listdir
+
+        def counting(path="."):
+            listed.append(str(path))
+            return real_listdir(path)
+
+        with mock.patch.object(os, "listdir", counting):
+            for name in self.names:
+                kblib.canonical_repository_file(self.root, name)
+        return listed
+
+    def test_without_a_scope_every_resolution_lists_again(self):
+        listed = self._resolve_all()
+        self.assertEqual(12, len(listed))  # six files, two segments each
+
+    def test_inside_a_scope_each_directory_is_listed_once(self):
+        with kblib.directory_listing_scope():
+            listed = self._resolve_all()
+        self.assertEqual(2, len(listed))
+        self.assertEqual(2, len(set(listed)))
+
+    def test_the_scope_does_not_survive_the_block(self):
+        with kblib.directory_listing_scope():
+            self._resolve_all()
+        self.assertEqual(12, len(self._resolve_all()))
+
+    def test_an_exception_still_closes_the_scope(self):
+        with self.assertRaises(RuntimeError):
+            with kblib.directory_listing_scope():
+                raise RuntimeError("boom")
+        self.assertEqual(12, len(self._resolve_all()))
+
+    def test_a_scope_still_refuses_a_spelling_that_is_not_on_disk(self):
+        """The saving must not reach the comparison the listing exists for."""
+        with kblib.directory_listing_scope():
+            kblib.canonical_repository_file(self.root, "Tools/mod0.py")
+            with self.assertRaisesRegex(ValueError, "exactly match"):
+                kblib.canonical_repository_file(self.root, "Tools/MOD0.py")
+
+    def test_a_scope_still_refuses_a_symlink_component(self):
+        (self.root / "link").symlink_to(self.root / "Tools")
+        with kblib.directory_listing_scope():
+            kblib.canonical_repository_file(self.root, "Tools/mod0.py")
+            with self.assertRaisesRegex(ValueError, "symlink"):
+                kblib.canonical_repository_file(self.root, "link/mod0.py")
+
+
 if __name__ == "__main__":
     unittest.main()
