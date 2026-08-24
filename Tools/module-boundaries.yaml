@@ -616,12 +616,12 @@ modules:
       - current_gate_receipt
       - deterministic_scan_input_binding
       - load_gate_context
+      - persisted_property_gate_errors
       - receipt_bindings
       - require_admitted_runtime
       - require_authorities_current
       - require_context_current
       - validate_gate_receipt
-      - validate_persisted_gate_owner
   - module: metadata_property_state
     path: Tools/metadata_property_state.py
     provisional: true
@@ -776,8 +776,6 @@ modules:
       - TOOL_VERSION
       - UPDATE_QUEUE_TOOL_VERSION
       - evidence_identity_errors
-      - fullmatch
-      - pattern
       - property_receipt_utc_date
     exceptions:
       - consumer: check_queue

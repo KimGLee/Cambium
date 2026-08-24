@@ -45,6 +45,11 @@ import metadata_execution_contract
 import metadata_property_state
 import project_page_state
 import standards_state
+# The persisted typed Gate receipt validator this runtime asks for by
+# name.  It used to be defined here and reach back into the Gate
+# runtime through a function-body import; it now lives with the module
+# whose object it validates, and the arrow points one way.
+import metadata_gate_runtime
 
 # The permanent facade.  Every name below is defined in `queue_runtime`
 # and re-exported here because twenty-one shipped modules and twenty-one
@@ -11481,152 +11486,13 @@ def _review_property_evidence_errors(
     return errors
 
 
-def _gate_property_evidence_errors(
-        receipt, *, receipt_id, path, field, value, semantic_fingerprint,
-        metadata_contract_fingerprint, profile_view,
-        active_standards_view, gates_by_id, manifest_sha256, root,
-        rules, current_catalog, coverage_sha256, projected_page_text=None):
-    """Validate a current Profile Gate receipt after page-side projection.
-
-    The producer receipt's exact ``page_sha256`` is its pre-projection page
-    observation, so it remains a required fingerprint but is intentionally
-    not compared with the current full page bytes.  The current semantic
-    fingerprint *is* compared exactly; it excludes every field in the same
-    composed rule set used by the projector.
-    """
-    label = "Coverage property_state.%s for %s" % (field, path)
-    errors = []
-    gate_id = receipt.get("gate_id")
-    gate = gates_by_id.get(gate_id)
-    if gate is None:
-        return [
-            "%s evidence receipt %s names Gate %r outside the authorized "
-            "Profile contract" % (label, receipt_id, gate_id)]
-    if gate.field_id != field or value not in gate.completion_values:
-        errors.append(
-            "%s value=%r is not authorized by receipt Gate %s" %
-            (label, value, gate_id))
-    expected = {
-        "check": "profile-extension-gate",
-        "target": path,
-        "result": "pass",
-        "invalidated_by": None,
-        "gate_id": gate.gate_id,
-        "transition_id": gate.transition_id,
-        "judgment_item_id": gate.judgment_item_id,
-        "property_field": gate.field_id,
-        "requested_completion_value": value,
-        "pass_authority_role_id": gate.pass_authority_role_id,
-        "producer_kind": gate.producer_kind,
-        "producer_capability": gate.producer_capability,
-        "producer_reference": gate.producer_reference,
-        "receipt_schema": gate.receipt_schema,
-        "consumer_capability": gate.consumer_capability,
-        "semantic_content_fingerprint": semantic_fingerprint,
-        "selected_profile_manifest_sha256": manifest_sha256,
-        "active_standards_sha256":
-            (active_standards_view or {}).get("active_standards_sha256"),
-    }
-    for name, expected_value in expected.items():
-        if receipt.get(name) != expected_value:
-            errors.append(
-                "%s evidence receipt %s has %s=%r, expected %r" %
-                (label, receipt_id, name, receipt.get(name), expected_value))
-    errors.extend(evidence_identity_errors(
-        receipt, label, use=EVIDENCE_USE_CURRENT_AUTHORIZATION,
-        profile_view=profile_view,
-        metadata_contract_fingerprint=metadata_contract_fingerprint))
-    if (not isinstance(receipt.get("page_sha256"), str) or
-            not SHA256_RE.fullmatch(receipt["page_sha256"])):
-        errors.append("%s evidence receipt has invalid page_sha256" % label)
-    property_receipt_utc_date(receipt, label, errors)
-    if gate.producer_kind == "manual-attestation":
-        if (receipt.get("tool") != "record_gate_attestation" or
-                receipt.get("tool_version") != "1.0.0"):
-            errors.append(
-                "%s manual evidence was not emitted by the registered "
-                "producer protocol" % label)
-        if receipt.get("actor_role") != gate.pass_authority_role_id:
-            errors.append(
-                "%s manual evidence actor is not the Gate pass authority" %
-                label)
-        statement = receipt.get("attestation_statement")
-        if not _nonempty_string(statement) or receipt.get("details") != statement:
-            errors.append(
-                "%s manual evidence has no exact bounded attestation" %
-                label)
-    elif gate.producer_kind == "deterministic":
-        if (receipt.get("tool") != "record_gate_result" or
-                receipt.get("tool_version") != "1.0.0"):
-            errors.append(
-                "%s deterministic evidence was not emitted by the "
-                "registered-scan adapter protocol" % label)
-        if receipt.get("scan_id") != gate.producer_reference:
-            errors.append(
-                "%s deterministic evidence does not name its registered "
-                "scan" % label)
-    else:
-        errors.append("%s Gate has unsupported producer kind" % label)
-    transition_matches = []
-    for candidate_id, entry in current_catalog.items():
-        candidate = (entry[1] if isinstance(entry, tuple) and len(entry) == 2
-                     else None)
-        if (isinstance(candidate, dict) and
-                candidate.get("tool") == "apply_metadata_transition" and
-                candidate.get("tool_version") == "1.0.0" and
-                candidate.get("check") == "metadata-transition" and
-                candidate.get("gate_receipt") == receipt_id and
-                candidate.get("target") == path and
-                candidate.get("property_field") == field):
-            transition_matches.append((candidate_id, candidate))
-    if len(transition_matches) != 1:
-        errors.append(
-            "%s evidence receipt %s must resolve exactly one current "
-            "Integrator transition receipt; found %d" %
-            (label, receipt_id, len(transition_matches)))
-        return errors
-    try:
-        # Imported inside the function: this is the only place check_queue
-        # needs the Gate runtime, and the dependency runs one way.  The Gate
-        # runtime does not import check_queue, so current property validation
-        # may reuse its closed post-transition schema without a cycle.
-        import metadata_gate_runtime
-        page_snapshot = kblib.repository_target_snapshot(
-            root, path, suffixes=(".md", ".MD"), singly_linked=True)
-        if not page_snapshot.exists:
-            raise ValueError("persisted Gate owner target page is absent")
-        page_binding = page_snapshot
-        if projected_page_text is not None:
-            page_binding = SimpleNamespace(sha256=kblib.sha256_bytes(
-                projected_page_text.encode("utf-8")))
-        context = metadata_gate_runtime.GateRuntimeContext(
-            root=os.path.realpath(os.path.abspath(root)),
-            runtime={"coverage_sha256": coverage_sha256},
-            authority={
-                "root": os.path.realpath(os.path.abspath(root)),
-                "profile_view": profile_view,
-                "active_standards_view": active_standards_view or {},
-            },
-            gate=gate, rules=tuple(rules), page_path=path,
-            page_snapshot=page_binding,
-            semantic_content_fingerprint=semantic_fingerprint,
-            selected_profile_manifest_sha256=manifest_sha256,
-            metadata_contract_fingerprint=metadata_contract_fingerprint,
-            repository_snapshot_sha256=None,
-        )
-        metadata_gate_runtime.validate_persisted_gate_owner(
-            context, receipt, transition_matches[0][1], value)
-    except (OSError, TypeError, UnicodeError, ValueError) as exc:
-        errors.append(
-            "%s persisted producer/Integrator evidence graph is invalid: %s" %
-            (label, exc))
-    return errors
-
 
 def _coverage_property_state_errors(
         root, coverage, current_catalog, queue, profile_view,
         active_standards_view, page_projection_overrides=None,
-        allow_legacy_missing=False):
+        allow_legacy_missing=False,
+        gate_evidence_errors=
+        metadata_gate_runtime.persisted_property_gate_errors):
     """Validate the live Coverage metadata-owner/evidence/projection loop.
 
     Every live page opts into the current contract explicitly, including a
@@ -11875,7 +11741,7 @@ def _coverage_property_state_errors(
                     task_id=queue.get("task_id"),
                     current_catalog=current_catalog))
             else:
-                errors.extend(_gate_property_evidence_errors(
+                errors.extend(gate_evidence_errors(
                     receipt, receipt_id=receipt_id, path=path,
                     field=field, value=value,
                     semantic_fingerprint=evidence_fingerprint,
@@ -14091,6 +13957,8 @@ def validate_runtime(root, allowed_open_delta=None,
                      allow_invalid_current_profile_for_corrective_adoption=
                      False,
                      allow_active_standards_mismatch_for_adoption=False,
+                     gate_evidence_errors=
+                     metadata_gate_runtime.persisted_property_gate_errors,
                      active_standards_state_override=None,
                      authorized_profile_view=None,
                      authorized_active_standards_view=None):
@@ -14496,7 +14364,8 @@ def validate_runtime(root, allowed_open_delta=None,
             active_standards_view,
             page_projection_overrides=page_projection_overrides,
             allow_legacy_missing=
-                allow_legacy_property_state_for_migration))
+                allow_legacy_property_state_for_migration,
+            gate_evidence_errors=gate_evidence_errors))
         # A proposed Coverage override is still inside its sole writer's
         # preflight; the writer-specific planner proves its before/after set
         # and the ordinary persisted validation below resolves the landed

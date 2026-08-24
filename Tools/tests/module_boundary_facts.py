@@ -65,13 +65,22 @@ def module_name(relative_path):
     return ".".join(parts)
 
 
-def _import_bindings(tree, known):
+def _import_bindings(tree, known, known_full=()):
     """Map each local name bound by an import to the shipped module it names.
 
     Aliases and function-body imports are both included: the lazy import that
     hid one dependency cycle in this tree was written inside a function, and a
     guard that only reads module-level statements would have called that tree
     acyclic.
+
+    Only a name that is itself a module is bound here.  `from pkg import sub`
+    binds a module, and attribute access on it is consumption of that module;
+    `from mod import NAME` binds a value, and attribute access on a value is
+    not consumption of anything its owner declared.  Recording the second as
+    if it were the first puts `fullmatch` and `pattern` -- the methods of a
+    compiled regex a consumer imported -- into the owner's declared public
+    surface, and a surface that lists them has stopped answering who offers
+    what.  The import itself is still recorded as consumption of `NAME`.
     """
     bindings = {}
     for node in ast.walk(tree):
@@ -86,10 +95,9 @@ def _import_bindings(tree, known):
             root = node.module.split(".")[0]
             if root in known:
                 for alias in node.names:
-                    # `from pkg import submodule` binds the submodule itself
-                    # when the package ships one; otherwise it binds a symbol,
-                    # which is already a direct consumption of that name.
-                    bindings[alias.asname or alias.name] = root
+                    submodule = "%s.%s" % (node.module, alias.name)
+                    if submodule in known_full:
+                        bindings[alias.asname or alias.name] = root
     return bindings
 
 
@@ -143,7 +151,7 @@ def module_facts(tools_root, relative_path, known, known_full=()):
     name = module_name(relative_path)
     own = name.split(".")[0]
 
-    bindings = _import_bindings(tree, known)
+    bindings = _import_bindings(tree, known, known_full)
     edges = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Attribute):
