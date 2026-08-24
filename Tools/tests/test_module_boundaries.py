@@ -254,7 +254,13 @@ QUEUE_RUNTIME_RANKS = {
 
     "queue_runtime.evidence_identity": 1,
     "queue_runtime.gate_registry": 1,
+    "queue_runtime.locks": 1,
+    "queue_runtime.policy_exceptions": 1,
+    "queue_runtime.producer_era": 1,
+    "queue_runtime.profile_view": 1,
     "queue_runtime.receipts": 1,
+    "queue_runtime.task_contract": 1,
+    "queue_runtime.work_spec": 1,
 
     "queue_runtime": 7,
 }

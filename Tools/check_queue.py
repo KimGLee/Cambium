@@ -76,6 +76,7 @@ from queue_runtime import (
     EVIDENCE_USE_CURRENT_AUTHORIZATION,
     EVIDENCE_USE_TERMINAL_HISTORY,
     EXECUTION_MODES,
+    EXPRESSION_LAYER_SLOT,
     GATE_CHECK,
     HOLDS,
     LEGACY_PROPERTY_ADOPTION_OPERATION,
@@ -85,6 +86,7 @@ from queue_runtime import (
     PROGRESS_PATH,
     QUEUE_EXHAUSTED_GATE,
     QUEUE_PATH,
+    READ_SET_BOUNDARY_OWNER_PATH,
     RECEIPT_REFERENCE_FIELDS,
     REGISTER_AMENDMENT_TOOL,
     REGISTER_AMENDMENT_TOOL_VERSION,
@@ -104,23 +106,52 @@ from queue_runtime import (
     TOOL,
     TOOL_VERSION,
     UPDATE_QUEUE_TOOL_VERSION,
+    WORK_SPEC_FIELDS,
+    WORK_SPEC_PREFIX,
     _Catalog,
     _acyclic,
+    _authorized_profile_view_errors,
+    _bind_generic_lock_receipts,
+    _bind_lock_delta_archives,
+    _bind_lock_receipts,
+    _bind_lock_state_phases,
     _closed_mapping_errors,
     _cold_path_within_root,
     _cold_receipt_store,
+    _contract_anchor_chain,
+    _contract_sha256,
+    _contract_sha_at_revision,
     _current_property_receipt,
     _explicit_string_list_errors,
     _identity,
+    _live_read_set_load_findings,
     _load_state,
     _nonempty_string,
     _normalized_repository_path,
     _path_error,
+    _policy_exception_errors,
+    _producer_era_errors,
+    _profile_view_snapshot_error,
+    _public_profile_load_evidence,
+    _read_set_load_closure,
     _receipt_catalog,
     _repository_evidence_file,
     _require_receipt,
+    _sealed_policy_exception_errors,
+    _standards_adoption_owner_projection_required,
+    _standards_adoption_profile_contract_required,
+    _standards_adoption_profile_inputs_required,
+    _standards_adoption_state_file_required,
+    _standards_adoption_upstream_required,
+    _terminal_proof_profile_binding_errors,
     _timestamp_value,
     _valid_timestamp,
+    _work_spec_binding_errors,
+    _work_spec_errors,
+    _writer_locks,
+    accounted_standards_versions,
+    active_standards_authorized_view,
+    active_standards_view_currency_errors,
     current_receipt_catalog,
     delta_gate_receipt_ids,
     evidence_identity_errors,
@@ -129,6 +160,10 @@ from queue_runtime import (
     partition_boundary_gates_by_lifecycle,
     partition_revalidation_owner_claims,
     producer_module,
+    profile_load_authorized_view,
+    profile_load_authorized_view_currency_errors,
+    profile_load_errors,
+    profile_load_evidence,
     project_adoption_gate_ids,
     projected_revalidation_owners,
     property_receipt_utc_date,
@@ -136,6 +171,7 @@ from queue_runtime import (
     receipt_matches_gate_id,
     registered_gate_dimensions,
     registered_gate_position,
+    selected_profile_manifest_errors,
     standards_gate_capability_registry,
     standards_gate_registry,
     standards_revalidation_capabilities,
@@ -171,41 +207,6 @@ OPERATIONAL_AMENDMENT_OPERATIONS = frozenset((
     "gap-routing-reconciliation", "property-state-migration",
 ))
 
-WORK_SPEC_PREFIX = ".cambium/work_specs"
-WORK_SPEC_FIELDS = frozenset(("work_spec_path", "work_spec_sha256"))
-WORK_SPEC_TOP_LEVEL_FIELDS = frozenset((
-    "schema_version", "batch_id", "manifest", "outcomes", "instructions",
-    "acceptance_conditions", "constraints",
-))
-WORK_SPEC_OUTCOME_FIELDS = frozenset(("outcome_id", "required_result"))
-WORK_SPEC_INSTRUCTION_FIELDS = frozenset((
-    "instruction_id", "order", "target_scope", "required_transformation",
-    "depends_on",
-))
-WORK_SPEC_ACCEPTANCE_FIELDS = frozenset((
-    "condition_id", "target_scope", "observable_predicate",
-    "evidence_requirement",
-))
-WORK_SPEC_CONSTRAINT_FIELDS = frozenset((
-    "constraint_id", "target_scope", "requirement",
-))
-WORK_SPEC_QUEUE_OWNED_FIELDS = frozenset((
-    "id", "family", "order", "record_count", "source_route",
-    "execution_mode", "depends_on", "confirmation_required", "state",
-    "lifecycle", "hold", "hold_state", "work_spec_path",
-    "work_spec_sha256", "opened_at", "activation_receipt",
-    "confirmation_receipt", "merge_ready_at", "delta_path",
-    "delta_sha256", "closed_at", "queue_consistency_receipt",
-    "close_gate_receipt", "delta_apply_receipt", "cancelled_at",
-    "cancellation_amendment", "hold_reason", "successor_of",
-    "invalidation_history",
-    "queue_revision", "state_revision", "revision", "receipts",
-    "transition_receipts", "batch_receipts", "revalidation_receipts",
-))
-WORK_SPEC_RECORD_ID_RE = re.compile(
-    r"[A-Za-z][A-Za-z0-9]*(?:[-_][A-Za-z0-9]+)*\Z"
-)
-WORK_SPEC_SENTINELS = ("TODO(batch)", "REPLACE-ME")
 
 REQUIRED_ITEM_FIELDS = (
     "id", "family", "order", "record_count", "manifest", "source_route",
@@ -253,7 +254,6 @@ COVERAGE_DISPOSITIONS = frozenset((
 HUB_PAGE_TYPES = frozenset(("overview", "runtime-card", "card-index"))
 HUB_TERM_TYPE = "term"
 HUB_TERM_SCOPE = "shared"
-EXPRESSION_LAYER_SLOT = "Expression Layer Entry"
 HUB_DEPENDENCY_MAP_LABEL = "existing canonical dependency-map"
 HUB_EXIT_HINT = ("K13/10 admits a hub-editing batch only through an exclusive "
                  "or serial-integrator execution mode")
@@ -280,41 +280,6 @@ CLOSED_LIST_EVIDENCE_FIELDS = (
 LEGACY_CLOSED_LIST_VERSIONS = frozenset(("1.4.0",))
 LEGACY_CLOSED_LIST_EVIDENCE_FIELDS = CLOSED_LIST_EVIDENCE_FIELDS[:-1]
 
-LOCK_STATE_FINGERPRINTS = {
-    "coverage": {
-        "before": ("before_coverage_sha256",),
-        "planned_after": ("planned_after_coverage_sha256",),
-    },
-    "queue": {
-        # Queue writers predate the cross-Ledger transaction and use the
-        # longer Required Queue spelling.  Both names identify the exact same
-        # canonical file and are accepted only when they do not conflict.
-        "before": ("before_queue_sha256",
-                   "before_required_queue_sha256"),
-        "planned_after": ("planned_after_queue_sha256",
-                          "planned_after_required_queue_sha256"),
-    },
-    "progress": {
-        "before": ("before_progress_sha256",),
-        "planned_after": ("planned_after_progress_sha256",),
-    },
-    "standards": {
-        # Ordinary writers do not change adopter Standards state, but their
-        # frozen runtime-authority context already records the exact active
-        # bytes.  Treat that existing field as the before-image alias so
-        # interrupted-write recovery does not call a bound authority input
-        # unavailable. Standards adoption supplies its explicit before/after
-        # pair and therefore retains the four-state transaction distinction.
-        "before": ("before_standards_state_sha256",
-                   "active_standards_sha256"),
-        "planned_after": ("planned_after_standards_state_sha256",),
-    },
-}
-GENERIC_WRITER_TOOLS = frozenset((
-    "apply_delta", "update_queue", "compile_queue", "update_task",
-    "check_batch_close", "adopt_standards", "register_amendment",
-    "apply_contract_amendment", "apply_task_plan", "seal_receipts",
-))
 SUPPORTED_APPLY_DELTA_TOOL_VERSIONS = frozenset((
     "1.4.0", "1.5.0", "1.6.0"))
 # Batch-close has a finite historical protocol catalog because its 1.4 era
@@ -341,13 +306,6 @@ HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
     "1.4.0": "1.6.0",
 }
 BATCH_REVIEW_CHECK = "batch_gate"
-# ``check_proof`` 1.16 first bound the authorized Profile snapshot and typed
-# closure. Version 1.17 additionally binds the three root-owned profile-load
-# inputs and the complete repository snapshot. Historical replay applies each
-# producer era's promised shape only.
-PROFILE_BOUND_TERMINAL_PROOF_MIN_VERSION = (1, 16, 0)
-PROFILE_INPUT_BOUND_TERMINAL_PROOF_MIN_VERSION = (1, 17, 0)
-REPOSITORY_BOUND_TERMINAL_PROOF_MIN_VERSION = (1, 17, 0)
 CORPUS_PLAN_TRIGGERS = frozenset(("R13", "manifest"))
 CORPUS_PLAN_PATH_SHA_FIELDS = (
     ("selected_profile_manifest", "selected_profile_manifest_sha256"),
@@ -414,11 +372,6 @@ CONTRACT_FIELDS = frozenset((
 CONTRACT_OPTIONAL_FIELDS = frozenset((
     "policy_exceptions", "amendment_authority",
 ))
-POLICY_EXCEPTION_FIELDS = frozenset((
-    "decision_id", "policy_id", "baseline_policy_fingerprint", "limit",
-    "scope_kind", "scope_ref", "rationale", "approval_reference",
-))
-POLICY_EXCEPTION_SCOPE_KINDS = frozenset(("task", "repository-snapshot"))
 # Producer eras whose batch-close protocol carries the policy-exception
 # disposition.  K12/10 producer-era identity cuts both ways: an older bundle
 # is never re-judged against members its era lacked, and it is never allowed
@@ -433,10 +386,6 @@ COMPACT_CLOSE_EVIDENCE_VERSIONS = frozenset((
 ))
 CANDIDATE_CONTINUATION_VERSIONS = frozenset((
     "1.10.0", "1.11.0", "1.12.0"))
-SEALED_POLICY_EXCEPTION_FIELDS = frozenset((
-    "decision_id", "policy_id", "limit", "scope_kind", "scope_ref",
-    "policy_fingerprint", "pages", "total",
-))
 CHECKPOINT_FIELDS = frozenset((
     "recorded_at", "summary", "task_state", "task_transition_receipt",
     "coverage_sha256", "required_queue_sha256", "queue_revision",
@@ -476,17 +425,7 @@ GUIDANCE_STATUSES = frozenset((
 AMENDMENT_COMMON_FIELDS = frozenset((
     "id", "date", "summary", "status", "writeback_done",
 ))
-STANDARDS_ADOPTION_PROFILE_CONTRACT_MIN_VERSION = (1, 3, 0)
-# The 1.5 producer records where the adopted revision came from: the
-# distribution has no version numbers by design, so upstream/downstream
-# comparability is the adoption record's job, not a prose convention's.
-STANDARDS_ADOPTION_UPSTREAM_MIN_VERSION = (1, 5, 0)
-STANDARDS_ADOPTION_PROFILE_INPUT_MIN_VERSION = (1, 4, 0)
-STANDARDS_ADOPTION_OWNER_PROJECTION_MIN_VERSION = (1, 6, 0)
 STANDARDS_REVALIDATION_CAPABILITY_PROTOCOL = "owner-projection-v1"
-READ_SET_BOUNDARY_OWNER_PATH = \
-    "kernel/K00 Standards Control/15 Read Set Loading Boundaries.md"
-READ_SET_PATH_PREFIX = "kernel/Read Sets/"
 
 STANDARDS_ADOPTION_PLAN_FIELDS = frozenset((
     "schema_version", "adoption_id", "task_id", "task_state_before",
@@ -641,195 +580,8 @@ FINAL_CONTROL_STATUSES = frozenset((
 
 
 
-def _policy_exception_errors(value, label):
-    """Validate the contract's bounded policy exceptions, K13/02 shape.
-
-    Every entry is an answer a person already gave: which policy it excepts,
-    the bound it grants, what it was granted against, and where the approval
-    lives.  The baseline fingerprint is what makes an exception die with the
-    policy it was judged against instead of surviving a Standards or Profile
-    revision it never saw.
-    """
-    errors = []
-    if not isinstance(value, list):
-        return ["%s must be an explicit list" % label]
-    seen = set()
-    for index, entry in enumerate(value):
-        entry_label = "%s[%d]" % (label, index)
-        if not isinstance(entry, dict):
-            errors.append("%s must be a mapping" % entry_label)
-            continue
-        errors.extend(_closed_mapping_errors(
-            entry, entry_label, POLICY_EXCEPTION_FIELDS))
-        if not isinstance(entry, dict) or set(entry) - POLICY_EXCEPTION_FIELDS:
-            continue
-        for field in ("decision_id", "policy_id", "scope_ref", "rationale",
-                      "approval_reference"):
-            if not _nonempty_string(entry.get(field)):
-                errors.append("%s %s must be a non-empty string" %
-                              (entry_label, field))
-        decision = entry.get("decision_id")
-        if _nonempty_string(decision):
-            if decision in seen:
-                errors.append("%s repeats decision_id %s" %
-                              (label, decision))
-            seen.add(decision)
-        fingerprint = entry.get("baseline_policy_fingerprint")
-        if (not isinstance(fingerprint, str) or
-                not SHA256_RE.fullmatch(fingerprint)):
-            errors.append(
-                "%s baseline_policy_fingerprint must be sha256:<64 lowercase "
-                "hex>; an exception unbound from the policy bytes it was "
-                "judged against would survive revisions it never saw" %
-                entry_label)
-        policy_id = entry.get("policy_id")
-        registered = (
-            contract_exception_policy.POLICY_REGISTRY.get(policy_id)
-            if isinstance(policy_id, str) else None)
-        if _nonempty_string(policy_id) and registered is None:
-            errors.append(
-                "%s policy_id %r is not in the closed policy registry; an "
-                "exception to a policy nobody registered is unbounded "
-                "authorization" % (entry_label, policy_id))
-        limit = entry.get("limit")
-        domain = registered.get("limit_domain") if registered else None
-        if (not isinstance(limit, (int, float)) or isinstance(limit, bool)):
-            errors.append("%s limit must be a number" % entry_label)
-        elif domain == "percent-share-under-100" and not 0 <= limit < 100:
-            errors.append(
-                "%s limit must be a corpus share at least 0 and under 100; "
-                "%r is not a bound, per %s" %
-                (entry_label, limit, registered["owner"]))
-        elif domain == "record-count-ceiling" and (
-                isinstance(limit, float) or limit < 0):
-            errors.append(
-                "%s limit must be a non-negative whole record count; %r "
-                "cannot be compared to a number of records, per %s" %
-                (entry_label, limit, registered["owner"]))
-        if entry.get("scope_kind") not in POLICY_EXCEPTION_SCOPE_KINDS:
-            errors.append(
-                "%s scope_kind must be one of %s" %
-                (entry_label,
-                 ", ".join(sorted(POLICY_EXCEPTION_SCOPE_KINDS))))
-    # Joint bound and conflict rules across the register: the granted P0 and
-    # P1 ceilings partition the same corpus as the standing quotas do, and
-    # two grants for the same policy in the same scope are a conflict, not a
-    # choice the consumer may make.
-    by_key = {}
-    ceilings = {}
-    for entry in value:
-        if not isinstance(entry, dict):
-            continue
-        policy_id = entry.get("policy_id")
-        limit = entry.get("limit")
-        key = (policy_id, entry.get("scope_kind"), entry.get("scope_ref"))
-        if all(key):
-            if key in by_key:
-                errors.append(
-                    "%s carries conflicting grants for %s in the same scope; "
-                    "one policy has one current bound" % (label, policy_id))
-            by_key[key] = entry
-        if (isinstance(limit, (int, float)) and not isinstance(limit, bool)
-                and isinstance(policy_id, str) and
-                policy_id in contract_exception_policy.POLICY_REGISTRY):
-            ceilings[policy_id] = max(ceilings.get(policy_id, 0), limit)
-    if (ceilings.get("priority_quota.P0", 0) +
-            ceilings.get("priority_quota.P1", 0)) >= 100:
-        errors.append(
-            "%s granted quota ceilings sum to %.1f%%; K00/07 requires the "
-            "pair to stay strictly below 100 so the P2 remainder class "
-            "stays non-empty" %
-            (label, ceilings.get("priority_quota.P0", 0) +
-             ceilings.get("priority_quota.P1", 0)))
-    return errors
 
 
-def _sealed_policy_exception_errors(sealed, decision_id, candidate_type,
-                                    label):
-    """Validate one sealed policy-exception decision record, strictly.
-
-    The sealed mapping is the durable record of an authorization; replay
-    validates it with the same severity the close-time writer applied, and
-    every check here FAILS CLOSED: a field of the wrong type is an error,
-    never a skipped comparison.  In particular the share arithmetic is only
-    meaningful over validated integers -- guarding it behind an isinstance
-    test that silently skips on mismatch would let a string smuggle an
-    unverified authorization through replay.
-    """
-    errors = []
-    errors.extend(_closed_mapping_errors(
-        sealed, "%s sealed policy exception" % label,
-        SEALED_POLICY_EXCEPTION_FIELDS))
-    if set(sealed) != set(SEALED_POLICY_EXCEPTION_FIELDS):
-        return errors
-    if sealed.get("decision_id") != decision_id:
-        errors.append("%s sealed decision_id does not match accepted_by" %
-                      label)
-    policy_id = sealed.get("policy_id")
-    registered = (contract_exception_policy.POLICY_REGISTRY.get(policy_id)
-                  if isinstance(policy_id, str) else None)
-    if registered is None:
-        errors.append(
-            "%s sealed policy_id %r is not in the closed policy registry" %
-            (label, policy_id))
-    else:
-        # The candidate names its class in its type (`...:priority-quota-P0`)
-        # and the exception names its policy; the two must be the same class.
-        # A P0 excess accepted through a P1 grant is an authorization for a
-        # different decision than the one the reviewer sealed.
-        suffix = str(candidate_type or "").rsplit(":", 1)[-1]
-        expected_suffix = "priority-quota-%s" % registered.get("quota_class")
-        if suffix != expected_suffix:
-            errors.append(
-                "%s sealed policy %s covers class %s, but the candidate is "
-                "%r; an exception authorizes exactly its own class" %
-                (label, policy_id, registered.get("quota_class"),
-                 candidate_type))
-    fingerprint = sealed.get("policy_fingerprint")
-    if not isinstance(fingerprint, str) or not SHA256_RE.fullmatch(
-            fingerprint):
-        errors.append(
-            "%s sealed policy_fingerprint must be sha256:<64 lowercase "
-            "hex>" % label)
-    if sealed.get("scope_kind") not in POLICY_EXCEPTION_SCOPE_KINDS:
-        errors.append("%s sealed scope_kind must be one of %s" %
-                      (label, ", ".join(sorted(POLICY_EXCEPTION_SCOPE_KINDS))))
-    if not _nonempty_string(sealed.get("scope_ref")):
-        errors.append("%s sealed scope_ref must be a non-empty string" %
-                      label)
-    limit = sealed.get("limit")
-    limit_ok = (not isinstance(limit, bool) and
-                isinstance(limit, (int, float)))
-    if not limit_ok:
-        errors.append("%s sealed limit must be a number" % label)
-    elif (registered is not None and
-          registered.get("limit_domain") == "percent-share-under-100" and
-          not 0 <= limit < 100):
-        errors.append(
-            "%s sealed limit %r is not a corpus share at least 0 and under "
-            "100" % (label, limit))
-        limit_ok = False
-    counts_ok = True
-    for field in ("pages", "total"):
-        value = sealed.get(field)
-        if isinstance(value, bool) or not isinstance(value, int):
-            errors.append("%s sealed %s must be an integer" % (label, field))
-            counts_ok = False
-    if counts_ok:
-        pages, total = sealed["pages"], sealed["total"]
-        if not (0 <= pages <= total and total >= 1):
-            errors.append(
-                "%s sealed counts %r/%r are not a corpus share" %
-                (label, pages, total))
-            counts_ok = False
-    if (counts_ok and limit_ok and
-            not kblib.quota_share_within_limit(
-                sealed["pages"], sealed["total"], limit)):
-        errors.append(
-            "%s sealed share %s/%s exceeds the sealed limit %r; the receipt "
-            "claims an authorization its own numbers refute" %
-            (label, sealed.get("pages"), sealed.get("total"), limit))
-    return errors
 
 
 
@@ -928,232 +680,10 @@ def _standards_adoption_shape_errors(progress):
     return errors
 
 
-def _contract_sha256(progress):
-    """Return the canonical fingerprint of the immutable Task Contract.
-
-    Before initial Queue materialization the contract is still an adopter
-    input.  Once materialized, the compiler receipt and every task-state
-    transition must carry this exact fingerprint.  Until a dedicated contract
-    Amendment writer exists, any later mutation therefore fails closed.
-    """
-    contract = progress.get("contract") if isinstance(progress, dict) else None
-    if not isinstance(contract, dict):
-        return None
-    try:
-        return kblib.sha256_bytes(kblib.canonical_yaml(contract))
-    except (TypeError, ValueError, kblib.YamlSubsetError):
-        return None
 
 
-def _contract_anchor_chain(progress, catalog):
-    """Return the hash-linked Task Contract anchor chain.
-
-    Scope Amendments and Standards adoptions are independent append-only logs.
-    Their receipt before/after contract fingerprints, rather than list order,
-    form one unambiguous chain.  This lets a later Amendment continue from an
-    adopted Standards contract without either writer owning the other's log.
-    """
-    errors = []
-    receipt_id = progress.get("initial_queue_receipt")
-    entry = catalog.get(receipt_id) if _nonempty_string(receipt_id) else None
-    if entry is None:
-        return [], errors
-    initial = entry[1]
-    anchor = initial.get("contract_sha256")
-    revision = initial.get("after_queue_revision")
-    version = initial.get("contract_version")
-    scope = initial.get("contract_scope_version")
-    if not isinstance(anchor, str) or not SHA256_RE.fullmatch(anchor):
-        errors.append("initial Queue receipt has invalid contract_sha256")
-        return [], errors
-    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
-        errors.append("initial Queue receipt has invalid contract anchor revision")
-        return [], errors
-    if not _nonempty_string(version):
-        errors.append("initial Queue receipt has invalid contract_version anchor")
-    if not _nonempty_string(scope):
-        errors.append("initial Queue receipt has invalid contract_scope_version anchor")
-    chain = [{
-        "queue_revision": revision,
-        "contract_sha256": anchor,
-        "contract_version": version,
-        "scope_version": scope,
-        "receipt_id": receipt_id,
-    }]
-    events = []
-    for amendment in progress.get("amendments", []) if isinstance(
-            progress.get("amendments"), list) else []:
-        if (not isinstance(amendment, dict) or
-                amendment.get("operation") not in
-                ("scope-replan", "cancel-batch", "contract-amendment") or
-                amendment.get("status") != "verified" or
-                amendment.get("writeback_done") is not True):
-            continue
-        commit_id = amendment.get("verification_receipt")
-        commit_entry = catalog.get(commit_id) if _nonempty_string(
-            commit_id) else None
-        if commit_entry is None:
-            continue
-        receipt = commit_entry[1]
-        label = "Amendment %s contract anchor" % amendment.get("id")
-        valid = True
-        for field in ("before_contract_sha256", "after_contract_sha256"):
-            value = receipt.get(field)
-            if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
-                errors.append("%s has invalid %s" % (label, field))
-                valid = False
-        if receipt.get("after_contract_scope_version") != amendment.get(
-                "scope_version_after"):
-            errors.append("%s after scope does not match its Amendment" % label)
-            valid = False
-        if receipt.get("before_contract_scope_version") != amendment.get(
-                "scope_version_before"):
-            errors.append("%s before scope does not match its Amendment" % label)
-            valid = False
-        if (amendment.get("operation") == "contract-amendment" and
-                receipt.get("before_contract_scope_version") !=
-                receipt.get("after_contract_scope_version")):
-            # Scope belongs to the replan machinery; a contract amendment
-            # that moved scope_version would be a scope change routed
-            # around the Coverage proposal it requires.
-            errors.append("%s may not change scope_version" % label)
-            valid = False
-        if not _nonempty_string(receipt.get("after_contract_version")):
-            errors.append("%s has invalid after_contract_version" % label)
-            valid = False
-        if receipt.get("queue_revision_after") != amendment.get(
-                "queue_revision_after"):
-            errors.append(
-                "%s queue revision does not match its Amendment" % label
-            )
-            valid = False
-        if valid:
-            events.append({
-                "label": label,
-                "receipt_id": commit_id,
-                "before_sha": receipt.get("before_contract_sha256"),
-                "after_sha": receipt.get("after_contract_sha256"),
-                "before_version": receipt.get("before_contract_version"),
-                "after_version": receipt.get("after_contract_version"),
-                "before_scope": receipt.get("before_contract_scope_version"),
-                "after_scope": receipt.get("after_contract_scope_version"),
-                "revision_before": receipt.get("queue_revision_before"),
-                "revision_after": receipt.get("queue_revision_after"),
-            })
-    for adoption in progress.get("standards_adoptions", []) if isinstance(
-            progress.get("standards_adoptions"), list) else []:
-        if not isinstance(adoption, dict):
-            continue
-        commit_id = adoption.get("verification_receipt")
-        commit_entry = catalog.get(commit_id) if _nonempty_string(
-            commit_id) else None
-        if commit_entry is None:
-            continue
-        receipt = commit_entry[1]
-        label = "Standards adoption %s contract anchor" % adoption.get("id")
-        valid = True
-        for field in ("before_contract_sha256", "after_contract_sha256"):
-            value = receipt.get(field)
-            if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
-                errors.append("%s has invalid %s" % (label, field))
-                valid = False
-        if receipt.get("queue_revision_before") != adoption.get(
-                "queue_revision_before") or receipt.get(
-                    "queue_revision_after") != adoption.get(
-                        "queue_revision_after"):
-            errors.append("%s queue revision does not match its record" % label)
-            valid = False
-        if receipt.get("before_contract_scope_version") != receipt.get(
-                "after_contract_scope_version"):
-            errors.append("%s may not change scope_version" % label)
-            valid = False
-        if (receipt.get("before_contract_version") != adoption.get(
-                "contract_version_before") or
-                receipt.get("after_contract_version") != adoption.get(
-                    "contract_version_after")):
-            errors.append("%s contract versions do not match its record" % label)
-            valid = False
-        if valid:
-            events.append({
-                "label": label,
-                "receipt_id": commit_id,
-                "before_sha": receipt.get("before_contract_sha256"),
-                "after_sha": receipt.get("after_contract_sha256"),
-                "before_version": receipt.get("before_contract_version"),
-                "after_version": receipt.get("after_contract_version"),
-                "before_scope": receipt.get("before_contract_scope_version"),
-                "after_scope": receipt.get("after_contract_scope_version"),
-                "revision_before": receipt.get("queue_revision_before"),
-                "revision_after": receipt.get("queue_revision_after"),
-            })
-
-    remaining = list(events)
-    while remaining:
-        # A queue-replan bumps the live queue_revision without touching the
-        # Task Contract, so it is deliberately not an anchor event; the next
-        # anchor event therefore continues from the same contract identity at
-        # a strictly later revision. The contract bytes, version, and scope
-        # remain the chain; revisions only need to stay monotonic and agree
-        # with each event's own sealed before/after pair.
-        candidates = [event for event in remaining
-                      if event["before_sha"] == anchor and
-                      event["before_version"] == version and
-                      event["before_scope"] == scope and
-                      isinstance(event["revision_before"], int) and
-                      not isinstance(event["revision_before"], bool) and
-                      event["revision_before"] >= revision]
-        if not candidates:
-            errors.extend("%s does not continue the prior contract anchor" %
-                          event["label"] for event in remaining)
-            break
-        if len(candidates) != 1:
-            errors.append("contract anchor chain forks at %s via %s" % (
-                anchor, ", ".join(sorted(event["label"]
-                                         for event in candidates))))
-            break
-        event = candidates[0]
-        remaining.remove(event)
-        next_revision = event["revision_after"]
-        if (not isinstance(next_revision, int) or
-                isinstance(next_revision, bool) or
-                next_revision != event["revision_before"] + 1):
-            errors.append("%s must increment queue_revision exactly once" %
-                          event["label"])
-            break
-        anchor = event["after_sha"]
-        version = event["after_version"]
-        scope = event["after_scope"]
-        revision = next_revision
-        chain.append({
-            "queue_revision": revision,
-            "contract_sha256": anchor,
-            "contract_version": version,
-            "scope_version": scope,
-            "receipt_id": event["receipt_id"],
-        })
-
-    if (isinstance(progress.get("queue_revision"), int) and
-            not isinstance(progress.get("queue_revision"), bool) and
-            revision > progress.get("queue_revision")):
-        errors.append("contract anchor chain points beyond live Queue revision")
-    live_contract = progress.get("contract") if isinstance(
-        progress.get("contract"), dict) else {}
-    if chain:
-        if anchor != _contract_sha256(progress):
-            errors.append("contract anchor chain does not bind the current Task Contract")
-        if version != live_contract.get("contract_version"):
-            errors.append("contract anchor chain does not bind current contract_version")
-        if scope != live_contract.get("scope_version"):
-            errors.append("contract anchor chain does not bind current scope_version")
-    return chain, errors
 
 
-def _contract_sha_at_revision(chain, revision):
-    anchors = [entry for entry in chain
-               if isinstance(revision, int) and
-               isinstance(entry.get("queue_revision"), int) and
-               entry.get("queue_revision") <= revision]
-    return anchors[-1].get("contract_sha256") if anchors else None
 
 
 def _progress_shape_errors(progress):
@@ -2153,266 +1683,18 @@ def standards_revalidation_receipt_errors(result, batch_id, receipt_id):
     return errors
 
 
-def _read_set_load_closure(root, selected_paths,
-                           selected_profile_manifest=None,
-                           selected_profile_route_ids=None):
-    """Resolve Read Sets and non-Read-Set targets from selected boundaries.
-
-    Boundary references to another Read Set select that route too, so traversal
-    continues until no new Read Set remains. ``visited`` makes cycles benign.
-    A kernel Read Set proves both its canonical namespace and ``type:
-    read-set``; a profile supplemental Read Set proves ``type:
-    profile-read-set`` in its own frontmatter. Every other boundary target is
-    a loaded module, including ordinary indexes inside ``kernel/Read Sets``.
-
-    Every selected or boundary-referenced Read Set is decoded as UTF-8 and
-    classified from its own frontmatter.  Kernel and profile namespaces are
-    not interchangeable: ``read-set`` belongs under ``kernel/Read Sets/``;
-    ``profile-read-set`` belongs under the selected profile directory and its
-    route ID must be in the selected profile-route list.  Read/decode failures
-    and namespace/route mismatches are explicit closure errors rather than a
-    reason to silently shrink the load obligation.
-    """
-    selected = {
-        value for value in (selected_paths or []) if _nonempty_string(value)
-    }
-    read_sets = set()
-    invalid_selected = set()
-    modules = set()
-    pending = []
-    visited = set()
-    closure_errors = []
-    profile_dir = (os.path.dirname(selected_profile_manifest)
-                   if _nonempty_string(selected_profile_manifest) else None)
-    profile_routes = {
-        value for value in (selected_profile_route_ids or [])
-        if _nonempty_string(value)
-    }
-
-    def read_text(relative):
-        try:
-            path = kblib.repository_path(
-                root, relative, must_exist=True, reject_symlink=True)
-            with open(path, encoding="utf-8") as handle:
-                return handle.read(), None
-        except (OSError, UnicodeError, ValueError) as exc:
-            return None, str(exc)
-
-    def frontmatter_fields(text):
-        frontmatter = kblib.extract_frontmatter(text or "")
-        if frontmatter is None:
-            return {}
-        try:
-            fields = kblib.parse_yaml_subset(frontmatter)
-        except (ValueError, kblib.YamlSubsetError):
-            return {}
-        return fields if isinstance(fields, dict) else {}
-
-    def read_set_role_error(relative, text):
-        document_type = kblib.read_set_document_type(text)
-        if document_type is None:
-            return ("%s does not prove frontmatter type read-set or "
-                    "profile-read-set" % relative)
-        if document_type == "read-set":
-            if not relative.startswith(READ_SET_PATH_PREFIX):
-                return ("%s declares type read-set outside the canonical %s "
-                        "namespace" % (relative, READ_SET_PATH_PREFIX))
-            return None
-        if not profile_dir or not (relative == profile_dir or
-                                   relative.startswith(profile_dir + "/")):
-            return ("%s declares type profile-read-set outside the selected "
-                    "profile directory %r" % (relative, profile_dir))
-        route_id = frontmatter_fields(text).get("route_id")
-        if not _nonempty_string(route_id) or route_id not in profile_routes:
-            return ("%s declares profile Read Set route_id %r, which is not "
-                    "present in selected_profile_route_ids" %
-                    (relative, route_id))
-        return None
-
-    for relative in sorted(selected):
-        text, read_error = read_text(relative)
-        if text is None:
-            closure_errors.append(
-                "selected Read Set %s is unsafe or unreadable UTF-8: %s" %
-                (relative, read_error))
-            continue
-        role_error = read_set_role_error(relative, text)
-        if role_error:
-            invalid_selected.add(relative)
-            closure_errors.append(role_error)
-            continue
-        read_sets.add(relative)
-        pending.append(relative)
-
-    pending.sort(reverse=True)
-    while pending:
-        relative = pending.pop()
-        if relative in visited:
-            continue
-        visited.add(relative)
-        text, read_error = read_text(relative)
-        if text is None:
-            closure_errors.append(
-                "transitively selected Read Set %s is unsafe or unreadable "
-                "UTF-8: %s" % (relative, read_error))
-            continue
-        for target in kblib.read_set_boundary_targets(text):
-            target_text, target_error = read_text(target)
-            if target_text is None:
-                closure_errors.append(
-                    "Read Set boundary target %s is unsafe or unreadable "
-                    "UTF-8: %s" % (target, target_error))
-                continue
-            document_type = (
-                kblib.read_set_document_type(target_text)
-            )
-            if document_type is not None:
-                role_error = read_set_role_error(target, target_text)
-                if role_error:
-                    closure_errors.append(role_error)
-                    continue
-                if target not in read_sets:
-                    read_sets.add(target)
-                    pending.append(target)
-                continue
-            modules.add(target)
-
-    return read_sets, modules, invalid_selected, sorted(set(closure_errors))
 
 
-def _live_read_set_load_findings(root, contract):
-    """Return structural errors and closure gaps of the live Task Contract.
-
-    The two findings are separated because only one of them can be repaired
-    from where the checker stands.  A selected Read Set that is unsafe,
-    unreadable, or unusable as a traversal root leaves the load declaration
-    unresolvable, and no reading of history makes broken bytes resolvable, so
-    it stays an error; ``invalid_selected`` is that same class, a path that
-    cannot serve as a traversal root, and is reported with it.  A *completeness*
-    gap -- a Read Set or a non-Read-Set target the resolved closure names and
-    the declaration omits -- is returned separately and is never a runtime
-    error.
-
-    The reason is the one the plan-side twin states at ``validate_current``:
-    the live contract's five load fields were written by a Standards adoption
-    whose plan bytes are sealed into append-only receipts, and
-    ``Tools/adopt_standards.py`` -- the only writer that can re-declare them
-    for a running task -- refuses to start while ``validate_runtime`` reports
-    an error.  Making the gap an error would therefore lock the instance out of
-    the one transaction that repairs it, exactly as refusing a sealed
-    historical plan would.  K00/15 puts the judgment where a declaration is
-    still writable: a plan being admitted.
-    """
-    if not isinstance(contract, dict):
-        return [], []
-    selected_values = contract.get("selected_read_sets")
-    loaded_values = contract.get("loaded_module_paths")
-    if not isinstance(selected_values, list) or not isinstance(
-            loaded_values, list):
-        return [], []
-    selected = set(value for value in selected_values
-                   if _nonempty_string(value))
-    loaded = set(value for value in loaded_values
-                 if _nonempty_string(value))
-    read_sets, modules, invalid_selected, closure_errors = \
-        _read_set_load_closure(
-            root, selected,
-            contract.get("selected_profile_manifest"),
-            contract.get("selected_profile_route_ids"),
-        )
-    errors = ["Progress contract Read Set load closure: %s" % error
-              for error in closure_errors]
-    for target in sorted(invalid_selected):
-        if not any(target in error for error in closure_errors):
-            errors.append(
-                "Progress contract.selected_read_sets path %s cannot be used "
-                "as a Read Set traversal root, per %s" %
-                (target, READ_SET_BOUNDARY_OWNER_PATH))
-    gaps = []
-    for target in sorted(read_sets - selected):
-        gaps.append(
-            "Progress contract.selected_read_sets omits %s, which a loading "
-            "boundary of its transitive Read Set closure selects, per %s" %
-            (target, READ_SET_BOUNDARY_OWNER_PATH))
-    for target in sorted(modules - loaded):
-        gaps.append(
-            "Progress contract.loaded_module_paths omits %s, which a loading "
-            "boundary in the transitive Read Set closure names, per %s" %
-            (target, READ_SET_BOUNDARY_OWNER_PATH))
-    return errors, gaps
 
 
-def _standards_adoption_profile_contract_required(producer_tool_version):
-    """Return whether this producer era promised a durable typed contract.
-
-    Only an exact semantic version below 1.3 selects the legacy contract.  An
-    absent or malformed producer identity fails closed onto the current shape
-    instead of becoming a way to erase the new binding.
-    """
-    match = re.fullmatch(
-        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
-        str(producer_tool_version),
-    )
-    if match is None:
-        return True
-    return tuple(int(part) for part in match.groups()) >= \
-        STANDARDS_ADOPTION_PROFILE_CONTRACT_MIN_VERSION
 
 
-def _standards_adoption_profile_inputs_required(producer_tool_version):
-    """Return whether this producer era promised root input binding.
-
-    Only an exact semantic version below 1.4 selects the legacy contract. An
-    absent or malformed producer identity fails closed onto the current shape.
-    """
-    match = re.fullmatch(
-        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
-        str(producer_tool_version),
-    )
-    if match is None:
-        return True
-    return tuple(int(part) for part in match.groups()) >= \
-        STANDARDS_ADOPTION_PROFILE_INPUT_MIN_VERSION
 
 
-def _standards_adoption_upstream_required(producer_tool_version):
-    """Return whether this producer era promised an upstream identity.
-
-    Only an exact semantic version below 1.5 selects the legacy shape.  An
-    absent or malformed producer identity fails closed onto the current
-    shape.
-    """
-    match = re.fullmatch(
-        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
-        str(producer_tool_version),
-    )
-    if match is None:
-        return True
-    return tuple(int(part) for part in match.groups()) >= \
-        STANDARDS_ADOPTION_UPSTREAM_MIN_VERSION
 
 
-def _standards_adoption_owner_projection_required(producer_tool_version):
-    """Return whether this producer era stored projected boundary owners."""
-    match = re.fullmatch(
-        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
-        str(producer_tool_version),
-    )
-    if match is None:
-        return True
-    return tuple(int(part) for part in match.groups()) >= \
-        STANDARDS_ADOPTION_OWNER_PROJECTION_MIN_VERSION
 
 
-def _standards_adoption_state_file_required(producer_tool_version):
-    """Return whether this era owns adopter identity in the state file."""
-    match = re.fullmatch(
-        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
-        str(producer_tool_version),
-    )
-    if match is None:
-        return True
-    return tuple(int(part) for part in match.groups()) >= (1, 7, 0)
 
 
 def standards_adoption_plan_errors(
@@ -3575,600 +2857,24 @@ def _standards_adoption_errors(
     return errors
 
 
-def _writer_locks(root, errors):
-    """Inventory cooperating-writer locks without deciding whether stale.
-
-    A lock can mean either a live writer or an interrupted writer.  The
-    checker deliberately does not guess which: callers fail closed and expose
-    the owner metadata so a later task can reconcile the state first.
-    """
-    relative_tmp = ".cambium/tmp"
-    tmp_dir = os.path.join(root, relative_tmp)
-    locks = []
-    if not os.path.lexists(tmp_dir):
-        # Candidate/preflight trees may contain only canonical state and
-        # evidence.  No tmp namespace means there is no cooperating-writer
-        # lock to report; initialization remains responsible for creating it
-        # in a materialized adopter runtime.
-        return locks
-    if os.path.islink(tmp_dir) or not os.path.isdir(tmp_dir):
-        errors.append("%s must be a real directory" % relative_tmp)
-        return locks
-    try:
-        names = sorted(os.listdir(tmp_dir))
-    except OSError as exc:
-        errors.append("cannot inventory %s: %s" % (relative_tmp, exc))
-        return locks
-    for name in names:
-        if not name.endswith(".lock"):
-            continue
-        relative = "%s/%s" % (relative_tmp, name)
-        lock_path = os.path.join(tmp_dir, name)
-        lock = {"path": relative, "owner": None, "owner_error": None}
-        try:
-            stat_result = os.lstat(lock_path)
-            if os.path.islink(lock_path) or not os.path.isdir(lock_path):
-                lock["owner_error"] = "lock is not a real directory"
-                locks.append(lock)
-                continue
-            if stat_result.st_nlink < 2:
-                lock["owner_error"] = "lock directory metadata is invalid"
-        except OSError as exc:
-            lock["owner_error"] = "cannot stat lock: %s" % exc
-            locks.append(lock)
-            continue
-        owner_path = os.path.join(lock_path, "owner.json")
-        if not os.path.lexists(owner_path):
-            lock["owner_error"] = "owner.json is missing"
-            locks.append(lock)
-            continue
-        try:
-            owner_stat = os.lstat(owner_path)
-            if (os.path.islink(owner_path) or not os.path.isfile(owner_path) or
-                    owner_stat.st_nlink != 1):
-                raise ValueError("owner.json must be a regular, singly-linked file")
-            with open(owner_path, encoding="utf-8") as fh:
-                owner = json.load(fh)
-            if not isinstance(owner, dict):
-                raise ValueError("owner.json top level must be an object")
-            lock["owner"] = owner
-        except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
-            lock["owner_error"] = str(exc)
-        locks.append(lock)
-    return locks
 
 
-def _bind_lock_receipts(writer_locks, catalog):
-    """Annotate transaction locks with durable prepare/commit/abort evidence."""
-    for lock in writer_locks:
-        owner = lock.get("owner")
-        operation = owner.get("operation") if isinstance(owner, dict) else None
-        transaction_id = (operation.get("transaction_id")
-                          if isinstance(operation, dict) else None)
-        if not _nonempty_string(transaction_id):
-            continue
-        matches = []
-        for receipt_id, (relative, receipt) in catalog.items():
-            if (receipt.get("tool") == "apply_amendment" and
-                    receipt.get("transaction_id") == transaction_id and
-                    receipt.get("transaction_phase") in
-                    ("prepare", "commit", "abort")):
-                semantic_errors = []
-                phase = receipt.get("transaction_phase")
-                expected_result = {
-                    "prepare": "candidate",
-                    "commit": "pass",
-                    "abort": "fail",
-                }[phase]
-                for field, expected in (
-                        ("tool_version", APPLY_AMENDMENT_TOOL_VERSION),
-                        ("check", "amendment_transaction"),
-                        ("invalidated_by", None),
-                        ("result", expected_result)):
-                    if receipt.get(field) != expected:
-                        semantic_errors.append(field)
-                for operation_field, receipt_field in (
-                        ("task_id", "task_id"),
-                        ("amendment_id", "amendment_id"),
-                        ("plan_path", "plan_path"),
-                        ("plan_sha256", "plan_sha256"),
-                        ("coverage_proposal_path", "coverage_proposal_path"),
-                        ("coverage_proposal_sha256",
-                         "coverage_proposal_sha256"),
-                        ("actor_role", "actor_role"),
-                        ("transaction_sequence", "transaction_sequence"),
-                        ("previous_transaction_commit_receipt",
-                         "previous_transaction_commit_receipt"),
-                        ("registration_receipt", "registration_receipt")):
-                    if operation.get(operation_field) != receipt.get(receipt_field):
-                        semantic_errors.append(operation_field)
-                for state_name in ("coverage", "progress", "queue"):
-                    before = "before_%s_sha256" % state_name
-                    planned = "planned_after_%s_sha256" % state_name
-                    after = "after_%s_sha256" % state_name
-                    if operation.get(before) != receipt.get(before):
-                        semantic_errors.append(before)
-                    if operation.get(planned) != receipt.get(after):
-                        semantic_errors.append(planned)
-                if operation.get("receipt_path") != relative:
-                    semantic_errors.append("receipt_path")
-                matches.append({
-                    "receipt_id": receipt_id,
-                    "path": relative,
-                    "phase": phase,
-                    "result": receipt.get("result"),
-                    "semantic_match": not semantic_errors,
-                    "semantic_mismatches": sorted(set(semantic_errors)),
-                })
-        matches.sort(key=lambda entry: (
-            {"prepare": 0, "commit": 1, "abort": 2}[entry["phase"]],
-            entry["receipt_id"],
-        ))
-        lock["transaction_receipts"] = matches
-        expected_prepare = operation.get("prepare_receipt_id")
-        lock["prepare_receipt_matches_owner"] = any(
-            entry["phase"] == "prepare" and
-            entry["receipt_id"] == expected_prepare and
-            entry["semantic_match"] for entry in matches
-        )
-        phases = {entry["phase"] for entry in matches
-                  if entry["semantic_match"]}
-        mismatched_phases = {entry["phase"] for entry in matches
-                             if not entry["semantic_match"]}
-        if "abort" in phases:
-            lock["transaction_phase"] = "abort"
-        elif "commit" in phases:
-            lock["transaction_phase"] = "commit"
-        elif ("prepare" in phases and
-              not lock["prepare_receipt_matches_owner"]):
-            lock["transaction_phase"] = "prepare-receipt-mismatch"
-        elif "prepare" in phases:
-            lock["transaction_phase"] = "prepare"
-        elif mismatched_phases:
-            lock["transaction_phase"] = "receipt-semantic-mismatch"
-        else:
-            lock["transaction_phase"] = "prepare-receipt-missing"
 
 
-def _operation_fingerprint(operation, names):
-    """Return one valid fingerprint from compatible owner-field aliases."""
-    provided = [(name, operation.get(name)) for name in names
-                if name in operation]
-    if not provided:
-        return None, None
-    invalid = [name for name, value in provided
-               if not isinstance(value, str) or not SHA256_RE.fullmatch(value)]
-    if invalid:
-        return None, "invalid fingerprint field(s): %s" % ", ".join(invalid)
-    values = {value for _, value in provided}
-    if len(values) != 1:
-        return None, "conflicting fingerprint aliases: %s" % ", ".join(
-            name for name, _ in provided)
-    return provided[0][1], None
 
 
-def _reconciliation_hint(phases):
-    """Describe evidence only; never prescribe automatic lock recovery."""
-    available = [entry for entry in phases.values()
-                 if entry["phase"] != "unavailable"]
-    if not available:
-        return ("owner metadata has no comparable state fingerprints; "
-                "manual reconciliation is required")
-    phase_names = {entry["phase"] for entry in available}
-    unavailable = any(entry["phase"] == "unavailable"
-                      for entry in phases.values())
-    if "other" in phase_names:
-        return ("live state differs from recorded before/planned-after "
-                "fingerprints; manual reconciliation is required")
-    if phase_names == {"before", "planned-after"}:
-        return ("live state mixes before and planned-after fingerprints; "
-                "a partial write is possible and must be reconciled manually")
-    if phase_names == {"planned-after"}:
-        qualifier = "available " if unavailable else "all "
-        return ("%sstate fingerprints match planned-after bytes; verify the "
-                "matching receipt and semantic checks before treating the "
-                "operation as complete" % qualifier)
-    qualifier = "available " if unavailable else "all "
-    return ("%sstate fingerprints match pre-write bytes; verify writer and "
-            "receipt evidence before treating the lock as stale" % qualifier)
 
 
-def _bind_lock_state_phases(writer_locks, live_shas):
-    """Compare exact live state bytes with every interrupted writer plan."""
-    for lock in writer_locks:
-        owner = lock.get("owner")
-        operation = owner.get("operation") if isinstance(owner, dict) else None
-        phases = {}
-        for state_name, field_names in LOCK_STATE_FINGERPRINTS.items():
-            live = live_shas.get(state_name)
-            before = None
-            planned_after = None
-            metadata_errors = []
-            if isinstance(operation, dict):
-                before, error = _operation_fingerprint(
-                    operation, field_names["before"])
-                if error:
-                    metadata_errors.append(error)
-                planned_after, error = _operation_fingerprint(
-                    operation, field_names["planned_after"])
-                if error:
-                    metadata_errors.append(error)
-            if (not isinstance(live, str) or
-                    not SHA256_RE.fullmatch(live) or metadata_errors or
-                    (before is None and planned_after is None)):
-                phase = "unavailable"
-            elif before is not None and live == before:
-                # When before and after are byte-identical, use the
-                # conservative pre-write interpretation and expose the
-                # ambiguity explicitly.
-                phase = "before"
-            elif planned_after is not None and live == planned_after:
-                phase = "planned-after"
-            else:
-                phase = "other"
-            phases[state_name] = {
-                "live_sha256": live,
-                "before_sha256": before,
-                "planned_after_sha256": planned_after,
-                "phase": phase,
-                "before_after_identical": (
-                    before is not None and before == planned_after),
-                "metadata_error": "; ".join(metadata_errors) or None,
-            }
-        lock["state_phases"] = phases
-        lock["reconciliation_hint"] = _reconciliation_hint(phases)
 
 
-def _bind_lock_delta_archives(root, writer_locks):
-    """Locate and fingerprint a Delta moved by an interrupted Queue rollback.
-
-    ``merge-ready -> open`` moves the rejected Delta before publishing the
-    three canonical state files.  The writer lock therefore has to make that
-    fourth filesystem effect independently observable after a hard exit.
-    """
-    for lock in writer_locks:
-        owner = lock.get("owner")
-        operation = owner.get("operation") if isinstance(owner, dict) else None
-        if not isinstance(operation, dict) or \
-                operation.get("tool") != "update_queue":
-            continue
-        source_relative = operation.get("delta_archive_source")
-        archive_relative = operation.get("delta_archive_path")
-        expected_sha = operation.get("delta_sha256")
-        if source_relative is None and archive_relative is None and \
-                expected_sha is None:
-            continue
-        evidence = {
-            "delta_archive_source": source_relative,
-            "delta_archive_path": archive_relative,
-            "delta_sha256": expected_sha,
-            "source_sha256": None,
-            "archive_sha256": None,
-            "status": "metadata-incomplete",
-            "recovery_fact": "archive-state-undetermined",
-            "hint": "manual reconciliation is required",
-        }
-        lock["delta_archive_recovery"] = evidence
-        if (not _nonempty_string(source_relative) or
-                not _nonempty_string(archive_relative) or
-                not isinstance(expected_sha, str) or
-                not SHA256_RE.fullmatch(expected_sha)):
-            continue
-        try:
-            source = kblib.managed_repository_path(
-                root, source_relative, ".cambium/deltas",
-                suffixes=(".yaml",), must_exist=False,
-            )
-            archive = kblib.managed_repository_path(
-                root, archive_relative,
-                ".cambium/receipts/invalidated-deltas",
-                suffixes=(".yaml",), must_exist=False,
-            )
-        except (OSError, ValueError) as exc:
-            evidence["status"] = "unsafe-path"
-            evidence["error"] = str(exc)
-            continue
-
-        source_exists = os.path.isfile(source) and not os.path.islink(source)
-        archive_exists = os.path.isfile(archive) and not os.path.islink(archive)
-        if source_exists:
-            evidence["source_sha256"] = kblib.sha256_file(source)
-        if archive_exists:
-            evidence["archive_sha256"] = kblib.sha256_file(archive)
-        if source_exists and archive_exists:
-            evidence["status"] = "source-and-archive-present"
-        elif not source_exists and not archive_exists:
-            evidence["status"] = "source-and-archive-missing"
-        elif source_exists:
-            evidence["status"] = (
-                "source-ready" if evidence["source_sha256"] == expected_sha
-                else "source-sha-mismatch"
-            )
-        else:
-            evidence["status"] = (
-                "archived" if evidence["archive_sha256"] == expected_sha
-                else "archive-sha-mismatch"
-            )
-
-        phases = lock.get("state_phases") or {}
-        all_state_before = all(
-            (phases.get(name) or {}).get("phase") == "before"
-            for name in ("coverage", "queue", "progress")
-        )
-        if all_state_before and evidence["status"] == "archived":
-            evidence["recovery_fact"] = "archive-moved-state-before"
-            evidence["hint"] = (
-                "the Delta bytes match the declared archive while all three "
-                "state files remain at their pre-transition fingerprints; "
-                "restore the archive to its declared source before retrying"
-            )
-        elif all_state_before and evidence["status"] == "source-ready":
-            evidence["recovery_fact"] = "archive-not-moved-state-before"
-            evidence["hint"] = (
-                "the Delta remains at its declared source and all three state "
-                "files remain at their pre-transition fingerprints"
-            )
-        elif evidence["status"] in (
-                "archive-sha-mismatch", "source-sha-mismatch",
-                "source-and-archive-present", "source-and-archive-missing"):
-            evidence["recovery_fact"] = "archive-state-conflict"
-            evidence["hint"] = (
-                "Delta location or bytes conflict with writer-lock metadata; "
-                "manual reconciliation is required"
-            )
 
 
-def _bind_generic_lock_receipts(root, writer_locks, catalog):
-    """Bind non-Amendment writer intent to its exact declared JSONL receipt."""
-    for lock in writer_locks:
-        owner = lock.get("owner")
-        operation = owner.get("operation") if isinstance(owner, dict) else None
-        if not isinstance(operation, dict) or operation.get("tool") not in \
-                GENERIC_WRITER_TOOLS:
-            continue
-        receipt_id = operation.get("receipt_id")
-        receipt_path = operation.get("receipt_path")
-        evidence = {
-            "receipt_id": receipt_id,
-            "receipt_path": receipt_path,
-            "status": "metadata-incomplete",
-            "matching_receipt": False,
-            "result": None,
-        }
-        lock["operation_receipt"] = evidence
-        repository_snapshot_errors = []
-        if operation.get("tool") == BATCH_CLOSE_TOOL:
-            expected_snapshot = operation.get("repository_snapshot_sha256")
-            snapshot_binding = {
-                "expected_sha256": expected_snapshot,
-                "current_sha256": None,
-                "status": "metadata-invalid",
-                "error": None,
-            }
-            evidence["repository_snapshot"] = snapshot_binding
-            if (not isinstance(expected_snapshot, str) or
-                    not SHA256_RE.fullmatch(expected_snapshot)):
-                repository_snapshot_errors.append(
-                    "repository_snapshot_sha256")
-            else:
-                try:
-                    current_snapshot = kblib.repository_snapshot_sha256(root)
-                except (OSError, ValueError) as exc:
-                    snapshot_binding["status"] = "unavailable"
-                    snapshot_binding["error"] = str(exc)
-                    repository_snapshot_errors.append(
-                        "current_repository_snapshot_sha256")
-                else:
-                    snapshot_binding["current_sha256"] = current_snapshot
-                    if current_snapshot == expected_snapshot:
-                        snapshot_binding["status"] = "matching"
-                    else:
-                        snapshot_binding["status"] = "changed"
-                        repository_snapshot_errors.append(
-                            "current_repository_snapshot_sha256")
-        if not _nonempty_string(receipt_id) or not _nonempty_string(receipt_path):
-            continue
-        try:
-            declared = kblib.managed_repository_path(
-                root, receipt_path, ".cambium/receipts",
-                suffixes=(".jsonl",), must_exist=False,
-            )
-            declared_relative = os.path.relpath(declared, root)
-        except (OSError, ValueError) as exc:
-            evidence["status"] = "unsafe-path"
-            evidence["error"] = str(exc)
-            continue
-        entry = catalog.get(receipt_id)
-        if entry is None:
-            evidence["status"] = "absent"
-            continue
-        actual_relative, receipt = entry
-        if actual_relative != declared_relative:
-            evidence["status"] = "path-mismatch"
-            evidence["actual_path"] = actual_relative
-            evidence["result"] = receipt.get("result")
-            continue
-        semantic_errors = []
-        if receipt.get("tool") != operation.get("tool"):
-            semantic_errors.append("tool")
-        if (_nonempty_string(operation.get("task_id")) and
-                receipt.get("task_id") != operation.get("task_id")):
-            semantic_errors.append("task_id")
-        expected_target = operation.get("target") or operation.get("batch_id")
-        if (_nonempty_string(expected_target) and
-                receipt.get("target") != expected_target):
-            semantic_errors.append("target")
-        for operation_field, receipt_fields in (
-                ("before_coverage_sha256", ("before_coverage_sha256",)),
-                ("planned_after_coverage_sha256", ("after_coverage_sha256",)),
-                ("before_required_queue_sha256",
-                 ("before_required_queue_sha256", "required_queue_sha256")),
-                ("planned_after_required_queue_sha256",
-                 ("after_required_queue_sha256", "required_queue_sha256")),
-                ("before_progress_sha256", ("before_progress_sha256",)),
-                ("planned_after_progress_sha256", ("after_progress_sha256",))):
-            expected_value = operation.get(operation_field)
-            if expected_value is None:
-                continue
-            actual_values = [receipt.get(field) for field in receipt_fields
-                             if field in receipt]
-            if not actual_values or any(value != expected_value
-                                        for value in actual_values):
-                semantic_errors.append(operation_field)
-        if operation.get("tool") == REGISTER_AMENDMENT_TOOL:
-            for field, expected_value in (
-                    ("tool_version", REGISTER_AMENDMENT_TOOL_VERSION),
-                    ("check", "amendment_withdrawal"
-                     if operation.get("action") == "withdraw"
-                     else "amendment_registration"),
-                    ("result", "pass"),
-                    ("invalidated_by", None),
-                    ("actor_role", "integrator"),
-                    ("amendment_id", operation.get("amendment_id")),
-                    ("operation", operation.get("amendment_operation"))):
-                if receipt.get(field) != expected_value:
-                    semantic_errors.append(field)
-            if operation.get("registration_receipt") != receipt_id:
-                semantic_errors.append("registration_receipt")
-        if operation.get("tool") == "apply_delta":
-            if receipt.get("check") != "delta_apply":
-                semantic_errors.append("check")
-            if receipt.get("batch_id") != operation.get("batch_id"):
-                semantic_errors.append("batch_id")
-            if receipt.get("delta_sha256") != operation.get("delta_sha256"):
-                semantic_errors.append("delta_sha256")
-        if operation.get("tool") == BATCH_CLOSE_TOOL:
-            if receipt.get("tool_version") != operation.get("tool_version"):
-                semantic_errors.append("tool_version")
-            if receipt.get("check") != "batch_close_gate":
-                semantic_errors.append("check")
-            if receipt.get("batch_id") != operation.get("batch_id"):
-                semantic_errors.append("batch_id")
-            if receipt.get("merged_snapshot_sha256") != operation.get(
-                    "repository_snapshot_sha256"):
-                semantic_errors.append("merged_snapshot_sha256")
-            if receipt.get("result") not in ("pass", "fail"):
-                semantic_errors.append("result")
-            semantic_errors.extend(repository_snapshot_errors)
-        if semantic_errors:
-            evidence["status"] = "semantic-mismatch"
-            evidence["mismatched_fields"] = sorted(set(semantic_errors))
-            evidence["result"] = receipt.get("result")
-            continue
-        evidence["status"] = "matching"
-        evidence["matching_receipt"] = True
-        evidence["result"] = receipt.get("result")
 
 
-def accounted_standards_versions(progress, queue=None):
-    """Return the Standards versions this instance's own history accounts for.
-
-    A receipt sealed into append-only history carries the producer identity of
-    the Standards revision that emitted it.  K00/03 requires a producer's
-    ``Tool version`` cell to move in the revision that changes its accept or
-    reject set, so honouring that checklist retires the constant every past
-    receipt was stamped with -- and no sanctioned transaction may rewrite a
-    historical receipt to carry the new one.  Comparing a historical
-    ``tool_version`` against today's constant therefore invalidates history for
-    having been produced under an older Standards identity, which is precisely
-    what K12/10 forbids.
-
-    What is checkable without today's constants is internal consistency: the
-    era a receipt claims must be an era this instance actually passed through.
-    Each adoption record contributes both ends of the step it recorded, and the
-    live Queue/contract identity covers the instance that has adopted nothing
-    yet.  ``standards_version`` is the right field to carry this: it is already
-    the field that demotes a receipt from current authorization the moment an
-    adoption moves it, so it is also the field that states which Standards
-    identity produced it.
-    """
-    versions = set()
-    if isinstance(queue, dict) and _nonempty_string(
-            queue.get("standards_version")):
-        versions.add(queue["standards_version"])
-    if not isinstance(progress, dict):
-        return versions
-    contract = progress.get("contract")
-    if isinstance(contract, dict) and _nonempty_string(
-            contract.get("standards_version")):
-        versions.add(contract["standards_version"])
-    records = progress.get("standards_adoptions")
-    for record in records if isinstance(records, list) else []:
-        if not isinstance(record, dict):
-            continue
-        for field in ("standards_version_before", "standards_version_after"):
-            if _nonempty_string(record.get(field)):
-                versions.add(record[field])
-    return versions
 
 
-def _producer_era_errors(receipt, receipt_id, label, accounted):
-    """Return errors when a historical receipt claims an unaccounted era.
-
-    This is what replaces a historical receipt's ``tool_version`` comparison
-    against the current producer constant.  A receipt claiming a Standards
-    version no adoption record and no live identity accounts for is one this
-    instance never produced, so the replacement has teeth without freezing
-    today's producer versions into the definition of valid history.  A
-    current-action predicate keeps comparing the producer tuple exactly; see
-    :func:`receipt_matches_gate_id`.
-
-    A receipt that carries no ``standards_version`` claims no era, and absence
-    is not an error here.  Demanding the field would repeat the very mistake
-    this function removes: it would invalidate every receipt written before the
-    identity fields existed, for a reason its producer could not have
-    anticipated and no sanctioned transaction can repair.  Per ``kblib``, an
-    omitted identity field already behaves as ``null`` against every consumer
-    that compares it, so such a receipt is judged by its remaining bindings.
-    """
-    if not isinstance(receipt, dict):
-        return []
-    version = receipt.get("standards_version")
-    if not _nonempty_string(version) or version in accounted:
-        return []
-    return ["%s receipt %s claims standards_version=%r, which no Standards "
-            "adoption record or live identity of this instance accounts for" %
-            (label, receipt_id, version)]
 
 
-def _terminal_proof_profile_binding_errors(receipt, receipt_id):
-    """Validate each current-use binding promised by its proof producer era.
-
-    This is historical replay, not a new authorization decision.  It therefore
-    checks only that a receipt retained the canonical fields its own producer
-    promised: 1.16 introduced Profile snapshot/typed-contract bindings, and
-    1.17 added the root-owned profile-load input and whole-repository snapshot
-    bindings. It deliberately does not load today's selected Profile or
-    reinterpret an already-consumed proof against changed bytes. The current
-    completion transition performs those comparisons in :mod:`update_task`
-    before history is sealed.
-    """
-    if not isinstance(receipt, dict):
-        return []
-    version = receipt.get("tool_version")
-    match = re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\."
-                         r"(0|[1-9][0-9]*)", str(version))
-    if match is None:
-        return []
-    version_tuple = tuple(int(part) for part in match.groups())
-    if version_tuple < PROFILE_BOUND_TERMINAL_PROOF_MIN_VERSION:
-        return []
-    fields = [
-        "profile_snapshot_sha256", "profile_contract_fingerprint",
-    ]
-    if version_tuple >= PROFILE_INPUT_BOUND_TERMINAL_PROOF_MIN_VERSION:
-        fields.append("profile_load_inputs_sha256")
-    if version_tuple >= REPOSITORY_BOUND_TERMINAL_PROOF_MIN_VERSION:
-        fields.append("repository_snapshot_sha256")
-    errors = []
-    for field in fields:
-        if not SHA256_RE.fullmatch(str(receipt.get(field))):
-            errors.append(
-                "complete Terminal Proof receipt %s lacks canonical %s "
-                "required by check_proof %s" %
-                (receipt_id, field, version)
-            )
-    return errors
 
 
 
@@ -8473,662 +7179,36 @@ def _initial_queue_receipt_errors(progress, catalog, queue, queue_sha,
 
 
 
-def _work_spec_binding_errors(path, fingerprint, label):
-    """Validate one explicit simple/complex batch declaration.
-
-    Null/null is the only spelling for a simple batch.  A complex batch must
-    bind both a managed restricted-YAML path and exact lowercase SHA-256.  The pair
-    intentionally carries no inferred complexity flag: omission is invalid.
-    """
-    errors = []
-    if path is None and fingerprint is None:
-        return errors
-    if path is None or fingerprint is None:
-        errors.append(
-            "%s work_spec_path and work_spec_sha256 must both be null or "
-            "both be non-null" % label
-        )
-        return errors
-    if not _nonempty_string(path):
-        errors.append("%s work_spec_path must be null or a non-empty string" %
-                      label)
-    elif (not path.startswith(WORK_SPEC_PREFIX + "/") or
-          not path.endswith(".yaml") or
-          Path(path).parent.as_posix() != WORK_SPEC_PREFIX):
-        errors.append(
-            "%s work_spec_path must be a YAML file directly inside %s/" %
-            (label, WORK_SPEC_PREFIX)
-        )
-    if not isinstance(fingerprint, str) or not SHA256_RE.fullmatch(fingerprint):
-        errors.append(
-            "%s work_spec_sha256 must be null or sha256:<64 lowercase hex>" %
-            label
-        )
-    return errors
 
 
-def _closed_work_spec_mapping_errors(value, expected_fields, label):
-    """Validate one mapping node in the closed Work Spec grammar."""
-    if not isinstance(value, dict):
-        return ["%s must be a mapping" % label]
-    actual = set(value)
-    missing = sorted(expected_fields - actual)
-    extra = sorted(actual - expected_fields)
-    errors = []
-    if missing:
-        errors.append("%s misses field(s): %s" % (label, ", ".join(missing)))
-    if extra:
-        queue_owned = sorted(set(extra).intersection(
-            WORK_SPEC_QUEUE_OWNED_FIELDS))
-        if queue_owned:
-            errors.append(
-                "%s must not declare Queue-owned field(s): %s" %
-                (label, ", ".join(queue_owned))
-            )
-        errors.append("%s has unsupported field(s): %s" %
-                      (label, ", ".join(extra)))
-    return errors
 
 
-def _work_spec_id_errors(value, label):
-    if (not isinstance(value, str) or
-            not WORK_SPEC_RECORD_ID_RE.fullmatch(value)):
-        return ["%s must match %s" %
-                (label, WORK_SPEC_RECORD_ID_RE.pattern.replace("\\Z", ""))]
-    return []
 
 
-def _work_spec_target_scope_errors(value, manifest, label):
-    errors = []
-    if (not isinstance(value, list) or not value or
-            not all(_nonempty_string(entry) for entry in value)):
-        return [
-            "%s must be a non-empty explicit string list containing "
-            "'batch' or Queue manifest paths" % label
-        ]
-    if len(set(value)) != len(value):
-        errors.append("%s must not contain duplicate targets" % label)
-    has_batch = "batch" in value
-    if has_batch and value != ["batch"]:
-        errors.append(
-            "%s must be exactly ['batch'] or contain only Queue manifest "
-            "paths; batch and paths cannot be mixed" % label
-        )
-    elif not has_batch:
-        unknown = [entry for entry in value if entry not in manifest]
-        if unknown:
-            errors.append(
-                "%s contains target(s) outside the Queue manifest: %s" %
-                (label, ", ".join(unknown))
-            )
-    return errors
 
 
-def _nested_queue_owned_work_spec_fields(value, path=()):
-    """Return Queue-owned keys hidden below otherwise scalar/list fields.
-
-    ``instructions[].order`` and ``instructions[].depends_on`` are the only
-    intentional spelling overlaps with Queue item keys.  Exact mapping checks
-    govern those positions; every other occurrence is a forbidden second
-    source of runtime state.
-    """
-    found = []
-    if isinstance(value, dict):
-        for key, child in value.items():
-            allowed_overlap = (
-                len(path) == 2 and path[0] == "instructions" and
-                isinstance(path[1], int) and key in ("order", "depends_on")
-            )
-            if key in WORK_SPEC_QUEUE_OWNED_FIELDS and not allowed_overlap:
-                found.append(".".join(str(part) for part in path + (key,)))
-            found.extend(_nested_queue_owned_work_spec_fields(
-                child, path + (key,)))
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            found.extend(_nested_queue_owned_work_spec_fields(
-                child, path + (index,)))
-    return found
 
 
-def _work_spec_sentinel_paths(value, path=()):
-    """Return scalar locations containing an unfilled Work Spec sentinel."""
-    found = []
-    if isinstance(value, dict):
-        for key, child in value.items():
-            found.extend(_work_spec_sentinel_paths(child, path + (key,)))
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            found.extend(_work_spec_sentinel_paths(child, path + (index,)))
-    elif isinstance(value, str) and any(
-            sentinel in value for sentinel in WORK_SPEC_SENTINELS):
-        found.append(".".join(str(part) for part in path))
-    return found
 
 
-def _work_spec_errors(root, item):
-    """Validate a complex batch's immutable Agent-readable work contract."""
-    item_id = item.get("id", "<unknown>")
-    label = "Queue item %s" % item_id
-    path = item.get("work_spec_path")
-    fingerprint = item.get("work_spec_sha256")
-    errors = _work_spec_binding_errors(path, fingerprint, label)
-    if errors or path is None:
-        return errors
-    try:
-        absolute = kblib.managed_repository_path(
-            root, path, WORK_SPEC_PREFIX, suffixes=(".yaml",), must_exist=True,
-        )
-        if not os.path.isfile(absolute):
-            raise ValueError("path is not a regular file")
-        with open(absolute, encoding="utf-8") as handle:
-            text = handle.read()
-    except (OSError, UnicodeError, ValueError) as exc:
-        errors.append("%s Work Spec is unsafe or unreadable: %s" %
-                      (label, exc))
-        return errors
-    actual = kblib.sha256_file(absolute)
-    if actual != fingerprint:
-        errors.append(
-            "%s Work Spec SHA mismatch: Queue=%s actual=%s" %
-            (label, fingerprint, actual)
-        )
-    try:
-        metadata = kblib.parse_yaml_subset(text)
-    except kblib.YamlSubsetError as exc:
-        errors.append("%s Work Spec is invalid restricted YAML: %s" %
-                      (label, exc))
-        return errors
-    if not isinstance(metadata, dict):
-        errors.append("%s Work Spec must be a top-level mapping" % label)
-        return errors
-    queue_owned = sorted(set(
-        _nested_queue_owned_work_spec_fields(metadata)))
-    if queue_owned:
-        errors.append(
-            "%s Work Spec must not declare Queue-owned field path(s): %s" %
-            (label, ", ".join(queue_owned))
-        )
-    errors.extend(_closed_work_spec_mapping_errors(
-        metadata, WORK_SPEC_TOP_LEVEL_FIELDS, "%s Work Spec" % label))
-    schema_version = metadata.get("schema_version")
-    if (not isinstance(schema_version, int) or
-            isinstance(schema_version, bool) or schema_version != 1):
-        errors.append("%s Work Spec schema_version must be 1" % label)
-    if metadata.get("batch_id") != item_id:
-        errors.append(
-            "%s Work Spec batch_id=%r does not equal Queue id %r" %
-            (label, metadata.get("batch_id"), item_id)
-        )
-    manifest = metadata.get("manifest")
-    queue_manifest = item.get("manifest")
-    scope_manifest = queue_manifest if isinstance(queue_manifest, list) else []
-    if (not isinstance(manifest, list) or
-            not all(_nonempty_string(value) for value in manifest)):
-        errors.append("%s Work Spec manifest must be an explicit string list" %
-                      label)
-    elif manifest != queue_manifest:
-        errors.append(
-            "%s Work Spec manifest must exactly equal Queue manifest in "
-            "membership and order" % label
-        )
-    outcomes = metadata.get("outcomes")
-    instructions = metadata.get("instructions")
-    conditions = metadata.get("acceptance_conditions")
-    constraints = metadata.get("constraints")
-    list_contracts = (
-        ("outcomes", outcomes, WORK_SPEC_OUTCOME_FIELDS),
-        ("instructions", instructions, WORK_SPEC_INSTRUCTION_FIELDS),
-        ("acceptance_conditions", conditions, WORK_SPEC_ACCEPTANCE_FIELDS),
-        ("constraints", constraints, WORK_SPEC_CONSTRAINT_FIELDS),
-    )
-    for list_name, records, fields in list_contracts:
-        if not isinstance(records, list) or not records:
-            errors.append(
-                "%s Work Spec %s must be a non-empty list" %
-                (label, list_name)
-            )
-            continue
-        for index, record in enumerate(records, 1):
-            errors.extend(_closed_work_spec_mapping_errors(
-                record, fields, "%s Work Spec %s[%d]" %
-                (label, list_name, index)))
-
-    id_contracts = (
-        ("outcomes", outcomes, "outcome_id"),
-        ("instructions", instructions, "instruction_id"),
-        ("acceptance_conditions", conditions, "condition_id"),
-        ("constraints", constraints, "constraint_id"),
-    )
-    for list_name, records, id_field in id_contracts:
-        if not isinstance(records, list):
-            continue
-        seen = set()
-        for index, record in enumerate(records, 1):
-            if not isinstance(record, dict):
-                continue
-            identifier = record.get(id_field)
-            errors.extend(_work_spec_id_errors(
-                identifier, "%s Work Spec %s[%d].%s" %
-                (label, list_name, index, id_field)))
-            if isinstance(identifier, str):
-                if identifier in seen:
-                    errors.append(
-                        "%s Work Spec %s has duplicate %s %r" %
-                        (label, list_name, id_field, identifier)
-                    )
-                seen.add(identifier)
-
-    if isinstance(outcomes, list):
-        for index, record in enumerate(outcomes, 1):
-            if isinstance(record, dict) and not _nonempty_string(
-                    record.get("required_result")):
-                errors.append(
-                    "%s Work Spec outcomes[%d].required_result must be a "
-                    "non-empty string" % (label, index)
-                )
-
-    instruction_by_id = {}
-    if isinstance(instructions, list):
-        orders = []
-        for index, record in enumerate(instructions, 1):
-            if not isinstance(record, dict):
-                continue
-            identifier = record.get("instruction_id")
-            order = record.get("order")
-            if not isinstance(order, int) or isinstance(order, bool):
-                errors.append(
-                    "%s Work Spec instructions[%d].order must be an integer" %
-                    (label, index)
-                )
-            else:
-                orders.append(order)
-            if isinstance(identifier, str):
-                instruction_by_id[identifier] = order
-            errors.extend(_work_spec_target_scope_errors(
-                record.get("target_scope"), scope_manifest,
-                "%s Work Spec instructions[%d].target_scope" %
-                (label, index)))
-            if not _nonempty_string(record.get("required_transformation")):
-                errors.append(
-                    "%s Work Spec instructions[%d].required_transformation "
-                    "must be a non-empty string" % (label, index)
-                )
-            dependencies = record.get("depends_on")
-            if (not isinstance(dependencies, list) or
-                    not all(isinstance(dep, str) and
-                            WORK_SPEC_RECORD_ID_RE.fullmatch(dep)
-                            for dep in dependencies)):
-                errors.append(
-                    "%s Work Spec instructions[%d].depends_on must be an "
-                    "explicit list of stable instruction IDs" %
-                    (label, index)
-                )
-            elif len(set(dependencies)) != len(dependencies):
-                errors.append(
-                    "%s Work Spec instructions[%d].depends_on must not "
-                    "contain duplicates" % (label, index)
-                )
-        expected_orders = list(range(1, len(instructions) + 1))
-        if orders != expected_orders:
-            errors.append(
-                "%s Work Spec instruction order must be unique, contiguous, "
-                "and match list order 1..%d" % (label, len(instructions))
-            )
-        for index, record in enumerate(instructions, 1):
-            if not isinstance(record, dict):
-                continue
-            order = record.get("order")
-            dependencies = record.get("depends_on")
-            if not isinstance(dependencies, list):
-                continue
-            for dependency in dependencies:
-                if (not isinstance(dependency, str) or
-                        not WORK_SPEC_RECORD_ID_RE.fullmatch(dependency)):
-                    continue
-                dependency_order = instruction_by_id.get(dependency)
-                if dependency_order is None:
-                    errors.append(
-                        "%s Work Spec instructions[%d].depends_on references "
-                        "unknown instruction %r" % (label, index, dependency)
-                    )
-                elif (isinstance(order, int) and not isinstance(order, bool) and
-                      (not isinstance(dependency_order, int) or
-                       isinstance(dependency_order, bool) or
-                       dependency_order >= order)):
-                    errors.append(
-                        "%s Work Spec instructions[%d].depends_on must "
-                        "reference only earlier instructions; %r has order %r" %
-                        (label, index, dependency, dependency_order)
-                    )
-
-    if isinstance(conditions, list):
-        for index, record in enumerate(conditions, 1):
-            if not isinstance(record, dict):
-                continue
-            errors.extend(_work_spec_target_scope_errors(
-                record.get("target_scope"), scope_manifest,
-                "%s Work Spec acceptance_conditions[%d].target_scope" %
-                (label, index)))
-            for field in ("observable_predicate", "evidence_requirement"):
-                if not _nonempty_string(record.get(field)):
-                    errors.append(
-                        "%s Work Spec acceptance_conditions[%d].%s must be "
-                        "a non-empty string" % (label, index, field)
-                    )
-
-    if isinstance(constraints, list):
-        for index, record in enumerate(constraints, 1):
-            if not isinstance(record, dict):
-                continue
-            errors.extend(_work_spec_target_scope_errors(
-                record.get("target_scope"), scope_manifest,
-                "%s Work Spec constraints[%d].target_scope" %
-                (label, index)))
-            if not _nonempty_string(record.get("requirement")):
-                errors.append(
-                    "%s Work Spec constraints[%d].requirement must be a "
-                    "non-empty string" % (label, index)
-                )
-
-    sentinel_paths = _work_spec_sentinel_paths(metadata)
-    if sentinel_paths:
-        errors.append(
-            "%s Work Spec contains unfilled template sentinel(s) at: %s" %
-            (label, ", ".join(sentinel_paths))
-        )
-    return errors
 
 
-def _selected_profile_manifest_envelope_errors(profile):
-    """Reject a selected-Profile reference outside the runtime envelope.
-
-    This check is deliberately lexical: ordinary runtime admission must not
-    read Profile bytes before the one authoritative ``profile-load`` producer
-    binds them.  The smaller corrective-adoption guard below adds its own
-    identity/sentinel reads because that explicit escape must remain usable
-    when the current transitive closure is already invalid.
-    """
-    if not _nonempty_string(profile):
-        return ["selected_profile_manifest must be instantiated"]
-    parts = Path(profile).parts
-    if len(parts) != 3 or parts[0] != "profiles" or parts[2] != "profile.md":
-        return ["selected_profile_manifest must be profiles/<id>/profile.md"]
-    return []
 
 
-def selected_profile_manifest_errors(root, profile):
-    """Reject template/example/unfilled manifests as runtime identities.
-
-    Full profile quality remains owned by ``check_profile.py``.  This small
-    persistent guard enforces the mechanical facts a resumed Queue must never
-    forget: the selected package is an adopter-owned profile ID, not a shipped
-    form/example, and its identity/sentinel state is instantiated.
-    """
-    errors = _selected_profile_manifest_envelope_errors(profile)
-    if errors:
-        return errors
-    parts = Path(profile).parts
-    profile_id = parts[1]
-    reserved = {
-        "_template", "template", "example", "examples", "REPLACE-ME",
-        "your-profile-id", "TODO",
-    }
-    sentinel = "TODO(profile)"
-    defaults_path = os.path.join(
-        os.path.realpath(os.path.abspath(root)),
-        "Tools/schemas/execution_defaults.template.yaml",
-    )
-    if os.path.isfile(defaults_path):
-        try:
-            defaults = kblib.load_yaml_file(defaults_path)
-            reserved.update(str(value) for value in
-                            (defaults.get("reserved_profile_ids") or []))
-            sentinel = str(defaults.get("unfilled_sentinel") or sentinel)
-        except (OSError, ValueError, kblib.YamlSubsetError) as exc:
-            errors.append("selected profile default registry is unreadable: %s" %
-                          exc)
-    if profile_id in reserved or profile_id.startswith("_"):
-        errors.append("selected_profile_manifest uses reserved/non-runnable "
-                      "profile id %r" % profile_id)
-    try:
-        profile_snapshot = kblib.repository_tree_snapshot(
-            root, os.path.dirname(profile))
-        manifest_text = profile_snapshot.read_text(profile)
-    except (OSError, UnicodeError, ValueError) as exc:
-        errors.append("selected_profile_manifest is unsafe or missing: %s" % exc)
-        return errors
-    _, identity_errors = kblib.profile_identity(
-        manifest_text, profile_id, reserved)
-    for _, details in identity_errors:
-        errors.append("selected profile identity: %s" % details)
-    try:
-        hits, _, _ = check_profile.scan_sentinel(profile_snapshot, sentinel)
-    except (OSError, UnicodeError) as exc:
-        errors.append("selected profile cannot be scanned for unfilled "
-                      "sentinels: %s" % exc)
-    else:
-        if hits:
-            sample = ", ".join("%s:%d" % hit for hit in hits[:3])
-            errors.append("selected profile is not runnable; unfilled sentinel "
-                          "%r remains at %s" % (sentinel, sample))
-    return errors
 
 
-def profile_load_authorized_view(root, profile):
-    """Run ``profile-load`` once and retain its snapshot-bound consumer view.
-
-    The public evidence fields bind the selected manifest, complete Profile
-    tree, and typed dependency graph.  ``_manifest_slot_paths`` is an internal
-    projection of that *same* authorized contract; it lets runtime consumers
-    locate a slot without reparsing the manifest under a later revision.
-
-    ``evaluate_profile_load`` returns the contract, snapshot, fingerprint, and
-    summary from one producer invocation.  Consumers must not reconstruct the
-    contract in a second parse: doing so could pair the verdict for revision A
-    with revision B's dependency graph.
-    """
-    errors = _selected_profile_manifest_envelope_errors(profile)
-    if errors or not _nonempty_string(profile):
-        return None, errors
-
-    root = os.path.realpath(os.path.abspath(os.fspath(root)))
-    profile_dir = os.path.join(
-        root, os.path.dirname(profile).replace("/", os.sep))
-    try:
-        evaluation = check_profile.evaluate_profile_load(
-            profile_dir, root=root, receipt_identity=None)
-    except (OSError, SystemExit, TypeError, UnicodeError, ValueError) as exc:
-        errors.append("profile-load producer could not run: %s" % exc)
-        return None, errors
-
-    if not evaluation.authorized:
-        findings = [
-            "[%s %s] %s — %s" % (
-                str(receipt.get("result", "fail")).upper(),
-                receipt.get("check", "profile-load"),
-                receipt.get("target", profile),
-                receipt.get("details", "profile-load was not authorized"),
-            )
-            for receipt in evaluation.findings[:5]
-        ]
-        detail = "; ".join(findings) if findings else \
-            "check_profile exited %d without an authorized contract" % \
-            evaluation.exit_code
-        errors.append("selected Profile failed profile-load: %s" % detail)
-        return None, errors
-
-    contract = evaluation.contract
-    summary = evaluation.summary_receipt
-    if (not isinstance(contract,
-                       check_profile.profile_contract.ProfileContract) or
-            not contract.authorized):
-        return None, ["profile-load pass exposed no authorized typed contract"]
-    if not isinstance(summary, dict):
-        return None, ["profile-load pass exposed no summary receipt"]
-    if contract.manifest_repo_path != profile:
-        errors.append(
-            "profile-load selected manifest %r, expected %r" %
-            (contract.manifest_repo_path, profile))
-    if summary.get("selected_profile_manifest") != profile:
-        errors.append(
-            "profile-load summary selected manifest %r, expected %r" %
-            (summary.get("selected_profile_manifest"), profile))
-
-    if errors:
-        return None, errors
-    snapshot = evaluation.profile_snapshot_sha256
-    if (not isinstance(snapshot, str) or
-            not SHA256_RE.fullmatch(snapshot)):
-        return None, ["profile-load did not authorize a canonical Profile "
-                      "snapshot fingerprint"]
-    bound_snapshot = evaluation.profile_snapshot
-    if (not isinstance(bound_snapshot, kblib.RepositoryTreeSnapshot) or
-            bound_snapshot.sha256 != snapshot or
-            os.path.realpath(bound_snapshot.root) != root or
-            bound_snapshot.relative_directory != contract.profile_repo_dir):
-        return None, ["profile-load did not expose the immutable Profile "
-                      "snapshot that authorized its typed contract"]
-    fingerprint = evaluation.profile_contract_fingerprint
-    if (not isinstance(fingerprint, str) or
-            not SHA256_RE.fullmatch(fingerprint)):
-        return None, ["profile-load did not authorize a typed contract "
-                      "fingerprint"]
-    inputs_fingerprint = evaluation.profile_load_inputs_sha256
-    if (not isinstance(inputs_fingerprint, str) or
-            not SHA256_RE.fullmatch(inputs_fingerprint)):
-        return None, ["profile-load did not bind its canonical normative "
-                      "input bytes"]
-    for field, expected in (
-            ("profile_snapshot_sha256", snapshot),
-            ("profile_contract_fingerprint", fingerprint),
-            ("profile_load_inputs_sha256", inputs_fingerprint)):
-        if summary.get(field) != expected:
-            return None, ["profile-load summary %s differs from the "
-                          "authorized evaluation" % field]
-
-    slot_paths = {}
-    for edge in contract.dependency_edges:
-        if edge.kind != "manifest-slot":
-            continue
-        if (not _nonempty_string(edge.owner_id) or
-                not _nonempty_string(edge.path)):
-            return None, ["profile-load authorized a malformed manifest-slot "
-                          "dependency edge"]
-        if edge.owner_id in slot_paths:
-            return None, ["profile-load authorized duplicate manifest-slot "
-                          "dependency edges for %r" % edge.owner_id]
-        slot_paths[edge.owner_id] = edge.path
-    if EXPRESSION_LAYER_SLOT not in slot_paths:
-        return None, ["profile-load authorized no manifest-slot dependency "
-                      "edge for %s" % EXPRESSION_LAYER_SLOT]
-
-    return {
-        "selected_profile_manifest": profile,
-        "profile_snapshot_sha256": snapshot,
-        "profile_contract_fingerprint": fingerprint,
-        "profile_load_inputs_sha256": inputs_fingerprint,
-        "_manifest_slot_paths": tuple(sorted(slot_paths.items())),
-        "_contract": contract,
-        "_profile_snapshot": bound_snapshot,
-        "_evaluation": evaluation,
-    }, []
 
 
-def _public_profile_load_evidence(authorized_view):
-    """Project an internal authorized view into durable evidence fields."""
-    return {
-        field: authorized_view[field]
-        for field in (
-            "selected_profile_manifest", "profile_snapshot_sha256",
-            "profile_contract_fingerprint", "profile_load_inputs_sha256",
-        )
-    }
 
 
-def active_standards_authorized_view(root, standards_version,
-                                     selected_profile_manifest,
-                                     state_override=None):
-    """Return one immutable approved adopter-state view and its errors."""
-    state, view, errors = standards_state.snapshot(
-        root, override_text=state_override)
-    errors = ["active Standards state: %s" % error for error in errors]
-    if state is None:
-        return None, errors
-    if state.get("standards_version") != standards_version:
-        errors.append(
-            "runtime standards_version %r differs from active state %r" %
-            (standards_version, state.get("standards_version")))
-    if (state.get("selected_profile_manifest") !=
-            selected_profile_manifest):
-        errors.append(
-            "runtime selected_profile_manifest %r differs from active "
-            "state %r" %
-            (selected_profile_manifest,
-             state.get("selected_profile_manifest")))
-    if errors:
-        return None, errors
-    return view, []
 
 
-def active_standards_alignment_errors(root, standards_version,
-                                      selected_profile_manifest):
-    """Compare runtime identity to the canonical adopter Standards state."""
-    _view, errors = active_standards_authorized_view(
-        root, standards_version, selected_profile_manifest)
-    return errors
 
 
-def active_standards_view_currency_errors(root, authorized_view,
-                                          state_override=None):
-    """Fail when current-state bytes no longer equal an authorized view."""
-    if not isinstance(authorized_view, dict):
-        return ["active Standards authorized view must be a mapping"]
-    expected = authorized_view.get("active_standards_sha256")
-    view, errors = active_standards_authorized_view(
-        root, authorized_view.get("standards_version"),
-        authorized_view.get("selected_profile_manifest"),
-        state_override=state_override)
-    if errors:
-        return errors
-    if view.get("active_standards_sha256") != expected:
-        return [
-            "active Standards state changed after identity admission; "
-            "rerun against one stable state revision"
-        ]
-    return []
 
 
-def profile_load_evidence(root, profile):
-    """Run ``profile-load`` and return one stable, receipt-free identity.
-
-    The returned mapping is deliberately an in-memory value, not a Gate
-    receipt.  Standards adoption judges a candidate *after* Profile while the
-    Required Queue still names the current Profile; publishing that candidate
-    receipt into the current receipt catalog would therefore combine two
-    different task identities.  The eventual selected task must produce its
-    own ``profile-load`` receipt after the adoption commits.
-
-    Slot consumers inside this module use the authorized-view API so
-    their source paths come from the same producer invocation.  External
-    callers receive only the three durable identity fields.
-    """
-    authorized_view, errors = profile_load_authorized_view(root, profile)
-    if authorized_view is None:
-        return None, errors
-    return _public_profile_load_evidence(authorized_view), errors
 
 
-def profile_load_errors(root, profile):
-    """Return the canonical ``profile-load`` admission failures.
-
-    Default runtime consistency and every candidate after-image use this full
-    producer.  :func:`selected_profile_manifest_errors` remains only as the
-    smaller identity/sentinel check behind the explicit corrective-adoption
-    escape, so a broken current closure can be replaced without weakening any
-    ordinary reader, writer, or proposed state.
-    """
-    _authorized_view, errors = profile_load_authorized_view(root, profile)
-    return errors
 
 
 
@@ -9194,151 +7274,10 @@ def _unadmitted_profile_hub_paths(root, profile_manifest):
     return paths, []
 
 
-def _profile_view_snapshot_error(root, authorized_view, phase):
-    """Return a fail-closed error if an authorized view is no longer current."""
-    manifest = authorized_view.get("selected_profile_manifest")
-    expected = authorized_view.get("profile_snapshot_sha256")
-    if (not _nonempty_string(manifest) or not isinstance(expected, str) or
-            not SHA256_RE.fullmatch(expected)):
-        return "authorized Profile view has malformed snapshot identity"
-    profile_dir = os.path.dirname(manifest).replace("/", os.sep)
-    try:
-        actual = kblib.repository_tree_sha256(root, profile_dir)
-    except (OSError, ValueError) as exc:
-        return ("selected Profile cannot be rebound %s Expression hub "
-                "derivation: %s" % (phase, exc))
-    if actual != expected:
-        return ("selected Profile changed after profile-load authorization; "
-                "snapshot mismatch %s Expression hub derivation" % phase)
-    expected_inputs = authorized_view.get("profile_load_inputs_sha256")
-    try:
-        _snapshots, actual_inputs = \
-            check_profile.canonical_profile_load_inputs(root)
-    except (OSError, ValueError) as exc:
-        return ("canonical profile-load inputs cannot be rebound %s "
-                "Expression hub derivation: %s" % (phase, exc))
-    if actual_inputs != expected_inputs:
-        return ("canonical profile-load inputs changed after profile-load "
-                "authorization; input mismatch %s Expression hub "
-                "derivation" % phase)
-    return None
 
 
-def _authorized_profile_view_errors(root, profile_manifest, authorized_view):
-    """Validate one in-process view without rerunning ``profile-load``."""
-    if not isinstance(authorized_view, dict):
-        return ["authorized Profile view must be a mapping returned by "
-                "profile_load_authorized_view"]
-    errors = []
-    if authorized_view.get("selected_profile_manifest") != profile_manifest:
-        errors.append("authorized Profile view selects %r, not %r" % (
-            authorized_view.get("selected_profile_manifest"),
-            profile_manifest))
-    snapshot = authorized_view.get("profile_snapshot_sha256")
-    if not isinstance(snapshot, str) or not SHA256_RE.fullmatch(snapshot):
-        errors.append("authorized Profile view has malformed snapshot identity")
-    fingerprint = authorized_view.get("profile_contract_fingerprint")
-    if (not isinstance(fingerprint, str) or
-            not SHA256_RE.fullmatch(fingerprint)):
-        errors.append("authorized Profile view has malformed typed-contract "
-                      "fingerprint")
-    inputs_fingerprint = authorized_view.get("profile_load_inputs_sha256")
-    if (not isinstance(inputs_fingerprint, str) or
-            not SHA256_RE.fullmatch(inputs_fingerprint)):
-        errors.append("authorized Profile view has malformed canonical-input "
-                      "fingerprint")
-
-    contract = authorized_view.get("_contract")
-    contract_type = check_profile.profile_contract.ProfileContract
-    if not isinstance(contract, contract_type) or not contract.authorized:
-        errors.append("authorized Profile view has no authorized typed "
-                      "contract object")
-        contract = None
-    elif os.path.realpath(contract.root) != \
-            os.path.realpath(os.path.abspath(os.fspath(root))):
-        errors.append("authorized Profile view belongs to a different "
-                      "repository root")
-    else:
-        if contract.manifest_repo_path != profile_manifest:
-            errors.append("authorized Profile contract selects %r, not %r" % (
-                contract.manifest_repo_path, profile_manifest))
-        if contract.profile_contract_fingerprint != fingerprint:
-            errors.append("authorized Profile view fingerprint differs from "
-                          "its typed contract")
-
-    bound_snapshot = authorized_view.get("_profile_snapshot")
-    if not isinstance(bound_snapshot, kblib.RepositoryTreeSnapshot):
-        errors.append("authorized Profile view has no immutable Profile "
-                      "snapshot object")
-    else:
-        expected_directory = os.path.dirname(profile_manifest)
-        if (bound_snapshot.sha256 != snapshot or
-                os.path.realpath(bound_snapshot.root) !=
-                os.path.realpath(os.path.abspath(os.fspath(root))) or
-                bound_snapshot.relative_directory != expected_directory):
-            errors.append("authorized Profile immutable snapshot identity "
-                          "differs from its public binding")
-
-    evaluation = authorized_view.get("_evaluation")
-    if (not isinstance(evaluation, check_profile.ProfileLoadEvaluation) or
-            not evaluation.authorized):
-        errors.append("authorized Profile view has no authorized evaluation "
-                      "object")
-    else:
-        if (evaluation.contract is not contract or
-                evaluation.profile_snapshot is not bound_snapshot):
-            errors.append("authorized Profile evaluation objects differ from "
-                          "its typed contract or immutable snapshot")
-        for field in (
-                "profile_snapshot_sha256",
-                "profile_contract_fingerprint",
-                "profile_load_inputs_sha256"):
-            if getattr(evaluation, field) != authorized_view.get(field):
-                errors.append("authorized Profile evaluation %s differs "
-                              "from its public binding" % field)
-
-    projected_pairs = ()
-    try:
-        projected_pairs = tuple(authorized_view["_manifest_slot_paths"])
-        projected = dict(projected_pairs)
-        if (len(projected) != len(projected_pairs) or
-                any(not _nonempty_string(key) or
-                    not _nonempty_string(value)
-                    for key, value in projected_pairs)):
-            raise ValueError("malformed or duplicate manifest-slot edge")
-    except (KeyError, TypeError, ValueError):
-        errors.append("authorized Profile view has no immutable manifest-slot "
-                      "projection")
-        projected = {}
-
-    if contract is not None:
-        contract_pairs = tuple(sorted(
-            (edge.owner_id, edge.path)
-            for edge in contract.dependency_edges
-            if edge.kind == "manifest-slot"
-        ))
-        if projected_pairs != contract_pairs:
-            errors.append("authorized Profile manifest-slot projection differs "
-                          "from its typed contract")
-    if not _nonempty_string(projected.get(EXPRESSION_LAYER_SLOT)):
-        errors.append("authorized Profile view has no %s path" %
-                      EXPRESSION_LAYER_SLOT)
-
-    if not errors:
-        snapshot_error = _profile_view_snapshot_error(
-            root, authorized_view, "before")
-        if snapshot_error:
-            errors.append(snapshot_error)
-    return errors
 
 
-def profile_load_authorized_view_currency_errors(root, authorized_view):
-    """Rebind a previously authorized Profile view without rerunning producer."""
-    manifest = authorized_view.get("selected_profile_manifest") \
-        if isinstance(authorized_view, dict) else None
-    if not _nonempty_string(manifest):
-        return ["authorized Profile view has no selected manifest identity"]
-    return _authorized_profile_view_errors(root, manifest, authorized_view)
 
 
 def runtime_authority_context(result):
