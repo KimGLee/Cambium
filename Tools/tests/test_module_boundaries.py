@@ -254,6 +254,7 @@ QUEUE_RUNTIME_RANKS = {
 
     "queue_runtime.evidence_identity": 1,
     "queue_runtime.gate_registry": 1,
+    "queue_runtime.receipts": 1,
 
     "queue_runtime": 7,
 }
