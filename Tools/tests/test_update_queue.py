@@ -1697,7 +1697,7 @@ class UpdateQueueTests(unittest.TestCase):
             (self.root / ".cambium/tmp/state-writer.lock/owner.json").is_file()
         )
         recovery = check_queue.validate_runtime(self.root)
-        lock = recovery["writer_locks"][0]
+        lock = recovery["_writer_locks"][0]
         self.assertEqual("matching",
                          lock["operation_receipt"]["status"])
         self.assertTrue(lock["operation_receipt"]["matching_receipt"])

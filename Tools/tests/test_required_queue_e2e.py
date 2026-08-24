@@ -378,7 +378,7 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         for receipt in receipts:
             if receipt.get("receipt_id") == "audit-fixture-initial-queue":
                 receipt["contract_sha256"] = \
-                    check_queue._contract_sha256(progress)
+                    check_queue.contract_sha256(progress)
                 receipt["before_coverage_sha256"] = coverage_sha
                 receipt["after_coverage_sha256"] = coverage_sha
         receipt_path.write_text(
@@ -612,7 +612,7 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
                 receipt["after_required_queue_sha256"] = queue_sha
                 receipt["after_coverage_sha256"] = coverage_sha
                 receipt["contract_sha256"] = \
-                    check_queue._contract_sha256(progress)
+                    check_queue.contract_sha256(progress)
         receipt_path.write_text("".join(json.dumps(receipt) + "\n"
                                         for receipt in receipts),
                                 encoding="utf-8")
@@ -917,7 +917,7 @@ raise SystemExit(update_task.main(sys.argv[2:]))
         )
         self.assertEqual(1, task_receipt["queue_state_revision"])
         self.assertEqual(
-            check_queue._contract_sha256(result["progress"]),
+            check_queue.contract_sha256(result["progress"]),
             task_receipt["contract_sha256"],
         )
 

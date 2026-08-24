@@ -187,7 +187,7 @@ def _validate_plan_shape(plan):
                 "amendment plan before.%s must be spelled sha256:<64 hex "
                 "digits>; `check_queue.py . --resume-status` reports the "
                 "three current values" % field)
-    shape_errors = check_queue._policy_exception_errors(
+    shape_errors = check_queue.policy_exception_errors(
         plan["policy_exceptions_after"], "policy_exceptions_after")
     if shape_errors:
         raise Refusal(
@@ -500,8 +500,8 @@ def prepare(root, plan_relative):
         "plan_path": relative_plan,
         "plan_sha256": row["plan_sha256"],
         "before_contract_sha256":
-            check_queue._contract_sha256(documents["progress"]),
-        "after_contract_sha256": check_queue._contract_sha256(progress),
+            check_queue.contract_sha256(documents["progress"]),
+        "after_contract_sha256": check_queue.contract_sha256(progress),
         "before_contract_version": row["contract_version_before"],
         "after_contract_version": row["contract_version_after"],
         "before_contract_scope_version": row["scope_version_before"],
@@ -567,7 +567,7 @@ def commit(prepared, receipt_path):
         "plan_sha256": prepared["plan_sha"],
         "commit_receipt_id": receipt["receipt_id"],
         # The generic writer recovery protocol (`check_queue`
-        # `_bind_generic_lock_receipts`) reads these three: they let a
+        # `bind_generic_lock_receipts`) reads these three: they let a
         # recovery view decide whether the declared receipt actually landed
         # and therefore whether to complete or roll back a stale lock.
         "receipt_id": receipt["receipt_id"],

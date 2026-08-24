@@ -13,9 +13,9 @@ from queue_runtime.canon import (
     STANDARDS_ADOPTION_TOOL,
     TERMINAL_STATES,
 )
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 from queue_runtime.repofs import _path_error
-from queue_runtime.work_spec import _work_spec_binding_errors
+from queue_runtime.work_spec import work_spec_binding_errors
 
 
 COVERAGE_DISPOSITIONS = frozenset((
@@ -106,14 +106,14 @@ def unsupported_reviewed_records(coverage):
             continue
         receipts = page.get("gate_receipts")
         if not isinstance(receipts, list) or not any(
-                _nonempty_string(value) for value in receipts):
+                nonempty_string(value) for value in receipts):
             path = page.get("path")
-            if _nonempty_string(path):
+            if nonempty_string(path):
                 unsupported.append(str(path))
     return sorted(unsupported)
 
 
-def _coverage_provenance_errors(progress, queue, catalog, coverage_sha,
+def coverage_provenance_errors(progress, queue, catalog, coverage_sha,
                                 queue_sha):
     """Bind materialized Coverage bytes to a qualified canonical writer.
 
@@ -205,7 +205,7 @@ def _coverage_provenance_errors(progress, queue, catalog, coverage_sha,
     return errors
 
 
-def _coverage_records(root, coverage, errors):
+def coverage_records(root, coverage, errors):
     pages = coverage.get("pages")
     if not isinstance(pages, list):
         errors.append("Coverage pages must be an explicit list")
@@ -227,27 +227,27 @@ def _coverage_records(root, coverage, errors):
             errors.append("%s misses core field(s): %s" %
                           (label, ", ".join(missing)))
         path = page.get("path")
-        if not _nonempty_string(path):
+        if not nonempty_string(path):
             errors.append("%s path must be a non-empty string" % label)
             continue
         if path in records:
             errors.append("Coverage repeats object path %s" % path)
             continue
-        path_error = _path_error(root, path, must_exist=False)
-        if path_error:
-            errors.append("%s path %r is unsafe: %s" % (label, path, path_error))
+        path_error_message = _path_error(root, path, must_exist=False)
+        if path_error_message:
+            errors.append("%s path %r is unsafe: %s" % (label, path, path_error_message))
         records[path] = page
         disposition = page.get("coverage_disposition")
         if disposition not in COVERAGE_DISPOSITIONS:
             errors.append("%s coverage_disposition must be one of %s; found %r" %
                           (label, ", ".join(sorted(COVERAGE_DISPOSITIONS)),
                            disposition))
-        if not _nonempty_string(page.get("canonical_owner")):
+        if not nonempty_string(page.get("canonical_owner")):
             errors.append("%s canonical_owner must be a non-empty string" % label)
         for field in ("prerequisites", "gate_receipts"):
             values = page.get(field)
             if (not isinstance(values, list) or
-                    not all(_nonempty_string(value) for value in values)):
+                    not all(nonempty_string(value) for value in values)):
                 errors.append("%s %s must be an explicit string list" %
                               (label, field))
             elif len(values) != len(set(values)):
@@ -256,14 +256,14 @@ def _coverage_records(root, coverage, errors):
         for field in ("batch", "next_batch", "deferred_reason",
                       "reentry_condition"):
             value = page.get(field)
-            if value is not None and not _nonempty_string(value):
+            if value is not None and not nonempty_string(value):
                 errors.append("%s %s must be null or a non-empty string" %
                               (label, field))
-        if disposition in ("deferred", "excluded") and not _nonempty_string(
+        if disposition in ("deferred", "excluded") and not nonempty_string(
                 page.get("deferred_reason")):
             errors.append("%s %s disposition requires a reason or scope basis" %
                           (label, disposition))
-        if disposition == "deferred" and not _nonempty_string(
+        if disposition == "deferred" and not nonempty_string(
                 page.get("reentry_condition")):
             errors.append("%s deferred disposition requires reentry_condition" %
                           label)
@@ -272,7 +272,7 @@ def _coverage_records(root, coverage, errors):
             value = page.get(key)
             if value is None or value == "":
                 continue
-            if not _nonempty_string(value):
+            if not nonempty_string(value):
                 errors.append("%s %s must be a string or null" % (label, key))
                 continue
             if value not in batch_ids:
@@ -284,7 +284,7 @@ def _coverage_records(root, coverage, errors):
     return records, assignments
 
 
-def _coverage_batch_spec_errors(coverage, items_by_id):
+def coverage_batch_spec_errors(coverage, items_by_id):
     """Detect direct edits to canonical compiler inputs after materialization."""
     errors = []
     specs = coverage.get("batch_specs")
@@ -313,12 +313,12 @@ def _coverage_batch_spec_errors(coverage, items_by_id):
         if extra:
             errors.append("%s has unsupported field(s): %s" %
                           (label, ", ".join(extra)))
-        errors.extend(_work_spec_binding_errors(
+        errors.extend(work_spec_binding_errors(
             spec.get("work_spec_path"), spec.get("work_spec_sha256"),
             label,
         ))
         batch_id = spec.get("id")
-        if not _nonempty_string(batch_id) or not BATCH_ID_RE.fullmatch(batch_id):
+        if not nonempty_string(batch_id) or not BATCH_ID_RE.fullmatch(batch_id):
             errors.append("%s id must be a valid batch id" % label)
             continue
         if batch_id in seen:

@@ -236,7 +236,7 @@ def require_admitted_runtime(runtime, *, allow_writer_lock=False):
     errors = runtime.get("errors") or []
     if errors:
         raise ValueError("current runtime is invalid: %s" % "; ".join(errors))
-    if runtime.get("writer_locks") and not allow_writer_lock:
+    if runtime.get("_writer_locks") and not allow_writer_lock:
         raise ValueError("runtime has an active or interrupted writer lock")
     return runtime
 

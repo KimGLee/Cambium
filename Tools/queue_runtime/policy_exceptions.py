@@ -11,8 +11,8 @@ import kblib
 
 from queue_runtime.canon import SHA256_RE
 from queue_runtime.primitives import (
-    _closed_mapping_errors,
-    _nonempty_string,
+    closed_mapping_errors,
+    nonempty_string,
 )
 
 
@@ -29,7 +29,7 @@ SEALED_POLICY_EXCEPTION_FIELDS = frozenset((
 ))
 
 
-def _policy_exception_errors(value, label):
+def policy_exception_errors(value, label):
     """Validate the contract's bounded policy exceptions, K13/02 shape.
 
     Every entry is an answer a person already gave: which policy it excepts,
@@ -47,17 +47,17 @@ def _policy_exception_errors(value, label):
         if not isinstance(entry, dict):
             errors.append("%s must be a mapping" % entry_label)
             continue
-        errors.extend(_closed_mapping_errors(
+        errors.extend(closed_mapping_errors(
             entry, entry_label, POLICY_EXCEPTION_FIELDS))
         if not isinstance(entry, dict) or set(entry) - POLICY_EXCEPTION_FIELDS:
             continue
         for field in ("decision_id", "policy_id", "scope_ref", "rationale",
                       "approval_reference"):
-            if not _nonempty_string(entry.get(field)):
+            if not nonempty_string(entry.get(field)):
                 errors.append("%s %s must be a non-empty string" %
                               (entry_label, field))
         decision = entry.get("decision_id")
-        if _nonempty_string(decision):
+        if nonempty_string(decision):
             if decision in seen:
                 errors.append("%s repeats decision_id %s" %
                               (label, decision))
@@ -74,7 +74,7 @@ def _policy_exception_errors(value, label):
         registered = (
             contract_exception_policy.POLICY_REGISTRY.get(policy_id)
             if isinstance(policy_id, str) else None)
-        if _nonempty_string(policy_id) and registered is None:
+        if nonempty_string(policy_id) and registered is None:
             errors.append(
                 "%s policy_id %r is not in the closed policy registry; an "
                 "exception to a policy nobody registered is unbounded "
@@ -132,7 +132,7 @@ def _policy_exception_errors(value, label):
     return errors
 
 
-def _sealed_policy_exception_errors(sealed, decision_id, candidate_type,
+def sealed_policy_exception_errors(sealed, decision_id, candidate_type,
                                     label):
     """Validate one sealed policy-exception decision record, strictly.
 
@@ -145,7 +145,7 @@ def _sealed_policy_exception_errors(sealed, decision_id, candidate_type,
     unverified authorization through replay.
     """
     errors = []
-    errors.extend(_closed_mapping_errors(
+    errors.extend(closed_mapping_errors(
         sealed, "%s sealed policy exception" % label,
         SEALED_POLICY_EXCEPTION_FIELDS))
     if set(sealed) != set(SEALED_POLICY_EXCEPTION_FIELDS):
@@ -182,7 +182,7 @@ def _sealed_policy_exception_errors(sealed, decision_id, candidate_type,
     if sealed.get("scope_kind") not in POLICY_EXCEPTION_SCOPE_KINDS:
         errors.append("%s sealed scope_kind must be one of %s" %
                       (label, ", ".join(sorted(POLICY_EXCEPTION_SCOPE_KINDS))))
-    if not _nonempty_string(sealed.get("scope_ref")):
+    if not nonempty_string(sealed.get("scope_ref")):
         errors.append("%s sealed scope_ref must be a non-empty string" %
                       label)
     limit = sealed.get("limit")

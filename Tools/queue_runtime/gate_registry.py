@@ -36,7 +36,7 @@ from queue_runtime.canon import (
     TERMINAL_STATES,
     TOOL,
 )
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 
 
 # K12/07 fixes these seven base receipt dimensions and K12/08 / K12/18 file
@@ -188,7 +188,7 @@ def standards_gate_registry(root):
             errors.append("Stable Gate ID Registry row must have seven cells")
             continue
         gate_id, tool, tool_version, check, mode, dimension, lifecycle = cells
-        if not all(_nonempty_string(value) for value in cells):
+        if not all(nonempty_string(value) for value in cells):
             errors.append("Stable Gate ID Registry row has an empty cell")
             continue
         if "*" in (tool, tool_version, check):
@@ -308,7 +308,7 @@ def standards_revalidation_capabilities(root, gate_registry=None):
                 "six cells")
             continue
         gate_id, role, owner, edge, scope, binding = cells
-        if not all(_nonempty_string(value) for value in cells):
+        if not all(nonempty_string(value) for value in cells):
             errors.append(
                 "Standards Revalidation Capability Registry row has an "
                 "empty cell")
@@ -434,7 +434,7 @@ def projected_revalidation_owners(gate_ids, capabilities):
     owners = set()
     errors = []
     for gate_id in sorted({value for value in gate_ids
-                           if _nonempty_string(value)}):
+                           if nonempty_string(value)}):
         try:
             owner = standards_revalidation_owner(gate_id, capabilities)
         except ValueError as exc:
@@ -726,7 +726,7 @@ def partition_boundary_gates_by_lifecycle(gate_ids, state, registry):
     known_state = state in kblib.BATCH_LIFECYCLE_TRANSITIONS
     reachable = kblib.reachable_batch_states(state)
     for gate_id in sorted({value for value in gate_ids
-                           if _nonempty_string(value)}):
+                           if nonempty_string(value)}):
         position = registered_gate_position(gate_id, registry)
         if position is None or not known_state:
             due.append(gate_id)
@@ -762,7 +762,7 @@ def partition_revalidation_owner_claims(owner_gate_ids, state, registry,
     known_state = state in kblib.BATCH_LIFECYCLE_TRANSITIONS
     reachable = kblib.reachable_batch_states(state)
     for gate_id in sorted({value for value in owner_gate_ids
-                           if _nonempty_string(value)}):
+                           if nonempty_string(value)}):
         capability = capabilities.get(gate_id) or {}
         role = capability.get("role")
         if role == "immediate-owner":

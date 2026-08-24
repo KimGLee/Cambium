@@ -1070,7 +1070,7 @@ class CompileQueueTests(unittest.TestCase):
                                  encoding="utf-8")
         # Re-anchor the initial Queue receipt to the edited fixture contract;
         # the anchor chain is byte-bound and this test is not about it.
-        new_anchor = check_queue._contract_sha256(progress)
+        new_anchor = check_queue.contract_sha256(progress)
         for receipts_path in sorted(
                 (self.root / ".cambium/receipts").rglob("*.jsonl")):
             rows = []
@@ -1104,7 +1104,7 @@ class CompileQueueTests(unittest.TestCase):
         # contract identity across that gap instead of failing the chain.
         catalog = check_queue.historical_receipt_catalog(result)
         progress = result["progress"]
-        chain, chain_errors = check_queue._contract_anchor_chain(
+        chain, chain_errors = check_queue.contract_anchor_chain(
             progress, catalog)
         self.assertEqual([], chain_errors)
         head = chain[-1]
@@ -1135,7 +1135,7 @@ class CompileQueueTests(unittest.TestCase):
             "contract_version_after": head["contract_version"],
         })
         progress["queue_revision"] = live_revision + 1
-        chain2, chain2_errors = check_queue._contract_anchor_chain(
+        chain2, chain2_errors = check_queue.contract_anchor_chain(
             progress, catalog)
         self.assertEqual([], chain2_errors)
         self.assertEqual(live_revision + 1, chain2[-1]["queue_revision"])

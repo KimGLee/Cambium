@@ -164,14 +164,26 @@ def module_facts(tools_root, relative_path, known, known_full=()):
             continue
         edges.add((target, node.attr))
     # A `from module import symbol` is consumption of that symbol even though
-    # no attribute node exists for it.
+    # no attribute node exists for it.  Attribute it to the module that
+    # actually defines the symbol, not to the root of its dotted name: a
+    # package whose submodules were credited to the root produced one entry
+    # carrying every name and thirty entries offering nothing, which describes
+    # no boundary anyone could read.
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom) or node.level or not node.module:
             continue
-        target = node.module.split(".")[0]
-        if target not in known or target == own:
+        if node.module in known_full:
+            target = node.module
+        elif node.module.split(".")[0] in known:
+            target = node.module.split(".")[0]
+        else:
+            continue
+        if target == name or target == own:
             continue
         for alias in node.names:
+            submodule = "%s.%s" % (node.module, alias.name)
+            if submodule in known_full:
+                continue  # importing a submodule is a dependency, not a read
             edges.add((target, alias.name))
 
     defs, classes = [], []
@@ -185,7 +197,15 @@ def module_facts(tools_root, relative_path, known, known_full=()):
         "path": relative_path,
         "module": name,
         "lines": source.count("\n") + 1,
-        "imports": sorted(set(bindings.values())),
+        # Dependency and consumption are different questions and were sharing
+        # one answer.  `bindings` maps a local name to the module it came from,
+        # which is what attribute access must be resolved against -- but it
+        # only holds names that are themselves modules, so `from mod import
+        # VALUE` left no trace and the dependency became invisible to the very
+        # rule that forbids a cycle.  Dependency now derives from every import
+        # statement; consumption still derives from bindings.
+        "imports": sorted({name.split(".")[0]
+                           for name in _imported_modules(tree, known_full)}),
         "imported_modules": sorted(_imported_modules(tree, known_full)),
         "consumes": sorted(edges),
         "top_level_defs": sorted(defs),

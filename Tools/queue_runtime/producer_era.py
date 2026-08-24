@@ -10,7 +10,7 @@ the reason a record is exempt is legible at the call site.
 import re
 
 from queue_runtime.canon import SHA256_RE
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 
 
 # ``check_proof`` 1.16 first bound the authorized Profile snapshot and typed
@@ -31,7 +31,7 @@ STANDARDS_ADOPTION_PROFILE_INPUT_MIN_VERSION = (1, 4, 0)
 STANDARDS_ADOPTION_OWNER_PROJECTION_MIN_VERSION = (1, 6, 0)
 
 
-def _standards_adoption_profile_contract_required(producer_tool_version):
+def standards_adoption_profile_contract_required(producer_tool_version):
     """Return whether this producer era promised a durable typed contract.
 
     Only an exact semantic version below 1.3 selects the legacy contract.  An
@@ -48,7 +48,7 @@ def _standards_adoption_profile_contract_required(producer_tool_version):
         STANDARDS_ADOPTION_PROFILE_CONTRACT_MIN_VERSION
 
 
-def _standards_adoption_profile_inputs_required(producer_tool_version):
+def standards_adoption_profile_inputs_required(producer_tool_version):
     """Return whether this producer era promised root input binding.
 
     Only an exact semantic version below 1.4 selects the legacy contract. An
@@ -64,7 +64,7 @@ def _standards_adoption_profile_inputs_required(producer_tool_version):
         STANDARDS_ADOPTION_PROFILE_INPUT_MIN_VERSION
 
 
-def _standards_adoption_upstream_required(producer_tool_version):
+def standards_adoption_upstream_required(producer_tool_version):
     """Return whether this producer era promised an upstream identity.
 
     Only an exact semantic version below 1.5 selects the legacy shape.  An
@@ -81,7 +81,7 @@ def _standards_adoption_upstream_required(producer_tool_version):
         STANDARDS_ADOPTION_UPSTREAM_MIN_VERSION
 
 
-def _standards_adoption_owner_projection_required(producer_tool_version):
+def standards_adoption_owner_projection_required(producer_tool_version):
     """Return whether this producer era stored projected boundary owners."""
     match = re.fullmatch(
         r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
@@ -93,7 +93,7 @@ def _standards_adoption_owner_projection_required(producer_tool_version):
         STANDARDS_ADOPTION_OWNER_PROJECTION_MIN_VERSION
 
 
-def _standards_adoption_state_file_required(producer_tool_version):
+def standards_adoption_state_file_required(producer_tool_version):
     """Return whether this era owns adopter identity in the state file."""
     match = re.fullmatch(
         r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
@@ -127,13 +127,13 @@ def accounted_standards_versions(progress, queue=None):
     identity produced it.
     """
     versions = set()
-    if isinstance(queue, dict) and _nonempty_string(
+    if isinstance(queue, dict) and nonempty_string(
             queue.get("standards_version")):
         versions.add(queue["standards_version"])
     if not isinstance(progress, dict):
         return versions
     contract = progress.get("contract")
-    if isinstance(contract, dict) and _nonempty_string(
+    if isinstance(contract, dict) and nonempty_string(
             contract.get("standards_version")):
         versions.add(contract["standards_version"])
     records = progress.get("standards_adoptions")
@@ -141,12 +141,12 @@ def accounted_standards_versions(progress, queue=None):
         if not isinstance(record, dict):
             continue
         for field in ("standards_version_before", "standards_version_after"):
-            if _nonempty_string(record.get(field)):
+            if nonempty_string(record.get(field)):
                 versions.add(record[field])
     return versions
 
 
-def _producer_era_errors(receipt, receipt_id, label, accounted):
+def producer_era_errors(receipt, receipt_id, label, accounted):
     """Return errors when a historical receipt claims an unaccounted era.
 
     This is what replaces a historical receipt's ``tool_version`` comparison
@@ -168,14 +168,14 @@ def _producer_era_errors(receipt, receipt_id, label, accounted):
     if not isinstance(receipt, dict):
         return []
     version = receipt.get("standards_version")
-    if not _nonempty_string(version) or version in accounted:
+    if not nonempty_string(version) or version in accounted:
         return []
     return ["%s receipt %s claims standards_version=%r, which no Standards "
             "adoption record or live identity of this instance accounts for" %
             (label, receipt_id, version)]
 
 
-def _terminal_proof_profile_binding_errors(receipt, receipt_id):
+def terminal_proof_profile_binding_errors(receipt, receipt_id):
     """Validate each current-use binding promised by its proof producer era.
 
     This is historical replay, not a new authorization decision.  It therefore

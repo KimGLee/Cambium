@@ -284,9 +284,9 @@ def _new_receipt(phase, result, plan, transaction_id, plan_path, plan_sha,
         "after_queue_sha256": after_sha["queue"],
         "after_progress_sha256": after_sha["progress"],
         "after_standards_state_sha256": after_sha["standards"],
-        "before_contract_sha256": check_queue._contract_sha256(
+        "before_contract_sha256": check_queue.contract_sha256(
             before["progress"]),
-        "after_contract_sha256": check_queue._contract_sha256(
+        "after_contract_sha256": check_queue.contract_sha256(
             after["progress"]),
         "before_contract_version": before_contract.get("contract_version"),
         "after_contract_version": after_contract.get("contract_version"),
@@ -358,7 +358,7 @@ def _prepare_result(root, plan_relative):
     if current["errors"]:
         raise ValueError("current runtime is inconsistent: %s" %
                          "; ".join(current["errors"]))
-    if current.get("writer_locks"):
+    if current.get("_writer_locks"):
         raise ValueError("runtime has an active or interrupted writer lock")
     barrier = check_queue.delta_apply_write_barrier(
         current, TOOL, "apply")
@@ -709,7 +709,7 @@ def _commit_transaction(prepared, receipt_path):
             if locked["errors"]:
                 raise ValueError("runtime changed before write: %s" %
                                  "; ".join(locked["errors"]))
-            if locked.get("writer_locks") and len(locked["writer_locks"]) > 1:
+            if locked.get("_writer_locks") and len(locked["_writer_locks"]) > 1:
                 raise ValueError("another runtime writer lock appeared")
             _after_profile_evidence(
                 prepared["root"], prepared["plan"],

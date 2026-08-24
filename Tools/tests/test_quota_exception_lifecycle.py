@@ -159,7 +159,7 @@ class QuotaExceptionLifecycleTests(CheckBatchCloseTests):
     def close_the_batch(self):
         """Drive B1 merge-ready -> closed through the sanctioned recovery
         command, so the sealed dispositions enter the historical replay path
-        (`_closed_gate_errors`) instead of stopping at the gate receipt."""
+        (`closed_gate_errors`) instead of stopping at the gate receipt."""
         import shlex
         import subprocess
         resumed = self.run_tool("check_queue.py", "--resume-status")

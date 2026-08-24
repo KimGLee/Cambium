@@ -26,17 +26,17 @@ from queue_runtime.gate_registry import (
     standards_revalidation_owner,
 )
 from queue_runtime.item_history import (
-    _ordered_item_transitions,
+    ordered_item_transitions,
     invalidated_receipt_consumers,
     walk_revalidation_hold,
 )
 from queue_runtime.primitives import (
-    _nonempty_string,
-    _timestamp_value,
+    nonempty_string,
+    timestamp_value,
 )
-from queue_runtime.producer_era import _standards_adoption_owner_projection_required
+from queue_runtime.producer_era import standards_adoption_owner_projection_required
 from queue_runtime.receipts import (
-    _require_receipt,
+    require_receipt,
     current_receipt_catalog,
     historical_receipt_catalog,
 )
@@ -74,7 +74,7 @@ def standards_revalidation_requirements(root, progress, capabilities=None,
             continue
         producer_tool_version = None
         receipt_id = record.get("verification_receipt")
-        if catalog is not None and _nonempty_string(receipt_id):
+        if catalog is not None and nonempty_string(receipt_id):
             resolve = getattr(catalog, "resolve", None)
             if not callable(resolve):
                 resolve = catalog.get
@@ -84,7 +84,7 @@ def standards_revalidation_requirements(root, progress, capabilities=None,
                     receipt.get("tool") == STANDARDS_ADOPTION_TOOL:
                 producer_tool_version = receipt.get("tool_version")
         owner_projection_era = \
-            _standards_adoption_owner_projection_required(
+            standards_adoption_owner_projection_required(
                 producer_tool_version)
         # Pre-1.6 plans stored raw leaf Gates, so their only safe forward
         # bridge is the current closed mapping.  A 1.6+ plan stores owner Gates
@@ -99,16 +99,16 @@ def standards_revalidation_requirements(root, progress, capabilities=None,
             row.get("boundary_id"): row
             for row in plan.get("invalidation_boundaries", [])
             if isinstance(row, dict) and
-            _nonempty_string(row.get("boundary_id"))
+            nonempty_string(row.get("boundary_id"))
         }
         affected_by_predicate = {
             row.get("predicate_id"): [
                 gate_id for gate_id in row.get("affected_gate_ids") or []
-                if _nonempty_string(gate_id)
+                if nonempty_string(gate_id)
             ]
             for row in plan.get("changed_predicates", [])
             if isinstance(row, dict) and
-            _nonempty_string(row.get("predicate_id"))
+            nonempty_string(row.get("predicate_id"))
         }
         invalidated_by_boundary = {}
         for invalidated in plan.get("invalidated_evidence", []):
@@ -128,13 +128,13 @@ def standards_revalidation_requirements(root, progress, capabilities=None,
         for boundary_id, batch_ids in target_batches.items():
             boundary = boundaries[boundary_id]
             for batch_id in batch_ids:
-                if not _nonempty_string(batch_id):
+                if not nonempty_string(batch_id):
                     continue
                 relevant_invalidated = sorted({
                     invalidated.get("receipt_id")
                     for invalidated in invalidated_by_boundary.get(
                         boundary_id, [])
-                    if _nonempty_string(invalidated.get("receipt_id")) and
+                    if nonempty_string(invalidated.get("receipt_id")) and
                     (batch_id in (
                         invalidated.get("revalidation_scope_ids") or []) or
                      boundary.get("target_kind") == "batch")
@@ -147,17 +147,17 @@ def standards_revalidation_requirements(root, progress, capabilities=None,
                     dimension
                     for invalidated in invalidated_by_boundary.get(
                         boundary_id, [])
-                    if _nonempty_string(invalidated.get("receipt_id")) and
+                    if nonempty_string(invalidated.get("receipt_id")) and
                     (batch_id in (
                         invalidated.get("revalidation_scope_ids") or []) or
                      boundary.get("target_kind") == "batch")
                     for dimension in invalidated.get("dimension_ids") or []
-                    if _nonempty_string(dimension)
+                    if nonempty_string(dimension)
                 })
                 plan_required_gate_ids = [
                     gate_id for gate_id in
                     boundary.get("required_gate_ids") or []
-                    if _nonempty_string(gate_id)
+                    if nonempty_string(gate_id)
                 ]
                 affected_gate_ids = sorted({
                     gate_id
@@ -277,7 +277,7 @@ def standards_revalidation_producer_eligibility(result, batch_id):
     return None
 
 
-def _unresolvable_consumed_aggregate_errors(items_by_id, catalog):
+def unresolvable_consumed_aggregate_errors(items_by_id, catalog):
     """Fail closed when a recorded consumption's aggregate resolves nowhere.
 
     The replay below reads each consumed aggregate's body.  When the body
@@ -300,9 +300,9 @@ def _unresolvable_consumed_aggregate_errors(items_by_id, catalog):
         item = items_by_id[batch_id]
         if not isinstance(item, dict):
             continue
-        for transition in _ordered_item_transitions(item, catalog):
+        for transition in ordered_item_transitions(item, catalog):
             receipt_id = transition.get("standards_revalidation_receipt")
-            if not _nonempty_string(receipt_id) or \
+            if not nonempty_string(receipt_id) or \
                     resolve(receipt_id) is not None:
                 continue
             errors.append(
@@ -315,14 +315,14 @@ def _unresolvable_consumed_aggregate_errors(items_by_id, catalog):
     return errors
 
 
-def _consumed_standards_revalidation_keys(item, catalog):
+def consumed_standards_revalidation_keys(item, catalog):
     consumed = set()
-    transitions = _ordered_item_transitions(item, catalog)
+    transitions = ordered_item_transitions(item, catalog)
     if not transitions:
         return consumed
     # Sealing must not un-replay a consumption a Queue transition recorded.
     # This replay reads the aggregate's body, so it takes the K12/07 sealed
-    # branch (`_Catalog.resolve`) rather than the hot map alone; a reduced
+    # branch (`Catalog.resolve`) rather than the hot map alone; a reduced
     # test context that passes a plain dict keeps the historical behavior.
     resolve = getattr(catalog, "resolve", None)
     if not callable(resolve):
@@ -334,11 +334,11 @@ def _consumed_standards_revalidation_keys(item, catalog):
                   for transition in walk_revalidation_hold(transitions)[1]}
     for transition in transitions:
         receipt_id = transition.get("standards_revalidation_receipt")
-        if not _nonempty_string(receipt_id) and (
+        if not nonempty_string(receipt_id) and (
                 transition.get("before_state") == transition.get("after_state")
                 and transition.get("receipt_id") in discharges):
             receipt_id = transition.get("evidence_receipt")
-        receipt_entry = resolve(receipt_id) if _nonempty_string(
+        receipt_entry = resolve(receipt_id) if nonempty_string(
             receipt_id) else None
         receipt = receipt_entry[1] if receipt_entry is not None else None
         # Producer-era rule: a consumed aggregate is a historical fact a Queue
@@ -353,7 +353,7 @@ def _consumed_standards_revalidation_keys(item, catalog):
         if not isinstance(receipt, dict) or receipt.get("result") != "pass" or \
                 receipt.get("invalidated_by") is not None or \
                 receipt.get("tool") != TOOL or \
-                not _nonempty_string(receipt.get("tool_version")) or \
+                not nonempty_string(receipt.get("tool_version")) or \
                 receipt.get("check") != "required_queue" or \
                 receipt.get("queue_check_mode") != \
                 "require-revalidation:%s" % item.get("id") or \
@@ -364,7 +364,7 @@ def _consumed_standards_revalidation_keys(item, catalog):
                 continue
             key = (binding.get("adoption_id"), binding.get("boundary_id"),
                    binding.get("required_gate_id"))
-            if all(_nonempty_string(value) for value in key):
+            if all(nonempty_string(value) for value in key):
                 consumed.add(key)
     return consumed
 
@@ -385,7 +385,7 @@ def outstanding_standards_revalidation(result, batch_id):
     # Consumption is replayed from the immutable historical catalog: the
     # era-filtered current catalog drops receipts whose producer version was
     # since bumped, and a recorded consumption must not disappear with them.
-    consumed = _consumed_standards_revalidation_keys(
+    consumed = consumed_standards_revalidation_keys(
         item, historical_receipt_catalog(result))
     return [binding for binding in raw if (
         binding.get("adoption_id"), binding.get("boundary_id"),
@@ -453,7 +453,7 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
                       batch_id]
     required_gate_ids = sorted({
         row.get("required_gate_id") for row in outstanding
-        if _nonempty_string(row.get("required_gate_id"))
+        if nonempty_string(row.get("required_gate_id"))
     })
     registry, registry_errors = standards_gate_registry(result.get("root"))
     errors.extend(registry_errors)
@@ -461,11 +461,11 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
         result.get("root"), registry)
     errors.extend(capability_errors)
     for row in outstanding:
-        if _nonempty_string(row.get("mapping_error")):
+        if nonempty_string(row.get("mapping_error")):
             errors.append(row["mapping_error"])
     mapped_owner_gate_ids = sorted({
         row.get("mapped_owner_gate_id") for row in outstanding
-        if _nonempty_string(row.get("mapped_owner_gate_id"))
+        if nonempty_string(row.get("mapped_owner_gate_id"))
     })
     item = (result.get("items_by_id") or {}).get(batch_id) or {}
     due_gate_ids, deferred_gate_ids, unrepeatable_gate_ids = \
@@ -479,7 +479,7 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
     resolved = {}
     for gate_id in due_gate_ids:
         receipt_id = gate_receipts.get(gate_id)
-        entry = catalog.get(receipt_id) if _nonempty_string(receipt_id) else None
+        entry = catalog.get(receipt_id) if nonempty_string(receipt_id) else None
         if entry is None:
             errors.append("Gate ID %s references missing current receipt %r" %
                           (gate_id, receipt_id))
@@ -527,8 +527,8 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
                 errors.append("Gate ID %s receipt %s has %s=%r, expected %r" %
                               (gate_id, receipt_id, field,
                                receipt.get(field), expected))
-        receipt_time = _timestamp_value(receipt.get("checked_at"))
-        relevant_times = [_timestamp_value(row.get("adopted_at"))
+        receipt_time = timestamp_value(receipt.get("checked_at"))
+        relevant_times = [timestamp_value(row.get("adopted_at"))
                           for row in outstanding
                           if row.get("mapped_owner_gate_id") == gate_id]
         if receipt_time is None or any(
@@ -575,13 +575,13 @@ def standards_revalidation_context(result, batch_id, gate_receipts):
         "batch_id": batch_id,
         "standards_adoption_ids": sorted({
             row.get("adoption_id") for row in outstanding
-            if _nonempty_string(row.get("adoption_id"))}),
+            if nonempty_string(row.get("adoption_id"))}),
         "standards_adoption_plan_sha256s": sorted({
             row.get("plan_sha256") for row in outstanding
-            if _nonempty_string(row.get("plan_sha256"))}),
+            if nonempty_string(row.get("plan_sha256"))}),
         "invalidation_boundary_ids": sorted({
             row.get("boundary_id") for row in outstanding
-            if _nonempty_string(row.get("boundary_id"))}),
+            if nonempty_string(row.get("boundary_id"))}),
         "required_gate_ids": required_gate_ids,
         "mapped_owner_gate_ids": mapped_owner_gate_ids,
         "immediate_gate_ids": immediate_gate_ids,
@@ -620,7 +620,7 @@ def standards_revalidation_receipt_errors(result, batch_id, receipt_id):
     """Validate one current aggregate before activation or hold clear."""
     errors = []
     catalog = current_receipt_catalog(result)
-    receipt = _require_receipt(
+    receipt = require_receipt(
         catalog, receipt_id, "%s Standards revalidation" % batch_id, errors,
         expected={
             "tool": TOOL, "tool_version": TOOL_VERSION,

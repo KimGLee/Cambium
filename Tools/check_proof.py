@@ -347,9 +347,9 @@ def _repo_relative_path_error(raw_path):
 
 def _selected_profile_manifest_error(raw_path):
     """Require the one canonical profile-manifest path shape."""
-    path_error = _repo_relative_path_error(raw_path)
-    if path_error:
-        return path_error
+    _path_error = _repo_relative_path_error(raw_path)
+    if _path_error:
+        return _path_error
     parts = Path(raw_path).parts
     if (len(parts) != 3 or parts[0] != "profiles" or
             parts[2] != "profile.md"):
@@ -1987,8 +1987,8 @@ def _main():
             seen_card_paths = set()
             for index, card_path in enumerate(selected_card_paths):
                 target = "%s#selected_card_paths[%d]" % (proof_name, index)
-                path_error = _repo_relative_path_error(card_path)
-                if path_error:
+                _path_error = _repo_relative_path_error(card_path)
+                if _path_error:
                     card_path_bad += 1
                     path_structure_bad += 1
                     seq += 1
@@ -1996,7 +1996,7 @@ def _main():
                         TOOL, TOOL_VERSION, "proof-card-path-invalid",
                         target, "fail",
                         "Card path %r is invalid: %s" %
-                        (card_path, path_error), seq))
+                        (card_path, _path_error), seq))
                 elif card_path in seen_card_paths:
                     card_path_bad += 1
                     path_structure_bad += 1
@@ -2026,8 +2026,8 @@ def _main():
             seen_read_set_paths = set()
             for index, read_set_path in enumerate(selected_read_sets):
                 target = "%s#selected_read_sets[%d]" % (proof_name, index)
-                path_error = _repo_relative_path_error(read_set_path)
-                if path_error:
+                _path_error = _repo_relative_path_error(read_set_path)
+                if _path_error:
                     read_set_bad += 1
                     path_structure_bad += 1
                     seq += 1
@@ -2035,7 +2035,7 @@ def _main():
                         TOOL, TOOL_VERSION, "proof-read-set-path-invalid",
                         target, "fail",
                         "Read Set path %r is invalid: %s" %
-                        (read_set_path, path_error), seq))
+                        (read_set_path, _path_error), seq))
                 elif read_set_path in seen_read_set_paths:
                     read_set_bad += 1
                     path_structure_bad += 1
@@ -2065,15 +2065,15 @@ def _main():
             target = "%s#%s" % (proof_name, field)
             if isinstance(value, list):
                 target += "[%d]" % index
-            path_error = _repo_relative_path_error(raw_path)
-            if path_error:
+            _path_error = _repo_relative_path_error(raw_path)
+            if _path_error:
                 path_structure_bad += 1
                 seq += 1
                 receipts.append(_make_receipt(
                     TOOL, TOOL_VERSION, "proof-path-invalid",
                     target, "fail",
                     "path %r recorded in %s is invalid: %s"
-                    % (raw_path, field, path_error), seq))
+                    % (raw_path, field, _path_error), seq))
             elif raw_path in seen_paths:
                 path_structure_bad += 1
                 seq += 1

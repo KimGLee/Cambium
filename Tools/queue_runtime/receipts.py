@@ -21,7 +21,7 @@ from queue_runtime.canon import (
     SEAL_TOOL,
     SHA256_RE,
 )
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 
 
 # The named fields through which a Queue item, one of its invalidation
@@ -100,7 +100,7 @@ def delta_gate_receipt_ids(delta):
             raise ValueError("delta pages[%d] must be a mapping" % index)
         gate_receipts = page.get("gate_receipts")
         if (not isinstance(gate_receipts, list) or not gate_receipts or
-                not all(_nonempty_string(value) for value in gate_receipts)):
+                not all(nonempty_string(value) for value in gate_receipts)):
             raise ValueError("delta pages[%d] gate_receipts must be a non-empty "
                              "string list" % index)
         if len(gate_receipts) != len(set(gate_receipts)):
@@ -110,7 +110,7 @@ def delta_gate_receipt_ids(delta):
     return sorted(receipt_ids)
 
 
-class _Catalog(dict):
+class Catalog(dict):
     """The hot receipt catalog plus the sealed-receipt projection index.
 
     The hot map keeps ``receipt_id -> (relative_path, receipt)`` exactly as
@@ -134,7 +134,7 @@ class _Catalog(dict):
 
         This is a sealed branch, not a hole in sealing.  Existence and
         identity consumers are served by the projection through
-        :func:`_require_receipt` and never come here; a consumer that must
+        :func:`require_receipt` and never come here; a consumer that must
         replay a *body* -- today the Standards-revalidation consumption
         replay, whose consumed keys live in ``revalidation_bindings`` and
         whose retraction test reads ``invalidated_by``, neither of which a
@@ -159,7 +159,7 @@ class _Catalog(dict):
             return None
         segment = row.get("segment")
         line_number = row.get("line")
-        if not _nonempty_string(segment) or not isinstance(line_number, int) \
+        if not nonempty_string(segment) or not isinstance(line_number, int) \
                 or isinstance(line_number, bool) or line_number < 1:
             return None
         if segment not in self._sealed_segments:
@@ -192,7 +192,7 @@ class _Catalog(dict):
         return self.resolve_sealed(receipt_id)
 
 
-def _receipt_catalog(root, errors):
+def receipt_catalog(root, errors):
     """Load the repository receipt register into one collision-checked map.
 
     Queue references use receipt IDs rather than file paths.  The canonical
@@ -206,7 +206,7 @@ def _receipt_catalog(root, errors):
     """
     relative_dir = ".cambium/receipts"
     receipt_dir = os.path.join(root, relative_dir)
-    catalog = _Catalog()
+    catalog = Catalog()
     catalog.root = root
     if not os.path.exists(receipt_dir):
         return catalog
@@ -219,7 +219,7 @@ def _receipt_catalog(root, errors):
         for name in sorted(dirnames):
             full = os.path.join(dirpath, name)
             if dirpath == receipt_dir and name == "cold":
-                # The cold namespace is loaded by _cold_receipt_store from
+                # The cold namespace is loaded by cold_receipt_store from
                 # its manifest and index, never by this recursive scan.
                 continue
             if os.path.islink(full):
@@ -266,7 +266,7 @@ def _receipt_catalog(root, errors):
                                   (relative, line_number))
                     continue
                 receipt_id = receipt.get("receipt_id")
-                if not _nonempty_string(receipt_id):
+                if not nonempty_string(receipt_id):
                     errors.append("receipt %s:%d has no receipt_id" %
                                   (relative, line_number))
                     continue
@@ -334,7 +334,7 @@ def _cold_journal_errors(root, errors):
             continue
         phase = entry.get("phase")
         seal_id = entry.get("seal_receipt")
-        if phase not in ("begin", "complete") or not _nonempty_string(seal_id):
+        if phase not in ("begin", "complete") or not nonempty_string(seal_id):
             errors.append("cold journal line %d must record phase "
                           "begin/complete for one seal_receipt" % line_number)
             continue
@@ -375,7 +375,7 @@ def _cold_register_rows(lines, label, errors):
                           (label, line_number))
             continue
         seal_id = entry.get("seal_receipt")
-        if not _nonempty_string(seal_id):
+        if not nonempty_string(seal_id):
             errors.append("%s line %d does not name the seal receipt that "
                           "wrote it; an unattributed cold row has no root of "
                           "trust (K12/07 fail-closed)" % (label, line_number))
@@ -385,7 +385,7 @@ def _cold_register_rows(lines, label, errors):
     return rows, groups
 
 
-def _cold_path_within_root(root, relative, errors):
+def cold_path_within_root(root, relative, errors):
     """Reject a cold path that leaves the repository by any component.
 
     Checking only the final component is not enough: a symlinked
@@ -430,7 +430,7 @@ def _cold_namespace_errors(root, errors):
         full = os.path.join(root, relative)
         if not os.path.exists(full) and not os.path.islink(full):
             continue
-        if not _cold_path_within_root(root, relative, errors):
+        if not cold_path_within_root(root, relative, errors):
             return False
         if not os.path.isdir(full):
             errors.append("cold path %s must be a directory" % relative)
@@ -446,7 +446,7 @@ def _cold_manifest_entries(root, rows, bound, errors):
         if seal_id not in bound:
             continue
         segment = entry.get("segment")
-        if (not _nonempty_string(segment) or
+        if (not nonempty_string(segment) or
                 not (segment.startswith(
                     kblib.RECEIPT_COLD_SEGMENT_PREFIX + "/") or
                      segment.startswith(
@@ -476,7 +476,7 @@ def _cold_manifest_entries(root, rows, bound, errors):
             errors.append("cold manifest segment %s has invalid records" %
                           segment)
             continue
-        if not _cold_path_within_root(root, segment, errors):
+        if not cold_path_within_root(root, segment, errors):
             continue
         segment_path = os.path.join(root, segment)
         try:
@@ -517,7 +517,7 @@ def _cold_index_rows(rows, entries, bound, catalog, errors):
         if seal_id not in bound:
             continue
         receipt_id = entry.get("receipt_id")
-        if not _nonempty_string(receipt_id):
+        if not nonempty_string(receipt_id):
             errors.append("cold index line %d has no receipt_id" % line_number)
             continue
         if receipt_id in catalog:
@@ -700,7 +700,7 @@ def _cold_bound_seals(catalog, manifest_groups, index_groups, errors):
     return bound
 
 
-def _cold_receipt_store(root, errors, catalog):
+def cold_receipt_store(root, errors, catalog):
     """Load and fully verify the K12/07 cold chain, fail-closed.
 
     Sealing moves parse cost off the hot path.  It does not move integrity
@@ -761,7 +761,7 @@ def _cold_receipt_store(root, errors, catalog):
     return store
 
 
-def _require_receipt(catalog, receipt_id, label, errors, expected=None):
+def require_receipt(catalog, receipt_id, label, errors, expected=None):
     """Resolve one receipt and verify common pass/invalidation bindings.
 
     A sealed receipt (K12/07 cold chain) satisfies an existence-only
@@ -773,7 +773,7 @@ def _require_receipt(catalog, receipt_id, label, errors, expected=None):
     that combination fails closed here unless the caller went through an
     explicit sealed branch instead of this resolver.
     """
-    if not _nonempty_string(receipt_id):
+    if not nonempty_string(receipt_id):
         errors.append("%s must identify a receipt" % label)
         return None
     entry = catalog.get(receipt_id)
@@ -805,7 +805,7 @@ def _require_receipt(catalog, receipt_id, label, errors, expected=None):
         if value is ANY_PRODUCER_ERA_VERSION:
             # K12/10 producer-era identity: a sealed historical receipt is
             # never re-judged against the current producer constant.
-            if not _nonempty_string(receipt.get(field)):
+            if not nonempty_string(receipt.get(field)):
                 errors.append("%s receipt %s has empty %s" %
                               (label, receipt_id, field))
             continue

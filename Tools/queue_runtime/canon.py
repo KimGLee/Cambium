@@ -61,7 +61,7 @@ TASK_STATES = frozenset((
 EXECUTION_MODES = frozenset(("concurrent-worker", "serial-integrator"))
 
 
-# Sentinel for _require_receipt: accept any nonempty producer-era version
+# Sentinel for require_receipt: accept any nonempty producer-era version
 # on a sealed historical receipt (K12/10 producer-era identity).
 ANY_PRODUCER_ERA_VERSION = object()
 

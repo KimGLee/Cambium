@@ -8,7 +8,7 @@ version of the same claim.
 
 import os
 
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 from queue_runtime.profile_view import (
     active_standards_view_currency_errors,
     profile_load_authorized_view_currency_errors,
@@ -34,7 +34,7 @@ def runtime_authority_context(result):
     queue = result.get("queue")
     profile_view = result.get("_profile_authorized_view")
     active_view = result.get("_active_standards_authorized_view")
-    if not _nonempty_string(root) or not isinstance(queue, dict):
+    if not nonempty_string(root) or not isinstance(queue, dict):
         raise ValueError("runtime validation result has no canonical root or Queue")
     if not isinstance(profile_view, dict):
         raise ValueError("runtime validation result has no authorized Profile view")

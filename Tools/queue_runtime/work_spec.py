@@ -14,7 +14,7 @@ from pathlib import Path
 import kblib
 
 from queue_runtime.canon import SHA256_RE
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 
 
 WORK_SPEC_PREFIX = ".cambium/work_specs"
@@ -54,7 +54,7 @@ WORK_SPEC_RECORD_ID_RE = re.compile(
 WORK_SPEC_SENTINELS = ("TODO(batch)", "REPLACE-ME")
 
 
-def _work_spec_binding_errors(path, fingerprint, label):
+def work_spec_binding_errors(path, fingerprint, label):
     """Validate one explicit simple/complex batch declaration.
 
     Null/null is the only spelling for a simple batch.  A complex batch must
@@ -70,7 +70,7 @@ def _work_spec_binding_errors(path, fingerprint, label):
             "both be non-null" % label
         )
         return errors
-    if not _nonempty_string(path):
+    if not nonempty_string(path):
         errors.append("%s work_spec_path must be null or a non-empty string" %
                       label)
     elif (not path.startswith(WORK_SPEC_PREFIX + "/") or
@@ -122,7 +122,7 @@ def _work_spec_id_errors(value, label):
 def _work_spec_target_scope_errors(value, manifest, label):
     errors = []
     if (not isinstance(value, list) or not value or
-            not all(_nonempty_string(entry) for entry in value)):
+            not all(nonempty_string(entry) for entry in value)):
         return [
             "%s must be a non-empty explicit string list containing "
             "'batch' or Queue manifest paths" % label
@@ -186,13 +186,13 @@ def _work_spec_sentinel_paths(value, path=()):
     return found
 
 
-def _work_spec_errors(root, item):
+def work_spec_errors(root, item):
     """Validate a complex batch's immutable Agent-readable work contract."""
     item_id = item.get("id", "<unknown>")
     label = "Queue item %s" % item_id
     path = item.get("work_spec_path")
     fingerprint = item.get("work_spec_sha256")
-    errors = _work_spec_binding_errors(path, fingerprint, label)
+    errors = work_spec_binding_errors(path, fingerprint, label)
     if errors or path is None:
         return errors
     try:
@@ -244,7 +244,7 @@ def _work_spec_errors(root, item):
     queue_manifest = item.get("manifest")
     scope_manifest = queue_manifest if isinstance(queue_manifest, list) else []
     if (not isinstance(manifest, list) or
-            not all(_nonempty_string(value) for value in manifest)):
+            not all(nonempty_string(value) for value in manifest)):
         errors.append("%s Work Spec manifest must be an explicit string list" %
                       label)
     elif manifest != queue_manifest:
@@ -301,7 +301,7 @@ def _work_spec_errors(root, item):
 
     if isinstance(outcomes, list):
         for index, record in enumerate(outcomes, 1):
-            if isinstance(record, dict) and not _nonempty_string(
+            if isinstance(record, dict) and not nonempty_string(
                     record.get("required_result")):
                 errors.append(
                     "%s Work Spec outcomes[%d].required_result must be a "
@@ -329,7 +329,7 @@ def _work_spec_errors(root, item):
                 record.get("target_scope"), scope_manifest,
                 "%s Work Spec instructions[%d].target_scope" %
                 (label, index)))
-            if not _nonempty_string(record.get("required_transformation")):
+            if not nonempty_string(record.get("required_transformation")):
                 errors.append(
                     "%s Work Spec instructions[%d].required_transformation "
                     "must be a non-empty string" % (label, index)
@@ -391,7 +391,7 @@ def _work_spec_errors(root, item):
                 "%s Work Spec acceptance_conditions[%d].target_scope" %
                 (label, index)))
             for field in ("observable_predicate", "evidence_requirement"):
-                if not _nonempty_string(record.get(field)):
+                if not nonempty_string(record.get(field)):
                     errors.append(
                         "%s Work Spec acceptance_conditions[%d].%s must be "
                         "a non-empty string" % (label, index, field)
@@ -405,7 +405,7 @@ def _work_spec_errors(root, item):
                 record.get("target_scope"), scope_manifest,
                 "%s Work Spec constraints[%d].target_scope" %
                 (label, index)))
-            if not _nonempty_string(record.get("requirement")):
+            if not nonempty_string(record.get("requirement")):
                 errors.append(
                     "%s Work Spec constraints[%d].requirement must be a "
                     "non-empty string" % (label, index)

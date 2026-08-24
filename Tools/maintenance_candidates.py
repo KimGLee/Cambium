@@ -43,7 +43,7 @@ def candidate_state_sha256(candidates):
     }))
 
 
-def _closed_mapping_errors(value, label, fields):
+def closed_mapping_errors(value, label, fields):
     if not isinstance(value, dict):
         return ["%s must be a mapping" % label]
     errors = []
@@ -119,7 +119,7 @@ def validate_candidates(root, candidates, *, previous_candidates=None,
     records = []
     for position, record in enumerate(candidates):
         item_label = "%s[%d]" % (label, position)
-        errors.extend(_closed_mapping_errors(
+        errors.extend(closed_mapping_errors(
             record, item_label, CANDIDATE_FIELDS))
         if not isinstance(record, dict):
             continue

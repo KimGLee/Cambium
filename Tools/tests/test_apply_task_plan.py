@@ -9,7 +9,7 @@ importantly, the refusals that keep it from becoming a way around governance.
 
 Where the transaction stops is as load-bearing as what it writes. It fills the
 two adopter inputs -- the Task Contract and the Coverage inventory -- and stops
-at the Queue. `check_queue._coverage_provenance_errors` treats both as adopter
+at the Queue. `check_queue.coverage_provenance_errors` treats both as adopter
 inputs until the first Queue materialization and demands a qualified writer
 receipt for every canonical write after it; materializing the Queue here would
 cross that line and force a new entry into that closed set for no gain, since
@@ -23,7 +23,7 @@ tool alone.
 The refusals matter more than the happy path. A tool that can write a Contract
 and a Coverage inventory can rewrite a task's scope; the only thing separating
 "materialize the plan once" from "change the scope whenever" is that it refuses
-a second, different plan. `check_queue._contract_sha256` already freezes the
+a second, different plan. `check_queue.contract_sha256` already freezes the
 Contract fingerprint at Queue materialization, so the refusal here agrees with
 the machine rather than adding a policy on top of it.
 """
@@ -406,7 +406,7 @@ class TaskPlanTransactionTests(unittest.TestCase):
             "queue", prepared["after_text"],
             "the transaction stages no Queue bytes; staging them would put a "
             "second writer on the far side of the materialization line that "
-            "_coverage_provenance_errors draws")
+            "coverage_provenance_errors draws")
         self.assertEqual(0, self.run_tool(apply=True))
         self.assertEqual(
             before, self.state_sha(check_queue.QUEUE_PATH),

@@ -313,7 +313,7 @@ def _scope_argument(scope):
 def _listed_markdown_paths(root, scope):
     root = os.path.realpath(os.path.abspath(root))
     scope_argument = _scope_argument(scope)
-    admitted_scope, _identity = _admit_scope(root, scope_argument)
+    admitted_scope, identity = _admit_scope(root, scope_argument)
     base = (root if admitted_scope == "." else
             kblib.repository_path(root, admitted_scope, must_exist=True,
                                    reject_symlink=True))

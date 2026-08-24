@@ -29,25 +29,25 @@ from queue_runtime.gate_registry import (
 )
 from queue_runtime.item_history import invalidated_receipt_consumers
 from queue_runtime.primitives import (
-    _closed_mapping_errors,
-    _explicit_string_list_errors,
-    _nonempty_string,
+    closed_mapping_errors,
+    explicit_string_list_errors,
+    nonempty_string,
 )
 from queue_runtime.producer_era import (
-    _producer_era_errors,
-    _standards_adoption_owner_projection_required,
-    _standards_adoption_profile_contract_required,
-    _standards_adoption_profile_inputs_required,
-    _standards_adoption_state_file_required,
-    _standards_adoption_upstream_required,
+    producer_era_errors,
+    standards_adoption_owner_projection_required,
+    standards_adoption_profile_contract_required,
+    standards_adoption_profile_inputs_required,
+    standards_adoption_state_file_required,
+    standards_adoption_upstream_required,
     accounted_standards_versions,
 )
 from queue_runtime.profile_view import profile_load_evidence
-from queue_runtime.receipts import _require_receipt
+from queue_runtime.receipts import require_receipt
 from queue_runtime.repofs import _path_error
 from queue_runtime.task_contract import (
     READ_SET_BOUNDARY_OWNER_PATH,
-    _read_set_load_closure,
+    read_set_load_closure,
 )
 
 
@@ -103,15 +103,15 @@ def standards_adoption_plan_errors(
     # A plan being admitted is always judged by the running producer;
     # ``producer_tool_version`` is an era selector only for sealed replay.
     profile_contract_required = validate_current or \
-        _standards_adoption_profile_contract_required(producer_tool_version)
+        standards_adoption_profile_contract_required(producer_tool_version)
     profile_inputs_required = validate_current or \
-        _standards_adoption_profile_inputs_required(producer_tool_version)
+        standards_adoption_profile_inputs_required(producer_tool_version)
     upstream_required = validate_current or \
-        _standards_adoption_upstream_required(producer_tool_version)
+        standards_adoption_upstream_required(producer_tool_version)
     owner_projection_era = validate_current or \
-        _standards_adoption_owner_projection_required(producer_tool_version)
+        standards_adoption_owner_projection_required(producer_tool_version)
     state_file_required = validate_current or \
-        _standards_adoption_state_file_required(producer_tool_version)
+        standards_adoption_state_file_required(producer_tool_version)
     optional_fields = []
     if not profile_contract_required:
         optional_fields.append("profile_contract_fingerprint_after")
@@ -125,7 +125,7 @@ def standards_adoption_plan_errors(
             "standards_state_sha256_before",
             "standards_effective_date_after",
         ))
-    errors = _closed_mapping_errors(
+    errors = closed_mapping_errors(
         plan, "Standards adoption plan", STANDARDS_ADOPTION_PLAN_FIELDS,
         optional_fields=tuple(optional_fields))
     if not isinstance(plan, dict):
@@ -140,7 +140,7 @@ def standards_adoption_plan_errors(
             "standards_version_before", "standards_version_after",
             "selected_profile_manifest_before",
             "selected_profile_manifest_after", "governance_revision_ref"):
-        if not _nonempty_string(plan.get(field)):
+        if not nonempty_string(plan.get(field)):
             errors.append("Standards adoption plan %s must be non-empty" % field)
     if plan.get("task_state_before") not in ("active", "paused"):
         errors.append("Standards adoption plan supports only active or paused "
@@ -156,8 +156,8 @@ def standards_adoption_plan_errors(
                 "upstream_revision_id must both name the upstream or both "
                 "be null; half an identity identifies nothing")
         elif source is not None and (
-                not _nonempty_string(source) or
-                not _nonempty_string(revision)):
+                not nonempty_string(source) or
+                not nonempty_string(revision)):
             errors.append(
                 "Standards adoption plan upstream_source_ref and "
                 "upstream_revision_id must be non-empty strings or an "
@@ -213,7 +213,7 @@ def standards_adoption_plan_errors(
         "boundary_gate_reruns",
     )
     for field in list_fields:
-        errors.extend(_explicit_string_list_errors(
+        errors.extend(explicit_string_list_errors(
             plan.get(field), "Standards adoption plan %s" % field))
         if isinstance(plan.get(field), list) and plan[field] != sorted(plan[field]):
             errors.append("Standards adoption plan %s must be sorted" % field)
@@ -257,7 +257,7 @@ def standards_adoption_plan_errors(
                         "active Standards state does not match plan before "
                         "Profile")
         after_profile = plan.get("selected_profile_manifest_after")
-        if _nonempty_string(after_profile):
+        if nonempty_string(after_profile):
             profile_evidence, profile_errors = profile_load_evidence(
                 root, after_profile)
             errors.extend(profile_errors)
@@ -285,10 +285,10 @@ def standards_adoption_plan_errors(
                       "loaded_module_paths_after"):
             for relative in plan.get(field) if isinstance(
                     plan.get(field), list) else []:
-                path_error = _path_error(root, relative, must_exist=True)
-                if path_error:
+                path_error_message = _path_error(root, relative, must_exist=True)
+                if path_error_message:
                     errors.append("Standards adoption %s path %r is unsafe or "
-                                  "missing: %s" % (field, relative, path_error))
+                                  "missing: %s" % (field, relative, path_error_message))
 
     gate_registry = {}
     revalidation_capabilities = {}
@@ -309,12 +309,12 @@ def standards_adoption_plan_errors(
         predicates = []
     for index, predicate in enumerate(predicates):
         label = "changed_predicates[%d]" % index
-        errors.extend(_closed_mapping_errors(
+        errors.extend(closed_mapping_errors(
             predicate, label, STANDARDS_CHANGED_PREDICATE_FIELDS))
         if not isinstance(predicate, dict):
             continue
         predicate_id = predicate.get("predicate_id")
-        if not _nonempty_string(predicate_id):
+        if not nonempty_string(predicate_id):
             errors.append("%s predicate_id must be non-empty" % label)
         else:
             predicate_ids.append(predicate_id)
@@ -322,15 +322,15 @@ def standards_adoption_plan_errors(
             errors.append("%s change_kind must be added, removed, or modified" %
                           label)
         owner = predicate.get("owner_path")
-        if not _nonempty_string(owner):
+        if not nonempty_string(owner):
             errors.append("%s owner_path must be non-empty" % label)
         elif validate_current and root is not None:
-            path_error = _path_error(root, owner, must_exist=True)
-            if path_error:
+            path_error_message = _path_error(root, owner, must_exist=True)
+            if path_error_message:
                 errors.append("%s owner_path is unsafe or missing: %s" %
-                              (label, path_error))
+                              (label, path_error_message))
         affected = predicate.get("affected_gate_ids")
-        errors.extend(_explicit_string_list_errors(
+        errors.extend(explicit_string_list_errors(
             affected, "%s affected_gate_ids" % label))
         if isinstance(affected, list):
             if not affected:
@@ -338,13 +338,13 @@ def standards_adoption_plan_errors(
             if affected != sorted(affected):
                 errors.append("%s affected_gate_ids must be sorted" % label)
             registered_gate_ids.update(value for value in affected
-                                       if _nonempty_string(value))
+                                       if nonempty_string(value))
             if validate_current and root is not None:
                 projected, projection_errors = projected_revalidation_owners(
                     affected, revalidation_capabilities)
                 errors.extend("%s: %s" % (label, error)
                               for error in projection_errors)
-                if _nonempty_string(predicate_id):
+                if nonempty_string(predicate_id):
                     predicate_projected_owners[predicate_id] = set(projected)
                 boundary_gate_ids.update(
                     value for value in projected
@@ -356,7 +356,7 @@ def standards_adoption_plan_errors(
                 # rewritten merely because the current kernel gained it.
                 boundary_gate_ids.update(
                     value for value in affected
-                    if (_nonempty_string(value) and
+                    if (nonempty_string(value) and
                         (not profile_contract_required or
                          value != "profile-load")))
     if len(predicate_ids) != len(set(predicate_ids)):
@@ -381,12 +381,12 @@ def standards_adoption_plan_errors(
     ))
     for index, boundary in enumerate(boundaries):
         label = "invalidation_boundaries[%d]" % index
-        errors.extend(_closed_mapping_errors(
+        errors.extend(closed_mapping_errors(
             boundary, label, STANDARDS_INVALIDATION_BOUNDARY_FIELDS))
         if not isinstance(boundary, dict):
             continue
         boundary_id = boundary.get("boundary_id")
-        if not _nonempty_string(boundary_id):
+        if not nonempty_string(boundary_id):
             errors.append("%s boundary_id must be non-empty" % label)
         else:
             boundary_ids.append(boundary_id)
@@ -394,7 +394,7 @@ def standards_adoption_plan_errors(
             errors.append("%s target_kind is invalid" % label)
         for field in ("predicate_ids", "target_ids", "required_gate_ids"):
             values = boundary.get(field)
-            errors.extend(_explicit_string_list_errors(
+            errors.extend(explicit_string_list_errors(
                 values, "%s %s" % (label, field)))
             if isinstance(values, list):
                 if not values:
@@ -407,7 +407,7 @@ def standards_adoption_plan_errors(
         covered_predicates.update(referenced)
         required_gate_ids = [
             value for value in (boundary.get("required_gate_ids") or [])
-            if _nonempty_string(value)
+            if nonempty_string(value)
         ]
         registered_gate_ids.update(required_gate_ids)
         if validate_current and root is not None:
@@ -440,7 +440,7 @@ def standards_adoption_plan_errors(
             value for value in required_gate_ids
             if not profile_contract_required or value != "profile-load"
         ]
-        if _nonempty_string(boundary_id):
+        if nonempty_string(boundary_id):
             boundary_runtime_gate_ids[boundary_id] = runtime_gate_ids
         if not validate_current:
             # Every historical producer froze its boundary-level additions
@@ -453,7 +453,7 @@ def standards_adoption_plan_errors(
         targets = boundary.get("target_ids") or []
         if boundary.get("target_kind") == "batch":
             affected_batches.update(targets)
-            if _nonempty_string(boundary_id):
+            if nonempty_string(boundary_id):
                 boundary_batch_targets[boundary_id] = set(targets)
             if queue is not None:
                 known = {item.get("id") for item in queue.get("required_queue", [])
@@ -499,7 +499,7 @@ def standards_adoption_plan_errors(
             predicate.get("predicate_id")
             for predicate in predicates
             if (isinstance(predicate, dict) and
-                _nonempty_string(predicate.get("predicate_id")) and
+                nonempty_string(predicate.get("predicate_id")) and
                 isinstance(predicate.get("affected_gate_ids"), list) and
                 "profile-load" in (predicate.get("affected_gate_ids") or []))
         }
@@ -551,7 +551,7 @@ def standards_adoption_plan_errors(
                         predicate.get("predicate_id"), set()))
                 for predicate in predicates
                 if (isinstance(predicate, dict) and
-                    _nonempty_string(predicate.get("predicate_id")) and
+                    nonempty_string(predicate.get("predicate_id")) and
                     isinstance(predicate.get("affected_gate_ids"), list))
             }
         elif not owner_projection_era:
@@ -562,11 +562,11 @@ def standards_adoption_plan_errors(
                 predicate.get("predicate_id"): {
                     gate_id for gate_id in
                     predicate.get("affected_gate_ids") or []
-                    if _nonempty_string(gate_id) and gate_id != "profile-load"
+                    if nonempty_string(gate_id) and gate_id != "profile-load"
                 }
                 for predicate in predicates
                 if (isinstance(predicate, dict) and
-                    _nonempty_string(predicate.get("predicate_id")) and
+                    nonempty_string(predicate.get("predicate_id")) and
                     isinstance(predicate.get("affected_gate_ids"), list))
             }
         else:
@@ -582,7 +582,7 @@ def standards_adoption_plan_errors(
                 continue
             gates = {
                 gate_id for gate_id in boundary.get("required_gate_ids", [])
-                if _nonempty_string(gate_id)
+                if nonempty_string(gate_id)
             } if isinstance(boundary.get("required_gate_ids"), list) else set()
             for predicate_id in boundary.get("predicate_ids", []) \
                     if isinstance(boundary.get("predicate_ids"), list) else ():
@@ -612,12 +612,12 @@ def standards_adoption_plan_errors(
                   if isinstance(item, dict)} if queue is not None else set())
     for index, evidence in enumerate(invalidated):
         label = "invalidated_evidence[%d]" % index
-        errors.extend(_closed_mapping_errors(
+        errors.extend(closed_mapping_errors(
             evidence, label, STANDARDS_INVALIDATED_EVIDENCE_FIELDS))
         if not isinstance(evidence, dict):
             continue
         receipt_id = evidence.get("receipt_id")
-        if not _nonempty_string(receipt_id):
+        if not nonempty_string(receipt_id):
             errors.append("%s receipt_id must be non-empty" % label)
         else:
             invalidated_ids.append(receipt_id)
@@ -628,7 +628,7 @@ def standards_adoption_plan_errors(
         for field in ("predicate_ids", "dimension_ids", "boundary_ids",
                       "revalidation_scope_ids"):
             values = evidence.get(field)
-            errors.extend(_explicit_string_list_errors(
+            errors.extend(explicit_string_list_errors(
                 values, "%s %s" % (label, field)))
             if isinstance(values, list) and values != sorted(values):
                 errors.append("%s %s must be sorted" % (label, field))
@@ -673,7 +673,7 @@ def standards_adoption_plan_errors(
         if not scoped:
             continue
         for boundary_id in evidence.get("boundary_ids") or []:
-            if _nonempty_string(boundary_id):
+            if nonempty_string(boundary_id):
                 boundary_reached_batches.setdefault(
                     boundary_id, set()).update(scoped)
 
@@ -724,7 +724,7 @@ def standards_adoption_plan_errors(
             if not isinstance(boundary, dict):
                 continue
             boundary_id = boundary.get("boundary_id")
-            if not _nonempty_string(boundary_id) or boundary_id in enforced:
+            if not nonempty_string(boundary_id) or boundary_id in enforced:
                 continue
             if (boundary.get("target_kind") == "profile-load" and
                     not boundary_runtime_gate_ids.get(boundary_id)):
@@ -752,15 +752,15 @@ def standards_adoption_plan_errors(
         declared_values = plan.get("loaded_module_paths_after")
         declared = {
             value for value in declared_values
-            if _nonempty_string(value)
+            if nonempty_string(value)
         } if isinstance(declared_values, list) else set()
         selected_values = plan.get("selected_read_sets_after")
         selected = {
             value for value in selected_values
-            if _nonempty_string(value)
+            if nonempty_string(value)
         } if isinstance(selected_values, list) else set()
         read_sets, modules, invalid_selected, closure_errors = \
-            _read_set_load_closure(
+            read_set_load_closure(
                 root, selected,
                 plan.get("selected_profile_manifest_after"),
                 plan.get("selected_profile_route_ids_after"),
@@ -883,7 +883,7 @@ def standards_adoption_plan_errors(
             receipt_id = evidence.get("receipt_id")
             actual_batches = {
                 row.get("batch_id") for row in consumers.get(receipt_id, [])
-                if _nonempty_string(row.get("batch_id"))
+                if nonempty_string(row.get("batch_id"))
             }
             declared_batches = set(evidence.get("revalidation_scope_ids") or [])
             for boundary_id in evidence.get("boundary_ids") or []:
@@ -934,7 +934,7 @@ def standards_adoption_plan_errors(
     return errors
 
 
-def _standards_adoption_errors(
+def standards_adoption_errors(
         root, progress, catalog, queue, active_standards_view=None):
     """Validate plan/record/commit bindings for all persisted adoptions."""
     records = progress.get("standards_adoptions")
@@ -962,7 +962,7 @@ def _standards_adoption_errors(
         # Resolve the sealed producer identity before interpreting its plan.
         # Current 1.4 fields cannot be projected backward onto earlier history,
         # while an absent/malformed version must not downgrade the contract.
-        receipt = _require_receipt(
+        receipt = require_receipt(
             catalog, receipt_id, "%s commit" % label, errors,
             expected={
                 "tool": STANDARDS_ADOPTION_TOOL,
@@ -985,10 +985,10 @@ def _standards_adoption_errors(
             STANDARDS_ADOPTION_TOOL_VERSION
         )
         profile_contract_required = \
-            _standards_adoption_profile_contract_required(
+            standards_adoption_profile_contract_required(
                 producer_tool_version)
         profile_inputs_required = \
-            _standards_adoption_profile_inputs_required(
+            standards_adoption_profile_inputs_required(
                 producer_tool_version)
         if (profile_contract_required and
                 "profile_contract_fingerprint_after" not in record):
@@ -1000,7 +1000,7 @@ def _standards_adoption_errors(
             errors.append(
                 "%s misses profile_load_inputs_sha256_after required by "
                 "adopt_standards %s" % (label, producer_tool_version))
-        if _standards_adoption_upstream_required(producer_tool_version):
+        if standards_adoption_upstream_required(producer_tool_version):
             for field in ("upstream_source_ref", "upstream_revision_id"):
                 if field not in record:
                     errors.append(
@@ -1009,7 +1009,7 @@ def _standards_adoption_errors(
                         "adoption record is what makes upstream and "
                         "downstream comparable" %
                         (label, field, producer_tool_version))
-        state_file_required = _standards_adoption_state_file_required(
+        state_file_required = standards_adoption_state_file_required(
             producer_tool_version)
         if state_file_required:
             for field in (
@@ -1027,14 +1027,14 @@ def _standards_adoption_errors(
                           producer_tool_version=producer_tool_version))
         changed_ids = sorted(
             row.get("predicate_id") for row in plan.get("changed_predicates", [])
-            if isinstance(row, dict) and _nonempty_string(row.get("predicate_id")))
+            if isinstance(row, dict) and nonempty_string(row.get("predicate_id")))
         invalidated_ids = sorted(
             row.get("receipt_id")
             for row in plan.get("invalidated_evidence", [])
-            if isinstance(row, dict) and _nonempty_string(row.get("receipt_id")))
+            if isinstance(row, dict) and nonempty_string(row.get("receipt_id")))
         boundary_ids = sorted(
             row.get("boundary_id") for row in plan.get("invalidation_boundaries", [])
-            if isinstance(row, dict) and _nonempty_string(row.get("boundary_id")))
+            if isinstance(row, dict) and nonempty_string(row.get("boundary_id")))
         record_plan_fields = {
             "id": "adoption_id",
             "task_state_before": "task_state_before",
@@ -1091,7 +1091,7 @@ def _standards_adoption_errors(
         # Historical: a committed adoption's own commit receipt.  Its producer
         # version is whatever `adopt_standards` was when the transaction ran,
         # so the era it claims is checked instead of today's constant.
-        errors.extend(_producer_era_errors(
+        errors.extend(producer_era_errors(
             receipt, receipt_id, "%s commit" % label, accounted))
         if receipt is not None:
             receipt_bindings = {
@@ -1162,7 +1162,7 @@ def _standards_adoption_errors(
                 # -- `standards_version` below binds the record's own
                 # `standards_version_after` exactly, which states the producer
                 # era more tightly than the accounted-version set could.
-                _require_receipt(
+                require_receipt(
                     catalog, immediate_ids[0], "%s immediate Queue gate" % label,
                     errors, expected={
                         "tool": TOOL,

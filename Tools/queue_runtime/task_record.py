@@ -8,10 +8,10 @@ refuses would let history contain states the present cannot produce.
 
 from queue_runtime.canon import SHA256_RE
 from queue_runtime.primitives import (
-    _nonempty_string,
-    _valid_timestamp,
+    nonempty_string,
+    valid_timestamp,
 )
-from queue_runtime.receipts import _require_receipt
+from queue_runtime.receipts import require_receipt
 
 
 TASK_LIFECYCLE_EDGES = frozenset((
@@ -46,7 +46,7 @@ FINAL_CONTROL_STATUSES = frozenset((
 ))
 
 
-def _pending_control_ids(progress):
+def pending_control_ids(progress):
     """Return pending Guidance and Amendment identifiers for resume/terminal gates."""
     pending_guidance = []
     guidance = progress.get("guidance_queue")
@@ -72,7 +72,7 @@ def _pending_control_ids(progress):
     return pending_guidance, pending_amendments
 
 
-def _last_reconciled_guidance_id(progress):
+def last_reconciled_guidance_id(progress):
     """Derive the incremental guidance boundary named by K00/10 and K12/04.
 
     K13/07 keeps Pending/reconciled Guidance in Progress but forbids Progress
@@ -94,13 +94,13 @@ def _last_reconciled_guidance_id(progress):
         if not isinstance(entry, dict) or entry.get("status") == "received":
             break
         entry_id = entry.get("guidance_id")
-        if not _nonempty_string(entry_id):
+        if not nonempty_string(entry_id):
             break
         boundary = entry_id
     return boundary
 
 
-def _task_transition_receipt_record_errors(
+def task_transition_receipt_record_errors(
         catalog, receipt_id, receipt, completion_semantics,
         *, expected_contract_sha=None):
     """Validate the canonical, history-independent transition fields.
@@ -136,7 +136,7 @@ def _task_transition_receipt_record_errors(
             "complete" % receipt_id
         )
     checked_at = receipt.get("checked_at")
-    if not _valid_timestamp(checked_at):
+    if not valid_timestamp(checked_at):
         errors.append("task transition receipt %s has invalid checked_at" %
                       receipt_id)
     for field in (
@@ -177,11 +177,11 @@ def _task_transition_receipt_record_errors(
                           (receipt_id, field))
     evidence = receipt.get("evidence_receipt")
     if after in ("completion-candidate", "complete"):
-        if not _nonempty_string(evidence):
+        if not nonempty_string(evidence):
             errors.append("task transition %s requires evidence_receipt" %
                           receipt_id)
         else:
-            _require_receipt(
+            require_receipt(
                 catalog, evidence, "task transition %s evidence" % receipt_id,
                 errors,
             )

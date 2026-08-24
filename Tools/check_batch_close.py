@@ -861,7 +861,7 @@ def _profile_evaluation(root, runtime, *, authorized_profile_view=None):
             check_queue.profile_load_authorized_view(
                 root, manifest_relative)
     else:
-        errors = check_queue._authorized_profile_view_errors(
+        errors = check_queue.authorized_profile_view_errors(
             root, manifest_relative, authorized_profile_view)
     if errors or authorized_profile_view is None:
         raise ValueError(
@@ -1211,7 +1211,7 @@ def _closed_transition_revision(catalog, item):
 
 def _load_candidate_evidence(root, attestation, label):
     relative = attestation.get("candidate_evidence_path")
-    errors = check_queue._candidate_evidence_binding_errors(
+    errors = check_queue.candidate_evidence_binding_errors(
         root, label, relative,
         attestation.get("candidate_evidence_sha256"),
         attestation.get("candidate_evidence_bytes"),
@@ -1604,7 +1604,7 @@ def _main(argv=None):
                         profile_view if profile_view is not None else {}))
                 state_anchor = _authoritative_state_anchor(runtime)
                 own_relative = os.path.relpath(os.fspath(lease), root)
-                locks = runtime.get("writer_locks") or []
+                locks = runtime.get("_writer_locks") or []
                 own_locks = [lock for lock in locks
                              if lock.get("path") == own_relative]
                 runtime_errors = list(profile_view_errors)

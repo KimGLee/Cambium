@@ -25,19 +25,19 @@ from queue_runtime.canon import (
     SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS,
 )
 from queue_runtime.primitives import (
-    _closed_mapping_errors,
-    _nonempty_string,
-    _timestamp_value,
-    _valid_timestamp,
+    closed_mapping_errors,
+    nonempty_string,
+    timestamp_value,
+    valid_timestamp,
 )
 from queue_runtime.producer_era import (
-    _producer_era_errors,
+    producer_era_errors,
     accounted_standards_versions,
 )
-from queue_runtime.receipts import _require_receipt
+from queue_runtime.receipts import require_receipt
 from queue_runtime.task_contract import (
-    _contract_anchor_chain,
-    _contract_sha256,
+    contract_anchor_chain,
+    contract_sha256,
 )
 
 
@@ -78,7 +78,7 @@ PROPERTY_STATE_MIGRATION_BINDING_FIELDS = (
 )
 
 
-def _operational_amendment_registration_errors(
+def operational_amendment_registration_errors(
         progress, amendment, label, current_catalog, historical_catalog,
         queue, coverage_sha, queue_sha, progress_sha):
     """Validate the registration which authorized one operational Amendment.
@@ -120,7 +120,7 @@ def _operational_amendment_registration_errors(
     catalog = current_catalog if pending else historical_catalog
     receipt_id = amendment.get("registration_receipt")
     approval_reference = amendment.get("approval_reference")
-    if not _nonempty_string(approval_reference):
+    if not nonempty_string(approval_reference):
         errors.append("%s approval_reference must be a non-empty string" % label)
 
     state_prefix = ("queue_state_revision" if operation == "queue-replan"
@@ -166,7 +166,7 @@ def _operational_amendment_registration_errors(
             field: amendment.get(field)
             for field in PROPERTY_STATE_MIGRATION_BINDING_FIELDS
         })
-    receipt = _require_receipt(
+    receipt = require_receipt(
         catalog, receipt_id, "%s registration" % label, errors,
         expected=expected,
     )
@@ -222,7 +222,7 @@ def _operational_amendment_registration_errors(
                 errors.append(
                     "%s property-state-migration has invalid %s" %
                     (label, field))
-        if not _nonempty_string(amendment.get("selected_profile_manifest")):
+        if not nonempty_string(amendment.get("selected_profile_manifest")):
             errors.append(
                 "%s property-state-migration has no selected Profile "
                 "manifest" % label)
@@ -251,7 +251,7 @@ def _operational_amendment_registration_errors(
                 errors.append("%s current registration has invalid %s" %
                               (label, field))
         if amendment.get("decision_mode") == "contract-delegated":
-            if (not _nonempty_string(amendment.get("authority_id")) or
+            if (not nonempty_string(amendment.get("authority_id")) or
                     not SHA256_RE.fullmatch(str(
                         amendment.get("authority_sha256") or ""))):
                 errors.append(
@@ -267,7 +267,7 @@ def _operational_amendment_registration_errors(
         errors.append(
             "%s legacy registration era must not claim delegated-authority "
             "fields" % label)
-    if not _valid_timestamp(receipt.get("checked_at")):
+    if not valid_timestamp(receipt.get("checked_at")):
         errors.append("%s registration receipt has invalid checked_at" % label)
     elif amendment.get("date") != receipt.get("checked_at")[:10]:
         errors.append("%s date must equal the registration receipt date" % label)
@@ -281,7 +281,7 @@ def _operational_amendment_registration_errors(
                           (label, field))
     if pending:
         pending_bindings = {
-            "contract_sha256": _contract_sha256(progress),
+            "contract_sha256": contract_sha256(progress),
             "before_coverage_sha256": coverage_sha,
             "after_coverage_sha256": coverage_sha,
             "before_required_queue_sha256": queue_sha,
@@ -299,10 +299,10 @@ def _operational_amendment_registration_errors(
         # longer validate is retired through the registering writer, never by
         # editing the row.  The withdrawal receipt is immutable history; the
         # bound plan/proposal bytes above stay verified forever.
-        if not _nonempty_string(amendment.get("withdrawal_reason")):
+        if not nonempty_string(amendment.get("withdrawal_reason")):
             errors.append("%s withdrawn row must record a nonempty "
                           "withdrawal_reason" % label)
-        _require_receipt(
+        require_receipt(
             historical_catalog, amendment.get("withdrawal_receipt"),
             "%s withdrawal" % label, errors,
             expected={
@@ -331,7 +331,7 @@ def _registration_execution_bridge_errors(
         return errors
     registration_id = amendment.get("registration_receipt")
     registration_entry = historical_catalog.get(registration_id) if \
-        _nonempty_string(registration_id) else None
+        nonempty_string(registration_id) else None
     registration = registration_entry[1] if registration_entry is not None \
         else None
     if not isinstance(registration, dict):
@@ -350,8 +350,8 @@ def _registration_execution_bridge_errors(
                 (label, registration_field, registered_sha,
                  commit_field, execution_sha)
             )
-    registration_time = _timestamp_value(registration.get("checked_at"))
-    commit_time = _timestamp_value(commit_receipt.get("checked_at"))
+    registration_time = timestamp_value(registration.get("checked_at"))
+    commit_time = timestamp_value(commit_receipt.get("checked_at"))
     if commit_time is None:
         errors.append("%s execution receipt has invalid checked_at" % label)
     elif registration_time is not None and commit_time < registration_time:
@@ -394,11 +394,11 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
     the row names -- or writes nothing.  A row in any other state is
     therefore not an in-progress amendment but evidence of a bypassed
     writer, and fails closed.  Anchor continuity (the before/after contract
-    fingerprints actually chaining) belongs to _contract_anchor_chain; this
+    fingerprints actually chaining) belongs to contract_anchor_chain; this
     validator owns the row's own shape and its binding to plan and receipt.
     """
     errors = []
-    errors.extend(_closed_mapping_errors(
+    errors.extend(closed_mapping_errors(
         amendment, label, CONTRACT_AMENDMENT_ROW_FIELDS,
         CONTRACT_AMENDMENT_ROW_OPTIONAL_FIELDS))
     required_fields = (CONTRACT_AMENDMENT_ROW_FIELDS -
@@ -414,14 +414,14 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
             "transaction rather than an in-progress one" % label)
     for field in ("id", "date", "summary", "approval_reference",
                   "contract_version_before", "contract_version_after"):
-        if not _nonempty_string(amendment.get(field)):
+        if not nonempty_string(amendment.get(field)):
             errors.append("%s %s must be a non-empty string" % (label, field))
     if amendment.get("contract_version_before") == amendment.get(
             "contract_version_after"):
         errors.append("%s must advance contract_version" % label)
     scope_before = amendment.get("scope_version_before")
     scope_after = amendment.get("scope_version_after")
-    if not _nonempty_string(scope_before) or scope_before != scope_after:
+    if not nonempty_string(scope_before) or scope_before != scope_after:
         errors.append("%s must record one unchanged scope_version; scope "
                       "belongs to the replan machinery" % label)
     queue_before = amendment.get("queue_revision_before")
@@ -437,7 +437,7 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
                       "lifecycle" % label)
     plan_path = amendment.get("plan_path")
     plan_sha = amendment.get("plan_sha256")
-    if not _nonempty_string(plan_path) or not (
+    if not nonempty_string(plan_path) or not (
             isinstance(plan_sha, str) and SHA256_RE.fullmatch(plan_sha)):
         errors.append("%s must bind plan_path and plan_sha256" % label)
     else:
@@ -461,7 +461,7 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
                 "%s %s must be spelled sha256:<64 hex digits>" %
                 (label, field))
     receipt_id = amendment.get("verification_receipt")
-    entry = historical_catalog.get(receipt_id) if _nonempty_string(
+    entry = historical_catalog.get(receipt_id) if nonempty_string(
         receipt_id) else None
     if entry is None:
         errors.append("%s verification_receipt is not in the receipt "
@@ -531,7 +531,7 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
             "%s commit receipt has task_id=%r, expected %r" %
             (label, receipt.get("task_id"), task_id))
     for field in ("standards_version", "selected_profile_manifest"):
-        if not _nonempty_string(receipt.get(field)):
+        if not nonempty_string(receipt.get(field)):
             errors.append(
                 "%s commit receipt carries no %s identity; a receipt whose "
                 "Standards era cannot be told is not replayable evidence" %
@@ -540,12 +540,12 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
     # instance accounts for, and the manifest must be the task's own.  A
     # receipt claiming `never-adopted` or a foreign profile is one this
     # runtime never produced.
-    errors.extend(_producer_era_errors(
+    errors.extend(producer_era_errors(
         receipt, receipt_id, "%s commit" % label, accounted))
     live_manifest = (live_contract or {}).get("selected_profile_manifest")
     claimed_manifest = receipt.get("selected_profile_manifest")
-    if (_nonempty_string(claimed_manifest) and
-            _nonempty_string(live_manifest) and
+    if (nonempty_string(claimed_manifest) and
+            nonempty_string(live_manifest) and
             claimed_manifest != live_manifest):
         errors.append(
             "%s commit receipt claims selected_profile_manifest=%r, but "
@@ -555,7 +555,7 @@ def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
     return errors
 
 
-def _cross_ledger_amendment_errors(
+def cross_ledger_amendment_errors(
         root, progress, current_catalog, historical_catalog, queue,
         coverage_sha, queue_sha, progress_sha):
     """Validate append-only commit evidence for cross-Ledger Amendments."""
@@ -607,13 +607,13 @@ def _cross_ledger_amendment_errors(
         operation = amendment.get("operation")
         for field in ("id", "summary", "scope_version_before",
                       "scope_version_after", "coverage_proposal_path"):
-            if not _nonempty_string(amendment.get(field)):
+            if not nonempty_string(amendment.get(field)):
                 errors.append("%s %s must be a non-empty string" %
                               (label, field))
         for field in ("affected_pages", "affected_batches"):
             values = amendment.get(field)
             if (not isinstance(values, list) or
-                    not all(_nonempty_string(value) for value in values)):
+                    not all(nonempty_string(value) for value in values)):
                 errors.append("%s %s must be an explicit string list" %
                               (label, field))
             elif values != sorted(values) or len(values) != len(set(values)):
@@ -623,14 +623,14 @@ def _cross_ledger_amendment_errors(
         scope_after = amendment.get("scope_version_after")
         if (operation in (
                 "gap-routing-reconciliation", "property-state-migration") and
-                _nonempty_string(scope_before) and
+                nonempty_string(scope_before) and
                 scope_after != scope_before):
             errors.append(
                 "%s %s must preserve scope_version" % (label, operation))
         elif (operation not in (
                 "gap-routing-reconciliation", "property-state-migration") and
-              _nonempty_string(scope_before) and
-              _nonempty_string(scope_after) and
+              nonempty_string(scope_before) and
+              nonempty_string(scope_after) and
               scope_before == scope_after):
             errors.append("%s cross-Ledger Amendment must change scope_version" %
                           label)
@@ -679,7 +679,7 @@ def _cross_ledger_amendment_errors(
                 errors.append(
                     "%s property-state-migration affected_batches must be "
                     "empty" % label)
-        elif (not _nonempty_string(cancel_id) or
+        elif (not nonempty_string(cancel_id) or
               amendment.get("affected_batches") != [cancel_id]):
             errors.append("%s cancel-batch must bind exactly cancel_batch_id" %
                           label)
@@ -690,7 +690,7 @@ def _cross_ledger_amendment_errors(
         for artifact_label, artifact_path, artifact_sha in (
                 ("plan", plan_path, plan_sha),
                 ("coverage proposal", proposal_path, proposal_sha)):
-            if not _nonempty_string(artifact_path):
+            if not nonempty_string(artifact_path):
                 errors.append("%s %s path must be a non-empty string" %
                               (label, artifact_label))
                 continue
@@ -713,7 +713,7 @@ def _cross_ledger_amendment_errors(
             except (OSError, ValueError, kblib.YamlSubsetError) as exc:
                 errors.append("%s %s is unsafe, missing, or invalid: %s" %
                               (label, artifact_label, exc))
-        if (_nonempty_string(plan_path) and _nonempty_string(proposal_path) and
+        if (nonempty_string(plan_path) and nonempty_string(proposal_path) and
                 os.path.normpath(plan_path) == os.path.normpath(proposal_path)):
             errors.append("%s plan and coverage proposal must be different files" %
                           label)
@@ -737,7 +737,7 @@ def _cross_ledger_amendment_errors(
                 if plan.get(field) != value:
                     errors.append("%s plan %s=%r, expected %r" %
                                   (label, field, plan.get(field), value))
-        errors.extend(_operational_amendment_registration_errors(
+        errors.extend(operational_amendment_registration_errors(
             progress, amendment, label, current_catalog, historical_catalog,
             queue, coverage_sha, queue_sha, progress_sha,
         ))
@@ -799,7 +799,7 @@ def _cross_ledger_amendment_errors(
                           (label, commit_id))
         seen_transactions.add(transaction_id)
         seen_commits.add(commit_id)
-        receipt = _require_receipt(
+        receipt = require_receipt(
             historical_catalog, commit_id,
             "%s verification" % label, errors,
             expected={
@@ -845,7 +845,7 @@ def _cross_ledger_amendment_errors(
                     errors.append(
                         "%s property-state-migration commit receipt does not "
                         "bind %s" % (label, field))
-        if not _nonempty_string(transaction_id):
+        if not nonempty_string(transaction_id):
             errors.append("%s verified transaction_id must be non-empty" % label)
         if receipt is not None and not SHA256_RE.fullmatch(
                 str(receipt.get("plan_sha256", ""))):
@@ -869,7 +869,7 @@ def _cross_ledger_amendment_errors(
     return errors
 
 
-def _pending_cross_ledger_amendments(progress):
+def pending_cross_ledger_amendments(progress):
     amendments = progress.get("amendments")
     if not isinstance(amendments, list):
         return []
@@ -885,7 +885,7 @@ def _pending_cross_ledger_amendments(progress):
     ]
 
 
-def _queue_replan_amendment_errors(
+def queue_replan_amendment_errors(
         root, progress, current_catalog, historical_catalog, queue, queue_sha,
         coverage_sha, progress_sha,
                                    allow_pending_receipts=False):
@@ -924,7 +924,7 @@ def _queue_replan_amendment_errors(
             continue
         label = "Progress amendments[%d]" % index
         amendment_id = amendment.get("id")
-        if not _nonempty_string(amendment_id):
+        if not nonempty_string(amendment_id):
             errors.append("%s queue-replan id must be a non-empty string" % label)
         elif amendment_id in seen_amendment_ids:
             errors.append("%s repeats queue-replan Amendment id %s" %
@@ -934,7 +934,7 @@ def _queue_replan_amendment_errors(
 
         affected = amendment.get("affected_batches")
         if (not isinstance(affected, list) or not affected or
-                not all(_nonempty_string(value) and
+                not all(nonempty_string(value) and
                         BATCH_ID_RE.fullmatch(value) for value in affected)):
             errors.append("%s affected_batches must be a non-empty list of "
                           "valid batch ids" % label)
@@ -945,7 +945,7 @@ def _queue_replan_amendment_errors(
 
         affected_pages = amendment.get("affected_pages")
         if (not isinstance(affected_pages, list) or
-                not all(_nonempty_string(value) for value in affected_pages)):
+                not all(nonempty_string(value) for value in affected_pages)):
             errors.append("%s affected_pages must be an explicit string list" %
                           label)
         elif (len(affected_pages) != len(set(affected_pages)) or
@@ -954,7 +954,7 @@ def _queue_replan_amendment_errors(
 
         proposal_path = amendment.get("coverage_proposal_path")
         proposal_sha = amendment.get("coverage_proposal_sha256")
-        if not _nonempty_string(proposal_path):
+        if not nonempty_string(proposal_path):
             errors.append("%s coverage_proposal_path must be non-empty" % label)
         else:
             try:
@@ -976,7 +976,7 @@ def _queue_replan_amendment_errors(
 
         scope_before = amendment.get("scope_version_before")
         scope_after = amendment.get("scope_version_after")
-        if (not _nonempty_string(scope_before) or
+        if (not nonempty_string(scope_before) or
                 scope_after != scope_before):
             errors.append("%s same-scope replan must have one unchanged, "
                           "non-empty scope version" % label)
@@ -1004,7 +1004,7 @@ def _queue_replan_amendment_errors(
 
         status = amendment.get("status")
         writeback = amendment.get("writeback_done")
-        errors.extend(_operational_amendment_registration_errors(
+        errors.extend(operational_amendment_registration_errors(
             progress, amendment, label, current_catalog, historical_catalog,
             queue, coverage_sha, queue_sha, progress_sha,
         ))
@@ -1049,17 +1049,17 @@ def _queue_replan_amendment_errors(
 
         receipt_id = amendment.get("transaction_receipt_id")
         transaction_id = amendment.get("transaction_id")
-        if not _nonempty_string(transaction_id):
+        if not nonempty_string(transaction_id):
             errors.append("%s verified replan transaction_id must be non-empty" %
                           label)
-        if _nonempty_string(receipt_id):
+        if nonempty_string(receipt_id):
             owner = receipt_owners.get(receipt_id)
             if owner is not None:
                 errors.append("%s reuses transaction receipt %s already bound "
                               "to %s" % (label, receipt_id, owner))
             else:
                 receipt_owners[receipt_id] = amendment_id or label
-        receipt = _require_receipt(
+        receipt = require_receipt(
             historical_catalog, receipt_id, "%s queue-replan" % label, errors,
             expected={
                 "tool": "compile_queue",
@@ -1083,7 +1083,7 @@ def _queue_replan_amendment_errors(
                 "queue_state_revision": state_after,
             },
         )
-        catalog_entry = historical_catalog.get(receipt_id) if _nonempty_string(
+        catalog_entry = historical_catalog.get(receipt_id) if nonempty_string(
             receipt_id) else None
         if (catalog_entry is not None and catalog_entry[0] == "<pending-write>" and
                 not allow_pending_receipts):
@@ -1153,7 +1153,7 @@ def _queue_replan_amendment_errors(
     return errors
 
 
-def _initial_queue_receipt_errors(progress, catalog, queue, queue_sha,
+def initial_queue_receipt_errors(progress, catalog, queue, queue_sha,
                                   coverage_sha):
     """Bind every materialized Queue to its unique initial compiler receipt."""
     errors = []
@@ -1165,7 +1165,7 @@ def _initial_queue_receipt_errors(progress, catalog, queue, queue_sha,
         return errors
     if not isinstance(items, list):
         return errors
-    receipt = _require_receipt(
+    receipt = require_receipt(
         catalog, receipt_id, "Progress initial Queue", errors,
         expected={
             "tool": "compile_queue",
@@ -1178,7 +1178,7 @@ def _initial_queue_receipt_errors(progress, catalog, queue, queue_sha,
     )
     if receipt is None:
         return errors
-    _, contract_errors = _contract_anchor_chain(progress, catalog)
+    _, contract_errors = contract_anchor_chain(progress, catalog)
     errors.extend(contract_errors)
     before_revision = receipt.get("before_queue_revision")
     after_revision = receipt.get("after_queue_revision")

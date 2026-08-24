@@ -14,7 +14,7 @@ import kblib
 import standards_state
 
 from queue_runtime.canon import SHA256_RE
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 
 
 EXPRESSION_LAYER_SLOT = "Expression Layer Entry"
@@ -29,7 +29,7 @@ def _selected_profile_manifest_envelope_errors(profile):
     identity/sentinel reads because that explicit escape must remain usable
     when the current transitive closure is already invalid.
     """
-    if not _nonempty_string(profile):
+    if not nonempty_string(profile):
         return ["selected_profile_manifest must be instantiated"]
     parts = Path(profile).parts
     if len(parts) != 3 or parts[0] != "profiles" or parts[2] != "profile.md":
@@ -109,7 +109,7 @@ def profile_load_authorized_view(root, profile):
     with revision B's dependency graph.
     """
     errors = _selected_profile_manifest_envelope_errors(profile)
-    if errors or not _nonempty_string(profile):
+    if errors or not nonempty_string(profile):
         return None, errors
 
     root = os.path.realpath(os.path.abspath(os.fspath(root)))
@@ -191,8 +191,8 @@ def profile_load_authorized_view(root, profile):
     for edge in contract.dependency_edges:
         if edge.kind != "manifest-slot":
             continue
-        if (not _nonempty_string(edge.owner_id) or
-                not _nonempty_string(edge.path)):
+        if (not nonempty_string(edge.owner_id) or
+                not nonempty_string(edge.path)):
             return None, ["profile-load authorized a malformed manifest-slot "
                           "dependency edge"]
         if edge.owner_id in slot_paths:
@@ -215,7 +215,7 @@ def profile_load_authorized_view(root, profile):
     }, []
 
 
-def _public_profile_load_evidence(authorized_view):
+def public_profile_load_evidence(authorized_view):
     """Project an internal authorized view into durable evidence fields."""
     return {
         field: authorized_view[field]
@@ -296,7 +296,7 @@ def profile_load_evidence(root, profile):
     authorized_view, errors = profile_load_authorized_view(root, profile)
     if authorized_view is None:
         return None, errors
-    return _public_profile_load_evidence(authorized_view), errors
+    return public_profile_load_evidence(authorized_view), errors
 
 
 def profile_load_errors(root, profile):
@@ -312,11 +312,11 @@ def profile_load_errors(root, profile):
     return errors
 
 
-def _profile_view_snapshot_error(root, authorized_view, phase):
+def profile_view_snapshot_error(root, authorized_view, phase):
     """Return a fail-closed error if an authorized view is no longer current."""
     manifest = authorized_view.get("selected_profile_manifest")
     expected = authorized_view.get("profile_snapshot_sha256")
-    if (not _nonempty_string(manifest) or not isinstance(expected, str) or
+    if (not nonempty_string(manifest) or not isinstance(expected, str) or
             not SHA256_RE.fullmatch(expected)):
         return "authorized Profile view has malformed snapshot identity"
     profile_dir = os.path.dirname(manifest).replace("/", os.sep)
@@ -342,7 +342,7 @@ def _profile_view_snapshot_error(root, authorized_view, phase):
     return None
 
 
-def _authorized_profile_view_errors(root, profile_manifest, authorized_view):
+def authorized_profile_view_errors(root, profile_manifest, authorized_view):
     """Validate one in-process view without rerunning ``profile-load``."""
     if not isinstance(authorized_view, dict):
         return ["authorized Profile view must be a mapping returned by "
@@ -420,8 +420,8 @@ def _authorized_profile_view_errors(root, profile_manifest, authorized_view):
         projected_pairs = tuple(authorized_view["_manifest_slot_paths"])
         projected = dict(projected_pairs)
         if (len(projected) != len(projected_pairs) or
-                any(not _nonempty_string(key) or
-                    not _nonempty_string(value)
+                any(not nonempty_string(key) or
+                    not nonempty_string(value)
                     for key, value in projected_pairs)):
             raise ValueError("malformed or duplicate manifest-slot edge")
     except (KeyError, TypeError, ValueError):
@@ -438,12 +438,12 @@ def _authorized_profile_view_errors(root, profile_manifest, authorized_view):
         if projected_pairs != contract_pairs:
             errors.append("authorized Profile manifest-slot projection differs "
                           "from its typed contract")
-    if not _nonempty_string(projected.get(EXPRESSION_LAYER_SLOT)):
+    if not nonempty_string(projected.get(EXPRESSION_LAYER_SLOT)):
         errors.append("authorized Profile view has no %s path" %
                       EXPRESSION_LAYER_SLOT)
 
     if not errors:
-        snapshot_error = _profile_view_snapshot_error(
+        snapshot_error = profile_view_snapshot_error(
             root, authorized_view, "before")
         if snapshot_error:
             errors.append(snapshot_error)
@@ -454,6 +454,6 @@ def profile_load_authorized_view_currency_errors(root, authorized_view):
     """Rebind a previously authorized Profile view without rerunning producer."""
     manifest = authorized_view.get("selected_profile_manifest") \
         if isinstance(authorized_view, dict) else None
-    if not _nonempty_string(manifest):
+    if not nonempty_string(manifest):
         return ["authorized Profile view has no selected manifest identity"]
-    return _authorized_profile_view_errors(root, manifest, authorized_view)
+    return authorized_profile_view_errors(root, manifest, authorized_view)

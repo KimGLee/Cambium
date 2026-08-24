@@ -533,7 +533,7 @@ def _authorized_profile_view(root, profile, result,
             root, manifest_relative)
     else:
         view = authorized_profile_view
-        errors = check_queue._authorized_profile_view_errors(
+        errors = check_queue.authorized_profile_view_errors(
             root, manifest_relative, view)
     for error in errors:
         _add_error(result, "profile_load", manifest_relative, error)

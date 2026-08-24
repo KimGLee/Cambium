@@ -429,7 +429,7 @@ def _prepare(root, args, expected):
     authority = check_queue.runtime_authority_context(runtime)
     authority_kwargs = check_queue.runtime_authority_validation_kwargs(
         authority)
-    if runtime.get("writer_locks"):
+    if runtime.get("_writer_locks"):
         raise ValueError("runtime has an active or interrupted writer lock")
     task_state = (runtime.get("progress") or {}).get("task_state")
     if task_state in ("completion-candidate", "complete", "cancelled"):
@@ -506,7 +506,7 @@ def _prepare(root, args, expected):
         "operation": args.operation,
         "approval_reference": record["approval_reference"],
         "summary": args.summary,
-        "contract_sha256": check_queue._contract_sha256(progress),
+        "contract_sha256": check_queue.contract_sha256(progress),
     })
     receipt.update({field: copy.deepcopy(record[field]) for field in (
         "decision_mode", "authority_id", "authority_sha256",
@@ -584,7 +584,7 @@ def _prepare_withdrawal(root, args, expected):
     authority = check_queue.runtime_authority_context(runtime)
     authority_kwargs = check_queue.runtime_authority_validation_kwargs(
         authority)
-    if runtime.get("writer_locks"):
+    if runtime.get("_writer_locks"):
         raise ValueError("runtime has an active or interrupted writer lock")
     if not _nonempty(args.reason):
         raise ValueError("--withdraw requires a nonempty --reason")
@@ -647,7 +647,7 @@ def _prepare_withdrawal(root, args, expected):
         "operation": row.get("operation"),
         "registration_receipt": row.get("registration_receipt"),
         "withdrawal_reason": args.reason,
-        "contract_sha256": check_queue._contract_sha256(progress),
+        "contract_sha256": check_queue.contract_sha256(progress),
         "before_coverage_sha256": before_sha["coverage"],
         "after_coverage_sha256": after_sha["coverage"],
         "before_required_queue_sha256": before_sha["queue"],

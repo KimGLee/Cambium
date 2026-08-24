@@ -19,39 +19,39 @@ from queue_runtime.canon import (
     TOOL,
 )
 from queue_runtime.primitives import (
-    _closed_mapping_errors,
-    _nonempty_string,
-    _timestamp_value,
-    _valid_timestamp,
+    closed_mapping_errors,
+    nonempty_string,
+    timestamp_value,
+    valid_timestamp,
 )
-from queue_runtime.receipts import _require_receipt
-from queue_runtime.repofs import _repository_evidence_file
-from queue_runtime.task_contract import _contract_sha256
+from queue_runtime.receipts import require_receipt
+from queue_runtime.repofs import repository_evidence_file
+from queue_runtime.task_contract import contract_sha256
 from queue_runtime.task_record import (
-    _pending_control_ids,
-    _task_transition_receipt_record_errors,
+    pending_control_ids,
+    task_transition_receipt_record_errors,
 )
 
 
 def _maintenance_evidence_receipt(root, result, receipt_id, label,
                                   expected, path_field, sha_field, errors):
     """Validate one current maintenance input and its persisted receipt."""
-    receipt = _require_receipt(
+    receipt = require_receipt(
         result.get("receipt_catalog", {}), receipt_id, label, errors,
         expected=expected,
     )
     if receipt is None:
         return None
     for field in ("tool", "tool_version"):
-        if not _nonempty_string(receipt.get(field)):
+        if not nonempty_string(receipt.get(field)):
             errors.append("%s receipt %s has invalid %s" %
                           (label, receipt_id, field))
-    if not _valid_timestamp(receipt.get("checked_at")):
+    if not valid_timestamp(receipt.get("checked_at")):
         errors.append("%s receipt %s has invalid checked_at" %
                       (label, receipt_id))
     relative_path = receipt.get(path_field)
     fingerprint = receipt.get(sha_field)
-    if not _nonempty_string(relative_path):
+    if not nonempty_string(relative_path):
         errors.append("%s receipt %s lacks %s" %
                       (label, receipt_id, path_field))
         return receipt
@@ -62,7 +62,7 @@ def _maintenance_evidence_receipt(root, result, receipt_id, label,
         errors.append("%s receipt %s has invalid %s" %
                       (label, receipt_id, sha_field))
         return receipt
-    absolute = _repository_evidence_file(
+    absolute = repository_evidence_file(
         root, relative_path, "%s %s" % (label, path_field), errors,
     )
     if absolute is not None and kblib.sha256_file(absolute) != fingerprint:
@@ -90,7 +90,7 @@ def _canonical_maintenance_completion_consumers(result, gate_id, gate,
                 candidate.get("evidence_receipt") == gate_id):
             continue
         local_errors = []
-        consumer = _require_receipt(
+        consumer = require_receipt(
             catalog, consumer_id,
             "maintenance gate %s task completion" % gate_id, local_errors,
             expected={
@@ -111,7 +111,7 @@ def _canonical_maintenance_completion_consumers(result, gate_id, gate,
                 (gate_id, consumer_id)
             )
         if consumer is not None:
-            local_errors.extend(_task_transition_receipt_record_errors(
+            local_errors.extend(task_transition_receipt_record_errors(
                 catalog, consumer_id, consumer, "maintenance",
                 expected_contract_sha=gate.get("contract_sha256"),
             ))
@@ -136,8 +136,8 @@ def _canonical_maintenance_completion_consumers(result, gate_id, gate,
                         "maintenance gate %s task completion %s does not bind "
                         "%s" % (gate_id, consumer_id, consumer_field)
                     )
-            gate_time = _timestamp_value(gate.get("checked_at"))
-            consumer_time = _timestamp_value(consumer.get("checked_at"))
+            gate_time = timestamp_value(gate.get("checked_at"))
+            consumer_time = timestamp_value(consumer.get("checked_at"))
             if (gate_time is not None and consumer_time is not None and
                     consumer_time < gate_time):
                 local_errors.append(
@@ -151,7 +151,7 @@ def _canonical_maintenance_completion_consumers(result, gate_id, gate,
     return consumers
 
 
-def _latest_consumed_maintenance_gate(root, result, contract,
+def latest_consumed_maintenance_gate(root, result, contract,
                                       *, current_task_id,
                                       current_maintenance_run_id, errors):
     """Select the one immediate predecessor across matching maintenance runs.
@@ -182,7 +182,7 @@ def _latest_consumed_maintenance_gate(root, result, contract,
             continue
         if gate.get("task_id") == current_task_id:
             continue
-        if (_nonempty_string(current_maintenance_run_id) and
+        if (nonempty_string(current_maintenance_run_id) and
                 gate.get("maintenance_run_id") ==
                 current_maintenance_run_id):
             errors.append(
@@ -205,7 +205,7 @@ def _latest_consumed_maintenance_gate(root, result, contract,
                 "consumed maintenance gate %s is not persisted" % gate_id
             )
         for field in ("task_id", "maintenance_run_id", "scope_version"):
-            if not _nonempty_string(gate.get(field)):
+            if not nonempty_string(gate.get(field)):
                 local_errors.append(
                     "consumed maintenance gate %s lacks %s" %
                     (gate_id, field)
@@ -235,7 +235,7 @@ def _latest_consumed_maintenance_gate(root, result, contract,
                 "consumed maintenance gate %s must bind zero remaining work" %
                 gate_id
             )
-        if not _valid_timestamp(gate.get("checked_at")):
+        if not valid_timestamp(gate.get("checked_at")):
             local_errors.append(
                 "consumed maintenance gate %s has invalid checked_at" % gate_id
             )
@@ -269,20 +269,20 @@ def _latest_consumed_maintenance_gate(root, result, contract,
             continue
         consumer_id, consumer = consumers[0]
         eligible.append((
-            _timestamp_value(consumer.get("checked_at")),
-            _timestamp_value(gate.get("checked_at")), gate_id,
+            timestamp_value(consumer.get("checked_at")),
+            timestamp_value(gate.get("checked_at")), gate_id,
             consumer_id,
         ))
     eligible.sort()
     return eligible[-1][2] if eligible else None
 
 
-def _previous_maintenance_candidate_state(root, result, receipt_id,
+def previous_maintenance_candidate_state(root, result, receipt_id,
                                           contract, errors):
     """Resolve the prior run's candidate projection from a persisted gate."""
     if receipt_id is None:
         return None, [], maintenance_candidates.candidate_state_sha256([])
-    receipt = _require_receipt(
+    receipt = require_receipt(
         result.get("receipt_catalog", {}), receipt_id,
         "previous maintenance completion", errors,
         expected={
@@ -323,7 +323,7 @@ def _previous_maintenance_candidate_state(root, result, receipt_id,
         label="previous maintenance candidate states",
     )
     errors.extend(prior_errors)
-    if not _nonempty_string(receipt.get("maintenance_run_id")):
+    if not nonempty_string(receipt.get("maintenance_run_id")):
         errors.append(
             "previous maintenance completion receipt %s lacks "
             "maintenance_run_id" % receipt_id
@@ -349,7 +349,7 @@ def _previous_maintenance_candidate_state(root, result, receipt_id,
             "previous maintenance completion receipt %s candidate-state "
             "fingerprint does not bind its projection" % receipt_id
         )
-    if not _valid_timestamp(receipt.get("checked_at")):
+    if not valid_timestamp(receipt.get("checked_at")):
         errors.append(
             "previous maintenance completion receipt %s has invalid checked_at" %
             receipt_id
@@ -363,17 +363,17 @@ def _previous_maintenance_candidate_state(root, result, receipt_id,
             "exactly one persisted maintenance task completion; found %d" %
             (receipt_id, len(consumers))
         )
-    elif (_timestamp_value(consumers[0][1].get("checked_at")) is None or
-          (_timestamp_value(receipt.get("checked_at")) is not None and
-           _timestamp_value(consumers[0][1].get("checked_at")) <
-           _timestamp_value(receipt.get("checked_at")))):
+    elif (timestamp_value(consumers[0][1].get("checked_at")) is None or
+          (timestamp_value(receipt.get("checked_at")) is not None and
+           timestamp_value(consumers[0][1].get("checked_at")) <
+           timestamp_value(receipt.get("checked_at")))):
         errors.append(
             "previous maintenance task completion predates its gate receipt"
         )
     return receipt, records, fingerprint
 
 
-def _maintenance_completion_gate_errors(root, result,
+def maintenance_completion_gate_errors(root, result,
                                         budget_manifest_receipt,
                                         ledger_advance_receipt,
                                         watermark_advance_receipt,
@@ -396,7 +396,7 @@ def _maintenance_completion_gate_errors(root, result,
         errors.append(
             "maintenance completion gate requires task_state=planned or active"
         )
-    pending_guidance, pending_amendments = _pending_control_ids(progress)
+    pending_guidance, pending_amendments = pending_control_ids(progress)
     if pending_guidance or pending_amendments:
         errors.append(
             "maintenance completion gate requires reconciled Guidance/"
@@ -464,9 +464,9 @@ def _maintenance_completion_gate_errors(root, result,
     previous_candidate_sha = maintenance_candidates.candidate_state_sha256([])
     maintenance_run_id = None
     previous_completion_id = None
-    if budget is not None and _nonempty_string(
+    if budget is not None and nonempty_string(
             budget.get("budget_manifest_path")):
-        absolute = _repository_evidence_file(
+        absolute = repository_evidence_file(
             root, budget["budget_manifest_path"],
             "maintenance budget manifest", errors,
         )
@@ -489,7 +489,7 @@ def _maintenance_completion_gate_errors(root, result,
                     "required_batch_ids", "deferred_count",
                     "open_items", "state", "closed_at",
                 ))
-                errors.extend(_closed_mapping_errors(
+                errors.extend(closed_mapping_errors(
                     manifest, "maintenance budget manifest", manifest_fields,
                 ))
                 for field, expected in common.items():
@@ -503,7 +503,7 @@ def _maintenance_completion_gate_errors(root, result,
                         "maintenance budget manifest schema_version must be 2"
                     )
                 maintenance_run_id = manifest.get("run_id")
-                if not _nonempty_string(maintenance_run_id):
+                if not nonempty_string(maintenance_run_id):
                     errors.append(
                         "maintenance budget manifest run_id must be a "
                         "non-empty string"
@@ -511,14 +511,14 @@ def _maintenance_completion_gate_errors(root, result,
                 previous_completion_id = manifest.get(
                     "previous_maintenance_completion_receipt")
                 if (previous_completion_id is not None and
-                        not _nonempty_string(previous_completion_id)):
+                        not nonempty_string(previous_completion_id)):
                     errors.append(
                         "maintenance budget manifest "
                         "previous_maintenance_completion_receipt must be null "
                         "or a non-empty receipt ID"
                     )
                 expected_previous_completion_id = \
-                    _latest_consumed_maintenance_gate(
+                    latest_consumed_maintenance_gate(
                         root, result, contract,
                         current_task_id=task_id,
                         current_maintenance_run_id=maintenance_run_id,
@@ -535,7 +535,7 @@ def _maintenance_completion_gate_errors(root, result,
                     )
                 (previous_candidate_receipt, previous_candidates,
                  previous_candidate_sha) = \
-                    _previous_maintenance_candidate_state(
+                    previous_maintenance_candidate_state(
                         root, result, previous_completion_id, contract, errors,
                     )
                 candidate_errors, candidate_context = \
@@ -573,9 +573,9 @@ def _maintenance_completion_gate_errors(root, result,
                         errors.append(
                             "maintenance run_id must differ from its prior run"
                         )
-                    prior_instant = _timestamp_value(
+                    prior_instant = timestamp_value(
                         previous_candidate_receipt.get("checked_at"))
-                    closed_instant = _timestamp_value(manifest.get("closed_at"))
+                    closed_instant = timestamp_value(manifest.get("closed_at"))
                     if (prior_instant is not None and
                             closed_instant is not None and
                             prior_instant > closed_instant):
@@ -671,7 +671,7 @@ def _maintenance_completion_gate_errors(root, result,
                     errors.append(
                         "maintenance budget manifest open_items must be 0"
                     )
-                if not _valid_timestamp(manifest.get("closed_at")):
+                if not valid_timestamp(manifest.get("closed_at")):
                     errors.append(
                         "maintenance budget manifest closed_at is invalid"
                     )
@@ -681,8 +681,8 @@ def _maintenance_completion_gate_errors(root, result,
                         "maintenance budget receipt does not bind manifest "
                         "closed_at"
                     )
-                closed_instant = _timestamp_value(manifest.get("closed_at"))
-                receipt_instant = _timestamp_value(budget.get("checked_at"))
+                closed_instant = timestamp_value(manifest.get("closed_at"))
+                receipt_instant = timestamp_value(budget.get("checked_at"))
                 if (closed_instant is not None and
                         receipt_instant is not None and
                         closed_instant > receipt_instant):
@@ -704,13 +704,13 @@ def _maintenance_completion_gate_errors(root, result,
                     "maintenance Ledger receipt does not bind %s" % field
                 )
 
-    if watermark is not None and _nonempty_string(
+    if watermark is not None and nonempty_string(
             watermark.get("watermark_path")):
         if watermark.get("maintenance_run_id") != maintenance_run_id:
             errors.append(
                 "maintenance watermark receipt does not bind maintenance_run_id"
             )
-        absolute = _repository_evidence_file(
+        absolute = repository_evidence_file(
             root, watermark["watermark_path"],
             "maintenance watermark", errors,
         )
@@ -721,11 +721,11 @@ def _maintenance_completion_gate_errors(root, result,
                 errors.append("maintenance watermark is not parseable: %s" % exc)
                 watermark_state = None
             if isinstance(watermark_state, dict):
-                if not _valid_timestamp(watermark_state.get("updated_at")):
+                if not valid_timestamp(watermark_state.get("updated_at")):
                     errors.append("maintenance watermark updated_at is invalid")
-                if not _nonempty_string(watermark_state.get("last_run_id")):
+                if not nonempty_string(watermark_state.get("last_run_id")):
                     errors.append("maintenance watermark last_run_id is invalid")
-                if not _nonempty_string(watermark_state.get("last_batch_id")):
+                if not nonempty_string(watermark_state.get("last_batch_id")):
                     errors.append(
                         "maintenance watermark last_batch_id is invalid"
                     )
@@ -755,9 +755,9 @@ def _maintenance_completion_gate_errors(root, result,
                         "maintenance watermark last_batch_id is not one of "
                         "the budget manifest required_batch_ids"
                     )
-                updated_instant = _timestamp_value(
+                updated_instant = timestamp_value(
                     watermark_state.get("updated_at"))
-                receipt_instant = _timestamp_value(watermark.get("checked_at"))
+                receipt_instant = timestamp_value(watermark.get("checked_at"))
                 if (updated_instant is not None and receipt_instant is not None and
                         updated_instant > receipt_instant):
                     errors.append(
@@ -773,9 +773,9 @@ def _maintenance_completion_gate_errors(root, result,
                 "maintenance Ledger advance must bind distinct valid before/after "
                 "Coverage fingerprints"
             )
-        coverage_updated = _timestamp_value(
+        coverage_updated = timestamp_value(
             (result.get("coverage") or {}).get("updated_at"))
-        receipt_checked = _timestamp_value(ledger.get("checked_at"))
+        receipt_checked = timestamp_value(ledger.get("checked_at"))
         if (coverage_updated is not None and receipt_checked is not None and
                 coverage_updated > receipt_checked):
             errors.append(
@@ -794,7 +794,7 @@ def _maintenance_completion_gate_errors(root, result,
     terminal_instants = []
     for item in items.values():
         for field in ("closed_at", "cancelled_at"):
-            instant = _timestamp_value(item.get(field))
+            instant = timestamp_value(item.get(field))
             if instant is not None:
                 terminal_instants.append(instant)
     if terminal_instants:
@@ -803,7 +803,7 @@ def _maintenance_completion_gate_errors(root, result,
                                ("Ledger advance", ledger),
                                ("watermark advance", watermark)):
             if receipt is not None:
-                instant = _timestamp_value(receipt.get("checked_at"))
+                instant = timestamp_value(receipt.get("checked_at"))
                 if instant is not None and instant < latest_terminal:
                     errors.append(
                         "maintenance %s predates the latest terminal batch event" %
@@ -817,7 +817,7 @@ def _maintenance_completion_gate_errors(root, result,
             continue
         batch_receipts.extend(item.get("batch_receipts") or [])
         value = item.get("close_gate_receipt")
-        if _nonempty_string(value):
+        if nonempty_string(value):
             close_receipts.append(value)
     context = {
         "completion_semantics": "maintenance",
@@ -837,7 +837,7 @@ def _maintenance_completion_gate_errors(root, result,
         "watermark_run_id": (watermark or {}).get("watermark_run_id"),
         "watermark_batch_id": (watermark or {}).get("watermark_batch_id"),
         "maintenance_run_id": maintenance_run_id,
-        "contract_sha256": _contract_sha256(progress),
+        "contract_sha256": contract_sha256(progress),
         "previous_maintenance_completion_receipt": previous_completion_id,
         "maintenance_candidate_state_sha256":
             candidate_context["candidate_state_sha256"],
@@ -851,10 +851,10 @@ def _maintenance_completion_gate_errors(root, result,
     return errors, context
 
 
-def _maintenance_gate_time_errors(result, gate):
+def maintenance_gate_time_errors(result, gate):
     """Require the gate to follow every terminal event and consumed receipt."""
     errors = []
-    gate_time = _timestamp_value(gate.get("checked_at"))
+    gate_time = timestamp_value(gate.get("checked_at"))
     if gate_time is None:
         return ["maintenance completion gate has invalid checked_at"]
     instants = []
@@ -862,13 +862,13 @@ def _maintenance_gate_time_errors(result, gate):
                   "watermark_advance_receipt"):
         entry = (result.get("receipt_catalog") or {}).get(gate.get(field))
         receipt = entry[1] if entry is not None else None
-        instant = _timestamp_value(
+        instant = timestamp_value(
             receipt.get("checked_at")) if isinstance(receipt, dict) else None
         if instant is not None:
             instants.append((field, instant))
     for item in (result.get("items_by_id") or {}).values():
         for field in ("closed_at", "cancelled_at"):
-            instant = _timestamp_value(item.get(field))
+            instant = timestamp_value(item.get(field))
             if instant is not None:
                 instants.append(("batch.%s" % field, instant))
     future = sorted(label for label, instant in instants if instant > gate_time)

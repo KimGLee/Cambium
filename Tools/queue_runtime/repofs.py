@@ -14,7 +14,7 @@ import check_profile
 import kblib
 
 
-def _load_state(root, relative_path, overrides=None):
+def load_state(root, relative_path, overrides=None):
     path = kblib.managed_repository_path(
         root, relative_path, ".cambium/state",
         suffixes=(".yaml",), must_exist=True,
@@ -41,7 +41,7 @@ def _load_state(root, relative_path, overrides=None):
     return path, raw, data
 
 
-def _repository_evidence_file(root, relative_path, label, errors,
+def repository_evidence_file(root, relative_path, label, errors,
                               *, suffixes=(".yaml", ".yml", ".json")):
     """Resolve one immutable evidence file without symlink/hardlink aliases."""
     try:
@@ -76,7 +76,7 @@ def _path_error(root, raw_path, must_exist=False):
     return None
 
 
-def _normalized_repository_path(value):
+def normalized_repository_path(value):
     """Normalize one declared repository-relative path for set comparison."""
     if not isinstance(value, str):
         return None

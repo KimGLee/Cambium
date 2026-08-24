@@ -21,31 +21,31 @@ from queue_runtime.canon import (
     UPDATE_QUEUE_TOOL_VERSION,
 )
 from queue_runtime.close_gate import (
-    _closed_bundle_seal_state,
-    _closed_gate_errors,
-    _sealed_closed_bundle_errors,
+    closed_bundle_seal_state,
+    closed_gate_errors,
+    sealed_closed_bundle_errors,
 )
 from queue_runtime.delta import (
-    _applied_rollback_restore_errors,
-    _closed_delta_apply_errors,
-    _settlement_binding_errors,
+    applied_rollback_restore_errors,
+    closed_delta_apply_errors,
+    settlement_binding_errors,
 )
 from queue_runtime.item_history import undischarged_revalidation_hold
 from queue_runtime.primitives import (
-    _nonempty_string,
-    _timestamp_value,
-    _valid_timestamp,
+    nonempty_string,
+    timestamp_value,
+    valid_timestamp,
 )
 from queue_runtime.producer_era import (
-    _producer_era_errors,
+    producer_era_errors,
     accounted_standards_versions,
 )
 from queue_runtime.property_state import (
-    _current_close_transition_metadata_errors,
-    _current_open_semantic_baseline_errors,
+    current_close_transition_metadata_errors,
+    current_open_semantic_baseline_errors,
 )
 from queue_runtime.receipts import (
-    _require_receipt,
+    require_receipt,
     delta_gate_receipt_ids,
 )
 from queue_runtime.review import batch_review_receipt_errors
@@ -67,7 +67,7 @@ INVALIDATION_APPLIED_ROLLBACK_FIELDS = frozenset((
 ))
 
 
-def _item_evidence_errors(item, progress, records, catalog, current_catalog,
+def item_evidence_errors(item, progress, records, catalog, current_catalog,
                           queue):
     errors = []
     item_id = item.get("id", "<unknown>")
@@ -81,7 +81,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
     transition_ids = item.get("transition_receipts")
     if state != "queued" or transition_ids is not None:
         if (not isinstance(transition_ids, list) or not transition_ids or
-                not all(_nonempty_string(value) for value in transition_ids)):
+                not all(nonempty_string(value) for value in transition_ids)):
             errors.append("%s state %s requires non-empty transition_receipts" %
                           (item_id, state))
             transition_ids = []
@@ -89,7 +89,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             errors.append("%s transition_receipts must be unique" % item_id)
         previous = None
         for position, receipt_id in enumerate(transition_ids):
-            current = _require_receipt(
+            current = require_receipt(
                 catalog, receipt_id,
                 "%s transition[%d]" % (item_id, position), errors,
                 expected={
@@ -122,7 +122,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             if (producer == ("update_queue", UPDATE_QUEUE_TOOL_VERSION) and
                     current.get("before_state") == "open" and
                     current.get("after_state") == "merge-ready"):
-                errors.extend(_settlement_binding_errors(
+                errors.extend(settlement_binding_errors(
                     current, "%s merge-ready transition %s" %
                     (item_id, receipt_id)))
                 if current.get("delta_path") != \
@@ -138,11 +138,11 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                         errors.append(
                             "%s merge-ready transition %s has invalid %s" %
                             (item_id, receipt_id, field))
-            errors.extend(_current_open_semantic_baseline_errors(
+            errors.extend(current_open_semantic_baseline_errors(
                 records["root"], current, item,
                 records.get("profile_view"),
                 require_live_authority=state in ("open", "merge-ready")))
-            errors.extend(_current_close_transition_metadata_errors(
+            errors.extend(current_close_transition_metadata_errors(
                 records["root"], current, catalog, item_id))
             if (current.get("before_state") not in STATES or
                     current.get("after_state") not in STATES):
@@ -187,8 +187,8 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                     errors.append("%s transition receipt %s has invalid %s" %
                                   (item_id, receipt_id, fingerprint_field))
             if previous is not None:
-                previous_time = _timestamp_value(previous.get("checked_at"))
-                current_time = _timestamp_value(current.get("checked_at"))
+                previous_time = timestamp_value(previous.get("checked_at"))
+                current_time = timestamp_value(current.get("checked_at"))
                 if (previous_time is not None and current_time is not None and
                         current_time < previous_time):
                     errors.append("%s transition timestamps move backward at %s" %
@@ -260,11 +260,11 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             "clearing evidence; the hold is discharged by its own gate, not "
             "by an intermediate hold" % (item_id, hold))
 
-    if hold != "none" and not _nonempty_string(item.get("hold_reason")):
+    if hold != "none" and not nonempty_string(item.get("hold_reason")):
         errors.append("%s hold_state %s requires hold_reason" % (item_id, hold))
 
     if state in ("open", "merge-ready", "closed"):
-        if not _valid_timestamp(item.get("opened_at")):
+        if not valid_timestamp(item.get("opened_at")):
             errors.append("%s state %s requires a timezone-aware opened_at" %
                           (item_id, state))
         activation_expected = {
@@ -291,7 +291,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
         if item.get("confirmation_required"):
             activation_expected["confirmation_receipt"] = \
                 item.get("confirmation_receipt")
-        activation_receipt = _require_receipt(
+        activation_receipt = require_receipt(
             catalog, item.get("activation_receipt"),
             "%s activation" % item_id, errors,
             expected=activation_expected,
@@ -299,7 +299,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
         # Historical: the admission gate that authorized the already-recorded
         # `queued -> open` edge.  The batch cannot be readmitted, so no later
         # producer version can restamp it.
-        errors.extend(_producer_era_errors(
+        errors.extend(producer_era_errors(
             activation_receipt, item.get("activation_receipt"),
             "%s activation" % item_id, accounted_versions))
         if (isinstance(activation_receipt, dict) and
@@ -323,18 +323,18 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                             "%s opening transition does not preserve "
                             "activation %s" % (item_id, field))
         if item.get("confirmation_required"):
-            _require_receipt(
+            require_receipt(
                 catalog, item.get("confirmation_receipt"),
                 "%s confirmation" % item_id, errors,
                 expected={"check": "confirmation", "target": item_id},
             )
 
     if state in ("merge-ready", "closed"):
-        if not _valid_timestamp(item.get("merge_ready_at")):
+        if not valid_timestamp(item.get("merge_ready_at")):
             errors.append("%s state %s requires a timezone-aware merge_ready_at" %
                           (item_id, state))
         delta_path = item.get("delta_path")
-        if not _nonempty_string(delta_path):
+        if not nonempty_string(delta_path):
             errors.append("%s state %s requires delta_path" % (item_id, state))
         else:
             expected_delta = ".cambium/deltas/%s.yaml" % item_id
@@ -374,7 +374,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                                           (item_id, page_index))
                             continue
                         page_path = page.get("path")
-                        if not _nonempty_string(page_path):
+                        if not nonempty_string(page_path):
                             errors.append("%s delta pages[%d] has no path" %
                                           (item_id, page_index))
                             continue
@@ -385,13 +385,13 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                         gate_receipts = page.get("gate_receipts")
                         if (not isinstance(gate_receipts, list) or
                                 not gate_receipts or
-                                not all(_nonempty_string(value)
+                                not all(nonempty_string(value)
                                         for value in gate_receipts)):
                             errors.append("%s delta page %s requires gate_receipts" %
                                           (item_id, page_path))
                         else:
                             for receipt_id in gate_receipts:
-                                _require_receipt(
+                                require_receipt(
                                     catalog, receipt_id,
                                     "%s delta page %s" % (item_id, page_path),
                                     errors,
@@ -406,7 +406,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                               (item_id, delta_path, exc))
         receipts = item.get("batch_receipts")
         if not isinstance(receipts, list) or not receipts or not all(
-                _nonempty_string(value) for value in receipts):
+                nonempty_string(value) for value in receipts):
             errors.append("%s state %s requires non-empty batch_receipts" %
                           (item_id, state))
         else:
@@ -434,34 +434,34 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                         (item_id, receipts[0]))
 
     if state == "closed":
-        if not _valid_timestamp(item.get("closed_at")):
+        if not valid_timestamp(item.get("closed_at")):
             errors.append("%s closed state requires a timezone-aware closed_at" %
                           item_id)
-        seal_state = _closed_bundle_seal_state(item, catalog)
+        seal_state = closed_bundle_seal_state(item, catalog)
         if seal_state == "mixed":
             errors.append(
                 "%s close bundle is partially sealed; the batch-close "
                 "gate, Queue consistency snapshot, and delta application "
                 "seal together or not at all (K12/07)" % item_id)
         elif seal_state == "sealed":
-            errors.extend(_sealed_closed_bundle_errors(
+            errors.extend(sealed_closed_bundle_errors(
                 item, transition, catalog, queue,
             ))
         else:
-            errors.extend(_closed_gate_errors(
+            errors.extend(closed_gate_errors(
                 item, transition, catalog, queue, accounted_versions,
                 root=records.get("root"),
             ))
-            errors.extend(_closed_delta_apply_errors(
+            errors.extend(closed_delta_apply_errors(
                 item, transition, catalog, queue,
                 root=records.get("root"),
             ))
 
     if state == "cancelled":
-        if not _valid_timestamp(item.get("cancelled_at")):
+        if not valid_timestamp(item.get("cancelled_at")):
             errors.append("%s cancelled state requires a timezone-aware cancelled_at" %
                           item_id)
-        if not _nonempty_string(item.get("cancellation_amendment")):
+        if not nonempty_string(item.get("cancellation_amendment")):
             errors.append("%s cancelled state requires cancellation_amendment" %
                           item_id)
         amendment_id = item.get("cancellation_amendment")
@@ -492,7 +492,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                 errors.append("%s cancellation Amendment affected_pages must "
                               "equal its manifest" % item_id)
             verification_id = amendment.get("verification_receipt")
-            _require_receipt(
+            require_receipt(
                 catalog, verification_id,
                 "%s cancellation Amendment commit" % item_id, errors,
                 expected={
@@ -554,8 +554,8 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                          ("cancelled_at", cancelling)):
         if field not in item or event is None:
             continue
-        item_time = _timestamp_value(item.get(field))
-        event_time = _timestamp_value(event.get("checked_at"))
+        item_time = timestamp_value(item.get(field))
+        event_time = timestamp_value(event.get("checked_at"))
         if (item_time is not None and event_time is not None and
                 item_time != event_time):
             errors.append("%s %s must equal its transition receipt time" %
@@ -595,7 +595,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
         receipt.get("receipt_id"): position
         for position, receipt in enumerate(transition_history)
         if isinstance(receipt, dict) and
-        _nonempty_string(receipt.get("receipt_id"))
+        nonempty_string(receipt.get("receipt_id"))
     }
     for index, record in enumerate(invalidations):
         label = "%s invalidation_history[%d]" % (item_id, index)
@@ -620,17 +620,17 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                 (label, ", ".join(sorted(
                     INVALIDATION_APPLIED_ROLLBACK_FIELDS - applied_present))))
         for field in sorted(applied_present):
-            if not _nonempty_string(record.get(field)):
+            if not nonempty_string(record.get(field)):
                 errors.append("%s %s must be non-empty" % (label, field))
         transition = (rollback_transitions[index]
                       if index < len(rollback_transitions) else None)
         if applied_present == INVALIDATION_APPLIED_ROLLBACK_FIELDS and all(
-                _nonempty_string(record.get(field))
+                nonempty_string(record.get(field))
                 for field in INVALIDATION_APPLIED_ROLLBACK_FIELDS):
-            errors.extend(_applied_rollback_restore_errors(
+            errors.extend(applied_rollback_restore_errors(
                 label, record, transition, catalog, item_id))
         receipt_id = record.get("transition_receipt")
-        if not _nonempty_string(receipt_id):
+        if not nonempty_string(receipt_id):
             errors.append("%s transition_receipt must be non-empty" % label)
         elif receipt_id in seen_receipts:
             errors.append("%s repeats transition receipt %s" %
@@ -644,26 +644,26 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             if transition.get("invalidation") != record:
                 errors.append("%s differs from its transition receipt binding" %
                               label)
-            record_time = _timestamp_value(record.get("invalidated_at"))
-            transition_time = _timestamp_value(transition.get("checked_at"))
+            record_time = timestamp_value(record.get("invalidated_at"))
+            transition_time = timestamp_value(transition.get("checked_at"))
             if record_time is None or record_time != transition_time:
                 errors.append("%s invalidated_at must equal transition time" %
                               label)
-        if not _nonempty_string(record.get("reason")):
+        if not nonempty_string(record.get("reason")):
             errors.append("%s reason must be non-empty" % label)
         delta_sha = record.get("delta_sha256")
         if not isinstance(delta_sha, str) or not SHA256_RE.fullmatch(delta_sha):
             errors.append("%s delta_sha256 is invalid" % label)
         batch_receipts = record.get("batch_receipts")
         if (not isinstance(batch_receipts, list) or not batch_receipts or
-                not all(_nonempty_string(value) for value in batch_receipts)):
+                not all(nonempty_string(value) for value in batch_receipts)):
             errors.append("%s batch_receipts must be a non-empty string list" %
                           label)
         elif len(batch_receipts) != len(set(batch_receipts)):
             errors.append("%s batch_receipts must be unique" % label)
         else:
             for batch_receipt in batch_receipts:
-                _require_receipt(
+                require_receipt(
                     catalog, batch_receipt, "%s batch evidence" % label,
                     errors, expected={
                         "check": "batch_gate",
@@ -674,7 +674,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
         delta_gate_receipts = record.get("delta_gate_receipts")
         if (not isinstance(delta_gate_receipts, list) or
                 not delta_gate_receipts or
-                not all(_nonempty_string(value)
+                not all(nonempty_string(value)
                         for value in delta_gate_receipts)):
             errors.append("%s delta_gate_receipts must be a non-empty string "
                           "list" % label)
@@ -684,12 +684,12 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                           label)
         else:
             for gate_receipt in delta_gate_receipts:
-                _require_receipt(catalog, gate_receipt,
+                require_receipt(catalog, gate_receipt,
                                  "%s delta page evidence" % label, errors)
             invalidated_receipts.update(delta_gate_receipts)
         revalidation_receipts = record.get("revalidation_receipts")
         if (not isinstance(revalidation_receipts, list) or
-                not all(_nonempty_string(value)
+                not all(nonempty_string(value)
                         for value in revalidation_receipts)):
             errors.append("%s revalidation_receipts must be an explicit string "
                           "list" % label)
@@ -697,7 +697,7 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
             errors.append("%s revalidation_receipts must be unique" % label)
         else:
             for gate_receipt in revalidation_receipts:
-                _require_receipt(catalog, gate_receipt,
+                require_receipt(catalog, gate_receipt,
                                  "%s revalidation evidence" % label, errors)
             invalidated_receipts.update(revalidation_receipts)
         if transition is not None:
@@ -713,14 +713,14 @@ def _item_evidence_errors(item, progress, records, catalog, current_catalog,
                             "revalidation-required" and
                             candidate.get("after_hold_state") == "none"):
                         evidence = candidate.get("evidence_receipt")
-                        if _nonempty_string(evidence):
+                        if nonempty_string(evidence):
                             expected_revalidation.append(evidence)
                 if revalidation_receipts != expected_revalidation:
                     errors.append("%s revalidation_receipts do not exactly bind "
                                   "this invalidated attempt" % label)
                 previous_rollback_position = rollback_position
         archive_path = record.get("delta_archive_path")
-        if not _nonempty_string(archive_path):
+        if not nonempty_string(archive_path):
             errors.append("%s delta_archive_path must be non-empty" % label)
             continue
         if archive_path in seen_paths:

@@ -16,12 +16,12 @@ import sys
 import kblib
 import maintenance_candidates
 
-from queue_runtime.adoption import _standards_adoption_errors
+from queue_runtime.adoption import standards_adoption_errors
 from queue_runtime.amendments import (
-    _cross_ledger_amendment_errors,
-    _initial_queue_receipt_errors,
-    _pending_cross_ledger_amendments,
-    _queue_replan_amendment_errors,
+    cross_ledger_amendment_errors,
+    initial_queue_receipt_errors,
+    pending_cross_ledger_amendments,
+    queue_replan_amendment_errors,
 )
 from queue_runtime.canon import (
     ACTIVE_STATES,
@@ -37,67 +37,67 @@ from queue_runtime.canon import (
     TASK_STATES,
     TERMINAL_STATES,
 )
-from queue_runtime.close_gate import _close_gate_reuse_errors
+from queue_runtime.close_gate import close_gate_reuse_errors
 from queue_runtime.control_plane import (
     hub_page_admission,
     profile_hub_paths,
 )
 from queue_runtime.coverage import (
-    _coverage_batch_spec_errors,
-    _coverage_provenance_errors,
-    _coverage_records,
+    coverage_batch_spec_errors,
+    coverage_provenance_errors,
+    coverage_records,
 )
 from queue_runtime.delta import (
-    _delta_apply_receipt_candidates,
-    _delta_handoff_errors,
+    delta_apply_receipt_candidates,
+    delta_handoff_errors,
 )
-from queue_runtime.item_evidence import _item_evidence_errors
+from queue_runtime.item_evidence import item_evidence_errors
 from queue_runtime.locks import (
-    _bind_generic_lock_receipts,
-    _bind_lock_delta_archives,
-    _bind_lock_receipts,
-    _bind_lock_state_phases,
+    bind_generic_lock_receipts,
+    bind_lock_delta_archives,
+    bind_lock_receipts,
+    bind_lock_state_phases,
     _writer_locks,
 )
 from queue_runtime.primitives import (
-    _acyclic,
-    _identity,
-    _nonempty_string,
-    _valid_timestamp,
+    acyclic,
+    identity,
+    nonempty_string,
+    valid_timestamp,
 )
 from queue_runtime.profile_view import (
-    _authorized_profile_view_errors,
-    _profile_view_snapshot_error,
+    authorized_profile_view_errors,
+    profile_view_snapshot_error,
     active_standards_authorized_view,
     active_standards_view_currency_errors,
     profile_load_authorized_view,
     selected_profile_manifest_errors,
 )
 from queue_runtime.property_state import (
-    _coverage_property_state_errors,
-    _legacy_property_state_source_errors,
+    coverage_property_state_errors,
+    legacy_property_state_source_errors,
 )
 from queue_runtime.receipts import (
-    _Catalog,
-    _cold_receipt_store,
-    _receipt_catalog,
+    Catalog,
+    cold_receipt_store,
+    receipt_catalog,
 )
 from queue_runtime.repofs import (
-    _load_state,
+    load_state,
     _path_error,
 )
 from queue_runtime.revalidation import (
-    _unresolvable_consumed_aggregate_errors,
+    unresolvable_consumed_aggregate_errors,
     current_attempt_evidence_barrier,
     outstanding_standards_revalidation,
     standards_revalidation_requirements,
 )
 from queue_runtime.task_progress import (
-    _global_transition_errors,
-    _progress_shape_errors,
-    _task_transition_errors,
+    global_transition_errors,
+    progress_shape_errors,
+    task_transition_errors,
 )
-from queue_runtime.work_spec import _work_spec_errors
+from queue_runtime.work_spec import work_spec_errors
 
 
 REQUIRED_ITEM_FIELDS = (
@@ -189,7 +189,7 @@ def validate_runtime(root, allowed_open_delta=None,
                 "page_projection_overrides requires a proposed Coverage "
                 "state override")
         if (not isinstance(page_projection_overrides, dict) or
-                any(not _nonempty_string(path) or not isinstance(text, str)
+                any(not nonempty_string(path) or not isinstance(text, str)
                     for path, text in page_projection_overrides.items())):
             raise TypeError(
                 "page_projection_overrides must map non-empty page paths "
@@ -237,30 +237,30 @@ def validate_runtime(root, allowed_open_delta=None,
             "pending receipts, or an injected after-image Profile view")
     root = os.path.realpath(os.path.abspath(root))
     errors = []
-    writer_locks = _writer_locks(root, errors)
+    writer_lock_records = _writer_locks(root, errors)
     try:
-        queue_path, queue_raw, queue = _load_state(
+        queue_path, queue_raw, queue = load_state(
             root, QUEUE_PATH, state_overrides)
-        _, coverage_raw, coverage = _load_state(
+        _, coverage_raw, coverage = load_state(
             root, COVERAGE_PATH, state_overrides)
-        _, progress_raw, progress = _load_state(
+        _, progress_raw, progress = load_state(
             root, PROGRESS_PATH, state_overrides)
     except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:
         errors.append(str(exc))
-        catalog = _receipt_catalog(root, errors)
-        _cold_receipt_store(root, errors, catalog)
-        _bind_lock_receipts(writer_locks, catalog)
-        _bind_lock_state_phases(writer_locks, {
+        catalog = receipt_catalog(root, errors)
+        cold_receipt_store(root, errors, catalog)
+        bind_lock_receipts(writer_lock_records, catalog)
+        bind_lock_state_phases(writer_lock_records, {
             "coverage": None, "queue": None, "progress": None,
         })
-        _bind_lock_delta_archives(root, writer_locks)
-        _bind_generic_lock_receipts(root, writer_locks, catalog)
+        bind_lock_delta_archives(root, writer_lock_records)
+        bind_generic_lock_receipts(root, writer_lock_records, catalog)
         return {
             "root": root, "errors": errors, "ready": [], "blocked": [],
             "queue": {}, "coverage": {}, "progress": {}, "queue_path": None,
             "coverage_sha256": None, "queue_sha256": None,
             "progress_sha256": None, "remaining": None,
-            "receipt_catalog": catalog, "writer_locks": writer_locks,
+            "receipt_catalog": catalog, "_writer_locks": writer_lock_records,
             "managed_deltas": [], "hub_page_admission": {},
             "legacy_property_state_source_receipt_ids": [],
         }
@@ -284,12 +284,12 @@ def validate_runtime(root, allowed_open_delta=None,
         if extra:
             errors.append("%s has unsupported top-level field(s): %s" %
                           (label, ", ".join(extra)))
-    errors.extend(_progress_shape_errors(progress))
+    errors.extend(progress_shape_errors(progress))
     for field in ("batch_specs", "maintenance_candidates", "pages",
                   "open_gaps"):
         if not isinstance(coverage.get(field), list):
             errors.append("Coverage %s must be an explicit list" % field)
-    if not _valid_timestamp(coverage.get("updated_at")):
+    if not valid_timestamp(coverage.get("updated_at")):
         errors.append("Coverage updated_at must be a timezone-aware RFC 3339 timestamp")
 
     task_state = progress.get("task_state")
@@ -316,12 +316,12 @@ def validate_runtime(root, allowed_open_delta=None,
             page_paths = {
                 record.get("path") for record in coverage.get("pages", [])
                 if isinstance(record, dict) and
-                _nonempty_string(record.get("path"))
+                nonempty_string(record.get("path"))
             }
             declared_candidate_paths = {
                 record.get("object_path") for record in candidate_records
                 if isinstance(record, dict) and
-                _nonempty_string(record.get("object_path"))
+                nonempty_string(record.get("object_path"))
             }
             missing_candidates = sorted(
                 set(maintenance_candidate_context["selected_objects"]).union(
@@ -337,8 +337,8 @@ def validate_runtime(root, allowed_open_delta=None,
                 "selected_profile_manifest"):
         qvalue = queue.get(key)
         cvalue = coverage.get(key)
-        pvalue = _identity(progress, key, nested=(key not in ("task_id",)))
-        if not _nonempty_string(qvalue):
+        pvalue = identity(progress, key, nested=(key not in ("task_id",)))
+        if not nonempty_string(qvalue):
             errors.append("Queue %s must be instantiated" % key)
         if qvalue != cvalue or qvalue != pvalue:
             errors.append("%s differs across Queue/Coverage/Progress: %r / %r / %r" %
@@ -383,7 +383,7 @@ def validate_runtime(root, allowed_open_delta=None,
 
     profile = queue.get("selected_profile_manifest")
     profile_view = None
-    if _nonempty_string(profile):
+    if nonempty_string(profile):
         if allow_invalid_current_profile_for_corrective_adoption:
             # Corrective adoption is not synonymous with an invalid current
             # Profile.  Preserve the full authorized before-view whenever the
@@ -397,7 +397,7 @@ def validate_runtime(root, allowed_open_delta=None,
                 profile_view = None
                 errors.extend(selected_profile_manifest_errors(root, profile))
         elif authorized_profile_view is not None:
-            profile_errors = _authorized_profile_view_errors(
+            profile_errors = authorized_profile_view_errors(
                 root, profile, authorized_profile_view)
             errors.extend(profile_errors)
             if not profile_errors:
@@ -428,20 +428,20 @@ def validate_runtime(root, allowed_open_delta=None,
     elif recorded_sha != queue_sha:
         errors.append("Progress required_queue_sha256 does not match current Queue bytes")
 
-    catalog = _receipt_catalog(root, errors)
-    cold_store = _cold_receipt_store(root, errors, catalog)
-    _bind_lock_receipts(writer_locks, catalog)
-    _bind_lock_state_phases(writer_locks, {
+    catalog = receipt_catalog(root, errors)
+    cold_store = cold_receipt_store(root, errors, catalog)
+    bind_lock_receipts(writer_lock_records, catalog)
+    bind_lock_state_phases(writer_lock_records, {
         "coverage": coverage_sha,
         "queue": queue_sha,
         "progress": progress_sha,
         "standards": (active_standards_view or {}).get(
             "active_standards_sha256"),
     })
-    _bind_lock_delta_archives(root, writer_locks)
-    _bind_generic_lock_receipts(root, writer_locks, catalog)
+    bind_lock_delta_archives(root, writer_lock_records)
+    bind_generic_lock_receipts(root, writer_lock_records, catalog)
     for receipt in extra_receipts or []:
-        if not isinstance(receipt, dict) or not _nonempty_string(
+        if not isinstance(receipt, dict) or not nonempty_string(
                 receipt.get("receipt_id")):
             errors.append("pending receipt must be a mapping with receipt_id")
             continue
@@ -451,7 +451,7 @@ def validate_runtime(root, allowed_open_delta=None,
                           receipt_id)
             continue
         catalog[receipt_id] = ("<pending-write>", receipt)
-    errors.extend(_standards_adoption_errors(
+    errors.extend(standards_adoption_errors(
         root, progress, catalog, queue, active_standards_view))
     invalidated_evidence_receipt_ids = {
         receipt_id
@@ -459,20 +459,20 @@ def validate_runtime(root, allowed_open_delta=None,
         if isinstance(adoption, dict)
         for receipt_id in (
             adoption.get("invalidated_evidence_receipt_ids") or [])
-        if _nonempty_string(receipt_id)
+        if nonempty_string(receipt_id)
     }
     trusted_content_change_receipts = {
         record.get("evidence_receipt")
         for row in coverage.get("pages") or [] if isinstance(row, dict)
         for record in (row.get("property_state") or {}).values()
         if isinstance(record, dict) and
-        _nonempty_string(record.get("evidence_receipt"))
+        nonempty_string(record.get("evidence_receipt"))
     }
     trusted_content_change_receipts.update(
         item.get("delta_apply_receipt")
         for item in queue.get("required_queue") or []
         if isinstance(item, dict) and
-        _nonempty_string(item.get("delta_apply_receipt")))
+        nonempty_string(item.get("delta_apply_receipt")))
     # The just-applied merge-ready window has not yet projected its receipt ID
     # into Queue.  Its exact live Coverage/delta binding is nevertheless
     # enough to make the content-change invalidation authoritative now.
@@ -507,34 +507,34 @@ def validate_runtime(root, allowed_open_delta=None,
             values = event.get("invalidated_property_receipt_ids")
             if isinstance(values, list):
                 content_invalidated_receipt_ids.update(
-                    value for value in values if _nonempty_string(value))
+                    value for value in values if nonempty_string(value))
     invalidated_evidence_receipt_ids.update(
         content_invalidated_receipt_ids)
     # Historical transition/close validation keeps the full catalog.  Only
     # current-use admission, handoff, reuse, and completion queries consume
     # this adoption-aware view, so history is never rewritten or made invalid
     # merely because it was produced under an older Standards identity.
-    current_catalog = _Catalog({
+    current_catalog = Catalog({
         receipt_id: entry for receipt_id, entry in catalog.items()
         if receipt_id not in invalidated_evidence_receipt_ids
     })
     # Sealed history is by definition not current evidence for any
     # current-use gate; the cold index rides along for existence resolution
-    # only, and _require_receipt refuses field revalidation against it.
+    # only, and require_receipt refuses field revalidation against it.
     current_catalog.cold = catalog.cold
-    errors.extend(_initial_queue_receipt_errors(
+    errors.extend(initial_queue_receipt_errors(
         progress, catalog, queue, queue_sha, coverage_sha,
     ))
-    errors.extend(_cross_ledger_amendment_errors(
+    errors.extend(cross_ledger_amendment_errors(
         root, progress, current_catalog, catalog, queue,
         coverage_sha, queue_sha, progress_sha,
     ))
-    errors.extend(_queue_replan_amendment_errors(
+    errors.extend(queue_replan_amendment_errors(
         root, progress, current_catalog, catalog, queue, queue_sha,
         coverage_sha, progress_sha,
         allow_pending_receipts=allow_pending_replan_receipts,
     ))
-    pending_operational = _pending_cross_ledger_amendments(progress)
+    pending_operational = pending_cross_ledger_amendments(progress)
     if len(pending_operational) > 1:
         errors.append(
             "Progress has %d pending operational Amendments; exactly one "
@@ -548,10 +548,10 @@ def validate_runtime(root, allowed_open_delta=None,
     items_by_id = {}
     orders = {}
     manifest_owners = {}
-    records, assignments = _coverage_records(root, coverage, errors)
+    records, assignments = coverage_records(root, coverage, errors)
     legacy_property_state_source_receipt_ids = []
     if profile_view is not None:
-        errors.extend(_coverage_property_state_errors(
+        errors.extend(coverage_property_state_errors(
             root, coverage, current_catalog, queue, profile_view,
             active_standards_view,
             page_projection_overrides=page_projection_overrides,
@@ -566,7 +566,7 @@ def validate_runtime(root, allowed_open_delta=None,
         if not (isinstance(state_overrides, dict) and
                 COVERAGE_PATH in state_overrides):
             legacy_errors, legacy_property_state_source_receipt_ids = \
-                _legacy_property_state_source_errors(
+                legacy_property_state_source_errors(
                     coverage, progress, catalog)
             errors.extend(legacy_errors)
     context = {"root": root, "profile_view": profile_view}
@@ -579,7 +579,7 @@ def validate_runtime(root, allowed_open_delta=None,
     successor_parent = {
         entry.get("id"): entry.get("successor_of")
         for entry in items
-        if isinstance(entry, dict) and _nonempty_string(entry.get("id"))
+        if isinstance(entry, dict) and nonempty_string(entry.get("id"))
     }
 
     def _assigned_through_successors(item_id, assigned_ids):
@@ -606,7 +606,7 @@ def validate_runtime(root, allowed_open_delta=None,
             errors.append("%s has unsupported field(s): %s" %
                           (label, ", ".join(extra)))
         item_id = item.get("id")
-        if not _nonempty_string(item_id) or not BATCH_ID_RE.fullmatch(item_id):
+        if not nonempty_string(item_id) or not BATCH_ID_RE.fullmatch(item_id):
             errors.append("%s id must match %s" %
                           (label, BATCH_ID_RE.pattern.replace("\\Z", "")))
             continue
@@ -614,7 +614,7 @@ def validate_runtime(root, allowed_open_delta=None,
             errors.append("Queue repeats id %s" % item_id)
             continue
         items_by_id[item_id] = item
-        if not _nonempty_string(item.get("family")):
+        if not nonempty_string(item.get("family")):
             errors.append("%s family must be a non-empty string" % item_id)
         order = item.get("order")
         if not isinstance(order, int) or isinstance(order, bool) or order < 1:
@@ -624,7 +624,7 @@ def validate_runtime(root, allowed_open_delta=None,
                           (order, orders[order], item_id))
         else:
             orders[order] = item_id
-        if item.get("source_route") is not None and not _nonempty_string(
+        if item.get("source_route") is not None and not nonempty_string(
                 item.get("source_route")):
             errors.append("%s source_route must be a string or null" % item_id)
         if item.get("execution_mode") not in EXECUTION_MODES:
@@ -651,17 +651,17 @@ def validate_runtime(root, allowed_open_delta=None,
                           "items are forbidden" % item_id)
         seen_manifest = set()
         for object_path in manifest:
-            if not _nonempty_string(object_path):
+            if not nonempty_string(object_path):
                 errors.append("%s manifest contains a non-string/empty path" % item_id)
                 continue
             if object_path in seen_manifest:
                 errors.append("%s manifest repeats %s" % (item_id, object_path))
                 continue
             seen_manifest.add(object_path)
-            path_error = _path_error(root, object_path, must_exist=False)
-            if path_error:
+            path_error_message = _path_error(root, object_path, must_exist=False)
+            if path_error_message:
                 errors.append("%s manifest path %r is unsafe: %s" %
-                              (item_id, object_path, path_error))
+                              (item_id, object_path, path_error_message))
             if object_path not in records:
                 errors.append("%s manifest path %s has no Coverage record" %
                               (item_id, object_path))
@@ -694,7 +694,7 @@ def validate_runtime(root, allowed_open_delta=None,
             errors.append("%s record_count=%s but manifest has %d object(s)" %
                           (item_id, count, len(manifest)))
 
-        errors.extend(_work_spec_errors(root, item))
+        errors.extend(work_spec_errors(root, item))
 
         dependencies = item.get("depends_on")
         if not isinstance(dependencies, list):
@@ -702,7 +702,7 @@ def validate_runtime(root, allowed_open_delta=None,
         else:
             seen_dep = set()
             for dep in dependencies:
-                if not _nonempty_string(dep):
+                if not nonempty_string(dep):
                     errors.append("%s depends_on contains an invalid id" % item_id)
                 elif dep == item_id:
                     errors.append("%s depends on itself" % item_id)
@@ -710,12 +710,12 @@ def validate_runtime(root, allowed_open_delta=None,
                     errors.append("%s repeats dependency %s" % (item_id, dep))
                 seen_dep.add(dep)
 
-        errors.extend(_item_evidence_errors(
+        errors.extend(item_evidence_errors(
             item, progress, context, catalog, current_catalog, queue
         ))
 
     if items_by_id or not allow_unmaterialized_queue:
-        errors.extend(_coverage_batch_spec_errors(coverage, items_by_id))
+        errors.extend(coverage_batch_spec_errors(coverage, items_by_id))
 
     if (completion_semantics == "maintenance" and items_by_id and
             maintenance_candidate_context is not None and
@@ -765,7 +765,7 @@ def validate_runtime(root, allowed_open_delta=None,
         predecessor_id = item.get("successor_of")
         if predecessor_id is not None:
             predecessor = items_by_id.get(predecessor_id)
-            if (not _nonempty_string(predecessor_id) or
+            if (not nonempty_string(predecessor_id) or
                     not BATCH_ID_RE.fullmatch(predecessor_id)):
                 errors.append("%s successor_of must be null or a valid batch id" %
                               item_id)
@@ -779,7 +779,7 @@ def validate_runtime(root, allowed_open_delta=None,
                   predecessor["order"] >= order):
                 errors.append("%s successor_of %s must have a lower order" %
                               (item_id, predecessor_id))
-    cycle = _acyclic(items_by_id)
+    cycle = acyclic(items_by_id)
     if cycle:
         errors.append("Queue dependency cycle: %s" % " -> ".join(cycle))
 
@@ -796,11 +796,11 @@ def validate_runtime(root, allowed_open_delta=None,
                               (item_id, item.get("state"), dep,
                                dependency.get("state")))
 
-    errors.extend(_global_transition_errors(
+    errors.extend(global_transition_errors(
         items_by_id, catalog, queue, queue_sha,
     ))
-    errors.extend(_close_gate_reuse_errors(items_by_id))
-    errors.extend(_coverage_provenance_errors(
+    errors.extend(close_gate_reuse_errors(items_by_id))
+    errors.extend(coverage_provenance_errors(
         progress, queue, catalog, coverage_sha, queue_sha,
     ))
 
@@ -817,7 +817,7 @@ def validate_runtime(root, allowed_open_delta=None,
                       item.get("id") != allowed_cancellation_id]
         next_batch = record.get("next_batch")
         if unfinished:
-            if not _nonempty_string(next_batch):
+            if not nonempty_string(next_batch):
                 errors.append("unfinished Required object %s has no explicit next_batch" %
                               object_path)
             elif (next_batch not in items_by_id or
@@ -861,17 +861,17 @@ def validate_runtime(root, allowed_open_delta=None,
                         })
                         continue
                     batch_id = delta.get("batch")
-                    item = items_by_id.get(batch_id) if _nonempty_string(batch_id) else None
+                    item = items_by_id.get(batch_id) if nonempty_string(batch_id) else None
                     delta_record = {
                         "path": relative,
-                        "batch": batch_id if _nonempty_string(batch_id) else None,
+                        "batch": batch_id if nonempty_string(batch_id) else None,
                         "state": item.get("state") if item else None,
                         "sha256": kblib.sha256_file(full),
                         "handoff_status": None,
                         "handoff_errors": [],
                     }
                     managed_deltas.append(delta_record)
-                    if not _nonempty_string(batch_id):
+                    if not nonempty_string(batch_id):
                         errors.append("managed delta %s has no batch id" % relative)
                         continue
                     if batch_id in delta_by_batch:
@@ -885,7 +885,7 @@ def validate_runtime(root, allowed_open_delta=None,
                     state = item.get("state")
                     if state == "open":
                         structural_errors, settlement_errors, settlement = \
-                            _delta_handoff_errors(
+                            delta_handoff_errors(
                             relative, delta, item, records, coverage,
                             queue, current_catalog,
                         )
@@ -1033,7 +1033,7 @@ def validate_runtime(root, allowed_open_delta=None,
                     (item_id, ", ".join(hub["unresolved"])))
         if task_state not in ("planned", "active"):
             reasons.append("task_state=%s forbids activation" % task_state)
-        pending_amendments = _pending_cross_ledger_amendments(progress)
+        pending_amendments = pending_cross_ledger_amendments(progress)
         if pending_amendments:
             reasons.append("pending cross-Ledger Amendment(s): %s" %
                            ", ".join(pending_amendments))
@@ -1043,7 +1043,7 @@ def validate_runtime(root, allowed_open_delta=None,
                         if dep not in closed_ids]
         if missing_deps:
             reasons.append("dependencies not closed: %s" % ", ".join(missing_deps))
-        if item.get("confirmation_required") and not _nonempty_string(
+        if item.get("confirmation_required") and not nonempty_string(
                 item.get("confirmation_receipt")):
             reasons.append("confirmation receipt absent")
         if cap and len(active) >= cap:
@@ -1071,7 +1071,7 @@ def validate_runtime(root, allowed_open_delta=None,
     if task_state == "complete" and remaining > 0:
         errors.append("Progress task_state=complete but %d Required work unit(s) remain" %
                       remaining)
-    task_errors, task_runtime = _task_transition_errors(
+    task_errors, task_runtime = task_transition_errors(
         root, progress, catalog, queue, queue_sha, coverage_sha, progress_sha,
         remaining, items_by_id,
         coverage,
@@ -1096,7 +1096,7 @@ def validate_runtime(root, allowed_open_delta=None,
         "_standards_revalidation_requirements":
             standards_revalidation_requirements_by_batch,
     }
-    errors.extend(_unresolvable_consumed_aggregate_errors(items_by_id, catalog))
+    errors.extend(unresolvable_consumed_aggregate_errors(items_by_id, catalog))
     standards_revalidation_barriers = {}
     standards_revalidation_outstanding = {}
     for batch_id, item in items_by_id.items():
@@ -1121,7 +1121,7 @@ def validate_runtime(root, allowed_open_delta=None,
              if value.get("state") == "merge-ready"),
             key=lambda value: (value.get("order", sys.maxsize),
                                value.get("id", ""))):
-        compatible, stale = _delta_apply_receipt_candidates(
+        compatible, stale = delta_apply_receipt_candidates(
             item, current_catalog, queue, queue_sha, coverage_sha,
             root=root, coverage=coverage, profile_view=profile_view,
         )
@@ -1159,7 +1159,7 @@ def validate_runtime(root, allowed_open_delta=None,
         "stale": stale_delta_apply_receipts,
     }
     if profile_view is not None:
-        final_profile_error = _profile_view_snapshot_error(
+        final_profile_error = profile_view_snapshot_error(
             root, profile_view, "after runtime validation")
         if final_profile_error:
             errors.append("selected Profile authorized view: %s" %
@@ -1187,12 +1187,12 @@ def validate_runtime(root, allowed_open_delta=None,
             standards_revalidation_outstanding,
         "_standards_revalidation_requirements":
             standards_revalidation_requirements_by_batch,
-        "writer_locks": writer_locks,
+        "_writer_locks": writer_lock_records,
         "managed_deltas": managed_deltas,
         "applied_delta_receipts": applied_delta_receipts,
         "pending_delta_applies": pending_delta_applies,
         "pending_cross_ledger_amendments":
-            _pending_cross_ledger_amendments(progress),
+            pending_cross_ledger_amendments(progress),
         "maintenance_candidate_context": maintenance_candidate_context,
         "task_runtime": task_runtime,
         "_active_standards_authorized_view": active_standards_view,
@@ -1212,11 +1212,11 @@ def required_queue_completion_errors(result):
     if errors:
         return errors
 
-    writer_locks = result.get("writer_locks") or []
-    if writer_locks:
+    writer_lock_records = result.get("_writer_locks") or []
+    if writer_lock_records:
         lock_paths = ", ".join(
             lock.get("path", "<unknown>")
-            for lock in writer_locks
+            for lock in writer_lock_records
             if isinstance(lock, dict)
         )
         errors.append(

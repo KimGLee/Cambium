@@ -209,7 +209,7 @@ def _delta_policy_errors(delta):
                           label)
     generated_at = delta.get("generated_at")
     if (not isinstance(generated_at, str) or
-            not check_queue._valid_timestamp(generated_at)):
+            not check_queue.valid_timestamp(generated_at)):
         errors.append("delta generated_at must be a timezone-aware RFC 3339 timestamp")
     additions = delta.get("open_gaps_added")
     closures = delta.get("open_gaps_closed")
@@ -466,7 +466,7 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
     if current.get("progress", {}).get("task_state") != "active":
         print("[FAIL] canonical delta apply requires task_state=active")
         return 1
-    if current.get("writer_locks"):
+    if current.get("_writer_locks"):
         print("[FAIL] runtime has an active or interrupted writer lock")
         return 1
     if (kblib.sha256_file(ledger_path) != planned_coverage_sha or

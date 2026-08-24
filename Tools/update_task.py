@@ -180,10 +180,10 @@ def _latest_transition_timestamp(result, progress):
                 (progress.get("contract") or {}).get("completion_semantics"),
         })
         checked_at = receipt.get("checked_at")
-        if not check_queue._valid_timestamp(checked_at):
+        if not check_queue.valid_timestamp(checked_at):
             raise ValueError("task transition %s has invalid checked_at" %
                              receipt_id)
-        checked_time = check_queue._timestamp_value(checked_at)
+        checked_time = check_queue.timestamp_value(checked_at)
         if latest is not None and checked_time < latest:
             raise ValueError("task transition timestamps are not monotonic")
         latest = checked_time
@@ -413,7 +413,7 @@ def _maintenance_completion_receipt(result, receipt_id):
                 "maintenance completion receipt lacks %s" % field
             )
     evidence_errors, expected_context = \
-        check_queue._maintenance_completion_gate_errors(
+        check_queue.maintenance_completion_gate_errors(
             result["root"], result,
             receipt["budget_manifest_receipt"],
             receipt["ledger_advance_receipt"],
@@ -424,7 +424,7 @@ def _maintenance_completion_receipt(result, receipt_id):
             "maintenance completion evidence is stale or invalid: %s" %
             "; ".join(evidence_errors)
         )
-    time_errors = check_queue._maintenance_gate_time_errors(result, receipt)
+    time_errors = check_queue.maintenance_gate_time_errors(result, receipt)
     if time_errors:
         raise ValueError(
             "maintenance completion gate is stale: %s" %
@@ -473,7 +473,7 @@ def build_task_transition(result, after_state, at, summary, evidence_receipt,
     if after_state not in TRANSITIONS.get(before_state, frozenset()):
         raise ValueError("illegal task transition %s -> %s" %
                          (before_state, after_state))
-    at_value = check_queue._timestamp_value(at)
+    at_value = check_queue.timestamp_value(at)
     if at_value is None:
         raise ValueError("transition time must be timezone-aware RFC 3339")
     latest_at, history = _latest_transition_timestamp(result, progress)
@@ -483,7 +483,7 @@ def build_task_transition(result, after_state, at, summary, evidence_receipt,
     if isinstance(checkpoint, dict):
         recorded_at = checkpoint.get("recorded_at")
         if recorded_at is not None:
-            recorded_value = check_queue._timestamp_value(recorded_at)
+            recorded_value = check_queue.timestamp_value(recorded_at)
             if recorded_value is None:
                 raise ValueError("existing checkpoint recorded_at is invalid")
             if at_value < recorded_value:
@@ -576,7 +576,7 @@ def build_task_transition(result, after_state, at, summary, evidence_receipt,
                 % "; ".join(phase_errors))
         completion_receipt = _completion_gate_receipt(
             result, evidence_receipt)
-        completion_time = check_queue._timestamp_value(
+        completion_time = check_queue.timestamp_value(
             completion_receipt.get("checked_at"))
         if completion_time is None or completion_time > at_value:
             raise ValueError(
@@ -595,7 +595,7 @@ def build_task_transition(result, after_state, at, summary, evidence_receipt,
                 raise ValueError("complete requires --terminal-proof-receipt")
             terminal_receipt = _terminal_proof_receipt(
                 result, terminal_proof_receipt)
-            terminal_time = check_queue._timestamp_value(
+            terminal_time = check_queue.timestamp_value(
                 terminal_receipt.get("checked_at"))
             if terminal_time is None or terminal_time > at_value:
                 raise ValueError(
@@ -619,7 +619,7 @@ def build_task_transition(result, after_state, at, summary, evidence_receipt,
             terminal_receipt = _maintenance_completion_receipt(
                 result, maintenance_completion_receipt,
             )
-            terminal_time = check_queue._timestamp_value(
+            terminal_time = check_queue.timestamp_value(
                 terminal_receipt.get("checked_at"))
             if terminal_time is None or terminal_time > at_value:
                 raise ValueError(
@@ -636,7 +636,7 @@ def build_task_transition(result, after_state, at, summary, evidence_receipt,
     receipt.update({
         "task_id": progress.get("task_id"),
         "completion_semantics": completion_semantics,
-        "contract_sha256": check_queue._contract_sha256(progress),
+        "contract_sha256": check_queue.contract_sha256(progress),
         "before_task_state": before_state,
         "after_task_state": after_state,
         "actor_role": "integrator",

@@ -11,15 +11,15 @@ from pathlib import Path
 import check_profile
 import kblib
 
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 from queue_runtime.profile_view import (
     EXPRESSION_LAYER_SLOT,
-    _authorized_profile_view_errors,
-    _profile_view_snapshot_error,
+    authorized_profile_view_errors,
+    profile_view_snapshot_error,
     profile_load_authorized_view,
 )
 from queue_runtime.repofs import (
-    _normalized_repository_path,
+    normalized_repository_path,
     _path_error,
 )
 
@@ -59,7 +59,7 @@ def batch_touches_control_plane(item):
     return False
 
 
-def _unadmitted_profile_hub_paths(root, profile_manifest):
+def unadmitted_profile_hub_paths(root, profile_manifest):
     """Derive hub pages for the explicit corrective-adoption escape only.
 
     Ordinary runtime consumers must use :func:`profile_hub_paths`, whose slot
@@ -68,7 +68,7 @@ def _unadmitted_profile_hub_paths(root, profile_manifest):
     current Profile without requiring that broken closure to authorize itself.
     """
     paths = set()
-    if not _nonempty_string(profile_manifest):
+    if not nonempty_string(profile_manifest):
         return paths, []
     parts = Path(profile_manifest).parts
     if len(parts) < 3 or parts[0] != "profiles" or parts[-1] != "profile.md":
@@ -85,7 +85,7 @@ def _unadmitted_profile_hub_paths(root, profile_manifest):
                        "K13/10 hub set cannot be derived: %s" % exc]
     binding = kblib.profile_slot_bindings(manifest_text).get(
         EXPRESSION_LAYER_SLOT)
-    if not _nonempty_string(binding):
+    if not nonempty_string(binding):
         # No slot binding at all: the profile registers no expression hub.
         return paths, []
     profile_dir = os.path.dirname(manifest_path)
@@ -108,7 +108,7 @@ def _unadmitted_profile_hub_paths(root, profile_manifest):
         if not label.startswith(HUB_DEPENDENCY_MAP_LABEL):
             continue
         for declared in cells[1].split(";"):
-            candidate = _normalized_repository_path(declared)
+            candidate = normalized_repository_path(declared)
             if candidate is None or candidate.lower() == "none":
                 continue
             if "TODO(" in candidate or "/" not in candidate:
@@ -145,9 +145,9 @@ def profile_hub_paths(root, profile_manifest, *, authorized_view=None,
         if authorized_view is not None:
             raise ValueError("corrective Profile hub derivation cannot accept "
                              "an authorized view")
-        return _unadmitted_profile_hub_paths(root, profile_manifest)
+        return unadmitted_profile_hub_paths(root, profile_manifest)
 
-    if not _nonempty_string(profile_manifest):
+    if not nonempty_string(profile_manifest):
         return set(), []
     if authorized_view is None:
         if not evaluate_if_missing:
@@ -163,7 +163,7 @@ def profile_hub_paths(root, profile_manifest, *, authorized_view=None,
         if authorized_view is None:
             return set(), errors
 
-    view_errors = _authorized_profile_view_errors(
+    view_errors = authorized_profile_view_errors(
         root, profile_manifest, authorized_view)
     if view_errors:
         return set(), view_errors
@@ -176,7 +176,7 @@ def profile_hub_paths(root, profile_manifest, *, authorized_view=None,
         return set(), ["authorized selected profile %s is unreadable, so the "
                        "K13/10 hub set cannot be derived: %s" % (
                            EXPRESSION_LAYER_SLOT, exc)]
-    after_error = _profile_view_snapshot_error(root, authorized_view, "after")
+    after_error = profile_view_snapshot_error(root, authorized_view, "after")
     if after_error:
         return set(), [after_error]
 
@@ -188,7 +188,7 @@ def profile_hub_paths(root, profile_manifest, *, authorized_view=None,
         if not label.startswith(HUB_DEPENDENCY_MAP_LABEL):
             continue
         for declared in cells[1].split(";"):
-            candidate = _normalized_repository_path(declared)
+            candidate = normalized_repository_path(declared)
             if candidate is None or candidate.lower() == "none":
                 continue
             if "TODO(" in candidate or "/" not in candidate:
@@ -253,7 +253,7 @@ def hub_page_admission(root, manifest, records, registered_hub_paths, cache):
     candidates = []
     unresolved = []
     for path in sorted(set(manifest or [])):
-        if not _nonempty_string(path):
+        if not nonempty_string(path):
             continue
         if path not in cache:
             cache[path] = _page_frontmatter(root, path)

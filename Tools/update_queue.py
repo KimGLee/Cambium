@@ -996,7 +996,7 @@ def _run(args, produced):
     """Execute one already-parsed invocation; ``produced`` collects receipts."""
     if args.at is None:
         args.at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    if not check_queue._valid_timestamp(args.at):
+    if not check_queue.valid_timestamp(args.at):
         print("[FAIL] --at must be a timezone-aware RFC 3339 timestamp")
         return 1
     if args.transition == "cancelled":

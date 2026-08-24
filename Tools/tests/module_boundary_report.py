@@ -160,9 +160,18 @@ def _emit_manifest(repo_root, *, acknowledge_drift=False,
     content binding because the alternative -- declaring them public -- would
     promise compatibility this distribution never made.
     """
-    recorded = {} if acknowledge_drift else _recorded_bindings(
+    recorded = _recorded_bindings(
         manifest_path or os.path.join(repo_root, "Tools",
                                       "module-boundaries.yaml"))
+    if acknowledge_drift:
+        # Acknowledging drift re-binds the hash and nothing else.  Dropping the
+        # whole recorded entry would take the necessity and the retirement
+        # condition with it, so the act of saying "this consumption still holds
+        # against the new code" would erase the reasons it holds -- and the
+        # guard would then demand they be written again from memory.
+        recorded = {key: {field: value for field, value in entry.items()
+                          if field != "content_sha256"}
+                    for key, entry in recorded.items()}
     facts = facts_module.collect(repo_root)
     pairs = facts_module.consumption_pairs(facts)
     private = facts_module.private_pairs(facts)

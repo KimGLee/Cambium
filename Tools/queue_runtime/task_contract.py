@@ -11,7 +11,7 @@ import os
 import kblib
 
 from queue_runtime.canon import SHA256_RE
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 
 
 READ_SET_BOUNDARY_OWNER_PATH = \
@@ -19,7 +19,7 @@ READ_SET_BOUNDARY_OWNER_PATH = \
 READ_SET_PATH_PREFIX = "kernel/Read Sets/"
 
 
-def _contract_sha256(progress):
+def contract_sha256(progress):
     """Return the canonical fingerprint of the immutable Task Contract.
 
     Before initial Queue materialization the contract is still an adopter
@@ -36,7 +36,7 @@ def _contract_sha256(progress):
         return None
 
 
-def _contract_anchor_chain(progress, catalog):
+def contract_anchor_chain(progress, catalog):
     """Return the hash-linked Task Contract anchor chain.
 
     Scope Amendments and Standards adoptions are independent append-only logs.
@@ -46,7 +46,7 @@ def _contract_anchor_chain(progress, catalog):
     """
     errors = []
     receipt_id = progress.get("initial_queue_receipt")
-    entry = catalog.get(receipt_id) if _nonempty_string(receipt_id) else None
+    entry = catalog.get(receipt_id) if nonempty_string(receipt_id) else None
     if entry is None:
         return [], errors
     initial = entry[1]
@@ -60,9 +60,9 @@ def _contract_anchor_chain(progress, catalog):
     if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
         errors.append("initial Queue receipt has invalid contract anchor revision")
         return [], errors
-    if not _nonempty_string(version):
+    if not nonempty_string(version):
         errors.append("initial Queue receipt has invalid contract_version anchor")
-    if not _nonempty_string(scope):
+    if not nonempty_string(scope):
         errors.append("initial Queue receipt has invalid contract_scope_version anchor")
     chain = [{
         "queue_revision": revision,
@@ -81,7 +81,7 @@ def _contract_anchor_chain(progress, catalog):
                 amendment.get("writeback_done") is not True):
             continue
         commit_id = amendment.get("verification_receipt")
-        commit_entry = catalog.get(commit_id) if _nonempty_string(
+        commit_entry = catalog.get(commit_id) if nonempty_string(
             commit_id) else None
         if commit_entry is None:
             continue
@@ -109,7 +109,7 @@ def _contract_anchor_chain(progress, catalog):
             # around the Coverage proposal it requires.
             errors.append("%s may not change scope_version" % label)
             valid = False
-        if not _nonempty_string(receipt.get("after_contract_version")):
+        if not nonempty_string(receipt.get("after_contract_version")):
             errors.append("%s has invalid after_contract_version" % label)
             valid = False
         if receipt.get("queue_revision_after") != amendment.get(
@@ -136,7 +136,7 @@ def _contract_anchor_chain(progress, catalog):
         if not isinstance(adoption, dict):
             continue
         commit_id = adoption.get("verification_receipt")
-        commit_entry = catalog.get(commit_id) if _nonempty_string(
+        commit_entry = catalog.get(commit_id) if nonempty_string(
             commit_id) else None
         if commit_entry is None:
             continue
@@ -230,7 +230,7 @@ def _contract_anchor_chain(progress, catalog):
     live_contract = progress.get("contract") if isinstance(
         progress.get("contract"), dict) else {}
     if chain:
-        if anchor != _contract_sha256(progress):
+        if anchor != contract_sha256(progress):
             errors.append("contract anchor chain does not bind the current Task Contract")
         if version != live_contract.get("contract_version"):
             errors.append("contract anchor chain does not bind current contract_version")
@@ -239,7 +239,7 @@ def _contract_anchor_chain(progress, catalog):
     return chain, errors
 
 
-def _contract_sha_at_revision(chain, revision):
+def contract_sha_at_revision(chain, revision):
     anchors = [entry for entry in chain
                if isinstance(revision, int) and
                isinstance(entry.get("queue_revision"), int) and
@@ -247,7 +247,7 @@ def _contract_sha_at_revision(chain, revision):
     return anchors[-1].get("contract_sha256") if anchors else None
 
 
-def _read_set_load_closure(root, selected_paths,
+def read_set_load_closure(root, selected_paths,
                            selected_profile_manifest=None,
                            selected_profile_route_ids=None):
     """Resolve Read Sets and non-Read-Set targets from selected boundaries.
@@ -268,7 +268,7 @@ def _read_set_load_closure(root, selected_paths,
     reason to silently shrink the load obligation.
     """
     selected = {
-        value for value in (selected_paths or []) if _nonempty_string(value)
+        value for value in (selected_paths or []) if nonempty_string(value)
     }
     read_sets = set()
     invalid_selected = set()
@@ -277,10 +277,10 @@ def _read_set_load_closure(root, selected_paths,
     visited = set()
     closure_errors = []
     profile_dir = (os.path.dirname(selected_profile_manifest)
-                   if _nonempty_string(selected_profile_manifest) else None)
+                   if nonempty_string(selected_profile_manifest) else None)
     profile_routes = {
         value for value in (selected_profile_route_ids or [])
-        if _nonempty_string(value)
+        if nonempty_string(value)
     }
 
     def read_text(relative):
@@ -317,7 +317,7 @@ def _read_set_load_closure(root, selected_paths,
             return ("%s declares type profile-read-set outside the selected "
                     "profile directory %r" % (relative, profile_dir))
         route_id = frontmatter_fields(text).get("route_id")
-        if not _nonempty_string(route_id) or route_id not in profile_routes:
+        if not nonempty_string(route_id) or route_id not in profile_routes:
             return ("%s declares profile Read Set route_id %r, which is not "
                     "present in selected_profile_route_ids" %
                     (relative, route_id))
@@ -374,7 +374,7 @@ def _read_set_load_closure(root, selected_paths,
     return read_sets, modules, invalid_selected, sorted(set(closure_errors))
 
 
-def _live_read_set_load_findings(root, contract):
+def live_read_set_load_findings(root, contract):
     """Return structural errors and closure gaps of the live Task Contract.
 
     The two findings are separated because only one of them can be repaired
@@ -405,11 +405,11 @@ def _live_read_set_load_findings(root, contract):
             loaded_values, list):
         return [], []
     selected = set(value for value in selected_values
-                   if _nonempty_string(value))
+                   if nonempty_string(value))
     loaded = set(value for value in loaded_values
-                 if _nonempty_string(value))
+                 if nonempty_string(value))
     read_sets, modules, invalid_selected, closure_errors = \
-        _read_set_load_closure(
+        read_set_load_closure(
             root, selected,
             contract.get("selected_profile_manifest"),
             contract.get("selected_profile_route_ids"),

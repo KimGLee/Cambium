@@ -94,7 +94,7 @@ class MetadataGateRuntimeTests(unittest.TestCase):
         runtime = {
             "root": str(self.root),
             "errors": [],
-            "writer_locks": [],
+            "_writer_locks": [],
             "coverage": copy.deepcopy(self.coverage),
             "coverage_sha256": kblib.sha256_file(self.coverage_path),
             "queue_sha256": "sha256:" + "5" * 64,
@@ -204,7 +204,7 @@ class MetadataGateRuntimeTests(unittest.TestCase):
         # lets the Gate runtime refuse a split-revision pair without asking
         # check_queue.
         runtime = {
-            "errors": [], "writer_locks": [],
+            "errors": [], "_writer_locks": [],
             "_profile_authorized_view": authority["profile_view"],
             "_active_standards_authorized_view":
                 authority["active_standards_view"],
@@ -233,7 +233,7 @@ class MetadataGateRuntimeTests(unittest.TestCase):
         profile_view = {"selected_profile_manifest": "profiles/p/profile.md"}
         active_view = {"active_standards_sha256": "sha256:" + "c" * 64}
         runtime = {
-            "errors": [], "writer_locks": [],
+            "errors": [], "_writer_locks": [],
             "_profile_authorized_view": profile_view,
             "_active_standards_authorized_view": active_view,
         }

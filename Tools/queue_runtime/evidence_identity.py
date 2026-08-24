@@ -16,7 +16,7 @@ promise here is that module reading a private name.
 import metadata_property_state
 
 from queue_runtime.canon import SHA256_RE
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 
 
 EVIDENCE_USE_CURRENT_AUTHORIZATION = "current-authorization"
@@ -35,7 +35,7 @@ LIVE_IDENTITY_USES = frozenset((
 ))
 
 
-def _current_property_receipt(catalog, receipt_id, label, errors):
+def current_property_receipt(catalog, receipt_id, label, errors):
     """Resolve one live owner-state pointer without consulting history.
 
     ``catalog`` is the adoption-filtered hot view assembled by
@@ -44,7 +44,7 @@ def _current_property_receipt(catalog, receipt_id, label, errors):
     property may not silently promote an invalidated producer-era receipt
     back into live authority.
     """
-    if not _nonempty_string(receipt_id):
+    if not nonempty_string(receipt_id):
         errors.append("%s evidence_receipt must be a non-empty string" % label)
         return None
     entry = catalog.get(receipt_id)
@@ -88,7 +88,7 @@ def evidence_identity_errors(
     if use not in EVIDENCE_IDENTITY_USES:
         return ["%s has unsupported evidence identity use %r" % (label, use)]
     if profile_bound:
-        if not _nonempty_string(receipt.get("selected_profile_manifest")):
+        if not nonempty_string(receipt.get("selected_profile_manifest")):
             errors.append(
                 "%s has no producer-era selected_profile_manifest" % label)
         for field in (

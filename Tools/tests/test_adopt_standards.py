@@ -278,7 +278,7 @@ class AdoptStandardsTests(unittest.TestCase):
             "contract_version_before": record["contract_version_after"],
             "contract_version_after": "c-amended",
         })
-        errors = check_queue._standards_adoption_errors(
+        errors = check_queue.standards_adoption_errors(
             str(self.root), progress, result["receipt_catalog"],
             result["queue"])
         self.assertEqual(
@@ -288,7 +288,7 @@ class AdoptStandardsTests(unittest.TestCase):
 
         # Everything the amendment writer cannot touch stays bound.
         progress["contract"]["standards_version"] = "9.9.9"
-        errors = check_queue._standards_adoption_errors(
+        errors = check_queue.standards_adoption_errors(
             str(self.root), progress, result["receipt_catalog"],
             result["queue"])
         self.assertTrue(
@@ -307,7 +307,7 @@ class AdoptStandardsTests(unittest.TestCase):
             "contract_version_before": "c-something-else",
             "contract_version_after": "c-drifted",
         })
-        errors = check_queue._standards_adoption_errors(
+        errors = check_queue.standards_adoption_errors(
             str(self.root), progress, result["receipt_catalog"],
             result["queue"])
         self.assertTrue(
@@ -787,7 +787,7 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertEqual("revalidation-required", item["hold_state"])
         self.assertEqual(invalidated_gate, item["activation_receipt"])
         self.assertEqual("run-standards-revalidation:B1",
-                         check_queue._resume_next_action(result, []))
+                         check_queue.resume_next_action(result, []))
         for consumer in (
                 "activation gate", "merge-ready batch gate",
                 "delta application", "revalidation hold clear"):
@@ -2505,7 +2505,7 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertEqual(0, code, output)
         runtime = check_queue.validate_runtime(self.root)
         self.assertEqual("resume-paused-task",
-                         check_queue._resume_next_action(runtime, []))
+                         check_queue.resume_next_action(runtime, []))
         attempted = self.run_tool(
             "check_queue.py", "--require-revalidation", "B1")
         self.assertEqual(1, attempted.returncode, attempted.stdout)
@@ -2841,7 +2841,7 @@ class AdoptStandardsTests(unittest.TestCase):
             "predicate-owner-path-outside-profile" in error for error in
             check_queue.validate_runtime(self.root)["errors"]))
         self.assertEqual(
-            [], check_queue._standards_adoption_errors(
+            [], check_queue.standards_adoption_errors(
                 self.root, runtime["progress"],
                 runtime["receipt_catalog"], runtime["queue"]))
 
@@ -2867,7 +2867,7 @@ class AdoptStandardsTests(unittest.TestCase):
         record["profile_contract_fingerprint_after"] = \
             "sha256:" + "0" * 64
 
-        errors = check_queue._standards_adoption_errors(
+        errors = check_queue.standards_adoption_errors(
             self.root, progress, catalog, runtime["queue"])
 
         self.assertTrue(any(
@@ -2934,13 +2934,13 @@ class AdoptStandardsTests(unittest.TestCase):
     # reachability assertion below is what keeps the promise a closed set
     # rather than a hand-written guess that drifts.
     SEALED_BRANCH_FIELDS = frozenset((
-        # the closed-bundle identity branch (_sealed_closed_bundle_errors)
+        # the closed-bundle identity branch (sealed_closed_bundle_errors)
         "close_gate_receipt", "queue_consistency_receipt",
         "delta_apply_receipt",
         # identity comparison and existence-only resolution
-        # (_require_receipt with no `expected`)
+        # (require_receipt with no `expected`)
         "evidence_receipt", "revalidation_receipts",
-        # the body branch added with this rule (_Catalog.resolve_sealed)
+        # the body branch added with this rule (Catalog.resolve_sealed)
         "standards_revalidation_receipt",
     ))
 
@@ -3101,7 +3101,7 @@ class AdoptStandardsTests(unittest.TestCase):
             lines[index] = rewritten
         self.assertEqual(1, changed, "target aggregate was not mutated once")
         segment.write_bytes(b"".join(lines))
-        fresh = check_queue._receipt_catalog(str(self.root), [])
+        fresh = check_queue.receipt_catalog(str(self.root), [])
         fresh.cold = catalog.cold
         self.assertIsNone(fresh.resolve_sealed(aggregate_id))
 
@@ -3125,7 +3125,7 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertIn(
             "B1", after.get("standards_revalidation_outstanding") or {})
         self.assertEqual("repair-runtime",
-                         check_queue._resume_next_action(after,
+                         check_queue.resume_next_action(after,
                                                          after["errors"]))
 
     def test_the_reference_inventory_matches_the_record_schemas(self):
@@ -3148,7 +3148,7 @@ class AdoptStandardsTests(unittest.TestCase):
     def test_consumption_is_identical_across_the_seal(self):
         """Sealing is a parse-cost move; it may not change an answer."""
         _, before = self.closed_b1_that_consumed_an_aggregate()
-        consumed_before = check_queue._consumed_standards_revalidation_keys(
+        consumed_before = check_queue.consumed_standards_revalidation_keys(
             before["items_by_id"]["B1"], before["receipt_catalog"])
         self.assertTrue(consumed_before, "the premise: something was consumed")
 
@@ -3158,18 +3158,18 @@ class AdoptStandardsTests(unittest.TestCase):
         self.assertTrue(after["receipt_catalog"].cold, "nothing sealed")
         self.assertEqual(
             consumed_before,
-            check_queue._consumed_standards_revalidation_keys(
+            check_queue.consumed_standards_revalidation_keys(
                 after["items_by_id"]["B1"], after["receipt_catalog"]))
 
     def test_consumption_survives_an_archive_sealed_before_the_rule(self):
         _, before = self.closed_b1_that_consumed_an_aggregate()
-        consumed_before = check_queue._consumed_standards_revalidation_keys(
+        consumed_before = check_queue.consumed_standards_revalidation_keys(
             before["items_by_id"]["B1"], before["receipt_catalog"])
         self.seal_ignoring_the_rule(before)
         after = check_queue.validate_runtime(self.root)
         self.assertEqual(
             consumed_before,
-            check_queue._consumed_standards_revalidation_keys(
+            check_queue.consumed_standards_revalidation_keys(
                 after["items_by_id"]["B1"], after["receipt_catalog"]))
 
     def test_every_sealed_reference_a_named_field_makes_has_a_branch(self):
@@ -3242,8 +3242,8 @@ class AdoptStandardsTests(unittest.TestCase):
                 self.assertEqual(admitted, eligible)
                 self.assertEqual(
                     ["B1"] if admitted else [],
-                    check_queue._actionable_revalidation_batches(result))
-                token = check_queue._resume_next_action(result, [])
+                    check_queue.actionable_revalidation_batches(result))
+                token = check_queue.resume_next_action(result, [])
                 if admitted:
                     self.assertEqual("run-standards-revalidation:B1", token)
                 else:
@@ -3256,7 +3256,7 @@ class AdoptStandardsTests(unittest.TestCase):
                 for task_state in ("active", "paused"):
                     result = self.revalidation_result(
                         state=state, hold_state=hold, task_state=task_state)
-                    for batch_id in check_queue._actionable_revalidation_batches(
+                    for batch_id in check_queue.actionable_revalidation_batches(
                             result):
                         self.assertIsNone(
                             check_queue

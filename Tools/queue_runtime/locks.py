@@ -19,7 +19,7 @@ from queue_runtime.canon import (
     REGISTER_AMENDMENT_TOOL_VERSION,
     SHA256_RE,
 )
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 
 
 LOCK_STATE_FINGERPRINTS = {
@@ -122,14 +122,14 @@ def _writer_locks(root, errors):
     return locks
 
 
-def _bind_lock_receipts(writer_locks, catalog):
+def bind_lock_receipts(_writer_locks, catalog):
     """Annotate transaction locks with durable prepare/commit/abort evidence."""
-    for lock in writer_locks:
+    for lock in _writer_locks:
         owner = lock.get("owner")
         operation = owner.get("operation") if isinstance(owner, dict) else None
         transaction_id = (operation.get("transaction_id")
                           if isinstance(operation, dict) else None)
-        if not _nonempty_string(transaction_id):
+        if not nonempty_string(transaction_id):
             continue
         matches = []
         for receipt_id, (relative, receipt) in catalog.items():
@@ -257,9 +257,9 @@ def _reconciliation_hint(phases):
             "receipt evidence before treating the lock as stale" % qualifier)
 
 
-def _bind_lock_state_phases(writer_locks, live_shas):
+def bind_lock_state_phases(_writer_locks, live_shas):
     """Compare exact live state bytes with every interrupted writer plan."""
-    for lock in writer_locks:
+    for lock in _writer_locks:
         owner = lock.get("owner")
         operation = owner.get("operation") if isinstance(owner, dict) else None
         phases = {}
@@ -303,14 +303,14 @@ def _bind_lock_state_phases(writer_locks, live_shas):
         lock["reconciliation_hint"] = _reconciliation_hint(phases)
 
 
-def _bind_lock_delta_archives(root, writer_locks):
+def bind_lock_delta_archives(root, _writer_locks):
     """Locate and fingerprint a Delta moved by an interrupted Queue rollback.
 
     ``merge-ready -> open`` moves the rejected Delta before publishing the
     three canonical state files.  The writer lock therefore has to make that
     fourth filesystem effect independently observable after a hard exit.
     """
-    for lock in writer_locks:
+    for lock in _writer_locks:
         owner = lock.get("owner")
         operation = owner.get("operation") if isinstance(owner, dict) else None
         if not isinstance(operation, dict) or \
@@ -333,8 +333,8 @@ def _bind_lock_delta_archives(root, writer_locks):
             "hint": "manual reconciliation is required",
         }
         lock["delta_archive_recovery"] = evidence
-        if (not _nonempty_string(source_relative) or
-                not _nonempty_string(archive_relative) or
+        if (not nonempty_string(source_relative) or
+                not nonempty_string(archive_relative) or
                 not isinstance(expected_sha, str) or
                 not SHA256_RE.fullmatch(expected_sha)):
             continue
@@ -402,9 +402,9 @@ def _bind_lock_delta_archives(root, writer_locks):
             )
 
 
-def _bind_generic_lock_receipts(root, writer_locks, catalog):
+def bind_generic_lock_receipts(root, _writer_locks, catalog):
     """Bind non-Amendment writer intent to its exact declared JSONL receipt."""
-    for lock in writer_locks:
+    for lock in _writer_locks:
         owner = lock.get("owner")
         operation = owner.get("operation") if isinstance(owner, dict) else None
         if not isinstance(operation, dict) or operation.get("tool") not in \
@@ -450,7 +450,7 @@ def _bind_generic_lock_receipts(root, writer_locks, catalog):
                         snapshot_binding["status"] = "changed"
                         repository_snapshot_errors.append(
                             "current_repository_snapshot_sha256")
-        if not _nonempty_string(receipt_id) or not _nonempty_string(receipt_path):
+        if not nonempty_string(receipt_id) or not nonempty_string(receipt_path):
             continue
         try:
             declared = kblib.managed_repository_path(
@@ -475,11 +475,11 @@ def _bind_generic_lock_receipts(root, writer_locks, catalog):
         semantic_errors = []
         if receipt.get("tool") != operation.get("tool"):
             semantic_errors.append("tool")
-        if (_nonempty_string(operation.get("task_id")) and
+        if (nonempty_string(operation.get("task_id")) and
                 receipt.get("task_id") != operation.get("task_id")):
             semantic_errors.append("task_id")
         expected_target = operation.get("target") or operation.get("batch_id")
-        if (_nonempty_string(expected_target) and
+        if (nonempty_string(expected_target) and
                 receipt.get("target") != expected_target):
             semantic_errors.append("target")
         for operation_field, receipt_fields in (

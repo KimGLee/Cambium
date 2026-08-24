@@ -81,7 +81,7 @@ modules:
         retires_when: apply_delta offers a plan-preview entry point
       - consumer: update_queue
         symbol: _delta_policy_errors
-        content_sha256: sha256:94a1c0c3a9cb8fe43428fc260347d752c13500ecbaa616f14ab2768df34f2579
+        content_sha256: sha256:e84220d14c9c7901d206416d2576c379d80971b1f4c40de3d32f4f841191b9d1
         necessity: same policy validation at the edge and at the apply, so a delta cannot pass one and fail the other
         retires_when: same as _build_plan
       - consumer: update_queue
@@ -251,11 +251,15 @@ modules:
       - activation_phase_delivery_errors
       - active_standards_authorized_view
       - active_standards_view_currency_errors
+      - authorized_profile_view_errors
       - batch_reference_settlement_errors
       - batch_review_judgment_errors
       - batch_review_receipt_errors
       - batch_touches_control_plane
+      - candidate_evidence_binding_errors
       - close_gate_receipt_errors
+      - cold_receipt_store
+      - contract_sha256
       - current_attempt_evidence_barrier
       - current_opening_semantic_context
       - current_receipt_catalog
@@ -265,11 +269,18 @@ modules:
       - historical_receipt_catalog
       - item_revalidation_discharges
       - item_undischarged_revalidation_hold
+      - live_read_set_load_findings
+      - maintenance_completion_gate_errors
+      - maintenance_gate_time_errors
       - make_check_receipt
       - outstanding_standards_revalidation
+      - policy_exception_errors
       - profile_load_authorized_view
       - profile_load_authorized_view_currency_errors
       - profile_load_evidence
+      - public_profile_load_evidence
+      - read_set_load_closure
+      - receipt_catalog
       - require_runtime_authority_current
       - required_queue_completion_errors
       - runtime_authority_context
@@ -280,128 +291,10 @@ modules:
       - standards_revalidation_receipt_errors
       - substantive_review_errors
       - task_phase_delivery_errors
+      - timestamp_value
+      - valid_timestamp
       - validate_runtime
-    exceptions:
-      - consumer: adopt_standards
-        symbol: _contract_sha256
-        content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: apply_amendment
-        symbol: _contract_sha256
-        content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: apply_contract_amendment
-        symbol: _contract_sha256
-        content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: apply_contract_amendment
-        symbol: _policy_exception_errors
-        content_sha256: sha256:61128415c95f8ff19260342407962b824c15ea941317c35cc68cd8312fea4279
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: apply_delta
-        symbol: _valid_timestamp
-        content_sha256: sha256:47df0c834fe7af64fa9ca064b2a91bff5cffbc66a3365fee88f74e6ff59a9bf9
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: apply_task_plan
-        symbol: _live_read_set_load_findings
-        content_sha256: sha256:0bd99c61908e2d9c88e9e4a51a7e2b21e5e764da50659decaa122d81fd32899a
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: apply_task_plan
-        symbol: _read_set_load_closure
-        content_sha256: sha256:32ef95f11cfe1490139b5e9fe6908eb3fc4469fc22a4b3a643d9c2062cd2c093
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: check_batch_close
-        symbol: _authorized_profile_view_errors
-        content_sha256: sha256:411d1d1642652c066a3c759fc724b98641ac8272df607ef0e826db09cce91d84
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: check_batch_close
-        symbol: _candidate_evidence_binding_errors
-        content_sha256: sha256:c08db930ba91b0487828ed21ae3c97b7e5bed362d5ba1dc835307b40a01f40e3
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: check_corpus_plan
-        symbol: _authorized_profile_view_errors
-        content_sha256: sha256:411d1d1642652c066a3c759fc724b98641ac8272df607ef0e826db09cce91d84
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: compile_queue
-        symbol: _contract_sha256
-        content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: compile_queue
-        symbol: _work_spec_binding_errors
-        content_sha256: sha256:fa944d0e0967fbb726b07a8a1769b98f5ef281d26fa0a25c46803f60b132ff89
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: init_state
-        symbol: _authorized_profile_view_errors
-        content_sha256: sha256:411d1d1642652c066a3c759fc724b98641ac8272df607ef0e826db09cce91d84
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: init_state
-        symbol: _public_profile_load_evidence
-        content_sha256: sha256:ef64e51cda83eecfb1514f25b4d5dbe0b299c6b4e949ae8e1978454b66af50ea
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: init_state
-        symbol: _valid_timestamp
-        content_sha256: sha256:47df0c834fe7af64fa9ca064b2a91bff5cffbc66a3365fee88f74e6ff59a9bf9
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: register_amendment
-        symbol: _contract_sha256
-        content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: seal_receipts
-        symbol: _cold_receipt_store
-        content_sha256: sha256:c792b9109f47b4789d64a7e049e365b46a1b66a7b1d92bf5300bfb9346c19dde
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: seal_receipts
-        symbol: _receipt_catalog
-        content_sha256: sha256:be4c8a65baa4d1f653ac740f69ca791ad8785e72bea90689212ccddb353ed4d7
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: update_queue
-        symbol: _valid_timestamp
-        content_sha256: sha256:47df0c834fe7af64fa9ca064b2a91bff5cffbc66a3365fee88f74e6ff59a9bf9
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: update_task
-        symbol: _contract_sha256
-        content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: update_task
-        symbol: _maintenance_completion_gate_errors
-        content_sha256: sha256:73f2b1e3ef6b12429c50855a2fc25896606c9e0aba631ceb9715eb5c4a1fe827
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: update_task
-        symbol: _maintenance_gate_time_errors
-        content_sha256: sha256:a8a664373a6083063a7e013bd6a32cb0703b4b728f62c54b0043eaaf25b5cdae
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: update_task
-        symbol: _timestamp_value
-        content_sha256: sha256:d2ca00daff42d70d04f29fc9ad32c336fdf7116d5e12f9cc8b57e77b9a4ad885
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
-      - consumer: update_task
-        symbol: _valid_timestamp
-        content_sha256: sha256:47df0c834fe7af64fa9ca064b2a91bff5cffbc66a3365fee88f74e6ff59a9bf9
-        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
-        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
+      - work_spec_binding_errors
   - module: check_residual_content
     path: Tools/check_residual_content.py
     public: []
@@ -786,16 +679,28 @@ modules:
       - WORK_SPEC_FIELDS
       - WORK_SPEC_PREFIX
       - accounted_standards_versions
+      - actionable_revalidation_batches
       - activation_phase_delivery_errors
       - active_standards_authorized_view
       - active_standards_view_currency_errors
+      - authorized_profile_view_errors
+      - batch_close_recovery_inventory
       - batch_reference_settlement_errors
       - batch_review_judgment_errors
       - batch_review_receipt_errors
       - batch_touches_control_plane
+      - candidate_evidence_binding_errors
       - close_gate_receipt_errors
+      - closed_delta_apply_errors
+      - cold_receipt_store
+      - consumed_standards_revalidation_keys
+      - contract_anchor_chain
+      - contract_sha256
+      - coverage_provenance_errors
       - coverage_reviewed_era_exception
       - current_attempt_evidence_barrier
+      - current_close_transition_metadata_errors
+      - current_open_semantic_baseline_errors
       - current_opening_semantic_baseline
       - current_opening_semantic_context
       - current_receipt_catalog
@@ -803,12 +708,24 @@ modules:
       - delta_gate_receipt_ids
       - evidence_identity_errors
       - gate_registry_producer_errors
+      - global_transition_errors
       - historical_receipt_catalog
       - item_revalidation_discharges
       - item_undischarged_revalidation_hold
       - judgment_record_set_sha256
+      - last_reconciled_guidance_id
+      - latest_consumed_maintenance_gate
+      - live_read_set_load_findings
+      - maintenance_completion_gate_errors
+      - maintenance_gate_inventory
+      - maintenance_gate_time_errors
+      - nonempty_string
+      - operational_amendment_registration_errors
       - outstanding_standards_revalidation
       - partition_boundary_gates_by_lifecycle
+      - pending_control_ids
+      - policy_exception_errors
+      - previous_maintenance_candidate_state
       - producer_module
       - profile_hub_paths
       - profile_load_authorized_view
@@ -818,17 +735,24 @@ modules:
       - project_adoption_gate_ids
       - property_receipt_utc_date
       - property_state
+      - public_profile_load_evidence
       - queue_gate_id_for_mode
+      - read_set_load_closure
+      - receipt_catalog
       - receipt_matches_gate_id
       - registered_gate_position
+      - require_receipt
       - require_runtime_authority_current
       - required_queue_completion_errors
+      - resume_next_action
+      - review_property_evidence_errors
       - runtime
       - runtime_authority_context
       - runtime_authority_currency_errors
       - runtime_authority_lock_fields
       - runtime_authority_validation_kwargs
       - selected_profile_manifest_errors
+      - standards_adoption_errors
       - standards_adoption_plan_errors
       - standards_gate_capability_registry
       - standards_gate_registry
@@ -838,280 +762,374 @@ modules:
       - standards_revalidation_requirements
       - substantive_review_errors
       - task_phase_delivery_errors
+      - terminal_proof_profile_binding_errors
+      - timestamp_value
+      - unadmitted_profile_hub_paths
       - unsupported_reviewed_records
-    exceptions:
-      - consumer: check_queue
-        symbol: _actionable_revalidation_batches
-        content_sha256: sha256:d92b1c8e251bc5ae8c95833b6f71043a2e89361f54eb6cbe2682b10570d587f2
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _authorized_profile_view_errors
-        content_sha256: sha256:411d1d1642652c066a3c759fc724b98641ac8272df607ef0e826db09cce91d84
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _batch_close_recovery_inventory
-        content_sha256: sha256:59b9e0da44afca780743bc66f34cdabd6c0e94c52101b758fd64d743c54461e2
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _candidate_evidence_binding_errors
-        content_sha256: sha256:c08db930ba91b0487828ed21ae3c97b7e5bed362d5ba1dc835307b40a01f40e3
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _closed_delta_apply_errors
-        content_sha256: sha256:9197c5eb5e48edcef2e386a2cbecdd86ab84bcba15244a175e5ab24107cc2c2b
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _cold_receipt_store
-        content_sha256: sha256:c792b9109f47b4789d64a7e049e365b46a1b66a7b1d92bf5300bfb9346c19dde
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _consumed_standards_revalidation_keys
-        content_sha256: sha256:f293e9dce80468220e74b34380e07270869e9b0607ef14b69707bb9e99d8273e
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _contract_anchor_chain
-        content_sha256: sha256:ab0d5510eb25956cc0064b82eb38512d1112017967f035fe1238608568d60ed6
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _contract_sha256
-        content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _coverage_provenance_errors
-        content_sha256: sha256:52851e6c5fc06241e6d9cb55216b0fc206174586b1b9d06f27f6b015b7cc6200
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _current_close_transition_metadata_errors
-        content_sha256: sha256:f2211dea8af7310921c3f6c55d9cd1d2963d428736d286adc3ae73c4282bf791
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _current_open_semantic_baseline_errors
-        content_sha256: sha256:6333928251bdacd2d47ab8221c174b456125380fe3b4608d9acacb30f1eddd22
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _global_transition_errors
-        content_sha256: sha256:ef1e4c4c8cf104b4a8eaf87894bf8c64be389c4d5b27872d5d313ee0435b5fb5
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _last_reconciled_guidance_id
-        content_sha256: sha256:ba27338738d002851166b47eddfaa8e2092aac24d415e3797fe86bdb96b57081
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _latest_consumed_maintenance_gate
-        content_sha256: sha256:81c832e53cb7c583de56e1af48f8d4754ccf9b11b122d32c8949ca291c39bd27
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _live_read_set_load_findings
-        content_sha256: sha256:0bd99c61908e2d9c88e9e4a51a7e2b21e5e764da50659decaa122d81fd32899a
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _maintenance_completion_gate_errors
-        content_sha256: sha256:73f2b1e3ef6b12429c50855a2fc25896606c9e0aba631ceb9715eb5c4a1fe827
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _maintenance_gate_inventory
-        content_sha256: sha256:b9b79993c8b97f89d44034cc26578cd42bf80397f6df5a5146f455ff55400d98
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _maintenance_gate_time_errors
-        content_sha256: sha256:a8a664373a6083063a7e013bd6a32cb0703b4b728f62c54b0043eaaf25b5cdae
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _nonempty_string
-        content_sha256: sha256:93df54adb2b80fd0ea340e5f3cf1385edfbcbb8fa3a2222f19de2113f242230b
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _operational_amendment_registration_errors
-        content_sha256: sha256:b52650fd668e009778cd292956e80ad9ac2c21bf329698bd30bef0e411869a8e
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _pending_control_ids
-        content_sha256: sha256:5d304f2c94c4aa217a8fc9d696645a6b8d3f861c82d232f5b3fd0cc34a5f8353
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _policy_exception_errors
-        content_sha256: sha256:61128415c95f8ff19260342407962b824c15ea941317c35cc68cd8312fea4279
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _previous_maintenance_candidate_state
-        content_sha256: sha256:833d921f1d0ddd81f5d5eca35f991b9fc4c5c3a7615e17b7655bd33f29c1ce7f
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _public_profile_load_evidence
-        content_sha256: sha256:ef64e51cda83eecfb1514f25b4d5dbe0b299c6b4e949ae8e1978454b66af50ea
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _read_set_load_closure
-        content_sha256: sha256:32ef95f11cfe1490139b5e9fe6908eb3fc4469fc22a4b3a643d9c2062cd2c093
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _receipt_catalog
-        content_sha256: sha256:be4c8a65baa4d1f653ac740f69ca791ad8785e72bea90689212ccddb353ed4d7
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _require_receipt
-        content_sha256: sha256:62bd2368cf16fe0e0029e6bca133c820a4c88bf618d90d42fbd2a9c9a1991e01
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _resume_next_action
-        content_sha256: sha256:b364d6b400e6395eba0366472795f6e0b9ec0ec9632020ebbda6437120bf4d47
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _review_property_evidence_errors
-        content_sha256: sha256:79406dbe63c84670d480c397e412f678f61ea10cd74ce9e047cdd838e0dcb47e
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _standards_adoption_errors
-        content_sha256: sha256:9cc98275c90a98de81417603ef92ed67d1c89daa7621556138f6048fe7be7bc9
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _terminal_proof_profile_binding_errors
-        content_sha256: sha256:272bee2fb352994c52f076c15cb6782ec6302f4bb3816cf3f49a1d74398084a5
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _timestamp_value
-        content_sha256: sha256:d2ca00daff42d70d04f29fc9ad32c336fdf7116d5e12f9cc8b57e77b9a4ad885
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _unadmitted_profile_hub_paths
-        content_sha256: sha256:3bf9fd362479ea88019e14b65a9a62181cfc2accf24c6f546dcc2afac21f0430
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _valid_timestamp
-        content_sha256: sha256:47df0c834fe7af64fa9ca064b2a91bff5cffbc66a3365fee88f74e6ff59a9bf9
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _work_spec_binding_errors
-        content_sha256: sha256:fa944d0e0967fbb726b07a8a1769b98f5ef281d26fa0a25c46803f60b132ff89
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _work_spec_errors
-        content_sha256: sha256:cf9ff2d54206899e4fd405220a029876db67dc3b151953e992b9d3137d253f90
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
+      - valid_timestamp
+      - work_spec_binding_errors
+      - work_spec_errors
   - module: queue_runtime.adoption
     path: Tools/queue_runtime/adoption.py
-    public: []
+    provisional: true
+    public:
+      - standards_adoption_errors
+      - standards_adoption_plan_errors
   - module: queue_runtime.amendments
     path: Tools/queue_runtime/amendments.py
-    public: []
+    provisional: true
+    public:
+      - CONTRACT_AMENDMENT_PLAN_PREFIX
+      - cross_ledger_amendment_errors
+      - initial_queue_receipt_errors
+      - operational_amendment_registration_errors
+      - pending_cross_ledger_amendments
+      - queue_replan_amendment_errors
   - module: queue_runtime.authority
     path: Tools/queue_runtime/authority.py
-    public: []
+    provisional: true
+    public:
+      - require_runtime_authority_current
+      - runtime_authority_context
+      - runtime_authority_currency_errors
+      - runtime_authority_lock_fields
+      - runtime_authority_validation_kwargs
   - module: queue_runtime.canon
     path: Tools/queue_runtime/canon.py
-    public: []
+    provisional: true
+    public:
+      - ACTIVE_STANDARDS_PATH
+      - ACTIVE_STATES
+      - ANY_PRODUCER_ERA_VERSION
+      - APPLY_AMENDMENT_TOOL_VERSION
+      - APPLY_DELTA_TOOL_VERSION
+      - BATCH_CLOSE_TOOL
+      - BATCH_CLOSE_TOOL_VERSION
+      - BATCH_ID_RE
+      - BATCH_REVIEW_GATE_ID
+      - CONTRACT_AMENDMENT_TOOL_VERSION
+      - CORPUS_PLAN_TOOL
+      - CORPUS_PLAN_TOOL_VERSION
+      - COVERAGE_PATH
+      - EXECUTION_MODES
+      - GATE_CHECK
+      - HOLDS
+      - LEGACY_PROPERTY_ADOPTION_OPERATION
+      - MANUAL_ATTESTATION_TOOL
+      - MANUAL_ATTESTATION_TOOL_VERSION
+      - PROGRESS_PATH
+      - QUEUE_PATH
+      - REGISTER_AMENDMENT_TOOL
+      - REGISTER_AMENDMENT_TOOL_VERSION
+      - SEAL_TOOL
+      - SHA256_RE
+      - STANDARDS_ADOPTION_PLAN_PREFIX
+      - STANDARDS_ADOPTION_TOOL
+      - STANDARDS_ADOPTION_TOOL_VERSION
+      - STATES
+      - SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS
+      - SUPPORTED_CHECK_QUEUE_TOOL_VERSIONS
+      - SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS
+      - TASK_STATES
+      - TERMINAL_PROOF_TOOL
+      - TERMINAL_PROOF_TOOL_VERSION
+      - TERMINAL_STATES
+      - TOOL
+      - TOOL_VERSION
+      - UPDATE_QUEUE_TOOL_VERSION
   - module: queue_runtime.close_gate
     path: Tools/queue_runtime/close_gate.py
-    public: []
+    provisional: true
+    public:
+      - CLOSED_LIST_EVIDENCE_FIELDS
+      - COMPACT_CLOSE_EVIDENCE_VERSIONS
+      - HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS
+      - SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS
+      - candidate_evidence_binding_errors
+      - close_gate_receipt_errors
+      - close_gate_reuse_errors
+      - closed_bundle_seal_state
+      - closed_gate_errors
+      - sealed_closed_bundle_errors
   - module: queue_runtime.control_plane
     path: Tools/queue_runtime/control_plane.py
-    public: []
+    provisional: true
+    public:
+      - batch_touches_control_plane
+      - hub_page_admission
+      - profile_hub_paths
+      - unadmitted_profile_hub_paths
   - module: queue_runtime.coverage
     path: Tools/queue_runtime/coverage.py
-    public: []
+    provisional: true
+    public:
+      - COVERAGE_BATCH_SPEC_FIELDS
+      - coverage_batch_spec_errors
+      - coverage_provenance_errors
+      - coverage_records
+      - coverage_reviewed_era_exception
+      - unsupported_reviewed_records
   - module: queue_runtime.delta
     path: Tools/queue_runtime/delta.py
-    public: []
+    provisional: true
+    public:
+      - applied_rollback_restore_errors
+      - batch_reference_settlement_errors
+      - close_settlement_binding_errors
+      - closed_delta_apply_errors
+      - delta_apply_receipt_candidates
+      - delta_apply_write_barrier
+      - delta_handoff_errors
+      - settlement_binding_errors
   - module: queue_runtime.evidence_identity
     path: Tools/queue_runtime/evidence_identity.py
-    public: []
+    provisional: true
+    public:
+      - EVIDENCE_IDENTITY_USES
+      - EVIDENCE_USE_ACTIVE_TRANSACTION
+      - EVIDENCE_USE_COMPLETED_EVENT
+      - EVIDENCE_USE_CURRENT_AUTHORIZATION
+      - EVIDENCE_USE_TERMINAL_HISTORY
+      - current_property_receipt
+      - evidence_identity_errors
+      - property_receipt_utc_date
   - module: queue_runtime.gate_registry
     path: Tools/queue_runtime/gate_registry.py
-    public: []
+    provisional: true
+    public:
+      - BASE_RECEIPT_DIMENSIONS
+      - NOT_BATCH_SCOPED_GATE
+      - QUEUE_EXHAUSTED_GATE
+      - STANDARDS_GATE_REGISTRY_PATH
+      - gate_registry_producer_errors
+      - partition_boundary_gates_by_lifecycle
+      - partition_revalidation_owner_claims
+      - producer_module
+      - project_adoption_gate_ids
+      - projected_revalidation_owners
+      - queue_gate_id_for_mode
+      - receipt_matches_gate_id
+      - registered_gate_dimensions
+      - registered_gate_position
+      - standards_gate_capability_registry
+      - standards_gate_registry
+      - standards_revalidation_capabilities
+      - standards_revalidation_owner
   - module: queue_runtime.item_evidence
     path: Tools/queue_runtime/item_evidence.py
-    public: []
+    provisional: true
+    public:
+      - INVALIDATION_APPLIED_ROLLBACK_FIELDS
+      - INVALIDATION_FIELDS
+      - item_evidence_errors
   - module: queue_runtime.item_history
     path: Tools/queue_runtime/item_history.py
-    public: []
+    provisional: true
+    public:
+      - invalidated_receipt_consumers
+      - item_revalidation_discharges
+      - item_undischarged_revalidation_hold
+      - latest_merge_transition
+      - ordered_item_transitions
+      - undischarged_revalidation_hold
+      - walk_revalidation_hold
   - module: queue_runtime.locks
     path: Tools/queue_runtime/locks.py
-    public: []
+    provisional: true
+    public:
+      - bind_generic_lock_receipts
+      - bind_lock_delta_archives
+      - bind_lock_receipts
+      - bind_lock_state_phases
+    exceptions:
+      - consumer: queue_runtime.runtime
+        symbol: _writer_locks
+        content_sha256: sha256:fefdb04809c7991f49a61a263e1f750d97d74263f7d06ab9ef67e19eadee0c1a
+        necessity: the lock inventory the runtime admission opens with; it keeps the underscore because the call site binds its result to a local of the same meaning, and a public name shadowed by a local reads as public and fails as a self-reference
+        retires_when: the call site names its local something the function is not, at which point the underscore has no job
   - module: queue_runtime.maintenance
     path: Tools/queue_runtime/maintenance.py
-    public: []
+    provisional: true
+    public:
+      - latest_consumed_maintenance_gate
+      - maintenance_completion_gate_errors
+      - maintenance_gate_time_errors
+      - previous_maintenance_candidate_state
   - module: queue_runtime.policy_exceptions
     path: Tools/queue_runtime/policy_exceptions.py
-    public: []
+    provisional: true
+    public:
+      - policy_exception_errors
+      - sealed_policy_exception_errors
   - module: queue_runtime.primitives
     path: Tools/queue_runtime/primitives.py
-    public: []
+    provisional: true
+    public:
+      - acyclic
+      - closed_mapping_errors
+      - explicit_string_list_errors
+      - identity
+      - nonempty_string
+      - timestamp_value
+      - valid_timestamp
   - module: queue_runtime.producer_era
     path: Tools/queue_runtime/producer_era.py
-    public: []
+    provisional: true
+    public:
+      - accounted_standards_versions
+      - producer_era_errors
+      - standards_adoption_owner_projection_required
+      - standards_adoption_profile_contract_required
+      - standards_adoption_profile_inputs_required
+      - standards_adoption_state_file_required
+      - standards_adoption_upstream_required
+      - terminal_proof_profile_binding_errors
   - module: queue_runtime.profile_view
     path: Tools/queue_runtime/profile_view.py
-    public: []
+    provisional: true
+    public:
+      - EXPRESSION_LAYER_SLOT
+      - active_standards_authorized_view
+      - active_standards_view_currency_errors
+      - authorized_profile_view_errors
+      - profile_load_authorized_view
+      - profile_load_authorized_view_currency_errors
+      - profile_load_errors
+      - profile_load_evidence
+      - profile_view_snapshot_error
+      - public_profile_load_evidence
+      - selected_profile_manifest_errors
   - module: queue_runtime.property_state
     path: Tools/queue_runtime/property_state.py
-    public: []
+    provisional: true
+    public:
+      - LEGACY_PROPERTY_STATE_FIELD
+      - coverage_property_state_errors
+      - current_close_transition_metadata_errors
+      - current_open_semantic_baseline_errors
+      - current_opening_semantic_baseline
+      - current_opening_semantic_context
+      - delta_opening_semantic_binding
+      - delta_property_event_errors
+      - delta_property_invalidation_errors
+      - legacy_property_state_source_errors
+      - review_property_evidence_errors
   - module: queue_runtime.receipts
     path: Tools/queue_runtime/receipts.py
-    public: []
+    provisional: true
+    public:
+      - Catalog
+      - RECEIPT_REFERENCE_FIELDS
+      - cold_path_within_root
+      - cold_receipt_store
+      - current_receipt_catalog
+      - delta_gate_receipt_ids
+      - historical_receipt_catalog
+      - receipt_catalog
+      - require_receipt
   - module: queue_runtime.repofs
     path: Tools/queue_runtime/repofs.py
-    public: []
+    provisional: true
+    public:
+      - load_state
+      - normalized_repository_path
+      - repository_evidence_file
+    exceptions:
+      - consumer: queue_runtime.adoption
+        symbol: _path_error
+        content_sha256: sha256:117c76ddf883d0ca06d040a3e5886a1111b0dfb71239bad360cd2c5d303611eb
+        necessity: the one refusal wording for a path that does not resolve inside the repository; shared so three validators cannot describe the same failure three ways, and underscored for the same shadowing reason as _writer_locks
+        retires_when: same as _writer_locks
+      - consumer: queue_runtime.control_plane
+        symbol: _path_error
+        content_sha256: sha256:117c76ddf883d0ca06d040a3e5886a1111b0dfb71239bad360cd2c5d303611eb
+        necessity: the one refusal wording for a path that does not resolve inside the repository; shared so three validators cannot describe the same failure three ways, and underscored for the same shadowing reason as _writer_locks
+        retires_when: same as _writer_locks
+      - consumer: queue_runtime.coverage
+        symbol: _path_error
+        content_sha256: sha256:117c76ddf883d0ca06d040a3e5886a1111b0dfb71239bad360cd2c5d303611eb
+        necessity: the one refusal wording for a path that does not resolve inside the repository; shared so three validators cannot describe the same failure three ways, and underscored for the same shadowing reason as _writer_locks
+        retires_when: same as _writer_locks
+      - consumer: queue_runtime.runtime
+        symbol: _path_error
+        content_sha256: sha256:117c76ddf883d0ca06d040a3e5886a1111b0dfb71239bad360cd2c5d303611eb
+        necessity: the one refusal wording for a path that does not resolve inside the repository; shared so three validators cannot describe the same failure three ways, and underscored for the same shadowing reason as _writer_locks
+        retires_when: same as _writer_locks
   - module: queue_runtime.resume
     path: Tools/queue_runtime/resume.py
-    public: []
+    provisional: true
+    public:
+      - actionable_revalidation_batches
+      - batch_close_recovery_inventory
+      - maintenance_gate_inventory
+      - resume_next_action
   - module: queue_runtime.revalidation
     path: Tools/queue_runtime/revalidation.py
-    public: []
+    provisional: true
+    public:
+      - consumed_standards_revalidation_keys
+      - current_attempt_evidence_barrier
+      - outstanding_standards_revalidation
+      - standards_revalidation_context
+      - standards_revalidation_producer_eligibility
+      - standards_revalidation_receipt_errors
+      - standards_revalidation_requirements
+      - unresolvable_consumed_aggregate_errors
   - module: queue_runtime.review
     path: Tools/queue_runtime/review.py
-    public: []
+    provisional: true
+    public:
+      - BATCH_REVIEW_CHECK
+      - activation_phase_delivery_errors
+      - batch_review_judgment_errors
+      - batch_review_receipt_errors
+      - judgment_record_set_sha256
+      - substantive_review_errors
+      - task_phase_delivery_errors
   - module: queue_runtime.runtime
     path: Tools/queue_runtime/runtime.py
-    public: []
+    provisional: true
+    public:
+      - COVERAGE_TOP_LEVEL_FIELDS
+      - QUEUE_ITEM_FIELDS
+      - required_queue_completion_errors
   - module: queue_runtime.task_contract
     path: Tools/queue_runtime/task_contract.py
-    public: []
+    provisional: true
+    public:
+      - READ_SET_BOUNDARY_OWNER_PATH
+      - contract_anchor_chain
+      - contract_sha256
+      - contract_sha_at_revision
+      - live_read_set_load_findings
+      - read_set_load_closure
   - module: queue_runtime.task_progress
     path: Tools/queue_runtime/task_progress.py
-    public: []
+    provisional: true
+    public:
+      - CHECKPOINT_FIELDS
+      - COMPLETION_SEMANTICS
+      - CONTRACT_FIELDS
+      - CONTRACT_OPTIONAL_FIELDS
+      - GUIDANCE_DISPOSITIONS
+      - global_transition_errors
+      - progress_shape_errors
+      - task_transition_errors
   - module: queue_runtime.task_record
     path: Tools/queue_runtime/task_record.py
-    public: []
+    provisional: true
+    public:
+      - last_reconciled_guidance_id
+      - pending_control_ids
+      - task_transition_receipt_record_errors
   - module: queue_runtime.work_spec
     path: Tools/queue_runtime/work_spec.py
-    public: []
+    provisional: true
+    public:
+      - WORK_SPEC_FIELDS
+      - WORK_SPEC_PREFIX
+      - work_spec_binding_errors
+      - work_spec_errors
   - module: record_batch_judgment
     path: Tools/record_batch_judgment.py
     public: []

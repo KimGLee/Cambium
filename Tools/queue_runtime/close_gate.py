@@ -27,21 +27,21 @@ from queue_runtime.canon import (
     SHA256_RE,
     TOOL,
 )
-from queue_runtime.delta import _close_settlement_binding_errors
+from queue_runtime.delta import close_settlement_binding_errors
 from queue_runtime.evidence_identity import (
     EVIDENCE_USE_CURRENT_AUTHORIZATION,
     EVIDENCE_USE_TERMINAL_HISTORY,
     evidence_identity_errors,
 )
-from queue_runtime.policy_exceptions import _sealed_policy_exception_errors
+from queue_runtime.policy_exceptions import sealed_policy_exception_errors
 from queue_runtime.primitives import (
-    _nonempty_string,
-    _timestamp_value,
+    nonempty_string,
+    timestamp_value,
 )
-from queue_runtime.producer_era import _producer_era_errors
+from queue_runtime.producer_era import producer_era_errors
 from queue_runtime.receipts import (
-    _cold_path_within_root,
-    _require_receipt,
+    cold_path_within_root,
+    require_receipt,
 )
 
 
@@ -116,7 +116,7 @@ CANDIDATE_CONTINUATION_VERSIONS = frozenset((
     "1.10.0", "1.11.0", "1.12.0"))
 
 
-def _candidate_evidence_binding_errors(root, label, relative, expected_sha,
+def candidate_evidence_binding_errors(root, label, relative, expected_sha,
                                        expected_bytes, expected_records):
     """Prove the born-cold evidence file is the one the attestation bound.
 
@@ -130,7 +130,7 @@ def _candidate_evidence_binding_errors(root, label, relative, expected_sha,
     the bytes are compared on every run, before any seal can adopt them.
     """
     errors = []
-    if not _cold_path_within_root(root, relative, errors):
+    if not cold_path_within_root(root, relative, errors):
         return errors
     full = os.path.join(root, relative)
     try:
@@ -197,7 +197,7 @@ def _compact_attestation_errors(attestation, attestation_id, item_id,
         count = None
     accepted_types = attestation.get("accepted_candidate_types")
     if not isinstance(accepted_types, list) or any(
-            not _nonempty_string(value) for value in accepted_types):
+            not nonempty_string(value) for value in accepted_types):
         errors.append("%s accepted_candidate_types must be a string list" %
                       label)
         accepted_types = []
@@ -230,7 +230,7 @@ def _compact_attestation_errors(attestation, attestation_id, item_id,
     evidence_sha = attestation.get("candidate_evidence_sha256")
     evidence_bytes = attestation.get("candidate_evidence_bytes")
     evidence_records = attestation.get("candidate_evidence_records")
-    if (not _nonempty_string(evidence_path) or
+    if (not nonempty_string(evidence_path) or
             not evidence_path.startswith(
                 kblib.RECEIPT_COLD_EVIDENCE_PREFIX + "/") or
             not evidence_path.endswith(".jsonl")):
@@ -256,7 +256,7 @@ def _compact_attestation_errors(attestation, attestation_id, item_id,
                       "accepted_candidate_count=%d" %
                       (label, evidence_records, count))
     if root is not None and evidence_path is not None:
-        errors.extend(_candidate_evidence_binding_errors(
+        errors.extend(candidate_evidence_binding_errors(
             root, label, evidence_path, evidence_sha, evidence_bytes,
             evidence_records))
     dispositions = attestation.get("candidate_dispositions")
@@ -272,13 +272,13 @@ def _compact_attestation_errors(attestation, attestation_id, item_id,
             continue
         candidate_id = disposition.get("candidate_id")
         candidate_type = disposition.get("candidate_type")
-        if (not _nonempty_string(candidate_id) or
+        if (not nonempty_string(candidate_id) or
                 not candidate_id.startswith("candidate-sha256:") or
                 not SHA256_RE.fullmatch(candidate_id.replace(
                     "candidate-sha256:", "sha256:", 1))):
             errors.append("%s has invalid stable candidate_id" %
                           disposition_label)
-        if not _nonempty_string(candidate_type) or ":" not in candidate_type:
+        if not nonempty_string(candidate_type) or ":" not in candidate_type:
             errors.append("%s has invalid candidate_type" % disposition_label)
         accepted_by = disposition.get("accepted_by")
         if (not isinstance(accepted_by, str) or
@@ -290,14 +290,14 @@ def _compact_attestation_errors(attestation, attestation_id, item_id,
             continue
         decision_id = accepted_by.split(":", 1)[1]
         sealed = disposition.get("policy_exception")
-        if not _nonempty_string(decision_id):
+        if not nonempty_string(decision_id):
             errors.append("%s has empty policy-exception decision" %
                           disposition_label)
         elif not isinstance(sealed, dict):
             errors.append("%s policy-exception disposition seals no "
                           "decision facts" % disposition_label)
         else:
-            errors.extend(_sealed_policy_exception_errors(
+            errors.extend(sealed_policy_exception_errors(
                 sealed, decision_id, candidate_type, disposition_label))
     if receipt_version in CANDIDATE_CONTINUATION_VERSIONS:
         errors.extend(candidate_lifecycle.continuation_attestation_errors(
@@ -327,7 +327,7 @@ def _page_review_acceptance_errors(
     label = "%s batch-close gate receipt %s" % (item_id, aggregate_id)
 
     if (not isinstance(manifest, list) or
-            any(not _nonempty_string(value) for value in manifest)):
+            any(not nonempty_string(value) for value in manifest)):
         errors.append(
             "%s current page-review protocol requires an explicit manifest "
             "page-path list" % label)
@@ -349,7 +349,7 @@ def _page_review_acceptance_errors(
             bad_values = sorted(
                 target for target, value in
                 authorized_page_semantic_fingerprints.items()
-                if (not _nonempty_string(target) or
+                if (not nonempty_string(target) or
                     not isinstance(value, str) or
                     not SHA256_RE.fullmatch(value)))
             if supplied_targets != expected_target_set:
@@ -366,7 +366,7 @@ def _page_review_acceptance_errors(
 
     ids = aggregate.get("page_review_receipts")
     if (not isinstance(ids, list) or
-            any(not _nonempty_string(value) for value in ids)):
+            any(not nonempty_string(value) for value in ids)):
         errors.append("%s page_review_receipts must be a string list" % label)
         ids = []
     elif ids != sorted(ids):
@@ -381,13 +381,13 @@ def _page_review_acceptance_errors(
             aggregate.get("queue_consistency_receipt"),
             aggregate.get("delta_apply_receipt"),
             aggregate.get("corpus_plan_receipt"),
-        ) if _nonempty_string(value)
+        ) if nonempty_string(value)
     }
     evidence = aggregate.get("closed_list_evidence")
     if isinstance(evidence, dict):
         reserved_receipt_ids.update(
             value for value in evidence.values()
-            if _nonempty_string(value))
+            if nonempty_string(value))
     overlaps = sorted(set(ids).intersection(reserved_receipt_ids))
     if overlaps:
         errors.append(
@@ -486,7 +486,7 @@ def _page_review_acceptance_errors(
     targets = []
     for index, page_receipt_id in enumerate(ids):
         child_label = "%s page review child[%d]" % (item_id, index)
-        child = _require_receipt(
+        child = require_receipt(
             catalog, page_receipt_id, child_label, errors,
             expected={
                 "tool": BATCH_CLOSE_TOOL,
@@ -507,12 +507,12 @@ def _page_review_acceptance_errors(
         if not isinstance(child, dict):
             continue
         target = child.get("target")
-        if not _nonempty_string(target):
+        if not nonempty_string(target):
             errors.append("%s target must be a non-empty page path" %
                           child_label)
             continue
         targets.append(target)
-        checked_at = _timestamp_value(child.get("checked_at"))
+        checked_at = timestamp_value(child.get("checked_at"))
         reviewed_on = child.get("reviewed_on")
         if checked_at is None:
             errors.append("%s checked_at must be an RFC 3339 instant" %
@@ -617,7 +617,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
         "queue_consistency_receipt": queue_consistency_receipt,
         "delta_apply_receipt": delta_apply_receipt,
     }
-    receipt = _require_receipt(
+    receipt = require_receipt(
         catalog, receipt_id, label, errors,
         expected=expected,
     )
@@ -637,7 +637,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                 sorted(allowed_versions))
         )
     if receipt_version == BATCH_CLOSE_TOOL_VERSION:
-        errors.extend(_close_settlement_binding_errors(
+        errors.extend(close_settlement_binding_errors(
             receipt, "%s receipt %s" % (label, receipt_id)))
     for field, value in (
             ("work_spec_path", work_spec_path),
@@ -693,7 +693,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
             "%s receipt %s corpus_plan_required must be an explicit boolean" %
             (label, receipt_id))
     if (not isinstance(actual_corpus_triggers, list) or
-            any(not _nonempty_string(value)
+            any(not nonempty_string(value)
                 for value in actual_corpus_triggers)):
         errors.append(
             "%s receipt %s corpus_plan_triggers must be an explicit string "
@@ -751,7 +751,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                 "target": selected_profile_manifest,
                 "selected_profile_manifest": selected_profile_manifest,
             })
-        corpus_receipt = _require_receipt(
+        corpus_receipt = require_receipt(
             catalog, corpus_receipt_id,
             "%s Corpus Planning child" % item_id, errors,
             expected=corpus_expected,
@@ -789,7 +789,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                     "selected_profile_manifest", "corpus_planning_slot_path")
                 configured_required = applicability == "configured"
                 if always_required or configured_required:
-                    if not _nonempty_string(path_value):
+                    if not nonempty_string(path_value):
                         errors.append(
                             "%s Corpus Planning child %s lacks %s" %
                             (item_id, corpus_receipt_id, path_field))
@@ -813,7 +813,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                                 item_id, corpus_receipt_id, path_field,
                                 sha_field))
 
-    _require_receipt(
+    require_receipt(
         catalog, queue_consistency_receipt,
         "%s Queue consistency snapshot" % item_id, errors,
         expected={
@@ -830,7 +830,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     )
 
     global_review_id = receipt.get("global_review_receipt")
-    global_review = _require_receipt(
+    global_review = require_receipt(
         catalog, global_review_id, "%s global review" % item_id, errors,
         expected={
             "tool": BATCH_CLOSE_TOOL,
@@ -847,10 +847,10 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     reviewer_id = receipt.get("reviewer_id")
     for field, value in (("integrator_id", integrator_id),
                          ("reviewer_id", reviewer_id)):
-        if not _nonempty_string(value):
+        if not nonempty_string(value):
             errors.append("%s receipt %s %s must be a non-empty declared label" %
                           (label, receipt_id, field))
-    if (_nonempty_string(integrator_id) and _nonempty_string(reviewer_id) and
+    if (nonempty_string(integrator_id) and nonempty_string(reviewer_id) and
             integrator_id.casefold() == reviewer_id.casefold()):
         errors.append("%s receipt %s integrator and reviewer must use "
                       "different declared labels" % (label, receipt_id))
@@ -865,7 +865,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                               "expected %r" %
                               (item_id, global_review_id, field,
                                global_review.get(field), value))
-    attestation = _require_receipt(
+    attestation = require_receipt(
         catalog, attestation_id, "%s declared reviewer attestation" %
         item_id, errors,
         expected={
@@ -882,27 +882,27 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     )
     if (isinstance(attestation, dict) and
             receipt_version in COMPACT_CLOSE_EVIDENCE_VERSIONS):
-        if not _nonempty_string(attestation.get("details")):
+        if not nonempty_string(attestation.get("details")):
             errors.append("%s declared reviewer attestation %s has no "
                           "review statement" % (item_id, attestation_id))
         errors.extend(_compact_attestation_errors(
             attestation, attestation_id, item_id, root=root,
             receipt_version=receipt_version))
     elif isinstance(attestation, dict):
-        if not _nonempty_string(attestation.get("details")):
+        if not nonempty_string(attestation.get("details")):
             errors.append("%s declared reviewer attestation %s has no "
                           "review statement" % (item_id, attestation_id))
         accepted_ids = attestation.get("accepted_candidate_ids")
         accepted_types = attestation.get("accepted_candidate_types")
         dispositions = attestation.get("candidate_dispositions")
         if not isinstance(accepted_ids, list) or any(
-                not _nonempty_string(value) for value in accepted_ids):
+                not nonempty_string(value) for value in accepted_ids):
             errors.append("%s declared reviewer attestation %s "
                           "accepted_candidate_ids must be a string list" %
                           (item_id, attestation_id))
             accepted_ids = []
         if not isinstance(accepted_types, list) or any(
-                not _nonempty_string(value) for value in accepted_types):
+                not nonempty_string(value) for value in accepted_types):
             errors.append("%s declared reviewer attestation %s "
                           "accepted_candidate_types must be a string list" %
                           (item_id, attestation_id))
@@ -929,7 +929,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                 continue
             candidate_id = disposition.get("candidate_id")
             candidate_type = disposition.get("candidate_type")
-            if (not _nonempty_string(candidate_id) or
+            if (not nonempty_string(candidate_id) or
                     not candidate_id.startswith("candidate-sha256:") or
                     not SHA256_RE.fullmatch(candidate_id.replace(
                         "candidate-sha256:", "sha256:", 1))):
@@ -937,7 +937,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                               disposition_label)
             else:
                 disposition_ids.append(candidate_id)
-            if (not _nonempty_string(candidate_type) or
+            if (not nonempty_string(candidate_type) or
                     ":" not in candidate_type):
                 errors.append("%s has invalid candidate_type" %
                               disposition_label)
@@ -961,7 +961,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                         "have produced" % (disposition_label,
                                            receipt_version))
                 sealed = disposition.get("policy_exception")
-                if not _nonempty_string(decision_id):
+                if not nonempty_string(decision_id):
                     errors.append("%s has empty policy-exception decision" %
                                   disposition_label)
                 elif not isinstance(sealed, dict):
@@ -969,7 +969,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
                         "%s policy-exception disposition seals no decision "
                         "facts" % disposition_label)
                 else:
-                    errors.extend(_sealed_policy_exception_errors(
+                    errors.extend(sealed_policy_exception_errors(
                         sealed, decision_id, candidate_type,
                         disposition_label))
             elif accepted_by not in ("candidate-id", "candidate-type"):
@@ -1031,12 +1031,12 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     evidence_ids = []
     for field in era_fields:
         evidence_id = evidence.get(field)
-        if not _nonempty_string(evidence_id):
+        if not nonempty_string(evidence_id):
             errors.append("%s receipt %s closed_list_evidence.%s must identify "
                           "a receipt" % (label, receipt_id, field))
             continue
         evidence_ids.append(evidence_id)
-        _require_receipt(
+        require_receipt(
             catalog, evidence_id,
             "%s Closed List member %s" % (item_id, field), errors,
             expected={
@@ -1094,7 +1094,7 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     return errors
 
 
-def _closed_bundle_seal_state(item, catalog):
+def closed_bundle_seal_state(item, catalog):
     """Classify one closed item's evidence trio against the cold index.
 
     The trio -- batch-close gate, pre-close Queue consistency snapshot, and
@@ -1108,18 +1108,18 @@ def _closed_bundle_seal_state(item, catalog):
             item.get("queue_consistency_receipt"),
             item.get("delta_apply_receipt")]
     sealed = [receipt_id for receipt_id in trio
-              if _nonempty_string(receipt_id) and receipt_id in cold]
+              if nonempty_string(receipt_id) and receipt_id in cold]
     if not sealed:
         return "hot"
-    if len(sealed) != len([r for r in trio if _nonempty_string(r)]):
+    if len(sealed) != len([r for r in trio if nonempty_string(r)]):
         return "mixed"
     return "sealed"
 
 
-def _sealed_closed_bundle_errors(item, transition, catalog, queue):
+def sealed_closed_bundle_errors(item, transition, catalog, queue):
     """Validate one sealed close bundle through its thin projections.
 
-    Reading a projection is sound here only because ``_cold_receipt_store``
+    Reading a projection is sound here only because ``cold_receipt_store``
     has already proved, this run, that each projection hashes to the exact
     sealed record it names and that the seal receipt which produced it
     still binds the whole index row set byte for byte.  Without those two
@@ -1197,7 +1197,7 @@ def _sealed_closed_bundle_errors(item, transition, catalog, queue):
     return errors
 
 
-def _closed_gate_errors(item, transition, catalog, queue,
+def closed_gate_errors(item, transition, catalog, queue,
                         accounted_versions=frozenset(), root=None):
     """Revalidate the two independent pre-close gates from frozen history."""
     errors = []
@@ -1224,13 +1224,13 @@ def _closed_gate_errors(item, transition, catalog, queue,
             "progress_ledger_sha256":
                 transition.get("before_progress_sha256"),
         })
-    consistency_receipt = _require_receipt(
+    consistency_receipt = require_receipt(
         catalog, consistency_id, "%s Queue consistency gate" % item_id,
         errors, expected=consistency_expected,
     )
     # Historical: a closed batch's pre-close Queue consistency gate, bound to
     # the frozen before-bytes of a transition that already happened.
-    errors.extend(_producer_era_errors(
+    errors.extend(producer_era_errors(
         consistency_receipt, consistency_id,
         "%s Queue consistency gate" % item_id, accounted_versions))
     if transition is None:
@@ -1273,13 +1273,13 @@ def _closed_gate_errors(item, transition, catalog, queue,
     return errors
 
 
-def _close_gate_reuse_errors(items_by_id):
+def close_gate_reuse_errors(items_by_id):
     """Reject one snapshot-specific close assertion owning two histories."""
     errors = []
     owners = {}
     for item_id, item in sorted(items_by_id.items()):
         receipt_id = item.get("close_gate_receipt")
-        if not _nonempty_string(receipt_id):
+        if not nonempty_string(receipt_id):
             continue
         previous = owners.get(receipt_id)
         if previous is not None and previous != item_id:

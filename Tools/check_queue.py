@@ -106,43 +106,43 @@ from queue_runtime import (
     UPDATE_QUEUE_TOOL_VERSION,
     WORK_SPEC_FIELDS,
     WORK_SPEC_PREFIX,
-    _actionable_revalidation_batches,
-    _authorized_profile_view_errors,
-    _batch_close_recovery_inventory,
-    _candidate_evidence_binding_errors,
-    _closed_delta_apply_errors,
-    _cold_receipt_store,
-    _consumed_standards_revalidation_keys,
-    _contract_anchor_chain,
-    _contract_sha256,
-    _coverage_provenance_errors,
-    _current_close_transition_metadata_errors,
-    _current_open_semantic_baseline_errors,
-    _global_transition_errors,
-    _last_reconciled_guidance_id,
-    _latest_consumed_maintenance_gate,
-    _live_read_set_load_findings,
-    _maintenance_completion_gate_errors,
-    _maintenance_gate_inventory,
-    _maintenance_gate_time_errors,
-    _nonempty_string,
-    _operational_amendment_registration_errors,
-    _pending_control_ids,
-    _policy_exception_errors,
-    _previous_maintenance_candidate_state,
-    _public_profile_load_evidence,
-    _read_set_load_closure,
-    _receipt_catalog,
-    _require_receipt,
-    _resume_next_action,
-    _review_property_evidence_errors,
-    _standards_adoption_errors,
-    _terminal_proof_profile_binding_errors,
-    _timestamp_value,
-    _unadmitted_profile_hub_paths,
-    _valid_timestamp,
-    _work_spec_binding_errors,
-    _work_spec_errors,
+    actionable_revalidation_batches,
+    authorized_profile_view_errors,
+    batch_close_recovery_inventory,
+    candidate_evidence_binding_errors,
+    closed_delta_apply_errors,
+    cold_receipt_store,
+    consumed_standards_revalidation_keys,
+    contract_anchor_chain,
+    contract_sha256,
+    coverage_provenance_errors,
+    current_close_transition_metadata_errors,
+    current_open_semantic_baseline_errors,
+    global_transition_errors,
+    last_reconciled_guidance_id,
+    latest_consumed_maintenance_gate,
+    live_read_set_load_findings,
+    maintenance_completion_gate_errors,
+    maintenance_gate_inventory,
+    maintenance_gate_time_errors,
+    nonempty_string,
+    operational_amendment_registration_errors,
+    pending_control_ids,
+    policy_exception_errors,
+    previous_maintenance_candidate_state,
+    public_profile_load_evidence,
+    read_set_load_closure,
+    receipt_catalog,
+    require_receipt,
+    resume_next_action,
+    review_property_evidence_errors,
+    standards_adoption_errors,
+    terminal_proof_profile_binding_errors,
+    timestamp_value,
+    unadmitted_profile_hub_paths,
+    valid_timestamp,
+    work_spec_binding_errors,
+    work_spec_errors,
     accounted_standards_versions,
     activation_phase_delivery_errors,
     active_standards_authorized_view,
@@ -215,7 +215,7 @@ def validate_runtime(*args, **kwargs):
     return queue_runtime.runtime.validate_runtime(*args, **kwargs)
 
 
-def _coverage_property_state_errors(*args, **kwargs):
+def coverage_property_state_errors(*args, **kwargs):
     """Supply the persisted-Gate validator the package may not import.
 
     `queue_runtime.property_state` requires `gate_evidence_errors` and gives
@@ -227,7 +227,7 @@ def _coverage_property_state_errors(*args, **kwargs):
     """
     kwargs.setdefault("gate_evidence_errors",
                       metadata_gate_runtime.persisted_property_gate_errors)
-    return queue_runtime.property_state._coverage_property_state_errors(
+    return queue_runtime.property_state.coverage_property_state_errors(
         *args, **kwargs)
 
 
@@ -249,7 +249,7 @@ def _parse_boundary_gate_arguments(values):
         gate_id, receipt_id = value.split("=", 1)
         gate_id = gate_id.strip()
         receipt_id = receipt_id.strip()
-        if not _nonempty_string(gate_id) or not _nonempty_string(receipt_id):
+        if not nonempty_string(gate_id) or not nonempty_string(receipt_id):
             errors.append("--boundary-gate-receipt has an empty gate/receipt ID")
         elif gate_id in mapping:
             errors.append("--boundary-gate-receipt repeats Gate ID %s" % gate_id)
@@ -356,7 +356,7 @@ def make_check_receipt(result, outcome, details, mode,
                 "pending_delta_applies", {})
             receipt["batch_close_recovery"] = result.get(
                 "batch_close_recovery", {})
-            receipt["writer_locks"] = result.get("writer_locks", [])
+            receipt["_writer_locks"] = result.get("_writer_locks", [])
             task_runtime = result.get("task_runtime") or {}
             receipt["checkpoint_binding"] = task_runtime.get(
                 "checkpoint_binding")
@@ -365,7 +365,7 @@ def make_check_receipt(result, outcome, details, mode,
             receipt["pending_amendments"] = task_runtime.get(
                 "pending_amendments", [])
             # Derived boundary, never stored state: see
-            # ``_last_reconciled_guidance_id``.
+            # ``last_reconciled_guidance_id``.
             receipt["last_reconciled_guidance_id"] = task_runtime.get(
                 "last_reconciled_guidance_id")
             receipt["standards_revalidation_outstanding"] = result.get(
@@ -395,7 +395,7 @@ def make_check_receipt(result, outcome, details, mode,
                     "deferred_candidate_ids": candidate_context.get(
                         "deferred_ids") or [],
                 }
-            receipt["next_action"] = _resume_next_action(
+            receipt["next_action"] = resume_next_action(
                 result, runtime_errors or [])
     return receipt
 
@@ -522,7 +522,7 @@ def _write_receipt(root, relative_path, result, outcome, details, mode,
 
 
 def _resume_recommendation(result, errors):
-    locks = result.get("writer_locks") or []
+    locks = result.get("_writer_locks") or []
     if locks:
         return ("verify that no writer process remains, reconcile Queue/Progress/"
                 "deltas, and remove only a proven-stale lock; do not initialize "
@@ -551,7 +551,7 @@ def _resume_recommendation(result, errors):
                     (applied.get("batch"),
                      applied.get("selected_receipt")))
         close_recovery = result.get("batch_close_recovery") or \
-            _batch_close_recovery_inventory(result)
+            batch_close_recovery_inventory(result)
         selected = close_recovery.get("selected")
         if selected:
             return ("close applied batch %s with the recovered current bundle; "
@@ -584,7 +584,7 @@ def _resume_recommendation(result, errors):
         return ("repair routed-gap settlement in the managed Delta for batch "
                 "%s before batch review or merge-ready admission" %
                 incomplete_deltas[0].get("batch"))
-    actionable_revalidation = _actionable_revalidation_batches(result)
+    actionable_revalidation = actionable_revalidation_batches(result)
     if actionable_revalidation:
         return ("run the current boundary gates for batch %s, aggregate them "
                 "with check_queue.py --require-revalidation, then consume "
@@ -599,7 +599,7 @@ def _resume_recommendation(result, errors):
             "completion_semantics") if isinstance(
                 progress.get("contract"), dict) else None)
         if semantics == "maintenance":
-            inventory = _maintenance_gate_inventory(result)
+            inventory = maintenance_gate_inventory(result)
             if inventory.get("selected"):
                 return (
                     "consume current maintenance completion gate %s with "
@@ -711,7 +711,7 @@ def _print_resume_status(result, errors):
           maintenance_completion.get("state"))
     print("  maintenance_completion.gate_receipt=%s" %
           maintenance_completion.get("completion_gate_receipt"))
-    maintenance_inventory = _maintenance_gate_inventory(result)
+    maintenance_inventory = maintenance_gate_inventory(result)
     print("  maintenance_gate.selected=%s" %
           (maintenance_inventory.get("selected") or "none"))
     print("  maintenance_gate.current_compatible=%s" %
@@ -839,7 +839,7 @@ def _print_resume_status(result, errors):
     ))
     print("  batch_close_recovery.update_queue_command=%s" %
           (close_recovery.get("update_queue_command") or "none"))
-    locks = result.get("writer_locks") or []
+    locks = result.get("_writer_locks") or []
     if locks:
         for lock in locks:
             print("  lock=%s transaction_phase=%s prepare_receipt_matches_owner=%s "
@@ -887,7 +887,7 @@ def _print_resume_status(result, errors):
                   lock.get("reconciliation_hint"))
     else:
         print("  locks=none")
-    print("next_action=%s" % _resume_next_action(result, errors))
+    print("next_action=%s" % resume_next_action(result, errors))
     print("recommended_action=%s" % _resume_recommendation(result, errors))
 
 
@@ -1000,7 +1000,7 @@ def _run(args, produced):
     # exit code, because a decision already made is not an open judgment.
     notes = []
     hub_page_candidates = []
-    writer_locks = result.get("writer_locks") or []
+    _writer_locks = result.get("_writer_locks") or []
     maintenance_context = None
     revalidation_context = None
     activation_context = None
@@ -1075,9 +1075,9 @@ def _run(args, produced):
             "--watermark-advance-receipt"
         )
 
-    if writer_locks:
+    if _writer_locks:
         lock_paths = ", ".join(lock.get("path", "<unknown>")
-                               for lock in writer_locks)
+                               for lock in _writer_locks)
         message = ("runtime state has active or interrupted writer lock(s): %s" %
                    lock_paths)
         if args.require_complete:
@@ -1095,7 +1095,7 @@ def _run(args, produced):
                 errors.append(completion_error)
 
     if args.resume_status:
-        close_recovery = _batch_close_recovery_inventory(result)
+        close_recovery = batch_close_recovery_inventory(result)
         result["batch_close_recovery"] = close_recovery
         if close_recovery.get("status") == "snapshot-unavailable":
             errors.extend(
@@ -1138,7 +1138,7 @@ def _run(args, produced):
             if ("confirmation receipt absent" in reasons and
                     args.confirmation_receipt):
                 confirmation_errors = []
-                _require_receipt(
+                require_receipt(
                     result.get("current_receipt_catalog",
                                result.get("receipt_catalog", {})),
                     args.confirmation_receipt,
@@ -1310,7 +1310,7 @@ def _run(args, produced):
                                   exc)
     elif not errors and args.require_maintenance_complete:
         maintenance_errors, maintenance_context = \
-            _maintenance_completion_gate_errors(
+            maintenance_completion_gate_errors(
                 os.path.realpath(os.path.abspath(args.root)),
                 dict(result, receipt_catalog=result.get(
                     "current_receipt_catalog",
@@ -1505,3 +1505,22 @@ def _run(args, produced):
 
 if __name__ == "__main__":
     sys.exit(main())
+
+# Historical spellings kept for consumers that predate the package.  The
+# definitions are public in their own modules now; a name a sibling reads
+# was never private, only spelled as if it were.  Compatibility spellings
+# live on the facade, which is what a facade is for.
+_authorized_profile_view_errors = authorized_profile_view_errors
+_candidate_evidence_binding_errors = candidate_evidence_binding_errors
+_cold_receipt_store = cold_receipt_store
+_contract_sha256 = contract_sha256
+_live_read_set_load_findings = live_read_set_load_findings
+_maintenance_completion_gate_errors = maintenance_completion_gate_errors
+_maintenance_gate_time_errors = maintenance_gate_time_errors
+_policy_exception_errors = policy_exception_errors
+_public_profile_load_evidence = public_profile_load_evidence
+_read_set_load_closure = read_set_load_closure
+_receipt_catalog = receipt_catalog
+_timestamp_value = timestamp_value
+_valid_timestamp = valid_timestamp
+_work_spec_binding_errors = work_spec_binding_errors

@@ -16,17 +16,17 @@ from queue_runtime.canon import (
     SHA256_RE,
     UPDATE_QUEUE_TOOL_VERSION,
 )
-from queue_runtime.item_history import _latest_merge_transition
+from queue_runtime.item_history import latest_merge_transition
 from queue_runtime.primitives import (
-    _nonempty_string,
-    _valid_timestamp,
+    nonempty_string,
+    valid_timestamp,
 )
 from queue_runtime.property_state import (
-    _delta_opening_semantic_binding,
-    _delta_property_event_errors,
-    _delta_property_invalidation_errors,
+    delta_opening_semantic_binding,
+    delta_property_event_errors,
+    delta_property_invalidation_errors,
 )
-from queue_runtime.receipts import _require_receipt
+from queue_runtime.receipts import require_receipt
 
 
 SUPPORTED_APPLY_DELTA_TOOL_VERSIONS = frozenset((
@@ -93,7 +93,7 @@ SETTLEMENT_BINDING_FIELDS = (
 )
 
 
-def _settlement_binding_errors(receipt, label):
+def settlement_binding_errors(receipt, label):
     """Validate the current routed-gap receipt protocol shape."""
     errors = []
     if receipt.get("settlement_protocol") != batch_settlement.PROTOCOL:
@@ -115,7 +115,7 @@ def _settlement_binding_errors(receipt, label):
     return errors
 
 
-def _close_settlement_binding_errors(receipt, label):
+def close_settlement_binding_errors(receipt, label):
     errors = []
     if receipt.get("settlement_protocol") != batch_settlement.PROTOCOL:
         errors.append("%s has unsupported settlement_protocol %r" %
@@ -128,12 +128,12 @@ def _close_settlement_binding_errors(receipt, label):
     return errors
 
 
-def _closed_delta_apply_errors(item, transition, catalog, queue, root=None):
+def closed_delta_apply_errors(item, transition, catalog, queue, root=None):
     """Bind one closed batch to the Coverage delta application it consumed."""
     errors = []
     item_id = item.get("id", "<unknown>")
     receipt_id = item.get("delta_apply_receipt")
-    receipt = _require_receipt(
+    receipt = require_receipt(
         catalog, receipt_id, "%s delta application" % item_id, errors,
         expected={
             "tool": "apply_delta",
@@ -147,7 +147,7 @@ def _closed_delta_apply_errors(item, transition, catalog, queue, root=None):
             "delta_path": item.get("delta_path"),
         },
     )
-    entry = catalog.get(receipt_id) if _nonempty_string(receipt_id) else None
+    entry = catalog.get(receipt_id) if nonempty_string(receipt_id) else None
     if entry is not None and entry[0] == "<pending-write>":
         errors.append("%s delta application receipt %s is not persisted in the "
                       "repository" % (item_id, receipt_id))
@@ -158,7 +158,7 @@ def _closed_delta_apply_errors(item, transition, catalog, queue, root=None):
                       "apply_delta producer version %r" %
                       (item_id, receipt_id, receipt.get("tool_version")))
     if receipt.get("tool_version") == APPLY_DELTA_TOOL_VERSION:
-        errors.extend(_delta_property_event_errors(
+        errors.extend(delta_property_event_errors(
             receipt, "%s delta application receipt %s" %
             (item_id, receipt_id)))
         if root is None:
@@ -166,19 +166,19 @@ def _closed_delta_apply_errors(item, transition, catalog, queue, root=None):
                 "%s current-era delta application cannot replay property "
                 "invalidation without repository root" % item_id)
         else:
-            errors.extend(_delta_property_invalidation_errors(
+            errors.extend(delta_property_invalidation_errors(
                 root, receipt))
         opening_errors, _opening_before = \
-            _delta_opening_semantic_binding(
+            delta_opening_semantic_binding(
                 receipt, catalog,
                 "%s delta application receipt %s" %
                 (item_id, receipt_id),
                 expected_item=item)
         errors.extend(opening_errors)
-        errors.extend(_settlement_binding_errors(
+        errors.extend(settlement_binding_errors(
             receipt, "%s delta application receipt %s" %
             (item_id, receipt_id)))
-        _, merge_transition = _latest_merge_transition(item, catalog)
+        _, merge_transition = latest_merge_transition(item, catalog)
         if (not isinstance(merge_transition, dict) or
                 merge_transition.get("tool") != "update_queue" or
                 merge_transition.get("tool_version") !=
@@ -236,7 +236,7 @@ def _closed_delta_apply_errors(item, transition, catalog, queue, root=None):
     return errors
 
 
-def _applied_rollback_restore_errors(label, record, transition, catalog,
+def applied_rollback_restore_errors(label, record, transition, catalog,
                                      item_id):
     """Cross-check the recorded Coverage restore against both its witnesses.
 
@@ -265,7 +265,7 @@ def _applied_rollback_restore_errors(label, record, transition, catalog,
                 "%s records coverage_restored_sha256=%s but its rollback "
                 "transition receipt left Coverage at %s" %
                 (label, restored_sha, after_coverage))
-    apply_receipt = _require_receipt(
+    apply_receipt = require_receipt(
         catalog, record.get("delta_apply_receipt"),
         "%s delta application" % label, errors,
         expected={"check": "delta_apply", "target": item_id},
@@ -293,15 +293,15 @@ def _delta_gap_key(value):
         return ("id", value)
     if not isinstance(value, dict):
         return None
-    if _nonempty_string(value.get("id")):
+    if nonempty_string(value.get("id")):
         return ("id", value["id"])
-    if (_nonempty_string(value.get("page")) and
-            _nonempty_string(value.get("type"))):
+    if (nonempty_string(value.get("page")) and
+            nonempty_string(value.get("type"))):
         return ("page-type", value["page"], value["type"])
     return None
 
 
-def _delta_handoff_errors(relative, delta, item, coverage_records,
+def delta_handoff_errors(relative, delta, item, coverage_records,
                           coverage, queue, catalog):
     """Return structural errors, repairable settlement blockers, and report.
 
@@ -324,7 +324,7 @@ def _delta_handoff_errors(relative, delta, item, coverage_records,
         errors.append("unsupported field(s): %s" % ", ".join(extra))
     if delta.get("batch") != item_id:
         errors.append("batch must equal %s" % item_id)
-    if not _valid_timestamp(delta.get("generated_at")):
+    if not valid_timestamp(delta.get("generated_at")):
         errors.append("generated_at must be a timezone-aware RFC 3339 timestamp")
     if delta.get("watermark_advance") not in (None, [], {}):
         errors.append("watermark_advance needs a registered instance adapter")
@@ -348,7 +348,7 @@ def _delta_handoff_errors(relative, delta, item, coverage_records,
             errors.append("%s contains control field(s): %s" %
                           (label, ", ".join(forbidden)))
         path = page.get("path")
-        if not _nonempty_string(path):
+        if not nonempty_string(path):
             errors.append("%s path must be a non-empty string" % label)
             continue
         page_paths.append(path)
@@ -360,14 +360,14 @@ def _delta_handoff_errors(relative, delta, item, coverage_records,
             errors.append("%s is not routed to batch %s" % (path, item_id))
         receipt_ids = page.get("gate_receipts")
         if (not isinstance(receipt_ids, list) or not receipt_ids or
-                not all(_nonempty_string(value) for value in receipt_ids)):
+                not all(nonempty_string(value) for value in receipt_ids)):
             errors.append("%s gate_receipts must be a non-empty string list" %
                           label)
         else:
             if len(receipt_ids) != len(set(receipt_ids)):
                 errors.append("%s gate_receipts must be unique" % label)
             for receipt_id in receipt_ids:
-                _require_receipt(
+                require_receipt(
                     catalog, receipt_id, "%s page gate" % path, errors,
                     expected={"target": path},
                 )
@@ -425,7 +425,7 @@ def _delta_handoff_errors(relative, delta, item, coverage_records,
     return errors, settlement_errors, settlement
 
 
-def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
+def delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
                                     coverage_sha, *, root=None,
                                     coverage=None, profile_view=None):
     """Classify unconsumed apply receipts for one merge-ready batch."""
@@ -442,7 +442,7 @@ def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
         "queue_revision": queue.get("queue_revision"),
         "queue_state_revision": queue.get("state_revision"),
     }
-    _, merge_transition = _latest_merge_transition(item, catalog)
+    _, merge_transition = latest_merge_transition(item, catalog)
     if (isinstance(merge_transition, dict) and
             merge_transition.get("tool") == "update_queue" and
             merge_transition.get("tool_version") ==
@@ -475,13 +475,13 @@ def _delta_apply_receipt_candidates(item, catalog, queue, queue_sha,
                     merge_transition.get("tool_version") ==
                     UPDATE_QUEUE_TOOL_VERSION):
                 mismatches.append("merge_ready_settlement")
-            mismatches.extend(_settlement_binding_errors(
+            mismatches.extend(settlement_binding_errors(
                 receipt, "delta application %s" % receipt_id))
-            mismatches.extend(_delta_property_event_errors(
+            mismatches.extend(delta_property_event_errors(
                 receipt, "delta application %s" % receipt_id))
             if (root is not None and isinstance(coverage, dict) and
                     isinstance(profile_view, dict)):
-                mismatches.extend(_delta_property_invalidation_errors(
+                mismatches.extend(delta_property_invalidation_errors(
                     root, receipt, coverage, profile_view))
         before_coverage = receipt.get("before_coverage_sha256")
         if (not isinstance(before_coverage, str) or

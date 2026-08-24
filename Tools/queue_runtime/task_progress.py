@@ -22,33 +22,33 @@ from queue_runtime.canon import (
     TOOL_VERSION,
 )
 from queue_runtime.maintenance import (
-    _maintenance_completion_gate_errors,
-    _maintenance_gate_time_errors,
+    maintenance_completion_gate_errors,
+    maintenance_gate_time_errors,
 )
-from queue_runtime.policy_exceptions import _policy_exception_errors
+from queue_runtime.policy_exceptions import policy_exception_errors
 from queue_runtime.primitives import (
-    _closed_mapping_errors,
-    _explicit_string_list_errors,
-    _nonempty_string,
-    _timestamp_value,
-    _valid_timestamp,
+    closed_mapping_errors,
+    explicit_string_list_errors,
+    nonempty_string,
+    timestamp_value,
+    valid_timestamp,
 )
 from queue_runtime.producer_era import (
-    _producer_era_errors,
-    _terminal_proof_profile_binding_errors,
+    producer_era_errors,
+    terminal_proof_profile_binding_errors,
     accounted_standards_versions,
 )
-from queue_runtime.receipts import _require_receipt
+from queue_runtime.receipts import require_receipt
 from queue_runtime.task_contract import (
-    _contract_anchor_chain,
-    _contract_sha256,
-    _contract_sha_at_revision,
-    _live_read_set_load_findings,
+    contract_anchor_chain,
+    contract_sha256,
+    contract_sha_at_revision,
+    live_read_set_load_findings,
 )
 from queue_runtime.task_record import (
-    _last_reconciled_guidance_id,
-    _pending_control_ids,
-    _task_transition_receipt_record_errors,
+    last_reconciled_guidance_id,
+    pending_control_ids,
+    task_transition_receipt_record_errors,
 )
 
 
@@ -167,7 +167,7 @@ def _standards_adoption_shape_errors(progress):
         # the commit receipt's producer version to require each field from its
         # introduction onward and bind any legacy-present value across the
         # plan/record/receipt chain.
-        errors.extend(_closed_mapping_errors(
+        errors.extend(closed_mapping_errors(
             record, label, STANDARDS_ADOPTION_RECORD_FIELDS,
             optional_fields=("profile_contract_fingerprint_after",
                              "profile_load_inputs_sha256_after",
@@ -187,10 +187,10 @@ def _standards_adoption_shape_errors(progress):
                 "selected_profile_manifest_after", "coverage_sha256_before",
                 "required_queue_sha256_before", "progress_sha256_before",
                 "after_coverage_sha256", "after_required_queue_sha256"):
-            if not _nonempty_string(record.get(field)):
+            if not nonempty_string(record.get(field)):
                 errors.append("%s %s must be a non-empty string" %
                               (label, field))
-        if not _valid_timestamp(record.get("adopted_at")):
+        if not valid_timestamp(record.get("adopted_at")):
             errors.append("%s adopted_at must be timezone-aware RFC 3339" %
                           label)
         for field in (
@@ -219,19 +219,19 @@ def _standards_adoption_shape_errors(progress):
                 "invalidated_evidence_receipt_ids", "invalidation_boundary_ids",
                 "immediate_gate_reruns", "immediate_gate_receipts",
                 "boundary_gate_reruns"):
-            errors.extend(_explicit_string_list_errors(
+            errors.extend(explicit_string_list_errors(
                 record.get(field), "%s %s" % (label, field)))
             value = record.get(field)
             if isinstance(value, list) and value != sorted(value):
                 errors.append("%s %s must be sorted" % (label, field))
         adoption_id = record.get("id")
-        if _nonempty_string(adoption_id):
+        if nonempty_string(adoption_id):
             if adoption_id in seen_ids:
                 errors.append("Progress standards_adoptions repeats id %s" %
                               adoption_id)
             seen_ids.add(adoption_id)
         receipt_id = record.get("verification_receipt")
-        if _nonempty_string(receipt_id):
+        if nonempty_string(receipt_id):
             if receipt_id in seen_receipts:
                 errors.append(
                     "Progress standards_adoptions repeats verification receipt %s" %
@@ -240,15 +240,15 @@ def _standards_adoption_shape_errors(progress):
     return errors
 
 
-def _progress_shape_errors(progress):
+def progress_shape_errors(progress):
     """Close task-control records so truncation cannot mean 'nothing pending'."""
     errors = []
     contract = progress.get("contract")
-    errors.extend(_closed_mapping_errors(contract, "Progress contract",
+    errors.extend(closed_mapping_errors(contract, "Progress contract",
                                          CONTRACT_FIELDS,
                                          CONTRACT_OPTIONAL_FIELDS))
     if isinstance(contract, dict) and "policy_exceptions" in contract:
-        errors.extend(_policy_exception_errors(
+        errors.extend(policy_exception_errors(
             contract.get("policy_exceptions"),
             "Progress contract.policy_exceptions"))
     if isinstance(contract, dict) and "amendment_authority" in contract:
@@ -259,7 +259,7 @@ def _progress_shape_errors(progress):
         for field in ("contract_version", "objective", "scope_version",
                       "standards_version",
                       "selected_profile_manifest", "completion_gate"):
-            if not _nonempty_string(contract.get(field)):
+            if not nonempty_string(contract.get(field)):
                 errors.append("Progress contract.%s must be a non-empty string" %
                               field)
         if contract.get("completion_semantics") not in COMPLETION_SEMANTICS:
@@ -272,22 +272,22 @@ def _progress_shape_errors(progress):
         for field in ("selected_route_ids", "selected_card_paths",
                       "selected_profile_route_ids", "selected_read_sets",
                       "loaded_module_paths"):
-            errors.extend(_explicit_string_list_errors(
+            errors.extend(explicit_string_list_errors(
                 contract.get(field), "Progress contract.%s" % field))
-        errors.extend(_explicit_string_list_errors(
+        errors.extend(explicit_string_list_errors(
             contract.get("exclusions"), "Progress contract.exclusions"))
         for field in ("minimum_run_until", "checkpoint_at", "hard_stop_at"):
             value = contract.get(field)
-            if not isinstance(value, str) or (value and not _valid_timestamp(value)):
+            if not isinstance(value, str) or (value and not valid_timestamp(value)):
                 errors.append("Progress contract.%s must be empty or an RFC 3339 timestamp" %
                               field)
 
     checkpoint = progress.get("checkpoint")
-    errors.extend(_closed_mapping_errors(checkpoint, "Progress checkpoint",
+    errors.extend(closed_mapping_errors(checkpoint, "Progress checkpoint",
                                          CHECKPOINT_FIELDS))
 
     terminal = progress.get("terminal_audit")
-    errors.extend(_closed_mapping_errors(terminal, "Progress terminal_audit",
+    errors.extend(closed_mapping_errors(terminal, "Progress terminal_audit",
                                          TERMINAL_AUDIT_FIELDS))
     if isinstance(terminal, dict):
         if terminal.get("state") not in TERMINAL_AUDIT_STATES:
@@ -296,7 +296,7 @@ def _progress_shape_errors(progress):
         for field in ("terminal_proof_path", "terminal_proof_sha256",
                       "terminal_proof_receipt", "queue_check_receipt"):
             value = terminal.get(field)
-            if value is not None and not _nonempty_string(value):
+            if value is not None and not nonempty_string(value):
                 errors.append("Progress terminal_audit.%s must be null or a non-empty string" %
                               field)
         proof_sha = terminal.get("terminal_proof_sha256")
@@ -304,7 +304,7 @@ def _progress_shape_errors(progress):
             errors.append("Progress terminal_audit.terminal_proof_sha256 is invalid")
 
     maintenance = progress.get("maintenance_completion")
-    errors.extend(_closed_mapping_errors(
+    errors.extend(closed_mapping_errors(
         maintenance, "Progress maintenance_completion",
         MAINTENANCE_COMPLETION_FIELDS,
     ))
@@ -318,7 +318,7 @@ def _progress_shape_errors(progress):
                 "completion_gate_receipt", "budget_manifest_receipt",
                 "ledger_advance_receipt", "watermark_advance_receipt"):
             value = maintenance.get(field)
-            if value is not None and not _nonempty_string(value):
+            if value is not None and not nonempty_string(value):
                 errors.append(
                     "Progress maintenance_completion.%s must be null or a "
                     "non-empty string" % field
@@ -358,24 +358,24 @@ def _progress_shape_errors(progress):
         seen = set()
         for index, entry in enumerate(guidance):
             label = "Progress guidance_queue[%d]" % index
-            errors.extend(_closed_mapping_errors(entry, label, GUIDANCE_FIELDS))
+            errors.extend(closed_mapping_errors(entry, label, GUIDANCE_FIELDS))
             if not isinstance(entry, dict):
                 continue
             for field in GUIDANCE_FIELDS:
-                if not _nonempty_string(entry.get(field)):
+                if not nonempty_string(entry.get(field)):
                     errors.append("%s %s must be a non-empty string" %
                                   (label, field))
             disposition = entry.get("disposition")
-            if (_nonempty_string(disposition) and
+            if (nonempty_string(disposition) and
                     disposition not in GUIDANCE_DISPOSITIONS):
                 errors.append("%s disposition has invalid value %r" %
                               (label, disposition))
             status = entry.get("status")
-            if _nonempty_string(status) and status not in GUIDANCE_STATUSES:
+            if nonempty_string(status) and status not in GUIDANCE_STATUSES:
                 errors.append("%s status has invalid value %r" %
                               (label, status))
             entry_id = entry.get("guidance_id")
-            if _nonempty_string(entry_id):
+            if nonempty_string(entry_id):
                 if entry_id in seen:
                     errors.append(
                         "Progress guidance_queue repeats guidance_id %s" %
@@ -397,13 +397,13 @@ def _progress_shape_errors(progress):
                 errors.append("%s misses explicit field(s): %s" %
                               (label, ", ".join(missing)))
             for field in ("id", "date", "summary", "status"):
-                if not _nonempty_string(entry.get(field)):
+                if not nonempty_string(entry.get(field)):
                     errors.append("%s %s must be a non-empty string" %
                                   (label, field))
             if not isinstance(entry.get("writeback_done"), bool):
                 errors.append("%s writeback_done must be boolean" % label)
             entry_id = entry.get("id")
-            if _nonempty_string(entry_id):
+            if nonempty_string(entry_id):
                 if entry_id in seen:
                     errors.append("Progress amendments repeats id %s" % entry_id)
                 seen.add(entry_id)
@@ -411,7 +411,7 @@ def _progress_shape_errors(progress):
     return errors
 
 
-def _task_transition_errors(root, progress, catalog, queue, queue_sha,
+def task_transition_errors(root, progress, catalog, queue, queue_sha,
                             coverage_sha, progress_sha, remaining,
                             items_by_id, coverage):
     """Validate the sole task-state history and its restart checkpoint."""
@@ -421,24 +421,24 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
     contract = progress.get("contract") if isinstance(
         progress.get("contract"), dict) else {}
     contract_load_errors, contract_load_set_gaps = \
-        _live_read_set_load_findings(root, contract)
+        live_read_set_load_findings(root, contract)
     errors.extend(contract_load_errors)
     accounted_versions = accounted_standards_versions(progress, queue)
     completion_semantics = contract.get("completion_semantics")
-    live_contract_sha = _contract_sha256(progress)
-    contract_chain, _ = _contract_anchor_chain(progress, catalog)
+    live_contract_sha = contract_sha256(progress)
+    contract_chain, _ = contract_anchor_chain(progress, catalog)
     history = progress.get("task_transition_receipts")
     if not isinstance(history, list):
         errors.append("Progress task_transition_receipts must be an explicit list")
         history = []
-    elif (not all(_nonempty_string(value) for value in history) or
+    elif (not all(nonempty_string(value) for value in history) or
           len(history) != len(set(history))):
         errors.append("Progress task_transition_receipts must contain unique receipt IDs")
 
     transitions = []
     previous = None
     for index, receipt_id in enumerate(history):
-        receipt = _require_receipt(
+        receipt = require_receipt(
             catalog, receipt_id, "task transition[%d]" % index, errors,
             expected={
                 "tool": "update_task",
@@ -455,10 +455,10 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         before = receipt.get("before_task_state")
         after = receipt.get("after_task_state")
         checked_at = receipt.get("checked_at")
-        expected_contract_sha = (_contract_sha_at_revision(
+        expected_contract_sha = (contract_sha_at_revision(
             contract_chain, receipt.get("queue_revision")) or
             live_contract_sha)
-        errors.extend(_task_transition_receipt_record_errors(
+        errors.extend(task_transition_receipt_record_errors(
             catalog, receipt_id, receipt, completion_semantics,
             expected_contract_sha=expected_contract_sha,
         ))
@@ -469,8 +469,8 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
             if before != previous.get("after_task_state"):
                 errors.append("task transition history breaks before %s" %
                               receipt_id)
-            previous_time = _timestamp_value(previous.get("checked_at"))
-            current_time = _timestamp_value(checked_at)
+            previous_time = timestamp_value(previous.get("checked_at"))
+            current_time = timestamp_value(checked_at)
             if (previous_time is not None and current_time is not None and
                     current_time < previous_time):
                 errors.append("task transition timestamps move backward at %s" %
@@ -494,13 +494,13 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         batch_id = activation.get("first_open_batch_id")
         queue_transition_id = activation.get(
             "first_open_transition_receipt")
-        if not _nonempty_string(batch_id):
+        if not nonempty_string(batch_id):
             errors.append("first task activation must identify "
                           "first_open_batch_id")
-        if not _nonempty_string(queue_transition_id):
+        if not nonempty_string(queue_transition_id):
             errors.append("first task activation must identify "
                           "first_open_transition_receipt")
-        opening = _require_receipt(
+        opening = require_receipt(
             catalog, queue_transition_id,
             "first task activation Queue transition", errors,
             expected={
@@ -576,7 +576,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                 errors.append("checkpoint %s=%r, expected %r from latest task "
                               "transition" %
                               (field, checkpoint.get(field), value))
-        if not _nonempty_string(checkpoint.get("summary")):
+        if not nonempty_string(checkpoint.get("summary")):
             errors.append("checkpoint summary must be non-empty after activation")
         live_match = (
             checkpoint.get("coverage_sha256") == coverage_sha and
@@ -587,7 +587,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         )
         checkpoint_binding = "current" if live_match else "historical"
 
-    pending_guidance, pending_amendments = _pending_control_ids(progress)
+    pending_guidance, pending_amendments = pending_control_ids(progress)
     terminal_audit = progress.get("terminal_audit")
     if not isinstance(terminal_audit, dict):
         errors.append("Progress terminal_audit must be a mapping")
@@ -642,7 +642,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         if terminal_audit.get("state") != "ready":
             errors.append("completion-candidate terminal_audit state must be ready")
         completion_id = terminal_audit.get("queue_check_receipt")
-        completion_receipt = _require_receipt(
+        completion_receipt = require_receipt(
             catalog, completion_id, "completion-candidate Queue gate", errors,
             expected={
                 "tool": TOOL,
@@ -662,7 +662,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         # Historical: the gate that admitted the state the task is already in.
         # A completion-candidate task cannot adopt, so it cannot re-produce
         # this receipt under a newer producer identity either.
-        errors.extend(_producer_era_errors(
+        errors.extend(producer_era_errors(
             completion_receipt, completion_id,
             "completion-candidate Queue gate", accounted_versions))
         if isinstance(completion_receipt, dict):
@@ -676,7 +676,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         if terminal_audit.get("state") != "passed":
             errors.append("complete terminal_audit state must be passed")
         proof_id = terminal_audit.get("terminal_proof_receipt")
-        proof = _require_receipt(
+        proof = require_receipt(
             catalog, proof_id, "complete Terminal Proof", errors,
             expected={
                 "tool": TERMINAL_PROOF_TOOL,
@@ -692,10 +692,10 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         )
         # Historical: the proof a completed task already consumed.  A complete
         # task cannot adopt, so nothing can restamp this receipt.
-        errors.extend(_producer_era_errors(
+        errors.extend(producer_era_errors(
             proof, proof_id, "complete Terminal Proof", accounted_versions))
         if isinstance(proof, dict):
-            errors.extend(_terminal_proof_profile_binding_errors(
+            errors.extend(terminal_proof_profile_binding_errors(
                 proof, proof_id))
             proof_version = proof.get("tool_version")
             if (proof_version == TERMINAL_PROOF_TOOL_VERSION and
@@ -742,7 +742,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                 "maintenance complete requires maintenance_completion.state=passed"
             )
         gate_id = maintenance_completion.get("completion_gate_receipt")
-        gate = _require_receipt(
+        gate = require_receipt(
             catalog, gate_id, "maintenance completion gate", errors,
             expected={
                 "tool": TOOL,
@@ -794,7 +794,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                         "maintenance_completion.%s differs from its gate receipt" %
                         field
                     )
-                _require_receipt(
+                require_receipt(
                     catalog, gate.get(field),
                     "maintenance completion %s" % field, errors,
                 )
@@ -803,7 +803,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                     "maintenance completion gate does not bind every Queue batch"
                 )
             evidence_errors, expected_context = \
-                _maintenance_completion_gate_errors(
+                maintenance_completion_gate_errors(
                     root, {
                         "progress": progress,
                         "coverage": coverage,
@@ -821,7 +821,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                     allow_complete=True,
                 )
             errors.extend(evidence_errors)
-            errors.extend(_maintenance_gate_time_errors({
+            errors.extend(maintenance_gate_time_errors({
                 "receipt_catalog": catalog,
                 "items_by_id": items_by_id,
             }, gate))
@@ -853,7 +853,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
     for item in items_by_id.values():
         for field in ("closed_at", "cancelled_at"):
             value = item.get(field)
-            if _valid_timestamp(value):
+            if valid_timestamp(value):
                 terminal_times.append(value)
     if transitions and task_state in ("completion-candidate", "complete") and \
             terminal_times:
@@ -861,10 +861,10 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
                      else next((entry for entry in transitions
                                 if entry.get("after_task_state") ==
                                 "completion-candidate"), None))
-        candidate_time = _timestamp_value(
+        candidate_time = timestamp_value(
             candidate.get("checked_at")) if candidate else None
         terminal_instants = [
-            _timestamp_value(value) for value in terminal_times
+            timestamp_value(value) for value in terminal_times
         ]
         terminal_instants = [value for value in terminal_instants
                              if value is not None]
@@ -881,7 +881,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
         "checkpoint_binding": checkpoint_binding,
         "pending_guidance": pending_guidance,
         "pending_amendments": pending_amendments,
-        "last_reconciled_guidance_id": _last_reconciled_guidance_id(progress),
+        "last_reconciled_guidance_id": last_reconciled_guidance_id(progress),
         # Reported, never an error: the live contract's completeness gaps are
         # repaired by the next admitted adoption plan, not by refusing the
         # runtime that holds them.  Nothing in the error set reads this key.
@@ -889,7 +889,7 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
     }
 
 
-def _global_transition_errors(items_by_id, catalog, queue, queue_sha):
+def global_transition_errors(items_by_id, catalog, queue, queue_sha):
     """Prove that transition evidence is one complete global state history."""
     errors = []
     references = {}
@@ -899,7 +899,7 @@ def _global_transition_errors(items_by_id, catalog, queue, queue_sha):
         if not isinstance(receipt_ids, list):
             continue
         for receipt_id in receipt_ids:
-            if not _nonempty_string(receipt_id):
+            if not nonempty_string(receipt_id):
                 continue
             if receipt_id in references:
                 errors.append("transition receipt %s is referenced by both %s "
@@ -921,7 +921,7 @@ def _global_transition_errors(items_by_id, catalog, queue, queue_sha):
         if receipt.get("actor_role") != "integrator":
             errors.append("transition receipt %s actor_role must be integrator" %
                           receipt_id)
-        if not _valid_timestamp(receipt.get("checked_at")):
+        if not valid_timestamp(receipt.get("checked_at")):
             errors.append("transition receipt %s checked_at must be a "
                           "timezone-aware RFC 3339 timestamp" % receipt_id)
         before_state = receipt.get("before_state")
@@ -948,12 +948,12 @@ def _global_transition_errors(items_by_id, catalog, queue, queue_sha):
             (before_state == after_state and
              before_hold == "revalidation-required" and after_hold == "none")
         )
-        if evidence_required and not _nonempty_string(evidence_id):
+        if evidence_required and not nonempty_string(evidence_id):
             errors.append("transition receipt %s requires evidence_receipt" %
                           receipt_id)
         evidence_receipt = None
         if evidence_id is not None:
-            evidence_receipt = _require_receipt(
+            evidence_receipt = require_receipt(
                 catalog, evidence_id,
                 "transition %s evidence" % receipt_id, errors,
             )
@@ -1006,9 +1006,9 @@ def _global_transition_errors(items_by_id, catalog, queue, queue_sha):
                           (receipt_id, revision - 1, revision))
         if previous is not None:
             previous_receipt = previous[2]
-            previous_time = _timestamp_value(
+            previous_time = timestamp_value(
                 previous_receipt.get("checked_at"))
-            current_time = _timestamp_value(receipt.get("checked_at"))
+            current_time = timestamp_value(receipt.get("checked_at"))
             if (previous_time is not None and current_time is not None and
                     current_time < previous_time):
                 errors.append("transition receipt %s moves time backward" %

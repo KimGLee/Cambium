@@ -449,7 +449,7 @@ class FreshnessFutureBaselineTests(unittest.TestCase):
             name="Excluded/Topic.md", last_verified="2026-08-01")
         page.chmod(0)
         try:
-            _scope, _identity, records, inputs = self._captured_scope(
+            _scope, identity, records, inputs = self._captured_scope(
                 ("Excluded",))
         finally:
             page.chmod(0o600)

@@ -66,7 +66,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:5e8eb95d0a2d3454aee9340e83875e20d0e301b47f4e5f1b5fa912737ecbba9c
+source_hash: sha256:cc76c231868fa74a1907c126545ef3a73b465ad08ec1517811a2546eccceba6d
 receipt_shape:
   base_fields:
     - receipt_id
@@ -85,7 +85,7 @@ tool_count: 46
 tools:
   - tool: adopt_standards
     module: Tools/adopt_standards.py
-    source_hash: sha256:40802fbb9a64aca85547656c1bdd10eccbb7fd92fb6b3cea9e79db54cd0fd1c0
+    source_hash: sha256:ccf86c2b4ae4e88178368102d349a8270decc6a318c4afc9a1e85eba4c4558e3
     description: Adopt one approved Standards/Profile revision
     arguments:
       - dest: root
@@ -223,7 +223,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_amendment
     module: Tools/apply_amendment.py
-    source_hash: sha256:d541f4de5caa0b55c68817c406c820de856a675b030a716eaab10e47f3fad4d8
+    source_hash: sha256:a3c2be6df35ca7087493439c13e9e90a3533cbd10b95a42a206b90643a9ea822
     description: Apply one approved cross-Ledger Amendment transaction
     arguments:
       - dest: root
@@ -357,7 +357,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: apply_contract_amendment
     module: Tools/apply_contract_amendment.py
-    source_hash: sha256:a7bfbf58fdac03bc3b1a66fbf4de24524ca1b17592d924f338ac215eb2b5a725
+    source_hash: sha256:ea76e470beeecbdaaa5d170ef1dd16ba7c5e1a532607265691caa91c2425b4ab
     description: Amend the frozen Task Contract from one confirmed plan.
     arguments:
       - dest: root
@@ -453,7 +453,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_delta
     module: Tools/apply_delta.py
-    source_hash: sha256:3749db54ecc0d713c657eb32d1fe52011d65eb64e3a4c4938430344bcfe957d2
+    source_hash: sha256:26645bcab57a7a9f56757fa181df25077e7c4c83aad232a50e6f4ac88e1a6c85
     description: Deterministic Coverage Delta application
     arguments:
       - dest: ledger
@@ -841,7 +841,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_task_plan
     module: Tools/apply_task_plan.py
-    source_hash: sha256:62ff292f5f54a847e5436464dec780e6fd70bdc8ba1b48daf8d71caf1776a980
+    source_hash: sha256:68ae875686127fb04b49b30cfdecfd6b3a812d4bf364c5f3a84fd5c94a64869e
     description: Materialize a task runtime from one confirmed plan.
     arguments:
       - dest: root
@@ -905,7 +905,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_batch_close
     module: Tools/check_batch_close.py
-    source_hash: sha256:062598e0527b375dc20eae7bdc1aee2cd44730452509747e34e545f32b2b95b7
+    source_hash: sha256:ebdf4cc84263e944cc1c12ba9a91cc218fe8ebb5ef1f6410049b7d2eecf078a6
     description: Run and publish the K12/09 batch-close evidence bundle
     arguments:
       - dest: root
@@ -1187,7 +1187,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_corpus_plan
     module: Tools/check_corpus_plan.py
-    source_hash: sha256:fbddceb7aa48f421c933af3caea43d451c793d624618247e47a146efeba49b43
+    source_hash: sha256:5bb6f9c559528eb1831ce4bd1f73a21e81617a3b25103261a2f80c5801ec2aeb
     description: Validate explicit Corpus Planning artifacts
     arguments:
       - dest: root
@@ -1242,7 +1242,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_freshness
     module: Tools/check_freshness.py
-    source_hash: sha256:d6e333b5f6ff533b6669f6366418c190d6f7f8bc429e71517c86c2984ffa9a7e
+    source_hash: sha256:7559504ea2814ec13eb2c357bdae088454354e62fe914fd2cca87d5d6a4f8ec3
     description: Closed-world freshness / review_by candidate check
     arguments:
       - dest: vault_root
@@ -1661,7 +1661,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_proof
     module: Tools/check_proof.py
-    source_hash: sha256:b82aefe4ce69ebfffe7177b792127333d57ad8e2c9d088c91bab9ab40d2ba82e
+    source_hash: sha256:734cc2675b594d80d778e9c7a9fd82864ae400d8aad323dd393a8f584beb3b9a
     description: Terminal Proof completeness and zero-condition check
     arguments:
       - dest: proof
@@ -1752,7 +1752,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:6885d0b4fa44766734fd5566b1f4402a233a84e461cd4c90cfff3ae07646e67e
+    source_hash: sha256:30c7de9c09cc787877fdf932a01d0bf04cd401bce50d2e9d02ebcbe15c2257c6
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -2054,6 +2054,7 @@ tools:
           - deliver_phase
           - ack_activation_phase
     receipt_extensions:
+      - _writer_locks
       - activation_context
       - active_card_context_deliveries
       - applied_delta_receipts
@@ -2096,7 +2097,6 @@ tools:
       - standards_version
       - task_id
       - task_state
-      - writer_locks
     receipt_extensions_extraction: partial
   - tool: check_residual_content
     module: Tools/check_residual_content.py
@@ -2400,7 +2400,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: compile_queue
     module: Tools/compile_queue.py
-    source_hash: sha256:2ffc82053c285581b674b9127491d1593fa4fc22046536767599de54a95ce7bb
+    source_hash: sha256:a92f4ce5c202ad194e857fbfa50b828b34c51889cbcdbd469298bf945c100a54
     description: Compile Required Queue from explicit Coverage assignments
     arguments:
       - dest: root
@@ -2802,7 +2802,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: init_state
     module: Tools/init_state.py
-    source_hash: sha256:971e2809f737f8fe1d60cde2dfe4ec6bdccbf31818806ec44336c8280574540d
+    source_hash: sha256:6b0da860348a809da16b56793b8d2c00b76303e6b99478e4b5be74076f5e0992
     description: Initialize empty Cambium runtime state
     arguments:
       - dest: root
@@ -3510,7 +3510,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: register_amendment
     module: Tools/register_amendment.py
-    source_hash: sha256:917e0df2c028908b752e58894b61237807778e169e8e452d96d70458d0317fdc
+    source_hash: sha256:f840989f1b566f9609f4656d11ed2b3bf238cd9e526f87f2eedaf15ba68a91e7
     description: Register one approved current-protocol Amendment
     arguments:
       - dest: root
@@ -4201,7 +4201,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: seal_receipts
     module: Tools/seal_receipts.py
-    source_hash: sha256:4dc262500ef60bb9cd7374c0be76266865e75d714051ada3262d94e43ab76e1e
+    source_hash: sha256:03b0b6e8715673feb9aef3876cd6a2ef99edc74c3f34fc500cbb6df08e0defa3
     description: "Seal verified frozen receipt history (K12/07). --apply is a maintenance-window operation: run it only with no other Cambium or adopter writer, checker or receipt appender active against this repository."
     arguments:
       - dest: root
@@ -4345,7 +4345,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: update_queue
     module: Tools/update_queue.py
-    source_hash: sha256:87aa7219da2ff93d1024062b0e605e0a308f63342a92b9beb49ccd0268ff2a01
+    source_hash: sha256:97eed67efeb5a03c60cbf23d3bc0c6116aa6881b7436499dcb5ff09b6a5b0ca3
     description: Apply one Required Queue transition
     arguments:
       - dest: root
@@ -4611,7 +4611,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: update_task
     module: Tools/update_task.py
-    source_hash: sha256:35bd0045eb56f50de497e61df1f7aa481178a3bf831b18f72d829b873232bdfe
+    source_hash: sha256:bd7402da76588e5619a1a3bf4268135b9ad78c49912a1be54446531e155fdc14
     description: Apply one canonical task-state transition
     arguments:
       - dest: root

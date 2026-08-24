@@ -9,7 +9,7 @@ different order is a different history.
 import kblib
 
 from queue_runtime.canon import TERMINAL_STATES
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 from queue_runtime.receipts import delta_gate_receipt_ids
 
 
@@ -33,7 +33,7 @@ def _current_item_transition_evidence(item, catalog):
         if not isinstance(transition, dict):
             continue
         revalidation = transition.get("standards_revalidation_receipt")
-        if _nonempty_string(revalidation):
+        if nonempty_string(revalidation):
             evidence.add(revalidation)
     # A discharge is recognized by the replayed hold machine, not by the
     # adjacent `revalidation-required -> none` edge: the clear may legitimately
@@ -44,7 +44,7 @@ def _current_item_transition_evidence(item, catalog):
     for transition in item_revalidation_discharges(item, catalog):
         if (transition.get("receipt_id") in window and
                 transition.get("before_state") == transition.get("after_state")
-                and _nonempty_string(transition.get("evidence_receipt"))):
+                and nonempty_string(transition.get("evidence_receipt"))):
             evidence.add(transition["evidence_receipt"])
     return evidence
 
@@ -64,8 +64,8 @@ def _clears_revalidation_hold(transition):
         return False
     if transition.get("after_hold_state") != "none":
         return False
-    return (_nonempty_string(transition.get("evidence_receipt")) or
-            _nonempty_string(transition.get("standards_revalidation_receipt")))
+    return (nonempty_string(transition.get("evidence_receipt")) or
+            nonempty_string(transition.get("standards_revalidation_receipt")))
 
 
 def walk_revalidation_hold(transitions):
@@ -107,14 +107,14 @@ def undischarged_revalidation_hold(transitions):
     return walk_revalidation_hold(transitions)[0]
 
 
-def _ordered_item_transitions(item, catalog):
+def ordered_item_transitions(item, catalog):
     """Return the item's transition receipts, in order, that resolve."""
     transition_ids = item.get("transition_receipts")
     if not isinstance(transition_ids, list):
         return []
     transitions = []
     for transition_id in transition_ids:
-        entry = catalog.get(transition_id) if _nonempty_string(
+        entry = catalog.get(transition_id) if nonempty_string(
             transition_id) else None
         if entry is not None and isinstance(entry[1], dict):
             transitions.append(entry[1])
@@ -124,13 +124,13 @@ def _ordered_item_transitions(item, catalog):
 def item_undischarged_revalidation_hold(item, catalog):
     """Resolve :func:`undischarged_revalidation_hold` from receipt IDs."""
     return undischarged_revalidation_hold(
-        _ordered_item_transitions(item, catalog))
+        ordered_item_transitions(item, catalog))
 
 
 def item_revalidation_discharges(item, catalog):
     """Return the transitions that retired a `revalidation-required` hold."""
     return walk_revalidation_hold(
-        _ordered_item_transitions(item, catalog))[1]
+        ordered_item_transitions(item, catalog))[1]
 
 
 def invalidated_receipt_consumers(root, queue, catalog):
@@ -138,7 +138,7 @@ def invalidated_receipt_consumers(root, queue, catalog):
     consumers = {}
 
     def add(batch_id, receipt_id, source):
-        if not _nonempty_string(receipt_id):
+        if not nonempty_string(receipt_id):
             return
         consumers.setdefault(receipt_id, []).append({
             "batch_id": batch_id, "source": source,
@@ -161,7 +161,7 @@ def invalidated_receipt_consumers(root, queue, catalog):
                 add(batch_id, item.get(field), "Queue.%s" % field)
         if item.get("state") in ("open", "merge-ready"):
             relative = item.get("delta_path")
-            if not _nonempty_string(relative):
+            if not nonempty_string(relative):
                 relative = ".cambium/deltas/%s.yaml" % batch_id
             try:
                 path = kblib.managed_repository_path(
@@ -176,7 +176,7 @@ def invalidated_receipt_consumers(root, queue, catalog):
     return consumers
 
 
-def _latest_merge_transition(item, catalog):
+def latest_merge_transition(item, catalog):
     for receipt_id in reversed(item.get("transition_receipts") or []):
         entry = catalog.get(receipt_id)
         receipt = entry[1] if isinstance(entry, tuple) else None

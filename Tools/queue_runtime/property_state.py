@@ -5,7 +5,7 @@ each in-flight change is measured against, and the legacy-marker migration
 path.  A property is earned by a named completed event or it is not earned;
 there is no route here that sets one from a current observation.
 
-``_coverage_property_state_errors`` takes its persisted-Gate validator as a
+``coverage_property_state_errors`` takes its persisted-Gate validator as a
 keyword-only argument with no default.  A default would give an in-package
 caller a quietly weaker check than the façade supplies, and the whole reason
 that validator lives outside this package is that the dependency runs the
@@ -33,11 +33,11 @@ from queue_runtime.evidence_identity import (
     EVIDENCE_USE_ACTIVE_TRANSACTION,
     EVIDENCE_USE_COMPLETED_EVENT,
     EVIDENCE_USE_TERMINAL_HISTORY,
-    _current_property_receipt,
+    current_property_receipt,
     evidence_identity_errors,
     property_receipt_utc_date,
 )
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 from queue_runtime.receipts import current_receipt_catalog
 
 
@@ -93,7 +93,7 @@ def _current_inflight_semantic_baselines(
                 opening.get("tool") != "update_queue" or
                 opening.get("tool_version") != UPDATE_QUEUE_TOOL_VERSION):
             continue
-        if _current_open_semantic_baseline_errors(
+        if current_open_semantic_baseline_errors(
                 root, opening, item, profile_view):
             continue
         try:
@@ -110,12 +110,12 @@ def _current_inflight_semantic_baselines(
     }
 
 
-def _delta_opening_semantic_binding(
+def delta_opening_semantic_binding(
         receipt, catalog, label, *, expected_item=None):
     """Validate and resolve a current delta's frozen opening before-set."""
     errors = []
     opening_id = receipt.get("opening_transition_receipt")
-    opening = _current_property_receipt(
+    opening = current_property_receipt(
         catalog, opening_id, "%s opening semantic binding" % label, errors)
     if opening is None:
         return errors, {}
@@ -204,9 +204,9 @@ def _content_change_property_evidence_errors(
     errors.extend(evidence_identity_errors(
         receipt, label, use=EVIDENCE_USE_COMPLETED_EVENT))
     if include_shape:
-        errors.extend(_delta_property_event_errors(
+        errors.extend(delta_property_event_errors(
             receipt, "content-change evidence receipt %s" % receipt_id))
-    opening_errors, opening_before = _delta_opening_semantic_binding(
+    opening_errors, opening_before = delta_opening_semantic_binding(
         receipt, current_catalog, label)
     errors.extend(opening_errors)
     accepted_date = property_receipt_utc_date(receipt, label, errors)
@@ -252,7 +252,7 @@ def _content_change_property_evidence_errors(
     return errors
 
 
-def _review_property_evidence_errors(
+def review_property_evidence_errors(
         receipt, *, receipt_id, path, value, semantic_fingerprint,
         task_id, current_catalog):
     """Bind ``last_reviewed`` to one completed producer-era review."""
@@ -288,12 +288,12 @@ def _review_property_evidence_errors(
     for name, candidate in (
             ("batch_id", batch_id), ("integrator_id", integrator_id),
             ("reviewer_id", reviewer_id)):
-        if not _nonempty_string(candidate):
+        if not nonempty_string(candidate):
             errors.append(
                 "%s evidence receipt %s has no %s" %
                 (label, receipt_id, name))
-    if (_nonempty_string(integrator_id) and
-            _nonempty_string(reviewer_id) and
+    if (nonempty_string(integrator_id) and
+            nonempty_string(reviewer_id) and
             integrator_id.casefold() == reviewer_id.casefold()):
         errors.append(
             "%s evidence receipt uses the same integrator and reviewer" %
@@ -304,7 +304,7 @@ def _review_property_evidence_errors(
             "%s evidence receipt has invalid merged_snapshot_sha256" %
             label)
     attestation_id = receipt.get("reviewer_attestation_receipt")
-    attestation = _current_property_receipt(
+    attestation = current_property_receipt(
         current_catalog, attestation_id,
         "%s reviewer attestation" % label, errors)
     if attestation is not None:
@@ -327,14 +327,14 @@ def _review_property_evidence_errors(
                     "%s reviewer attestation %s has %s=%r, expected %r" %
                     (label, attestation_id, name,
                      attestation.get(name), expected_value))
-        if not _nonempty_string(attestation.get("details")):
+        if not nonempty_string(attestation.get("details")):
             errors.append(
                 "%s reviewer attestation %s has no review statement" %
                 (label, attestation_id))
     return errors
 
 
-def _coverage_property_state_errors(
+def coverage_property_state_errors(
         root, coverage, current_catalog, queue, profile_view,
         active_standards_view, page_projection_overrides=None,
         allow_legacy_missing=False, *, gate_evidence_errors):
@@ -391,7 +391,7 @@ def _coverage_property_state_errors(
             continue
         path = row.get("path")
         label = "Coverage pages[%d] property_state" % index
-        if not _nonempty_string(path):
+        if not nonempty_string(path):
             errors.append("%s has no valid page path" % label)
             continue
         legacy_missing = "property_state" not in row
@@ -561,7 +561,7 @@ def _coverage_property_state_errors(
         for field, record in sorted(records.items()):
             record_label = "Coverage property_state.%s for %s" % (field, path)
             receipt_id = record.get("evidence_receipt")
-            receipt = _current_property_receipt(
+            receipt = current_property_receipt(
                 current_catalog, receipt_id, record_label, errors)
             if receipt is None:
                 continue
@@ -580,7 +580,7 @@ def _coverage_property_state_errors(
                     include_shape=include_shape,
                     current_catalog=current_catalog))
             elif field == metadata_property_state.LAST_REVIEWED:
-                errors.extend(_review_property_evidence_errors(
+                errors.extend(review_property_evidence_errors(
                     receipt, receipt_id=receipt_id, path=path, value=value,
                     semantic_fingerprint=evidence_fingerprint,
                     task_id=queue.get("task_id"),
@@ -609,7 +609,7 @@ def _coverage_property_state_errors(
     return errors
 
 
-def _legacy_property_state_source_errors(
+def legacy_property_state_source_errors(
         coverage, progress, catalog):
     """Resolve every live legacy marker to exact current-protocol evidence.
 
@@ -626,7 +626,7 @@ def _legacy_property_state_source_errors(
             continue
         path = row.get("path")
         legacy = row.get(LEGACY_PROPERTY_STATE_FIELD)
-        if not _nonempty_string(path) or not isinstance(legacy, dict):
+        if not nonempty_string(path) or not isinstance(legacy, dict):
             continue
         for field, record in legacy.items():
             if not isinstance(record, dict):
@@ -680,7 +680,7 @@ def _legacy_property_state_source_errors(
                    "metadata_execution_contract_fingerprint",
                    "metadata_execution_rule_fingerprint",
                    "profile_snapshot_sha256", "profile_contract_fingerprint",
-                   "profile_load_inputs_sha256")) or not _nonempty_string(
+                   "profile_load_inputs_sha256")) or not nonempty_string(
                        receipt.get("selected_profile_manifest")):
             errors.append(
                 "initial property adoption receipt %s has incomplete "
@@ -712,7 +712,7 @@ def _legacy_property_state_source_errors(
             value for value in (
                 amendment.get("registration_receipt"),
                 amendment.get("verification_receipt"))
-            if _nonempty_string(value)
+            if nonempty_string(value)
         }
         for path, record in records.items():
             for field, observation in record[
@@ -747,7 +747,7 @@ DELTA_INVALIDATED_PROPERTY_RECORD_KEYS = frozenset((
 ))
 
 
-def _delta_property_event_errors(receipt, label):
+def delta_property_event_errors(receipt, label):
     """Validate the current semantic-content event protocol by shape.
 
     Historical replay preserves its producer-era bytes; current-use exact
@@ -789,7 +789,7 @@ def _delta_property_event_errors(receipt, label):
             errors.append("%s event must be semantic-content-change" %
                           event_label)
         path = event.get("path")
-        if not _nonempty_string(path):
+        if not nonempty_string(path):
             errors.append("%s path must be non-empty" % event_label)
         else:
             paths.append(path)
@@ -809,7 +809,7 @@ def _delta_property_event_errors(receipt, label):
                           event_label)
         invalidated = event.get("invalidated_property_fields")
         if (not isinstance(invalidated, list) or
-                any(not _nonempty_string(field) for field in invalidated) or
+                any(not nonempty_string(field) for field in invalidated) or
                 invalidated != sorted(set(invalidated))):
             errors.append(
                 "%s invalidated_property_fields must be a sorted unique "
@@ -837,7 +837,7 @@ def _delta_property_event_errors(receipt, label):
                         record_label)
                     continue
                 field = record.get("field")
-                if not _nonempty_string(field):
+                if not nonempty_string(field):
                     errors.append("%s field must be non-empty" % record_label)
                     continue
                 record_fields.append(field)
@@ -858,7 +858,7 @@ def _delta_property_event_errors(receipt, label):
                             "%s before_owner_record is not closed" %
                             record_label)
                     else:
-                        if not _nonempty_string(owner.get("evidence_receipt")):
+                        if not nonempty_string(owner.get("evidence_receipt")):
                             errors.append(
                                 "%s before owner has no evidence receipt" %
                                 record_label)
@@ -891,7 +891,7 @@ def _delta_property_event_errors(receipt, label):
                     "record field set" % event_label)
         receipt_ids = event.get("invalidated_property_receipt_ids")
         if (not isinstance(receipt_ids, list) or
-                any(not _nonempty_string(value) for value in receipt_ids) or
+                any(not nonempty_string(value) for value in receipt_ids) or
                 receipt_ids != sorted(set(receipt_ids))):
             errors.append(
                 "%s invalidated_property_receipt_ids must be a sorted unique "
@@ -906,7 +906,7 @@ def _delta_property_event_errors(receipt, label):
     return errors
 
 
-def _delta_property_invalidation_errors(
+def delta_property_invalidation_errors(
         root, receipt, coverage=None, profile_view=None):
     """Replay current-protocol invalidations from the frozen before image.
 
@@ -938,11 +938,11 @@ def _delta_property_invalidation_errors(
             "Coverage: %s" % exc]
     before_rows = {
         row.get("path"): row for row in before_coverage.get("pages") or []
-        if isinstance(row, dict) and _nonempty_string(row.get("path"))
+        if isinstance(row, dict) and nonempty_string(row.get("path"))
     }
     after_rows = ({
         row.get("path"): row for row in coverage.get("pages") or []
-        if isinstance(row, dict) and _nonempty_string(row.get("path"))
+        if isinstance(row, dict) and nonempty_string(row.get("path"))
     } if isinstance(coverage, dict) else {})
     for event in receipt.get("property_events") or []:
         if not isinstance(event, dict):
@@ -1010,7 +1010,7 @@ def _delta_property_invalidation_errors(
             record["before_owner_record"]["evidence_receipt"]
             for record in expected_records
             if isinstance(record.get("before_owner_record"), dict) and
-            _nonempty_string(record["before_owner_record"].get(
+            nonempty_string(record["before_owner_record"].get(
                 "evidence_receipt"))
         })
         if event.get("invalidated_property_receipt_ids") != expected_receipts:
@@ -1040,7 +1040,7 @@ def _delta_property_invalidation_errors(
     return errors
 
 
-def _current_open_semantic_baseline_errors(
+def current_open_semantic_baseline_errors(
         root, transition, item, profile_view, *, require_live_authority=True):
     """Validate the current opening receipt's exact semantic before-set.
 
@@ -1066,7 +1066,7 @@ def _current_open_semantic_baseline_errors(
     errors = []
     manifest = item.get("manifest")
     if (not isinstance(manifest, list) or
-            any(not _nonempty_string(path) for path in manifest)):
+            any(not nonempty_string(path) for path in manifest)):
         errors.append("%s cannot bind an invalid manifest" % label)
         expected_paths = []
     else:
@@ -1157,7 +1157,7 @@ def current_opening_semantic_context(result, item_id):
             "Queue item %s latest opening receipt uses legacy producer %r/%r; "
             "a current semantic before-set is required" %
             (item_id, opening.get("tool"), opening.get("tool_version")))
-    errors = _current_open_semantic_baseline_errors(
+    errors = current_open_semantic_baseline_errors(
         result.get("root"), opening, item,
         result.get("_profile_authorized_view"))
     if errors:
@@ -1181,7 +1181,7 @@ def current_opening_semantic_baseline(result, item_id):
         result, item_id)["before_semantic_fingerprints"]
 
 
-def _current_close_transition_metadata_errors(
+def current_close_transition_metadata_errors(
         root, transition, catalog, item_id):
     """Validate the current update_queue close-to-property-state bridge.
 
@@ -1205,7 +1205,7 @@ def _current_close_transition_metadata_errors(
     errors = []
     ids = transition.get("page_review_receipts")
     if (not isinstance(ids, list) or
-            any(not _nonempty_string(value) for value in ids)):
+            any(not nonempty_string(value) for value in ids)):
         errors.append("%s page_review_receipts must be a string list" % label)
         ids = []
     else:
@@ -1222,7 +1222,7 @@ def _current_close_transition_metadata_errors(
 
     close_id = transition.get("close_gate_receipt")
     aggregate = None
-    entry = catalog.get(close_id) if _nonempty_string(close_id) else None
+    entry = catalog.get(close_id) if nonempty_string(close_id) else None
     if isinstance(entry, tuple) and len(entry) == 2 and isinstance(
             entry[1], dict):
         aggregate = entry[1]

@@ -19,18 +19,18 @@ from queue_runtime.canon import (
 )
 from queue_runtime.close_gate import close_gate_receipt_errors
 from queue_runtime.maintenance import (
-    _maintenance_completion_gate_errors,
-    _maintenance_gate_time_errors,
+    maintenance_completion_gate_errors,
+    maintenance_gate_time_errors,
 )
 from queue_runtime.primitives import (
-    _timestamp_value,
-    _valid_timestamp,
+    timestamp_value,
+    valid_timestamp,
 )
 from queue_runtime.receipts import current_receipt_catalog
 from queue_runtime.revalidation import standards_revalidation_producer_eligibility
 
 
-def _maintenance_gate_inventory(result):
+def maintenance_gate_inventory(result):
     """Classify persisted maintenance gates against the exact current bytes."""
     progress = result.get("progress") or {}
     contract = progress.get("contract") if isinstance(
@@ -86,7 +86,7 @@ def _maintenance_gate_inventory(result):
         gate_errors = []
         context = None
         if not mismatches:
-            gate_errors, context = _maintenance_completion_gate_errors(
+            gate_errors, context = maintenance_completion_gate_errors(
                 result.get("root"), current_result,
                 receipt.get("budget_manifest_receipt"),
                 receipt.get("ledger_advance_receipt"),
@@ -98,8 +98,8 @@ def _maintenance_gate_inventory(result):
                     field for field, value in context.items()
                     if receipt.get(field) != value
                 )
-            gate_errors.extend(_maintenance_gate_time_errors(result, receipt))
-        if mismatches or gate_errors or not _valid_timestamp(
+            gate_errors.extend(maintenance_gate_time_errors(result, receipt))
+        if mismatches or gate_errors or not valid_timestamp(
                 receipt.get("checked_at")):
             stale.append({
                 "receipt_id": receipt_id,
@@ -112,7 +112,7 @@ def _maintenance_gate_inventory(result):
                 "checked_at": receipt.get("checked_at"),
             })
     compatible.sort(key=lambda entry: (
-        _timestamp_value(entry["checked_at"]), entry["receipt_id"],
+        timestamp_value(entry["checked_at"]), entry["receipt_id"],
     ))
     selected = compatible[-1]["receipt_id"] if compatible else None
     if task_state == "complete":
@@ -154,7 +154,7 @@ def _batch_close_update_command(result, selected):
     })
 
 
-def _batch_close_recovery_inventory(result):
+def batch_close_recovery_inventory(result):
     """Find a persisted, current-compatible close bundle for resume.
 
     This is a read-only projection over canonical state, the complete receipt
@@ -174,7 +174,7 @@ def _batch_close_recovery_inventory(result):
         "update_queue_command": None,
         "errors": [],
     }
-    if result.get("writer_locks"):
+    if result.get("_writer_locks"):
         inventory["status"] = "writer-lock"
         return inventory
     pending = result.get("pending_delta_applies") or {}
@@ -216,7 +216,7 @@ def _batch_close_recovery_inventory(result):
         delta_apply = receipt.get("delta_apply_receipt")
         candidate_errors = []
         checked_at = receipt.get("checked_at")
-        checked_value = _timestamp_value(checked_at)
+        checked_value = timestamp_value(checked_at)
         if checked_value is None:
             candidate_errors.append(
                 "checked_at must be a timezone-aware RFC 3339 timestamp")
@@ -289,7 +289,7 @@ def _batch_close_recovery_inventory(result):
     return inventory
 
 
-def _actionable_revalidation_batches(result):
+def actionable_revalidation_batches(result):
     """Outstanding batches whose aggregate this producer would still admit.
 
     ``standards_revalidation_outstanding`` reports every batch whose plan
@@ -315,9 +315,9 @@ def _actionable_revalidation_batches(result):
     )
 
 
-def _resume_next_action(result, errors):
+def resume_next_action(result, errors):
     """Return one stable machine-readable recovery action token."""
-    if result.get("writer_locks"):
+    if result.get("_writer_locks"):
         return "reconcile-interrupted-write"
     if errors:
         return "repair-runtime"
@@ -335,7 +335,7 @@ def _resume_next_action(result, errors):
         if task_state == "blocked":
             return "resolve-blocked-task"
         recovery = result.get("batch_close_recovery") or \
-            _batch_close_recovery_inventory(result)
+            batch_close_recovery_inventory(result)
         if recovery.get("status") in (
                 "snapshot-unavailable", "runtime-repair"):
             return "repair-runtime"
@@ -366,7 +366,7 @@ def _resume_next_action(result, errors):
     if incomplete_deltas:
         return "repair-delta-settlement:%s" % \
             incomplete_deltas[0].get("batch")
-    actionable_revalidation = _actionable_revalidation_batches(result)
+    actionable_revalidation = actionable_revalidation_batches(result)
     if actionable_revalidation:
         return "run-standards-revalidation:%s" % actionable_revalidation[0]
     if task_state == "completion-candidate":
@@ -401,7 +401,7 @@ def _resume_next_action(result, errors):
         contract = progress.get("contract") if isinstance(
             progress.get("contract"), dict) else {}
         if contract.get("completion_semantics") == "maintenance":
-            inventory = _maintenance_gate_inventory(result)
+            inventory = maintenance_gate_inventory(result)
             if inventory.get("selected"):
                 return "complete-maintenance-task:%s" % inventory["selected"]
             return "run-maintenance-completion-gate"

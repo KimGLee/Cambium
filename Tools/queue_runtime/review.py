@@ -15,9 +15,9 @@ from queue_runtime.canon import (
     MANUAL_ATTESTATION_TOOL,
     MANUAL_ATTESTATION_TOOL_VERSION,
 )
-from queue_runtime.primitives import _nonempty_string
+from queue_runtime.primitives import nonempty_string
 from queue_runtime.receipts import (
-    _require_receipt,
+    require_receipt,
     current_receipt_catalog,
 )
 
@@ -44,7 +44,7 @@ def substantive_review_errors(result, item):
     tiers = {
         page.get("path"): page.get("tier")
         for page in coverage.get("pages") or []
-        if isinstance(page, dict) and _nonempty_string(page.get("path"))
+        if isinstance(page, dict) and nonempty_string(page.get("path"))
     }
     reviewed_targets = set()
     for entry in current_receipt_catalog(result).values():
@@ -54,7 +54,7 @@ def substantive_review_errors(result, item):
         if (receipt.get("check") == "substantive_review" and
                 receipt.get("result") == "pass" and
                 receipt.get("invalidated_by") is None and
-                _nonempty_string(receipt.get("target"))):
+                nonempty_string(receipt.get("target"))):
             reviewed_targets.add(receipt.get("target"))
     for object_path in item.get("manifest") or []:
         if tiers.get(object_path) != "L":
@@ -302,7 +302,7 @@ def batch_review_judgment_errors(result, item, wrapper_receipt):
             "review_requirement_set_sha256=%s" % (item_id, expected_sha))
     bound = wrapper.get("judgment_receipt_ids")
     if not isinstance(bound, list) or not all(
-            _nonempty_string(value) for value in bound):
+            nonempty_string(value) for value in bound):
         errors.append(
             "%s batch review wrapper judgment_receipt_ids must be an "
             "explicit string list" % item_id)
@@ -412,7 +412,7 @@ def batch_review_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     by one current manual-attestation receipt that binds their exact IDs.
     """
     errors = []
-    receipt = _require_receipt(
+    receipt = require_receipt(
         catalog, receipt_id, "%s batch review" % item_id, errors,
         expected={
             "tool": MANUAL_ATTESTATION_TOOL,
@@ -429,7 +429,7 @@ def batch_review_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     bound = receipt.get("delta_page_receipt_ids")
     expected = sorted(set(delta_page_receipt_ids or []))
     if (not isinstance(bound, list) or
-            not all(_nonempty_string(value) for value in bound)):
+            not all(nonempty_string(value) for value in bound)):
         errors.append(
             "%s batch review receipt %s delta_page_receipt_ids must be an "
             "explicit string list" % (item_id, receipt_id))
@@ -444,7 +444,7 @@ def batch_review_receipt_errors(catalog, receipt_id, *, item_id, task_id,
             (item_id, receipt_id, bound, expected))
     if isinstance(bound, list):
         for page_receipt_id in expected:
-            _require_receipt(
+            require_receipt(
                 catalog, page_receipt_id,
                 "%s batch review page evidence" % item_id, errors,
             )
