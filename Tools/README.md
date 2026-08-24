@@ -5,6 +5,13 @@ shipped with Cambium. All scripts use only the Python 3 standard library, and
 all supported YAML parsing goes through the restricted-subset parser in
 `kblib.py`.
 
+One tool is a package rather than a single file. `check_queue.py` remains the
+command-line entry point, the Required Queue Gate producer, and the import
+surface every other module and test reads; the runtime it composes lives in
+`Tools/queue_runtime/` as named modules with a declared direction between
+them. Both the direction between modules and the direction inside that package
+are machine-checked against `module-boundaries.yaml` (owner K00/18).
+
 ## Ownership boundary
 
 | Layer | Owns | Does not own |

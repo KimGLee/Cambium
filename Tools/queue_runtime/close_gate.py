@@ -1273,14 +1273,6 @@ def _closed_gate_errors(item, transition, catalog, queue,
     return errors
 
 
-
-
-
-
-
-
-
-
 def _close_gate_reuse_errors(items_by_id):
     """Reject one snapshot-specific close assertion owning two histories."""
     errors = []

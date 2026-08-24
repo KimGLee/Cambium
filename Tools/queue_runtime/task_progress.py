@@ -138,38 +138,6 @@ STANDARDS_ADOPTION_RECORD_FIELDS = frozenset((
 ))
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 LIFECYCLE_EDGES = frozenset((
     ("queued", "open"),
     ("open", "merge-ready"),
@@ -178,24 +146,6 @@ LIFECYCLE_EDGES = frozenset((
     ("queued", "cancelled"),
     ("open", "cancelled"),
 ))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _standards_adoption_shape_errors(progress):
@@ -288,12 +238,6 @@ def _standards_adoption_shape_errors(progress):
                     receipt_id)
             seen_receipts.add(receipt_id)
     return errors
-
-
-
-
-
-
 
 
 def _progress_shape_errors(progress):

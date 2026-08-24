@@ -118,7 +118,6 @@ HUB_EXIT_HINT = ("K13/10 admits a hub-editing batch only through an exclusive "
                  "or serial-integrator execution mode")
 
 
-
 QUEUE_TOP_LEVEL_FIELDS = frozenset((
     "schema_version", "task_id", "scope_version", "queue_revision",
     "state_revision", "standards_version", "selected_profile_manifest",

@@ -179,8 +179,6 @@ def _delta_opening_semantic_binding(
     return errors, before
 
 
-
-
 def _content_change_property_evidence_errors(
         receipt, *, receipt_id, path, field, value, semantic_fingerprint,
         task_id, include_shape, current_catalog):
@@ -334,7 +332,6 @@ def _review_property_evidence_errors(
                 "%s reviewer attestation %s has no review statement" %
                 (label, attestation_id))
     return errors
-
 
 
 def _coverage_property_state_errors(
