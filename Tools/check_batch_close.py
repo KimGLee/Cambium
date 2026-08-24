@@ -60,6 +60,7 @@ import check_queue
 import check_vocab
 import batch_settlement
 import candidate_lifecycle
+import contract_exception_policy
 import kblib
 import metadata_execution_contract
 import metadata_property_state
@@ -933,7 +934,8 @@ def _priority_quotas(evaluation):
     rubric_repo_path = "%s/%s" % (contract.profile_repo_dir.rstrip("/"),
                                   binding)
     rubric_text = snapshot.read_text(rubric_repo_path)
-    policy, fingerprint, errors = kblib.effective_priority_policy(rubric_text)
+    policy, fingerprint, errors = (
+        contract_exception_policy.effective_priority_policy(rubric_text))
     if errors or fingerprint is None:
         raise ValueError(
             "the Priority Rubric quota registration does not resolve: %s" %
@@ -966,7 +968,7 @@ def _quota_exceptions(runtime, evaluation):
     rubric_fingerprint = None
     if rubric_repo_path:
         _policy, rubric_fingerprint, _errors = \
-            kblib.effective_priority_policy(
+            contract_exception_policy.effective_priority_policy(
                 snapshot.read_text(rubric_repo_path))
     task_id = (runtime.get("queue") or {}).get("task_id")
     valid = {}
@@ -1705,8 +1707,9 @@ def _main(argv=None):
                 # receipt, and the exception-consumption comparison below
                 # all come from this single resolver call.
                 (quota_policy_object, quota_policy_fingerprint,
-                 _quota_policy_errors) = kblib.effective_priority_policy(
-                    _rubric_text_for(profile_evaluation))
+                 _quota_policy_errors) = (
+                    contract_exception_policy.effective_priority_policy(
+                        _rubric_text_for(profile_evaluation)))
                 checks = {}
                 links = _run_receipting_command(
                     [sys.executable, str(SCRIPT_DIR / "check_links.py"), root],
@@ -1874,10 +1877,11 @@ def _main(argv=None):
             # jointly admissible at CONSUMPTION too, so a contract state
             # that somehow bypassed the writer still cannot authorize a
             # close that consumes the whole corpus (K00/07).
-            _ceilings, ceiling_errors = kblib.effective_quota_ceilings(
-                quota_policy_object,
-                [entry for entries in current_exceptions.values()
-                 for entry in entries])
+            _ceilings, ceiling_errors = (
+                contract_exception_policy.effective_quota_ceilings(
+                    quota_policy_object,
+                    [entry for entries in current_exceptions.values()
+                     for entry in entries]))
             check_errors.extend(ceiling_errors)
             quota_errors, quota_accepted = _quota_candidate_dispositions(
                 quota_candidates, current_exceptions, snapshot,

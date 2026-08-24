@@ -473,8 +473,25 @@ def _registry_map(data, relative_path, card_index):
     return result, errors
 
 
-def _load_route_registry(root):
-    """Load and cross-check the canonical Card and Read Set index pair."""
+def load_route_registry(root):
+    """Load and cross-check the canonical Card and Read Set index pair.
+
+    Public because two modules have to answer "which Card and which Read
+    Set does this route mean?" from the same two indexes. `apply_task_plan`
+    completes a plan's derived load fields while the Contract can still be
+    repaired; this module re-checks the same binding at Terminal once it is
+    frozen. A second resolver over the same registry would turn one
+    agreement into two, and the disagreement would surface at the only
+    point where nothing can still be fixed.
+
+    Returns `(card_map, read_map, errors)`. Both maps are
+    `route_id -> {"path": str, "read_set": str | None}`; `read_set` is
+    populated only in `card_map`, because the Card Index is what binds a
+    Card to its Read Set and the Read Set Index only registers paths.
+    `errors` carries every structural finding about the pair, and what a
+    caller does with a non-empty list is the caller's policy rather than
+    this function's: fail receipts here, a refusal to write there.
+    """
     errors = []
     card_data, card_errors = _load_index(root, CARD_INDEX_PATH, "card-index")
     read_data, read_errors = _load_index(root, READ_SET_INDEX_PATH, "route-index")
@@ -2415,7 +2432,7 @@ def _main():
                                 (raw_path, parts[1], selected_profile_dir),
                                 seq))
 
-            card_map, read_map, registry_errors = _load_route_registry(root)
+            card_map, read_map, registry_errors = load_route_registry(root)
             registry_bad = len(registry_errors)
             for index, details in enumerate(registry_errors):
                 seq += 1

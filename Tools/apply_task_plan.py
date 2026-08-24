@@ -447,7 +447,7 @@ def _derive_load_sets(root, contract):
     no machine-readable registry (`profiles/README.md` says so outright), so it
     stays something the plan names and this function closes over.
     """
-    card_map, read_map, registry_errors = check_proof._load_route_registry(root)
+    card_map, read_map, registry_errors = check_proof.load_route_registry(root)
     if registry_errors:
         raise Refusal(
             "the Card/Read Set registry is not sound, so a route selection "

@@ -66,7 +66,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:c6b5481e114f289794aced2a9f8638ed1a3fb3fe157866525be4cf4bd8c9c26f
+source_hash: sha256:0a3cd8325c4bf9a16eb623396b152ac37d309fb347ecca94d1e0ad850fd8c83c
 receipt_shape:
   base_fields:
     - receipt_id
@@ -357,7 +357,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: apply_contract_amendment
     module: Tools/apply_contract_amendment.py
-    source_hash: sha256:9f5a41e9590aaa7736f9448b30f0212446c45075f26b9a6e408399f11f0af8bf
+    source_hash: sha256:a7bfbf58fdac03bc3b1a66fbf4de24524ca1b17592d924f338ac215eb2b5a725
     description: Amend the frozen Task Contract from one confirmed plan.
     arguments:
       - dest: root
@@ -841,7 +841,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: apply_task_plan
     module: Tools/apply_task_plan.py
-    source_hash: sha256:99b47d8dfc2366098ebb3f7d285dec2bc84c0c834c39efea3b846a06b0a36f5d
+    source_hash: sha256:62ff292f5f54a847e5436464dec780e6fd70bdc8ba1b48daf8d71caf1776a980
     description: Materialize a task runtime from one confirmed plan.
     arguments:
       - dest: root
@@ -905,7 +905,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_batch_close
     module: Tools/check_batch_close.py
-    source_hash: sha256:bc2326400a6dde7863fd1384382475ea98fa78592cd0b67d84e3c817b5bf4d16
+    source_hash: sha256:062598e0527b375dc20eae7bdc1aee2cd44730452509747e34e545f32b2b95b7
     description: Run and publish the K12/09 batch-close evidence bundle
     arguments:
       - dest: root
@@ -1574,7 +1574,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_profile
     module: Tools/check_profile.py
-    source_hash: sha256:0e61d05d11252616881369f348140b8840a15b5f84bec4c77ef82e5795d19106
+    source_hash: sha256:e387942db547ebc8a620b4e52d18ea6a7b3981f23e86daec503fdfbf35cc4a1c
     description: Profile manifest completeness and unfilled-template check
     arguments:
       - dest: profile_dir
@@ -1661,7 +1661,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_proof
     module: Tools/check_proof.py
-    source_hash: sha256:dca5bc6433324a2a90ebedf1ba969ced14da867cc1225d0e478d81f09eb1cb86
+    source_hash: sha256:b82aefe4ce69ebfffe7177b792127333d57ad8e2c9d088c91bab9ab40d2ba82e
     description: Terminal Proof completeness and zero-condition check
     arguments:
       - dest: proof
@@ -1752,7 +1752,7 @@ tools:
     receipt_extensions_extraction: partial
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:69ad06aeee9d6afe658622a7d931d3928b8e26edc079252aaf357d27f925c576
+    source_hash: sha256:b2ad0bf3aaed87926985fc3a56c988cb63a83d64e20223ebec363170b7c7e5a6
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -4099,7 +4099,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: run_gates
     module: Tools/run_gates.py
-    source_hash: sha256:aed6042ebb3dae1acc610b5d5c0a40c7b75ccca5b709c146a98aeafc44ba5a33
+    source_hash: sha256:b6a7ab148b36941fc73b4bcb6b8784afd5e3c75a8dffcf11da133c5b2d641f6e
     description: Run the adopter verification set derived from the K00/12 Stable Gate ID Registry (deterministic, not-batch-scoped producers).
     arguments:
       - dest: root

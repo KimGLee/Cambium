@@ -29,6 +29,7 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TESTS))
 
 import check_queue  # noqa: E402
+import contract_exception_policy  # noqa: E402
 import kblib  # noqa: E402
 from test_check_batch_close import CheckBatchCloseTests  # noqa: E402
 
@@ -122,7 +123,8 @@ class ReviewedEraActivationTests(CheckBatchCloseTests):
               fingerprint=None):
         """Register the exception through its only writer."""
         if fingerprint is None:
-            _policy, fingerprint, _errors = kblib.effective_coverage_policy()
+            _policy, fingerprint, _errors = (
+                contract_exception_policy.effective_coverage_policy())
         progress_path = self.root / check_queue.PROGRESS_PATH
         plan = {
             "schema_version": 1,
@@ -214,9 +216,10 @@ class ReviewedEraActivationTests(CheckBatchCloseTests):
 
     def test_the_writer_refuses_a_fingerprint_from_another_family(self):
         """A quota fingerprint cannot stand in for the kernel-owned rule."""
-        _policy, quota_fingerprint, _errors = kblib.effective_priority_policy(
-            (self.root / "profiles/test-profile/slots.md").read_text(
-                encoding="utf-8"))
+        _policy, quota_fingerprint, _errors = (
+            contract_exception_policy.effective_priority_policy(
+                (self.root / "profiles/test-profile/slots.md").read_text(
+                    encoding="utf-8")))
         code, output = self.grant(self.unsupported,
                                   fingerprint=quota_fingerprint)
         self.assertEqual(1, code, output)

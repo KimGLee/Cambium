@@ -38,6 +38,7 @@ for path in (str(TOOLS), str(TESTS)):
         sys.path.insert(0, path)
 
 import check_queue  # noqa: E402
+import contract_exception_policy  # noqa: E402
 import kblib  # noqa: E402
 from test_apply_task_plan import (  # noqa: E402
     TaskPlanTransactionTests, PLAN_RELATIVE)
@@ -108,7 +109,8 @@ class ContractAmendmentTests(TaskPlanTransactionTests):
         """The fixture profile's real effective-policy fingerprint."""
         rubric = (self.root / "profiles/sample/slots.md").read_text(
             encoding="utf-8")
-        policy, fingerprint, errors = kblib.effective_priority_policy(rubric)
+        policy, fingerprint, errors = (
+            contract_exception_policy.effective_priority_policy(rubric))
         self.assertEqual([], errors)
         del policy
         return fingerprint

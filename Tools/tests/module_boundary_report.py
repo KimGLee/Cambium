@@ -103,7 +103,37 @@ def _baseline(repo_root, base_ref):
                  scratch], capture_output=True, text=True, timeout=60)
 
 
-def _emit_manifest(repo_root):
+def _recorded_bindings(manifest_path):
+    """Read the content hashes the current register already committed to.
+
+    Regeneration must not be able to launder a drifted exception.  The guard
+    refuses an exception whose definition changed, on the grounds that the
+    judgment was made about different code -- and if the only way to satisfy
+    the guard silently rewrote the hash, the refusal would mean nothing and
+    re-argument would never happen.  So a recorded binding survives
+    regeneration until someone acknowledges the drift on purpose, the same
+    separation `stamp_cards` keeps between tracking a source hash and
+    acknowledging a recompiled Card.
+    """
+    if not os.path.exists(manifest_path):
+        return {}
+    sys.path.insert(0, os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))))
+    import kblib
+    with open(manifest_path, encoding="utf-8") as handle:
+        parsed = kblib.parse_yaml_subset(handle.read())
+    recorded = {}
+    for row in parsed.get("modules") or ():
+        for entry in row.get("exceptions") or ():
+            key = (row.get("module"), entry.get("consumer"),
+                   entry.get("symbol"))
+            if entry.get("content_sha256"):
+                recorded[key] = entry["content_sha256"]
+    return recorded
+
+
+def _emit_manifest(repo_root, *, acknowledge_drift=False,
+                   manifest_path=None):
     """Print a manifest describing what the tree does today, verbatim.
 
     Every module gets an entry because an undeclared module is a hole in the
@@ -111,6 +141,9 @@ def _emit_manifest(repo_root):
     content binding because the alternative -- declaring them public -- would
     promise compatibility this distribution never made.
     """
+    recorded = {} if acknowledge_drift else _recorded_bindings(
+        manifest_path or os.path.join(repo_root, "Tools",
+                                      "module-boundaries.yaml"))
     facts = facts_module.collect(repo_root)
     pairs = facts_module.consumption_pairs(facts)
     private = facts_module.private_pairs(facts)
@@ -123,7 +156,8 @@ def _emit_manifest(repo_root):
 
     exceptions = {}
     for consumer, target, symbol in private:
-        binding = facts_module.def_span_sha256(repo_root, target, symbol)
+        binding = recorded.get((target, consumer, symbol)) or \
+            facts_module.def_span_sha256(repo_root, target, symbol)
         exceptions.setdefault(target, []).append({
             "consumer": consumer,
             "symbol": symbol,
@@ -181,11 +215,29 @@ def main(argv=None):
                         help="also report the same numbers at this revision")
     parser.add_argument("--emit-manifest", action="store_true",
                         help="print a manifest describing the current tree")
+    parser.add_argument("--output", default=None,
+                        help="write the manifest here instead of stdout; "
+                             "required when regenerating in place, because a "
+                             "shell redirect truncates the file before this "
+                             "runs and the recorded bindings would be read "
+                             "from the emptied file")
+    parser.add_argument("--acknowledge-drift", action="store_true",
+                        help="re-bind exceptions whose excepted definition "
+                             "changed; without this a recorded binding is "
+                             "carried forward so the guard keeps refusing")
     args = parser.parse_args(argv)
 
     root = os.path.realpath(os.path.abspath(args.root))
     if args.emit_manifest:
-        sys.stdout.write(_emit_manifest(root))
+        rendered = _emit_manifest(
+            root, acknowledge_drift=args.acknowledge_drift)
+        if args.output:
+            # Read-then-write, never redirect: the recorded bindings live in
+            # the file being replaced, and `> file` empties it first.
+            with open(args.output, "w", encoding="utf-8") as handle:
+                handle.write(rendered)
+            return 0
+        sys.stdout.write(rendered)
         return 0
 
     report = build_report(root)

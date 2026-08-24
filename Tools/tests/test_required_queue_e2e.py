@@ -13,6 +13,7 @@ FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
 SYNTHETIC_PROFILE = TOOLS / "tests" / "fixtures" / "synthetic_profile"
 sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
+import module_boundary_facts  # noqa: E402
 
 import check_queue
 import check_batch_close
@@ -551,10 +552,12 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         shutil.copytree(SYNTHETIC_PROFILE, target_profile, dirs_exist_ok=True)
         tools_root = self.root / "Tools"
         (tools_root / "schemas").mkdir(parents=True, exist_ok=True)
-        for name in ("check_profile.py", "profile_contract.py",
-                     "check_residual_content.py", "check_queue.py", "kblib.py",
-                     "maintenance_candidates.py", "standards_state.py"):
-            shutil.copy2(TOOLS / name, tools_root / name)
+        # Derived rather than listed, for the reason the same pattern broke
+        # elsewhere: a hand-kept inventory records what the tree needed the day
+        # it was written and nothing re-derives it afterwards.
+        module_boundary_facts.stage_shipped_modules(
+            str(TOOLS.parent), str(self.root),
+            ["check_profile", "check_residual_content", "check_queue"])
         shutil.copy2(
             TOOLS / "schemas/execution_defaults.template.yaml",
             tools_root / "schemas/execution_defaults.template.yaml")

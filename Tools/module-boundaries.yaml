@@ -198,11 +198,9 @@ modules:
       - unbacktick
   - module: check_proof
     path: Tools/check_proof.py
-    public: []
-    exceptions:
-      - consumer: apply_task_plan
-        symbol: _load_route_registry
-        content_sha256: sha256:1161b37e98560350ba6df9f8b7a1d88fa6b3bcb6b35dced88b78661733e061da
+    provisional: true
+    public:
+      - load_route_registry
   - module: check_queue
     path: Tools/check_queue.py
     provisional: true
@@ -273,7 +271,7 @@ modules:
         content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
       - consumer: apply_contract_amendment
         symbol: _policy_exception_errors
-        content_sha256: sha256:830f4fff4ec9614dda36ea4f85dc98fb43d1ce5c91490997806c212ce488ea52
+        content_sha256: sha256:61128415c95f8ff19260342407962b824c15ea941317c35cc68cd8312fea4279
       - consumer: apply_delta
         symbol: _valid_timestamp
         content_sha256: sha256:47df0c834fe7af64fa9ca064b2a91bff5cffbc66a3365fee88f74e6ff59a9bf9
@@ -379,6 +377,17 @@ modules:
       - DEFAULT_OUTPUT
       - admitted_artifact
       - artifact_currency_errors
+  - module: contract_exception_policy
+    path: Tools/contract_exception_policy.py
+    provisional: true
+    public:
+      - POLICY_REGISTRY
+      - PRIORITY_QUOTA_POLICY_IDS
+      - effective_coverage_policy
+      - effective_policy_for
+      - effective_priority_policy
+      - effective_quota_ceilings
+      - priority_quota_policy
   - module: coverage_delta
     path: Tools/coverage_delta.py
     provisional: true
@@ -424,8 +433,6 @@ modules:
       - BOUNDARY_PROJECTION_LABELS
       - METADATA_MODES
       - METADATA_TIGHTENING
-      - POLICY_REGISTRY
-      - PRIORITY_QUOTA_POLICY_IDS
       - READ_SET_NON_BOUNDARY_SECTIONS
       - RECEIPT_COLD_EVIDENCE_PREFIX
       - RECEIPT_COLD_INDEX_PATH
@@ -446,10 +453,6 @@ modules:
       - canonical_repository_file
       - canonical_yaml
       - durable_replace
-      - effective_coverage_policy
-      - effective_policy_for
-      - effective_priority_policy
-      - effective_quota_ceilings
       - exit_code
       - extract_frontmatter
       - headings_of
@@ -466,7 +469,6 @@ modules:
       - parse_vocabulary_artifact
       - parse_wiki_link
       - parse_yaml_subset
-      - priority_quota_policy
       - process_is_alive
       - profile_identity
       - profile_scope_layers

@@ -270,3 +270,54 @@ def def_span_sha256(repo_root, module, symbol):
         span = "\n".join(lines[start:end])
         return "sha256:" + hashlib.sha256(span.encode("utf-8")).hexdigest()
     return None
+
+
+def import_closure(repo_root, roots):
+    """Return every shipped module reachable from ``roots`` by import.
+
+    Tests that stage a partial Tools tree used to name their dependencies by
+    hand, which made every new module a latent break in an unrelated test: the
+    list said what the tree needed on the day it was written, and nothing
+    re-derived it afterwards.  Extracting one capability into a new module is
+    a normal act, and it should not require finding every hand-copied
+    inventory that happened to reach the old home.
+
+    The closure is over static imports, matching what the guard reads, so a
+    module the copier misses is the same module the guard would have named.
+    """
+    facts = collect(repo_root)
+    seen = set()
+    pending = [name for name in roots]
+    while pending:
+        name = pending.pop()
+        if name in seen or name not in facts:
+            continue
+        seen.add(name)
+        pending.extend(facts[name]["imports"])
+    return sorted(seen)
+
+
+def stage_shipped_modules(repo_root, destination, roots):
+    """Copy ``roots`` and their import closure into ``destination``/Tools.
+
+    The staged layout mirrors the real one rather than flattening it, because
+    a staged tree exists to be run against, and the modules resolve each other
+    by the same relative paths there as here.
+
+    Returns the module names copied, so a caller can assert over them.
+    """
+    import shutil
+
+    tools_root = os.path.join(repo_root, TOOLS_DIRNAME)
+    staged_root = os.path.join(destination, TOOLS_DIRNAME)
+    names = import_closure(repo_root, roots)
+    by_module = {module_name(path): path
+                 for path in shipped_modules(tools_root)}
+    for name in names:
+        relative = by_module.get(name)
+        if relative is None:
+            continue
+        target = os.path.join(staged_root, relative)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        shutil.copy2(os.path.join(tools_root, relative), target)
+    return names

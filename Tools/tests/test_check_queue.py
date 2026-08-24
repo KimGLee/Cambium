@@ -18,6 +18,7 @@ sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import check_queue
+import contract_exception_policy
 import kblib
 import standards_state
 from profile_fixture import install_loadable_profile
@@ -1488,7 +1489,8 @@ class ReviewedEraTests(QueueFixture):
                         scope_ref="fixture-task", fingerprint=None):
         """Write the contract exception this migration disposition needs."""
         if fingerprint is None:
-            _policy, fingerprint, _errors = kblib.effective_coverage_policy()
+            _policy, fingerprint, _errors = (
+                contract_exception_policy.effective_coverage_policy())
         progress = kblib.load_yaml_file(self.progress_path)
         progress["contract"]["policy_exceptions"] = [{
             "decision_id": "PE-COV-1",

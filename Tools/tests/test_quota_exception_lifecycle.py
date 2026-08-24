@@ -39,6 +39,7 @@ sys.path.insert(0, str(TESTS))
 
 import check_batch_close  # noqa: E402
 import check_queue  # noqa: E402
+import contract_exception_policy  # noqa: E402
 import kblib  # noqa: E402
 from test_check_batch_close import CheckBatchCloseTests  # noqa: E402
 
@@ -106,8 +107,9 @@ class QuotaExceptionLifecycleTests(CheckBatchCloseTests):
         # the rubric file bytes -- a kernel default change moves this even
         # when the rubric does not (blocker 4's fix).
         rubric = self.root / "profiles/test-profile/slots.md"
-        _policy, fingerprint, errors = kblib.effective_priority_policy(
-            rubric.read_text(encoding="utf-8"))
+        _policy, fingerprint, errors = (
+            contract_exception_policy.effective_priority_policy(
+                rubric.read_text(encoding="utf-8")))
         self.assertEqual([], errors)
         return fingerprint
 

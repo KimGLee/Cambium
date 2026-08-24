@@ -27,6 +27,14 @@ import module_boundary_facts as boundary_facts  # noqa: E402
 
 MANIFEST = os.path.join(TOOLS, "module-boundaries.yaml")
 
+# Every refusal below names the command that answers it.  A contract whose
+# failures a reader cannot act on becomes a contract people route around, and
+# routine kernel work reaches these checks often enough -- a new governance
+# capability is usually a new leaf and new tool code together -- that the cost
+# of not saying so compounds.
+REGENERATE = ("python3 Tools/tests/module_boundary_report.py --emit-manifest"
+              " --output Tools/module-boundaries.yaml")
+
 
 def load_manifest():
     with open(MANIFEST, encoding="utf-8") as handle:
@@ -70,15 +78,17 @@ class Completeness(unittest.TestCase):
         declared = {row["module"] for row in self.manifest["modules"]}
         missing = sorted(set(self.facts) - declared)
         self.assertEqual([], missing,
-                         "shipped modules absent from the manifest: %s"
-                         % ", ".join(missing))
+                         "shipped modules absent from the manifest: %s\n"
+                         "A new module joins the contract by regenerating:\n"
+                         "  %s" % (", ".join(missing), REGENERATE))
 
     def test_every_entry_has_a_shipped_module(self):
         declared = {row["module"] for row in self.manifest["modules"]}
         stale = sorted(declared - set(self.facts))
         self.assertEqual([], stale,
-                         "manifest entries with no shipped module: %s"
-                         % ", ".join(stale))
+                         "manifest entries with no shipped module: %s\n"
+                         "A removed module leaves the contract the same way:\n"
+                         "  %s" % (", ".join(stale), REGENERATE))
 
 
 class PublicSurface(unittest.TestCase):
@@ -111,8 +121,13 @@ class PublicSurface(unittest.TestCase):
             if self._excepted(target, consumer, symbol):
                 continue
             undeclared.append("%s -> %s.%s" % (consumer, target, symbol))
-        self.assertEqual([], sorted(undeclared),
-                         "consumption outside the declared public surface")
+        self.assertEqual(
+            [], sorted(undeclared),
+            "consumption outside the declared public surface: %s\n"
+            "Offer the symbol deliberately, or -- if this reads a name its "
+            "owner marked internal -- record why with a retirement condition. "
+            "Regenerating stages it as an exception for you to annotate:\n"
+            "  %s" % (", ".join(sorted(undeclared)), REGENERATE))
 
     def test_exception_content_bindings_still_match(self):
         """An excepted private symbol that was rewritten must be re-argued.
@@ -131,8 +146,16 @@ class PublicSurface(unittest.TestCase):
                     REPO, target, entry["symbol"])
                 if current != recorded:
                     drifted.append("%s.%s" % (target, entry["symbol"]))
-        self.assertEqual([], sorted(drifted),
-                         "excepted definitions changed; re-argue the entry")
+        self.assertEqual(
+            [], sorted(drifted),
+            "excepted definitions changed: %s\n"
+            "The exception was a judgment about the old code, so it does not "
+            "carry over on its own. Re-read the consumption, and when it "
+            "still holds say so explicitly:\n"
+            "  python3 Tools/tests/module_boundary_report.py "
+            "--emit-manifest --acknowledge-drift "
+            "--output Tools/module-boundaries.yaml"
+            % ", ".join(sorted(drifted)))
 
     def test_no_exception_outlives_its_consumer(self):
         """A register that keeps retired entries stops describing anything."""
@@ -145,7 +168,47 @@ class PublicSurface(unittest.TestCase):
                 if key not in live:
                     unused.append("%s -> %s.%s" % key)
         self.assertEqual([], sorted(unused),
-                         "exceptions with no remaining consumer; retire them")
+                         "exceptions with no remaining consumer: %s\n"
+                         "The debt is paid; drop the entry:\n"
+                         "  %s" % (", ".join(sorted(unused)), REGENERATE))
+
+
+class StagedTreesAreDerived(unittest.TestCase):
+    """No test may hand-keep an inventory of shipped modules.
+
+    A staged partial tree that names its dependencies by hand records what the
+    tree needed on the day it was written, and nothing re-derives it. Two such
+    lists existed here, and extracting one capability into a new module broke
+    a test that mentioned neither module. Kernel work routinely adds and moves
+    tool code, so the cost of a hand-kept list is paid again every time.
+    """
+
+    def test_no_test_hard_codes_a_module_inventory(self):
+        import re
+
+        # Three or more shipped module filenames in one literal sequence: one
+        # or two is a specific reference, a run of them is an inventory.
+        shipped = {os.path.basename(path) for path
+                   in boundary_facts.shipped_modules(TOOLS)}
+        offenders = []
+        for name in sorted(os.listdir(os.path.dirname(os.path.abspath(__file__)))):
+            if not name.startswith("test_") or not name.endswith(".py"):
+                continue
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+            with open(path, encoding="utf-8") as handle:
+                text = handle.read()
+            for run in re.finditer(r'(?:"[A-Za-z_][A-Za-z0-9_]*\.py",\s*){2,}'
+                                   r'"[A-Za-z_][A-Za-z0-9_]*\.py"', text):
+                found = re.findall(r'"([A-Za-z_][A-Za-z0-9_]*\.py)"', run.group(0))
+                if len({f for f in found} & shipped) >= 3:
+                    offenders.append("%s: %s" % (name, ", ".join(found[:4])))
+        self.assertEqual(
+            [], sorted(offenders),
+            "hard-coded shipped-module inventories: %s\n"
+            "Derive the set instead, so adding a module cannot break an "
+            "unrelated test:\n"
+            "  module_boundary_facts.stage_shipped_modules(repo, dest, roots)"
+            % "; ".join(sorted(offenders)))
 
 
 class DependencyDirection(unittest.TestCase):

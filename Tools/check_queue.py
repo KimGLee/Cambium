@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
 import check_profile
 import amendment_policy
+import contract_exception_policy
 import batch_settlement
 import card_activation
 import candidate_lifecycle
@@ -1546,8 +1547,9 @@ def _policy_exception_errors(value, label):
                 "judged against would survive revisions it never saw" %
                 entry_label)
         policy_id = entry.get("policy_id")
-        registered = kblib.POLICY_REGISTRY.get(policy_id) if isinstance(
-            policy_id, str) else None
+        registered = (
+            contract_exception_policy.POLICY_REGISTRY.get(policy_id)
+            if isinstance(policy_id, str) else None)
         if _nonempty_string(policy_id) and registered is None:
             errors.append(
                 "%s policy_id %r is not in the closed policy registry; an "
@@ -1593,7 +1595,7 @@ def _policy_exception_errors(value, label):
             by_key[key] = entry
         if (isinstance(limit, (int, float)) and not isinstance(limit, bool)
                 and isinstance(policy_id, str) and
-                policy_id in kblib.POLICY_REGISTRY):
+                policy_id in contract_exception_policy.POLICY_REGISTRY):
             ceilings[policy_id] = max(ceilings.get(policy_id, 0), limit)
     if (ceilings.get("priority_quota.P0", 0) +
             ceilings.get("priority_quota.P1", 0)) >= 100:
@@ -1628,8 +1630,8 @@ def _sealed_policy_exception_errors(sealed, decision_id, candidate_type,
         errors.append("%s sealed decision_id does not match accepted_by" %
                       label)
     policy_id = sealed.get("policy_id")
-    registered = kblib.POLICY_REGISTRY.get(policy_id) if isinstance(
-        policy_id, str) else None
+    registered = (contract_exception_policy.POLICY_REGISTRY.get(policy_id)
+                  if isinstance(policy_id, str) else None)
     if registered is None:
         errors.append(
             "%s sealed policy_id %r is not in the closed policy registry" %
@@ -5760,7 +5762,8 @@ def coverage_reviewed_era_exception(progress, queue, count):
         contract, dict) else None
     if not isinstance(entries, list) or not entries:
         return None, None
-    _policy, fingerprint, _errors = kblib.effective_coverage_policy()
+    _policy, fingerprint, _errors = (
+        contract_exception_policy.effective_coverage_policy())
     task_id = (queue or {}).get("task_id")
     stale = False
     for entry in entries:

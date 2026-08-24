@@ -42,6 +42,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
+import contract_exception_policy
 import kblib
 import profile_contract
 
@@ -163,7 +164,8 @@ def _effective_policy(root, manifest):
     rubric_path = os.path.join(os.path.dirname(manifest_path), binding)
     with open(rubric_path, encoding="utf-8") as handle:
         rubric_text = handle.read()
-    policy, fingerprint, errors = kblib.effective_priority_policy(rubric_text)
+    policy, fingerprint, errors = (
+        contract_exception_policy.effective_priority_policy(rubric_text))
     if errors or fingerprint is None:
         raise RunnerError(
             "the selected Profile's Priority Rubric does not resolve:\n  %s"
