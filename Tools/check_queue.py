@@ -602,6 +602,7 @@ CONSUMED_PRODUCER_IDENTITY = {
                            MANUAL_ATTESTATION_TOOL_VERSION),
 }
 PRODUCER_MODULE_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
+_TOOLS_ROOT = os.path.dirname(os.path.abspath(__file__))
 _PRODUCER_MODULE_CACHE = {}
 STANDARDS_ADOPTION_PLAN_FIELDS = frozenset((
     "schema_version", "adoption_id", "task_id", "task_state_before",
@@ -1011,9 +1012,13 @@ def producer_module(tool):
     if tool in _PRODUCER_MODULE_CACHE:
         return _PRODUCER_MODULE_CACHE[tool]
     module = None
+    # Anchored on the Tools root, not on this file's directory.  A producer is
+    # a sibling of the tools tree, not of whichever module happens to ask; if
+    # this resolved relative to the caller it would find nothing from inside a
+    # package and every lookup would return None -- and a missing producer is
+    # read as "nothing to check", so the failure would be silent.
     if isinstance(tool, str) and PRODUCER_MODULE_RE.match(tool) and \
-            os.path.isfile(os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), tool + ".py")):
+            os.path.isfile(os.path.join(_TOOLS_ROOT, tool + ".py")):
         try:
             module = importlib.import_module(tool)
         except Exception:  # pragma: no cover - a broken producer is an error

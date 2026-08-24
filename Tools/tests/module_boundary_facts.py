@@ -269,6 +269,24 @@ def def_span_sha256(repo_root, module, symbol):
         end = getattr(node, "end_lineno", node.lineno)
         span = "\n".join(lines[start:end])
         return "sha256:" + hashlib.sha256(span.encode("utf-8")).hexdigest()
+
+    # A façade re-exports a name it does not define.  Following the
+    # re-export keeps the binding attached to the definition rather than to
+    # the spelling a consumer happens to use: without this, moving a
+    # definition into a package silently turns every exception over it into
+    # an unbound entry, and the only advertised remedy would strip the
+    # bindings for good.
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                if (alias.asname or alias.name) != symbol:
+                    continue
+                target = node.module
+                if node.level:
+                    package = module.rsplit(".", 1)[0] if "." in module else ""
+                    target = "%s.%s" % (package, node.module) if package \
+                        else node.module
+                return def_span_sha256(repo_root, target, alias.name)
     return None
 
 
@@ -290,10 +308,19 @@ def import_closure(repo_root, roots):
     pending = [name for name in roots]
     while pending:
         name = pending.pop()
-        if name in seen or name not in facts:
+        if name in seen:
+            continue
+        # A package name reached by import stands for every module beneath it:
+        # staging only `pkg/__init__.py` produces a tree that imports cleanly
+        # and then fails at the first real call.
+        beneath = sorted(other for other in facts
+                         if other == name or other.startswith(name + "."))
+        if not beneath:
             continue
         seen.add(name)
-        pending.extend(facts[name]["imports"])
+        for member in beneath:
+            seen.add(member)
+            pending.extend(facts[member]["imports"])
     return sorted(seen)
 
 
@@ -321,3 +348,28 @@ def stage_shipped_modules(repo_root, destination, roots):
         os.makedirs(os.path.dirname(target), exist_ok=True)
         shutil.copy2(os.path.join(tools_root, relative), target)
     return names
+
+
+def package_layers(facts, package):
+    """Return intra-package import edges, which the module graph hides.
+
+    `import_graph` keys every module by its first name segment so that the
+    contract can speak about modules rather than files.  That is right for
+    the tree and wrong for a package: it collapses every submodule to one
+    node, so a cycle entirely inside a package is invisible to the very rule
+    that exists to forbid cycles.  This returns the edges at full name
+    resolution so a caller can check the inside too.
+    """
+    prefix = package + "."
+    members = {name for name in facts
+               if name == package or name.startswith(prefix)}
+    edges = {}
+    for name in sorted(members):
+        targets = set()
+        for imported in facts[name]["imports"]:
+            if imported in members and imported != name:
+                targets.add(imported)
+        # An intra-package import written as `from . import x` resolves to
+        # the submodule, which `imports` records under the package root.
+        edges[name] = sorted(targets)
+    return edges
