@@ -252,38 +252,6 @@ QUEUE_RUNTIME_RANKS = {
     "queue_runtime.primitives": 0,
     "queue_runtime.repofs": 0,
 
-    "queue_runtime.evidence_identity": 1,
-    "queue_runtime.gate_registry": 1,
-    "queue_runtime.locks": 1,
-    "queue_runtime.policy_exceptions": 1,
-    "queue_runtime.producer_era": 1,
-    "queue_runtime.profile_view": 1,
-    "queue_runtime.receipts": 1,
-    "queue_runtime.task_contract": 1,
-    "queue_runtime.work_spec": 1,
-
-    "queue_runtime.amendments": 2,
-    "queue_runtime.authority": 2,
-    "queue_runtime.control_plane": 2,
-    "queue_runtime.coverage": 2,
-    "queue_runtime.item_history": 2,
-    "queue_runtime.property_state": 2,
-    "queue_runtime.review": 2,
-    "queue_runtime.task_record": 2,
-
-    "queue_runtime.adoption": 3,
-    "queue_runtime.delta": 3,
-    "queue_runtime.maintenance": 3,
-    "queue_runtime.revalidation": 3,
-
-    "queue_runtime.close_gate": 4,
-    "queue_runtime.task_progress": 4,
-
-    "queue_runtime.item_evidence": 5,
-    "queue_runtime.resume": 5,
-
-    "queue_runtime.runtime": 6,
-
     "queue_runtime": 7,
 }
 

@@ -46,19 +46,63 @@ import metadata_property_state
 import project_page_state
 import standards_state
 
-TOOL = "check_queue"
-TOOL_VERSION = "1.25.0"
-# 1.20.1 remains a producer-era identity for already-consumed maintenance
-# gates. Current gate production and all live gate admission use 1.25.0;
-# historical consumption replays the older receipt's own promised shape.
-SUPPORTED_CHECK_QUEUE_TOOL_VERSIONS = frozenset((
-    "1.20.1", "1.21.0", "1.22.0", "1.23.0", "1.24.0", "1.25.0",
-))
-# The `Check` cell K00/12 registers for every Gate this tool produces; each
-# such Gate is distinguished by `Mode`, not by a second check name.
-GATE_CHECK = "required_queue"
-REGISTER_AMENDMENT_TOOL = "register_amendment"
-REGISTER_AMENDMENT_TOOL_VERSION = "1.4.0"
+# The permanent facade.  Every name below is defined in `queue_runtime`
+# and re-exported here because twenty-one shipped modules and twenty-one
+# test files read it from `check_queue`.  Dropping a name is a
+# compatibility break even when nothing in this file uses it.
+from queue_runtime import (
+    ACTIVE_STANDARDS_PATH,
+    ACTIVE_STATES,
+    ANY_PRODUCER_ERA_VERSION,
+    APPLY_AMENDMENT_TOOL_VERSION,
+    APPLY_DELTA_TOOL_VERSION,
+    BATCH_CLOSE_TOOL,
+    BATCH_CLOSE_TOOL_VERSION,
+    BATCH_ID_RE,
+    BATCH_REVIEW_GATE_ID,
+    CONTRACT_AMENDMENT_TOOL_VERSION,
+    CORPUS_PLAN_TOOL,
+    CORPUS_PLAN_TOOL_VERSION,
+    COVERAGE_PATH,
+    EXECUTION_MODES,
+    GATE_CHECK,
+    HOLDS,
+    LEGACY_PROPERTY_ADOPTION_OPERATION,
+    MANUAL_ATTESTATION_TOOL,
+    MANUAL_ATTESTATION_TOOL_VERSION,
+    PROGRESS_PATH,
+    QUEUE_PATH,
+    REGISTER_AMENDMENT_TOOL,
+    REGISTER_AMENDMENT_TOOL_VERSION,
+    SEAL_TOOL,
+    SHA256_RE,
+    STANDARDS_ADOPTION_PLAN_PREFIX,
+    STANDARDS_ADOPTION_TOOL,
+    STANDARDS_ADOPTION_TOOL_VERSION,
+    STATES,
+    SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS,
+    SUPPORTED_CHECK_QUEUE_TOOL_VERSIONS,
+    SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS,
+    TASK_STATES,
+    TERMINAL_PROOF_TOOL,
+    TERMINAL_PROOF_TOOL_VERSION,
+    TERMINAL_STATES,
+    TOOL,
+    TOOL_VERSION,
+    UPDATE_QUEUE_TOOL_VERSION,
+    _acyclic,
+    _closed_mapping_errors,
+    _explicit_string_list_errors,
+    _identity,
+    _load_state,
+    _nonempty_string,
+    _normalized_repository_path,
+    _path_error,
+    _repository_evidence_file,
+    _timestamp_value,
+    _valid_timestamp,
+)
+
 # These exact legacy protocols remain replayable.  1.0.0 is the first
 # registration shape; 1.1.0 adds withdrawal.  Neither may claim the
 # delegated-authority fields introduced by 1.2.0.  The current 1.3.0 era adds
@@ -71,11 +115,6 @@ REGISTER_AMENDMENT_TOOL_VERSION = "1.4.0"
 SUPPORTED_REGISTER_AMENDMENT_TOOL_VERSIONS = frozenset((
     "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0",
 ))
-APPLY_AMENDMENT_TOOL_VERSION = "1.4.0"
-SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS = frozenset((
-    "1.1.0", "1.2.0", "1.3.0", "1.4.0",
-))
-COMPILE_QUEUE_TOOL_VERSION = "1.5.0"
 # 1.3.0 produced the original registered queue-replan commit shape.  Its
 # bindings are still validated field by field; unknown protocols fail closed.
 SUPPORTED_COMPILE_QUEUE_TOOL_VERSIONS = frozenset((
@@ -86,10 +125,6 @@ OPERATIONAL_AMENDMENT_OPERATIONS = frozenset((
     "gap-routing-reconciliation", "property-state-migration",
 ))
 
-QUEUE_PATH = ".cambium/state/required_queue.yaml"
-COVERAGE_PATH = ".cambium/state/coverage_ledger.yaml"
-PROGRESS_PATH = ".cambium/state/progress_ledger.yaml"
-ACTIVE_STANDARDS_PATH = standards_state.STATE_PATH
 WORK_SPEC_PREFIX = ".cambium/work_specs"
 WORK_SPEC_FIELDS = frozenset(("work_spec_path", "work_spec_sha256"))
 WORK_SPEC_TOP_LEVEL_FIELDS = frozenset((
@@ -196,18 +231,6 @@ INVALIDATION_APPLIED_ROLLBACK_FIELDS = frozenset((
     "delta_apply_receipt", "coverage_restored_from",
     "coverage_restored_sha256",
 ))
-STATES = frozenset(("queued", "open", "merge-ready", "closed", "cancelled"))
-HOLDS = frozenset((
-    "none", "confirmation-required", "blocked", "revalidation-required",
-    "paused",
-))
-ACTIVE_STATES = frozenset(("open", "merge-ready"))
-TERMINAL_STATES = frozenset(("closed", "cancelled"))
-TASK_STATES = frozenset((
-    "planned", "active", "paused", "blocked", "completion-candidate",
-    "complete", "cancelled",
-))
-EXECUTION_MODES = frozenset(("concurrent-worker", "serial-integrator"))
 COVERAGE_DISPOSITIONS = frozenset((
     "required", "optional", "deferred", "excluded",
 ))
@@ -227,12 +250,7 @@ EXPRESSION_LAYER_SLOT = "Expression Layer Entry"
 HUB_DEPENDENCY_MAP_LABEL = "existing canonical dependency-map"
 HUB_EXIT_HINT = ("K13/10 admits a hub-editing batch only through an exclusive "
                  "or serial-integrator execution mode")
-# Sentinel for _require_receipt: accept any nonempty producer-era version
-# on a sealed historical receipt (K12/10 producer-era identity).
-ANY_PRODUCER_ERA_VERSION = object()
 
-SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
-BATCH_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\Z")
 
 # K12/09 owns this closed set.  A close-gate receipt names one independently
 # persisted pass receipt for every member; no omitted or ad-hoc eighth member
@@ -290,17 +308,6 @@ GENERIC_WRITER_TOOLS = frozenset((
     "check_batch_close", "adopt_standards", "register_amendment",
     "apply_contract_amendment", "apply_task_plan", "seal_receipts",
 ))
-BATCH_CLOSE_TOOL = "check_batch_close"
-BATCH_CLOSE_TOOL_VERSION = "1.12.0"
-# Queue-transition *evidence protocol* emitted by
-# ``kblib.make_queue_receipt``.  This is deliberately independent from
-# ``Tools/update_queue.py``'s CLI/distribution TOOL_VERSION: changing the
-# executable release does not reinterpret old transition evidence, while a
-# receipt-shape change must advance this producer-era identity explicitly.
-UPDATE_QUEUE_TOOL_VERSION = "1.5.0"
-SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS = frozenset((
-    "1.2.0", "1.3.0", "1.4.0", "1.5.0"))
-APPLY_DELTA_TOOL_VERSION = "1.6.0"
 SUPPORTED_APPLY_DELTA_TOOL_VERSIONS = frozenset((
     "1.4.0", "1.5.0", "1.6.0"))
 # Batch-close has a finite historical protocol catalog because its 1.4 era
@@ -313,8 +320,6 @@ SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS = frozenset((
     "1.6.0", "1.5.0",
     *LEGACY_CLOSED_LIST_VERSIONS,
 ))
-CORPUS_PLAN_TOOL = "check_corpus_plan"
-CORPUS_PLAN_TOOL_VERSION = "1.7.0"
 # A sealed close bundle keeps the child producer its batch-close era ran.
 # Batch-close 1.7 is the first protocol that consumes corpus-plan 1.7; older
 # supported bundles retain their 1.6 child identity during historical replay.
@@ -328,8 +333,6 @@ HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
     "1.5.0": "1.6.0",
     "1.4.0": "1.6.0",
 }
-MANUAL_ATTESTATION_TOOL = "manual-attestation"
-MANUAL_ATTESTATION_TOOL_VERSION = "1.0.0"
 # K12/07 fixes these seven base receipt dimensions and K12/08 / K12/18 file
 # every judgment item and Gate under one of them.  Like the Kxx numbers this
 # only projects a closed kernel set into the checker; `check_proof` carries the
@@ -354,10 +357,7 @@ NOT_BATCH_SCOPED_GATE = "not-batch-scoped"
 QUEUE_EXHAUSTED_GATE = "queue-exhausted"
 UNSCOPED_GATE_POSITIONS = frozenset((NOT_BATCH_SCOPED_GATE,
                                      QUEUE_EXHAUSTED_GATE))
-BATCH_REVIEW_GATE_ID = "batch-review"
 BATCH_REVIEW_CHECK = "batch_gate"
-TERMINAL_PROOF_TOOL = "check_proof"
-TERMINAL_PROOF_TOOL_VERSION = "1.17.0"
 # ``check_proof`` 1.16 first bound the authorized Profile snapshot and typed
 # closure. Version 1.17 additionally binds the three root-owned profile-load
 # inputs and the complete repository snapshot. Historical replay applies each
@@ -406,7 +406,6 @@ LIVE_IDENTITY_USES = frozenset((
 ))
 LEGACY_PROPERTY_RECORD_FIELDS = frozenset(("status", "value"))
 LEGACY_PROPERTY_STATUS = "legacy-unverified"
-LEGACY_PROPERTY_ADOPTION_OPERATION = "legacy-property-adoption-v1"
 PROPERTY_STATE_MIGRATION_BINDING_FIELDS = (
     "property_state_migration_records",
     "property_state_migration_count",
@@ -459,15 +458,6 @@ POLICY_EXCEPTION_SCOPE_KINDS = frozenset(("task", "repository-snapshot"))
 POLICY_EXCEPTION_DISPOSITION_VERSIONS = frozenset((
     "1.8.0", "1.9.0", "1.10.0", "1.11.0", "1.12.0",
 ))
-# Producer eras whose close bundles externalize full candidate detail to a
-# born-cold evidence file and keep only counts, the accepted-set fingerprint,
-# and the policy-exception dispositions inline (K12/09 compact evidence).
-# The sealing writer and the protocol versions whose cold archives this
-# validator will vouch for.  Sealing is the one operation that removes bytes
-# from a register, so an archive is exactly as trustworthy as the writer that
-# produced it; a version whose protocol did not exclude concurrent appenders
-# or bind its registers to a receipt cannot be certified after the fact.
-SEAL_TOOL = "seal_receipts"
 SUPPORTED_SEAL_TOOL_VERSIONS = frozenset(("1.2.0", "1.3.0", "1.4.0"))
 
 COMPACT_CLOSE_EVIDENCE_VERSIONS = frozenset((
@@ -518,8 +508,6 @@ GUIDANCE_STATUSES = frozenset((
 AMENDMENT_COMMON_FIELDS = frozenset((
     "id", "date", "summary", "status", "writeback_done",
 ))
-STANDARDS_ADOPTION_TOOL = "adopt_standards"
-STANDARDS_ADOPTION_TOOL_VERSION = "1.7.0"
 STANDARDS_ADOPTION_PROFILE_CONTRACT_MIN_VERSION = (1, 3, 0)
 # The 1.5 producer records where the adopted revision came from: the
 # distribution has no version numbers by design, so upstream/downstream
@@ -527,7 +515,6 @@ STANDARDS_ADOPTION_PROFILE_CONTRACT_MIN_VERSION = (1, 3, 0)
 STANDARDS_ADOPTION_UPSTREAM_MIN_VERSION = (1, 5, 0)
 STANDARDS_ADOPTION_PROFILE_INPUT_MIN_VERSION = (1, 4, 0)
 STANDARDS_ADOPTION_OWNER_PROJECTION_MIN_VERSION = (1, 6, 0)
-STANDARDS_ADOPTION_PLAN_PREFIX = ".cambium/deltas/standards-adoptions"
 STANDARDS_GATE_REGISTRY_PATH = \
     "kernel/K00 Standards Control/12 Control Registry.md"
 STANDARDS_REVALIDATION_CAPABILITY_PROTOCOL = "owner-projection-v1"
@@ -1437,35 +1424,8 @@ FINAL_CONTROL_STATUSES = frozenset((
 ))
 
 
-def _load_state(root, relative_path, overrides=None):
-    path = kblib.managed_repository_path(
-        root, relative_path, ".cambium/state",
-        suffixes=(".yaml",), must_exist=True,
-    )
-    if overrides and relative_path in overrides:
-        raw, data = overrides[relative_path]
-        if isinstance(raw, str):
-            raw = raw.encode("utf-8")
-        if not isinstance(raw, bytes) or not isinstance(data, dict):
-            raise ValueError("invalid in-memory state override for %s" %
-                             relative_path)
-        return path, raw, data
-    if not os.path.isfile(path):
-        raise ValueError("%s is not a regular file" % relative_path)
-    with open(path, "rb") as fh:
-        raw = fh.read()
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise ValueError("%s is not UTF-8: %s" % (relative_path, exc))
-    data = kblib.parse_yaml_subset(text)
-    if not isinstance(data, dict):
-        raise ValueError("%s top level must be a mapping" % relative_path)
-    return path, raw, data
 
 
-def _nonempty_string(value):
-    return isinstance(value, str) and bool(value.strip())
 
 
 def delta_gate_receipt_ids(delta):
@@ -1491,23 +1451,8 @@ def delta_gate_receipt_ids(delta):
     return sorted(receipt_ids)
 
 
-def _timestamp_value(value):
-    """Return one RFC 3339 instant normalized to UTC, or ``None``."""
-    if not _nonempty_string(value):
-        return None
-    candidate = value[:-1] + "+00:00" if value.endswith("Z") else value
-    try:
-        parsed = datetime.datetime.fromisoformat(candidate)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return None
-    return parsed.astimezone(datetime.timezone.utc)
 
 
-def _valid_timestamp(value):
-    """Return true for a timezone-aware RFC 3339 timestamp."""
-    return _timestamp_value(value) is not None
 
 
 def _policy_exception_errors(value, label):
@@ -1701,31 +1646,8 @@ def _sealed_policy_exception_errors(sealed, decision_id, candidate_type,
     return errors
 
 
-def _closed_mapping_errors(value, label, fields, optional_fields=()):
-    """Require one explicit mapping with exactly the declared field set."""
-    if not isinstance(value, dict):
-        return ["%s must be a mapping" % label]
-    errors = []
-    missing = sorted(set(fields) - set(optional_fields) - set(value))
-    extra = sorted(set(value) - set(fields))
-    if missing:
-        errors.append("%s misses explicit field(s): %s" %
-                      (label, ", ".join(missing)))
-    if extra:
-        errors.append("%s has unsupported field(s): %s" %
-                      (label, ", ".join(extra)))
-    return errors
 
 
-def _explicit_string_list_errors(value, label):
-    if not isinstance(value, list):
-        return ["%s must be an explicit list" % label]
-    errors = []
-    if not all(_nonempty_string(entry) for entry in value):
-        errors.append("%s must contain only non-empty strings" % label)
-    if len(value) != len(set(entry for entry in value if isinstance(entry, str))):
-        errors.append("%s must not contain duplicates" % label)
-    return errors
 
 
 def _standards_adoption_shape_errors(progress):
@@ -7343,29 +7265,6 @@ def close_gate_receipt_errors(catalog, receipt_id, *, item_id, task_id,
     return errors
 
 
-def _repository_evidence_file(root, relative_path, label, errors,
-                              *, suffixes=(".yaml", ".yml", ".json")):
-    """Resolve one immutable evidence file without symlink/hardlink aliases."""
-    try:
-        absolute = kblib.repository_path(
-            root, relative_path, must_exist=True, reject_symlink=True,
-        )
-        if suffixes and not relative_path.endswith(tuple(suffixes)):
-            raise ValueError("path must end with %s" % " or ".join(suffixes))
-        current = os.path.realpath(os.path.abspath(root))
-        for part in relative_path.replace("\\", "/").split("/"):
-            current = os.path.join(current, part)
-            if os.path.lexists(current) and os.path.islink(current):
-                raise ValueError("path must not traverse a symlink")
-        descriptor = os.lstat(absolute)
-        if not stat.S_ISREG(descriptor.st_mode):
-            raise ValueError("path is not a regular file")
-        if descriptor.st_nlink != 1:
-            raise ValueError("file must have exactly one hard link")
-        return absolute
-    except (OSError, TypeError, ValueError) as exc:
-        errors.append("%s is unsafe or missing: %s" % (label, exc))
-        return None
 
 
 def _maintenance_evidence_receipt(root, result, receipt_id, label,
@@ -9139,7 +9038,6 @@ CONTRACT_AMENDMENT_ROW_OPTIONAL_FIELDS = frozenset((
     "changed_contract_fields",
 ))
 CONTRACT_AMENDMENT_PLAN_PREFIX = ".cambium/deltas/contract-amendments"
-CONTRACT_AMENDMENT_TOOL_VERSION = "1.1.0"
 CONTRACT_AMENDMENT_TOOL_VERSIONS = frozenset(("1.0.0", "1.1.0"))
 
 
@@ -10062,14 +9960,6 @@ def _initial_queue_receipt_errors(progress, catalog, queue, queue_sha,
     return errors
 
 
-def _path_error(root, raw_path, must_exist=False):
-    try:
-        path = kblib.repository_path(root, raw_path, must_exist=must_exist)
-    except (OSError, ValueError) as exc:
-        return str(exc)
-    if must_exist and not os.path.isfile(path):
-        return "path is not a regular file"
-    return None
 
 
 def _work_spec_binding_errors(path, fingerprint, label):
@@ -10730,15 +10620,6 @@ def profile_load_errors(root, profile):
     return errors
 
 
-def _normalized_repository_path(value):
-    """Normalize one declared repository-relative path for set comparison."""
-    if not isinstance(value, str):
-        return None
-    value = check_profile.unbacktick(value).strip()
-    while value.startswith("./"):
-        value = value[2:]
-    value = value.strip("/")
-    return value or None
 
 
 def _unadmitted_profile_hub_paths(root, profile_manifest):
@@ -11222,35 +11103,8 @@ def hub_page_admission(root, manifest, records, registered_hub_paths, cache):
     }
 
 
-def _identity(data, key, nested=False):
-    if nested:
-        contract = data.get("contract")
-        return contract.get(key) if isinstance(contract, dict) else None
-    return data.get(key)
 
 
-def _acyclic(items_by_id):
-    colors = {}
-    cycle = []
-
-    def visit(item_id, trail):
-        color = colors.get(item_id, 0)
-        if color == 1:
-            cycle.extend(trail[trail.index(item_id):] + [item_id])
-            return False
-        if color == 2:
-            return True
-        colors[item_id] = 1
-        for dep in items_by_id[item_id].get("depends_on", []):
-            if dep in items_by_id and not visit(dep, trail + [dep]):
-                return False
-        colors[item_id] = 2
-        return True
-
-    for item_id in items_by_id:
-        if not visit(item_id, [item_id]):
-            return cycle
-    return []
 
 
 def _coverage_records(root, coverage, errors):
