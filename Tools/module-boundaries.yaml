@@ -28,27 +28,43 @@ modules:
       - consumer: register_amendment
         symbol: _cancel_queue
         content_sha256: sha256:0027f0421eea833287374b4c0ae228fa7832dd555b0d93a5f7ff275d6ef72b6d
+        necessity: register_amendment writes the approved row that apply_amendment later consumes, so both must validate a proposal by the identical predicate; a divergence would let a registration be accepted and its application refused
+        retires_when: the shared amendment proposal model becomes its own module with a declared surface
       - consumer: register_amendment
         symbol: _map_by_id
         content_sha256: sha256:32f5f5133570679b8e188b1fc29f7eec0ade84d6d756f323a50574017f1fcab8
+        necessity: register_amendment writes the approved row that apply_amendment later consumes, so both must validate a proposal by the identical predicate; a divergence would let a registration be accepted and its application refused
+        retires_when: the shared amendment proposal model becomes its own module with a declared surface
       - consumer: register_amendment
         symbol: _property_state_migration_bindings
         content_sha256: sha256:66a87020f3e85c5523e0d83d3b6db40db4c7aa2b5b528f4079e325f5c7b0af19
+        necessity: register_amendment writes the approved row that apply_amendment later consumes, so both must validate a proposal by the identical predicate; a divergence would let a registration be accepted and its application refused
+        retires_when: the shared amendment proposal model becomes its own module with a declared surface
       - consumer: register_amendment
         symbol: _property_state_migration_plan
         content_sha256: sha256:32be8004604b24c17a9705974687e19a3d000269b95f2b14860be3d0f3f5bdf4
+        necessity: register_amendment writes the approved row that apply_amendment later consumes, so both must validate a proposal by the identical predicate; a divergence would let a registration be accepted and its application refused
+        retires_when: the shared amendment proposal model becomes its own module with a declared surface
       - consumer: register_amendment
         symbol: _require_property_state_migration_binding
         content_sha256: sha256:443476cf6f7b26468e2a8d0d31b515ebbcb453e3f2e1a9db39d1208ca41d34e7
+        necessity: register_amendment writes the approved row that apply_amendment later consumes, so both must validate a proposal by the identical predicate; a divergence would let a registration be accepted and its application refused
+        retires_when: the shared amendment proposal model becomes its own module with a declared surface
       - consumer: register_amendment
         symbol: _structural_changes
         content_sha256: sha256:eb73b945ba613cc51a4972513712b31c3cf57ce006b127df93e23f673bb5bfed
+        necessity: register_amendment writes the approved row that apply_amendment later consumes, so both must validate a proposal by the identical predicate; a divergence would let a registration be accepted and its application refused
+        retires_when: the shared amendment proposal model becomes its own module with a declared surface
       - consumer: register_amendment
         symbol: _validate_coverage_proposal
         content_sha256: sha256:537b61c903caaabdc7e4ec9026b43cbc19d50114252cbe89599677fcbdd0f07a
+        necessity: register_amendment writes the approved row that apply_amendment later consumes, so both must validate a proposal by the identical predicate; a divergence would let a registration be accepted and its application refused
+        retires_when: the shared amendment proposal model becomes its own module with a declared surface
       - consumer: register_amendment
         symbol: _validate_plan
         content_sha256: sha256:1ee4e25d24e0cba49d94647f92a1333fe41f349886a6c1f559d9850a0f598dfb
+        necessity: register_amendment writes the approved row that apply_amendment later consumes, so both must validate a proposal by the identical predicate; a divergence would let a registration be accepted and its application refused
+        retires_when: the shared amendment proposal model becomes its own module with a declared surface
   - module: apply_contract_amendment
     path: Tools/apply_contract_amendment.py
     public: []
@@ -61,12 +77,18 @@ modules:
       - consumer: update_queue
         symbol: _build_plan
         content_sha256: sha256:b35088e2ca383285e5f4db5621c174bb3fda1d5bdc7fac0b00c502e091817e51
+        necessity: the transition edge must preview the exact plan apply_delta would execute; predicting it independently is how the preview and the apply drift apart
+        retires_when: apply_delta offers a plan-preview entry point
       - consumer: update_queue
         symbol: _delta_policy_errors
         content_sha256: sha256:94a1c0c3a9cb8fe43428fc260347d752c13500ecbaa616f14ab2768df34f2579
+        necessity: same policy validation at the edge and at the apply, so a delta cannot pass one and fail the other
+        retires_when: same as _build_plan
       - consumer: update_queue
         symbol: _merge_coverage_sections
         content_sha256: sha256:aec6a33eea18c49a6270684d7ca934f5f2ae8bf9e6b02a55f6a628a8af7360c5
+        necessity: the exact merge the apply performs, used to compute the prospective Coverage the edge binds
+        retires_when: same as _build_plan
   - module: apply_metadata_transition
     path: Tools/apply_metadata_transition.py
     public: []
@@ -263,75 +285,123 @@ modules:
       - consumer: adopt_standards
         symbol: _contract_sha256
         content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: apply_amendment
         symbol: _contract_sha256
         content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: apply_contract_amendment
         symbol: _contract_sha256
         content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: apply_contract_amendment
         symbol: _policy_exception_errors
         content_sha256: sha256:61128415c95f8ff19260342407962b824c15ea941317c35cc68cd8312fea4279
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: apply_delta
         symbol: _valid_timestamp
         content_sha256: sha256:47df0c834fe7af64fa9ca064b2a91bff5cffbc66a3365fee88f74e6ff59a9bf9
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: apply_task_plan
         symbol: _live_read_set_load_findings
         content_sha256: sha256:0bd99c61908e2d9c88e9e4a51a7e2b21e5e764da50659decaa122d81fd32899a
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: apply_task_plan
         symbol: _read_set_load_closure
         content_sha256: sha256:32ef95f11cfe1490139b5e9fe6908eb3fc4469fc22a4b3a643d9c2062cd2c093
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: check_batch_close
         symbol: _authorized_profile_view_errors
         content_sha256: sha256:411d1d1642652c066a3c759fc724b98641ac8272df607ef0e826db09cce91d84
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: check_batch_close
         symbol: _candidate_evidence_binding_errors
         content_sha256: sha256:c08db930ba91b0487828ed21ae3c97b7e5bed362d5ba1dc835307b40a01f40e3
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: check_corpus_plan
         symbol: _authorized_profile_view_errors
         content_sha256: sha256:411d1d1642652c066a3c759fc724b98641ac8272df607ef0e826db09cce91d84
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: compile_queue
         symbol: _contract_sha256
         content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: compile_queue
         symbol: _work_spec_binding_errors
         content_sha256: sha256:fa944d0e0967fbb726b07a8a1769b98f5ef281d26fa0a25c46803f60b132ff89
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: init_state
         symbol: _authorized_profile_view_errors
         content_sha256: sha256:411d1d1642652c066a3c759fc724b98641ac8272df607ef0e826db09cce91d84
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: init_state
         symbol: _public_profile_load_evidence
         content_sha256: sha256:ef64e51cda83eecfb1514f25b4d5dbe0b299c6b4e949ae8e1978454b66af50ea
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: init_state
         symbol: _valid_timestamp
         content_sha256: sha256:47df0c834fe7af64fa9ca064b2a91bff5cffbc66a3365fee88f74e6ff59a9bf9
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: register_amendment
         symbol: _contract_sha256
         content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: seal_receipts
         symbol: _cold_receipt_store
         content_sha256: sha256:c792b9109f47b4789d64a7e049e365b46a1b66a7b1d92bf5300bfb9346c19dde
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: seal_receipts
         symbol: _receipt_catalog
         content_sha256: sha256:be4c8a65baa4d1f653ac740f69ca791ad8785e72bea90689212ccddb353ed4d7
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: update_queue
         symbol: _valid_timestamp
         content_sha256: sha256:47df0c834fe7af64fa9ca064b2a91bff5cffbc66a3365fee88f74e6ff59a9bf9
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: update_task
         symbol: _contract_sha256
         content_sha256: sha256:b23ab24b35f31f9528e6eebf4e5cda60d5c3e93f7b57fb464311582597a7811e
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: update_task
         symbol: _maintenance_completion_gate_errors
         content_sha256: sha256:73f2b1e3ef6b12429c50855a2fc25896606c9e0aba631ceb9715eb5c4a1fe827
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: update_task
         symbol: _maintenance_gate_time_errors
         content_sha256: sha256:a8a664373a6083063a7e013bd6a32cb0703b4b728f62c54b0043eaaf25b5cdae
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: update_task
         symbol: _timestamp_value
         content_sha256: sha256:d2ca00daff42d70d04f29fc9ad32c336fdf7116d5e12f9cc8b57e77b9a4ad885
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
       - consumer: update_task
         symbol: _valid_timestamp
         content_sha256: sha256:47df0c834fe7af64fa9ca064b2a91bff5cffbc66a3365fee88f74e6ff59a9bf9
+        necessity: shared Queue-runtime validation reached before the package split declared its surface; the consumption is legitimate and the spelling is historical
+        retires_when: M2 completes and each caller points at the queue_runtime module that defines the symbol
   - module: check_residual_content
     path: Tools/check_residual_content.py
     public: []
@@ -358,12 +428,18 @@ modules:
       - consumer: apply_amendment
         symbol: _build_replanned_queue
         content_sha256: sha256:df029aecef840e1d4b2bd440bffd7508e79cc3fef41f4dc8a83b45f252412350
+        necessity: one construction of a replanned Queue for both amendment writers; a second copy would let a registered proposal and its application disagree
+        retires_when: compile_queue offers a replanning entry point both writers call
       - consumer: register_amendment
         symbol: _build_replanned_queue
         content_sha256: sha256:df029aecef840e1d4b2bd440bffd7508e79cc3fef41f4dc8a83b45f252412350
+        necessity: one construction of a replanned Queue for both amendment writers; a second copy would let a registered proposal and its application disagree
+        retires_when: compile_queue offers a replanning entry point both writers call
       - consumer: register_amendment
         symbol: _changed_batch_ids
         content_sha256: sha256:8bb87f64160308e8f88171ad04c5419f38dbd51f1c7ff80012da3cd95ac28901
+        necessity: the same diff the compiler uses to decide which batches a replan touches
+        retires_when: same as _build_replanned_queue
   - module: compose_page_contract
     path: Tools/compose_page_contract.py
     provisional: true
@@ -614,27 +690,43 @@ modules:
       - consumer: apply_delta
         symbol: _rules_fingerprint
         content_sha256: sha256:c18b71889771a48e07777e44f687ad35bcf9ce1e1eb39802e9f9af2b46ae2e20
+        necessity: binds an applied delta to the exact projection rule set, so a receipt cannot claim rules it was not produced under
+        retires_when: same as _frontmatter_mapping
       - consumer: check_queue
         symbol: _frontmatter_mapping
         content_sha256: sha256:c9f1ad8360409dea20792e5aa3a965801d0c7fe2f1a4dc6626b88877b1db4e48
+        necessity: the exact frontmatter parse the projection writer applies; a second parser would let a page read one way when written and another when validated
+        retires_when: project_page_state declares a page-state reading surface these callers can use
       - consumer: check_queue
         symbol: _typed_legacy_observation_value
         content_sha256: sha256:52deaf139836bd3bba5753c2de0e4ac48bed22e515270f97a1d1267c10e0dc90
+        necessity: the single interpretation of a legacy observation, shared so migration input and validation cannot disagree about what an old value meant
+        retires_when: same as _frontmatter_mapping
       - consumer: metadata_property_state
         symbol: _field_pattern
         content_sha256: sha256:f12c4d58c45e2e7ca2b4e41a8df927158e74401311ad3dd379440cd4615074b2
+        necessity: the compiled field matcher the projection rules were derived from
+        retires_when: same as _frontmatter_mapping
       - consumer: metadata_property_state
         symbol: _frontmatter_mapping
         content_sha256: sha256:c9f1ad8360409dea20792e5aa3a965801d0c7fe2f1a4dc6626b88877b1db4e48
+        necessity: the exact frontmatter parse the projection writer applies; a second parser would let a page read one way when written and another when validated
+        retires_when: project_page_state declares a page-state reading surface these callers can use
       - consumer: metadata_property_state
         symbol: _ledger_snapshot
         content_sha256: sha256:c863db7cb9541af403d7bad28ea4484031adb9b001fe809a84c1fb1273706bd7
+        necessity: the writer's snapshot of Coverage as the projection sees it; recomputing it elsewhere would compare against different bytes
+        retires_when: same as _frontmatter_mapping
       - consumer: metadata_property_state
         symbol: _owner_value
         content_sha256: sha256:b7afa87a68a9f12d4d8eea79a5366904296d884f91be006868139b6e36270a68
+        necessity: reads owner state through the writer's own accessor rather than re-deriving it from the ledger shape
+        retires_when: same as _frontmatter_mapping
       - consumer: metadata_property_state
         symbol: _typed_legacy_observation_value
         content_sha256: sha256:52deaf139836bd3bba5753c2de0e4ac48bed22e515270f97a1d1267c10e0dc90
+        necessity: the single interpretation of a legacy observation, shared so migration input and validation cannot disagree about what an old value meant
+        retires_when: same as _frontmatter_mapping
   - module: record_batch_judgment
     path: Tools/record_batch_judgment.py
     public: []

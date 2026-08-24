@@ -157,6 +157,30 @@ class PublicSurface(unittest.TestCase):
             "--output Tools/module-boundaries.yaml"
             % ", ".join(sorted(drifted)))
 
+    def test_every_exception_carries_a_judgment(self):
+        """An exception without a reason is an inventory, not a decision.
+
+        The register exists so that a reading outside a declared surface is a
+        recorded judgment rather than an accident nobody looked at. A row
+        naming only the consumer and the symbol records that the coupling
+        exists -- which the guard could already see -- and says nothing about
+        whether it should. The two annotated fields are the judgment: why this
+        is acceptable, and what would end it.
+        """
+        bare = []
+        for target, row in self.by_module.items():
+            for entry in row.get("exceptions") or ():
+                if not entry.get("necessity") or not entry.get("retires_when"):
+                    bare.append("%s.%s <- %s" % (target, entry.get("symbol"),
+                                                 entry.get("consumer")))
+        self.assertEqual(
+            [], sorted(bare),
+            "exceptions with no recorded judgment: %s\n"
+            "Add `necessity:` and `retires_when:` to each entry in "
+            "Tools/module-boundaries.yaml. Both survive regeneration; the "
+            "machine never writes them because it cannot know either."
+            % "; ".join(sorted(bare)))
+
     def test_no_exception_outlives_its_consumer(self):
         """A register that keeps retired entries stops describing anything."""
         live = {(c, m, s) for c, m, s

@@ -31,6 +31,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import module_boundary_facts as facts_module  # noqa: E402
 
 
+# Written by a person, recomputed by nobody: a machine can see that a
+# consumption exists, never why it is acceptable or what would end it.  These
+# fields therefore survive regeneration untouched -- otherwise the contract's
+# demand for a necessity and a retirement condition would hold only until the
+# next time anyone ran the generator.
+ANNOTATED_FIELDS = ("necessity", "retires_when")
+PRESERVED_FIELDS = ("content_sha256",) + ANNOTATED_FIELDS
+
+
 REPO_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -106,7 +115,15 @@ def _baseline(repo_root, base_ref):
 def _recorded_bindings(manifest_path):
     """Read the content hashes the current register already committed to.
 
-    Regeneration must not be able to launder a drifted exception.  The guard
+    The register holds two kinds of fact.  The machine derives the consumer,
+    the symbol and the hash; a person supplies why the consumption is
+    necessary and what would retire it.  Regeneration recomputes the first
+    kind and must carry the second across untouched, or the contract's
+    demand for a necessity and a retirement condition is unimplementable --
+    the annotations would survive exactly until the next time anyone ran the
+    generator.
+
+    Regeneration must also not be able to launder a drifted exception.  The guard
     refuses an exception whose definition changed, on the grounds that the
     judgment was made about different code -- and if the only way to satisfy
     the guard silently rewrote the hash, the refusal would mean nothing and
@@ -127,8 +144,10 @@ def _recorded_bindings(manifest_path):
         for entry in row.get("exceptions") or ():
             key = (row.get("module"), entry.get("consumer"),
                    entry.get("symbol"))
-            if entry.get("content_sha256"):
-                recorded[key] = entry["content_sha256"]
+            recorded[key] = {
+                field: entry[field] for field in PRESERVED_FIELDS
+                if entry.get(field)
+            }
     return recorded
 
 
@@ -156,13 +175,15 @@ def _emit_manifest(repo_root, *, acknowledge_drift=False,
 
     exceptions = {}
     for consumer, target, symbol in private:
-        binding = recorded.get((target, consumer, symbol)) or \
+        kept = recorded.get((target, consumer, symbol)) or {}
+        binding = kept.get("content_sha256") or \
             facts_module.def_span_sha256(repo_root, target, symbol)
-        exceptions.setdefault(target, []).append({
-            "consumer": consumer,
-            "symbol": symbol,
-            "content_sha256": binding,
-        })
+        entry = {"consumer": consumer, "symbol": symbol,
+                 "content_sha256": binding}
+        for field in ANNOTATED_FIELDS:
+            if kept.get(field):
+                entry[field] = kept[field]
+        exceptions.setdefault(target, []).append(entry)
 
     lines = [
         "# Tool module boundary contract -- owner"
@@ -203,6 +224,9 @@ def _emit_manifest(repo_root, *, acknowledge_drift=False,
                 if row["content_sha256"]:
                     lines.append("        content_sha256: %s"
                                  % row["content_sha256"])
+                for field in ANNOTATED_FIELDS:
+                    if row.get(field):
+                        lines.append("        %s: %s" % (field, row[field]))
     return "\n".join(lines) + "\n"
 
 
