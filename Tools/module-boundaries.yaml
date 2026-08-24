@@ -733,7 +733,6 @@ modules:
     public:
       - ACTIVE_STANDARDS_PATH
       - ACTIVE_STATES
-      - ANY_PRODUCER_ERA_VERSION
       - APPLY_DELTA_TOOL_VERSION
       - BASE_RECEIPT_DIMENSIONS
       - BATCH_CLOSE_TOOL
@@ -761,6 +760,8 @@ modules:
       - GUIDANCE_DISPOSITIONS
       - HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS
       - HOLDS
+      - INVALIDATION_APPLIED_ROLLBACK_FIELDS
+      - INVALIDATION_FIELDS
       - LEGACY_PROPERTY_STATE_FIELD
       - MANUAL_ATTESTATION_TOOL
       - MANUAL_ATTESTATION_TOOL_VERSION
@@ -776,9 +777,7 @@ modules:
       - STANDARDS_ADOPTION_TOOL_VERSION
       - STANDARDS_GATE_REGISTRY_PATH
       - STATES
-      - SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS
       - SUPPORTED_BATCH_CLOSE_TOOL_VERSIONS
-      - SUPPORTED_UPDATE_QUEUE_TOOL_VERSIONS
       - TASK_STATES
       - TERMINAL_STATES
       - TOOL
@@ -838,7 +837,6 @@ modules:
       - standards_revalidation_requirements
       - substantive_review_errors
       - task_phase_delivery_errors
-      - undischarged_revalidation_hold
       - unsupported_reviewed_records
     exceptions:
       - consumer: check_queue
@@ -847,18 +845,23 @@ modules:
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
+        symbol: _actionable_revalidation_batches
+        content_sha256: sha256:d92b1c8e251bc5ae8c95833b6f71043a2e89361f54eb6cbe2682b10570d587f2
+        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
+        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
+      - consumer: check_queue
         symbol: _acyclic
         content_sha256: sha256:4b80eb2aa5b5e1b61c9a07a24765f9672689f196ae134b0dfee0cd402b0c6903
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
-        symbol: _applied_rollback_restore_errors
-        content_sha256: sha256:a44dfc8f3aab9d0a9b8599ebcbe91e5913eb64078a448a12b97ab79a187d0c61
+        symbol: _authorized_profile_view_errors
+        content_sha256: sha256:411d1d1642652c066a3c759fc724b98641ac8272df607ef0e826db09cce91d84
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
-        symbol: _authorized_profile_view_errors
-        content_sha256: sha256:411d1d1642652c066a3c759fc724b98641ac8272df607ef0e826db09cce91d84
+        symbol: _batch_close_recovery_inventory
+        content_sha256: sha256:59b9e0da44afca780743bc66f34cdabd6c0e94c52101b758fd64d743c54461e2
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
@@ -892,18 +895,8 @@ modules:
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
-        symbol: _closed_bundle_seal_state
-        content_sha256: sha256:bde9947a6163c796a822c3444ffeda60a4a372ac9cc5393c2fe96661e89284fc
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
         symbol: _closed_delta_apply_errors
         content_sha256: sha256:9197c5eb5e48edcef2e386a2cbecdd86ab84bcba15244a175e5ab24107cc2c2b
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _closed_gate_errors
-        content_sha256: sha256:46cfeffa6e1a1f784b67fa2b90074dcee9112d0687c4b14242d5bfbc3f285168
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
@@ -982,6 +975,11 @@ modules:
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
+        symbol: _item_evidence_errors
+        content_sha256: sha256:5b03a924aa76ba02032271f022fe087db0d5abaa9b9d42ebfe0a3053a4b939ad
+        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
+        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
+      - consumer: check_queue
         symbol: _last_reconciled_guidance_id
         content_sha256: sha256:ba27338738d002851166b47eddfaa8e2092aac24d415e3797fe86bdb96b57081
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
@@ -1009,6 +1007,11 @@ modules:
       - consumer: check_queue
         symbol: _maintenance_completion_gate_errors
         content_sha256: sha256:73f2b1e3ef6b12429c50855a2fc25896606c9e0aba631ceb9715eb5c4a1fe827
+        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
+        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
+      - consumer: check_queue
+        symbol: _maintenance_gate_inventory
+        content_sha256: sha256:b9b79993c8b97f89d44034cc26578cd42bf80397f6df5a5146f455ff55400d98
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
@@ -1052,11 +1055,6 @@ modules:
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
-        symbol: _producer_era_errors
-        content_sha256: sha256:5f72ad5cb7bc5633d64413e7a9b9aa1ac4baa6804c0fc67e7ec1e56be96ef7b2
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
         symbol: _profile_view_snapshot_error
         content_sha256: sha256:60cb592f17455f863af720f3ccdb91bd9be75578684e9030bc55f76e97b32986
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
@@ -1092,18 +1090,13 @@ modules:
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
+        symbol: _resume_next_action
+        content_sha256: sha256:b364d6b400e6395eba0366472795f6e0b9ec0ec9632020ebbda6437120bf4d47
+        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
+        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
+      - consumer: check_queue
         symbol: _review_property_evidence_errors
         content_sha256: sha256:79406dbe63c84670d480c397e412f678f61ea10cd74ce9e047cdd838e0dcb47e
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _sealed_closed_bundle_errors
-        content_sha256: sha256:7be4f60a1e93ada318ca2b7bb81cf4326083cde3c7a555ecde01682f0ad3392f
-        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
-        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
-      - consumer: check_queue
-        symbol: _settlement_binding_errors
-        content_sha256: sha256:52df37b5ae001ec52a122516b4b9f25c5148efbbb1e39d68ae55b4a007f19843
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
@@ -1186,6 +1179,9 @@ modules:
   - module: queue_runtime.gate_registry
     path: Tools/queue_runtime/gate_registry.py
     public: []
+  - module: queue_runtime.item_evidence
+    path: Tools/queue_runtime/item_evidence.py
+    public: []
   - module: queue_runtime.item_history
     path: Tools/queue_runtime/item_history.py
     public: []
@@ -1215,6 +1211,9 @@ modules:
     public: []
   - module: queue_runtime.repofs
     path: Tools/queue_runtime/repofs.py
+    public: []
+  - module: queue_runtime.resume
+    path: Tools/queue_runtime/resume.py
     public: []
   - module: queue_runtime.revalidation
     path: Tools/queue_runtime/revalidation.py

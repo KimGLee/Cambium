@@ -279,6 +279,9 @@ QUEUE_RUNTIME_RANKS = {
     "queue_runtime.close_gate": 4,
     "queue_runtime.task_progress": 4,
 
+    "queue_runtime.item_evidence": 5,
+    "queue_runtime.resume": 5,
+
     "queue_runtime": 7,
 }
 
