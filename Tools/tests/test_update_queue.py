@@ -22,6 +22,9 @@ import kblib
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
+# The runtime authority check is patched below, and after the package
+# split its one caller reads the name from the module that defines it.
+import queue_runtime.authority
 import update_queue
 from profile_fixture import install_loadable_profile
 
@@ -718,7 +721,8 @@ class UpdateQueueTests(unittest.TestCase):
         with mock.patch.object(update_queue, "_write_state",
                                side_effect=write_then_switch_to_b), \
                 mock.patch.object(
-                    check_queue, "runtime_authority_currency_errors",
+                    queue_runtime.authority,
+                    "runtime_authority_currency_errors",
                     side_effect=observe_b_then_restore_a), \
                 redirect_stdout(output):
             code = update_queue.main([

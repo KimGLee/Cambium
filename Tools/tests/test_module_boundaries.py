@@ -262,6 +262,14 @@ QUEUE_RUNTIME_RANKS = {
     "queue_runtime.task_contract": 1,
     "queue_runtime.work_spec": 1,
 
+    "queue_runtime.amendments": 2,
+    "queue_runtime.authority": 2,
+    "queue_runtime.control_plane": 2,
+    "queue_runtime.coverage": 2,
+    "queue_runtime.item_history": 2,
+    "queue_runtime.review": 2,
+    "queue_runtime.task_record": 2,
+
     "queue_runtime": 7,
 }
 

@@ -59,16 +59,17 @@ from queue_runtime import (
     ACTIVE_STANDARDS_PATH,
     ACTIVE_STATES,
     ANY_PRODUCER_ERA_VERSION,
-    APPLY_AMENDMENT_TOOL_VERSION,
     APPLY_DELTA_TOOL_VERSION,
     BASE_RECEIPT_DIMENSIONS,
     BATCH_CLOSE_TOOL,
     BATCH_CLOSE_TOOL_VERSION,
     BATCH_ID_RE,
+    BATCH_REVIEW_CHECK,
     BATCH_REVIEW_GATE_ID,
-    CONTRACT_AMENDMENT_TOOL_VERSION,
+    CONTRACT_AMENDMENT_PLAN_PREFIX,
     CORPUS_PLAN_TOOL,
     CORPUS_PLAN_TOOL_VERSION,
+    COVERAGE_BATCH_SPEC_FIELDS,
     COVERAGE_PATH,
     EVIDENCE_IDENTITY_USES,
     EVIDENCE_USE_ACTIVE_TRANSACTION,
@@ -88,7 +89,6 @@ from queue_runtime import (
     QUEUE_PATH,
     READ_SET_BOUNDARY_OWNER_PATH,
     RECEIPT_REFERENCE_FIELDS,
-    REGISTER_AMENDMENT_TOOL,
     REGISTER_AMENDMENT_TOOL_VERSION,
     SHA256_RE,
     STANDARDS_ADOPTION_PLAN_PREFIX,
@@ -121,18 +121,29 @@ from queue_runtime import (
     _contract_anchor_chain,
     _contract_sha256,
     _contract_sha_at_revision,
+    _coverage_batch_spec_errors,
+    _coverage_provenance_errors,
+    _coverage_records,
+    _cross_ledger_amendment_errors,
     _current_property_receipt,
     _explicit_string_list_errors,
     _identity,
+    _initial_queue_receipt_errors,
+    _last_reconciled_guidance_id,
+    _latest_merge_transition,
     _live_read_set_load_findings,
     _load_state,
     _nonempty_string,
-    _normalized_repository_path,
+    _operational_amendment_registration_errors,
+    _ordered_item_transitions,
     _path_error,
+    _pending_control_ids,
+    _pending_cross_ledger_amendments,
     _policy_exception_errors,
     _producer_era_errors,
     _profile_view_snapshot_error,
     _public_profile_load_evidence,
+    _queue_replan_amendment_errors,
     _read_set_load_closure,
     _receipt_catalog,
     _repository_evidence_file,
@@ -143,23 +154,36 @@ from queue_runtime import (
     _standards_adoption_profile_inputs_required,
     _standards_adoption_state_file_required,
     _standards_adoption_upstream_required,
+    _task_transition_receipt_record_errors,
     _terminal_proof_profile_binding_errors,
     _timestamp_value,
+    _unadmitted_profile_hub_paths,
     _valid_timestamp,
     _work_spec_binding_errors,
     _work_spec_errors,
     _writer_locks,
     accounted_standards_versions,
+    activation_phase_delivery_errors,
     active_standards_authorized_view,
     active_standards_view_currency_errors,
+    batch_review_judgment_errors,
+    batch_review_receipt_errors,
+    batch_touches_control_plane,
+    coverage_reviewed_era_exception,
     current_receipt_catalog,
     delta_gate_receipt_ids,
     evidence_identity_errors,
     gate_registry_producer_errors,
     historical_receipt_catalog,
+    hub_page_admission,
+    invalidated_receipt_consumers,
+    item_revalidation_discharges,
+    item_undischarged_revalidation_hold,
+    judgment_record_set_sha256,
     partition_boundary_gates_by_lifecycle,
     partition_revalidation_owner_claims,
     producer_module,
+    profile_hub_paths,
     profile_load_authorized_view,
     profile_load_authorized_view_currency_errors,
     profile_load_errors,
@@ -171,11 +195,21 @@ from queue_runtime import (
     receipt_matches_gate_id,
     registered_gate_dimensions,
     registered_gate_position,
+    require_runtime_authority_current,
+    runtime_authority_context,
+    runtime_authority_currency_errors,
+    runtime_authority_lock_fields,
+    runtime_authority_validation_kwargs,
     selected_profile_manifest_errors,
     standards_gate_capability_registry,
     standards_gate_registry,
     standards_revalidation_capabilities,
     standards_revalidation_owner,
+    substantive_review_errors,
+    task_phase_delivery_errors,
+    undischarged_revalidation_hold,
+    unsupported_reviewed_records,
+    walk_revalidation_hold,
 )
 
 # The historical spelling of one promoted name.  `evidence_identity`
@@ -185,27 +219,6 @@ from queue_runtime import (
 # spelling is kept, for the test that has always read it.
 _evidence_identity_errors = evidence_identity_errors
 
-# These exact legacy protocols remain replayable.  1.0.0 is the first
-# registration shape; 1.1.0 adds withdrawal.  Neither may claim the
-# delegated-authority fields introduced by 1.2.0.  The current 1.3.0 era adds
-# the Coverage-only ``property-state-migration`` operation; older rows remain
-# producer-era history and are never asked to satisfy that new operation.
-# 1.4.0 widens the legacy observation domain for Profile Gate vocabulary
-# fields from the completion enum to the field's registered vocabulary and
-# admits explicit null observations of present-but-blank claims; current
-# owner state and Gate transitions keep the narrower completion enum.
-SUPPORTED_REGISTER_AMENDMENT_TOOL_VERSIONS = frozenset((
-    "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0",
-))
-# 1.3.0 produced the original registered queue-replan commit shape.  Its
-# bindings are still validated field by field; unknown protocols fail closed.
-SUPPORTED_COMPILE_QUEUE_TOOL_VERSIONS = frozenset((
-    "1.3.0", "1.4.0", "1.5.0",
-))
-OPERATIONAL_AMENDMENT_OPERATIONS = frozenset((
-    "queue-replan", "scope-replan", "cancel-batch",
-    "gap-routing-reconciliation", "property-state-migration",
-))
 
 
 REQUIRED_ITEM_FIELDS = (
@@ -239,22 +252,7 @@ INVALIDATION_APPLIED_ROLLBACK_FIELDS = frozenset((
     "delta_apply_receipt", "coverage_restored_from",
     "coverage_restored_sha256",
 ))
-COVERAGE_DISPOSITIONS = frozenset((
-    "required", "optional", "deferred", "excluded",
-))
 
-# K13/10 concurrency admission condition 2 ("B does not edit control or hub
-# pages").  The kernel enumerates the members; these constants only spell the
-# machine judgment for that enumeration.  `type` and `scope` are the K08
-# closed vocabularies in `kernel/K08 Metadata and Status/vocabulary-base.yaml`;
-# the profile side reuses the `Expression Layer Entry` rows the selected
-# profile already registers, so no profile slot or interface is added here.
-# The kernel's "other profile-registered hub roles" clause has no registration
-# path today and therefore contributes no member; see K13/10.
-HUB_PAGE_TYPES = frozenset(("overview", "runtime-card", "card-index"))
-HUB_TERM_TYPE = "term"
-HUB_TERM_SCOPE = "shared"
-HUB_DEPENDENCY_MAP_LABEL = "existing canonical dependency-map"
 HUB_EXIT_HINT = ("K13/10 admits a hub-editing batch only through an exclusive "
                  "or serial-integrator execution mode")
 
@@ -305,7 +303,6 @@ HISTORICAL_CORPUS_PLAN_TOOL_VERSIONS = {
     "1.5.0": "1.6.0",
     "1.4.0": "1.6.0",
 }
-BATCH_REVIEW_CHECK = "batch_gate"
 CORPUS_PLAN_TRIGGERS = frozenset(("R13", "manifest"))
 CORPUS_PLAN_PATH_SHA_FIELDS = (
     ("selected_profile_manifest", "selected_profile_manifest_sha256"),
@@ -325,26 +322,9 @@ COVERAGE_TOP_LEVEL_FIELDS = frozenset((
     "standards_version", "selected_profile_manifest", "batch_specs",
     "maintenance_candidates", "pages", "open_gaps",
 ))
-COVERAGE_BATCH_SPEC_FIELDS = frozenset((
-    "id", "family", "order_hint", "source_route", "execution_mode",
-    "depends_on", "confirmation_required", "work_spec_path",
-    "work_spec_sha256",
-))
 LEGACY_PROPERTY_STATE_FIELD = "legacy_property_state"
 LEGACY_PROPERTY_RECORD_FIELDS = frozenset(("status", "value"))
 LEGACY_PROPERTY_STATUS = "legacy-unverified"
-PROPERTY_STATE_MIGRATION_BINDING_FIELDS = (
-    "property_state_migration_records",
-    "property_state_migration_count",
-    "property_state_migration_set_sha256",
-    "metadata_execution_contract_fingerprint",
-    "metadata_execution_rule_fingerprint",
-    "operation_capability",
-    "selected_profile_manifest",
-    "profile_snapshot_sha256",
-    "profile_contract_fingerprint",
-    "profile_load_inputs_sha256",
-)
 PROGRESS_TOP_LEVEL_FIELDS = frozenset((
     "schema_version", "task_id", "task_state", "required_queue_path",
     "queue_revision", "queue_state_revision", "required_queue_sha256",
@@ -537,36 +517,6 @@ LIFECYCLE_EDGES = frozenset((
     ("merge-ready", "open"),
     ("queued", "cancelled"),
     ("open", "cancelled"),
-))
-TASK_LIFECYCLE_EDGES = frozenset((
-    ("planned", "active"),
-    ("planned", "paused"),
-    ("planned", "blocked"),
-    ("planned", "completion-candidate"),
-    ("planned", "complete"),
-    ("planned", "cancelled"),
-    ("active", "paused"),
-    ("active", "blocked"),
-    ("active", "completion-candidate"),
-    ("active", "complete"),
-    ("active", "cancelled"),
-    ("paused", "active"),
-    ("paused", "blocked"),
-    ("paused", "cancelled"),
-    ("blocked", "active"),
-    ("blocked", "paused"),
-    ("blocked", "cancelled"),
-    ("completion-candidate", "active"),
-    ("completion-candidate", "paused"),
-    ("completion-candidate", "blocked"),
-    ("completion-candidate", "complete"),
-    ("completion-candidate", "cancelled"),
-))
-FINAL_CONTROL_STATUSES = frozenset((
-    "verified", "deferred", "superseded", "not-applicable",
-    # K13/06: a withdrawn operational Amendment is final — it authorizes
-    # nothing and is never resumed, so it raises no reconcile obligation.
-    "withdrawn",
 ))
 
 
@@ -885,167 +835,20 @@ def _progress_shape_errors(progress):
 
 
 
-def _current_item_transition_evidence(item, catalog):
-    """Return hold-clear evidence in the current attempt, not all history."""
-    transition_ids = item.get("transition_receipts")
-    if not isinstance(transition_ids, list):
-        return set()
-    history = item.get("invalidation_history")
-    last_rollback = (history[-1].get("transition_receipt")
-                     if isinstance(history, list) and history and
-                     isinstance(history[-1], dict) else None)
-    start = 0
-    if last_rollback in transition_ids:
-        start = transition_ids.index(last_rollback) + 1
-    evidence = set()
-    window = set(transition_ids[start:])
-    for transition_id in transition_ids[start:]:
-        entry = catalog.get(transition_id)
-        transition = entry[1] if entry is not None else None
-        if not isinstance(transition, dict):
-            continue
-        revalidation = transition.get("standards_revalidation_receipt")
-        if _nonempty_string(revalidation):
-            evidence.add(revalidation)
-    # A discharge is recognized by the replayed hold machine, not by the
-    # adjacent `revalidation-required -> none` edge: the clear may legitimately
-    # be taken from a hold the item moved to while the obligation stood.  The
-    # machine is replayed over the whole history and the result filtered to
-    # the current attempt, because the rollback that opened this attempt's
-    # obligation sits just before the window.
-    for transition in item_revalidation_discharges(item, catalog):
-        if (transition.get("receipt_id") in window and
-                transition.get("before_state") == transition.get("after_state")
-                and _nonempty_string(transition.get("evidence_receipt"))):
-            evidence.add(transition["evidence_receipt"])
-    return evidence
 
 
-def _clears_revalidation_hold(transition):
-    """Return whether one transition discharges a `revalidation-required` hold.
-
-    The discharge is the evidence, not the edge.  ``update_queue.py`` records
-    whichever receipt authorized the clear -- the Standards revalidation
-    aggregate when adoption bindings are outstanding, otherwise the bound
-    Queue-consistency gate -- in ``evidence_receipt``, and additionally names
-    the aggregate in ``standards_revalidation_receipt``.  A transition that
-    lands on ``none`` carrying neither has proved nothing, whatever hold it
-    came from.
-    """
-    if not isinstance(transition, dict):
-        return False
-    if transition.get("after_hold_state") != "none":
-        return False
-    return (_nonempty_string(transition.get("evidence_receipt")) or
-            _nonempty_string(transition.get("standards_revalidation_receipt")))
 
 
-def walk_revalidation_hold(transitions):
-    """Replay the hold sub-state machine over one item's ordered history.
-
-    Returns ``(outstanding, discharges)``: whether a ``revalidation-required``
-    hold is still owed, and the transitions that actually retired one.
-
-    ``hold_state`` is a sub-state machine, not a set of independent flags, so
-    the obligation it records cannot be read off the current value alone.
-    Entering ``revalidation-required`` opens the obligation; only a transition
-    that lands on ``none`` with its discharge evidence retires it.  Moving to
-    any other hold -- ``paused``, ``blocked``, ``confirmation-required`` --
-    defers the obligation and never settles it, so
-    ``revalidation-required -> paused -> none`` clears exactly as much as the
-    direct ``revalidation-required -> none`` edge it routes around, which is
-    nothing.
-
-    Replaying the whole ordered list rather than reading the adjacent edge is
-    the point: the bypass is only visible across an arbitrary number of
-    intermediate holds, and a hand-edited ``hold_state`` that never recorded
-    a clearing transition stays outstanding here too.
-    """
-    outstanding = False
-    discharges = []
-    for transition in transitions or []:
-        if not isinstance(transition, dict):
-            continue
-        if transition.get("after_hold_state") == "revalidation-required":
-            outstanding = True
-        elif outstanding and _clears_revalidation_hold(transition):
-            outstanding = False
-            discharges.append(transition)
-    return outstanding, discharges
 
 
-def undischarged_revalidation_hold(transitions):
-    """Return whether a `revalidation-required` hold is still outstanding."""
-    return walk_revalidation_hold(transitions)[0]
 
 
-def _ordered_item_transitions(item, catalog):
-    """Return the item's transition receipts, in order, that resolve."""
-    transition_ids = item.get("transition_receipts")
-    if not isinstance(transition_ids, list):
-        return []
-    transitions = []
-    for transition_id in transition_ids:
-        entry = catalog.get(transition_id) if _nonempty_string(
-            transition_id) else None
-        if entry is not None and isinstance(entry[1], dict):
-            transitions.append(entry[1])
-    return transitions
 
 
-def item_undischarged_revalidation_hold(item, catalog):
-    """Resolve :func:`undischarged_revalidation_hold` from receipt IDs."""
-    return undischarged_revalidation_hold(
-        _ordered_item_transitions(item, catalog))
 
 
-def item_revalidation_discharges(item, catalog):
-    """Return the transitions that retired a `revalidation-required` hold."""
-    return walk_revalidation_hold(
-        _ordered_item_transitions(item, catalog))[1]
 
 
-def invalidated_receipt_consumers(root, queue, catalog):
-    """Map current non-terminal receipt references back to Queue batches."""
-    consumers = {}
-
-    def add(batch_id, receipt_id, source):
-        if not _nonempty_string(receipt_id):
-            return
-        consumers.setdefault(receipt_id, []).append({
-            "batch_id": batch_id, "source": source,
-        })
-
-    for item in queue.get("required_queue", []) if isinstance(
-            queue.get("required_queue"), list) else []:
-        if not isinstance(item, dict) or item.get("state") in TERMINAL_STATES:
-            continue
-        batch_id = item.get("id")
-        for field in ("activation_receipt", "confirmation_receipt"):
-            add(batch_id, item.get(field), "Queue.%s" % field)
-        for receipt_id in _current_item_transition_evidence(item, catalog):
-            add(batch_id, receipt_id, "Queue.current-transition-evidence")
-        if item.get("state") == "merge-ready":
-            for receipt_id in item.get("batch_receipts") or []:
-                add(batch_id, receipt_id, "Queue.batch_receipts")
-            for field in ("delta_apply_receipt", "queue_consistency_receipt",
-                          "close_gate_receipt"):
-                add(batch_id, item.get(field), "Queue.%s" % field)
-        if item.get("state") in ("open", "merge-ready"):
-            relative = item.get("delta_path")
-            if not _nonempty_string(relative):
-                relative = ".cambium/deltas/%s.yaml" % batch_id
-            try:
-                path = kblib.managed_repository_path(
-                    root, relative, ".cambium/deltas", suffixes=(".yaml",),
-                    must_exist=True)
-                delta = kblib.load_yaml_file(path)
-                for receipt_id in delta_gate_receipt_ids(delta):
-                    add(batch_id, receipt_id, "Delta.gate_receipts")
-            except (OSError, ValueError, kblib.YamlSubsetError):
-                # The normal Delta validator reports the underlying defect.
-                pass
-    return consumers
 
 
 def standards_revalidation_requirements(root, progress, capabilities=None,
@@ -2879,87 +2682,8 @@ def _standards_adoption_errors(
 
 
 
-def coverage_reviewed_era_exception(progress, queue, count):
-    """Return the contract exception that currently covers ``count``, or None.
-
-    K02/01 offers three dispositions for legacy `reviewed` records, and one
-    of them -- carry them under an explicit exception with a stated end --
-    had no machine carrier: the declaration lived in a revision's prose, no
-    consumer could read it, and the candidate it was meant to answer came
-    back every run.  Because activation requires a passing readiness gate,
-    choosing the disposition the kernel offers wedged the queue.
-
-    The carrier is the contract's `policy_exceptions` register (K13/02),
-    written by the K13/06 Contract Amendment transaction, with
-    `coverage.reviewed_era` in the closed policy registry.  Its `limit` is a
-    ceiling on how many records may still claim an era they cannot produce,
-    which is why the grant cannot hide new ones: the count only legitimately
-    falls as batches re-review, and any record beyond the ceiling reports as
-    a candidate exactly as before.  The stated end is the ceiling reaching
-    the scope's end -- a task-scoped grant dies with the task.
-
-    Returns ``(entry, reason)``: ``entry`` is the covering exception or
-    None, and ``reason`` explains a near miss for the operator.
-    """
-    contract = (progress or {}).get("contract")
-    entries = contract.get("policy_exceptions") if isinstance(
-        contract, dict) else None
-    if not isinstance(entries, list) or not entries:
-        return None, None
-    _policy, fingerprint, _errors = (
-        contract_exception_policy.effective_coverage_policy())
-    task_id = (queue or {}).get("task_id")
-    stale = False
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        if entry.get("policy_id") != "coverage.reviewed_era":
-            continue
-        if entry.get("baseline_policy_fingerprint") != fingerprint:
-            # Judged against policy bytes that are no longer the rule.
-            stale = True
-            continue
-        if (entry.get("scope_kind") == "task" and
-                entry.get("scope_ref") != task_id):
-            continue
-        limit = entry.get("limit")
-        if isinstance(limit, bool) or not isinstance(limit, int):
-            continue
-        if count <= limit:
-            return entry, None
-        return None, (
-            "%d record(s) exceed the %d the exception %s bounds" %
-            (count, limit, entry.get("decision_id")))
-    if stale:
-        return None, ("an exception exists but was judged against a "
-                      "superseded statement of the rule")
-    return None, None
 
 
-def unsupported_reviewed_records(coverage):
-    """Return Coverage paths claiming `reviewed` with no evidence era.
-
-    K02/01: the status carries the era of the evidence that earned it.  A
-    record naming no `gate_receipts` is claiming an era it cannot produce, so
-    a page reviewed under a superseded Standards version is indistinguishable
-    from one reviewed under the current one.  Reported as candidates, never
-    errors: in a corpus with legacy records the honest disposition is a
-    declared migration, and a hard failure would wedge the instance out of
-    the very replan that performs it.
-    """
-    unsupported = []
-    for page in (coverage or {}).get("pages") or []:
-        if not isinstance(page, dict):
-            continue
-        if page.get("authoring_status") != "reviewed":
-            continue
-        receipts = page.get("gate_receipts")
-        if not isinstance(receipts, list) or not any(
-                _nonempty_string(value) for value in receipts):
-            path = page.get("path")
-            if _nonempty_string(path):
-                unsupported.append(str(path))
-    return sorted(unsupported)
 
 
 def batch_reference_settlement_errors(result, item):
@@ -3046,462 +2770,22 @@ def _close_settlement_binding_errors(receipt, label):
     return errors
 
 
-def _latest_merge_transition(item, catalog):
-    for receipt_id in reversed(item.get("transition_receipts") or []):
-        entry = catalog.get(receipt_id)
-        receipt = entry[1] if isinstance(entry, tuple) else None
-        if (isinstance(receipt, dict) and
-                receipt.get("before_state") == "open" and
-                receipt.get("after_state") == "merge-ready"):
-            return receipt_id, receipt
-    return None, None
 
 
-def substantive_review_errors(result, item):
-    """Return the K12/12 evidence gaps for one batch's L-tier manifest pages.
-
-    Substantive correctness review is mandatory for L-tier pages and is
-    produced by a procedurally separate context; batch integration requires
-    that those receipts have all arrived.  This helper counts them for the
-    merge-ready write guard: for every manifest page whose Coverage tier is
-    ``L``, the current (adoption-filtered) catalog must hold at least one
-    passing, non-invalidated receipt with ``check: substantive_review``
-    targeting exactly that page.  S/M tiers are covered by batch spot checks
-    and are not counted here.  This is a transition-time guard, not a
-    runtime-wide validation: history closed before the guard shipped is not
-    re-judged by it.
-    """
-    errors = []
-    coverage = result.get("coverage") or {}
-    tiers = {
-        page.get("path"): page.get("tier")
-        for page in coverage.get("pages") or []
-        if isinstance(page, dict) and _nonempty_string(page.get("path"))
-    }
-    reviewed_targets = set()
-    for entry in current_receipt_catalog(result).values():
-        receipt = entry[1] if isinstance(entry, tuple) else entry
-        if not isinstance(receipt, dict):
-            continue
-        if (receipt.get("check") == "substantive_review" and
-                receipt.get("result") == "pass" and
-                receipt.get("invalidated_by") is None and
-                _nonempty_string(receipt.get("target"))):
-            reviewed_targets.add(receipt.get("target"))
-    for object_path in item.get("manifest") or []:
-        if tiers.get(object_path) != "L":
-            continue
-        if object_path not in reviewed_targets:
-            errors.append(
-                "L-tier manifest page %s has no current passing "
-                "substantive_review receipt (K12/12: mandatory for L-tier, "
-                "produced by a context other than the author)" % object_path)
-    return errors
 
 
-def activation_phase_delivery_errors(result, item, phase_id, *,
-                                     actor_context_id=None):
-    """Prove one phase's frozen set reached the context that is acting now.
-
-    Completeness is judged per attempt, never over their union.  One attempt
-    has to cover the phase by itself, because the claim being tested is that
-    a single reader received the whole thing: two half-deliveries to two
-    contexts leave neither able to say it read the Card, and unioning them
-    manufactures a reader that never existed.
-
-    Which attempt has to be the covering one is what separates the callers:
-
-    * an actor (a judgment, a governance write) must be covered by the
-      attempt derived from its *own* context -- borrowing another context's
-      ack chain would prove that somebody else read the Card.  Another
-      context's chain sitting in the same history is not itself a fault;
-      the actor's own absence is;
-    * an integrator checking history at a queue edge is not the actor: it
-      passes no ``actor_context_id`` and needs some one attempt to cover
-      the phase, whichever context earned it.
-
-    Every ack is already scoped to the current ``card_bundle_sha256``, so a
-    complete chain from a superseded bundle -- internally consistent and
-    worthless -- never enters the count.  An activation that never bound a
-    host context is `prepared`/`degraded` and stays exempt (v3 D7): it may
-    proceed, but nothing it produces may claim machine-enforced delivery.
-    """
-    errors = []
-    if not isinstance(item, dict):
-        return ["phase delivery check requires one Queue item"]
-    catalog = current_receipt_catalog(result)
-    entry = catalog.get(item.get("activation_receipt"))
-    activation = entry[1] if isinstance(entry, tuple) else entry
-    if not isinstance(activation, dict):
-        return errors
-    if activation.get("activation_protocol") not in \
-            card_activation.PHASED_PROTOCOLS:
-        # Pre-phase eras owe their own era's obligation, replayed as written.
-        return errors
-    if activation.get("delivery_assurance") != "host-bound":
-        return errors
-    context = card_activation.context_from_receipt(activation)
-    expected_ids = set(card_activation.phase_piece_ids(context, phase_id))
-    if not expected_ids:
-        return errors
-    record = card_activation.phase_record(context, phase_id) or {}
-    part_count = record.get("part_count")
-    bundle_sha = activation.get("card_bundle_sha256")
-    by_attempt = {}
-    for candidate in catalog.values():
-        receipt = candidate[1] if isinstance(candidate, tuple) else candidate
-        if not isinstance(receipt, dict):
-            continue
-        if receipt.get("phase_ack_protocol") != \
-                card_activation.PHASE_ACK_PROTOCOL:
-            continue
-        if receipt.get("phase_id") != phase_id:
-            continue
-        if receipt.get("card_bundle_sha256") != bundle_sha:
-            continue
-        if receipt.get("result") not in (None, "pass"):
-            continue
-        if receipt.get("invalidated_by") is not None:
-            continue
-        earned = by_attempt.setdefault(
-            receipt.get("delivery_attempt_id"),
-            {"pieces": set(), "parts": set()})
-        earned["pieces"].update(
-            piece_id for piece_id in receipt.get("phase_piece_ids") or []
-            if isinstance(piece_id, str))
-        earned["parts"].add(receipt.get("part_index"))
-
-    def _shortfall(earned):
-        """Say how one attempt falls short of the phase, or None if it does not."""
-        if earned is None:
-            return "holds no ack of it at all"
-        missing = sorted(expected_ids - earned["pieces"])
-        if missing:
-            return "covers %d of %d frozen piece(s), missing %s" % (
-                len(expected_ids) - len(missing), len(expected_ids),
-                ", ".join(missing[:4]) + ("..." if len(missing) > 4 else ""))
-        if isinstance(part_count, int) and len(earned["parts"]) != part_count:
-            return "acknowledges %d of %d frozen part(s)" % (
-                len(earned["parts"]), part_count)
-        return None
-
-    if actor_context_id:
-        expected_attempt = card_activation.expected_delivery_attempt_id(
-            bundle_sha, actor_context_id)
-        shortfall = _shortfall(by_attempt.get(expected_attempt))
-        if shortfall:
-            errors.append(
-                "phase %s is not delivered to this actor: attempt %s %s%s" %
-                (phase_id, expected_attempt, shortfall,
-                 "" if not by_attempt else
-                 "; %d other attempt(s) hold acks, and none of them is this "
-                 "actor's" % len(
-                     [key for key in by_attempt if key != expected_attempt])))
-        return errors
-    covering = [key for key, earned in by_attempt.items()
-                if _shortfall(earned) is None]
-    if not covering:
-        if not by_attempt:
-            errors.append(
-                "phase %s is not delivered to this activation: none of its "
-                "%d frozen piece(s) has a current ack" %
-                (phase_id, len(expected_ids)))
-        else:
-            errors.append(
-                "phase %s is not delivered to this activation: no single "
-                "attempt covers it (%s)" %
-                (phase_id, "; ".join(
-                    "%s %s" % (key, _shortfall(earned))
-                    for key, earned in sorted(
-                        by_attempt.items(),
-                        key=lambda row: str(row[0]))[:2])))
-    return errors
 
 
-CONTROL_PLANE_PREFIXES = ("kernel/", "profiles/", "Tools/")
 
 
-def batch_touches_control_plane(item):
-    """Say whether one batch's own manifest edits the control plane.
-
-    This is the governance predicate, and it is deliberately about the
-    objects a batch changes rather than about which tool it runs.  A tool
-    name can be avoided -- a file is editable without any writer -- while a
-    batch that carries `kernel/`, `profiles/` or `Tools/` in its manifest is
-    doing governance whatever it invokes, and it still has to reach
-    merge-ready through the one edge no editor can route around.
-    """
-    if not isinstance(item, dict):
-        return False
-    for path in item.get("manifest") or []:
-        if isinstance(path, str) and path.startswith(CONTROL_PLANE_PREFIXES):
-            return True
-    return False
 
 
-def task_phase_delivery_errors(result, phase_id, *, actor_context_id=None):
-    """Check one phase across every batch that still carries an activation.
-
-    Some phases are entered by a task-level act rather than a batch one: a
-    completion-candidate transition, a Standards governance write.  Those
-    acts have no batch of their own, and a phase plan is frozen per batch,
-    so the honest scope is every batch currently holding an activation.
-    When none does the obligation has no carrier and this returns nothing --
-    the gate declines to invent evidence it has no place to look for, which
-    is the same reason K13/20 refuses to treat an admission receipt as
-    delivery.
-    """
-    errors = []
-    for item in (result.get("queue") or {}).get("required_queue") or []:
-        if not isinstance(item, dict):
-            continue
-        if item.get("state") not in ("open", "merge-ready"):
-            continue
-        for message in activation_phase_delivery_errors(
-                result, item, phase_id, actor_context_id=actor_context_id):
-            errors.append("%s: %s" % (item.get("id"), message))
-    return errors
 
 
-def judgment_record_set_sha256(records):
-    """Hash the exact actual judgment set the batch-review wrapper binds."""
-    identity = sorted(
-        (
-            {
-                "target": row["target"],
-                "judgment_item_id": row["judgment_item_id"],
-                "receipt_id": row["receipt_id"],
-            }
-            for row in records
-        ),
-        key=lambda row: (row["judgment_item_id"], row["target"],
-                         row["receipt_id"]),
-    )
-    return kblib.sha256_bytes(kblib.canonical_json_bytes(identity))
 
 
-def batch_review_judgment_errors(result, item, wrapper_receipt):
-    """Prove the Profile's frozen judgment obligations are exactly answered.
-
-    Expected records come from the authorized Profile's Batch Review
-    Requirements expanded over the frozen manifest — the same expansion the
-    activation receipt froze at `queued -> open`.  Actual records come from
-    the current `profile_batch_judgment` receipts the wrapper binds.  One
-    missing, extra, duplicated, drifted, mis-roled, or reused record refuses
-    the transition.  A batch activated under the pre-review era carries no
-    obligations and must carry no judgment bindings: sealed history keeps
-    its own shape.
-    """
-    errors = []
-    item_id = item.get("id")
-    catalog = current_receipt_catalog(result)
-    activation_entry = catalog.get(item.get("activation_receipt")) if         isinstance(item.get("activation_receipt"), str) else None
-    activation = activation_entry[1] if activation_entry else None
-    protocol = activation.get("activation_protocol") if isinstance(
-        activation, dict) else None
-    # A batch whose activation predates delivery receipts entirely — or
-    # was activated under v1 — predates the review era.  It owes nothing
-    # and must carry nothing; the runtime validator, not this gate, is
-    # what guarantees a current-era batch cannot shed its activation
-    # receipt to slip into this branch.
-    legacy = protocol != card_activation.ACTIVATION_PROTOCOL
-    wrapper_fields = (
-        "review_requirement_set_sha256", "judgment_receipt_ids",
-        "judgment_record_set_sha256")
-    if legacy:
-        for field in wrapper_fields:
-            if field in (wrapper_receipt or {}):
-                errors.append(
-                    "%s was activated under %s; its batch-review wrapper "
-                    "must not carry %s" % (item_id, protocol, field))
-        return errors
-
-    view = result.get("_profile_authorized_view") or {}
-    contract = view.get("_contract")
-    if contract is None or not getattr(contract, "authorized", False):
-        errors.append(
-            "%s judgment validation requires one authorized typed Profile "
-            "contract" % item_id)
-        return errors
-    try:
-        expected = card_activation.expand_batch_review_requirements(
-            contract, item)
-    except (TypeError, ValueError) as exc:
-        errors.append("%s requirement expansion failed: %s" % (item_id, exc))
-        return errors
-    expected_sha = card_activation.review_requirement_set_sha256(expected)
-    if activation.get("review_requirement_set_sha256") != expected_sha:
-        errors.append(
-            "%s current Profile/manifest expansion no longer matches the "
-            "activation-frozen requirement set; the batch must be "
-            "reactivated" % item_id)
-        return errors
-    requirements = {
-        row.judgment_item_id: row
-        for row in getattr(contract, "batch_review_requirements", ())
-    }
-
-    wrapper = wrapper_receipt or {}
-    if not expected:
-        # A Profile with no requirements owes nothing: an absent binding IS
-        # the empty set, so requirement-free adopters keep their exact
-        # current wrapper shape.  A wrapper that does carry the fields must
-        # still carry them correctly.
-        if not any(field in wrapper for field in wrapper_fields):
-            return errors
-    if wrapper.get("review_requirement_set_sha256") != expected_sha:
-        errors.append(
-            "%s batch review wrapper must bind "
-            "review_requirement_set_sha256=%s" % (item_id, expected_sha))
-    bound = wrapper.get("judgment_receipt_ids")
-    if not isinstance(bound, list) or not all(
-            _nonempty_string(value) for value in bound):
-        errors.append(
-            "%s batch review wrapper judgment_receipt_ids must be an "
-            "explicit string list" % item_id)
-        return errors
-    if bound != sorted(set(bound)):
-        errors.append(
-            "%s batch review wrapper judgment_receipt_ids must be sorted "
-            "and unique" % item_id)
-        return errors
-
-    current_fingerprint = view.get("profile_contract_fingerprint")
-    actual = []
-    seen = {}
-    for receipt_id in bound:
-        entry = catalog.get(receipt_id)
-        receipt = entry[1] if entry else None
-        if not isinstance(receipt, dict):
-            errors.append(
-                "%s judgment receipt %s is absent from the current catalog" %
-                (item_id, receipt_id))
-            continue
-        label = "%s judgment receipt %s" % (item_id, receipt_id)
-        if receipt.get("invalidated_by") is not None:
-            errors.append("%s is invalidated" % label)
-            continue
-        if (receipt.get("tool") != "record_batch_judgment" or
-                receipt.get("check") != "profile_batch_judgment" or
-                receipt.get("result") != "pass"):
-            errors.append("%s is not a passing profile_batch_judgment" %
-                          label)
-            continue
-        if receipt.get("task_id") != result["queue"].get("task_id"):
-            errors.append("%s binds a different task" % label)
-        if receipt.get("batch_id") != item_id:
-            errors.append("%s binds a different batch" % label)
-        if receipt.get("opening_transition_receipt") != item.get(
-                "activation_receipt"):
-            errors.append(
-                "%s binds a different activation; a reopened batch redoes "
-                "its judgments" % label)
-        if receipt.get("review_requirement_set_sha256") != expected_sha:
-            errors.append("%s binds a different requirement set" % label)
-        if receipt.get("profile_contract_fingerprint") !=                 current_fingerprint:
-            errors.append("%s binds a superseded Profile contract" % label)
-        target = receipt.get("target")
-        judgment_item_id = receipt.get("judgment_item_id")
-        requirement = requirements.get(judgment_item_id)
-        if requirement is None:
-            errors.append("%s names an unregistered Judgment Item" % label)
-            continue
-        if receipt.get("reviewer_role") !=                 requirement.pass_authority_role_id:
-            errors.append(
-                "%s reviewer_role %r is not the registered pass authority "
-                "%r" % (label, receipt.get("reviewer_role"),
-                        requirement.pass_authority_role_id))
-        if receipt.get("receipt_schema") != requirement.receipt_schema:
-            errors.append("%s carries the wrong receipt schema" % label)
-        if requirement.target_selector == "each-manifest-page":
-            try:
-                _snapshot, semantic_sha = metadata_property_state.                    semantic_page_snapshot(result["root"], target)
-            except (OSError, TypeError, UnicodeError, ValueError) as exc:
-                errors.append("%s target cannot be snapshotted: %s" %
-                              (label, exc))
-                semantic_sha = None
-            if semantic_sha is not None and receipt.get(
-                    "semantic_content_sha256") != semantic_sha:
-                errors.append(
-                    "%s was judged against different page bytes; the "
-                    "changed page must be re-judged" % label)
-        key = (target, judgment_item_id)
-        if key in seen:
-            errors.append(
-                "%s duplicates the judgment %s already bound for %r" %
-                (label, seen[key], key))
-            continue
-        seen[key] = receipt_id
-        actual.append({
-            "target": target,
-            "judgment_item_id": judgment_item_id,
-            "receipt_id": receipt_id,
-        })
-
-    expected_keys = {(row["target"], row["judgment_item_id"])
-                     for row in expected}
-    actual_keys = set(seen)
-    for target, judgment_item_id in sorted(expected_keys - actual_keys):
-        errors.append(
-            "%s is missing the required judgment (%s, %s)" %
-            (item_id, target, judgment_item_id))
-    for target, judgment_item_id in sorted(actual_keys - expected_keys):
-        errors.append(
-            "%s binds the unexpected judgment (%s, %s)" %
-            (item_id, target, judgment_item_id))
-    if not errors and wrapper.get("judgment_record_set_sha256") !=             judgment_record_set_sha256(actual):
-        errors.append(
-            "%s batch review wrapper judgment_record_set_sha256 does not "
-            "bind the exact actual judgment set" % item_id)
-    return errors
 
 
-def batch_review_receipt_errors(catalog, receipt_id, *, item_id, task_id,
-                                delta_page_receipt_ids):
-    """Validate the current batch-level authorization around page evidence.
-
-    Page receipts may have been produced by older evidence protocols and are
-    validated separately as history.  The lifecycle edge is authorized only
-    by one current manual-attestation receipt that binds their exact IDs.
-    """
-    errors = []
-    receipt = _require_receipt(
-        catalog, receipt_id, "%s batch review" % item_id, errors,
-        expected={
-            "tool": MANUAL_ATTESTATION_TOOL,
-            "tool_version": MANUAL_ATTESTATION_TOOL_VERSION,
-            "gate_id": BATCH_REVIEW_GATE_ID,
-            "check": BATCH_REVIEW_CHECK,
-            "target": item_id,
-            "task_id": task_id,
-            "batch_id": item_id,
-        },
-    )
-    if receipt is None:
-        return errors
-    bound = receipt.get("delta_page_receipt_ids")
-    expected = sorted(set(delta_page_receipt_ids or []))
-    if (not isinstance(bound, list) or
-            not all(_nonempty_string(value) for value in bound)):
-        errors.append(
-            "%s batch review receipt %s delta_page_receipt_ids must be an "
-            "explicit string list" % (item_id, receipt_id))
-    elif bound != sorted(set(bound)):
-        errors.append(
-            "%s batch review receipt %s delta_page_receipt_ids must be "
-            "sorted and unique" % (item_id, receipt_id))
-    elif bound != expected:
-        errors.append(
-            "%s batch review receipt %s delta_page_receipt_ids=%r, "
-            "expected exact Delta page receipt IDs %r" %
-            (item_id, receipt_id, bound, expected))
-    if isinstance(bound, list):
-        for page_receipt_id in expected:
-            _require_receipt(
-                catalog, page_receipt_id,
-                "%s batch review page evidence" % item_id, errors,
-            )
-    return errors
 
 
 def _candidate_evidence_binding_errors(root, label, relative, expected_sha,
@@ -5331,146 +4615,10 @@ def _maintenance_gate_time_errors(result, gate):
     return errors
 
 
-def _pending_control_ids(progress):
-    """Return pending Guidance and Amendment identifiers for resume/terminal gates."""
-    pending_guidance = []
-    guidance = progress.get("guidance_queue")
-    if isinstance(guidance, list):
-        for index, entry in enumerate(guidance):
-            if (not isinstance(entry, dict) or
-                    entry.get("status") not in FINAL_CONTROL_STATUSES):
-                pending_guidance.append(str(
-                    entry.get("guidance_id") if isinstance(entry, dict) else
-                    "#%d" % index))
-    pending_amendments = []
-    amendments = progress.get("amendments")
-    if isinstance(amendments, list):
-        for index, entry in enumerate(amendments):
-            if not isinstance(entry, dict):
-                pending_amendments.append("#%d" % index)
-                continue
-            status = entry.get("status")
-            if (status not in FINAL_CONTROL_STATUSES or
-                    (status == "verified" and
-                     entry.get("writeback_done") is not True)):
-                pending_amendments.append(str(entry.get("id") or "#%d" % index))
-    return pending_guidance, pending_amendments
 
 
-def _last_reconciled_guidance_id(progress):
-    """Derive the incremental guidance boundary named by K00/10 and K12/04.
-
-    K13/07 keeps Pending/reconciled Guidance in Progress but forbids Progress
-    holding a second authority for anything the owned records already
-    determine.  ``last_reconciled_guidance_id`` is exactly such a value: it is
-    the last entry of the longest recorded prefix that has left ``received``,
-    so it is a projection of ``guidance_queue`` rather than an independently
-    editable cursor.  ``guidance_id`` is task-local and monotonically
-    increasing (K13/06), and no status transition returns to ``received``, so
-    the projection never moves backwards.  Batch-close reconciliation still
-    carries the existing open items separately (K12/04); this boundary only
-    bounds what is *new*.
-    """
-    guidance = progress.get("guidance_queue")
-    if not isinstance(guidance, list):
-        return None
-    boundary = None
-    for entry in guidance:
-        if not isinstance(entry, dict) or entry.get("status") == "received":
-            break
-        entry_id = entry.get("guidance_id")
-        if not _nonempty_string(entry_id):
-            break
-        boundary = entry_id
-    return boundary
 
 
-def _task_transition_receipt_record_errors(
-        catalog, receipt_id, receipt, completion_semantics,
-        *, expected_contract_sha=None):
-    """Validate the canonical, history-independent transition fields.
-
-    The live Progress validator and historical maintenance-predecessor
-    validation share this exact record contract.  History ordering and the
-    live checkpoint remain the caller's responsibility; receipt shape, edge
-    semantics, fingerprints, and evidence binding do not get a weaker
-    historical substitute.
-    """
-    errors = []
-    before = receipt.get("before_task_state")
-    after = receipt.get("after_task_state")
-    if (before, after) not in TASK_LIFECYCLE_EDGES:
-        errors.append("task transition receipt %s has illegal edge %r -> %r" %
-                      (receipt_id, before, after))
-    elif (completion_semantics == "build" and after == "complete" and
-          before != "completion-candidate"):
-        errors.append(
-            "build task transition %s may not bypass completion-candidate" %
-            receipt_id
-        )
-    elif (completion_semantics == "maintenance" and
-          "completion-candidate" in (before, after)):
-        errors.append(
-            "maintenance task transition %s may not enter or leave "
-            "completion-candidate" % receipt_id
-        )
-    elif (completion_semantics == "maintenance" and after == "complete" and
-          before not in ("planned", "active")):
-        errors.append(
-            "maintenance task transition %s must be planned/active -> "
-            "complete" % receipt_id
-        )
-    checked_at = receipt.get("checked_at")
-    if not _valid_timestamp(checked_at):
-        errors.append("task transition receipt %s has invalid checked_at" %
-                      receipt_id)
-    for field in (
-            "before_coverage_sha256", "after_coverage_sha256",
-            "before_required_queue_sha256",
-            "after_required_queue_sha256", "before_progress_sha256",
-            "after_progress_sha256"):
-        value = receipt.get(field)
-        if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
-            errors.append("task transition receipt %s has invalid %s" %
-                          (receipt_id, field))
-    contract_sha = receipt.get("contract_sha256")
-    if not isinstance(contract_sha, str) or not SHA256_RE.fullmatch(
-            contract_sha):
-        errors.append("task transition receipt %s has invalid "
-                      "contract_sha256" % receipt_id)
-    elif (expected_contract_sha is not None and
-          contract_sha != expected_contract_sha):
-        errors.append("task transition receipt %s does not bind the "
-                      "Task Contract active at Queue revision %r" %
-                      (receipt_id, receipt.get("queue_revision")))
-    if receipt.get("before_coverage_sha256") != receipt.get(
-            "after_coverage_sha256"):
-        errors.append("task transition receipt %s must not mutate Coverage" %
-                      receipt_id)
-    if (isinstance(receipt.get("before_progress_sha256"), str) and
-            isinstance(receipt.get("after_progress_sha256"), str) and
-            receipt.get("before_progress_sha256") ==
-            receipt.get("after_progress_sha256")):
-        errors.append("task transition receipt %s must change Progress bytes" %
-                      receipt_id)
-    for field, minimum in (("queue_revision", 1),
-                           ("queue_state_revision", 0)):
-        value = receipt.get(field)
-        if (not isinstance(value, int) or isinstance(value, bool) or
-                value < minimum):
-            errors.append("task transition receipt %s has invalid %s" %
-                          (receipt_id, field))
-    evidence = receipt.get("evidence_receipt")
-    if after in ("completion-candidate", "complete"):
-        if not _nonempty_string(evidence):
-            errors.append("task transition %s requires evidence_receipt" %
-                          receipt_id)
-        else:
-            _require_receipt(
-                catalog, evidence, "task transition %s evidence" % receipt_id,
-                errors,
-            )
-    return errors
 
 
 def _task_transition_errors(root, progress, catalog, queue, queue_sha,
@@ -5951,1689 +5099,90 @@ def _task_transition_errors(root, progress, catalog, queue, queue_sha,
     }
 
 
-def _operational_amendment_registration_errors(
-        progress, amendment, label, current_catalog, historical_catalog,
-        queue, coverage_sha, queue_sha, progress_sha):
-    """Validate the registration which authorized one operational Amendment.
-
-    A pending Amendment is a current authorization and therefore resolves only
-    through the Standards-adoption-filtered catalog.  Once the transaction is
-    verified, the same registration is immutable historical evidence; later
-    Standards adoption may invalidate it for new work without erasing the fact
-    that it authorized the completed transaction.
-    """
-    errors = []
-    operation = amendment.get("operation")
-    if operation is None:
-        # An ordinary Guidance log row carries no operation and owes no
-        # registration binding.
-        return errors
-    if operation == "contract-amendment":
-        # Written only by its dedicated K13/06 transaction writer, which has
-        # no pending phase; the row lands committed with its verification
-        # receipt, and _contract_amendment_row_errors owns its binding.
-        return errors
-    if operation not in OPERATIONAL_AMENDMENT_OPERATIONS:
-        # Fail closed: a row *claiming* an operation this validator does not
-        # know would otherwise skip every registration binding below, making
-        # an unknown operation name a way to hold authorization with no
-        # registered evidence at all.
-        errors.append(
-            "%s declares unknown operation %r; operational Amendments are "
-            "limited to %s, and an unrecognized operation cannot be exempt "
-            "from registration binding" %
-            (label, operation,
-             ", ".join(sorted(OPERATIONAL_AMENDMENT_OPERATIONS) +
-                       ["contract-amendment"])))
-        return errors
-    status = amendment.get("status")
-    writeback = amendment.get("writeback_done")
-    pending = status == "approved" and writeback is False
-    verified = status == "verified" and writeback is True
-    catalog = current_catalog if pending else historical_catalog
-    receipt_id = amendment.get("registration_receipt")
-    approval_reference = amendment.get("approval_reference")
-    if not _nonempty_string(approval_reference):
-        errors.append("%s approval_reference must be a non-empty string" % label)
-
-    state_prefix = ("queue_state_revision" if operation == "queue-replan"
-                    else "state_revision")
-    expected = {
-        "tool": REGISTER_AMENDMENT_TOOL,
-        # K12/10 producer-era identity: a registration sealed under an
-        # accounted Standards era is never re-judged against the current
-        # writer constant — the payload contract below stays exact, and a
-        # protocol the current runtime cannot execute fails at execution or
-        # is withdrawn, never by version drift here.
-        "tool_version": ANY_PRODUCER_ERA_VERSION,
-        "check": "amendment_registration",
-        "target": amendment.get("id"),
-        "task_id": queue.get("task_id"),
-        "actor_role": "integrator",
-        "amendment_id": amendment.get("id"),
-        "operation": operation,
-        "approval_reference": approval_reference,
-        "summary": amendment.get("summary"),
-        "affected_pages": amendment.get("affected_pages"),
-        "affected_batches": amendment.get("affected_batches"),
-        "scope_version_before": amendment.get("scope_version_before"),
-        "scope_version_after": amendment.get("scope_version_after"),
-        "queue_revision_before": amendment.get("queue_revision_before"),
-        "queue_revision_after": amendment.get("queue_revision_after"),
-        "state_revision_before": amendment.get(state_prefix + "_before"),
-        "state_revision_after": amendment.get(state_prefix + "_after"),
-        "coverage_proposal_path": amendment.get("coverage_proposal_path"),
-        "coverage_proposal_sha256": amendment.get(
-            "coverage_proposal_sha256"),
-    }
-    if operation == "queue-replan":
-        expected["replan_diff_sha256"] = amendment.get("replan_diff_sha256")
-    else:
-        expected.update({
-            "plan_path": amendment.get("plan_path"),
-            "plan_sha256": amendment.get("plan_sha256"),
-            "cancel_batch_id": amendment.get("cancel_batch_id"),
-        })
-    if operation == "property-state-migration":
-        expected.update({
-            field: amendment.get(field)
-            for field in PROPERTY_STATE_MIGRATION_BINDING_FIELDS
-        })
-    receipt = _require_receipt(
-        catalog, receipt_id, "%s registration" % label, errors,
-        expected=expected,
-    )
-    if receipt is None:
-        return errors
-    receipt_version = receipt.get("tool_version")
-    if receipt_version not in SUPPORTED_REGISTER_AMENDMENT_TOOL_VERSIONS:
-        errors.append(
-            "%s registration receipt has unsupported register_amendment "
-            "producer version %r" % (label, receipt_version))
-    if (operation == "property-state-migration" and
-            receipt_version != REGISTER_AMENDMENT_TOOL_VERSION):
-        errors.append(
-            "%s property-state-migration requires register_amendment %s" %
-            (label, REGISTER_AMENDMENT_TOOL_VERSION))
-    if operation == "property-state-migration":
-        try:
-            migration_records = \
-                metadata_property_state.validate_legacy_property_migration_records(
-                    amendment.get("property_state_migration_records"),
-                    expected_paths=amendment.get("affected_pages"))
-            migration_set_sha = \
-                metadata_property_state.legacy_property_migration_set_sha256(
-                    amendment.get("property_state_migration_records"))
-        except (TypeError, ValueError) as exc:
-            errors.append(
-                "%s property-state-migration records are invalid: %s" %
-                (label, exc))
-            migration_records = {}
-            migration_set_sha = None
-        if amendment.get("property_state_migration_count") != len(
-                migration_records):
-            errors.append(
-                "%s property-state-migration count does not equal its exact "
-                "record set" % label)
-        if amendment.get(
-                "property_state_migration_set_sha256") != migration_set_sha:
-            errors.append(
-                "%s property-state-migration record-set digest is stale" %
-                label)
-        if amendment.get("operation_capability") != \
-                LEGACY_PROPERTY_ADOPTION_OPERATION:
-            errors.append(
-                "%s property-state-migration does not bind the %s typed "
-                "operation" % (label, LEGACY_PROPERTY_ADOPTION_OPERATION))
-        for field in (
-                "property_state_migration_set_sha256",
-                "metadata_execution_contract_fingerprint",
-                "metadata_execution_rule_fingerprint",
-                "profile_snapshot_sha256", "profile_contract_fingerprint",
-                "profile_load_inputs_sha256"):
-            if not SHA256_RE.fullmatch(str(amendment.get(field) or "")):
-                errors.append(
-                    "%s property-state-migration has invalid %s" %
-                    (label, field))
-        if not _nonempty_string(amendment.get("selected_profile_manifest")):
-            errors.append(
-                "%s property-state-migration has no selected Profile "
-                "manifest" % label)
-    authority_fields = (
-        "decision_mode", "authority_id", "authority_sha256",
-        "change_classes", "amendment_impact_sha256",
-    )
-    if receipt_version in ("1.2.0", REGISTER_AMENDMENT_TOOL_VERSION):
-        for field in authority_fields:
-            if receipt.get(field) != amendment.get(field):
-                errors.append(
-                    "%s registration receipt %s=%r, expected %r" %
-                    (label, field, receipt.get(field), amendment.get(field)))
-        if amendment.get("decision_mode") not in (
-                "contract-delegated", "explicit-user"):
-            errors.append(
-                "%s current registration decision_mode is invalid" % label)
-        classes = amendment.get("change_classes")
-        if (not isinstance(classes, list) or not classes or
-                classes != sorted(set(classes))):
-            errors.append(
-                "%s current registration change_classes must be a non-empty "
-                "sorted unique list" % label)
-        for field in ("amendment_impact_sha256",):
-            if not SHA256_RE.fullmatch(str(amendment.get(field) or "")):
-                errors.append("%s current registration has invalid %s" %
-                              (label, field))
-        if amendment.get("decision_mode") == "contract-delegated":
-            if (not _nonempty_string(amendment.get("authority_id")) or
-                    not SHA256_RE.fullmatch(str(
-                        amendment.get("authority_sha256") or ""))):
-                errors.append(
-                    "%s delegated registration must bind authority id/hash" %
-                    label)
-        elif (amendment.get("authority_id") is not None or
-              amendment.get("authority_sha256") is not None):
-            errors.append(
-                "%s explicit-user registration must not claim contract "
-                "authority" % label)
-    elif any(field in amendment or field in receipt
-             for field in authority_fields):
-        errors.append(
-            "%s legacy registration era must not claim delegated-authority "
-            "fields" % label)
-    if not _valid_timestamp(receipt.get("checked_at")):
-        errors.append("%s registration receipt has invalid checked_at" % label)
-    elif amendment.get("date") != receipt.get("checked_at")[:10]:
-        errors.append("%s date must equal the registration receipt date" % label)
-    for field in (
-            "contract_sha256", "before_coverage_sha256",
-            "after_coverage_sha256", "before_required_queue_sha256",
-            "after_required_queue_sha256", "before_progress_sha256",
-            "after_progress_sha256"):
-        if not SHA256_RE.fullmatch(str(receipt.get(field, ""))):
-            errors.append("%s registration receipt has invalid %s" %
-                          (label, field))
-    if pending:
-        pending_bindings = {
-            "contract_sha256": _contract_sha256(progress),
-            "before_coverage_sha256": coverage_sha,
-            "after_coverage_sha256": coverage_sha,
-            "before_required_queue_sha256": queue_sha,
-            "after_required_queue_sha256": queue_sha,
-            "after_progress_sha256": progress_sha,
-        }
-        for field, value in pending_bindings.items():
-            if receipt.get(field) != value:
-                errors.append(
-                    "%s current registration receipt has %s=%r, expected %r" %
-                    (label, field, receipt.get(field), value)
-                )
-    elif status == "withdrawn" and writeback is False:
-        # K13/06 withdrawal: a pending registration whose execution can no
-        # longer validate is retired through the registering writer, never by
-        # editing the row.  The withdrawal receipt is immutable history; the
-        # bound plan/proposal bytes above stay verified forever.
-        if not _nonempty_string(amendment.get("withdrawal_reason")):
-            errors.append("%s withdrawn row must record a nonempty "
-                          "withdrawal_reason" % label)
-        _require_receipt(
-            historical_catalog, amendment.get("withdrawal_receipt"),
-            "%s withdrawal" % label, errors,
-            expected={
-                "tool": REGISTER_AMENDMENT_TOOL,
-                "tool_version": ANY_PRODUCER_ERA_VERSION,
-                "check": "amendment_withdrawal",
-                "target": amendment.get("id"),
-                "amendment_id": amendment.get("id"),
-                "registration_receipt": receipt_id,
-            },
-        )
-        return errors
-    elif not verified:
-        # The operation-specific validators report the illegal lifecycle pair;
-        # registration is meaningful only at either end of that pair.
-        return errors
-    return errors
-
-
-def _registration_execution_bridge_errors(
-        amendment, label, historical_catalog, commit_receipt,
-        commit_queue_before_field):
-    """Bind one completed operation to the exact state its registration froze."""
-    errors = []
-    if not isinstance(commit_receipt, dict):
-        return errors
-    registration_id = amendment.get("registration_receipt")
-    registration_entry = historical_catalog.get(registration_id) if \
-        _nonempty_string(registration_id) else None
-    registration = registration_entry[1] if registration_entry is not None \
-        else None
-    if not isinstance(registration, dict):
-        return errors
-    for registration_field, commit_field in (
-            ("after_coverage_sha256", "before_coverage_sha256"),
-            ("after_required_queue_sha256", commit_queue_before_field),
-            ("after_progress_sha256", "before_progress_sha256")):
-        registered_sha = registration.get(registration_field)
-        execution_sha = commit_receipt.get(commit_field)
-        if (SHA256_RE.fullmatch(str(registered_sha or "")) and
-                SHA256_RE.fullmatch(str(execution_sha or "")) and
-                registered_sha != execution_sha):
-            errors.append(
-                "%s registration %s=%r does not bridge to execution %s=%r" %
-                (label, registration_field, registered_sha,
-                 commit_field, execution_sha)
-            )
-    registration_time = _timestamp_value(registration.get("checked_at"))
-    commit_time = _timestamp_value(commit_receipt.get("checked_at"))
-    if commit_time is None:
-        errors.append("%s execution receipt has invalid checked_at" % label)
-    elif registration_time is not None and commit_time < registration_time:
-        errors.append(
-            "%s execution receipt predates its registration receipt" % label
-        )
-    return errors
-
-
-CONTRACT_AMENDMENT_ROW_FIELDS = frozenset((
-    "id", "date", "summary", "status", "writeback_done", "operation",
-    "approval_reference",
-    "scope_version_before", "scope_version_after",
-    "queue_revision_before", "queue_revision_after",
-    "state_revision_before", "state_revision_after",
-    "contract_version_before", "contract_version_after",
-    "plan_path", "plan_sha256", "verification_receipt",
-    # The state edge this transaction claims, recorded in the row so the
-    # commit receipt can be cross-bound to a durable record exactly as the
-    # K13/15 adoption record binds its receipt.  ``after_progress_sha256``
-    # is absent by construction: the row lives inside the progress document.
-    "coverage_sha256_before", "required_queue_sha256_before",
-    "progress_sha256_before", "after_coverage_sha256",
-    "after_required_queue_sha256", "policy_fingerprint",
-    "changed_contract_fields",
-))
-CONTRACT_AMENDMENT_ROW_OPTIONAL_FIELDS = frozenset((
-    "changed_contract_fields",
-))
-CONTRACT_AMENDMENT_PLAN_PREFIX = ".cambium/deltas/contract-amendments"
-CONTRACT_AMENDMENT_TOOL_VERSIONS = frozenset(("1.0.0", "1.1.0"))
-
-
-def _contract_amendment_row_errors(root, amendment, label, historical_catalog,
-                                   task_id, accounted, live_contract):
-    """Validate one committed contract-amendment row, K13/06.
-
-    The dedicated writer has no pending phase: it either commits the whole
-    transaction -- contract bytes, Queue revision, this row, and the receipt
-    the row names -- or writes nothing.  A row in any other state is
-    therefore not an in-progress amendment but evidence of a bypassed
-    writer, and fails closed.  Anchor continuity (the before/after contract
-    fingerprints actually chaining) belongs to _contract_anchor_chain; this
-    validator owns the row's own shape and its binding to plan and receipt.
-    """
-    errors = []
-    errors.extend(_closed_mapping_errors(
-        amendment, label, CONTRACT_AMENDMENT_ROW_FIELDS,
-        CONTRACT_AMENDMENT_ROW_OPTIONAL_FIELDS))
-    required_fields = (CONTRACT_AMENDMENT_ROW_FIELDS -
-                       CONTRACT_AMENDMENT_ROW_OPTIONAL_FIELDS)
-    if set(amendment) - CONTRACT_AMENDMENT_ROW_FIELDS or \
-            required_fields - set(amendment):
-        return errors
-    if (amendment.get("status") != "verified" or
-            amendment.get("writeback_done") is not True):
-        errors.append(
-            "%s contract-amendment must be verified/written-back; its writer "
-            "has no pending phase, so any other state is a bypassed "
-            "transaction rather than an in-progress one" % label)
-    for field in ("id", "date", "summary", "approval_reference",
-                  "contract_version_before", "contract_version_after"):
-        if not _nonempty_string(amendment.get(field)):
-            errors.append("%s %s must be a non-empty string" % (label, field))
-    if amendment.get("contract_version_before") == amendment.get(
-            "contract_version_after"):
-        errors.append("%s must advance contract_version" % label)
-    scope_before = amendment.get("scope_version_before")
-    scope_after = amendment.get("scope_version_after")
-    if not _nonempty_string(scope_before) or scope_before != scope_after:
-        errors.append("%s must record one unchanged scope_version; scope "
-                      "belongs to the replan machinery" % label)
-    queue_before = amendment.get("queue_revision_before")
-    queue_after = amendment.get("queue_revision_after")
-    if (not isinstance(queue_before, int) or isinstance(queue_before, bool) or
-            queue_before < 1 or queue_after != queue_before + 1):
-        errors.append("%s queue revision edge must increment by one" % label)
-    state_before = amendment.get("state_revision_before")
-    state_after = amendment.get("state_revision_after")
-    if (not isinstance(state_before, int) or isinstance(state_before, bool) or
-            state_before < 0 or state_after != state_before):
-        errors.append("%s must preserve state_revision; it changes no batch "
-                      "lifecycle" % label)
-    plan_path = amendment.get("plan_path")
-    plan_sha = amendment.get("plan_sha256")
-    if not _nonempty_string(plan_path) or not (
-            isinstance(plan_sha, str) and SHA256_RE.fullmatch(plan_sha)):
-        errors.append("%s must bind plan_path and plan_sha256" % label)
-    else:
-        try:
-            plan_file = kblib.managed_repository_path(
-                root, plan_path, CONTRACT_AMENDMENT_PLAN_PREFIX,
-                suffixes=(".yaml", ".yml"), must_exist=True)
-            if kblib.sha256_file(plan_file) != plan_sha:
-                errors.append("%s plan bytes differ from persisted SHA" %
-                              label)
-        except (OSError, ValueError) as exc:
-            errors.append("%s plan is not resolvable: %s" % (label, exc))
-    # The row's own state-edge and policy identity fields must be well
-    # formed before anything binds to them.
-    for field in ("coverage_sha256_before", "required_queue_sha256_before",
-                  "progress_sha256_before", "after_coverage_sha256",
-                  "after_required_queue_sha256", "policy_fingerprint"):
-        value = amendment.get(field)
-        if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
-            errors.append(
-                "%s %s must be spelled sha256:<64 hex digits>" %
-                (label, field))
-    receipt_id = amendment.get("verification_receipt")
-    entry = historical_catalog.get(receipt_id) if _nonempty_string(
-        receipt_id) else None
-    if entry is None:
-        errors.append("%s verification_receipt is not in the receipt "
-                      "catalog" % label)
-        return errors
-    receipt = entry[1]
-    bindings = {
-        "tool": "apply_contract_amendment",
-        "check": "contract_amendment",
-        "result": "pass",
-        "actor_role": "integrator",
-        "transaction_phase": "commit",
-        "plan_path": plan_path,
-        "plan_sha256": plan_sha,
-        "before_contract_version": amendment.get("contract_version_before"),
-        "after_contract_version": amendment.get("contract_version_after"),
-        "queue_revision_before": queue_before,
-        "queue_revision_after": queue_after,
-        # The receipt's claimed state edge must equal the durable row's,
-        # so tampering either alone is visible.  The receipt spells the
-        # queue fields with the longer Required Queue writer names.
-        "before_coverage_sha256": amendment.get("coverage_sha256_before"),
-        "before_required_queue_sha256":
-            amendment.get("required_queue_sha256_before"),
-        "before_progress_sha256": amendment.get("progress_sha256_before"),
-        "after_coverage_sha256": amendment.get("after_coverage_sha256"),
-        "after_required_queue_sha256":
-            amendment.get("after_required_queue_sha256"),
-        "policy_fingerprint": amendment.get("policy_fingerprint"),
-    }
-    for field, value in bindings.items():
-        if receipt.get(field) != value:
-            errors.append("%s commit receipt has %s=%r, expected %r" %
-                          (label, field, receipt.get(field), value))
-    after_progress = receipt.get("after_progress_sha256")
-    if not SHA256_RE.fullmatch(str(after_progress or "")):
-        errors.append("%s commit receipt has invalid after_progress_sha256" %
-                      label)
-    receipt_version = receipt.get("tool_version")
-    if receipt_version not in \
-            CONTRACT_AMENDMENT_TOOL_VERSIONS:
-        errors.append(
-            "%s commit receipt has unsupported producer tool_version %r; "
-            "known contract-amendment eras: %s" %
-            (label, receipt.get("tool_version"),
-             ", ".join(sorted(CONTRACT_AMENDMENT_TOOL_VERSIONS))))
-    if receipt_version == CONTRACT_AMENDMENT_TOOL_VERSION:
-        changed = amendment.get("changed_contract_fields")
-        if (not isinstance(changed, list) or not changed or
-                changed != sorted(set(changed)) or
-                set(changed) - {"policy_exceptions", "amendment_authority"}):
-            errors.append(
-                "%s current-era changed_contract_fields must be a non-empty "
-                "sorted subset of policy_exceptions/amendment_authority" %
-                label)
-        elif receipt.get("changed_contract_fields") != changed:
-            errors.append(
-                "%s commit receipt does not bind changed_contract_fields" %
-                label)
-    elif "changed_contract_fields" in amendment or \
-            "changed_contract_fields" in receipt:
-        errors.append(
-            "%s legacy contract-amendment era must not claim "
-            "changed_contract_fields" % label)
-    if receipt.get("task_id") != task_id:
-        errors.append(
-            "%s commit receipt has task_id=%r, expected %r" %
-            (label, receipt.get("task_id"), task_id))
-    for field in ("standards_version", "selected_profile_manifest"):
-        if not _nonempty_string(receipt.get(field)):
-            errors.append(
-                "%s commit receipt carries no %s identity; a receipt whose "
-                "Standards era cannot be told is not replayable evidence" %
-                (label, field))
-    # Nonemptiness is not identity: the claimed era must be one this
-    # instance accounts for, and the manifest must be the task's own.  A
-    # receipt claiming `never-adopted` or a foreign profile is one this
-    # runtime never produced.
-    errors.extend(_producer_era_errors(
-        receipt, receipt_id, "%s commit" % label, accounted))
-    live_manifest = (live_contract or {}).get("selected_profile_manifest")
-    claimed_manifest = receipt.get("selected_profile_manifest")
-    if (_nonempty_string(claimed_manifest) and
-            _nonempty_string(live_manifest) and
-            claimed_manifest != live_manifest):
-        errors.append(
-            "%s commit receipt claims selected_profile_manifest=%r, but "
-            "this task's contract selects %r; a grant judged against a "
-            "foreign profile is not this task's evidence" %
-            (label, claimed_manifest, live_manifest))
-    return errors
-
-
-def _cross_ledger_amendment_errors(
-        root, progress, current_catalog, historical_catalog, queue,
-        coverage_sha, queue_sha, progress_sha):
-    """Validate append-only commit evidence for cross-Ledger Amendments."""
-    errors = []
-    amendments = progress.get("amendments")
-    if not isinstance(amendments, list):
-        return errors
-    expected_sequence = 1
-    previous_commit = None
-    seen_transactions = set()
-    seen_commits = set()
-    pending_count = 0
-    pending_seen = False
-    accounted = accounted_standards_versions(progress, queue)
-    live_contract = progress.get("contract") if isinstance(
-        progress.get("contract"), dict) else {}
-    for index, amendment in enumerate(amendments):
-        if (isinstance(amendment, dict) and
-                amendment.get("operation") == "contract-amendment"):
-            errors.extend(_contract_amendment_row_errors(
-                root, amendment, "Progress amendments[%d]" % index,
-                historical_catalog, progress.get("task_id"),
-                accounted, live_contract))
-            continue
-        if (isinstance(amendment, dict) and
-                amendment.get("operation") is not None and
-                amendment.get("operation") not in
-                ("scope-replan", "cancel-batch", "queue-replan",
-                 "gap-routing-reconciliation", "property-state-migration")):
-            # Fail closed here, at the walk itself: a row claiming an
-            # operation no validator owns would otherwise be skipped by
-            # every specialized check below, making an unknown operation
-            # name an exemption from evidence.
-            errors.append(
-                "Progress amendments[%d] declares unknown operation %r; "
-                "known operations are scope-replan, cancel-batch, "
-                "queue-replan, gap-routing-reconciliation, "
-                "property-state-migration, contract-amendment" %
-                (index, amendment.get("operation")))
-            continue
-        if (not isinstance(amendment, dict) or
-                amendment.get("operation") not in
-                ("scope-replan", "cancel-batch",
-                 "gap-routing-reconciliation", "property-state-migration")):
-            continue
-        label = "Progress amendments[%d]" % index
-        status = amendment.get("status")
-        writeback = amendment.get("writeback_done")
-        operation = amendment.get("operation")
-        for field in ("id", "summary", "scope_version_before",
-                      "scope_version_after", "coverage_proposal_path"):
-            if not _nonempty_string(amendment.get(field)):
-                errors.append("%s %s must be a non-empty string" %
-                              (label, field))
-        for field in ("affected_pages", "affected_batches"):
-            values = amendment.get(field)
-            if (not isinstance(values, list) or
-                    not all(_nonempty_string(value) for value in values)):
-                errors.append("%s %s must be an explicit string list" %
-                              (label, field))
-            elif values != sorted(values) or len(values) != len(set(values)):
-                errors.append("%s %s must be sorted and unique" %
-                              (label, field))
-        scope_before = amendment.get("scope_version_before")
-        scope_after = amendment.get("scope_version_after")
-        if (operation in (
-                "gap-routing-reconciliation", "property-state-migration") and
-                _nonempty_string(scope_before) and
-                scope_after != scope_before):
-            errors.append(
-                "%s %s must preserve scope_version" % (label, operation))
-        elif (operation not in (
-                "gap-routing-reconciliation", "property-state-migration") and
-              _nonempty_string(scope_before) and
-              _nonempty_string(scope_after) and
-              scope_before == scope_after):
-            errors.append("%s cross-Ledger Amendment must change scope_version" %
-                          label)
-        queue_before = amendment.get("queue_revision_before")
-        queue_after = amendment.get("queue_revision_after")
-        expected_queue_after = (
-            queue_before + 1
-            if isinstance(queue_before, int) and
-            not isinstance(queue_before, bool) else None)
-        if (not isinstance(queue_before, int) or isinstance(queue_before, bool) or
-                queue_before < 1 or not isinstance(queue_after, int) or
-                isinstance(queue_after, bool) or
-                queue_after != expected_queue_after):
-            errors.append(
-                "%s queue revision edge must increment by one" % label)
-        state_before = amendment.get("state_revision_before")
-        state_after = amendment.get("state_revision_after")
-        if (not isinstance(state_before, int) or isinstance(state_before, bool) or
-                state_before < 0 or not isinstance(state_after, int) or
-                isinstance(state_after, bool)):
-            errors.append("%s state revision edge must use non-negative integers" %
-                          label)
-        elif (operation in ("scope-replan",
-                            "gap-routing-reconciliation",
-                            "property-state-migration") and
-              state_after != state_before):
-            errors.append("%s %s must preserve state_revision" %
-                          (label, operation))
-        elif (operation == "cancel-batch" and
-              state_after != state_before + 1):
-            errors.append("%s cancel-batch must increment state_revision by one" %
-                          label)
-        proposal_sha = amendment.get("coverage_proposal_sha256")
-        if (not isinstance(proposal_sha, str) or
-                not SHA256_RE.fullmatch(proposal_sha)):
-            errors.append("%s coverage_proposal_sha256 must be sha256:<64 "
-                          "lowercase hex>" % label)
-        cancel_id = amendment.get("cancel_batch_id")
-        if operation in ("scope-replan", "gap-routing-reconciliation",
-                         "property-state-migration"):
-            if cancel_id is not None:
-                errors.append("%s %s cancel_batch_id must be null" %
-                              (label, operation))
-            if (operation == "property-state-migration" and
-                    amendment.get("affected_batches") != []):
-                errors.append(
-                    "%s property-state-migration affected_batches must be "
-                    "empty" % label)
-        elif (not _nonempty_string(cancel_id) or
-              amendment.get("affected_batches") != [cancel_id]):
-            errors.append("%s cancel-batch must bind exactly cancel_batch_id" %
-                          label)
-        plan_path = amendment.get("plan_path")
-        plan_sha = amendment.get("plan_sha256")
-        proposal_path = amendment.get("coverage_proposal_path")
-        plan = None
-        for artifact_label, artifact_path, artifact_sha in (
-                ("plan", plan_path, plan_sha),
-                ("coverage proposal", proposal_path, proposal_sha)):
-            if not _nonempty_string(artifact_path):
-                errors.append("%s %s path must be a non-empty string" %
-                              (label, artifact_label))
-                continue
-            if not isinstance(artifact_sha, str) or not SHA256_RE.fullmatch(
-                    artifact_sha):
-                errors.append("%s %s SHA must be sha256:<64 lowercase hex>" %
-                              (label, artifact_label))
-                continue
-            try:
-                artifact = kblib.managed_repository_path(
-                    root, artifact_path, ".cambium/deltas/amendments",
-                    suffixes=(".yaml", ".yml"), must_exist=True,
-                )
-                current_sha = kblib.sha256_file(artifact)
-                if current_sha != artifact_sha:
-                    errors.append("%s %s bytes differ from persisted SHA" %
-                                  (label, artifact_label))
-                if artifact_label == "plan":
-                    plan = kblib.load_yaml_file(artifact)
-            except (OSError, ValueError, kblib.YamlSubsetError) as exc:
-                errors.append("%s %s is unsafe, missing, or invalid: %s" %
-                              (label, artifact_label, exc))
-        if (_nonempty_string(plan_path) and _nonempty_string(proposal_path) and
-                os.path.normpath(plan_path) == os.path.normpath(proposal_path)):
-            errors.append("%s plan and coverage proposal must be different files" %
-                          label)
-        if isinstance(plan, dict):
-            plan_bindings = {
-                "amendment_id": amendment.get("id"),
-                "operation": operation,
-                "affected_pages": amendment.get("affected_pages"),
-                "affected_batches": amendment.get("affected_batches"),
-                "scope_version_before": scope_before,
-                "scope_version_after": scope_after,
-                "queue_revision_before": queue_before,
-                "queue_revision_after": queue_after,
-                "state_revision_before": state_before,
-                "state_revision_after": state_after,
-                "coverage_proposal_path": proposal_path,
-                "coverage_proposal_sha256": proposal_sha,
-                "cancel_batch_id": cancel_id,
-            }
-            for field, value in plan_bindings.items():
-                if plan.get(field) != value:
-                    errors.append("%s plan %s=%r, expected %r" %
-                                  (label, field, plan.get(field), value))
-        errors.extend(_operational_amendment_registration_errors(
-            progress, amendment, label, current_catalog, historical_catalog,
-            queue, coverage_sha, queue_sha, progress_sha,
-        ))
-        if status == "approved" and writeback is False:
-            if scope_before != queue.get("scope_version"):
-                errors.append("%s pending Amendment scope_version_before does "
-                              "not match the live Queue" % label)
-            expected_pending_queue_after = \
-                queue.get("queue_revision", 0) + 1
-            if (queue_before != queue.get("queue_revision") or
-                    queue_after != expected_pending_queue_after):
-                errors.append("%s pending Amendment must bind the next live "
-                              "Queue revision" % label)
-            if state_before != queue.get("state_revision"):
-                errors.append("%s pending Amendment state_revision_before does "
-                              "not match the live Queue" % label)
-            for field in ("transaction_id", "verification_receipt",
-                          "transaction_sequence",
-                          "previous_transaction_commit_receipt"):
-                if amendment.get(field) is not None:
-                    errors.append("%s pending Amendment must not claim %s" %
-                                  (label, field))
-            pending_count += 1
-            pending_seen = True
-            continue
-        if status == "withdrawn" and writeback is False:
-            # K13/06 withdrawal: the row stays as immutable evidence and
-            # authorizes nothing; the withdrawal receipt is validated with
-            # the registration binding above.
-            for field in ("transaction_id", "verification_receipt",
-                          "transaction_sequence",
-                          "previous_transaction_commit_receipt"):
-                if amendment.get(field) is not None:
-                    errors.append("%s withdrawn Amendment must not claim %s" %
-                                  (label, field))
-            continue
-        if status != "verified" or writeback is not True:
-            errors.append("%s cross-Ledger state must be approved/pending, "
-                          "withdrawn, or verified/written-back" % label)
-            continue
-        if pending_seen:
-            errors.append("%s verified transaction appears after a pending "
-                          "cross-Ledger Amendment" % label)
-        transaction_id = amendment.get("transaction_id")
-        commit_id = amendment.get("verification_receipt")
-        sequence = amendment.get("transaction_sequence")
-        prior = amendment.get("previous_transaction_commit_receipt")
-        if sequence != expected_sequence:
-            errors.append("%s transaction_sequence=%r, expected %d" %
-                          (label, sequence, expected_sequence))
-        if prior != previous_commit:
-            errors.append("%s previous transaction commit is %r, expected %r" %
-                          (label, prior, previous_commit))
-        if transaction_id in seen_transactions:
-            errors.append("%s repeats transaction_id %r" %
-                          (label, transaction_id))
-        if commit_id in seen_commits:
-            errors.append("%s repeats verification_receipt %r" %
-                          (label, commit_id))
-        seen_transactions.add(transaction_id)
-        seen_commits.add(commit_id)
-        receipt = _require_receipt(
-            historical_catalog, commit_id,
-            "%s verification" % label, errors,
-            expected={
-                "tool": "apply_amendment",
-                "tool_version": ANY_PRODUCER_ERA_VERSION,
-                "check": "amendment_transaction",
-                "target": amendment.get("id"),
-                "transaction_phase": "commit",
-                "transaction_id": transaction_id,
-                "amendment_id": amendment.get("id"),
-                "operation": amendment.get("operation"),
-                "task_id": queue.get("task_id"),
-                "actor_role": "integrator",
-                "transaction_sequence": sequence,
-                "previous_transaction_commit_receipt": prior,
-                "registration_receipt":
-                    amendment.get("registration_receipt"),
-                "plan_path": plan_path,
-                "plan_sha256": plan_sha,
-                "coverage_proposal_path": proposal_path,
-                "coverage_proposal_sha256": proposal_sha,
-                "queue_revision_before": queue_before,
-                "queue_revision_after": queue_after,
-                "state_revision_before": state_before,
-                "state_revision_after": state_after,
-            },
-        )
-        if (receipt is not None and receipt.get("tool_version") not in
-                SUPPORTED_APPLY_AMENDMENT_TOOL_VERSIONS):
-            errors.append(
-                "%s verification receipt has unsupported apply_amendment "
-                "producer version %r" %
-                (label, receipt.get("tool_version")))
-        if (receipt is not None and operation ==
-                "property-state-migration" and
-                receipt.get("tool_version") != APPLY_AMENDMENT_TOOL_VERSION):
-            errors.append(
-                "%s property-state-migration requires apply_amendment %s" %
-                (label, APPLY_AMENDMENT_TOOL_VERSION))
-        if receipt is not None and operation == "property-state-migration":
-            for field in PROPERTY_STATE_MIGRATION_BINDING_FIELDS:
-                if receipt.get(field) != amendment.get(field):
-                    errors.append(
-                        "%s property-state-migration commit receipt does not "
-                        "bind %s" % (label, field))
-        if not _nonempty_string(transaction_id):
-            errors.append("%s verified transaction_id must be non-empty" % label)
-        if receipt is not None and not SHA256_RE.fullmatch(
-                str(receipt.get("plan_sha256", ""))):
-            errors.append("%s verification receipt has invalid plan_sha256" % label)
-        if receipt is not None:
-            for phase in ("before", "after"):
-                for state_name in ("coverage", "queue", "progress"):
-                    field = "%s_%s_sha256" % (phase, state_name)
-                    if not SHA256_RE.fullmatch(str(receipt.get(field, ""))):
-                        errors.append("%s verification receipt has invalid %s" %
-                                      (label, field))
-            errors.extend(_registration_execution_bridge_errors(
-                amendment, label, historical_catalog, receipt,
-                "before_queue_sha256",
-            ))
-        previous_commit = commit_id
-        expected_sequence += 1
-    if pending_count > 1:
-        errors.append("Progress has %d pending cross-Ledger Amendments; exactly "
-                      "one may be staged at a time" % pending_count)
-    return errors
-
-
-def _pending_cross_ledger_amendments(progress):
-    amendments = progress.get("amendments")
-    if not isinstance(amendments, list):
-        return []
-    return [
-        amendment.get("id", "<unnamed>")
-        for amendment in amendments
-        if (isinstance(amendment, dict) and
-            amendment.get("operation") in
-            ("scope-replan", "cancel-batch", "queue-replan",
-             "gap-routing-reconciliation", "property-state-migration") and
-            amendment.get("status") == "approved" and
-            amendment.get("writeback_done") is False)
-    ]
-
-
-def _coverage_provenance_errors(progress, queue, catalog, coverage_sha,
-                                queue_sha):
-    """Bind materialized Coverage bytes to a qualified canonical writer.
-
-    Before the first Queue materialization, initial Coverage is an adopter
-    input.  Afterwards its ordinary write paths are transactional, so the live
-    bytes must occur as the after-image of a semantically qualified receipt.
-    Generic Guidance remains an authorized control input.  Executable
-    operational Amendments are different: register_amendment must bind their
-    approved bytes and current state before downstream writers may consume
-    them.  Queue retains its own revision, fingerprint, and transition chain.
-    """
-    items = queue.get("required_queue")
-    pre_materialization = (
-        isinstance(items, list) and not items and
-        queue.get("queue_revision") == 1 and
-        queue.get("state_revision") == 0 and
-        progress.get("initial_queue_receipt") is None
-    )
-    if pre_materialization:
-        return []
-
-    allowed = {
-        ("compile_queue", "queue_structure"),
-        ("compile_queue", "queue_replan"),
-        ("update_queue", "queue_transition"),
-        ("update_task", "task_transition"),
-        ("apply_amendment", "amendment_transaction"),
-        ("apply_delta", "delta_apply"),
-        (STANDARDS_ADOPTION_TOOL, "standards_adoption"),
-        ("apply_contract_amendment", "contract_amendment"),
-    }
-    writers = []
-    # Writer receipts live in one collision-checked managed namespace.  Some
-    # transactions (notably apply_delta before the following close edge) have
-    # no canonical field in which to store their ID yet, so provenance may use
-    # any semantically qualified receipt in that namespace.  Canonical state
-    # references remain validated separately by their owning contracts.
-    for receipt_id, entry in catalog.items():
-        receipt = entry[1]
-        if ((receipt.get("tool"), receipt.get("check")) not in allowed or
-                receipt.get("result") != "pass" or
-                receipt.get("invalidated_by") is not None or
-                receipt.get("task_id") != queue.get("task_id") or
-                receipt.get("actor_role") != "integrator"):
-            continue
-        tool = receipt.get("tool")
-        if (tool in ("apply_amendment", STANDARDS_ADOPTION_TOOL,
-                     "apply_contract_amendment") and
-                receipt.get("transaction_phase") != "commit"):
-            continue
-        # Historical after-images remain valid evidence for history, but they
-        # cannot authorize restoration of an older Coverage file.  A current
-        # Coverage writer must be anchored to the exact live Queue point.
-        if tool in ("apply_amendment", STANDARDS_ADOPTION_TOOL):
-            receipt_queue_sha = receipt.get("after_queue_sha256")
-        elif tool == "apply_delta":
-            receipt_queue_sha = receipt.get("required_queue_sha256")
-        else:
-            receipt_queue_sha = receipt.get("after_required_queue_sha256")
-        if receipt_queue_sha != queue_sha:
-            continue
-        if tool == "apply_delta":
-            batch_id = receipt.get("batch_id")
-            item = next((candidate for candidate in
-                         queue.get("required_queue", [])
-                         if isinstance(candidate, dict) and
-                         candidate.get("id") == batch_id), None)
-            if (item is None or item.get("state") not in
-                    ("merge-ready", "closed") or
-                    item.get("delta_path") != receipt.get("delta_path") or
-                    item.get("delta_sha256") != receipt.get("delta_sha256")):
-                continue
-        writers.append((receipt_id, receipt))
-
-    errors = []
-    # Coverage has no ordinary direct-write phase after materialization.  By
-    # contrast, Progress intentionally accepts new Guidance/Amendment control
-    # inputs before their transactional write-back, and Queue already has its
-    # own revision/fingerprint/transition chain.  Applying a blanket current-
-    # byte rule to those two files would make legitimate control input
-    # impossible without inventing a second writer API.
-    for label, field, live_sha in (
-            ("Coverage", "after_coverage_sha256", coverage_sha),):
-        if not any(receipt.get(field) == live_sha for _, receipt in writers):
-            errors.append(
-                "%s current bytes are not the after-image of a qualified "
-                "canonical writer receipt" % label
-            )
-    return errors
-
-
-def _queue_replan_amendment_errors(
-        root, progress, current_catalog, historical_catalog, queue, queue_sha,
-        coverage_sha, progress_sha,
-                                   allow_pending_receipts=False):
-    """Validate durable evidence for same-scope Queue replans.
-
-    A pending replan is an authorization for the *next* structural revision,
-    not evidence that a write occurred.  A verified replan is historical
-    evidence and therefore binds to one unique compile_queue receipt.  Older
-    receipts remain valid after later replans or lifecycle transitions; only
-    an Amendment whose two revision axes still equal the live Queue is
-    expected to name the live bytes.
-
-    ``allow_pending_receipts`` is reserved for compile_queue's in-memory
-    preflight.  It lets that preflight inspect the receipt which will be
-    appended by the same locked commit.  Normal validation never enables it,
-    so persisted verified state must resolve to an on-disk receipt.
-    """
-    errors = []
-    amendments = progress.get("amendments")
-    if not isinstance(amendments, list):
-        return errors
-
-    current_queue_revision = queue.get("queue_revision")
-    current_state_revision = queue.get("state_revision")
-    current_scope = queue.get("scope_version")
-    seen_amendment_ids = set()
-    receipt_owners = {}
-
-    def valid_revision(value, minimum=0):
-        return (isinstance(value, int) and not isinstance(value, bool) and
-                value >= minimum)
-
-    for index, amendment in enumerate(amendments):
-        if (not isinstance(amendment, dict) or
-                amendment.get("operation") != "queue-replan"):
-            continue
-        label = "Progress amendments[%d]" % index
-        amendment_id = amendment.get("id")
-        if not _nonempty_string(amendment_id):
-            errors.append("%s queue-replan id must be a non-empty string" % label)
-        elif amendment_id in seen_amendment_ids:
-            errors.append("%s repeats queue-replan Amendment id %s" %
-                          (label, amendment_id))
-        else:
-            seen_amendment_ids.add(amendment_id)
-
-        affected = amendment.get("affected_batches")
-        if (not isinstance(affected, list) or not affected or
-                not all(_nonempty_string(value) and
-                        BATCH_ID_RE.fullmatch(value) for value in affected)):
-            errors.append("%s affected_batches must be a non-empty list of "
-                          "valid batch ids" % label)
-        elif len(affected) != len(set(affected)):
-            errors.append("%s affected_batches must be unique" % label)
-        elif affected != sorted(affected):
-            errors.append("%s affected_batches must be sorted" % label)
-
-        affected_pages = amendment.get("affected_pages")
-        if (not isinstance(affected_pages, list) or
-                not all(_nonempty_string(value) for value in affected_pages)):
-            errors.append("%s affected_pages must be an explicit string list" %
-                          label)
-        elif (len(affected_pages) != len(set(affected_pages)) or
-              affected_pages != sorted(affected_pages)):
-            errors.append("%s affected_pages must be sorted and unique" % label)
-
-        proposal_path = amendment.get("coverage_proposal_path")
-        proposal_sha = amendment.get("coverage_proposal_sha256")
-        if not _nonempty_string(proposal_path):
-            errors.append("%s coverage_proposal_path must be non-empty" % label)
-        else:
-            try:
-                proposal_file = kblib.managed_repository_path(
-                    root, proposal_path, ".cambium/deltas/replans",
-                    suffixes=(".coverage.yaml",), must_exist=True,
-                )
-                actual_proposal_sha = kblib.sha256_file(proposal_file)
-                if actual_proposal_sha != proposal_sha:
-                    errors.append("%s Coverage proposal SHA does not match %s" %
-                                  (label, proposal_path))
-            except (OSError, ValueError) as exc:
-                errors.append("%s Coverage proposal is unsafe or missing: %s" %
-                              (label, exc))
-        if not isinstance(proposal_sha, str) or not SHA256_RE.fullmatch(
-                proposal_sha):
-            errors.append("%s coverage_proposal_sha256 must be sha256:<64 "
-                          "lowercase hex>" % label)
-
-        scope_before = amendment.get("scope_version_before")
-        scope_after = amendment.get("scope_version_after")
-        if (not _nonempty_string(scope_before) or
-                scope_after != scope_before):
-            errors.append("%s same-scope replan must have one unchanged, "
-                          "non-empty scope version" % label)
-
-        revision_before = amendment.get("queue_revision_before")
-        revision_after = amendment.get("queue_revision_after")
-        revisions_valid = (valid_revision(revision_before, 1) and
-                           valid_revision(revision_after, 1))
-        if not revisions_valid or revision_after != revision_before + 1:
-            errors.append("%s queue revisions must be integers with after = "
-                          "before + 1" % label)
-
-        state_before = amendment.get("queue_state_revision_before")
-        state_after = amendment.get("queue_state_revision_after")
-        states_valid = (valid_revision(state_before) and
-                        valid_revision(state_after))
-        if not states_valid or state_after != state_before:
-            errors.append("%s same-scope replan must not change the Queue "
-                          "state revision" % label)
-
-        diff_sha = amendment.get("replan_diff_sha256")
-        if not isinstance(diff_sha, str) or not SHA256_RE.fullmatch(diff_sha):
-            errors.append("%s replan_diff_sha256 must be sha256:<64 lowercase "
-                          "hex>" % label)
-
-        status = amendment.get("status")
-        writeback = amendment.get("writeback_done")
-        errors.extend(_operational_amendment_registration_errors(
-            progress, amendment, label, current_catalog, historical_catalog,
-            queue, coverage_sha, queue_sha, progress_sha,
-        ))
-        if status == "approved" and writeback is False:
-            if scope_before != current_scope:
-                errors.append("%s pending replan scope does not match the live "
-                              "Queue" % label)
-            if (revision_before != current_queue_revision or
-                    revision_after != (current_queue_revision + 1
-                                       if valid_revision(current_queue_revision,
-                                                         1) else None)):
-                errors.append("%s pending replan must authorize the next live "
-                              "Queue revision" % label)
-            if (state_before != current_state_revision or
-                    state_after != current_state_revision):
-                errors.append("%s pending replan state revision must match the "
-                              "live Queue" % label)
-            if (amendment.get("transaction_receipt_id") is not None or
-                    amendment.get("transaction_id") is not None or
-                    amendment.get("after_required_queue_sha256") is not None or
-                    amendment.get("after_coverage_sha256") is not None):
-                errors.append("%s pending replan must not claim committed "
-                              "receipt/SHA evidence" % label)
-            continue
-
-        if status == "withdrawn" and writeback is False:
-            # K13/06 withdrawal keeps the row as evidence; it never executes.
-            continue
-        if status != "verified" or writeback is not True:
-            errors.append("%s queue-replan state must be approved/pending, "
-                          "withdrawn, or verified/written-back" % label)
-            continue
-
-        if (revisions_valid and valid_revision(current_queue_revision, 1) and
-                revision_after > current_queue_revision):
-            errors.append("%s verified replan revision is newer than the live "
-                          "Queue" % label)
-        if (states_valid and valid_revision(current_state_revision) and
-                state_after > current_state_revision):
-            errors.append("%s verified replan state revision is newer than the "
-                          "live Queue" % label)
-
-        receipt_id = amendment.get("transaction_receipt_id")
-        transaction_id = amendment.get("transaction_id")
-        if not _nonempty_string(transaction_id):
-            errors.append("%s verified replan transaction_id must be non-empty" %
-                          label)
-        if _nonempty_string(receipt_id):
-            owner = receipt_owners.get(receipt_id)
-            if owner is not None:
-                errors.append("%s reuses transaction receipt %s already bound "
-                              "to %s" % (label, receipt_id, owner))
-            else:
-                receipt_owners[receipt_id] = amendment_id or label
-        receipt = _require_receipt(
-            historical_catalog, receipt_id, "%s queue-replan" % label, errors,
-            expected={
-                "tool": "compile_queue",
-                "tool_version": ANY_PRODUCER_ERA_VERSION,
-                "check": "queue_replan",
-                "target": QUEUE_PATH,
-                "task_id": queue.get("task_id"),
-                "amendment_id": amendment_id,
-                "transaction_id": transaction_id,
-                "transaction_phase": "commit",
-                "registration_receipt":
-                    amendment.get("registration_receipt"),
-                "actor_role": "integrator",
-                "coverage_proposal_path": proposal_path,
-                "coverage_proposal_sha256": proposal_sha,
-                "affected_pages": affected_pages,
-                "affected_batches": affected,
-                "replan_diff_sha256": diff_sha,
-                "before_queue_revision": revision_before,
-                "after_queue_revision": revision_after,
-                "queue_state_revision": state_after,
-            },
-        )
-        catalog_entry = historical_catalog.get(receipt_id) if _nonempty_string(
-            receipt_id) else None
-        if (catalog_entry is not None and catalog_entry[0] == "<pending-write>" and
-                not allow_pending_receipts):
-            errors.append("%s verified replan receipt %s is not persisted in "
-                          "the repository" % (label, receipt_id))
-        if receipt is None:
-            continue
-        if receipt.get("tool_version") not in \
-                SUPPORTED_COMPILE_QUEUE_TOOL_VERSIONS:
-            errors.append(
-                "%s receipt has unsupported compile_queue producer version "
-                "%r" % (label, receipt.get("tool_version")))
-
-        errors.extend(_registration_execution_bridge_errors(
-            amendment, label, historical_catalog, receipt,
-            "before_required_queue_sha256",
-        ))
-
-        before_sha = receipt.get("before_required_queue_sha256")
-        after_sha = receipt.get("after_required_queue_sha256")
-        if not isinstance(before_sha, str) or not SHA256_RE.fullmatch(before_sha):
-            errors.append("%s receipt has invalid before Required Queue SHA" %
-                          label)
-        if not isinstance(after_sha, str) or not SHA256_RE.fullmatch(after_sha):
-            errors.append("%s receipt has invalid after Required Queue SHA" %
-                          label)
-        amendment_after_sha = amendment.get("after_required_queue_sha256")
-        if (not isinstance(amendment_after_sha, str) or
-                not SHA256_RE.fullmatch(amendment_after_sha)):
-            errors.append("%s after_required_queue_sha256 must be sha256:<64 "
-                          "lowercase hex>" % label)
-        elif after_sha != amendment_after_sha:
-            errors.append("%s Amendment after Required Queue SHA does not match "
-                          "its receipt" % label)
-        before_coverage_sha = receipt.get("before_coverage_sha256")
-        after_coverage_sha = receipt.get("after_coverage_sha256")
-        for field, value in (("before_coverage_sha256", before_coverage_sha),
-                             ("after_coverage_sha256", after_coverage_sha),
-                             ("before_progress_sha256",
-                              receipt.get("before_progress_sha256")),
-                             ("after_progress_sha256",
-                              receipt.get("after_progress_sha256"))):
-            if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
-                errors.append("%s receipt has invalid %s" % (label, field))
-        amendment_after_coverage = amendment.get("after_coverage_sha256")
-        if (not isinstance(amendment_after_coverage, str) or
-                not SHA256_RE.fullmatch(amendment_after_coverage)):
-            errors.append("%s after_coverage_sha256 must be sha256:<64 "
-                          "lowercase hex>" % label)
-        elif after_coverage_sha != amendment_after_coverage:
-            errors.append("%s Amendment after Coverage SHA does not match its "
-                          "receipt" % label)
-
-        # A subsequent lifecycle transition changes Queue bytes without
-        # changing queue_revision; therefore live-byte equality is required
-        # only when *both* revision axes still name the current state.
-        if (revision_after == current_queue_revision and
-                state_after == current_state_revision and
-                after_sha != queue_sha):
-            errors.append("%s latest replan receipt does not match live Queue "
-                          "bytes" % label)
-        if (revision_after == current_queue_revision and
-                state_after == current_state_revision and
-                after_coverage_sha != coverage_sha):
-            errors.append("%s latest replan receipt does not match live Coverage "
-                          "bytes" % label)
-    return errors
-
-
-def _initial_queue_receipt_errors(progress, catalog, queue, queue_sha,
-                                  coverage_sha):
-    """Bind every materialized Queue to its unique initial compiler receipt."""
-    errors = []
-    items = queue.get("required_queue")
-    receipt_id = progress.get("initial_queue_receipt")
-    if isinstance(items, list) and not items:
-        if receipt_id is not None:
-            errors.append("empty Queue must have initial_queue_receipt=null")
-        return errors
-    if not isinstance(items, list):
-        return errors
-    receipt = _require_receipt(
-        catalog, receipt_id, "Progress initial Queue", errors,
-        expected={
-            "tool": "compile_queue",
-            "tool_version": ANY_PRODUCER_ERA_VERSION,
-            "check": "queue_structure",
-            "target": QUEUE_PATH,
-            "task_id": queue.get("task_id"),
-            "actor_role": "integrator",
-        },
-    )
-    if receipt is None:
-        return errors
-    _, contract_errors = _contract_anchor_chain(progress, catalog)
-    errors.extend(contract_errors)
-    before_revision = receipt.get("before_queue_revision")
-    after_revision = receipt.get("after_queue_revision")
-    if (not isinstance(before_revision, int) or isinstance(before_revision, bool) or
-            not isinstance(after_revision, int) or isinstance(after_revision, bool) or
-            after_revision < 1 or before_revision != after_revision - 1):
-        errors.append("initial Queue receipt has invalid revision edge %r -> %r" %
-                      (before_revision, after_revision))
-    elif after_revision > queue.get("queue_revision", -1):
-        errors.append("initial Queue receipt is newer than the live Queue revision")
-    if receipt.get("queue_state_revision") != 0:
-        errors.append("initial Queue receipt queue_state_revision must be 0")
-    fingerprints = {}
-    for field in (
-            "before_required_queue_sha256", "after_required_queue_sha256",
-            "before_coverage_sha256", "after_coverage_sha256",
-            "before_progress_sha256", "after_progress_sha256"):
-        value = receipt.get(field)
-        fingerprints[field] = value
-        if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
-            errors.append("initial Queue receipt has invalid %s" % field)
-    # Before the first lifecycle transition/replan, the origin receipt still
-    # names the exact live Queue and Coverage bytes. Later changes retain the
-    # receipt as immutable provenance rather than pretending it is current.
-    if (after_revision == queue.get("queue_revision") and
-            queue.get("state_revision") == 0):
-        if fingerprints.get("after_required_queue_sha256") != queue_sha:
-            errors.append("initial Queue receipt does not match live Queue bytes")
-        if fingerprints.get("after_coverage_sha256") != coverage_sha:
-            errors.append("initial Queue receipt does not match live Coverage bytes")
-    return errors
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def _unadmitted_profile_hub_paths(root, profile_manifest):
-    """Derive hub pages for the explicit corrective-adoption escape only.
-
-    Ordinary runtime consumers must use :func:`profile_hub_paths`, whose slot
-    path comes from one authorized typed contract.  This raw manifest reader
-    survives only so ``adopt_standards`` can inspect and replace an invalid
-    current Profile without requiring that broken closure to authorize itself.
-    """
-    paths = set()
-    if not _nonempty_string(profile_manifest):
-        return paths, []
-    parts = Path(profile_manifest).parts
-    if len(parts) < 3 or parts[0] != "profiles" or parts[-1] != "profile.md":
-        # The exact runtime shape is owned by
-        # selected_profile_manifest_errors; this only refuses to read a
-        # package that is not a profile manifest at all.
-        return paths, []
-    try:
-        manifest_path = kblib.repository_path(
-            root, profile_manifest, must_exist=True, reject_symlink=True)
-        manifest_text = check_profile.read_text(manifest_path)
-    except (OSError, UnicodeError, ValueError) as exc:
-        return paths, ["selected profile manifest is unreadable, so the "
-                       "K13/10 hub set cannot be derived: %s" % exc]
-    binding = kblib.profile_slot_bindings(manifest_text).get(
-        EXPRESSION_LAYER_SLOT)
-    if not _nonempty_string(binding):
-        # No slot binding at all: the profile registers no expression hub.
-        return paths, []
-    profile_dir = os.path.dirname(manifest_path)
-    kind, detail = kblib.resolve_profile_binding(binding, root, profile_dir)
-    if kind != "path":
-        return paths, [
-            "selected profile %s binding is %s, so the K13/10 hub set cannot "
-            "be derived" % (EXPRESSION_LAYER_SLOT, kind)
-        ]
-    try:
-        text = check_profile.read_text(detail)
-    except (OSError, UnicodeError, ValueError) as exc:
-        return paths, ["selected profile %s is unreadable, so the K13/10 hub "
-                       "set cannot be derived: %s" % (EXPRESSION_LAYER_SLOT,
-                                                      exc)]
-    for cells in check_profile.table_rows(text.splitlines()):
-        if len(cells) != 2:
-            continue
-        label = check_profile.unbacktick(cells[0]).strip().lower()
-        if not label.startswith(HUB_DEPENDENCY_MAP_LABEL):
-            continue
-        for declared in cells[1].split(";"):
-            candidate = _normalized_repository_path(declared)
-            if candidate is None or candidate.lower() == "none":
-                continue
-            if "TODO(" in candidate or "/" not in candidate:
-                # An unfilled sentinel or an opaque artifact ID is not a
-                # decidable repository path; check_profile owns that verdict.
-                continue
-            if _path_error(root, candidate, must_exist=False) is None:
-                paths.add(candidate)
-    return paths, []
-
-
-
-
-
-
-
-
-def runtime_authority_context(result):
-    """Freeze one successful runtime admission for a complete transaction.
-
-    Ordinary writers call :func:`validate_runtime` once without injected
-    views, then carry this opaque context through every proposed, locked, and
-    post-write validation.  The Profile and K00/03 views are deliberately kept
-    together: accepting a view from one admission and an active-Standards
-    binding from another would recreate the split-revision window this API is
-    intended to close.
-    """
-    if not isinstance(result, dict):
-        raise TypeError("runtime validation result must be a mapping")
-    if result.get("errors"):
-        raise ValueError(
-            "runtime authority context requires a successful validation")
-    root = result.get("root")
-    queue = result.get("queue")
-    profile_view = result.get("_profile_authorized_view")
-    active_view = result.get("_active_standards_authorized_view")
-    if not _nonempty_string(root) or not isinstance(queue, dict):
-        raise ValueError("runtime validation result has no canonical root or Queue")
-    if not isinstance(profile_view, dict):
-        raise ValueError("runtime validation result has no authorized Profile view")
-    if not isinstance(active_view, dict):
-        raise ValueError(
-            "runtime validation result has no authorized active Standards view")
-    expected_profile = queue.get("selected_profile_manifest")
-    expected_standards = queue.get("standards_version")
-    if (profile_view.get("selected_profile_manifest") != expected_profile or
-            active_view.get("selected_profile_manifest") != expected_profile):
-        raise ValueError(
-            "runtime authority views do not select the validated Queue Profile")
-    if active_view.get("standards_version") != expected_standards:
-        raise ValueError(
-            "runtime active Standards view does not select the validated "
-            "Queue version")
-    return {
-        "root": os.path.realpath(os.path.abspath(root)),
-        "profile_view": profile_view,
-        "active_standards_view": active_view,
-    }
-
-
-def runtime_authority_validation_kwargs(context):
-    """Return the indivisible view pair for a later runtime validation."""
-    if not isinstance(context, dict):
-        raise TypeError("runtime authority context must be a mapping")
-    profile_view = context.get("profile_view")
-    active_view = context.get("active_standards_view")
-    if not isinstance(profile_view, dict) or not isinstance(active_view, dict):
-        raise ValueError(
-            "runtime authority context must contain both authorized views")
-    return {
-        "authorized_profile_view": profile_view,
-        "authorized_active_standards_view": active_view,
-    }
-
-
-def runtime_authority_currency_errors(root, context):
-    """Return CAS failures for every root authority bound by ``context``."""
-    if not isinstance(context, dict):
-        return ["runtime authority context must be a mapping"]
-    canonical_root = os.path.realpath(os.path.abspath(os.fspath(root)))
-    if context.get("root") != canonical_root:
-        return ["runtime authority context belongs to a different repository root"]
-    try:
-        kwargs = runtime_authority_validation_kwargs(context)
-    except (TypeError, ValueError) as exc:
-        return [str(exc)]
-    errors = []
-    for detail in active_standards_view_currency_errors(
-            canonical_root, kwargs["authorized_active_standards_view"]):
-        errors.append("active Standards authority: %s" % detail)
-    for detail in profile_load_authorized_view_currency_errors(
-            canonical_root, kwargs["authorized_profile_view"]):
-        errors.append("Profile-load authority: %s" % detail)
-    return errors
-
-
-def require_runtime_authority_current(root, context, phase):
-    """Raise when a transaction no longer sees its admitted authority bytes."""
-    errors = runtime_authority_currency_errors(root, context)
-    if errors:
-        raise ValueError("%s: %s" % (phase, "; ".join(errors)))
-
-
-def runtime_authority_lock_fields(context):
-    """Project one transaction authority binding into writer-lock metadata."""
-    kwargs = runtime_authority_validation_kwargs(context)
-    profile_view = kwargs["authorized_profile_view"]
-    active_view = kwargs["authorized_active_standards_view"]
-    return {
-        "standards_version": active_view.get("standards_version"),
-        "active_standards_sha256": active_view.get(
-            "active_standards_sha256"),
-        "selected_profile_manifest": profile_view.get(
-            "selected_profile_manifest"),
-        "profile_snapshot_sha256": profile_view.get(
-            "profile_snapshot_sha256"),
-        "profile_contract_fingerprint": profile_view.get(
-            "profile_contract_fingerprint"),
-        "profile_load_inputs_sha256": profile_view.get(
-            "profile_load_inputs_sha256"),
-    }
-
-
-def profile_hub_paths(root, profile_manifest, *, authorized_view=None,
-                      evaluate_if_missing=True,
-                      allow_unadmitted_profile=False):
-    """Return Expression hubs from one snapshot-bound Profile view.
-
-    K13/10 binds pages registered by the ``Expression Layer Entry`` into the
-    hub set.  The slot path is taken from the typed dependency edges produced
-    by the same ``profile-load`` invocation as ``authorized_view``; the
-    manifest is never reparsed.  The complete Profile tree is CAS-checked
-    before and after reading the slot, so a verdict for revision A cannot be
-    combined with Expression rows from revision B.
-
-    Direct callers may omit ``authorized_view`` and this function will create
-    exactly one.  ``validate_runtime`` passes its already-created view and sets
-    ``evaluate_if_missing=False`` so a failed producer is not run twice.  The
-    unadmitted path is reserved for the explicit corrective-adoption escape.
-    """
-    if type(evaluate_if_missing) is not bool:
-        raise TypeError("evaluate_if_missing must be boolean")
-    if type(allow_unadmitted_profile) is not bool:
-        raise TypeError("allow_unadmitted_profile must be boolean")
-    if allow_unadmitted_profile:
-        if authorized_view is not None:
-            raise ValueError("corrective Profile hub derivation cannot accept "
-                             "an authorized view")
-        return _unadmitted_profile_hub_paths(root, profile_manifest)
-
-    if not _nonempty_string(profile_manifest):
-        return set(), []
-    if authorized_view is None:
-        if not evaluate_if_missing:
-            # The caller already records the producer failure.  Do not create
-            # a second observation window or duplicate its detailed
-            # diagnostics.  Hub admission still fails closed: otherwise a
-            # queued concurrent batch could be reported ready merely because
-            # its selected Profile never produced an authorized view.
-            return set(), ["selected Profile has no authorized view, so the "
-                           "K13/10 hub set cannot be derived"]
-        authorized_view, errors = profile_load_authorized_view(
-            root, profile_manifest)
-        if authorized_view is None:
-            return set(), errors
-
-    view_errors = _authorized_profile_view_errors(
-        root, profile_manifest, authorized_view)
-    if view_errors:
-        return set(), view_errors
-    slot_paths = dict(authorized_view["_manifest_slot_paths"])
-    expression_path = slot_paths.get(EXPRESSION_LAYER_SLOT)
-    try:
-        text = authorized_view["_profile_snapshot"].read_text(
-            expression_path)
-    except (KeyError, OSError, UnicodeError, ValueError) as exc:
-        return set(), ["authorized selected profile %s is unreadable, so the "
-                       "K13/10 hub set cannot be derived: %s" % (
-                           EXPRESSION_LAYER_SLOT, exc)]
-    after_error = _profile_view_snapshot_error(root, authorized_view, "after")
-    if after_error:
-        return set(), [after_error]
-
-    paths = set()
-    for cells in check_profile.table_rows(text.splitlines()):
-        if len(cells) != 2:
-            continue
-        label = check_profile.unbacktick(cells[0]).strip().lower()
-        if not label.startswith(HUB_DEPENDENCY_MAP_LABEL):
-            continue
-        for declared in cells[1].split(";"):
-            candidate = _normalized_repository_path(declared)
-            if candidate is None or candidate.lower() == "none":
-                continue
-            if "TODO(" in candidate or "/" not in candidate:
-                continue
-            if _path_error(root, candidate, must_exist=False) is None:
-                paths.add(candidate)
-    return paths, []
-
-
-def _page_frontmatter(root, relative_path):
-    """Return ``(exists, fields, error)`` for one repository page.
-
-    ``fields`` is ``None`` when the page exists but its metadata cannot be
-    read, which the caller reports instead of treating as "not a hub".
-    """
-    try:
-        absolute = kblib.repository_path(root, relative_path)
-    except (OSError, ValueError) as exc:
-        return False, None, "path is unsafe: %s" % exc
-    if os.path.islink(absolute) or not os.path.isfile(absolute):
-        return False, {}, None
-    try:
-        with open(absolute, encoding="utf-8") as handle:
-            text = handle.read()
-    except (OSError, UnicodeError, ValueError) as exc:
-        return True, None, "page is unreadable: %s" % exc
-    raw = kblib.extract_frontmatter(text)
-    if raw is None:
-        if text.startswith("---\n") or text.startswith("---\r\n"):
-            return True, None, "frontmatter has no closing fence"
-        return True, {}, None
-    try:
-        fields = kblib.parse_yaml_subset(raw)
-    except (ValueError, kblib.YamlSubsetError) as exc:
-        return True, None, "frontmatter is unparsable: %s" % exc
-    if not isinstance(fields, dict):
-        return True, None, "frontmatter is not a mapping"
-    return True, fields, None
-
-
-def _hub_basis(fields):
-    """Name the K13/10 hub role a page's own metadata proves, or ``None``."""
-    page_type = fields.get("type")
-    if page_type in HUB_PAGE_TYPES:
-        return "type=%s" % page_type
-    if page_type == HUB_TERM_TYPE and fields.get("scope") == HUB_TERM_SCOPE:
-        return "type=%s scope=%s" % (HUB_TERM_TYPE, HUB_TERM_SCOPE)
-    return None
-
-
-def hub_page_admission(root, manifest, records, registered_hub_paths, cache):
-    """Classify one batch manifest against K13/10 admission condition 2.
-
-    The kernel forbids a concurrently admitted batch from *editing* a control
-    or hub page.  A hub page that already exists is an edit and blocks
-    activation; a hub page this batch creates is not, and is reported as a
-    candidate for the integrator's post-merge hub synchronization step.  This
-    only reports what the bytes say; choosing the execution mode is the
-    integrator's decision.
-    """
-    blocking = []
-    candidates = []
-    unresolved = []
-    for path in sorted(set(manifest or [])):
-        if not _nonempty_string(path):
-            continue
-        if path not in cache:
-            cache[path] = _page_frontmatter(root, path)
-        exists, fields, error = cache[path]
-        registered = path in registered_hub_paths
-        if error is not None:
-            if exists and registered:
-                blocking.append("%s (%s)" % (path, EXPRESSION_LAYER_SLOT))
-            else:
-                unresolved.append("%s (%s)" % (path, error))
-            continue
-        if exists:
-            basis = _hub_basis(fields)
-            if registered:
-                basis = EXPRESSION_LAYER_SLOT if basis is None else basis
-            if basis is not None:
-                blocking.append("%s (%s)" % (path, basis))
-            continue
-        declared = records.get(path) or {}
-        basis = None
-        if declared.get("type") in HUB_PAGE_TYPES:
-            basis = "Coverage type=%s" % declared.get("type")
-        elif registered:
-            basis = EXPRESSION_LAYER_SLOT
-        if basis is not None:
-            candidates.append("%s (%s)" % (path, basis))
-    return {
-        "blocking": blocking,
-        "candidates": candidates,
-        "unresolved": unresolved,
-    }
-
-
-
-
-
-
-def _coverage_records(root, coverage, errors):
-    pages = coverage.get("pages")
-    if not isinstance(pages, list):
-        errors.append("Coverage pages must be an explicit list")
-        return {}, {}
-    records = {}
-    assignments = {}
-    for index, page in enumerate(pages):
-        label = "Coverage pages[%d]" % index
-        if not isinstance(page, dict):
-            errors.append("%s must be a mapping" % label)
-            continue
-        core_fields = (
-            "path", "coverage_disposition", "canonical_owner",
-            "prerequisites", "batch", "next_batch", "deferred_reason",
-            "reentry_condition", "gate_receipts",
-        )
-        missing = [field for field in core_fields if field not in page]
-        if missing:
-            errors.append("%s misses core field(s): %s" %
-                          (label, ", ".join(missing)))
-        path = page.get("path")
-        if not _nonempty_string(path):
-            errors.append("%s path must be a non-empty string" % label)
-            continue
-        if path in records:
-            errors.append("Coverage repeats object path %s" % path)
-            continue
-        path_error = _path_error(root, path, must_exist=False)
-        if path_error:
-            errors.append("%s path %r is unsafe: %s" % (label, path, path_error))
-        records[path] = page
-        disposition = page.get("coverage_disposition")
-        if disposition not in COVERAGE_DISPOSITIONS:
-            errors.append("%s coverage_disposition must be one of %s; found %r" %
-                          (label, ", ".join(sorted(COVERAGE_DISPOSITIONS)),
-                           disposition))
-        if not _nonempty_string(page.get("canonical_owner")):
-            errors.append("%s canonical_owner must be a non-empty string" % label)
-        for field in ("prerequisites", "gate_receipts"):
-            values = page.get(field)
-            if (not isinstance(values, list) or
-                    not all(_nonempty_string(value) for value in values)):
-                errors.append("%s %s must be an explicit string list" %
-                              (label, field))
-            elif len(values) != len(set(values)):
-                errors.append("%s %s must not contain duplicates" %
-                              (label, field))
-        for field in ("batch", "next_batch", "deferred_reason",
-                      "reentry_condition"):
-            value = page.get(field)
-            if value is not None and not _nonempty_string(value):
-                errors.append("%s %s must be null or a non-empty string" %
-                              (label, field))
-        if disposition in ("deferred", "excluded") and not _nonempty_string(
-                page.get("deferred_reason")):
-            errors.append("%s %s disposition requires a reason or scope basis" %
-                          (label, disposition))
-        if disposition == "deferred" and not _nonempty_string(
-                page.get("reentry_condition")):
-            errors.append("%s deferred disposition requires reentry_condition" %
-                          label)
-        batch_ids = []
-        for key in ("batch", "next_batch"):
-            value = page.get(key)
-            if value is None or value == "":
-                continue
-            if not _nonempty_string(value):
-                errors.append("%s %s must be a string or null" % (label, key))
-                continue
-            if value not in batch_ids:
-                batch_ids.append(value)
-        assignments[path] = batch_ids
-        if page.get("coverage_disposition") == "required" and not batch_ids:
-            errors.append("Required Coverage object %s has no batch/next_batch assignment" %
-                          path)
-    return records, assignments
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8332,75 +5881,6 @@ def _legacy_property_state_source_errors(
     return errors, sorted(resolved)
 
 
-def _coverage_batch_spec_errors(coverage, items_by_id):
-    """Detect direct edits to canonical compiler inputs after materialization."""
-    errors = []
-    specs = coverage.get("batch_specs")
-    if not isinstance(specs, list):
-        return ["Coverage batch_specs must be an explicit list"]
-    seen = set()
-    field_map = {
-        "family": "family",
-        "source_route": "source_route",
-        "execution_mode": "execution_mode",
-        "depends_on": "depends_on",
-        "confirmation_required": "confirmation_required",
-        "work_spec_path": "work_spec_path",
-        "work_spec_sha256": "work_spec_sha256",
-    }
-    for index, spec in enumerate(specs):
-        label = "Coverage batch_specs[%d]" % index
-        if not isinstance(spec, dict):
-            errors.append("%s must be a mapping" % label)
-            continue
-        missing = sorted(COVERAGE_BATCH_SPEC_FIELDS - set(spec))
-        extra = sorted(set(spec) - COVERAGE_BATCH_SPEC_FIELDS)
-        if missing:
-            errors.append("%s misses required field(s): %s" %
-                          (label, ", ".join(missing)))
-        if extra:
-            errors.append("%s has unsupported field(s): %s" %
-                          (label, ", ".join(extra)))
-        errors.extend(_work_spec_binding_errors(
-            spec.get("work_spec_path"), spec.get("work_spec_sha256"),
-            label,
-        ))
-        batch_id = spec.get("id")
-        if not _nonempty_string(batch_id) or not BATCH_ID_RE.fullmatch(batch_id):
-            errors.append("%s id must be a valid batch id" % label)
-            continue
-        if batch_id in seen:
-            errors.append("Coverage repeats batch spec %s" % batch_id)
-            continue
-        seen.add(batch_id)
-        item = items_by_id.get(batch_id)
-        if item is None:
-            # Assignment reconciliation reports a current zero/unknown batch;
-            # terminal history is allowed to omit its old spec, not vice versa.
-            errors.append("Coverage batch spec %s has no Queue item" % batch_id)
-            continue
-        for spec_field, queue_field in field_map.items():
-            if spec.get(spec_field) != item.get(queue_field):
-                errors.append(
-                    "Coverage batch spec %s %s=%r does not match Queue %r" %
-                    (batch_id, spec_field, spec.get(spec_field),
-                     item.get(queue_field)))
-        order_hint = spec.get("order_hint")
-        if (order_hint is not None and
-                (not isinstance(order_hint, int) or isinstance(order_hint, bool) or
-                 order_hint < 1)):
-            errors.append("Coverage batch spec %s order_hint must be a positive "
-                          "integer or null" % batch_id)
-        elif order_hint is not None and order_hint != item.get("order"):
-            errors.append(
-                "Coverage batch spec %s order_hint=%r does not match Queue order=%r" %
-                (batch_id, order_hint, item.get("order"))
-            )
-    for batch_id, item in items_by_id.items():
-        if item.get("state") not in TERMINAL_STATES and batch_id not in seen:
-            errors.append("non-terminal Queue item %s has no Coverage batch spec" %
-                          batch_id)
-    return errors
 
 
 def _closed_delta_apply_errors(item, transition, catalog, queue, root=None):
