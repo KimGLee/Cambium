@@ -252,6 +252,8 @@ QUEUE_RUNTIME_RANKS = {
     "queue_runtime.primitives": 0,
     "queue_runtime.repofs": 0,
 
+    "queue_runtime.evidence_identity": 1,
+
     "queue_runtime": 7,
 }
 

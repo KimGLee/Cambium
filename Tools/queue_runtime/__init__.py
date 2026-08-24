@@ -86,3 +86,13 @@ from queue_runtime.repofs import (  # noqa: F401
     _path_error,
     _repository_evidence_file,
 )
+from queue_runtime.evidence_identity import (  # noqa: F401
+    EVIDENCE_IDENTITY_USES,
+    EVIDENCE_USE_ACTIVE_TRANSACTION,
+    EVIDENCE_USE_COMPLETED_EVENT,
+    EVIDENCE_USE_CURRENT_AUTHORIZATION,
+    EVIDENCE_USE_TERMINAL_HISTORY,
+    _current_property_receipt,
+    evidence_identity_errors,
+    property_receipt_utc_date,
+)

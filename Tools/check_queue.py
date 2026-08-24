@@ -64,6 +64,11 @@ from queue_runtime import (
     CORPUS_PLAN_TOOL,
     CORPUS_PLAN_TOOL_VERSION,
     COVERAGE_PATH,
+    EVIDENCE_IDENTITY_USES,
+    EVIDENCE_USE_ACTIVE_TRANSACTION,
+    EVIDENCE_USE_COMPLETED_EVENT,
+    EVIDENCE_USE_CURRENT_AUTHORIZATION,
+    EVIDENCE_USE_TERMINAL_HISTORY,
     EXECUTION_MODES,
     GATE_CHECK,
     HOLDS,
@@ -92,6 +97,7 @@ from queue_runtime import (
     UPDATE_QUEUE_TOOL_VERSION,
     _acyclic,
     _closed_mapping_errors,
+    _current_property_receipt,
     _explicit_string_list_errors,
     _identity,
     _load_state,
@@ -101,7 +107,16 @@ from queue_runtime import (
     _repository_evidence_file,
     _timestamp_value,
     _valid_timestamp,
+    evidence_identity_errors,
+    property_receipt_utc_date,
 )
+
+# The historical spelling of one promoted name.  `evidence_identity`
+# offers `evidence_identity_errors` because `metadata_gate_runtime` needs
+# the identical identity policy and may not read a private name; the
+# underscored spelling is kept here, where every other historical
+# spelling is kept, for the test that has always read it.
+_evidence_identity_errors = evidence_identity_errors
 
 # These exact legacy protocols remain replayable.  1.0.0 is the first
 # registration shape; 1.1.0 adds withdrawal.  Neither may claim the
@@ -390,20 +405,6 @@ COVERAGE_BATCH_SPEC_FIELDS = frozenset((
     "work_spec_sha256",
 ))
 LEGACY_PROPERTY_STATE_FIELD = "legacy_property_state"
-EVIDENCE_USE_CURRENT_AUTHORIZATION = "current-authorization"
-EVIDENCE_USE_ACTIVE_TRANSACTION = "active-transaction"
-EVIDENCE_USE_COMPLETED_EVENT = "completed-event"
-EVIDENCE_USE_TERMINAL_HISTORY = "terminal-history"
-EVIDENCE_IDENTITY_USES = frozenset((
-    EVIDENCE_USE_CURRENT_AUTHORIZATION,
-    EVIDENCE_USE_ACTIVE_TRANSACTION,
-    EVIDENCE_USE_COMPLETED_EVENT,
-    EVIDENCE_USE_TERMINAL_HISTORY,
-))
-LIVE_IDENTITY_USES = frozenset((
-    EVIDENCE_USE_CURRENT_AUTHORIZATION,
-    EVIDENCE_USE_ACTIVE_TRANSACTION,
-))
 LEGACY_PROPERTY_RECORD_FIELDS = frozenset(("status", "value"))
 LEGACY_PROPERTY_STATUS = "legacy-unverified"
 PROPERTY_STATE_MIGRATION_BINDING_FIELDS = (
@@ -6647,7 +6648,7 @@ def _page_review_acceptance_errors(
                     "%s cannot authorize current metadata/Profile execution "
                     "context: %s" %
                     (label, exc))
-    errors.extend(_evidence_identity_errors(
+    errors.extend(evidence_identity_errors(
         aggregate, label,
         use=(EVIDENCE_USE_TERMINAL_HISTORY if historical else
              EVIDENCE_USE_CURRENT_AUTHORIZATION),
@@ -11186,40 +11187,8 @@ def _coverage_records(root, coverage, errors):
     return records, assignments
 
 
-def _current_property_receipt(catalog, receipt_id, label, errors):
-    """Resolve one live owner-state pointer without consulting history.
-
-    ``catalog`` is the adoption-filtered hot view assembled by
-    :func:`validate_runtime`.  Looking up the mapping directly is important:
-    the historical/sealed resolver is valid for replay, but a current owner
-    property may not silently promote an invalidated producer-era receipt
-    back into live authority.
-    """
-    if not _nonempty_string(receipt_id):
-        errors.append("%s evidence_receipt must be a non-empty string" % label)
-        return None
-    entry = catalog.get(receipt_id)
-    if not isinstance(entry, tuple) or len(entry) != 2 or not isinstance(
-            entry[1], dict):
-        errors.append(
-            "%s evidence receipt %s is absent from the current receipt "
-            "catalog" % (label, receipt_id))
-        return None
-    receipt = entry[1]
-    if receipt.get("receipt_id") != receipt_id:
-        errors.append(
-            "%s evidence receipt catalog key differs from its record" %
-            label)
-        return None
-    return receipt
 
 
-def _property_receipt_utc_date(receipt, label, errors):
-    try:
-        return metadata_property_state.receipt_utc_date(receipt)
-    except ValueError as exc:
-        errors.append("%s %s" % (label, exc))
-        return None
 
 
 def _current_inflight_semantic_baselines(
@@ -11355,63 +11324,6 @@ def _delta_opening_semantic_binding(
     return errors, before
 
 
-def _evidence_identity_errors(
-        receipt, label, *, use, profile_view=None,
-        metadata_contract_fingerprint=None, profile_bound=True):
-    """Apply the one Profile/metadata identity policy for evidence use.
-
-    Current authorization and an active transaction must match the live
-    Profile and metadata implementation.  A completed event and terminal
-    history keep the canonical identity their producer observed and are never
-    reinterpreted through today's bytes.  Every caller must choose one of
-    these four lifecycle meanings explicitly; adding another ad-hoc
-    live-fingerprint comparison would recreate the upgrade deadlock this
-    boundary exists to prevent.
-    """
-    errors = []
-    if use not in EVIDENCE_IDENTITY_USES:
-        return ["%s has unsupported evidence identity use %r" % (label, use)]
-    if profile_bound:
-        if not _nonempty_string(receipt.get("selected_profile_manifest")):
-            errors.append(
-                "%s has no producer-era selected_profile_manifest" % label)
-        for field in (
-                "profile_snapshot_sha256", "profile_contract_fingerprint",
-                "profile_load_inputs_sha256"):
-            value = receipt.get(field)
-            if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
-                errors.append(
-                    "%s has invalid producer-era %s" % (label, field))
-    fingerprint = receipt.get("metadata_execution_contract_fingerprint")
-    if (not isinstance(fingerprint, str) or
-            not SHA256_RE.fullmatch(fingerprint)):
-        errors.append(
-            "%s has invalid producer-era metadata execution fingerprint" %
-            label)
-    if use in LIVE_IDENTITY_USES:
-        if profile_bound:
-            if not isinstance(profile_view, dict):
-                errors.append("%s has no authorized live Profile view" % label)
-                profile_view = {}
-            for field in (
-                    "selected_profile_manifest", "profile_snapshot_sha256",
-                    "profile_contract_fingerprint",
-                    "profile_load_inputs_sha256"):
-                expected = profile_view.get(field)
-                if receipt.get(field) != expected:
-                    errors.append(
-                        "%s has %s=%r, expected authorized Profile value %r" %
-                        (label, field, receipt.get(field), expected))
-        if (not isinstance(metadata_contract_fingerprint, str) or
-                not SHA256_RE.fullmatch(metadata_contract_fingerprint)):
-            errors.append(
-                "%s has no authorized live metadata execution fingerprint" %
-                label)
-        elif fingerprint != metadata_contract_fingerprint:
-            errors.append(
-                "%s metadata execution fingerprint is stale relative to "
-                "the live contract" % label)
-    return errors
 
 
 def _content_change_property_evidence_errors(
@@ -11436,7 +11348,7 @@ def _content_change_property_evidence_errors(
             errors.append(
                 "%s evidence receipt %s has %s=%r, expected %r" %
                 (label, receipt_id, name, receipt.get(name), expected_value))
-    errors.extend(_evidence_identity_errors(
+    errors.extend(evidence_identity_errors(
         receipt, label, use=EVIDENCE_USE_COMPLETED_EVENT))
     if include_shape:
         errors.extend(_delta_property_event_errors(
@@ -11444,7 +11356,7 @@ def _content_change_property_evidence_errors(
     opening_errors, opening_before = _delta_opening_semantic_binding(
         receipt, current_catalog, label)
     errors.extend(opening_errors)
-    accepted_date = _property_receipt_utc_date(receipt, label, errors)
+    accepted_date = property_receipt_utc_date(receipt, label, errors)
     events = receipt.get("property_events")
     matches = ([event for event in events
                 if isinstance(event, dict) and event.get("path") == path]
@@ -11509,9 +11421,9 @@ def _review_property_evidence_errors(
             errors.append(
                 "%s evidence receipt %s has %s=%r, expected %r" %
                 (label, receipt_id, name, receipt.get(name), expected_value))
-    errors.extend(_evidence_identity_errors(
+    errors.extend(evidence_identity_errors(
         receipt, label, use=EVIDENCE_USE_COMPLETED_EVENT))
-    accepted_date = _property_receipt_utc_date(receipt, label, errors)
+    accepted_date = property_receipt_utc_date(receipt, label, errors)
     if value != accepted_date:
         errors.append(
             "%s value=%r does not equal its review receipt UTC date %r" %
@@ -11620,14 +11532,14 @@ def _gate_property_evidence_errors(
             errors.append(
                 "%s evidence receipt %s has %s=%r, expected %r" %
                 (label, receipt_id, name, receipt.get(name), expected_value))
-    errors.extend(_evidence_identity_errors(
+    errors.extend(evidence_identity_errors(
         receipt, label, use=EVIDENCE_USE_CURRENT_AUTHORIZATION,
         profile_view=profile_view,
         metadata_contract_fingerprint=metadata_contract_fingerprint))
     if (not isinstance(receipt.get("page_sha256"), str) or
             not SHA256_RE.fullmatch(receipt["page_sha256"])):
         errors.append("%s evidence receipt has invalid page_sha256" % label)
-    _property_receipt_utc_date(receipt, label, errors)
+    property_receipt_utc_date(receipt, label, errors)
     if gate.producer_kind == "manual-attestation":
         if (receipt.get("tool") != "record_gate_attestation" or
                 receipt.get("tool_version") != "1.0.0"):
@@ -12850,7 +12762,7 @@ def _current_open_semantic_baseline_errors(
             errors.append(
                 "%s cannot load the live metadata execution contract: %s" %
                 (label, exc))
-    errors.extend(_evidence_identity_errors(
+    errors.extend(evidence_identity_errors(
         transition, label,
         use=(EVIDENCE_USE_ACTIVE_TRANSACTION if require_live_authority
              else EVIDENCE_USE_TERMINAL_HISTORY),
@@ -12983,7 +12895,7 @@ def _current_close_transition_metadata_errors(
         "metadata_execution_contract_fingerprint")
     aggregate_fingerprint = aggregate.get(
         "metadata_execution_contract_fingerprint")
-    errors.extend(_evidence_identity_errors(
+    errors.extend(evidence_identity_errors(
         transition, label, use=EVIDENCE_USE_TERMINAL_HISTORY,
         profile_bound=False))
     if fingerprint != aggregate_fingerprint:

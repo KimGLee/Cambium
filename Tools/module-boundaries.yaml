@@ -744,6 +744,11 @@ modules:
       - CORPUS_PLAN_TOOL
       - CORPUS_PLAN_TOOL_VERSION
       - COVERAGE_PATH
+      - EVIDENCE_IDENTITY_USES
+      - EVIDENCE_USE_ACTIVE_TRANSACTION
+      - EVIDENCE_USE_COMPLETED_EVENT
+      - EVIDENCE_USE_CURRENT_AUTHORIZATION
+      - EVIDENCE_USE_TERMINAL_HISTORY
       - EXECUTION_MODES
       - GATE_CHECK
       - HOLDS
@@ -770,8 +775,10 @@ modules:
       - TOOL
       - TOOL_VERSION
       - UPDATE_QUEUE_TOOL_VERSION
+      - evidence_identity_errors
       - fullmatch
       - pattern
+      - property_receipt_utc_date
     exceptions:
       - consumer: check_queue
         symbol: _acyclic
@@ -781,6 +788,11 @@ modules:
       - consumer: check_queue
         symbol: _closed_mapping_errors
         content_sha256: sha256:3d8bb0662e54b3b243883f431bbaf63e352b4cd70cc55e34e29919a5d08b7835
+        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
+        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
+      - consumer: check_queue
+        symbol: _current_property_receipt
+        content_sha256: sha256:d2cf3d74dc05742235cdffd876ba9fcd4d8e27a61091a314eafa258053cd98d7
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
@@ -830,6 +842,9 @@ modules:
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
   - module: queue_runtime.canon
     path: Tools/queue_runtime/canon.py
+    public: []
+  - module: queue_runtime.evidence_identity
+    path: Tools/queue_runtime/evidence_identity.py
     public: []
   - module: queue_runtime.primitives
     path: Tools/queue_runtime/primitives.py
