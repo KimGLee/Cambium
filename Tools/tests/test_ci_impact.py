@@ -124,11 +124,64 @@ class CiImpactTests(unittest.TestCase):
                 ".github/scripts/ci_impact.py",
                 "Tools/kblib.py",
                 "Tools/schemas/example.yaml",
-                "Tools/compiled/example.json",
                 "Tools/tests/fixtures/state.json",
                 "Tools/tests/profile_fixture.py"):
             with self.subTest(path=path):
                 self.assertEqual("full", self._plan(("M", path))["mode"])
+
+    def test_a_compiled_projection_is_checked_rather_than_re_tested(self):
+        """The artifact is derived, so its sources decide the mode, not it.
+
+        While this path forced the full suite it also fired on every Tool
+        change -- the artifact is regenerated alongside one -- and the
+        selective branch went unreached in 22 consecutive runs.  What
+        protected the artifact was never the test suite: `make check` runs
+        `metadata_execution_contract --check` in every mode, including this
+        one, and a tampered artifact exits non-zero there.
+        """
+        plan = self._plan(("M", "Tools/compiled/example.json"))
+        self.assertEqual("checks-only", plan["mode"])
+
+    def test_the_sources_of_a_compiled_projection_still_force_full(self):
+        """The reason the projection may be demoted: its inputs are not."""
+        for path in ("kernel/K08 Metadata and Status/authority.yaml",
+                     "Tools/operation-capabilities.yaml"):
+            with self.subTest(path=path):
+                self.assertEqual("full", self._plan(("M", path))["mode"])
+
+    def test_a_selective_plan_is_sharded_like_a_full_one(self):
+        """A narrow plan in one job was slower than the matrix it replaced.
+
+        Nine modules measured 451-525s on a runner in a single unsharded
+        job, and the widest closure projects past the job timeout outright.
+        """
+        plan = self._plan(("M", "Tools/alpha.py"))
+        self.assertEqual("selective", plan["mode"])
+        shards = {entry["shard"] for entry in plan["test_matrix"]["include"]}
+        # An inequality here would pass on a single unsharded job, which is
+        # the regression this test exists to catch.
+        self.assertEqual(
+            min(len(plan["selected_tests"]), len(ci_impact.FULL_SHARD_RANGES)),
+            len(shards))
+        version = ci_impact.PYTHON_VERSIONS[0]
+        packed = [name
+                  for entry in plan["test_matrix"]["include"]
+                  if entry["python-version"] == version
+                  for name in entry["test-files"].split(",")]
+        self.assertEqual(sorted(packed), sorted(plan["selected_tests"]))
+        self.assertEqual(len(packed), len(set(packed)))
+
+    def test_the_cli_surface_test_joins_every_closure(self):
+        """mcp_server reaches tools by command line, never by import.
+
+        No reverse-import closure can reach it, so the edge is declared
+        rather than discovered -- the remedy K00/18 names for exactly this
+        blind spot.
+        """
+        self._write("Tools/tests/test_mcp_server.py", "pass\n")
+        plan = self._plan(("M", "Tools/alpha.py"))
+        self.assertEqual("selective", plan["mode"])
+        self.assertIn("test_mcp_server.py", plan["selected_tests"])
 
     def test_authoritative_non_markdown_and_unknown_paths_fail_closed(self):
         for path in (

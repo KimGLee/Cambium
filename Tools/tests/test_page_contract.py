@@ -427,10 +427,16 @@ class PageContractTests(unittest.TestCase):
         self.assertIn("not persisted on pages", result.stdout)
 
     def test_absent_user_owned_field_is_never_a_defect(self):
+        # GOOD_PAGE carries no learning_status, which the base declares
+        # user-owned.  Exit 0 alone would also hold if the field had been
+        # made required and the page happened to satisfy it some other way,
+        # so the assertion that carries the name is the field's absence from
+        # the report.
         root = self.build(base_files())
         self.compose(root)
         result = self.check(root)
         self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn("learning_status", result.stdout)
 
     def test_unknown_field_hits_the_closure(self):
         files = base_files()
@@ -680,6 +686,9 @@ class PageContractTests(unittest.TestCase):
     DEEP_HEADER = ("---\ntype: concept\nauthoring_status: drafted\n"
                    "depth: core\n---\n# Deep\n\n")
 
+    SHALLOW_HEADER = ("---\ntype: concept\nauthoring_status: drafted\n"
+                      "depth: survey\n---\n# Deep\n\n")
+
     def test_core_page_without_sources_role_is_reported(self):
         root = self.build(self.sources_files(self.DEEP_HEADER + "Body.\n"))
         self.compose(root)
@@ -724,10 +733,16 @@ class PageContractTests(unittest.TestCase):
         self.assertNotIn("Related", result.stdout)
 
     def test_shallow_page_owes_no_sources_role(self):
-        root = self.build(base_files())  # Domain/Page.md has no depth field
+        # The obligation is conditional on depth being core or system.  This
+        # page names a depth outside that set, so the condition is evaluated
+        # and found not to hold -- which is the property.  A page with no
+        # depth field at all would exit 0 without the condition deciding
+        # anything, and would prove nothing about shallow pages.
+        root = self.build(self.sources_files(self.SHALLOW_HEADER + "Body.\n"))
         self.compose(root)
         result = self.check(root)
         self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn("owes the sources role", result.stdout)
 
     # ---- fail-closed scope ----
 
