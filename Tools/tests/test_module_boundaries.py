@@ -267,6 +267,7 @@ QUEUE_RUNTIME_RANKS = {
     "queue_runtime.control_plane": 2,
     "queue_runtime.coverage": 2,
     "queue_runtime.item_history": 2,
+    "queue_runtime.property_state": 2,
     "queue_runtime.review": 2,
     "queue_runtime.task_record": 2,
 

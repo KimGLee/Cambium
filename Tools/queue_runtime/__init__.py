@@ -45,7 +45,6 @@ from queue_runtime.canon import (  # noqa: F401
     EXECUTION_MODES,
     GATE_CHECK,
     HOLDS,
-    LEGACY_PROPERTY_ADOPTION_OPERATION,
     MANUAL_ATTESTATION_TOOL,
     MANUAL_ATTESTATION_TOOL_VERSION,
     PROGRESS_PATH,
@@ -87,7 +86,6 @@ from queue_runtime.evidence_identity import (  # noqa: F401
     EVIDENCE_USE_COMPLETED_EVENT,
     EVIDENCE_USE_CURRENT_AUTHORIZATION,
     EVIDENCE_USE_TERMINAL_HISTORY,
-    _current_property_receipt,
     evidence_identity_errors,
     property_receipt_utc_date,
 )
@@ -207,6 +205,18 @@ from queue_runtime.item_history import (  # noqa: F401
     item_undischarged_revalidation_hold,
     undischarged_revalidation_hold,
     walk_revalidation_hold,
+)
+from queue_runtime.property_state import (  # noqa: F401
+    LEGACY_PROPERTY_STATE_FIELD,
+    _current_close_transition_metadata_errors,
+    _current_open_semantic_baseline_errors,
+    _delta_opening_semantic_binding,
+    _delta_property_event_errors,
+    _delta_property_invalidation_errors,
+    _legacy_property_state_source_errors,
+    _review_property_evidence_errors,
+    current_opening_semantic_baseline,
+    current_opening_semantic_context,
 )
 from queue_runtime.review import (  # noqa: F401
     BATCH_REVIEW_CHECK,

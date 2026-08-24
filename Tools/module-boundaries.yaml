@@ -692,16 +692,6 @@ modules:
         content_sha256: sha256:c18b71889771a48e07777e44f687ad35bcf9ce1e1eb39802e9f9af2b46ae2e20
         necessity: binds an applied delta to the exact projection rule set, so a receipt cannot claim rules it was not produced under
         retires_when: same as _frontmatter_mapping
-      - consumer: check_queue
-        symbol: _frontmatter_mapping
-        content_sha256: sha256:c9f1ad8360409dea20792e5aa3a965801d0c7fe2f1a4dc6626b88877b1db4e48
-        necessity: the exact frontmatter parse the projection writer applies; a second parser would let a page read one way when written and another when validated
-        retires_when: project_page_state declares a page-state reading surface these callers can use
-      - consumer: check_queue
-        symbol: _typed_legacy_observation_value
-        content_sha256: sha256:52deaf139836bd3bba5753c2de0e4ac48bed22e515270f97a1d1267c10e0dc90
-        necessity: the single interpretation of a legacy observation, shared so migration input and validation cannot disagree about what an old value meant
-        retires_when: same as _frontmatter_mapping
       - consumer: metadata_property_state
         symbol: _field_pattern
         content_sha256: sha256:f12c4d58c45e2e7ca2b4e41a8df927158e74401311ad3dd379440cd4615074b2
@@ -723,6 +713,16 @@ modules:
         necessity: reads owner state through the writer's own accessor rather than re-deriving it from the ledger shape
         retires_when: same as _frontmatter_mapping
       - consumer: metadata_property_state
+        symbol: _typed_legacy_observation_value
+        content_sha256: sha256:52deaf139836bd3bba5753c2de0e4ac48bed22e515270f97a1d1267c10e0dc90
+        necessity: the single interpretation of a legacy observation, shared so migration input and validation cannot disagree about what an old value meant
+        retires_when: same as _frontmatter_mapping
+      - consumer: queue_runtime.property_state
+        symbol: _frontmatter_mapping
+        content_sha256: sha256:c9f1ad8360409dea20792e5aa3a965801d0c7fe2f1a4dc6626b88877b1db4e48
+        necessity: the exact frontmatter parse the projection writer applies; a second parser would let a page read one way when written and another when validated
+        retires_when: project_page_state declares a page-state reading surface these callers can use
+      - consumer: queue_runtime.property_state
         symbol: _typed_legacy_observation_value
         content_sha256: sha256:52deaf139836bd3bba5753c2de0e4ac48bed22e515270f97a1d1267c10e0dc90
         necessity: the single interpretation of a legacy observation, shared so migration input and validation cannot disagree about what an old value meant
@@ -755,7 +755,7 @@ modules:
       - EXPRESSION_LAYER_SLOT
       - GATE_CHECK
       - HOLDS
-      - LEGACY_PROPERTY_ADOPTION_OPERATION
+      - LEGACY_PROPERTY_STATE_FIELD
       - MANUAL_ATTESTATION_TOOL
       - MANUAL_ATTESTATION_TOOL_VERSION
       - NOT_BATCH_SCOPED_GATE
@@ -791,6 +791,8 @@ modules:
       - batch_review_receipt_errors
       - batch_touches_control_plane
       - coverage_reviewed_era_exception
+      - current_opening_semantic_baseline
+      - current_opening_semantic_context
       - current_receipt_catalog
       - delta_gate_receipt_ids
       - evidence_identity_errors
@@ -812,6 +814,7 @@ modules:
       - project_adoption_gate_ids
       - projected_revalidation_owners
       - property_receipt_utc_date
+      - property_state
       - queue_gate_id_for_mode
       - receipt_matches_gate_id
       - registered_gate_dimensions
@@ -918,8 +921,28 @@ modules:
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
-        symbol: _current_property_receipt
-        content_sha256: sha256:d2cf3d74dc05742235cdffd876ba9fcd4d8e27a61091a314eafa258053cd98d7
+        symbol: _current_close_transition_metadata_errors
+        content_sha256: sha256:f2211dea8af7310921c3f6c55d9cd1d2963d428736d286adc3ae73c4282bf791
+        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
+        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
+      - consumer: check_queue
+        symbol: _current_open_semantic_baseline_errors
+        content_sha256: sha256:6333928251bdacd2d47ab8221c174b456125380fe3b4608d9acacb30f1eddd22
+        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
+        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
+      - consumer: check_queue
+        symbol: _delta_opening_semantic_binding
+        content_sha256: sha256:bf87c725d1cfe3f23477cd4d401fb7125e961d35120ce8ae3eac2fd54720d49d
+        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
+        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
+      - consumer: check_queue
+        symbol: _delta_property_event_errors
+        content_sha256: sha256:0850f6e31c22e48f650dad0206e0e886e4deb5dc14064fe54e80ffb5eb7fbd3e
+        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
+        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
+      - consumer: check_queue
+        symbol: _delta_property_invalidation_errors
+        content_sha256: sha256:926920ac7380bf12c3d8b3e1edb05b912ee03c0bde443e41953fac48305bf9e6
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
@@ -945,6 +968,11 @@ modules:
       - consumer: check_queue
         symbol: _latest_merge_transition
         content_sha256: sha256:9b2d537ac79f5256990842693811959d800a6438097a98994be77080318f387b
+        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
+        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
+      - consumer: check_queue
+        symbol: _legacy_property_state_source_errors
+        content_sha256: sha256:bd210a6197551aa8504fd6fe192742c1a5aca99aa6b15436c1955d7f69f2ec82
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
@@ -1030,6 +1058,11 @@ modules:
       - consumer: check_queue
         symbol: _require_receipt
         content_sha256: sha256:62bd2368cf16fe0e0029e6bca133c820a4c88bf618d90d42fbd2a9c9a1991e01
+        necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
+        retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
+      - consumer: check_queue
+        symbol: _review_property_evidence_errors
+        content_sha256: sha256:79406dbe63c84670d480c397e412f678f61ea10cd74ce9e047cdd838e0dcb47e
         necessity: check_queue is the permanent facade: it re-exports the package's own internal name so the shipped consumers and test files that have always read it from check_queue keep resolving it, and the spelling is historical rather than a new coupling
         retires_when: the last reader of this spelling reads it from the queue_runtime submodule that defines it, and the facade stops re-exporting it
       - consumer: check_queue
@@ -1140,6 +1173,9 @@ modules:
     public: []
   - module: queue_runtime.profile_view
     path: Tools/queue_runtime/profile_view.py
+    public: []
+  - module: queue_runtime.property_state
+    path: Tools/queue_runtime/property_state.py
     public: []
   - module: queue_runtime.receipts
     path: Tools/queue_runtime/receipts.py

@@ -20,6 +20,9 @@ sys.path.insert(0, str(TOOLS))
 import check_queue
 import contract_exception_policy
 import kblib
+# The review-evidence validator is patched below, and after the package
+# split its one caller reads the name from the module that defines it.
+import queue_runtime.property_state
 import standards_state
 from profile_fixture import install_loadable_profile
 
@@ -1138,7 +1141,8 @@ class InFlightPropertyStateTests(unittest.TestCase):
                     "load_metadata_execution_contract",
                     return_value=self.metadata_contract), \
                 mock.patch.object(
-                    check_queue, "_review_property_evidence_errors",
+                    queue_runtime.property_state,
+                    "_review_property_evidence_errors",
                     return_value=[]):
             return check_queue._coverage_property_state_errors(
                 str(self.root), {"pages": [row]}, catalog, queue,
