@@ -396,7 +396,7 @@ def _build_after(root, documents, plan, profile_view):
     return coverage, queue, progress, derived, adoption
 
 
-def _validate_proposed(root, coverage, progress, documents,
+def _validate_proposed(root, coverage, progress, _documents,
                        property_adoption):
     """Validate the state this transaction writes, with the Queue untouched.
 
@@ -447,7 +447,7 @@ def _derive_load_sets(root, contract):
     no machine-readable registry (`profiles/README.md` says so outright), so it
     stays something the plan names and this function closes over.
     """
-    card_map, read_map, registry_errors = check_proof._load_route_registry(root)
+    card_map, read_map, registry_errors = check_proof.load_route_registry(root)
     if registry_errors:
         raise Refusal(
             "the Card/Read Set registry is not sound, so a route selection "
@@ -476,7 +476,7 @@ def _derive_load_sets(root, contract):
     seeds = _strings(contract.get("selected_read_sets")) | {
         read_map[route]["path"] for route in routes}
     read_sets, modules, invalid, closure_errors = \
-        check_queue._read_set_load_closure(
+        check_queue.read_set_load_closure(
             root, seeds, contract.get("selected_profile_manifest"),
             contract.get("selected_profile_route_ids"))
     if closure_errors or invalid:
@@ -535,7 +535,7 @@ def prepare(root, plan_relative):
     # that judgment on a plan being admitted, which is exactly here: the live
     # path reports these as gaps rather than errors only so an already-sealed
     # contract stays repairable.
-    _errors, gaps = check_queue._live_read_set_load_findings(
+    _errors, gaps = check_queue.live_read_set_load_findings(
         root, progress["contract"])
     if gaps:
         raise Refusal(
@@ -582,7 +582,7 @@ def _lock_operation(prepared, commit, abort):
         "commit_receipt_id": commit["receipt_id"],
         "abort_receipt_id": abort["receipt_id"],
         # The generic writer recovery protocol (`check_queue`
-        # `_bind_generic_lock_receipts`) reads these three to decide whether
+        # `bind_generic_lock_receipts`) reads these three to decide whether
         # the declared receipt actually landed after an interruption.
         "receipt_id": commit["receipt_id"],
         "receipt_path": RECEIPT_PATH,

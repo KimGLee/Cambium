@@ -22,6 +22,9 @@ import kblib
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
+# The runtime authority check is patched below, and after the package
+# split its one caller reads the name from the module that defines it.
+import queue_runtime.authority
 import update_queue
 from profile_fixture import install_loadable_profile
 
@@ -718,7 +721,8 @@ class UpdateQueueTests(unittest.TestCase):
         with mock.patch.object(update_queue, "_write_state",
                                side_effect=write_then_switch_to_b), \
                 mock.patch.object(
-                    check_queue, "runtime_authority_currency_errors",
+                    queue_runtime.authority,
+                    "runtime_authority_currency_errors",
                     side_effect=observe_b_then_restore_a), \
                 redirect_stdout(output):
             code = update_queue.main([
@@ -1693,7 +1697,7 @@ class UpdateQueueTests(unittest.TestCase):
             (self.root / ".cambium/tmp/state-writer.lock/owner.json").is_file()
         )
         recovery = check_queue.validate_runtime(self.root)
-        lock = recovery["writer_locks"][0]
+        lock = recovery["_writer_locks"][0]
         self.assertEqual("matching",
                          lock["operation_receipt"]["status"])
         self.assertTrue(lock["operation_receipt"]["matching_receipt"])

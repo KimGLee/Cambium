@@ -102,6 +102,36 @@ capabilities:
       - Tools/check_queue.py
       - Tools/mcp_server.py
       - Tools/update_queue.py
+      - Tools/queue_runtime/__init__.py
+      - Tools/queue_runtime/adoption.py
+      - Tools/queue_runtime/amendments.py
+      - Tools/queue_runtime/authority.py
+      - Tools/queue_runtime/canon.py
+      - Tools/queue_runtime/close_gate.py
+      - Tools/queue_runtime/control_plane.py
+      - Tools/queue_runtime/coverage.py
+      - Tools/queue_runtime/delta.py
+      - Tools/queue_runtime/evidence_identity.py
+      - Tools/queue_runtime/gate_registry.py
+      - Tools/queue_runtime/item_evidence.py
+      - Tools/queue_runtime/item_history.py
+      - Tools/queue_runtime/locks.py
+      - Tools/queue_runtime/maintenance.py
+      - Tools/queue_runtime/policy_exceptions.py
+      - Tools/queue_runtime/primitives.py
+      - Tools/queue_runtime/producer_era.py
+      - Tools/queue_runtime/profile_view.py
+      - Tools/queue_runtime/property_state.py
+      - Tools/queue_runtime/receipts.py
+      - Tools/queue_runtime/repofs.py
+      - Tools/queue_runtime/resume.py
+      - Tools/queue_runtime/revalidation.py
+      - Tools/queue_runtime/review.py
+      - Tools/queue_runtime/runtime.py
+      - Tools/queue_runtime/task_contract.py
+      - Tools/queue_runtime/task_progress.py
+      - Tools/queue_runtime/task_record.py
+      - Tools/queue_runtime/work_spec.py
     operations: []
 
   - capability_id: phase-delivery-consumer-v1
@@ -112,4 +142,34 @@ capabilities:
       - Tools/record_batch_judgment.py
       - Tools/update_queue.py
       - Tools/update_task.py
+      - Tools/queue_runtime/__init__.py
+      - Tools/queue_runtime/adoption.py
+      - Tools/queue_runtime/amendments.py
+      - Tools/queue_runtime/authority.py
+      - Tools/queue_runtime/canon.py
+      - Tools/queue_runtime/close_gate.py
+      - Tools/queue_runtime/control_plane.py
+      - Tools/queue_runtime/coverage.py
+      - Tools/queue_runtime/delta.py
+      - Tools/queue_runtime/evidence_identity.py
+      - Tools/queue_runtime/gate_registry.py
+      - Tools/queue_runtime/item_evidence.py
+      - Tools/queue_runtime/item_history.py
+      - Tools/queue_runtime/locks.py
+      - Tools/queue_runtime/maintenance.py
+      - Tools/queue_runtime/policy_exceptions.py
+      - Tools/queue_runtime/primitives.py
+      - Tools/queue_runtime/producer_era.py
+      - Tools/queue_runtime/profile_view.py
+      - Tools/queue_runtime/property_state.py
+      - Tools/queue_runtime/receipts.py
+      - Tools/queue_runtime/repofs.py
+      - Tools/queue_runtime/resume.py
+      - Tools/queue_runtime/revalidation.py
+      - Tools/queue_runtime/review.py
+      - Tools/queue_runtime/runtime.py
+      - Tools/queue_runtime/task_contract.py
+      - Tools/queue_runtime/task_progress.py
+      - Tools/queue_runtime/task_record.py
+      - Tools/queue_runtime/work_spec.py
     operations: []

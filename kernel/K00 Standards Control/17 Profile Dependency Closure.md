@@ -2,6 +2,7 @@
 
 - Parent: [[kernel/K00 Standards Overview|K00 Standards Overview]].
 - Previous: [[kernel/K00 Standards Control/16 Leaf Module Size Register|Leaf Module Size Register]].
+- Next: [[kernel/K00 Standards Control/18 Tool Module Boundary Contract|Tool Module Boundary Contract]].
 
 ## Purpose
 

@@ -347,9 +347,9 @@ def _repo_relative_path_error(raw_path):
 
 def _selected_profile_manifest_error(raw_path):
     """Require the one canonical profile-manifest path shape."""
-    path_error = _repo_relative_path_error(raw_path)
-    if path_error:
-        return path_error
+    _path_error = _repo_relative_path_error(raw_path)
+    if _path_error:
+        return _path_error
     parts = Path(raw_path).parts
     if (len(parts) != 3 or parts[0] != "profiles" or
             parts[2] != "profile.md"):
@@ -473,8 +473,25 @@ def _registry_map(data, relative_path, card_index):
     return result, errors
 
 
-def _load_route_registry(root):
-    """Load and cross-check the canonical Card and Read Set index pair."""
+def load_route_registry(root):
+    """Load and cross-check the canonical Card and Read Set index pair.
+
+    Public because two modules have to answer "which Card and which Read
+    Set does this route mean?" from the same two indexes. `apply_task_plan`
+    completes a plan's derived load fields while the Contract can still be
+    repaired; this module re-checks the same binding at Terminal once it is
+    frozen. A second resolver over the same registry would turn one
+    agreement into two, and the disagreement would surface at the only
+    point where nothing can still be fixed.
+
+    Returns `(card_map, read_map, errors)`. Both maps are
+    `route_id -> {"path": str, "read_set": str | None}`; `read_set` is
+    populated only in `card_map`, because the Card Index is what binds a
+    Card to its Read Set and the Read Set Index only registers paths.
+    `errors` carries every structural finding about the pair, and what a
+    caller does with a non-empty list is the caller's policy rather than
+    this function's: fail receipts here, a refusal to write there.
+    """
     errors = []
     card_data, card_errors = _load_index(root, CARD_INDEX_PATH, "card-index")
     read_data, read_errors = _load_index(root, READ_SET_INDEX_PATH, "route-index")
@@ -1970,8 +1987,8 @@ def _main():
             seen_card_paths = set()
             for index, card_path in enumerate(selected_card_paths):
                 target = "%s#selected_card_paths[%d]" % (proof_name, index)
-                path_error = _repo_relative_path_error(card_path)
-                if path_error:
+                _path_error = _repo_relative_path_error(card_path)
+                if _path_error:
                     card_path_bad += 1
                     path_structure_bad += 1
                     seq += 1
@@ -1979,7 +1996,7 @@ def _main():
                         TOOL, TOOL_VERSION, "proof-card-path-invalid",
                         target, "fail",
                         "Card path %r is invalid: %s" %
-                        (card_path, path_error), seq))
+                        (card_path, _path_error), seq))
                 elif card_path in seen_card_paths:
                     card_path_bad += 1
                     path_structure_bad += 1
@@ -2009,8 +2026,8 @@ def _main():
             seen_read_set_paths = set()
             for index, read_set_path in enumerate(selected_read_sets):
                 target = "%s#selected_read_sets[%d]" % (proof_name, index)
-                path_error = _repo_relative_path_error(read_set_path)
-                if path_error:
+                _path_error = _repo_relative_path_error(read_set_path)
+                if _path_error:
                     read_set_bad += 1
                     path_structure_bad += 1
                     seq += 1
@@ -2018,7 +2035,7 @@ def _main():
                         TOOL, TOOL_VERSION, "proof-read-set-path-invalid",
                         target, "fail",
                         "Read Set path %r is invalid: %s" %
-                        (read_set_path, path_error), seq))
+                        (read_set_path, _path_error), seq))
                 elif read_set_path in seen_read_set_paths:
                     read_set_bad += 1
                     path_structure_bad += 1
@@ -2048,15 +2065,15 @@ def _main():
             target = "%s#%s" % (proof_name, field)
             if isinstance(value, list):
                 target += "[%d]" % index
-            path_error = _repo_relative_path_error(raw_path)
-            if path_error:
+            _path_error = _repo_relative_path_error(raw_path)
+            if _path_error:
                 path_structure_bad += 1
                 seq += 1
                 receipts.append(_make_receipt(
                     TOOL, TOOL_VERSION, "proof-path-invalid",
                     target, "fail",
                     "path %r recorded in %s is invalid: %s"
-                    % (raw_path, field, path_error), seq))
+                    % (raw_path, field, _path_error), seq))
             elif raw_path in seen_paths:
                 path_structure_bad += 1
                 seq += 1
@@ -2415,7 +2432,7 @@ def _main():
                                 (raw_path, parts[1], selected_profile_dir),
                                 seq))
 
-            card_map, read_map, registry_errors = _load_route_registry(root)
+            card_map, read_map, registry_errors = load_route_registry(root)
             registry_bad = len(registry_errors)
             for index, details in enumerate(registry_errors):
                 seq += 1

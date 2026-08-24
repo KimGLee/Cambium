@@ -107,13 +107,14 @@ class DerivationTests(unittest.TestCase):
         quotas measures a Configured profile against kernel defaults and
         reports an excess nobody has.  The recipe must carry the resolver's
         values and fingerprint -- the same ones batch-close consumes."""
-        import kblib
+        import contract_exception_policy
         recipes = self.recipes()
         command = recipes[("check_vocab", "*")]
         rubric = (TOOLS.parent /
                   "profiles/examples/agent-atlas/priority-rubric.md")
-        policy, fingerprint, errors = kblib.effective_priority_policy(
-            rubric.read_text(encoding="utf-8"))
+        policy, fingerprint, errors = (
+            contract_exception_policy.effective_priority_policy(
+                rubric.read_text(encoding="utf-8")))
         self.assertEqual([], errors)
         self.assertIn("--quota-p0", command)
         self.assertIn(str(policy["resolved"]["priority_quota.P0"]),

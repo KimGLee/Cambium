@@ -743,11 +743,11 @@ def _transition_item(item, args, result):
             manifest=item.get("manifest"),
             selected_profile_manifest=result["queue"].get(
                 "selected_profile_manifest"),
-            profile_snapshot_sha256=result["_profile_view"].get(
+            profile_snapshot_sha256=result["profile_view"].get(
                 "profile_snapshot_sha256"),
-            profile_contract_fingerprint=result["_profile_view"].get(
+            profile_contract_fingerprint=result["profile_view"].get(
                 "profile_contract_fingerprint"),
-            profile_load_inputs_sha256=result["_profile_view"].get(
+            profile_load_inputs_sha256=result["profile_view"].get(
                 "profile_load_inputs_sha256"),
             metadata_execution_contract_fingerprint=result[
                 "_metadata_contract"].contract_fingerprint,
@@ -996,7 +996,7 @@ def _run(args, produced):
     """Execute one already-parsed invocation; ``produced`` collects receipts."""
     if args.at is None:
         args.at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    if not check_queue._valid_timestamp(args.at):
+    if not check_queue.valid_timestamp(args.at):
         print("[FAIL] --at must be a timezone-aware RFC 3339 timestamp")
         return 1
     if args.transition == "cancelled":
@@ -1083,7 +1083,7 @@ def _run(args, produced):
     transition_context = dict(result)
     transition_context["root"] = root
     transition_context["coverage_text"] = before_coverage_text
-    transition_context["_profile_view"] = profile_view
+    transition_context["profile_view"] = profile_view
     transition_context["_profile_contract"] = profile_contract
     transition_context["_metadata_contract"] = metadata_contract
     transition_context["_projection_rules"] = projection_rules

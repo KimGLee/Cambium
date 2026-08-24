@@ -1490,7 +1490,7 @@ class QueueProofLiveLinkageTests(unittest.TestCase):
             "receipt_catalog": current_catalog,
             "invalidated_evidence_receipt_ids": invalidated_ids or [],
             "errors": runtime_errors or [],
-            "writer_locks": [],
+            "_writer_locks": [],
             "queue": self.queue,
             "queue_sha256": self.queue_sha,
             "remaining": 0,

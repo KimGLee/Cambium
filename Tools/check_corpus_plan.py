@@ -295,14 +295,6 @@ def _parse_table(lines, expected_headers, label, result):
     return rows
 
 
-def _read_text(path, label, result):
-    try:
-        with open(path, encoding="utf-8") as handle:
-            return handle.read()
-    except (OSError, UnicodeError) as exc:
-        _add_error(result, "read", label, str(exc))
-        return None
-
 
 def _relative(root, path):
     return os.path.relpath(path, root).replace(os.sep, "/")
@@ -533,7 +525,7 @@ def _authorized_profile_view(root, profile, result,
             root, manifest_relative)
     else:
         view = authorized_profile_view
-        errors = check_queue._authorized_profile_view_errors(
+        errors = check_queue.authorized_profile_view_errors(
             root, manifest_relative, view)
     for error in errors:
         _add_error(result, "profile_load", manifest_relative, error)
@@ -1246,7 +1238,7 @@ def _reconcile_promotion(path, runtime, target, result):
     return outcome
 
 
-def _runtime(root, result, authorized_profile_view=None,
+def runtime(root, result, authorized_profile_view=None,
              authorized_active_standards_view=None):
     present = [os.path.exists(os.path.join(root, path))
                for path in STATE_PATHS]
@@ -2059,18 +2051,18 @@ def validate_corpus_plan(root, profile=None, *, authorized_profile_view=None,
         result["applicability"] = slot["mode"]
         result["applicability_reason"] = slot["reason"]
 
-    runtime = _runtime(
+    runtime_result = runtime(
         root, result, authorized_profile_view=profile_view,
         authorized_active_standards_view=
             authorized_active_standards_view)
-    result["runtime"] = runtime
-    if runtime and not runtime.get("errors"):
-        selected = ((runtime.get("progress") or {}).get("contract") or {}).get(
+    result["runtime"] = runtime_result
+    if runtime_result and not runtime_result.get("errors"):
+        selected = ((runtime_result.get("progress") or {}).get("contract") or {}).get(
             "selected_profile_manifest")
         if selected != result["profile_manifest"]:
             _add_error(
                 result, "profile_selection", result["profile_manifest"],
-                "runtime selects %r" % selected,
+                "runtime_result selects %r" % selected,
             )
 
     if not slot or slot["mode"] != "configured":
@@ -2097,7 +2089,7 @@ def validate_corpus_plan(root, profile=None, *, authorized_profile_view=None,
     result["matrix"] = matrix
     gap_register = _validate_gap_register(
         root, slot["bindings"]["Gap Register"], global_map, matrix,
-        runtime, result)
+        runtime_result, result)
     result["gap_register"] = gap_register
     for error in _profile_view_currency_errors(root, profile_view):
         _add_error(result, "profile_currency",

@@ -249,7 +249,7 @@ def _batch_specs(coverage):
                                        order_hint < 1):
             raise ValueError("%s order_hint must be a positive integer or null" %
                              batch_id)
-        work_spec_errors = check_queue._work_spec_binding_errors(
+        work_spec_errors = check_queue.work_spec_binding_errors(
             work_spec_path, work_spec_sha256, label)
         if work_spec_errors:
             raise ValueError("; ".join(work_spec_errors))
@@ -1473,7 +1473,7 @@ def _run(args):
         return 1
     receipt.update({
         "task_id": proposal.get("task_id"),
-        "contract_sha256": check_queue._contract_sha256(progress),
+        "contract_sha256": check_queue.contract_sha256(progress),
         "contract_version": (progress.get("contract") or {}).get(
             "contract_version"),
         "contract_scope_version": (progress.get("contract") or {}).get(

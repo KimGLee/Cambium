@@ -88,6 +88,7 @@ Detailed task combinations are located in [[kernel/K00 Standards Control/02 Task
 | [[kernel/K00 Standards Control/15 Read Set Loading Boundaries\|Read Set Loading Boundaries]] | the current Read Sets and leaf coverage of the loading boundaries |
 | [[kernel/K00 Standards Control/16 Leaf Module Size Register\|Leaf Module Size Register]] | the register of approved leaf module size exceptions |
 | [[kernel/K00 Standards Control/17 Profile Dependency Closure\|Profile Dependency Closure]] | the typed single-Profile closure resolved by `profile-load` |
+| [[kernel/K00 Standards Control/18 Tool Module Boundary Contract\|Tool Module Boundary Contract]] | each shipped tool module's declared identity, public surface, and dependency direction |
 
 ## Standard Module Index
 

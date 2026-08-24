@@ -509,7 +509,7 @@ class SealReceiptsTests(UpdateQueueTests):
         self.assertFalse(
             (self.root / kblib.RECEIPT_COLD_MANIFEST_PATH).exists())
         self.assertEqual([], check_queue.validate_runtime(
-            self.root)["writer_locks"])
+            self.root)["_writer_locks"])
 
     # -- the append that a rewrite must never swallow ---------------------
 
@@ -823,7 +823,7 @@ class SealReceiptsTests(UpdateQueueTests):
         self.assertEqual(0, self.seal("--apply").returncode)
         result = check_queue.validate_runtime(self.root)
         errors = []
-        receipt = check_queue._require_receipt(
+        receipt = check_queue.require_receipt(
             result["receipt_catalog"], "audit-superseded-b1-history",
             "sealed-consumer probe", errors,
             expected={"merged_snapshot_sha256": "sha256:" + "0" * 64})

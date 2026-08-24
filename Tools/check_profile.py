@@ -88,6 +88,7 @@ import sys
 from typing import Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import contract_exception_policy
 import kblib
 import metadata_execution_contract
 import profile_contract
@@ -1283,7 +1284,8 @@ def main(argv=None, *, _evaluation_out=None,
                         "cannot read the Priority Rubric: %s" % exc)
                 else:
                     _quotas, _configured, policy_errors = \
-                        kblib.priority_quota_policy(rubric_text)
+                        contract_exception_policy.priority_quota_policy(
+                            rubric_text)
                     for details in policy_errors:
                         add("priority-quota-policy", target, "fail", details)
             elif slot == METADATA_CONTRACT_SLOT:

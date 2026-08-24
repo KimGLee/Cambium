@@ -31,6 +31,7 @@ TOOLS = Path(__file__).resolve().parents[1]
 REPOSITORY = TOOLS.parent
 
 sys.path.insert(0, str(TOOLS))
+import module_boundary_facts  # noqa: E402
 import kblib  # noqa: E402
 import standards_state  # noqa: E402
 from Tools.tests.profile_fixture import install_loadable_profile
@@ -48,16 +49,14 @@ def build_composable_tree(destination):
     than pointed at this tree.
     """
     destination = Path(destination).resolve()
+    # Derived, not listed: this staging used to name its dependencies by hand,
+    # so extracting one capability into a new module broke a test that never
+    # mentioned either module.  The closure is over the same static imports the
+    # boundary guard reads.
     tools = destination / "Tools"
-    tools.mkdir(parents=True)
-    for name in (
-            "compose_vocab.py", "kblib.py", "check_vocab.py",
-            "check_freshness.py", "freshness_engine.py",
-            "maintenance_candidates.py",
-            "profile_admission.py", "check_profile.py",
-            "profile_contract.py", "metadata_execution_contract.py",
-            "standards_state.py"):
-        shutil.copy2(TOOLS / name, tools / name)
+    module_boundary_facts.stage_shipped_modules(
+        str(TOOLS.parent), str(destination),
+        ["compose_vocab", "check_vocab", "check_freshness"])
 
     source_profile = install_loadable_profile(
         destination, profile_id=PROFILE_ID)

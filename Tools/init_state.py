@@ -476,7 +476,7 @@ def resolve_concurrency_cap(root, manifest_relative, explicit, *,
         view, errors = check_queue.profile_load_authorized_view(
             root, manifest_relative)
     else:
-        errors = check_queue._authorized_profile_view_errors(
+        errors = check_queue.authorized_profile_view_errors(
             root, manifest_relative, view)
     if view is None or errors:
         raise ValueError("selected Profile failed profile-load: %s" %
@@ -501,7 +501,7 @@ def _profile_configuration(root, manifest_relative, explicit_cap, *,
     resolved_cap, cap_source = resolve_concurrency_cap(
         root, manifest_relative, explicit_cap,
         authorized_profile_view=view)
-    evidence = check_queue._public_profile_load_evidence(view)
+    evidence = check_queue.public_profile_load_evidence(view)
     for field in (
             "selected_profile_manifest", "profile_snapshot_sha256",
             "profile_contract_fingerprint",
@@ -734,7 +734,7 @@ def main(argv=None):
         return 1
     if args.at is None:
         args.at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    if not check_queue._valid_timestamp(args.at):
+    if not check_queue.valid_timestamp(args.at):
         print("[FAIL] --at must be a timezone-aware RFC 3339 timestamp")
         return 1
     try:

@@ -13,7 +13,6 @@ from dataclasses import dataclass
 import argparse
 import copy
 import json
-import os
 from pathlib import Path
 import re
 import sys
@@ -915,10 +914,6 @@ def load_metadata_execution_contract(root=None, path=None):
             "or installed capabilities"])
     return compiled
 
-
-def load_compiled_contract(path=None, root=None):
-    """Compatibility alias for consumers that name the artifact explicitly."""
-    return load_metadata_execution_contract(root=root, path=path)
 
 
 def rules_for_capability(contract, capability_id):

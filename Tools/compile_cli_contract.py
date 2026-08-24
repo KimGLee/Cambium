@@ -464,7 +464,7 @@ def compile_contract(root):
     original_argv = list(sys.argv)
     sys.dont_write_bytecode = True
 
-    def _capture(self, args=None, namespace=None):
+    def _capture(self, _args=None, _namespace=None):
         raise _CapturedParser(self)
 
     argparse.ArgumentParser.parse_args = _capture

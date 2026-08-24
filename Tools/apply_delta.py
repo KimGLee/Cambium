@@ -115,10 +115,6 @@ def _parse_delta_bytes(raw):
     return value
 
 
-def load_delta(path):
-    with open(path, "rb") as handle:
-        return _parse_delta_bytes(handle.read())
-
 
 def find_page_block(lines, path):
     """Return the line range for one ``- path:`` Coverage entry."""
@@ -209,7 +205,7 @@ def _delta_policy_errors(delta):
                           label)
     generated_at = delta.get("generated_at")
     if (not isinstance(generated_at, str) or
-            not check_queue._valid_timestamp(generated_at)):
+            not check_queue.valid_timestamp(generated_at)):
         errors.append("delta generated_at must be a timezone-aware RFC 3339 timestamp")
     additions = delta.get("open_gaps_added")
     closures = delta.get("open_gaps_closed")
@@ -249,10 +245,6 @@ def _delta_policy_errors(delta):
             errors.append("%s must be a gap id or mapping" % label)
     return errors
 
-
-def _gap_key(gap):
-    """Return the stable identity used for open-gap reconciliation."""
-    return coverage_delta.gap_key(gap)
 
 
 def _merge_coverage_sections(text, delta):
@@ -466,7 +458,7 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
     if current.get("progress", {}).get("task_state") != "active":
         print("[FAIL] canonical delta apply requires task_state=active")
         return 1
-    if current.get("writer_locks"):
+    if current.get("_writer_locks"):
         print("[FAIL] runtime has an active or interrupted writer lock")
         return 1
     if (kblib.sha256_file(ledger_path) != planned_coverage_sha or
@@ -910,7 +902,7 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
     return 0
 
 
-def _legacy_apply(args, delta, new_text, planned, rejected):
+def _legacy_apply(args, _delta, new_text, planned, rejected):
     result = "fail" if rejected and not args.force else (
         "pass" if planned else "candidate"
     )

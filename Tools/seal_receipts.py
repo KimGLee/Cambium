@@ -285,7 +285,7 @@ def _transition_bound_aggregates(catalog, transition_id):
     ``evidence_receipt``, the close bundle, and the ``revalidation_receipts``
     an ``invalidation`` record lists -- have existence-only or
     identity-only consumers that the projection already serves through
-    ``_require_receipt``.  Keeping those hot would give up sealing for
+    ``require_receipt``.  Keeping those hot would give up sealing for
     references that are not broken; what draws this boundary correctly is
     the reachability assertion in the tests, not a wider guess here.
     """
@@ -1031,8 +1031,8 @@ def apply_seal(root, result, by_file, receipts_path, before_tree=None):
 
 def _cold_errors(root):
     errors = []
-    catalog = check_queue._receipt_catalog(root, errors)
-    store = check_queue._cold_receipt_store(root, errors, catalog)
+    catalog = check_queue.receipt_catalog(root, errors)
+    store = check_queue.cold_receipt_store(root, errors, catalog)
     return store, errors
 
 
@@ -1259,7 +1259,7 @@ def _run(args):
         print("[FAIL] sealing requires a clean full revalidation; a bundle "
               "that cannot replay hot cannot claim the sealed shortcut")
         return 1
-    if result.get("writer_locks"):
+    if result.get("_writer_locks"):
         print("[FAIL] runtime has an active or interrupted writer lock")
         return 1
     if (result.get("pending_delta_applies") or {}).get("current"):

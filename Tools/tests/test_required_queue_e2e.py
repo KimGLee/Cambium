@@ -13,6 +13,7 @@ FIXTURE = TOOLS / "tests" / "fixtures" / "runtime_state" / "valid"
 SYNTHETIC_PROFILE = TOOLS / "tests" / "fixtures" / "synthetic_profile"
 sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
+import module_boundary_facts  # noqa: E402
 
 import check_queue
 import check_batch_close
@@ -377,7 +378,7 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         for receipt in receipts:
             if receipt.get("receipt_id") == "audit-fixture-initial-queue":
                 receipt["contract_sha256"] = \
-                    check_queue._contract_sha256(progress)
+                    check_queue.contract_sha256(progress)
                 receipt["before_coverage_sha256"] = coverage_sha
                 receipt["after_coverage_sha256"] = coverage_sha
         receipt_path.write_text(
@@ -551,10 +552,12 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         shutil.copytree(SYNTHETIC_PROFILE, target_profile, dirs_exist_ok=True)
         tools_root = self.root / "Tools"
         (tools_root / "schemas").mkdir(parents=True, exist_ok=True)
-        for name in ("check_profile.py", "profile_contract.py",
-                     "check_residual_content.py", "check_queue.py", "kblib.py",
-                     "maintenance_candidates.py", "standards_state.py"):
-            shutil.copy2(TOOLS / name, tools_root / name)
+        # Derived rather than listed, for the reason the same pattern broke
+        # elsewhere: a hand-kept inventory records what the tree needed the day
+        # it was written and nothing re-derives it afterwards.
+        module_boundary_facts.stage_shipped_modules(
+            str(TOOLS.parent), str(self.root),
+            ["check_profile", "check_residual_content", "check_queue"])
         shutil.copy2(
             TOOLS / "schemas/execution_defaults.template.yaml",
             tools_root / "schemas/execution_defaults.template.yaml")
@@ -609,7 +612,7 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
                 receipt["after_required_queue_sha256"] = queue_sha
                 receipt["after_coverage_sha256"] = coverage_sha
                 receipt["contract_sha256"] = \
-                    check_queue._contract_sha256(progress)
+                    check_queue.contract_sha256(progress)
         receipt_path.write_text("".join(json.dumps(receipt) + "\n"
                                         for receipt in receipts),
                                 encoding="utf-8")
@@ -914,7 +917,7 @@ raise SystemExit(update_task.main(sys.argv[2:]))
         )
         self.assertEqual(1, task_receipt["queue_state_revision"])
         self.assertEqual(
-            check_queue._contract_sha256(result["progress"]),
+            check_queue.contract_sha256(result["progress"]),
             task_receipt["contract_sha256"],
         )
 

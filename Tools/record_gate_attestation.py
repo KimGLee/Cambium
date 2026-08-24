@@ -23,6 +23,22 @@ TOOL_VERSION = "1.0.0"
 DEFAULT_RECEIPTS = ".cambium/receipts/gate-attestations.jsonl"
 
 
+def _require_context_current(context, phase, *, runtime=None):
+    """Run the facade's authority CAS, then the Gate runtime's own.
+
+    ``check_queue`` owns the runtime-authority compare-and-swap and the Gate
+    runtime no longer reaches back for it, so the two halves are sequenced
+    here instead.  The order is the one the single call had: a moved
+    Profile-load or active-Standards view is reported as an authority change
+    before any metadata-contract, manifest or target difference derived from
+    it.
+    """
+    check_queue.require_runtime_authority_current(
+        context.root, context.authority, phase)
+    metadata_gate_runtime.require_context_current(
+        context, phase, runtime=runtime)
+
+
 def build_attestation_receipt(context, requested_value, actor_role,
                               statement, seq=1):
     """Build one manual receipt from an already authorized Gate context."""
@@ -114,8 +130,12 @@ def main(argv=None):
 
     root = os.path.realpath(os.path.abspath(args.root))
     try:
+        runtime = check_queue.validate_runtime(root)
+        metadata_gate_runtime.require_admitted_runtime(runtime)
+        authority = check_queue.runtime_authority_context(runtime)
         context = metadata_gate_runtime.load_gate_context(
-            root, args.gate_id, args.page)
+            root, args.gate_id, args.page, runtime=runtime,
+            authority=authority)
         receipt = build_attestation_receipt(
             context, args.value, args.actor_role, args.statement)
         receipt_path = kblib.managed_repository_path(
@@ -170,7 +190,7 @@ def main(argv=None):
                     raise ValueError(
                         "runtime changed before evidence publication: %s" %
                         "; ".join(locked["errors"]))
-                metadata_gate_runtime.require_context_current(
+                _require_context_current(
                     context, "manual Gate evidence publication", runtime=locked)
                 before = kblib.receipt_append_observation(
                     receipt_path, [receipt])

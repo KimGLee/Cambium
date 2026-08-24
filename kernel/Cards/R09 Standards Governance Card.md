@@ -10,6 +10,7 @@ source_files:
   - kernel/K00 Standards Control/11 Standards Map and Rule Registry.md
   - kernel/K00 Standards Control/12 Control Registry.md
   - kernel/K00 Standards Control/17 Profile Dependency Closure.md
+  - kernel/K00 Standards Control/18 Tool Module Boundary Contract.md
   - kernel/K13 Task Runtime and Execution Control/04 Guidance Classification and Impact Analysis.md
   - kernel/K13 Task Runtime and Execution Control/05 Guidance Disposition and Safe Switching.md
   - kernel/K13 Task Runtime and Execution Control/06 Amendment Log and Controlled Replanning.md
@@ -38,8 +39,8 @@ readback_sources:
   - kernel/K12 Quality Assurance/02 Rendering Verification.md
   - kernel/K12 Quality Assurance/05 Automated and Manual Checks.md
 readback_policy: activation
-source_hash: 'ec7d6b418e52'
-compiled_source_hash: 'ec7d6b418e52'
+source_hash: 'a89b9189b658'
+compiled_source_hash: 'a89b9189b658'
 ---
 # R09 Standards Governance Card
 
@@ -67,6 +68,7 @@ Modify kernel rules, Read Sets, Cards, versions, directories, ownership, tooling
 - Freeze the inputs needed for affected tasks to re-resolve their load set. K12/10 decides targeted invalidated evidence and gate reruns; R07/K13/15 executes the runtime transaction. R09 does not copy or reimplement either contract.
 - Use the registered `profile-load` producer as the sole linker for manifest, slot, scan-config, verifier, and predicate-owner authority. Do not replace it with a copy-time rewrite checklist or a consumer-specific Markdown parser.
 - Preserve the boundary between current authorization and historical verification: a Standards change may invalidate a Receipt for new execution without erasing the completed event it historically proves, and history must never be used as a fallback authorization source.
+- A revision that moves a shipped tool module, widens what one module offers another, or changes which module depends on which is a change to the boundary contract: update `Tools/module-boundaries.yaml` in the same revision, and carry any consumption it cannot yet declare as a registered exception with a retirement condition. Import cycles take no exception.
 - Regenerate affected kernel Cards from their source owners. Stamp observed hashes first; only after reviewing the regenerated guidance run `stamp_cards.py --acknowledge-compiled`. Do not acknowledge unchanged prose merely to clear a stale hash.
 
 ## Gate

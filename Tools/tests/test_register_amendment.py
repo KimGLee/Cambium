@@ -185,7 +185,7 @@ class RegisterAmendmentTests(unittest.TestCase):
         origin = next(record for record in receipts
                       if record["receipt_id"] ==
                       progress["initial_queue_receipt"])
-        origin["contract_sha256"] = check_queue._contract_sha256(progress)
+        origin["contract_sha256"] = check_queue.contract_sha256(progress)
         origin["after_progress_sha256"] = kblib.sha256_file(
             self.root / check_queue.PROGRESS_PATH)
         receipt_path.write_text(
@@ -475,7 +475,7 @@ class RegisterAmendmentTests(unittest.TestCase):
             str(self.root))["errors"])
         # A withdrawn row is final: it raises no resume/terminal
         # reconcile obligation.
-        _, pending = check_queue._pending_control_ids(
+        _, pending = check_queue.pending_control_ids(
             self.load(check_queue.PROGRESS_PATH))
         self.assertEqual([], pending)
         # The one-pending rule is unwedged; the burned ID stays refused.
@@ -599,8 +599,8 @@ class RegisterAmendmentTests(unittest.TestCase):
         self.assertEqual("amendment_registration", receipt["check"])
         runtime = check_queue.validate_runtime(self.root)
         self.assertEqual([], runtime["pending_cross_ledger_amendments"])
-        self.assertEqual(1, len(runtime["writer_locks"]))
-        evidence = runtime["writer_locks"][0]["operation_receipt"]
+        self.assertEqual(1, len(runtime["_writer_locks"]))
+        evidence = runtime["_writer_locks"][0]["operation_receipt"]
         self.assertEqual("matching", evidence["status"])
         self.assertTrue(evidence["matching_receipt"])
 

@@ -629,7 +629,7 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
         current, "apply_amendment", "apply")
     if barrier:
         raise ValueError(barrier)
-    if current.get("writer_locks"):
+    if current.get("_writer_locks"):
         raise ValueError("runtime has an active or interrupted writer lock")
     coverage = current["coverage"]
     queue = current["queue"]
@@ -815,8 +815,8 @@ def _prepare_result(root, plan_path, expected, admitted_runtime=None):
     before_contract = progress.get("contract") or {}
     after_contract = progress_new.get("contract") or {}
     contract_fields = {
-        "before_contract_sha256": check_queue._contract_sha256(progress),
-        "after_contract_sha256": check_queue._contract_sha256(progress_new),
+        "before_contract_sha256": check_queue.contract_sha256(progress),
+        "after_contract_sha256": check_queue.contract_sha256(progress_new),
         "before_contract_version": before_contract.get("contract_version"),
         "after_contract_version": after_contract.get("contract_version"),
         "before_contract_scope_version": before_contract.get("scope_version"),

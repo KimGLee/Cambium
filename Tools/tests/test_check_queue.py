@@ -18,7 +18,13 @@ sys.path.insert(0, str(TOOLS / "tests"))
 sys.path.insert(0, str(TOOLS))
 
 import check_queue
+import contract_exception_policy
 import kblib
+# Two names are patched below and read by the code under test in the
+# module that reads them, not the module that defines them: a patch
+# lands on the caller's globals.
+import queue_runtime.property_state
+import queue_runtime.runtime
 import standards_state
 from profile_fixture import install_loadable_profile
 
@@ -90,7 +96,7 @@ class QueueFixture(unittest.TestCase):
                 # The origin receipt is the first anchor of the contract
                 # chain; a fixture that edits contract bytes must re-anchor
                 # it, exactly as a real writer re-anchors on amendment.
-                record["contract_sha256"] = check_queue._contract_sha256(
+                record["contract_sha256"] = check_queue.contract_sha256(
                     kblib.load_yaml_file(self.progress_path))
         receipt_path.write_text(
             "".join(json.dumps(record, separators=(",", ":")) + "\n"
@@ -598,7 +604,7 @@ class CurrentPropertyStateTests(unittest.TestCase):
                     check_queue.metadata_property_state,
                     "profile_gate_projection_rules",
                     return_value=self.rules):
-            return check_queue._coverage_property_state_errors(
+            return check_queue.coverage_property_state_errors(
                 str(self.root), coverage, catalog,
                 {"task_id": "fixture-task"}, self.profile_view,
                 self.active_view)
@@ -612,7 +618,7 @@ class CurrentPropertyStateTests(unittest.TestCase):
                     check_queue.metadata_property_state,
                     "profile_gate_projection_rules",
                     return_value=self.rules):
-            return check_queue._coverage_property_state_errors(
+            return check_queue.coverage_property_state_errors(
                 str(self.root), coverage, catalog,
                 {"task_id": "fixture-task"}, self.profile_view,
                 self.active_view,
@@ -1137,9 +1143,10 @@ class InFlightPropertyStateTests(unittest.TestCase):
                     "load_metadata_execution_contract",
                     return_value=self.metadata_contract), \
                 mock.patch.object(
-                    check_queue, "_review_property_evidence_errors",
+                    queue_runtime.property_state,
+                    "review_property_evidence_errors",
                     return_value=[]):
-            return check_queue._coverage_property_state_errors(
+            return check_queue.coverage_property_state_errors(
                 str(self.root), {"pages": [row]}, catalog, queue,
                 self.profile_view, {"active_standards_sha256":
                                     "sha256:" + "e" * 64})
@@ -1265,7 +1272,7 @@ class CurrentOpenSemanticBaselineTests(unittest.TestCase):
         with mock.patch.object(
                 check_queue.metadata_execution_contract,
                 "load_metadata_execution_contract", return_value=contract):
-            return check_queue._current_open_semantic_baseline_errors(
+            return check_queue.current_open_semantic_baseline_errors(
                 "/fixture", transition,
                 {"id": "B1", "manifest": [
                     "Topics/A.md", "Topics/B.md"]},
@@ -1308,7 +1315,7 @@ class CurrentOpenSemanticBaselineTests(unittest.TestCase):
                         check_queue.metadata_execution_contract,
                         "load_metadata_execution_contract") as loader:
                     self.assertEqual([],
-                        check_queue._current_open_semantic_baseline_errors(
+                        check_queue.current_open_semantic_baseline_errors(
                             "/fixture", historical,
                             {"id": "B1", "manifest": ["Topics/A.md"]},
                             self.profile_view()))
@@ -1389,7 +1396,7 @@ class CurrentCloseTransitionMetadataTests(unittest.TestCase):
         with mock.patch.object(
                 check_queue.metadata_execution_contract,
                 "load_metadata_execution_contract", return_value=contract):
-            return check_queue._current_close_transition_metadata_errors(
+            return check_queue.current_close_transition_metadata_errors(
                 "/fixture", transition, catalog or self.catalog(), "B1")
 
     def test_current_close_binds_exact_children_and_producer_metadata(self):
@@ -1425,7 +1432,7 @@ class CurrentCloseTransitionMetadataTests(unittest.TestCase):
                 check_queue.metadata_execution_contract,
                 "load_metadata_execution_contract") as loader:
             self.assertEqual([], check_queue.
-                _current_close_transition_metadata_errors(
+                current_close_transition_metadata_errors(
                     "/fixture", transition, catalog, "B1"))
         loader.assert_not_called()
 
@@ -1440,7 +1447,7 @@ class CurrentCloseTransitionMetadataTests(unittest.TestCase):
                         check_queue.metadata_execution_contract,
                         "load_metadata_execution_contract") as loader:
                     self.assertEqual([],
-                        check_queue._current_close_transition_metadata_errors(
+                        check_queue.current_close_transition_metadata_errors(
                             "/fixture", historical, {}, "B1"))
                 loader.assert_not_called()
 
@@ -1488,7 +1495,8 @@ class ReviewedEraTests(QueueFixture):
                         scope_ref="fixture-task", fingerprint=None):
         """Write the contract exception this migration disposition needs."""
         if fingerprint is None:
-            _policy, fingerprint, _errors = kblib.effective_coverage_policy()
+            _policy, fingerprint, _errors = (
+                contract_exception_policy.effective_coverage_policy())
         progress = kblib.load_yaml_file(self.progress_path)
         progress["contract"]["policy_exceptions"] = [{
             "decision_id": "PE-COV-1",
@@ -1912,7 +1920,7 @@ class HubPageAdmissionTests(QueueFixture):
             return authorized_view, errors
 
         with mock.patch.object(
-                check_queue, "profile_load_authorized_view",
+                queue_runtime.runtime, "profile_load_authorized_view",
                 side_effect=admit_then_mutate):
             result = check_queue.validate_runtime(self.root)
 
@@ -2044,7 +2052,7 @@ class HubPageAdmissionTests(QueueFixture):
     def test_shipped_example_profile_registration_is_parsed(self):
         # A shipped example is intentionally not a selectable runtime Profile;
         # exercise only the raw parser retained for corrective diagnostics.
-        paths, errors = check_queue._unadmitted_profile_hub_paths(
+        paths, errors = check_queue.unadmitted_profile_hub_paths(
             str(REPO), "profiles/examples/agent-atlas/profile.md")
         self.assertEqual([], errors)
         self.assertEqual({"Interview Preparation/Interview Overview.md"},
@@ -2056,7 +2064,7 @@ class CheckQueueTests(QueueFixture):
         """An empty derived map is cached data, not a cache miss."""
         original = check_queue.standards_revalidation_requirements
         with mock.patch.object(
-                check_queue, "standards_revalidation_requirements",
+                queue_runtime.runtime, "standards_revalidation_requirements",
                 wraps=original) as requirements_build:
             result = check_queue.validate_runtime(self.root)
             self.assertEqual(
@@ -2070,7 +2078,7 @@ class CheckQueueTests(QueueFixture):
     def test_required_completion_predicate_consumes_only_runtime_result(self):
         result = {
             "errors": [],
-            "writer_locks": [],
+            "_writer_locks": [],
             "progress": {"contract": {"completion_semantics": "build"}},
             "queue": {"required_queue": [{"id": "B1"}]},
             "remaining": 0,
@@ -2095,7 +2103,7 @@ class CheckQueueTests(QueueFixture):
             "profile_contract_fingerprint": canonical,
         }
         self.assertEqual(
-            [], check_queue._terminal_proof_profile_binding_errors(
+            [], check_queue.terminal_proof_profile_binding_errors(
                 base, receipt_id))
         for version in ("1.16.0", "1.16.1", "2.0.0"):
             for field in ("profile_snapshot_sha256",
@@ -2107,7 +2115,7 @@ class CheckQueueTests(QueueFixture):
                         receipt["repository_snapshot_sha256"] = canonical
                     receipt.pop(field)
                     errors = \
-                        check_queue._terminal_proof_profile_binding_errors(
+                        check_queue.terminal_proof_profile_binding_errors(
                             receipt, receipt_id)
                     self.assertEqual(1, len(errors), errors)
                     self.assertIn("lacks canonical %s" % field, errors[0])
@@ -2121,11 +2129,11 @@ class CheckQueueTests(QueueFixture):
         }
         # Sealed 1.16 receipts predate this producer promise and remain valid.
         self.assertEqual(
-            [], check_queue._terminal_proof_profile_binding_errors(
+            [], check_queue.terminal_proof_profile_binding_errors(
                 dict(base, tool_version="1.16.0"), receipt_id))
         for version in ("1.17.0", "1.17.1", "2.0.0"):
             with self.subTest(version=version):
-                errors = check_queue._terminal_proof_profile_binding_errors(
+                errors = check_queue.terminal_proof_profile_binding_errors(
                     dict(base, tool_version=version), receipt_id)
                 self.assertEqual(2, len(errors), errors)
                 self.assertIn(
@@ -2133,7 +2141,7 @@ class CheckQueueTests(QueueFixture):
                 self.assertIn(
                     "repository_snapshot_sha256", "; ".join(errors))
                 self.assertEqual(
-                    [], check_queue._terminal_proof_profile_binding_errors(
+                    [], check_queue.terminal_proof_profile_binding_errors(
                         dict(base, tool_version=version,
                              profile_load_inputs_sha256=canonical,
                              repository_snapshot_sha256=canonical),
@@ -2145,7 +2153,7 @@ class CheckQueueTests(QueueFixture):
             "profile_snapshot_sha256": "sha256:" + "a" * 63,
             "profile_contract_fingerprint": "SHA256:" + "b" * 64,
         }
-        errors = check_queue._terminal_proof_profile_binding_errors(
+        errors = check_queue.terminal_proof_profile_binding_errors(
             receipt, "audit-proof-profile-binding")
         self.assertEqual(2, len(errors), errors)
         self.assertTrue(all("lacks canonical" in error for error in errors))
@@ -2159,7 +2167,7 @@ class CheckQueueTests(QueueFixture):
             "profile_load_inputs_sha256": "SHA256:" + "b" * 64,
             "repository_snapshot_sha256": canonical,
         }
-        errors = check_queue._terminal_proof_profile_binding_errors(
+        errors = check_queue.terminal_proof_profile_binding_errors(
             receipt, "audit-proof-profile-input-binding")
         self.assertEqual(1, len(errors), errors)
         self.assertIn("profile_load_inputs_sha256", errors[0])
@@ -2173,14 +2181,14 @@ class CheckQueueTests(QueueFixture):
             "profile_load_inputs_sha256": canonical,
             "repository_snapshot_sha256": "SHA256:" + "b" * 64,
         }
-        errors = check_queue._terminal_proof_profile_binding_errors(
+        errors = check_queue.terminal_proof_profile_binding_errors(
             receipt, "audit-proof-repository-binding")
         self.assertEqual(1, len(errors), errors)
         self.assertIn("repository_snapshot_sha256", errors[0])
 
     def test_terminal_proof_115_history_stays_compatible_without_binding(self):
         self.assertEqual(
-            [], check_queue._terminal_proof_profile_binding_errors(
+            [], check_queue.terminal_proof_profile_binding_errors(
                 {"tool_version": "1.15.0"}, "audit-proof-legacy"))
 
     def test_terminal_proof_history_does_not_reinterpret_canonical_digests(self):
@@ -2193,7 +2201,7 @@ class CheckQueueTests(QueueFixture):
             "profile_contract_fingerprint": "sha256:" + "f" * 64,
         }
         self.assertEqual(
-            [], check_queue._terminal_proof_profile_binding_errors(
+            [], check_queue.terminal_proof_profile_binding_errors(
                 receipt, "audit-proof-sealed"))
 
     def test_live_task_contract_closure_gap_is_reported_not_refused(self):
@@ -2349,7 +2357,7 @@ class CheckQueueTests(QueueFixture):
             "work_spec_path": ".cambium/work_specs/order.yaml",
             "work_spec_sha256": kblib.sha256_file(path),
         }
-        errors = "\n".join(check_queue._work_spec_errors(self.root, item))
+        errors = "\n".join(check_queue.work_spec_errors(self.root, item))
         self.assertIn("membership and order", errors)
 
         incomplete = self.valid_work_spec()
@@ -2361,7 +2369,7 @@ class CheckQueueTests(QueueFixture):
             "work_spec_path": ".cambium/work_specs/incomplete.yaml",
             "work_spec_sha256": kblib.sha256_file(path),
         }
-        errors = "\n".join(check_queue._work_spec_errors(self.root, item))
+        errors = "\n".join(check_queue.work_spec_errors(self.root, item))
         self.assertIn("constraints must be a non-empty list", errors)
 
     def test_work_spec_rejects_unfilled_template_and_queue_state_at_depth(self):
@@ -2502,7 +2510,7 @@ class CheckQueueTests(QueueFixture):
             "selected_profile_manifest": "profiles/test-profile/profile.md",
         }
         errors = []
-        check_queue._previous_maintenance_candidate_state(
+        check_queue.previous_maintenance_candidate_state(
             self.root, result, prior["receipt_id"], contract, errors)
         self.assertTrue(any("exactly one persisted maintenance task completion"
                             in error for error in errors), errors)
@@ -2533,7 +2541,7 @@ class CheckQueueTests(QueueFixture):
             ".cambium/receipts/prior-task.jsonl", consumer)
         errors = []
         _, records, fingerprint = \
-            check_queue._previous_maintenance_candidate_state(
+            check_queue.previous_maintenance_candidate_state(
                 self.root, result, prior["receipt_id"], contract, errors)
         self.assertEqual([], errors)
         self.assertEqual([record], records)
@@ -2574,7 +2582,7 @@ class CheckQueueTests(QueueFixture):
             consumer["receipt_id"]: ("consumer.jsonl", consumer),
         }}
         errors = []
-        check_queue._previous_maintenance_candidate_state(
+        check_queue.previous_maintenance_candidate_state(
             self.root, result, gate["receipt_id"], {
                 "standards_version": "3.0.0",
                 "selected_profile_manifest":
@@ -2656,7 +2664,7 @@ class CheckQueueTests(QueueFixture):
             catalog[consumer["receipt_id"]] = ("tasks.jsonl", consumer)
         result = {"receipt_catalog": catalog}
         errors = []
-        selected = check_queue._latest_consumed_maintenance_gate(
+        selected = check_queue.latest_consumed_maintenance_gate(
             self.root, result, {
                 "standards_version": "3.0.0",
                 "selected_profile_manifest":
@@ -2668,7 +2676,7 @@ class CheckQueueTests(QueueFixture):
 
         newer[1].pop("after_task_state")
         errors = []
-        selected = check_queue._latest_consumed_maintenance_gate(
+        selected = check_queue.latest_consumed_maintenance_gate(
             self.root, result, {
                 "standards_version": "3.0.0",
                 "selected_profile_manifest":
@@ -2681,7 +2689,7 @@ class CheckQueueTests(QueueFixture):
 
         newer[1]["after_task_state"] = "complete"
         errors = []
-        selected = check_queue._latest_consumed_maintenance_gate(
+        selected = check_queue.latest_consumed_maintenance_gate(
             self.root, result, {
                 "standards_version": "3.0.0",
                 "selected_profile_manifest":
@@ -2760,11 +2768,11 @@ class CheckQueueTests(QueueFixture):
             "audit-old-writer": ("history.jsonl", old),
             "audit-current-writer": ("history.jsonl", current),
         }
-        errors = check_queue._coverage_provenance_errors(
+        errors = check_queue.coverage_provenance_errors(
             progress, queue, catalog, old_coverage_sha, live_queue_sha)
         self.assertTrue(any("not the after-image" in error
                             for error in errors), errors)
-        self.assertEqual([], check_queue._coverage_provenance_errors(
+        self.assertEqual([], check_queue.coverage_provenance_errors(
             progress, queue, catalog, live_coverage_sha, live_queue_sha))
 
     def add_replan_amendment(self, amendment_id, before_revision,
@@ -2828,7 +2836,7 @@ class CheckQueueTests(QueueFixture):
             "coverage_proposal_path": proposal_relative,
             "coverage_proposal_sha256": proposal_sha,
             "replan_diff_sha256": diff_sha,
-            "contract_sha256": check_queue._contract_sha256(progress),
+            "contract_sha256": check_queue.contract_sha256(progress),
             "before_coverage_sha256": coverage_sha,
             "after_coverage_sha256": coverage_sha,
             "before_required_queue_sha256":
@@ -3005,7 +3013,7 @@ class CheckQueueTests(QueueFixture):
         registration_id = record["registration_receipt"]
         registration = runtime["receipt_catalog"][registration_id]
         label = "Progress amendments[0]"
-        pending_errors = check_queue._operational_amendment_registration_errors(
+        pending_errors = check_queue.operational_amendment_registration_errors(
             runtime["progress"], record, label, {},
             {registration_id: registration}, runtime["queue"],
             runtime["coverage_sha256"], runtime["queue_sha256"],
@@ -3017,7 +3025,7 @@ class CheckQueueTests(QueueFixture):
         record["status"] = "verified"
         record["writeback_done"] = True
         historical_errors = \
-            check_queue._operational_amendment_registration_errors(
+            check_queue.operational_amendment_registration_errors(
                 runtime["progress"], record, label, {},
                 {registration_id: registration}, runtime["queue"],
                 runtime["coverage_sha256"], runtime["queue_sha256"],
@@ -3339,7 +3347,7 @@ class CheckQueueTests(QueueFixture):
             "before_task_state": "planned", "after_task_state": "active",
             "actor_role": "integrator", "queue_revision": 1,
             "queue_state_revision": 0,
-            "contract_sha256": check_queue._contract_sha256(progress),
+            "contract_sha256": check_queue.contract_sha256(progress),
             "before_coverage_sha256": coverage_sha,
             "after_coverage_sha256": coverage_sha,
             "before_required_queue_sha256": queue_sha,
@@ -3555,7 +3563,7 @@ class CheckQueueTests(QueueFixture):
                       self.guidance_errors())
         # `mapped` is an intermediate K13/06 status: structurally valid, and it
         # keeps the guidance pending for resume and batch close.
-        pending_guidance, _ = check_queue._pending_control_ids(progress)
+        pending_guidance, _ = check_queue.pending_control_ids(progress)
         self.assertEqual(["G-001"], pending_guidance)
 
     def test_last_reconciled_guidance_id_is_derived_not_stored(self):
@@ -3572,9 +3580,9 @@ class CheckQueueTests(QueueFixture):
         # The boundary is the longest recorded prefix that has left
         # `received`; the entries after it stay in pending_guidance.
         self.assertEqual("G-002",
-                         check_queue._last_reconciled_guidance_id(progress))
+                         check_queue.last_reconciled_guidance_id(progress))
         self.assertEqual(["G-002", "G-003"],
-                         check_queue._pending_control_ids(progress)[0])
+                         check_queue.pending_control_ids(progress)[0])
         # No checkpoint slot is created for it.
         self.assertNotIn("last_reconciled_guidance_id",
                          check_queue.CHECKPOINT_FIELDS)
@@ -3615,7 +3623,7 @@ class CheckQueueTests(QueueFixture):
             with self.subTest(label=label):
                 self.assertEqual(
                     expected,
-                    check_queue._last_reconciled_guidance_id(
+                    check_queue.last_reconciled_guidance_id(
                         {"guidance_queue": entries}))
 
     def test_resume_status_reports_the_derived_guidance_boundary(self):
@@ -3696,12 +3704,12 @@ class CheckQueueTests(QueueFixture):
             "transition-2": ("receipts.jsonl", second),
         }
         queue = {"state_revision": 2, "queue_revision": 1}
-        self.assertEqual([], check_queue._global_transition_errors(
+        self.assertEqual([], check_queue.global_transition_errors(
             items, catalog, queue, sha_c,
         ))
 
         missing = {"B1": {"transition_receipts": ["transition-2"]}}
-        errors = "\n".join(check_queue._global_transition_errors(
+        errors = "\n".join(check_queue.global_transition_errors(
             missing, catalog, queue, sha_c,
         ))
         self.assertIn("missing=[1]", errors)
@@ -3713,7 +3721,7 @@ class CheckQueueTests(QueueFixture):
             "B1": {"transition_receipts": ["transition-1", "transition-2"]},
             "B2": {"transition_receipts": ["transition-2b"]},
         }
-        errors = "\n".join(check_queue._global_transition_errors(
+        errors = "\n".join(check_queue.global_transition_errors(
             duplicate_items, duplicate_catalog, queue, sha_c,
         ))
         self.assertIn("repeated=[2]", errors)
@@ -3732,7 +3740,7 @@ class CheckQueueTests(QueueFixture):
             "before_required_queue_sha256": "sha256:" + ("a" * 64),
             "after_required_queue_sha256": "sha256:" + ("b" * 64),
         }
-        errors = "\n".join(check_queue._global_transition_errors(
+        errors = "\n".join(check_queue.global_transition_errors(
             {"B1": {"transition_receipts": ["transition-bad"]}},
             {"transition-bad": ("receipts.jsonl", receipt)},
             {"state_revision": 1, "queue_revision": 1},
@@ -3748,7 +3756,7 @@ class CheckQueueTests(QueueFixture):
             "checked_at": "2026-08-04T01:00:00Z",
             "before_state": "queued", "after_state": "closed",
         })
-        errors = "\n".join(check_queue._global_transition_errors(
+        errors = "\n".join(check_queue.global_transition_errors(
             {"B1": {"transition_receipts": ["transition-bad"]}},
             {"transition-bad": ("receipts.jsonl", receipt)},
             {"state_revision": 1, "queue_revision": 1},
@@ -3789,17 +3797,17 @@ class CheckQueueTests(QueueFixture):
             "queue_revision": 2, "queue_state_revision": 5,
         }
         catalog = {"audit-delta-b1": ("delta.jsonl", receipt)}
-        self.assertEqual([], check_queue._closed_delta_apply_errors(
+        self.assertEqual([], check_queue.closed_delta_apply_errors(
             item, transition, catalog, queue,
         ))
 
         receipt["after_coverage_sha256"] = "sha256:" + ("e" * 64)
-        errors = "\n".join(check_queue._closed_delta_apply_errors(
+        errors = "\n".join(check_queue.closed_delta_apply_errors(
             item, transition, catalog, queue,
         ))
         self.assertIn("expected", errors)
         pending_catalog = {"audit-delta-b1": ("<pending-write>", receipt)}
-        errors = "\n".join(check_queue._closed_delta_apply_errors(
+        errors = "\n".join(check_queue.closed_delta_apply_errors(
             item, transition, pending_catalog, queue,
         ))
         self.assertIn("not persisted in the repository", errors)
@@ -3983,7 +3991,7 @@ class CheckQueueTests(QueueFixture):
         self.assertEqual("planned", receipt["checkpoint"]["task_state"])
         self.assertEqual("initial", receipt["checkpoint_binding"])
         self.assertEqual([], receipt["managed_deltas"])
-        self.assertEqual([], receipt["writer_locks"])
+        self.assertEqual([], receipt["_writer_locks"])
 
     def test_writer_lock_fails_closed_and_exposes_owner(self):
         lock = self.root / ".cambium/tmp/state-writer.lock"
@@ -4415,7 +4423,7 @@ class CheckQueueTests(QueueFixture):
 
     def test_resume_action_prioritizes_pending_apply_without_deadlocking_task_resume(self):
         result = {
-            "writer_locks": [],
+            "_writer_locks": [],
             "progress": {"task_state": "active"},
             "items_by_id": {"B1": {
                 "id": "B1", "state": "merge-ready", "hold_state": "none",
@@ -4442,21 +4450,21 @@ class CheckQueueTests(QueueFixture):
             },
         }
         gate = "run-batch-close-gate:B1"
-        self.assertEqual(gate, check_queue._resume_next_action(result, []))
+        self.assertEqual(gate, check_queue.resume_next_action(result, []))
         self.assertIn("run check_batch_close.py for applied batch B1",
                       check_queue._resume_recommendation(result, []))
         result["progress"]["task_state"] = "cancelled"
-        self.assertEqual(gate, check_queue._resume_next_action(result, []))
+        self.assertEqual(gate, check_queue.resume_next_action(result, []))
         self.assertIn("before any Queue close, control input",
                       check_queue._resume_recommendation(result, []))
         result["progress"]["task_state"] = "paused"
         self.assertEqual("resume-paused-task",
-                         check_queue._resume_next_action(result, []))
+                         check_queue.resume_next_action(result, []))
         self.assertIn("resume the paused task",
                       check_queue._resume_recommendation(result, []))
         result["progress"]["task_state"] = "blocked"
         self.assertEqual("resolve-blocked-task",
-                         check_queue._resume_next_action(result, []))
+                         check_queue.resume_next_action(result, []))
         self.assertIn("resolve the blocked task state",
                       check_queue._resume_recommendation(result, []))
         result["progress"]["task_state"] = "active"
@@ -4472,7 +4480,7 @@ class CheckQueueTests(QueueFixture):
         }
         close = ("close-applied-batch:B1:audit-consistency-B1:"
                  "audit-close-B1:audit-apply-B1")
-        self.assertEqual(close, check_queue._resume_next_action(result, []))
+        self.assertEqual(close, check_queue.resume_next_action(result, []))
         self.assertIn("python3 Tools/update_queue.py ...",
                       check_queue._resume_recommendation(result, []))
         self.assertIsNone(check_queue.delta_apply_write_barrier(
@@ -4480,10 +4488,10 @@ class CheckQueueTests(QueueFixture):
         self.assertIn("only allowed", check_queue.delta_apply_write_barrier(
             result, "update_queue", "hold", "B1"))
         self.assertEqual("repair-runtime",
-                         check_queue._resume_next_action(result, ["broken"]))
-        result["writer_locks"] = [{"path": "state-writer.lock"}]
+                         check_queue.resume_next_action(result, ["broken"]))
+        result["_writer_locks"] = [{"path": "state-writer.lock"}]
         self.assertEqual("reconcile-interrupted-write",
-                         check_queue._resume_next_action(result, []))
+                         check_queue.resume_next_action(result, []))
 
 
 if __name__ == "__main__":

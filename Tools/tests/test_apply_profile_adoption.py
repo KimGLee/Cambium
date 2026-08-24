@@ -53,6 +53,7 @@ sys.path.insert(0, str(TOOLS))
 import apply_profile_adoption  # noqa: E402
 import check_profile  # noqa: E402
 import kblib  # noqa: E402
+import module_boundary_facts  # noqa: E402
 import standards_state  # noqa: E402
 import test_profile_onboarding_status as tpos  # noqa: E402
 import test_template_fill  # noqa: E402  (reused semantic fill + scan config)
@@ -70,8 +71,14 @@ def _build_base(target):
     shutil.copyfile(REPOSITORY / "profiles" / "README.md",
                     target / "profiles" / "README.md")
     (target / "Tools").mkdir()
-    for script in (REPOSITORY / "Tools").glob("*.py"):
-        shutil.copyfile(script, target / "Tools" / script.name)
+    # Walked, not globbed.  A top-level `*.py` glob stops at the directory
+    # boundary, so a tool that becomes a package arrives as an entry point
+    # with no runtime behind it; `shipped_modules` is the same enumeration
+    # the boundary contract reads, and it descends.
+    for relative in module_boundary_facts.shipped_modules(str(TOOLS)):
+        copy = target / "Tools" / relative
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(TOOLS / relative, copy)
     shutil.copytree(REPOSITORY / "Tools" / "schemas",
                     target / "Tools" / "schemas")
     # Complete the minimal adopter from profile-load's producer-owned input

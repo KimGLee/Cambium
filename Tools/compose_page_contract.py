@@ -73,10 +73,6 @@ def read_text(path):
         return handle.read()
 
 
-def fail(message):
-    print("compose_page_contract: %s" % message)
-    return 1
-
 
 def load_yaml(path, errors, label, text=None):
     try:

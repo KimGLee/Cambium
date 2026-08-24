@@ -48,8 +48,8 @@ readback_sources:
   - kernel/K12 Quality Assurance/17 Gate Receipt Payload Contract.md
   - kernel/K13 Task Runtime and Execution Control/16 Resume Next Action Vocabulary.md
 readback_policy: declared
-source_hash: 'c3655e685332'
-compiled_source_hash: 'c3655e685332'
+source_hash: '3c840d90399d'
+compiled_source_hash: '3c840d90399d'
 ---
 # R07 Long-running Execution Card
 

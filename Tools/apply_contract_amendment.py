@@ -39,6 +39,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_queue
 import kblib
 import amendment_policy
+import contract_exception_policy
 
 TOOL = "apply_contract_amendment"
 TOOL_VERSION = "1.1.0"
@@ -186,7 +187,7 @@ def _validate_plan_shape(plan):
                 "amendment plan before.%s must be spelled sha256:<64 hex "
                 "digits>; `check_queue.py . --resume-status` reports the "
                 "three current values" % field)
-    shape_errors = check_queue._policy_exception_errors(
+    shape_errors = check_queue.policy_exception_errors(
         plan["policy_exceptions_after"], "policy_exceptions_after")
     if shape_errors:
         raise Refusal(
@@ -207,8 +208,9 @@ def _current_effective_policy(root, contract):
 
     The writer resolves the same slot bytes the batch-close consumer will:
     the manifest's ``Priority Rubric`` binding through
-    ``kblib.effective_priority_policy``.  A plan author never computes the
-    canonical fingerprint by hand -- it is an internal representation -- so
+    ``contract_exception_policy.effective_priority_policy``.  A plan
+    author never computes the canonical fingerprint by hand -- it is an
+    internal representation -- so
     this function is what makes the template's fingerprint field checkable:
     the writer prints the expected value on mismatch.
     """
@@ -233,7 +235,8 @@ def _current_effective_policy(root, contract):
             rubric_text = handle.read()
     except OSError as exc:
         raise Refusal("the Priority Rubric slot is unreadable: %s" % exc)
-    policy, fingerprint, errors = kblib.effective_priority_policy(rubric_text)
+    policy, fingerprint, errors = (
+        contract_exception_policy.effective_priority_policy(rubric_text))
     if errors or fingerprint is None:
         raise Refusal(
             "the selected Profile's Priority Rubric does not resolve:\n  %s"
@@ -258,13 +261,13 @@ def _require_policy_authorization(policy, fingerprint, exceptions):
         if not isinstance(entry, dict):
             continue
         policy_id = entry.get("policy_id")
-        if policy_id not in kblib.POLICY_REGISTRY:
+        if policy_id not in contract_exception_policy.POLICY_REGISTRY:
             continue
-        if policy_id in kblib.PRIORITY_QUOTA_POLICY_IDS:
+        if policy_id in contract_exception_policy.PRIORITY_QUOTA_POLICY_IDS:
             expected = fingerprint
         else:
-            _object, expected, resolve_errors = kblib.effective_policy_for(
-                policy_id)
+            _object, expected, resolve_errors = (
+                contract_exception_policy.effective_policy_for(policy_id))
             if resolve_errors or expected is None:
                 raise Refusal(
                     "policy_exceptions_after[%d] names %s, which does not "
@@ -284,7 +287,8 @@ def _require_policy_authorization(policy, fingerprint, exceptions):
                 "file; confirm the policy is the one this grant was judged "
                 "against, then record the expected value"
                 % (index, policy_id, claimed, expected))
-    ceilings, errors = kblib.effective_quota_ceilings(policy, exceptions)
+    ceilings, errors = contract_exception_policy.effective_quota_ceilings(
+        policy, exceptions)
     del ceilings
     if errors:
         raise Refusal(
@@ -496,8 +500,8 @@ def prepare(root, plan_relative):
         "plan_path": relative_plan,
         "plan_sha256": row["plan_sha256"],
         "before_contract_sha256":
-            check_queue._contract_sha256(documents["progress"]),
-        "after_contract_sha256": check_queue._contract_sha256(progress),
+            check_queue.contract_sha256(documents["progress"]),
+        "after_contract_sha256": check_queue.contract_sha256(progress),
         "before_contract_version": row["contract_version_before"],
         "after_contract_version": row["contract_version_after"],
         "before_contract_scope_version": row["scope_version_before"],
@@ -563,7 +567,7 @@ def commit(prepared, receipt_path):
         "plan_sha256": prepared["plan_sha"],
         "commit_receipt_id": receipt["receipt_id"],
         # The generic writer recovery protocol (`check_queue`
-        # `_bind_generic_lock_receipts`) reads these three: they let a
+        # `bind_generic_lock_receipts`) reads these three: they let a
         # recovery view decide whether the declared receipt actually landed
         # and therefore whether to complete or roll back a stale lock.
         "receipt_id": receipt["receipt_id"],

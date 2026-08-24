@@ -10,7 +10,7 @@ import shutil
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from unittest import mock
 
 
@@ -94,7 +94,7 @@ class MetadataGateRuntimeTests(unittest.TestCase):
         runtime = {
             "root": str(self.root),
             "errors": [],
-            "writer_locks": [],
+            "_writer_locks": [],
             "coverage": copy.deepcopy(self.coverage),
             "coverage_sha256": kblib.sha256_file(self.coverage_path),
             "queue_sha256": "sha256:" + "5" * 64,
@@ -158,7 +158,8 @@ class MetadataGateRuntimeTests(unittest.TestCase):
         stale = replace(self.context, runtime=runtime)
         with self.assertRaisesRegex(ValueError, "current receipt catalog"):
             metadata_gate_runtime.current_gate_receipt(
-                stale, self.receipt["receipt_id"], "accepted")
+                stale, self.receipt["receipt_id"], "accepted",
+                current_receipt_catalog=runtime["current_receipt_catalog"])
 
     def test_transition_does_not_hide_corrupt_existing_owner_state(self):
         coverage = copy.deepcopy(self.coverage)
@@ -198,7 +199,16 @@ class MetadataGateRuntimeTests(unittest.TestCase):
                 "active_standards_sha256": "sha256:" + "c" * 64,
             },
         }
-        runtime = {"errors": [], "writer_locks": []}
+        # Paired the way production pairs them: the authority carries the
+        # very view objects the admission put on the runtime, which is what
+        # lets the Gate runtime refuse a split-revision pair without asking
+        # check_queue.
+        runtime = {
+            "errors": [], "_writer_locks": [],
+            "_profile_authorized_view": authority["profile_view"],
+            "_active_standards_authorized_view":
+                authority["active_standards_view"],
+        }
         context = metadata_gate_runtime.load_gate_context(
             REPOSITORY, "P:agent-atlas:interview-readiness",
             "kernel/Read Sets/R07 Long-running Execution Read Set.md",
@@ -210,6 +220,32 @@ class MetadataGateRuntimeTests(unittest.TestCase):
         self.assertEqual("enum", synthetic["value_shape"])
         self.assertEqual(["interview-ready"],
                          synthetic["allowed_values"])
+
+    def test_split_admission_pair_is_refused(self):
+        """A Profile view from one admission beside a binding from another.
+
+        While the Gate runtime derived the authority itself this could not be
+        expressed; taking both from the caller makes it expressible, so it has
+        to be refused explicitly.  Equal-looking views from two separate
+        admissions are the case that matters -- the second was never admitted
+        alongside this runtime, so its agreement proves nothing.
+        """
+        profile_view = {"selected_profile_manifest": "profiles/p/profile.md"}
+        active_view = {"active_standards_sha256": "sha256:" + "c" * 64}
+        runtime = {
+            "errors": [], "_writer_locks": [],
+            "_profile_authorized_view": profile_view,
+            "_active_standards_authorized_view": active_view,
+        }
+        paired = {"profile_view": profile_view,
+                  "active_standards_view": active_view}
+        metadata_gate_runtime.require_paired_authority(runtime, paired)
+
+        split = {"profile_view": dict(profile_view),
+                 "active_standards_view": active_view}
+        with self.assertRaises(ValueError) as caught:
+            metadata_gate_runtime.require_paired_authority(runtime, split)
+        self.assertIn("different admission", str(caught.exception))
 
     def test_profile_rule_set_covers_all_gates_and_unions_same_field(self):
         gates = (
@@ -543,10 +579,17 @@ class MetadataGateRuntimeTests(unittest.TestCase):
                 side_effect=self._dynamic_runtime),
             mock.patch.object(
                 apply_metadata_transition.check_queue,
+                "runtime_authority_context",
+                return_value=self.context.authority),
+            mock.patch.object(
+                apply_metadata_transition.check_queue,
                 "runtime_authority_validation_kwargs", return_value={}),
             mock.patch.object(
                 apply_metadata_transition.check_queue,
                 "runtime_authority_lock_fields", return_value={}),
+            mock.patch.object(
+                apply_metadata_transition.check_queue,
+                "require_runtime_authority_current", return_value=None),
             mock.patch.object(
                 apply_metadata_transition.metadata_gate_runtime,
                 "require_context_current", return_value=None),
@@ -560,14 +603,12 @@ class MetadataGateRuntimeTests(unittest.TestCase):
                 "write_receipts_observed", side_effect=append))
         stdout = io.StringIO()
         stderr = io.StringIO()
-        with patches[0], patches[1], patches[2], patches[3], patches[4], \
-                patches[5]:
-            if len(patches) == 7:
-                with patches[6], redirect_stdout(stdout), redirect_stderr(stderr):
-                    code = apply_metadata_transition.main(arguments)
-            else:
-                with redirect_stdout(stdout), redirect_stderr(stderr):
-                    code = apply_metadata_transition.main(arguments)
+        with ExitStack() as stack:
+            for patch in patches:
+                stack.enter_context(patch)
+            stack.enter_context(redirect_stdout(stdout))
+            stack.enter_context(redirect_stderr(stderr))
+            code = apply_metadata_transition.main(arguments)
         return code, stdout.getvalue(), stderr.getvalue()
 
     def test_success_atomically_updates_owner_and_page(self):

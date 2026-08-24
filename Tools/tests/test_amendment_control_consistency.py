@@ -9,7 +9,7 @@ authorizes nothing" -- and `check_queue` validates it as a terminal state.
 registration therefore blocked every later task transition forever: the exact
 wedge the withdrawal action was added to prevent, reintroduced one tool over.
 
-Second: `check_queue._operational_amendment_registration_errors` returned no
+Second: `check_queue.operational_amendment_registration_errors` returned no
 errors for a row whose `operation` it did not recognize. The registration
 binding below that guard is the entire evidence chain -- plan bytes, receipt,
 three-state fingerprints -- so an unknown operation name was a way to hold an
@@ -92,7 +92,7 @@ class WithdrawnIsFinalInBothReaders(unittest.TestCase):
 
 class UnknownOperationFailsClosed(unittest.TestCase):
     def run_validator(self, amendment):
-        return check_queue._operational_amendment_registration_errors(
+        return check_queue.operational_amendment_registration_errors(
             {}, amendment, "Progress amendments[0]", {}, {}, {},
             "sha256:" + "0" * 64, "sha256:" + "0" * 64, "sha256:" + "0" * 64)
 
