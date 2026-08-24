@@ -22,6 +22,9 @@ import check_batch_close
 import check_page_contract
 import check_profile
 import check_queue
+# The requirements derivation is spied on below, and its caller reads
+# that name in the module the caller lives in.
+import queue_runtime.runtime
 import check_vocab
 import kblib
 import seal_receipts
@@ -743,7 +746,7 @@ class AdoptStandardsTests(unittest.TestCase):
         original_requirements = \
             check_queue.standards_revalidation_requirements
         with mock.patch.object(
-                check_queue, "standards_revalidation_requirements",
+                queue_runtime.runtime, "standards_revalidation_requirements",
                 wraps=original_requirements) as requirements_build:
             first = check_queue.validate_runtime(self.root)
             result = check_queue.validate_runtime(self.root)

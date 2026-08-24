@@ -20,9 +20,11 @@ sys.path.insert(0, str(TOOLS))
 import check_queue
 import contract_exception_policy
 import kblib
-# The review-evidence validator is patched below, and after the package
-# split its one caller reads the name from the module that defines it.
+# Two names are patched below and read by the code under test in the
+# module that reads them, not the module that defines them: a patch
+# lands on the caller's globals.
 import queue_runtime.property_state
+import queue_runtime.runtime
 import standards_state
 from profile_fixture import install_loadable_profile
 
@@ -1918,7 +1920,7 @@ class HubPageAdmissionTests(QueueFixture):
             return authorized_view, errors
 
         with mock.patch.object(
-                check_queue, "profile_load_authorized_view",
+                queue_runtime.runtime, "profile_load_authorized_view",
                 side_effect=admit_then_mutate):
             result = check_queue.validate_runtime(self.root)
 
@@ -2062,7 +2064,7 @@ class CheckQueueTests(QueueFixture):
         """An empty derived map is cached data, not a cache miss."""
         original = check_queue.standards_revalidation_requirements
         with mock.patch.object(
-                check_queue, "standards_revalidation_requirements",
+                queue_runtime.runtime, "standards_revalidation_requirements",
                 wraps=original) as requirements_build:
             result = check_queue.validate_runtime(self.root)
             self.assertEqual(

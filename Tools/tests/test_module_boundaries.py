@@ -282,6 +282,8 @@ QUEUE_RUNTIME_RANKS = {
     "queue_runtime.item_evidence": 5,
     "queue_runtime.resume": 5,
 
+    "queue_runtime.runtime": 6,
+
     "queue_runtime": 7,
 }
 
