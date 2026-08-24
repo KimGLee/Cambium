@@ -18,7 +18,9 @@ link fails here rather than on an adopter's first batch.
 """
 
 import io
+import shutil
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -31,7 +33,7 @@ sys.path.insert(0, str(TESTS))
 import check_queue  # noqa: E402
 import contract_exception_policy  # noqa: E402
 import kblib  # noqa: E402
-from test_check_batch_close import CheckBatchCloseTests  # noqa: E402
+import test_check_batch_close  # noqa: E402  # module-qualified: see load_tests
 
 
 def _load_amendment_tool():
@@ -46,29 +48,25 @@ def _load_amendment_tool():
 apply_contract_amendment = _load_amendment_tool()
 
 
-class ReviewedEraActivationTests(CheckBatchCloseTests):
-    """Wedge, grant, activation -- the join no unit test could see."""
+class ReviewedEraActivationTests(test_check_batch_close.CheckBatchCloseTests):
+    """Wedge, grant, activation -- the join no unit test could see.
+
+    What is shared here is a state, not a walk: the close suite's fixture
+    with the profile installed and one Coverage record rewritten into the
+    legacy pre-K02/01 shape, frozen once per process before any writer has
+    run.  Sharing that prologue is safe because no test below reads
+    anything a walk produced -- every test IS a walk, and the join order
+    (wedge, grant, re-gate) is each test's subject, so each starts from a
+    private copy of the template and drives its own writers end to end.
+    """
+
+    def runTest(self):  # pragma: no cover - harness artifact
+        pass
 
     def setUp(self):
-        import shutil
-        import tempfile
-        from test_check_batch_close import FIXTURE
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name) / "repo"
-        shutil.copytree(FIXTURE, self.root)
-        for name in ("deltas", "receipts", "reports"):
-            (self.root / ".cambium" / name).mkdir(exist_ok=True)
-        self.install_profile_and_tools()
-        # The legacy state every corpus that predates K02/01 is in: a record
-        # claiming an era whose receipt it cannot name.
-        coverage_path = self.root / check_queue.COVERAGE_PATH
-        coverage = kblib.parse_yaml_subset(
-            coverage_path.read_text(encoding="utf-8"))
-        coverage["pages"][0]["authoring_status"] = "reviewed"
-        coverage["pages"][0]["gate_receipts"] = []
-        coverage_path.write_text(kblib.canonical_yaml(coverage),
-                                 encoding="utf-8")
-        self.reanchor_origin()
+        shutil.copytree(legacy_template_root(), self.root, symlinks=True)
         self.unsupported = 1
 
     def reanchor_origin(self):
@@ -227,13 +225,66 @@ class ReviewedEraActivationTests(CheckBatchCloseTests):
         self.assertIn("does not match the current effective policy", output)
 
 
-def _skip(self):
-    self.skipTest("parent test; runs in test_check_batch_close")
+# ---------------------------------------------------------------------------
+# Scenario template.  The legacy prologue is built once per process, into a
+# frozen tree held for the whole run; tests take copies, never the tree.
+# ---------------------------------------------------------------------------
+
+_TEMPLATE_DIRS = []  # TemporaryDirectory handles, alive for the run
+_LEGACY_ROOT = None
 
 
-for _name in dir(CheckBatchCloseTests):
-    if _name.startswith("test_"):
-        setattr(ReviewedEraActivationTests, _name, _skip)
+def legacy_template_root():
+    """Install the profile over the legacy state once, and freeze it.
+
+    Every test in this module needs the same prologue: the close suite's
+    fixture, a loadable profile, one Coverage record claiming an era whose
+    receipt it cannot name, and an origin receipt re-anchored to those
+    edited bytes.  No writer runs here -- the prologue is pure installation,
+    so walking it once and copying the tree is byte-identical to building
+    it fresh, minus three re-installations.
+    """
+    global _LEGACY_ROOT
+    if _LEGACY_ROOT is None:
+        holder = tempfile.TemporaryDirectory(prefix="reviewed-era-template-")
+        _TEMPLATE_DIRS.append(holder)
+        root = Path(holder.name) / "repo"
+        shutil.copytree(test_check_batch_close.FIXTURE, root)
+        for name in ("deltas", "receipts", "reports"):
+            (root / ".cambium" / name).mkdir(exist_ok=True)
+        builder = ReviewedEraActivationTests("runTest")
+        builder.root = root
+        builder.install_profile_and_tools()
+        # The legacy state every corpus that predates K02/01 is in: a record
+        # claiming an era whose receipt it cannot name.
+        coverage_path = root / check_queue.COVERAGE_PATH
+        coverage = kblib.parse_yaml_subset(
+            coverage_path.read_text(encoding="utf-8"))
+        coverage["pages"][0]["authoring_status"] = "reviewed"
+        coverage["pages"][0]["gate_receipts"] = []
+        coverage_path.write_text(kblib.canonical_yaml(coverage),
+                                 encoding="utf-8")
+        builder.reanchor_origin()
+        _LEGACY_ROOT = root
+    return _LEGACY_ROOT
+
+
+def load_tests(loader, standard_tests, pattern):
+    """Collect the join tests without replaying the close suite.
+
+    ``ReviewedEraActivationTests`` inherits ``CheckBatchCloseTests`` for its
+    profile installer and tool runner.  Default discovery also collects the
+    imported base class and every inherited ``test_*`` method, so the close
+    suite ran twice here in addition to its canonical run in
+    ``test_check_batch_close.py``.  Only methods this class declares are the
+    join coverage.
+    """
+    suite = loader.suiteClass()
+    names = [
+        name for name in loader.getTestCaseNames(ReviewedEraActivationTests)
+        if name in ReviewedEraActivationTests.__dict__]
+    suite.addTests(ReviewedEraActivationTests(name) for name in names)
+    return suite
 
 
 if __name__ == "__main__":

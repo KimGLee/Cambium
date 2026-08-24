@@ -29,15 +29,14 @@ import update_queue
 from profile_fixture import install_loadable_profile
 
 
-class UpdateQueueTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name) / "repo"
-        shutil.copytree(FIXTURE, self.root)
-        install_loadable_profile(self.root)
+class UpdateQueueFixture:
+    """The fixture language every queue-lifecycle class below shares.
 
-    def tearDown(self):
-        self.tmp.cleanup()
+    This is the original test class's helper set, unchanged; only the
+    per-test tree construction stayed behind, on the classes that build
+    trees.  Helpers assert through ``unittest.TestCase``, which every
+    concrete class below mixes in.
+    """
 
     def load(self, relative):
         return kblib.load_yaml_file(self.root / relative)
@@ -517,294 +516,71 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertEqual(previous_batch, coverage["pages"][0]["batch"])
         return completed
 
-    def test_close_projects_evidence_backed_last_reviewed(self):
-        page_path = self.root / "Topics/A.md"
-        page_path.write_text(
-            "---\ntype: concept\n---\n# A\n", encoding="utf-8")
-
-        self.close_b1()
-
-        coverage = self.load(check_queue.COVERAGE_PATH)
-        page = next(row for row in coverage["pages"]
-                    if row["path"] == "Topics/A.md")
-        record = page["property_state"]["last_reviewed"]
-        self.assertRegex(record["value"], r"^\d{4}-\d{2}-\d{2}$")
-        self.assertTrue(record["evidence_receipt"].startswith(
-            "audit-page-review-B1-"))
-        self.assertRegex(record["content_fingerprint"],
-                         r"^sha256:[0-9a-f]{64}$")
-        projected = page_path.read_text(encoding="utf-8")
-        self.assertIn("last_reviewed: %s" % record["value"], projected)
-
-    def test_close_receipt_failure_restores_page_and_owner_state_together(self):
-        page_path = self.root / "Topics/A.md"
-        page_path.write_text(
-            "---\ntype: concept\n---\n# A\n", encoding="utf-8")
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        gate = self.queue_gate()
-        close_gate = self.close_gate("B1", gate)
+    def hold_b1_for_revalidation(self):
+        """Put an open B1 under `revalidation-required` and return the state."""
+        self.open_b1()
         revision, fingerprint = self.expected()
-        tracked = {
-            relative: (self.root / relative).read_bytes()
-            for relative in (
-                check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
-                check_queue.PROGRESS_PATH, "Topics/A.md")
-        }
-
-        with mock.patch.object(
-                update_queue.kblib, "write_receipts",
-                side_effect=OSError("injected Queue receipt failure")):
-            with redirect_stdout(io.StringIO()):
-                exit_code = update_queue.main([
-                    str(self.root), "--id", "B1", "--transition", "closed",
-                    "--gate-receipt", gate,
-                    "--close-gate-receipt", close_gate,
-                    "--delta-apply-receipt", delta_apply_receipt,
-                    "--expected-state-revision", revision,
-                    "--expected-sha256", fingerprint,
-                    "--actor-role", "integrator",
-                    "--at", "2026-08-04T03:00:00Z", "--apply",
-                ])
-
-        self.assertEqual(1, exit_code)
-        for relative, before in tracked.items():
-            self.assertEqual(before, (self.root / relative).read_bytes(),
-                             relative)
-        self.assertFalse(
-            (self.root / ".cambium/tmp/state-writer.lock").exists())
-
-    def test_dry_run_does_not_write(self):
-        path = self.root / check_queue.QUEUE_PATH
-        before = path.read_bytes()
-        gate = self.queue_gate("--require-ready", "B1")
-        completed = self.command("--id", "B1", "--transition", "open",
-                                 "--gate-receipt", gate,
-                                 "--actor-role", "integrator")
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        self.assertEqual(before, path.read_bytes())
-
-    def test_integrator_applies_open_and_syncs_progress_and_receipt(self):
-        gate = self.queue_gate("--require-ready", "B1")
-        revision, fingerprint = self.expected()
-        completed = self.command(
-            "--id", "B1", "--transition", "open",
-            "--gate-receipt", gate,
+        held = self.command(
+            "--id", "B1", "--hold-state", "revalidation-required",
+            "--reason", "standards changed under this batch",
             "--expected-state-revision", revision,
             "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--at", "2026-08-04T01:00:00Z",
+            "--actor-role", "integrator", "--at", "2026-08-04T01:30:00Z",
             "--apply",
         )
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        item = result["items_by_id"]["B1"]
-        self.assertEqual("open", item["state"])
-        self.assertEqual("none", item["hold_state"])
-        self.assertEqual(gate, item["activation_receipt"])
-        self.assertTrue(item["transition_receipts"][-1].startswith(
-            "audit-update_queue-"))
-        receipt_path = self.root / ".cambium/receipts/queue-transitions.jsonl"
-        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-        self.assertEqual(fingerprint, receipt["before_required_queue_sha256"])
-        self.assertEqual(result["queue_sha256"],
-                         receipt["after_required_queue_sha256"])
-        self.assertEqual(
-            check_queue.UPDATE_QUEUE_TOOL_VERSION,
-            receipt["tool_version"])
-        self.assertEqual(
-            project_page_state.SEMANTIC_FINGERPRINT_PROTOCOL,
-            receipt["semantic_content_protocol"])
-        records = receipt["manifest_semantic_before_records"]
-        self.assertEqual(item["manifest"], [row["path"] for row in records])
-        self.assertEqual(len(records),
-                         receipt["manifest_semantic_before_count"])
-        self.assertEqual(
-            metadata_property_state.semantic_baseline_set_sha256(records),
-            receipt["manifest_semantic_before_set_sha256"])
-        opening = check_queue.current_opening_semantic_context(result, "B1")
-        self.assertEqual(
-            receipt["receipt_id"], opening["opening_transition_receipt"])
-        self.assertEqual(
-            receipt["manifest_semantic_before_set_sha256"],
-            opening["manifest_semantic_before_set_sha256"])
+        self.assertEqual(0, held.returncode, held.stdout)
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
 
-    def test_page_change_after_open_state_write_aborts_without_losing_edit(self):
-        gate = self.queue_gate("--require-ready", "B1")
-        revision, fingerprint = self.expected()
-        tracked = {
-            path: (self.root / path).read_bytes()
-            for path in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
-                         check_queue.PROGRESS_PATH)
-        }
-        page = self.root / "Topics/A.md"
-        concurrent = page.read_text(encoding="utf-8") + \
-            "\nConcurrent semantic edit\n"
-        real_write_state = update_queue._write_state
+    def rollback_b1(self, *extra, receipt=None, at="2026-08-04T03:00:00Z",
+                    reason="batch-close gate rejected the merged snapshot"):
+        """Run the authorised `merge-ready -> open` rollback for B1."""
+        revision, queue_sha = self.expected()
+        argv = ["--id", "B1", "--transition", "open", "--reason", reason]
+        if receipt is not None:
+            argv += ["--delta-apply-receipt", receipt]
+        argv += [*extra,
+                 "--expected-state-revision", revision,
+                 "--expected-sha256", queue_sha,
+                 "--actor-role", "integrator", "--at", at, "--apply"]
+        return self.command(*argv)
 
-        def write_then_edit_page(*args, **kwargs):
-            result = real_write_state(*args, **kwargs)
-            page.write_text(concurrent, encoding="utf-8")
-            return result
+    def pre_apply_archive(self, batch="B1"):
+        directory = self.root / ".cambium/receipts/pre-apply-coverage"
+        return sorted(directory.glob("%s-r*.yaml" % batch))
 
-        output = io.StringIO()
-        with mock.patch.object(
-                update_queue, "_write_state", side_effect=write_then_edit_page), \
-                redirect_stdout(output):
-            code = update_queue.main([
-                str(self.root), "--id", "B1", "--transition", "open",
-                "--gate-receipt", gate,
-                "--expected-state-revision", revision,
-                "--expected-sha256", fingerprint,
-                "--actor-role", "integrator", "--apply",
-            ])
+    def tamper_invalidation_record(self, **changes):
+        """Rewrite the last invalidation record in the Queue and its receipt.
 
-        self.assertEqual(1, code, output.getvalue())
-        self.assertIn("opening semantic baseline changed", output.getvalue())
-        for path, before in tracked.items():
-            self.assertEqual(before, (self.root / path).read_bytes(), path)
-        self.assertEqual(concurrent, page.read_text(encoding="utf-8"))
-        self.assertFalse((
-            self.root / ".cambium/receipts/queue-transitions.jsonl"
-        ).exists())
-        self.assertFalse(
-            (self.root / ".cambium/tmp/state-writer.lock").exists())
+        The transition receipt embeds a copy of the record, so a Queue-only
+        edit is already caught by the equality check. Editing both leaves the
+        triple internally consistent, which is exactly the state the recorded
+        Coverage fingerprint has to be cross-checked against.
+        """
+        queue = self.load(check_queue.QUEUE_PATH)
+        item = next(entry for entry in queue["required_queue"]
+                    if entry["id"] == "B1")
+        record = item["invalidation_history"][-1]
+        record.update(changes)
+        self.write_queue(queue)
+        self.rewrite_receipt_for_negative_test(
+            record["transition_receipt"],
+            lambda receipt: receipt["invalidation"].update(changes))
+        return record
 
-    def test_open_transaction_runs_profile_load_producer_once(self):
-        gate = self.queue_gate("--require-ready", "B1")
-        revision, fingerprint = self.expected()
-        producer = check_queue.check_profile.evaluate_profile_load
-        with mock.patch.object(
-                check_queue.check_profile, "evaluate_profile_load",
-                wraps=producer) as evaluate:
-            with redirect_stdout(io.StringIO()):
-                code = update_queue.main([
-                    str(self.root), "--id", "B1", "--transition", "open",
-                    "--gate-receipt", gate,
-                    "--expected-state-revision", revision,
-                    "--expected-sha256", fingerprint,
-                    "--actor-role", "integrator", "--apply",
-                ])
-        self.assertEqual(0, code)
-        self.assertEqual(1, evaluate.call_count)
 
-    def test_profile_a_b_a_between_state_and_receipt_is_rejected(self):
-        gate = self.queue_gate("--require-ready", "B1")
-        revision, fingerprint = self.expected()
-        tracked = {
-            path: (self.root / path).read_bytes()
-            for path in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
-                         check_queue.PROGRESS_PATH)
-        }
-        profile_slot = self.root / "profiles/test-profile/slots.md"
-        revision_a = profile_slot.read_bytes()
-        revision_b = revision_a + b"\n<!-- transient revision B -->\n"
-        real_write_state = update_queue._write_state
-        real_currency = check_queue.runtime_authority_currency_errors
-        injected = {"done": False, "observed": False}
+class UpdateQueueTests(UpdateQueueFixture, unittest.TestCase):
+    # Tests that shape the fixture tree before their first lifecycle walk,
+    # or whose subject is the ordering of whole walks, still walk private
+    # trees here, exactly as before.
 
-        def write_then_switch_to_b(*args, **kwargs):
-            result = real_write_state(*args, **kwargs)
-            if not injected["done"]:
-                injected["done"] = True
-                profile_slot.write_bytes(revision_b)
-            return result
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "repo"
+        shutil.copytree(FIXTURE, self.root)
+        install_loadable_profile(self.root)
 
-        def observe_b_then_restore_a(root, authority):
-            errors = real_currency(root, authority)
-            if errors and profile_slot.read_bytes() == revision_b:
-                injected["observed"] = True
-                profile_slot.write_bytes(revision_a)
-            return errors
-
-        output = io.StringIO()
-        with mock.patch.object(update_queue, "_write_state",
-                               side_effect=write_then_switch_to_b), \
-                mock.patch.object(
-                    queue_runtime.authority,
-                    "runtime_authority_currency_errors",
-                    side_effect=observe_b_then_restore_a), \
-                redirect_stdout(output):
-            code = update_queue.main([
-                str(self.root), "--id", "B1", "--transition", "open",
-                "--gate-receipt", gate,
-                "--expected-state-revision", revision,
-                "--expected-sha256", fingerprint,
-                "--actor-role", "integrator", "--apply",
-            ])
-
-        self.assertEqual(1, code, output.getvalue())
-        self.assertTrue(injected["observed"])
-        self.assertEqual(revision_a, profile_slot.read_bytes())
-        for path, before in tracked.items():
-            self.assertEqual(before, (self.root / path).read_bytes())
-        self.assertFalse(
-            (self.root / ".cambium/tmp/state-writer.lock").exists())
-        self.assertFalse((
-            self.root / ".cambium/receipts/queue-transitions.jsonl"
-        ).exists())
-
-    def test_worker_and_stale_revision_cannot_apply(self):
-        gate = self.queue_gate("--require-ready", "B1")
-        revision, fingerprint = self.expected()
-        worker = self.command(
-            "--id", "B1", "--transition", "open",
-            "--gate-receipt", gate,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint, "--apply",
-        )
-        self.assertEqual(1, worker.returncode, worker.stdout)
-        stale = self.command(
-            "--id", "B1", "--transition", "open",
-            "--gate-receipt", gate,
-            "--expected-state-revision", "99",
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--apply",
-        )
-        self.assertEqual(1, stale.returncode, stale.stdout)
-        self.assertEqual("queued", self.load(check_queue.QUEUE_PATH)
-                         ["required_queue"][0]["state"])
-
-    def test_invalid_timestamp_never_writes_invalid_state(self):
-        gate = self.queue_gate("--require-ready", "B1")
-        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
-        completed = self.command(
-            "--id", "B1", "--transition", "open",
-            "--gate-receipt", gate, "--at", "",
-        )
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("RFC 3339", completed.stdout)
-        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
-
-    def test_merge_ready_cannot_predate_open(self):
-        self.open_b1()
-        self.append_receipt("audit-page-1", target="Topics/A.md")
-        self.append_receipt("audit-batch-1", check="batch_gate")
-        delta = self.root / ".cambium/deltas/B1.yaml"
-        delta.parent.mkdir(parents=True, exist_ok=True)
-        delta.write_text(
-            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
-            "pages:\n  - path: Topics/A.md\n"
-            "    gate_receipts:\n      - audit-page-1\n"
-            "open_gaps_added: []\nopen_gaps_closed: []\n"
-            "next_batch_updates: []\nwatermark_advance: null\n",
-            encoding="utf-8",
-        )
-        revision, fingerprint = self.expected()
-        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
-        completed = self.command(
-            "--id", "B1", "--transition", "merge-ready",
-            "--delta-path", ".cambium/deltas/B1.yaml",
-            "--batch-receipt", "audit-batch-1",
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--at",
-            "2026-08-04T00:59:59Z", "--apply",
-        )
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("time", completed.stdout)
-        self.assertEqual(before,
-                         (self.root / check_queue.QUEUE_PATH).read_bytes())
+    def tearDown(self):
+        self.tmp.cleanup()
 
     def test_confirmation_receipt_is_part_of_ready_gate(self):
         queue = self.load(check_queue.QUEUE_PATH)
@@ -881,899 +657,6 @@ class UpdateQueueTests(unittest.TestCase):
         )
         for relative, content in before.items():
             self.assertEqual(content, (self.root / relative).read_bytes())
-
-    def test_close_projects_coverage_and_receipt_binds_both_fingerprints(self):
-        coverage_path = self.root / check_queue.COVERAGE_PATH
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        before_coverage_sha = kblib.sha256_file(coverage_path)
-        gate = self.queue_gate()
-        close_gate = self.close_gate("B1", gate)
-        revision, fingerprint = self.expected()
-        completed = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", gate,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--at", "2026-08-04T03:00:00Z",
-            "--apply",
-        )
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        page = result["coverage"]["pages"][0]
-        self.assertEqual("B1", page["batch"])
-        self.assertIsNone(page["next_batch"])
-        receipts = [json.loads(line) for line in
-                    (self.root / ".cambium/receipts/queue-transitions.jsonl")
-                    .read_text(encoding="utf-8").splitlines()]
-        receipt = receipts[-1]
-        self.assertEqual(before_coverage_sha,
-                         receipt["before_coverage_sha256"])
-        self.assertEqual(kblib.sha256_file(coverage_path),
-                         receipt["after_coverage_sha256"])
-
-    def test_close_requires_the_exact_delta_apply_receipt(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        gate = self.queue_gate()
-        revision, fingerprint = self.expected()
-        missing = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", gate,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, missing.returncode, missing.stdout)
-        self.assertIn("requires --delta-apply-receipt", missing.stdout)
-        wrong = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", gate,
-            "--delta-apply-receipt", "audit-not-the-apply-receipt",
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, wrong.returncode, wrong.stdout)
-        self.assertIn("does not exist", wrong.stdout)
-        self.assertNotIn(
-            "delta_apply_receipt",
-            self.load(check_queue.QUEUE_PATH)["required_queue"][0],
-        )
-
-    def test_close_requires_an_independent_batch_close_gate(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        consistency = self.queue_gate()
-        revision, fingerprint = self.expected()
-        attempted = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("requires --close-gate-receipt", attempted.stdout)
-        item = self.load(check_queue.QUEUE_PATH)["required_queue"][0]
-        self.assertNotIn("close_gate_receipt", item)
-
-    def test_close_rejects_a_handwritten_aggregator_producer(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        consistency = self.queue_gate()
-        close_gate = self.close_gate(
-            "B1", consistency,
-            mutate=lambda receipt: receipt.__setitem__(
-                "tool", "handwritten_close_bundle"),
-        )
-        revision, fingerprint = self.expected()
-        attempted = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--apply",
-        )
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("expected 'check_batch_close'", attempted.stdout)
-
-    def test_close_gate_requires_exact_batch_binding(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        consistency = self.queue_gate()
-        close_gate = self.close_gate(
-            "B1", consistency,
-            mutate=lambda receipt: receipt.__setitem__("batch_id", "B2"),
-        )
-        revision, fingerprint = self.expected()
-        attempted = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("batch_id='B2', expected 'B1'", attempted.stdout)
-
-    def test_current_close_action_rejects_legacy_producer_era_bundles(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        consistency = self.queue_gate()
-        close_gate = self.close_gate("B1", consistency)
-        revision, fingerprint = self.expected()
-
-        def attempt_close():
-            return self.command(
-                "--id", "B1", "--transition", "closed",
-                "--gate-receipt", consistency,
-                "--close-gate-receipt", close_gate,
-                "--delta-apply-receipt", delta_apply_receipt,
-                "--expected-state-revision", revision,
-                "--expected-sha256", fingerprint,
-                "--actor-role", "integrator",
-            )
-
-        self.restamp_close_bundle_version(close_gate, "1.6.0")
-        for version in ("1.6.0", "1.5.0", "1.4.0"):
-            with self.subTest(version=version):
-                if version == "1.5.0":
-                    self.restamp_close_bundle_version(close_gate, version)
-                if version == "1.4.0":
-                    self.restamp_close_bundle_as_legacy_1_4(close_gate)
-                attempted = attempt_close()
-                self.assertEqual(1, attempted.returncode, attempted.stdout)
-                self.assertIn(
-                    "unsupported tool_version='%s' for current close action; "
-                    "expected one of ['%s']" %
-                    (version, check_queue.BATCH_CLOSE_TOOL_VERSION),
-                    attempted.stdout)
-        self.assertEqual("merge-ready", self.load(
-            check_queue.QUEUE_PATH)["required_queue"][0]["state"])
-
-    def test_closed_history_keeps_its_sealed_legacy_producer_era(self):
-        self.close_b1()
-        queue = self.load(check_queue.QUEUE_PATH)
-        close_gate = queue["required_queue"][0]["close_gate_receipt"]
-
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
-        self.detach_current_page_review_from_historical_bundle(close_gate)
-        self.restamp_close_bundle_version(close_gate, "1.6.0")
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
-        self.restamp_close_bundle_version(close_gate, "1.5.0")
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
-        self.restamp_close_bundle_as_legacy_1_4(close_gate)
-        result = check_queue.validate_runtime(self.root)
-
-        self.assertEqual([], result["errors"])
-        self.assertEqual("closed", result["items_by_id"]["B1"]["state"])
-
-    def test_close_gate_rejects_stale_post_apply_snapshot(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        consistency = self.queue_gate()
-        close_gate = self.close_gate(
-            "B1", consistency,
-            mutate=lambda receipt: receipt.__setitem__(
-                "coverage_ledger_sha256", "sha256:" + "0" * 64),
-        )
-        revision, fingerprint = self.expected()
-        attempted = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("coverage_ledger_sha256", attempted.stdout)
-
-    def test_required_corpus_plan_child_cannot_be_omitted(self):
-        self.merge_b1()
-        self.apply_b1()
-        consistency = self.queue_gate()
-
-        def require_missing_child(receipt):
-            receipt["corpus_plan_required"] = True
-            receipt["corpus_plan_triggers"] = ["manifest"]
-            receipt["corpus_plan_receipt"] = "audit-missing-corpus-plan"
-
-        close_gate = self.close_gate(
-            "B1", consistency, mutate=require_missing_child)
-        runtime = check_queue.validate_runtime(self.root)
-        item = next(row for row in runtime["queue"]["required_queue"]
-                    if row["id"] == "B1")
-        errors = check_queue.close_gate_receipt_errors(
-            runtime["receipt_catalog"], close_gate,
-            item_id="B1", task_id=runtime["queue"]["task_id"],
-            queue_revision=runtime["queue"]["queue_revision"],
-            queue_state_revision=runtime["queue"]["state_revision"],
-            required_queue_sha256=runtime["queue_sha256"],
-            coverage_ledger_sha256=runtime["coverage_sha256"],
-            progress_ledger_sha256=runtime["progress_sha256"],
-            delta_sha256=item["delta_sha256"],
-            queue_consistency_receipt=consistency,
-            delta_apply_receipt=next(
-                row["selected_receipt"]
-                for row in runtime["applied_delta_receipts"]
-                if row.get("batch") == "B1"),
-            corpus_plan_required=True,
-            corpus_plan_triggers=["manifest"],
-            current_repository_snapshot_sha256=
-                kblib.repository_snapshot_sha256(self.root),
-        )
-        self.assertTrue(any("Corpus Planning child references missing receipt"
-                            in error for error in errors), errors)
-
-    def test_required_corpus_plan_child_must_match_current_binding(self):
-        self.merge_b1()
-        self.apply_b1()
-        consistency = self.queue_gate()
-        runtime = check_queue.validate_runtime(self.root)
-        item = next(row for row in runtime["queue"]["required_queue"]
-                    if row["id"] == "B1")
-        snapshot = kblib.repository_snapshot_sha256(self.root)
-        profile = runtime["queue"]["selected_profile_manifest"]
-        expected = {
-            "task_id": runtime["queue"]["task_id"],
-            "queue_revision": runtime["queue"]["queue_revision"],
-            "queue_state_revision": runtime["queue"]["state_revision"],
-            "selected_profile_manifest": profile,
-            "selected_profile_manifest_sha256": kblib.sha256_file(
-                self.root / profile),
-            "corpus_planning_slot_path":
-                "profiles/test-profile/corpus-planning.yaml",
-            "corpus_planning_slot_sha256": "sha256:" + "1" * 64,
-            "profile_scope_path": None,
-            "profile_scope_sha256": None,
-            "global_map_path": None,
-            "global_map_sha256": None,
-            "capability_matrix_path": None,
-            "capability_matrix_sha256": None,
-            "gap_register_path": None,
-            "gap_register_sha256": None,
-            "corpus_plan_applicability": "not-applicable",
-            "coverage_ledger_sha256": runtime["coverage_sha256"],
-            "required_queue_sha256": runtime["queue_sha256"],
-            "progress_ledger_sha256": runtime["progress_sha256"],
-            "repository_snapshot_sha256": snapshot,
-        }
-        child_id = "audit-corpus-plan-stale-binding"
-        child_fields = dict(expected)
-        child_fields["selected_profile_manifest_sha256"] = \
-            "sha256:" + "0" * 64
-        self.append_receipt(
-            child_id, check="corpus_plan", target=profile,
-            tool=check_corpus_plan.TOOL,
-            tool_version=check_corpus_plan.TOOL_VERSION,
-            **child_fields)
-
-        def require_child(receipt):
-            receipt["corpus_plan_required"] = True
-            receipt["corpus_plan_triggers"] = ["manifest"]
-            receipt["corpus_plan_receipt"] = child_id
-
-        close_gate = self.close_gate(
-            "B1", consistency, mutate=require_child)
-        runtime = check_queue.validate_runtime(self.root)
-        errors = check_queue.close_gate_receipt_errors(
-            runtime["receipt_catalog"], close_gate,
-            item_id="B1", task_id=runtime["queue"]["task_id"],
-            queue_revision=runtime["queue"]["queue_revision"],
-            queue_state_revision=runtime["queue"]["state_revision"],
-            required_queue_sha256=runtime["queue_sha256"],
-            coverage_ledger_sha256=runtime["coverage_sha256"],
-            progress_ledger_sha256=runtime["progress_sha256"],
-            delta_sha256=item["delta_sha256"],
-            queue_consistency_receipt=consistency,
-            delta_apply_receipt=next(
-                row["selected_receipt"]
-                for row in runtime["applied_delta_receipts"]
-                if row.get("batch") == "B1"),
-            selected_profile_manifest=profile,
-            corpus_plan_required=True,
-            corpus_plan_triggers=["manifest"],
-            corpus_plan_expected_binding=expected,
-            current_repository_snapshot_sha256=snapshot,
-        )
-        self.assertTrue(any("selected_profile_manifest_sha256" in error and
-                            "expected current" in error for error in errors),
-                        errors)
-
-    def test_close_gate_requires_all_seven_closed_list_members(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        consistency = self.queue_gate()
-
-        def omit_member(receipt):
-            receipt["closed_list_evidence"].pop("controlled_vocabulary")
-
-        close_gate = self.close_gate("B1", consistency, mutate=omit_member)
-        revision, fingerprint = self.expected()
-        attempted = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("closed_list_evidence misses: controlled_vocabulary",
-                      attempted.stdout)
-
-    def test_close_gate_rejects_mixed_merged_snapshots(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        consistency = self.queue_gate()
-        close_gate = self.close_gate(
-            "B1", consistency,
-            mutate=lambda receipt: receipt.__setitem__(
-                "merged_snapshot_sha256", "sha256:" + "9" * 64),
-        )
-        revision, fingerprint = self.expected()
-        attempted = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("merged_snapshot_sha256", attempted.stdout)
-
-    def test_close_gate_rejects_content_changed_after_global_checks(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        consistency = self.queue_gate()
-        close_gate = self.close_gate("B1", consistency)
-        topic = self.root / "Topics/A.md"
-        topic.write_text(
-            topic.read_text(encoding="utf-8") + "\nchanged after gate\n",
-            encoding="utf-8",
-        )
-        revision, fingerprint = self.expected()
-        attempted = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn(
-            "semantic_content_sha256 does not match the authorized current "
-            "page content", attempted.stdout)
-
-    def test_close_gate_rejects_consistently_forged_snapshot(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        consistency = self.queue_gate()
-        close_gate = self.close_gate("B1", consistency)
-        gate_record = next(
-            json.loads(line)
-            for line in (self.root / ".cambium/receipts/close-gates.jsonl")
-            .read_text(encoding="utf-8").splitlines()
-            if json.loads(line).get("receipt_id") == close_gate
-        )
-        forged = "sha256:" + "9" * 64
-        self.rewrite_receipt_for_negative_test(
-            consistency,
-            lambda receipt: receipt.__setitem__(
-                "repository_snapshot_sha256", forged),
-        )
-        for receipt_id in [
-                gate_record["global_review_receipt"],
-                *gate_record["closed_list_evidence"].values(),
-                close_gate]:
-            self.rewrite_receipt_for_negative_test(
-                receipt_id,
-                lambda receipt: receipt.__setitem__(
-                    "merged_snapshot_sha256", forged),
-            )
-        revision, fingerprint = self.expected()
-        attempted = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("does not match the current repository snapshot",
-                      attempted.stdout)
-
-    def test_close_gate_requires_independent_global_review(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        consistency = self.queue_gate()
-        close_gate = self.close_gate(
-            "B1", consistency,
-            mutate=lambda receipt: receipt.__setitem__(
-                "global_review_receipt", "audit-missing-global-review"),
-        )
-        revision, fingerprint = self.expected()
-        attempted = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("global review references missing receipt",
-                      attempted.stdout)
-
-    def test_close_gate_rejects_missing_member_receipt(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        consistency = self.queue_gate()
-
-        def replace_member(receipt):
-            receipt["closed_list_evidence"]["structural_validity"] = \
-                "audit-missing-structure"
-
-        close_gate = self.close_gate("B1", consistency, mutate=replace_member)
-        revision, fingerprint = self.expected()
-        missing = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, missing.returncode, missing.stdout)
-        self.assertIn("references missing receipt audit-missing-structure",
-                      missing.stdout)
-
-    def test_close_gate_member_receipts_have_stable_semantics(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        consistency = self.queue_gate()
-        close_gate = self.close_gate("B1", consistency)
-        gate_record = next(
-            json.loads(line)
-            for line in (self.root / ".cambium/receipts/close-gates.jsonl")
-            .read_text(encoding="utf-8").splitlines()
-            if json.loads(line).get("receipt_id") == close_gate
-        )
-        member_id = gate_record["closed_list_evidence"]["structural_validity"]
-        self.rewrite_receipt_for_negative_test(
-            member_id,
-            lambda receipt: receipt.__setitem__("check", "unrelated_check"),
-        )
-        revision, fingerprint = self.expected()
-        attempted = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("check='unrelated_check', expected "
-                      "'closed_list_structural_validity'", attempted.stdout)
-
-    def test_close_gate_rejects_invalidated_aggregator(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        consistency = self.queue_gate()
-        close_gate = self.close_gate(
-            "B1", consistency,
-            mutate=lambda receipt: receipt.__setitem__(
-                "invalidated_by", "audit-superseding-close"),
-        )
-        revision, fingerprint = self.expected()
-        invalidated = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, invalidated.returncode, invalidated.stdout)
-        self.assertIn("invalidated_by='audit-superseding-close'",
-                      invalidated.stdout)
-
-    def test_close_gate_cannot_be_reused_for_another_batch(self):
-        self.merge_b1()
-        self.apply_b1()
-        consistency = self.queue_gate()
-        close_gate = self.close_gate("B1", consistency)
-        runtime = check_queue.validate_runtime(self.root)
-        delta_apply_receipt = runtime["pending_delta_applies"]["current"][0][
-            "selected_receipt"]
-        errors = check_queue.close_gate_receipt_errors(
-            runtime["receipt_catalog"],
-            close_gate,
-            item_id="B2",
-            task_id="fixture-task",
-            queue_revision=self.load(check_queue.QUEUE_PATH)["queue_revision"],
-            queue_state_revision=self.load(
-                check_queue.QUEUE_PATH)["state_revision"],
-            required_queue_sha256=kblib.sha256_file(
-                self.root / check_queue.QUEUE_PATH),
-            coverage_ledger_sha256=kblib.sha256_file(
-                self.root / check_queue.COVERAGE_PATH),
-            progress_ledger_sha256=kblib.sha256_file(
-                self.root / check_queue.PROGRESS_PATH),
-            delta_sha256="sha256:" + "f" * 64,
-            queue_consistency_receipt=consistency,
-            delta_apply_receipt=delta_apply_receipt,
-        )
-        self.assertTrue(any("expected 'B2'" in error for error in errors), errors)
-
-    def test_merge_ready_freezes_delta_bytes(self):
-        self.merge_b1()
-        delta = self.root / ".cambium/deltas/B1.yaml"
-        delta.parent.mkdir(parents=True, exist_ok=True)
-        queue = self.load(check_queue.QUEUE_PATH)
-        frozen = queue["required_queue"][0]["delta_sha256"]
-        self.assertEqual(frozen, kblib.sha256_file(delta))
-        delta.write_text(delta.read_text(encoding="utf-8") + "# replaced\n",
-                         encoding="utf-8")
-        result = check_queue.validate_runtime(self.root)
-        self.assertTrue(any("do not match frozen delta_sha256" in error
-                            for error in result["errors"]), result["errors"])
-
-    def test_merge_ready_rejects_invalid_gap_delta_at_admission(self):
-        self.open_b1()
-        self.append_receipt("audit-page-1", target="Topics/A.md")
-        self.append_receipt("audit-batch-1", check="batch_gate")
-        delta_data = {
-            "batch": "B1",
-            "generated_at": "2026-08-04T02:00:00Z",
-            "pages": [{
-                "path": "Topics/A.md",
-                "gate_receipts": ["audit-page-1"],
-            }],
-            "open_gaps_added": [{"page": "Topics/A.md"}],
-            "open_gaps_closed": [],
-            "next_batch_updates": [],
-            "watermark_advance": None,
-        }
-        delta = self.root / ".cambium/deltas/B1.yaml"
-        delta.parent.mkdir(parents=True, exist_ok=True)
-        delta.write_text(kblib.canonical_yaml(delta_data), encoding="utf-8")
-        revision, fingerprint = self.expected()
-        attempted = self.command(
-            "--id", "B1", "--transition", "merge-ready",
-            "--delta-path", ".cambium/deltas/B1.yaml",
-            "--batch-receipt", "audit-batch-1",
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator",
-        )
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn(
-            "open_gaps_added contains a gap without id or page+type",
-            attempted.stdout)
-        self.assertEqual("open", self.load(check_queue.QUEUE_PATH)
-                         ["required_queue"][0]["state"])
-
-    def test_batch_receipt_must_be_batch_gate_for_exact_batch(self):
-        self.open_b1()
-        self.append_receipt("audit-page-only", target="Topics/A.md")
-        self.append_receipt("audit-confirmation-only", check="confirmation")
-        self.append_receipt("audit-wrong-batch", check="batch_gate", target="B2")
-        self.append_receipt(
-            "audit-batch-wrong-version", check="batch_gate",
-            tool_version="0.0.0",
-            delta_page_receipt_ids=["audit-page-only"])
-        self.append_receipt(
-            "audit-batch-wrong-binding", check="batch_gate",
-            delta_page_receipt_ids=["audit-unrelated-page"])
-        receipt_path = self.root / ".cambium/receipts/invalid-batch.jsonl"
-        kblib.write_receipts(receipt_path, [{
-            "receipt_id": "audit-invalidated-batch", "check": "batch_gate",
-            "target": "B1", "batch_id": "B1", "task_id": "fixture-task",
-            "tool": check_queue.MANUAL_ATTESTATION_TOOL,
-            "tool_version": check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
-            "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
-            "delta_page_receipt_ids": ["audit-page-only"], "result": "pass",
-            "invalidated_by": "audit-revocation",
-        }, {
-            "receipt_id": "audit-revocation", "check": "revocation",
-            "target": "audit-invalidated-batch", "result": "pass",
-            "invalidated_by": None,
-        }])
-        delta = self.root / ".cambium/deltas/B1.yaml"
-        delta.parent.mkdir(parents=True, exist_ok=True)
-        delta.write_text(
-            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
-            "pages:\n  - path: Topics/A.md\n"
-            "    gate_receipts:\n      - audit-page-only\n"
-            "open_gaps_added: []\nopen_gaps_closed: []\n"
-            "next_batch_updates: []\nwatermark_advance: null\n",
-            encoding="utf-8",
-        )
-        cases = (
-            ("audit-page-only", "expected 'manual-attestation'"),
-            ("audit-confirmation-only", "expected 'manual-attestation'"),
-            ("audit-wrong-batch", "expected 'B1'"),
-            ("audit-batch-wrong-version", "expected '1.0.0'"),
-            ("audit-batch-wrong-binding",
-             "expected exact Delta page receipt IDs ['audit-page-only']"),
-            ("audit-invalidated-batch", "invalidated_by='audit-revocation'"),
-        )
-        for receipt_id, expected in cases:
-            with self.subTest(receipt_id=receipt_id):
-                attempted = self.command(
-                    "--id", "B1", "--transition", "merge-ready",
-                    "--delta-path", ".cambium/deltas/B1.yaml",
-                    "--batch-receipt", receipt_id,
-                )
-                self.assertEqual(1, attempted.returncode, attempted.stdout)
-                self.assertIn(expected, attempted.stdout)
-        self.assertEqual("open", self.load(check_queue.QUEUE_PATH)
-                         ["required_queue"][0]["state"])
-
-    def test_persistent_state_rejects_unrelated_current_and_historical_batch_receipts(self):
-        self.merge_b1()
-        queue = self.load(check_queue.QUEUE_PATH)
-        queue["required_queue"][0]["batch_receipts"] = ["audit-page-1"]
-        self.write_queue(queue)
-        current_errors = "\n".join(
-            check_queue.validate_runtime(self.root)["errors"])
-        self.assertIn("batch review receipt audit-page-1 has tool=None, "
-                      "expected 'manual-attestation'", current_errors)
-
-        # Restore the valid materialized state, then create one append-only
-        # invalidation and tamper only its frozen batch-evidence list.
-        queue["required_queue"][0]["batch_receipts"] = ["audit-batch-1"]
-        self.write_queue(queue)
-        revision, fingerprint = self.expected()
-        rolled_back = self.command(
-            "--id", "B1", "--transition", "open",
-            "--reason", "global validation failed",
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--at",
-            "2026-08-04T03:00:00Z", "--apply",
-        )
-        self.assertEqual(0, rolled_back.returncode, rolled_back.stdout)
-        queue = self.load(check_queue.QUEUE_PATH)
-        queue["required_queue"][0]["invalidation_history"][0][
-            "batch_receipts"] = ["audit-page-1"]
-        self.write_queue(queue)
-        historical_errors = "\n".join(
-            check_queue.validate_runtime(self.root)["errors"])
-        self.assertIn("invalidation_history[0] batch evidence receipt "
-                      "audit-page-1 has check='fixture', expected 'batch_gate'",
-                      historical_errors)
-
-    def test_receipt_failure_restores_state_and_receipt_bytes(self):
-        self.make_task_active_without_open()
-        gate = self.queue_gate("--require-ready", "B1")
-        revision, fingerprint = self.expected()
-        tracked = {
-            path: (self.root / path).read_bytes()
-            for path in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
-                         check_queue.PROGRESS_PATH)
-        }
-        with mock.patch.object(
-                update_queue.kblib, "write_receipts",
-                side_effect=OSError("injected receipt failure")):
-            with redirect_stdout(io.StringIO()):
-                exit_code = update_queue.main([
-                    str(self.root), "--id", "B1", "--transition", "open",
-                    "--gate-receipt", gate,
-                    "--expected-state-revision", revision,
-                    "--expected-sha256", fingerprint,
-                    "--actor-role", "integrator", "--apply",
-                ])
-        self.assertEqual(1, exit_code)
-        for path, before in tracked.items():
-            self.assertEqual(before, (self.root / path).read_bytes())
-        self.assertFalse((self.root / ".cambium/tmp/state-writer.lock").exists())
-        self.assertFalse((self.root /
-                          ".cambium/receipts/queue-transitions.jsonl").exists())
-
-    def test_receipt_failure_does_not_clobber_concurrent_external_append(self):
-        self.make_task_active_without_open()
-        gate = self.queue_gate("--require-ready", "B1")
-        revision, fingerprint = self.expected()
-        tracked = {
-            path: (self.root / path).read_bytes()
-            for path in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
-                         check_queue.PROGRESS_PATH)
-        }
-        external = {
-            "receipt_id": "audit-external-concurrent",
-            "check": "external",
-            "target": "unrelated",
-            "result": "pass",
-            "invalidated_by": None,
-        }
-        real_append = kblib.write_receipts
-
-        def external_then_fail(path, receipts, **kwargs):
-            real_append(path, [external])
-            raise OSError("injected failure after external append")
-
-        with mock.patch.object(update_queue.kblib, "write_receipts",
-                               side_effect=external_then_fail):
-            with redirect_stdout(io.StringIO()):
-                exit_code = update_queue.main([
-                    str(self.root), "--id", "B1", "--transition", "open",
-                    "--gate-receipt", gate,
-                    "--expected-state-revision", revision,
-                    "--expected-sha256", fingerprint,
-                    "--actor-role", "integrator", "--apply",
-                ])
-
-        self.assertEqual(1, exit_code)
-        for path, before in tracked.items():
-            self.assertEqual(before, (self.root / path).read_bytes())
-        receipt_path = (self.root /
-                        ".cambium/receipts/queue-transitions.jsonl")
-        self.assertEqual(
-            [external],
-            [json.loads(line) for line in
-             receipt_path.read_text(encoding="utf-8").splitlines()],
-        )
-        self.assertFalse(
-            (self.root / ".cambium/tmp/state-writer.lock").exists()
-        )
-
-    def test_failure_after_own_receipt_append_preserves_log_and_lock(self):
-        self.make_task_active_without_open()
-        gate = self.queue_gate("--require-ready", "B1")
-        revision, fingerprint = self.expected()
-        tracked = {
-            path: (self.root / path).read_bytes()
-            for path in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
-                         check_queue.PROGRESS_PATH)
-        }
-        external = {
-            "receipt_id": "audit-external-after-own",
-            "check": "external",
-            "target": "unrelated",
-            "result": "pass",
-            "invalidated_by": None,
-        }
-        own = {}
-        real_append = kblib.write_receipts
-
-        def own_and_external_then_fail(path, receipts, **kwargs):
-            own.update(receipts[0])
-            real_append(path, receipts, **kwargs)
-            real_append(path, [external])
-            raise OSError("injected failure after durable own append")
-
-        with mock.patch.object(update_queue.kblib, "write_receipts",
-                               side_effect=own_and_external_then_fail):
-            with redirect_stdout(io.StringIO()):
-                exit_code = update_queue.main([
-                    str(self.root), "--id", "B1", "--transition", "open",
-                    "--gate-receipt", gate,
-                    "--expected-state-revision", revision,
-                    "--expected-sha256", fingerprint,
-                    "--actor-role", "integrator", "--apply",
-                ])
-
-        self.assertEqual(1, exit_code)
-        self.assertEqual(
-            tracked[check_queue.COVERAGE_PATH],
-            (self.root / check_queue.COVERAGE_PATH).read_bytes())
-        for path in (check_queue.QUEUE_PATH, check_queue.PROGRESS_PATH):
-            self.assertNotEqual(tracked[path], (self.root / path).read_bytes())
-        records = [
-            json.loads(line) for line in
-            (self.root / ".cambium/receipts/queue-transitions.jsonl")
-            .read_text(encoding="utf-8").splitlines()
-        ]
-        self.assertEqual(
-            [own["receipt_id"], external["receipt_id"]],
-            [record["receipt_id"] for record in records],
-        )
-        self.assertTrue(
-            (self.root / ".cambium/tmp/state-writer.lock/owner.json").is_file()
-        )
-        recovery = check_queue.validate_runtime(self.root)
-        lock = recovery["_writer_locks"][0]
-        self.assertEqual("matching",
-                         lock["operation_receipt"]["status"])
-        self.assertTrue(lock["operation_receipt"]["matching_receipt"])
-        self.assertEqual(
-            {"coverage": "before", "progress": "planned-after",
-             "queue": "planned-after", "standards": "before"},
-            {name: phase["phase"] for name, phase in
-             lock["state_phases"].items()},
-        )
-
-    def test_incomplete_rollback_preserves_recovery_lock(self):
-        gate = self.queue_gate("--require-ready", "B1")
-        revision, fingerprint = self.expected()
-        real_write_state = update_queue._write_state
-        calls = {"count": 0}
-
-        def fail_restore(*args, **kwargs):
-            calls["count"] += 1
-            if calls["count"] == 1:
-                return real_write_state(*args, **kwargs)
-            raise OSError("injected rollback failure")
-
-        with mock.patch.object(update_queue, "_write_state",
-                               side_effect=fail_restore), \
-                mock.patch.object(
-                    update_queue.kblib, "write_receipts",
-                    side_effect=OSError("injected receipt failure")):
-            with redirect_stdout(io.StringIO()):
-                exit_code = update_queue.main([
-                    str(self.root), "--id", "B1", "--transition", "open",
-                    "--gate-receipt", gate,
-                    "--expected-state-revision", revision,
-                    "--expected-sha256", fingerprint,
-                    "--actor-role", "integrator", "--apply",
-                ])
-        self.assertEqual(1, exit_code)
-        lock = self.root / ".cambium/tmp/state-writer.lock/owner.json"
-        self.assertTrue(lock.is_file())
-        owner = json.loads(lock.read_text(encoding="utf-8"))
-        self.assertEqual("update_queue", owner["operation"]["tool"])
-
-    def test_close_lock_owner_binds_coverage_before_and_after(self):
-        coverage_path = self.root / check_queue.COVERAGE_PATH
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        before_coverage_sha = kblib.sha256_file(coverage_path)
-        gate = self.queue_gate()
-        close_gate = self.close_gate("B1", gate)
-        revision, fingerprint = self.expected()
-        captured = {}
-        real_lock = update_queue.kblib.runtime_write_lock
-
-        @contextmanager
-        def capturing_lock(root, **kwargs):
-            captured.update(kwargs.get("owner_metadata") or {})
-            with real_lock(root, **kwargs) as lock_path:
-                yield lock_path
-
-        with mock.patch.object(update_queue.kblib, "runtime_write_lock",
-                               new=capturing_lock):
-            with redirect_stdout(io.StringIO()):
-                exit_code = update_queue.main([
-                    str(self.root), "--id", "B1", "--transition", "closed",
-                    "--gate-receipt", gate,
-                    "--close-gate-receipt", close_gate,
-                    "--delta-apply-receipt", delta_apply_receipt,
-                    "--expected-state-revision", revision,
-                    "--expected-sha256", fingerprint,
-                    "--actor-role", "integrator",
-                    "--at", "2026-08-04T03:00:00Z", "--apply",
-                ])
-        self.assertEqual(0, exit_code)
-        self.assertEqual(before_coverage_sha,
-                         captured["before_coverage_sha256"])
-        self.assertEqual(kblib.sha256_file(coverage_path),
-                         captured["planned_after_coverage_sha256"])
 
     def test_close_preserves_one_explicit_queued_successor_route(self):
         coverage_path = self.root / check_queue.COVERAGE_PATH
@@ -2030,887 +913,6 @@ class UpdateQueueTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "multiple queued successors"):
             update_queue._project_closed_coverage(coverage, queue, "B1")
 
-    def test_receipt_path_cannot_overwrite_authoritative_state(self):
-        queue_path = self.root / check_queue.QUEUE_PATH
-        before = queue_path.read_bytes()
-        gate = self.queue_gate("--require-ready", "B1")
-        completed = self.command(
-            "--id", "B1", "--transition", "open",
-            "--gate-receipt", gate,
-            "--receipts", ".cambium/state/required_queue.yaml",
-        )
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertEqual(before, queue_path.read_bytes())
-
-    def test_closed_item_rejects_hold_only_mutation(self):
-        self.close_b1()
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
-        completed = self.command("--id", "B1", "--hold-state", "paused",
-                                 "--reason", "do not mutate history")
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("immutable", completed.stdout)
-
-    def test_held_open_cannot_skip_revalidation_to_merge_ready(self):
-        self.open_b1()
-        revision, fingerprint = self.expected()
-        held = self.command(
-            "--id", "B1", "--hold-state", "revalidation-required",
-            "--reason", "receipt invalidated",
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--at", "2026-08-04T01:30:00Z",
-            "--apply",
-        )
-        self.assertEqual(0, held.returncode, held.stdout)
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
-        self.append_receipt("audit-page-1", target="Topics/A.md")
-        self.append_receipt("audit-batch-1", check="batch_gate")
-        delta = self.root / ".cambium/deltas/B1.yaml"
-        delta.parent.mkdir(parents=True, exist_ok=True)
-        delta.write_text(
-            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
-            "pages:\n  - path: Topics/A.md\n"
-            "    gate_receipts:\n      - audit-page-1\n"
-            "open_gaps_added: []\nopen_gaps_closed: []\n"
-            "next_batch_updates: []\nwatermark_advance: null\n",
-            encoding="utf-8")
-        completed = self.command(
-            "--id", "B1", "--transition", "merge-ready",
-            "--delta-path", ".cambium/deltas/B1.yaml",
-            "--batch-receipt", "audit-batch-1",
-        )
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("held open batch", completed.stdout)
-
-    def hold_b1_for_revalidation(self):
-        """Put an open B1 under `revalidation-required` and return the state."""
-        self.open_b1()
-        revision, fingerprint = self.expected()
-        held = self.command(
-            "--id", "B1", "--hold-state", "revalidation-required",
-            "--reason", "standards changed under this batch",
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--at", "2026-08-04T01:30:00Z",
-            "--apply",
-        )
-        self.assertEqual(0, held.returncode, held.stdout)
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
-
-    def test_intermediate_hold_cannot_launder_a_revalidation_hold(self):
-        """A78-F03: two legal writes must not clear what neither discharged.
-
-        The guard used to name one edge, `revalidation-required -> none`, so
-        `revalidation-required -> paused -> none` walked around it: each write
-        was legal on its own and the pair left the batch at `hold_state: none`
-        with no revalidation evidence anywhere in its history.
-        """
-        self.hold_b1_for_revalidation()
-        revision, fingerprint = self.expected()
-        stepped = self.command(
-            "--id", "B1", "--hold-state", "paused", "--reason", "step aside",
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--at", "2026-08-04T01:40:00Z",
-            "--apply",
-        )
-        self.assertEqual(1, stepped.returncode, stepped.stdout)
-        self.assertIn("left revalidation-required", stepped.stdout)
-        item = check_queue.validate_runtime(self.root)["items_by_id"]["B1"]
-        self.assertEqual("revalidation-required", item["hold_state"])
-
-    def test_hand_written_hold_none_over_an_owed_revalidation_fails_closed(self):
-        """The reader replays the machine, so a hand edit is caught too."""
-        self.hold_b1_for_revalidation()
-        queue = self.load(check_queue.QUEUE_PATH)
-        item = next(entry for entry in queue["required_queue"]
-                    if entry["id"] == "B1")
-        item["hold_state"] = "none"
-        item.pop("hold_reason", None)
-        self.write_queue(queue)
-        errors = check_queue.validate_runtime(self.root)["errors"]
-        self.assertTrue(
-            any("left revalidation-required for hold_state 'none'" in error
-                for error in errors), errors)
-
-    def test_clearing_a_revalidation_hold_from_none_still_needs_its_gate(self):
-        """The obligation, not the edge: the last hop does not matter."""
-        self.hold_b1_for_revalidation()
-        revision, fingerprint = self.expected()
-        cleared = self.command(
-            "--id", "B1", "--hold-state", "none",
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--at", "2026-08-04T01:40:00Z",
-            "--apply",
-        )
-        self.assertEqual(1, cleared.returncode, cleared.stdout)
-        self.assertIn("clearing revalidation-required needs --gate-receipt",
-                      cleared.stdout)
-
-    def test_an_ordinary_hold_still_clears_without_revalidation_evidence(self):
-        """The tightening must not reach holds that owe nothing.
-
-        `paused` and `blocked` mark a batch that cannot be worked right now
-        for reasons of their own.  Entering and leaving one when no
-        revalidation is owed is untouched by the sub-state machine.
-        """
-        self.open_b1()
-        for index, (hold, reason, when) in enumerate((
-                ("paused", "worker away", "2026-08-04T01:30:00Z"),
-                ("none", "worker back", "2026-08-04T01:40:00Z"),
-                ("blocked", "external dependency", "2026-08-04T01:50:00Z"),
-                ("none", "dependency resolved", "2026-08-04T02:00:00Z"))):
-            revision, fingerprint = self.expected()
-            arguments = ["--id", "B1", "--hold-state", hold,
-                         "--expected-state-revision", revision,
-                         "--expected-sha256", fingerprint,
-                         "--actor-role", "integrator", "--at", when, "--apply"]
-            if hold != "none":
-                arguments += ["--reason", reason]
-            completed = self.command(*arguments)
-            self.assertEqual(0, completed.returncode,
-                             "%s: %s" % (hold, completed.stdout))
-            self.assertEqual(
-                [], check_queue.validate_runtime(self.root)["errors"])
-        item = check_queue.validate_runtime(self.root)["items_by_id"]["B1"]
-        self.assertEqual("none", item["hold_state"])
-
-    def test_hold_noop_does_not_bump_state_revision(self):
-        self.make_task_active_without_open()
-        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
-        completed = self.command(
-            "--id", "B1", "--hold-state", "none"
-        )
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("no-op", completed.stdout)
-        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
-
-    def test_merge_ready_rejects_wrong_delta_path_and_batch_binding(self):
-        self.open_b1()
-        self.append_receipt("audit-batch-1", check="batch_gate")
-        delta_dir = self.root / ".cambium/deltas"
-        delta_dir.mkdir(parents=True, exist_ok=True)
-        (delta_dir / "other.yaml").write_text("batch: B1\npages: []\n",
-                                               encoding="utf-8")
-        wrong_path = self.command(
-            "--id", "B1", "--transition", "merge-ready",
-            "--delta-path", ".cambium/deltas/other.yaml",
-            "--batch-receipt", "audit-batch-1",
-        )
-        self.assertEqual(1, wrong_path.returncode, wrong_path.stdout)
-        self.assertIn("exactly .cambium/deltas/B1.yaml", wrong_path.stdout)
-        (delta_dir / "other.yaml").unlink()
-        (delta_dir / "B1.yaml").write_text("batch: B2\npages: []\n",
-                                            encoding="utf-8")
-        wrong_batch = self.command(
-            "--id", "B1", "--transition", "merge-ready",
-            "--delta-path", ".cambium/deltas/B1.yaml",
-            "--batch-receipt", "audit-batch-1",
-        )
-        self.assertEqual(1, wrong_batch.returncode, wrong_batch.stdout)
-        self.assertTrue("batch" in wrong_batch.stdout and
-                        ("B1" in wrong_batch.stdout or "B2" in wrong_batch.stdout),
-                        wrong_batch.stdout)
-
-    def test_merge_ready_rejects_delta_outside_frozen_manifest(self):
-        self.open_b1()
-        self.append_receipt("audit-page-outside", target="Topics/B.md")
-        self.append_receipt("audit-batch-1", check="batch_gate")
-        delta = self.root / ".cambium/deltas/B1.yaml"
-        delta.parent.mkdir(parents=True, exist_ok=True)
-        delta.write_text(
-            "batch: B1\npages:\n  - path: Topics/B.md\n"
-            "    gate_receipts:\n      - audit-page-outside\n",
-            encoding="utf-8",
-        )
-        completed = self.command(
-            "--id", "B1", "--transition", "merge-ready",
-            "--delta-path", ".cambium/deltas/B1.yaml",
-            "--batch-receipt", "audit-batch-1",
-        )
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("frozen manifest", completed.stdout)
-
-    def test_resume_admits_complete_open_delta_handoff(self):
-        self.open_b1()
-        self.append_receipt("audit-page-handoff", target="Topics/A.md")
-        self.append_receipt("audit-batch-handoff", check="batch_gate")
-        delta = self.root / ".cambium/deltas/B1.yaml"
-        delta.parent.mkdir(parents=True, exist_ok=True)
-        delta.write_text(
-            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
-            "pages:\n  - path: Topics/A.md\n"
-            "    gate_receipts:\n      - audit-page-handoff\n"
-            "open_gaps_added: []\nopen_gaps_closed: []\n"
-            "next_batch_updates: []\nwatermark_advance: null\n",
-            encoding="utf-8",
-        )
-        resume = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--resume-status", "--receipts",
-             ".cambium/receipts/resume-handoff.jsonl"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(2, resume.returncode, resume.stdout)
-        self.assertIn("handoff_status=candidate", resume.stdout)
-        self.assertIn("next_action=admit-delta:B1", resume.stdout)
-        self.assert_resume_envelope(resume, "admit-delta:B1")
-        resume_receipt = json.loads((
-            self.root / ".cambium/receipts/resume-handoff.jsonl"
-        ).read_text(encoding="utf-8").splitlines()[-1])
-        self.assertEqual("admit-delta:B1", resume_receipt["next_action"])
-
-        revision, fingerprint = self.expected()
-        admitted = self.command(
-            "--id", "B1", "--transition", "merge-ready",
-            "--delta-path", ".cambium/deltas/B1.yaml",
-            "--batch-receipt", "audit-batch-handoff",
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--at",
-            "2026-08-04T02:00:00Z", "--apply",
-        )
-        self.assertEqual(0, admitted.returncode, admitted.stdout)
-        self.assertEqual("merge-ready", self.load(
-            check_queue.QUEUE_PATH)["required_queue"][0]["state"])
-
-    def test_resume_rejects_incomplete_open_delta_handoff(self):
-        self.open_b1()
-        delta = self.root / ".cambium/deltas/B1.yaml"
-        delta.parent.mkdir(parents=True, exist_ok=True)
-        delta.write_text(
-            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
-            "pages: []\nopen_gaps_added: []\nopen_gaps_closed: []\n"
-            "next_batch_updates: []\nwatermark_advance: null\n",
-            encoding="utf-8",
-        )
-        resume = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--resume-status"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(1, resume.returncode, resume.stdout)
-        self.assertIn("handoff_status=invalid", resume.stdout)
-        self.assertIn("pages must equal the frozen manifest exactly",
-                      resume.stdout)
-        self.assertIn("next_action=repair-runtime", resume.stdout)
-        self.assert_resume_envelope(resume, "repair-runtime")
-
-    def test_resume_derives_apply_then_deterministic_close_receipt(self):
-        self.merge_b1()
-        before_apply = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--resume-status"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(2, before_apply.returncode, before_apply.stdout)
-        self.assertIn("next_action=apply-delta:B1", before_apply.stdout)
-        self.assert_resume_envelope(before_apply, "apply-delta:B1")
-
-        original_id = self.apply_b1()
-        original_path = self.root / ".cambium/receipts/delta-B1.jsonl"
-        original = json.loads(original_path.read_text(
-            encoding="utf-8").splitlines()[-1])
-        duplicate_id = "audit-apply_delta-0000-compatible"
-        duplicate_path = ".cambium/receipts/delta-B1-compatible.jsonl"
-        duplicate = dict(original)
-        duplicate["receipt_id"] = duplicate_id
-        duplicate["receipt_path"] = duplicate_path
-        kblib.write_receipts(self.root / duplicate_path, [duplicate])
-
-        after_apply = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--resume-status", "--receipts",
-             ".cambium/receipts/resume-applied.jsonl"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(2, after_apply.returncode, after_apply.stdout)
-        compatible = ",".join(sorted((duplicate_id, original_id)))
-        self.assertIn("selected_receipt=%s" % duplicate_id,
-                      after_apply.stdout)
-        self.assertIn("compatible_receipts=%s" % compatible,
-                      after_apply.stdout)
-        self.assertIn("batch_close_recovery.status=gate-required batch=B1",
-                      after_apply.stdout)
-        self.assertIn("next_action=run-batch-close-gate:B1",
-                      after_apply.stdout)
-        self.assert_resume_envelope(after_apply,
-                                    "run-batch-close-gate:B1")
-        resume_receipt = json.loads((
-            self.root / ".cambium/receipts/resume-applied.jsonl"
-        ).read_text(encoding="utf-8").splitlines()[-1])
-        self.assertEqual("run-batch-close-gate:B1",
-                         resume_receipt["next_action"])
-
-        gate = self.queue_gate()
-        close_gate = self.close_gate("B1", gate)
-        after_gate = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--resume-status"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        recovered_action = "close-applied-batch:B1:%s:%s:%s" % (
-            gate, close_gate, duplicate_id)
-        self.assertEqual(2, after_gate.returncode, after_gate.stdout)
-        self.assertIn("batch_close_recovery.status=ready-to-close batch=B1",
-                      after_gate.stdout)
-        self.assertIn("next_action=%s" % recovered_action,
-                      after_gate.stdout)
-        self.assert_resume_envelope(after_gate, recovered_action)
-        revision, fingerprint = self.expected()
-        closed = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", gate,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", duplicate_id,
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--at",
-            "2026-08-04T03:00:00Z", "--apply",
-        )
-        self.assertEqual(0, closed.returncode, closed.stdout)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        self.assertEqual(duplicate_id,
-                         result["items_by_id"]["B1"]["delta_apply_receipt"])
-
-    def test_applied_delta_blocks_all_state_writers_until_exact_close(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        state_paths = (
-            check_queue.COVERAGE_PATH,
-            check_queue.QUEUE_PATH,
-            check_queue.PROGRESS_PATH,
-            ".cambium/deltas/B1.yaml",
-        )
-        before = {path: (self.root / path).read_bytes()
-                  for path in state_paths}
-        revision, queue_sha = self.expected()
-        coverage_sha = kblib.sha256_file(
-            self.root / check_queue.COVERAGE_PATH)
-        progress_sha = kblib.sha256_file(
-            self.root / check_queue.PROGRESS_PATH)
-
-        attempts = [
-            subprocess.run(
-                [sys.executable, str(TOOLS / "apply_delta.py"),
-                 check_queue.COVERAGE_PATH, ".cambium/deltas/B1.yaml",
-                 "--root", str(self.root),
-                 "--expected-coverage-sha256", coverage_sha,
-                 "--expected-queue-sha256", queue_sha,
-                 "--actor-role", "integrator", "--apply"],
-                text=True, stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, check=False),
-            self.command(
-                "--id", "B2", "--transition", "open",
-                "--expected-state-revision", revision,
-                "--expected-sha256", queue_sha,
-                "--actor-role", "integrator", "--apply"),
-            subprocess.run(
-                [sys.executable, str(TOOLS / "compile_queue.py"),
-                 str(self.root), "--apply-replan",
-                 "--actor-role", "integrator"],
-                text=True, stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, check=False),
-            subprocess.run(
-                [sys.executable, str(TOOLS / "apply_amendment.py"),
-                 str(self.root), "--plan",
-                 ".cambium/deltas/amendments/not-loaded.yaml",
-                 "--expected-coverage-sha256", coverage_sha,
-                 "--expected-progress-sha256", progress_sha,
-                 "--expected-queue-sha256", queue_sha,
-                 "--actor-role", "integrator", "--apply"],
-                text=True, stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, check=False),
-        ]
-        for attempted in attempts:
-            self.assertEqual(1, attempted.returncode, attempted.stdout)
-            # The barrier admits exactly two writes for the applied batch:
-            # its close, and its authorised rollback.  Opening a *different*
-            # batch (B2 above) stays blocked because the target differs.
-            self.assertIn("the only allowed Queue/Coverage writes are "
-                          "update_queue merge-ready->closed and the "
-                          "integrator-authorised merge-ready->open rollback "
-                          "for that batch",
-                          attempted.stdout)
-            self.assertIn(delta_apply_receipt, attempted.stdout)
-        for path, content in before.items():
-            self.assertEqual(content, (self.root / path).read_bytes(), path)
-
-        gate = self.queue_gate()
-        close_gate = self.close_gate("B1", gate)
-        revision, queue_sha = self.expected()
-        closed = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", gate,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", queue_sha,
-            "--actor-role", "integrator", "--at",
-            "2026-08-04T03:00:00Z", "--apply",
-        )
-        self.assertEqual(0, closed.returncode, closed.stdout)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        self.assertEqual("closed", result["items_by_id"]["B1"]["state"])
-        self.assertEqual("clear", result["pending_delta_applies"]["status"])
-
-    def rollback_b1(self, *extra, receipt=None, at="2026-08-04T03:00:00Z",
-                    reason="batch-close gate rejected the merged snapshot"):
-        """Run the authorised `merge-ready -> open` rollback for B1."""
-        revision, queue_sha = self.expected()
-        argv = ["--id", "B1", "--transition", "open", "--reason", reason]
-        if receipt is not None:
-            argv += ["--delta-apply-receipt", receipt]
-        argv += [*extra,
-                 "--expected-state-revision", revision,
-                 "--expected-sha256", queue_sha,
-                 "--actor-role", "integrator", "--at", at, "--apply"]
-        return self.command(*argv)
-
-    def pre_apply_archive(self, batch="B1"):
-        directory = self.root / ".cambium/receipts/pre-apply-coverage"
-        return sorted(directory.glob("%s-r*.yaml" % batch))
-
-    def test_pre_apply_rollback_needs_no_delta_apply_receipt(self):
-        """A rollback before the apply keeps its previous behaviour exactly."""
-        self.merge_b1()
-        coverage_before = (self.root / check_queue.COVERAGE_PATH).read_bytes()
-        rolled = self.rollback_b1()
-        self.assertEqual(0, rolled.returncode, rolled.stdout)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        item = result["items_by_id"]["B1"]
-        self.assertEqual("open", item["state"])
-        self.assertEqual("revalidation-required", item["hold_state"])
-        record = item["invalidation_history"][-1]
-        for field in sorted(check_queue.INVALIDATION_APPLIED_ROLLBACK_FIELDS):
-            self.assertNotIn(field, record)
-        self.assertEqual(
-            coverage_before,
-            (self.root / check_queue.COVERAGE_PATH).read_bytes())
-        self.assertEqual([], self.pre_apply_archive())
-
-    def test_applied_rollback_restores_pre_apply_coverage_bytes(self):
-        self.merge_b1()
-        coverage_before = (self.root / check_queue.COVERAGE_PATH).read_bytes()
-        receipt = self.apply_b1()
-        self.assertNotEqual(
-            coverage_before,
-            (self.root / check_queue.COVERAGE_PATH).read_bytes())
-        archives = self.pre_apply_archive()
-        self.assertEqual(1, len(archives), archives)
-        self.assertEqual(coverage_before, archives[0].read_bytes())
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual("close-required",
-                         result["pending_delta_applies"]["status"])
-
-        rolled = self.rollback_b1(receipt=receipt)
-        self.assertEqual(0, rolled.returncode, rolled.stdout)
-        self.assertEqual(
-            coverage_before,
-            (self.root / check_queue.COVERAGE_PATH).read_bytes())
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        self.assertEqual("clear", result["pending_delta_applies"]["status"])
-        item = result["items_by_id"]["B1"]
-        self.assertEqual("open", item["state"])
-        self.assertEqual("revalidation-required", item["hold_state"])
-        record = item["invalidation_history"][-1]
-        self.assertEqual(receipt, record["delta_apply_receipt"])
-        self.assertTrue(
-            record["coverage_restored_from"].startswith(
-                ".cambium/receipts/pre-apply-coverage/B1-r"),
-            record["coverage_restored_from"])
-        self.assertEqual(kblib.sha256_file(archives[0]),
-                         record["coverage_restored_sha256"])
-        self.assertEqual(
-            record["coverage_restored_sha256"],
-            kblib.sha256_file(self.root / check_queue.COVERAGE_PATH))
-        # The archived delta and the rollback evidence are both bound.
-        self.assertTrue(
-            (self.root / record["delta_archive_path"]).exists(),
-            record["delta_archive_path"])
-
-    def tamper_invalidation_record(self, **changes):
-        """Rewrite the last invalidation record in the Queue and its receipt.
-
-        The transition receipt embeds a copy of the record, so a Queue-only
-        edit is already caught by the equality check. Editing both leaves the
-        triple internally consistent, which is exactly the state the recorded
-        Coverage fingerprint has to be cross-checked against.
-        """
-        queue = self.load(check_queue.QUEUE_PATH)
-        item = next(entry for entry in queue["required_queue"]
-                    if entry["id"] == "B1")
-        record = item["invalidation_history"][-1]
-        record.update(changes)
-        self.write_queue(queue)
-        self.rewrite_receipt_for_negative_test(
-            record["transition_receipt"],
-            lambda receipt: receipt["invalidation"].update(changes))
-        return record
-
-    def test_a_restored_coverage_digest_must_match_both_witnesses(self):
-        """A well-formed but wrong digest is not evidence of a restore."""
-        self.merge_b1()
-        receipt = self.apply_b1()
-        self.assertEqual(0, self.rollback_b1(receipt=receipt).returncode)
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
-
-        self.tamper_invalidation_record(
-            coverage_restored_sha256="sha256:" + "0" * 64)
-
-        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
-        self.assertIn("left Coverage at", errors)
-        self.assertIn("recorded pre-apply Coverage", errors)
-
-    def test_a_restored_coverage_path_must_match_the_delta_application(self):
-        self.merge_b1()
-        receipt = self.apply_b1()
-        self.assertEqual(0, self.rollback_b1(receipt=receipt).returncode)
-
-        self.tamper_invalidation_record(
-            coverage_restored_from=".cambium/receipts/pre-apply-coverage/"
-                                   "B1-r99.yaml")
-
-        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
-        self.assertIn("archived the pre-apply Coverage at", errors)
-
-    def test_a_truthful_applied_rollback_still_validates(self):
-        """Positive control: the shipped restore satisfies both witnesses."""
-        self.merge_b1()
-        receipt = self.apply_b1()
-        self.assertEqual(0, self.rollback_b1(receipt=receipt).returncode)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        record = result["items_by_id"]["B1"]["invalidation_history"][-1]
-        transition = result["receipt_catalog"][
-            record["transition_receipt"]][1]
-        self.assertEqual(record["coverage_restored_sha256"],
-                         transition["after_coverage_sha256"])
-
-    def test_applied_rollback_requires_the_exact_delta_apply_receipt(self):
-        self.merge_b1()
-        receipt = self.apply_b1()
-        applied_coverage = (
-            self.root / check_queue.COVERAGE_PATH).read_bytes()
-
-        missing = self.rollback_b1()
-        self.assertEqual(1, missing.returncode, missing.stdout)
-        self.assertIn("requires --delta-apply-receipt", missing.stdout)
-        self.assertIn(receipt, missing.stdout)
-
-        wrong = self.rollback_b1(receipt="audit-batch-1")
-        self.assertEqual(1, wrong.returncode, wrong.stdout)
-        self.assertIn("does not name the unconsumed delta application",
-                      wrong.stdout)
-
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        self.assertEqual("merge-ready", result["items_by_id"]["B1"]["state"])
-        self.assertEqual("close-required",
-                         result["pending_delta_applies"]["status"])
-        self.assertEqual(
-            applied_coverage,
-            (self.root / check_queue.COVERAGE_PATH).read_bytes())
-
-    def test_applied_rollback_fails_closed_without_the_archive(self):
-        self.merge_b1()
-        receipt = self.apply_b1()
-        archives = self.pre_apply_archive()
-        self.assertEqual(1, len(archives), archives)
-        applied_coverage = (
-            self.root / check_queue.COVERAGE_PATH).read_bytes()
-        archives[0].unlink()
-
-        failed = self.rollback_b1(receipt=receipt)
-        self.assertEqual(1, failed.returncode, failed.stdout)
-        self.assertIn("path does not exist", failed.stdout)
-        self.assertIn("property invalidation replay cannot load its exact "
-                      "before Coverage", failed.stdout)
-        self.assertEqual(
-            applied_coverage,
-            (self.root / check_queue.COVERAGE_PATH).read_bytes())
-        self.assertEqual(
-            "merge-ready",
-            check_queue.validate_runtime(self.root)["items_by_id"]["B1"]
-            ["state"])
-
-    def test_applied_rollback_rejects_a_tampered_archive(self):
-        self.merge_b1()
-        receipt = self.apply_b1()
-        archives = self.pre_apply_archive()
-        archives[0].write_text(
-            archives[0].read_text(encoding="utf-8") + "tampered: true\n",
-            encoding="utf-8")
-        failed = self.rollback_b1(receipt=receipt)
-        self.assertEqual(1, failed.returncode, failed.stdout)
-        self.assertIn("archive bytes differ from before_coverage_sha256",
-                      failed.stdout)
-
-    def test_applied_rollback_rejects_a_valid_but_substituted_archive(self):
-        """Only the digest comparison can reject this substitute.
-
-        The previous case injects an unsupported `tampered` key, so the
-        downstream Coverage schema would reject the restored document even if
-        the archive were never hashed. This one swaps in a document that is a
-        well-formed Coverage Ledger with exactly the supported field set, so
-        nothing after the restore has anything to object to: the byte digest
-        recorded by the delta application is the whole defence.
-        """
-        self.merge_b1()
-        receipt = self.apply_b1()
-        archives = self.pre_apply_archive()
-        self.assertEqual(1, len(archives), archives)
-        recorded_sha = kblib.sha256_file(archives[0])
-        substitute = kblib.load_yaml_file(archives[0])
-        substitute["updated_at"] = "2026-08-04T02:59:59Z"
-        archives[0].write_text(
-            kblib.canonical_yaml(substitute), encoding="utf-8")
-        substitute_sha = kblib.sha256_file(archives[0])
-        self.assertNotEqual(recorded_sha, substitute_sha)
-        # No unsupported field and no missing one: the substitute is a Coverage
-        # document every downstream check accepts.
-        self.assertEqual(
-            set(check_queue.COVERAGE_TOP_LEVEL_FIELDS), set(substitute))
-        applied_coverage = (
-            self.root / check_queue.COVERAGE_PATH).read_bytes()
-
-        failed = self.rollback_b1(receipt=receipt)
-
-        self.assertEqual(1, failed.returncode, failed.stdout)
-        # The archive digest comparison itself refuses the well-formed
-        # substitute before any later schema or binding check can accept it.
-        self.assertIn("archive bytes differ from before_coverage_sha256",
-                      failed.stdout)
-        self.assertEqual(
-            applied_coverage,
-            (self.root / check_queue.COVERAGE_PATH).read_bytes())
-        result = check_queue.validate_runtime(self.root)
-        self.assertIn(
-            "archive bytes differ from before_coverage_sha256",
-            "; ".join(result["errors"]))
-        self.assertEqual("merge-ready", result["items_by_id"]["B1"]["state"])
-
-    def test_rolled_back_batch_reaches_merge_ready_and_closes_again(self):
-        """The deadlock is broken: roll back, redo the work, close for real."""
-        self.merge_b1()
-        coverage_before = (self.root / check_queue.COVERAGE_PATH).read_bytes()
-        receipt = self.apply_b1()
-        self.assertEqual(0, self.rollback_b1(receipt=receipt).returncode)
-
-        gate = self.queue_gate()
-        revision, queue_sha = self.expected()
-        cleared = self.command(
-            "--id", "B1", "--hold-state", "none", "--gate-receipt", gate,
-            "--reason", "rollback revalidated",
-            "--expected-state-revision", revision,
-            "--expected-sha256", queue_sha,
-            "--actor-role", "integrator", "--at", "2026-08-04T03:30:00Z",
-            "--apply",
-        )
-        self.assertEqual(0, cleared.returncode, cleared.stdout)
-
-        self.append_receipt("audit-page-1-retry", target="Topics/A.md")
-        self.append_receipt("audit-batch-1-retry", check="batch_gate")
-        delta = self.root / ".cambium/deltas/B1.yaml"
-        delta.write_text(
-            "batch: B1\ngenerated_at: 2026-08-04T04:00:00Z\n"
-            "pages:\n  - path: Topics/A.md\n"
-            "    gate_receipts:\n      - audit-page-1-retry\n"
-            "open_gaps_added: []\nopen_gaps_closed: []\n"
-            "next_batch_updates: []\nwatermark_advance: null\n",
-            encoding="utf-8",
-        )
-        revision, queue_sha = self.expected()
-        remerged = self.command(
-            "--id", "B1", "--transition", "merge-ready",
-            "--delta-path", ".cambium/deltas/B1.yaml",
-            "--batch-receipt", "audit-batch-1-retry",
-            "--expected-state-revision", revision,
-            "--expected-sha256", queue_sha,
-            "--actor-role", "integrator", "--at", "2026-08-04T04:00:00Z",
-            "--apply",
-        )
-        self.assertEqual(0, remerged.returncode, remerged.stdout)
-        retry_receipt = self.apply_batch(
-            "B1", relative=".cambium/receipts/delta-B1-retry.jsonl")
-        self.assertNotEqual(receipt, retry_receipt)
-        self.assertEqual(2, len(self.pre_apply_archive()),
-                         self.pre_apply_archive())
-        self.assertEqual(
-            coverage_before, self.pre_apply_archive()[-1].read_bytes())
-
-        gate = self.queue_gate()
-        close_gate = self.close_gate("B1", gate)
-        revision, queue_sha = self.expected()
-        closed = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", gate,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", retry_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", queue_sha,
-            "--actor-role", "integrator", "--at", "2026-08-04T05:00:00Z",
-            "--apply",
-        )
-        self.assertEqual(0, closed.returncode, closed.stdout)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        self.assertEqual("closed", result["items_by_id"]["B1"]["state"])
-        self.assertEqual("clear", result["pending_delta_applies"]["status"])
-
-    def test_held_merge_ready_batch_refuses_delta_apply(self):
-        """C-02: applying under a hold would reach an unleavable state."""
-        self.merge_b1()
-        revision, queue_sha = self.expected()
-        held = self.command(
-            "--id", "B1", "--hold-state", "paused",
-            "--reason", "integrator paused the merge",
-            "--expected-state-revision", revision,
-            "--expected-sha256", queue_sha,
-            "--actor-role", "integrator", "--at", "2026-08-04T02:30:00Z",
-            "--apply",
-        )
-        self.assertEqual(0, held.returncode, held.stdout)
-        coverage_before = (self.root / check_queue.COVERAGE_PATH).read_bytes()
-        attempted = subprocess.run(
-            [sys.executable, str(TOOLS / "apply_delta.py"),
-             check_queue.COVERAGE_PATH, ".cambium/deltas/B1.yaml",
-             "--root", str(self.root),
-             "--expected-coverage-sha256",
-             kblib.sha256_file(self.root / check_queue.COVERAGE_PATH),
-             "--expected-queue-sha256",
-             kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
-             "--actor-role", "integrator", "--apply"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False)
-        self.assertEqual(1, attempted.returncode, attempted.stdout)
-        self.assertIn("hold_state=none", attempted.stdout)
-        self.assertEqual(
-            coverage_before,
-            (self.root / check_queue.COVERAGE_PATH).read_bytes())
-        self.assertEqual([], self.pre_apply_archive())
-
-    def test_cancelled_task_closes_an_already_applied_batch_before_archive(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-        cancelled = subprocess.run(
-            [sys.executable, str(TOOLS / "update_task.py"), str(self.root),
-             "--transition", "cancelled", "--checkpoint-summary",
-             "operator cancelled after delta application",
-             "--expected-progress-sha256",
-             kblib.sha256_file(self.root / check_queue.PROGRESS_PATH),
-             "--expected-queue-sha256",
-             kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
-             "--actor-role", "integrator", "--at",
-             "2026-08-04T02:30:00Z", "--apply"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(0, cancelled.returncode, cancelled.stdout)
-        resumed = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--resume-status"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(0, resumed.returncode, resumed.stdout)
-        self.assertIn("next_action=run-batch-close-gate:B1",
-                      resumed.stdout)
-        self.assertIn("before any Queue close, control input, another batch, "
-                      "or terminal archival", resumed.stdout)
-
-        gate = self.queue_gate()
-        close_gate = self.close_gate("B1", gate)
-        revision, queue_sha = self.expected()
-        closed = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", gate,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", queue_sha,
-            "--actor-role", "integrator", "--at",
-            "2026-08-04T03:00:00Z", "--apply",
-        )
-        self.assertEqual(0, closed.returncode, closed.stdout)
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        self.assertEqual("cancelled", result["progress"]["task_state"])
-        self.assertEqual("closed", result["items_by_id"]["B1"]["state"])
-
-    def test_paused_task_resumes_before_closing_an_applied_batch(self):
-        self.merge_b1()
-        delta_apply_receipt = self.apply_b1()
-
-        def transition_task(state, summary, at):
-            return subprocess.run(
-                [sys.executable, str(TOOLS / "update_task.py"),
-                 str(self.root), "--transition", state,
-                 "--checkpoint-summary", summary,
-                 "--expected-progress-sha256",
-                 kblib.sha256_file(self.root / check_queue.PROGRESS_PATH),
-                 "--expected-queue-sha256",
-                 kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
-                 "--actor-role", "integrator", "--at", at, "--apply"],
-                text=True, stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, check=False,
-            )
-
-        paused = transition_task(
-            "paused", "operator interruption after apply",
-            "2026-08-04T02:30:00Z")
-        self.assertEqual(0, paused.returncode, paused.stdout)
-        resumed = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--resume-status"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(2, resumed.returncode, resumed.stdout)
-        self.assertIn("next_action=resume-paused-task", resumed.stdout)
-        self.assertIn("then rerun resume-status and close applied batch B1",
-                      resumed.stdout)
-        self.assert_resume_envelope(resumed, "resume-paused-task")
-        active = transition_task(
-            "active", "operator resumed to close applied batch",
-            "2026-08-04T02:45:00Z")
-        self.assertEqual(0, active.returncode, active.stdout)
-        close_status = subprocess.run(
-            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
-             "--resume-status"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(2, close_status.returncode, close_status.stdout)
-        self.assertIn("next_action=run-batch-close-gate:B1",
-                      close_status.stdout)
-        self.assert_resume_envelope(close_status,
-                                    "run-batch-close-gate:B1")
-        gate = self.queue_gate()
-        close_gate = self.close_gate("B1", gate)
-        revision, queue_sha = self.expected()
-        closed = self.command(
-            "--id", "B1", "--transition", "closed",
-            "--gate-receipt", gate,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply_receipt,
-            "--expected-state-revision", revision,
-            "--expected-sha256", queue_sha,
-            "--actor-role", "integrator", "--at",
-            "2026-08-04T03:00:00Z", "--apply",
-        )
-        self.assertEqual(0, closed.returncode, closed.stdout)
-
     def test_two_merge_ready_batches_apply_and_close_in_serial_critical_sections(self):
         coverage = self.load(check_queue.COVERAGE_PATH)
         next(spec for spec in coverage["batch_specs"]
@@ -3043,34 +1045,1157 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertEqual(["Topics/A.md", "Topics/B.md"], [
             gap["page"] for gap in result["coverage"]["open_gaps"]])
 
-    def test_stale_unconsumed_delta_apply_receipt_forces_repair(self):
+    # The requirement-free control belongs on the plain fixture: its whole
+    # point is a merge-ready walk with no requirement grammar anywhere in
+    # the Profile, which is exactly this class's tree.
+    def test_requirement_free_profile_keeps_its_exact_shape(self):
+        # The whole pre-requirement suite exercises this continuously; this
+        # case pins it explicitly: no requirements, no judgment bindings,
+        # merge-ready unchanged.
         self.merge_b1()
-        self.apply_b1()
-        original_path = self.root / ".cambium/receipts/delta-B1.jsonl"
-        stale = json.loads(original_path.read_text(
-            encoding="utf-8").splitlines()[-1])
-        stale["receipt_id"] = "audit-apply_delta-stale-binding"
-        stale["receipt_path"] = ".cambium/receipts/delta-B1-stale.jsonl"
-        stale["required_queue_sha256"] = "sha256:" + "0" * 64
-        kblib.write_receipts(self.root / stale["receipt_path"], [stale])
 
+
+# ---------------------------------------------------------------------------
+# Scenario templates.
+#
+# Most tests below walk one of a handful of identical lifecycles -- gate B1
+# ready, open it, admit its Delta, apply it, close it -- and then assert one
+# property of the result.  At roughly half a second per durable writer
+# invocation, replaying that prologue through the CLI for every test cost
+# more than every assertion combined.  Each distinct lifecycle is therefore
+# walked exactly once per process, by the very fixture helpers the tests
+# always used, into a template tree below.  Tests that only read the walked
+# state share the template directly; tests that mutate any byte start from a
+# private `shutil.copytree` copy of it.  The tools take the repository root
+# from argv and record only root-relative paths, so a copied root behaves
+# identically; the probe for that claim is this whole suite passing from
+# copied roots.  Tests whose subject is the write ceremony itself -- locks,
+# interrupted writers, receipt-append failures, stale expectations -- keep
+# the poisoned walk inside the test; only their unpoisoned prologue is
+# shared.
+# ---------------------------------------------------------------------------
+
+
+class _ScenarioWalker(UpdateQueueFixture, unittest.TestCase):
+    """Assertion-capable driver that walks a template scenario once.
+
+    It defines no test methods, so discovery collects nothing from it; it
+    exists so a walk can run the same helpers, with the same assertions,
+    that the tests ran when each walked its own tree.
+    """
+
+    def _walk(self):
+        raise NotImplementedError("never scheduled as a test")
+
+    @classmethod
+    def at(cls, root):
+        walker = cls("_walk")
+        walker.root = root
+        return walker
+
+
+def _build_base(walker, inherited):
+    """The tree ``UpdateQueueTests.setUp`` builds, walked as a template."""
+    shutil.copytree(FIXTURE, walker.root)
+    install_loadable_profile(walker.root)
+
+
+def _build_ready(walker, inherited):
+    return {"ready_gate": walker.queue_gate("--require-ready", "B1")}
+
+
+def _build_active(walker, inherited):
+    walker.make_task_active_without_open()
+
+
+def _build_active_ready(walker, inherited):
+    return {"active_ready_gate": walker.queue_gate("--require-ready", "B1")}
+
+
+def _build_open_b1(walker, inherited):
+    completed = walker.open_b1()
+    return {"open_code": completed.returncode,
+            "open_stdout": completed.stdout}
+
+
+def _build_held_reval_b1(walker, inherited):
+    walker.hold_b1_for_revalidation()
+
+
+def _build_merged_b1(walker, inherited):
+    completed = walker.merge_b1()
+    return {"merge_code": completed.returncode,
+            "merge_stdout": completed.stdout}
+
+
+def _build_applied_b1(walker, inherited):
+    coverage_before = (walker.root / check_queue.COVERAGE_PATH).read_bytes()
+    receipt = walker.apply_b1()
+    return {"coverage_before_apply": coverage_before,
+            "delta_apply_receipt": receipt}
+
+
+def _build_close_ready_b1(walker, inherited):
+    return {"consistency_gate": walker.queue_gate()}
+
+
+def _build_rolled_back_b1(walker, inherited):
+    rolled = walker.rollback_b1(receipt=inherited["delta_apply_receipt"])
+    return {"rollback_code": rolled.returncode,
+            "rollback_stdout": rolled.stdout}
+
+
+def _build_closed_b1(walker, inherited):
+    completed = walker.close_b1()
+    return {"close_code": completed.returncode,
+            "close_stdout": completed.stdout}
+
+
+def _build_concept_close_ready(walker, inherited):
+    (walker.root / "Topics/A.md").write_text(
+        "---\ntype: concept\n---\n# A\n", encoding="utf-8")
+    walker.merge_b1()
+    receipt = walker.apply_b1()
+    return {"concept_delta_apply_receipt": receipt,
+            "concept_consistency_gate": walker.queue_gate()}
+
+
+def _build_concept_closed(walker, inherited):
+    (walker.root / "Topics/A.md").write_text(
+        "---\ntype: concept\n---\n# A\n", encoding="utf-8")
+    completed = walker.close_b1()
+    return {"concept_close_code": completed.returncode,
+            "concept_close_stdout": completed.stdout}
+
+
+def _build_req_open_b1(walker, inherited):
+    walker.enable_requirement()
+    walker.open_b1()
+
+
+_TEMPLATE_PARENTS = {
+    "base": None,
+    "ready": "base",
+    "active": "base",
+    "active-ready": "active",
+    "open-b1": "base",
+    "held-reval-b1": "base",
+    "merged-b1": "base",
+    "applied-b1": "merged-b1",
+    "close-ready-b1": "applied-b1",
+    "rolled-back-b1": "applied-b1",
+    "closed-b1": "base",
+    "concept-close-ready": "base",
+    "concept-closed": "base",
+    "req-open-b1": "base",
+}
+_TEMPLATE_BUILDERS = {
+    "base": _build_base,
+    "ready": _build_ready,
+    "active": _build_active,
+    "active-ready": _build_active_ready,
+    "open-b1": _build_open_b1,
+    "held-reval-b1": _build_held_reval_b1,
+    "merged-b1": _build_merged_b1,
+    "applied-b1": _build_applied_b1,
+    "close-ready-b1": _build_close_ready_b1,
+    "rolled-back-b1": _build_rolled_back_b1,
+    "closed-b1": _build_closed_b1,
+    "concept-close-ready": _build_concept_close_ready,
+    "concept-closed": _build_concept_closed,
+    "req-open-b1": _build_req_open_b1,
+}
+# Walks that need the requirement fixture's grammar use its walker; the
+# entry is filled in once that class exists, below.
+_TEMPLATE_WALKERS = {}
+# name -> (TemporaryDirectory holder, template root, artifacts).  The
+# holder reference keeps each template alive for the whole process;
+# TemporaryDirectory finalizers remove the trees at interpreter exit.
+_TEMPLATES = {}
+
+
+def _template(name):
+    """Return (root, artifacts) for ``name``, walking it on first use."""
+    if name not in _TEMPLATES:
+        holder = tempfile.TemporaryDirectory()
+        root = Path(holder.name) / "repo"
+        artifacts = {}
+        parent = _TEMPLATE_PARENTS[name]
+        if parent is not None:
+            parent_root, parent_artifacts = _template(parent)
+            artifacts.update(parent_artifacts)
+            shutil.copytree(parent_root, root)
+        walker = _TEMPLATE_WALKERS.get(name, _ScenarioWalker).at(root)
+        artifacts.update(_TEMPLATE_BUILDERS[name](walker, artifacts) or {})
+        _TEMPLATES[name] = (holder, root, artifacts)
+    _holder, root, artifacts = _TEMPLATES[name]
+    return root, artifacts
+
+
+class _TemplateBackedCase(UpdateQueueFixture, unittest.TestCase):
+    """A test class whose tree starts at a named scenario template."""
+
+    TEMPLATE = None
+    # Only a class whose every test is read-only may share the template
+    # tree itself; everything else gets a private copy per test.
+    SHARE_TEMPLATE = False
+
+    def setUp(self):
+        template_root, self.scenario = _template(self.TEMPLATE)
+        if self.SHARE_TEMPLATE:
+            self.tmp = None
+            self.root = template_root
+        else:
+            self.tmp = tempfile.TemporaryDirectory()
+            self.root = Path(self.tmp.name) / "repo"
+            shutil.copytree(template_root, self.root)
+
+    def tearDown(self):
+        if self.tmp is not None:
+            self.tmp.cleanup()
+
+
+class ReadyGateScenarioTests(_TemplateBackedCase):
+    # One ready-gate check on the untouched fixture, walked once into the
+    # "ready" template.  Every test here runs (or poisons) its own open
+    # against that gate -- the open is each test's subject, never shared --
+    # so each starts from a private copy of the tree.
+    TEMPLATE = "ready"
+
+    def test_dry_run_does_not_write(self):
+        path = self.root / check_queue.QUEUE_PATH
+        before = path.read_bytes()
+        gate = self.scenario["ready_gate"]
+        completed = self.command("--id", "B1", "--transition", "open",
+                                 "--gate-receipt", gate,
+                                 "--actor-role", "integrator")
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertEqual(before, path.read_bytes())
+
+    def test_integrator_applies_open_and_syncs_progress_and_receipt(self):
+        gate = self.scenario["ready_gate"]
+        revision, fingerprint = self.expected()
+        completed = self.command(
+            "--id", "B1", "--transition", "open",
+            "--gate-receipt", gate,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T01:00:00Z",
+            "--apply",
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
         result = check_queue.validate_runtime(self.root)
-        self.assertEqual("repair", result["pending_delta_applies"]["status"])
-        errors = "\n".join(result["errors"])
-        self.assertIn("stale unconsumed delta_apply receipt", errors)
-        self.assertIn("required_queue_sha256", errors)
-        resumed = subprocess.run(
+        self.assertEqual([], result["errors"])
+        item = result["items_by_id"]["B1"]
+        self.assertEqual("open", item["state"])
+        self.assertEqual("none", item["hold_state"])
+        self.assertEqual(gate, item["activation_receipt"])
+        self.assertTrue(item["transition_receipts"][-1].startswith(
+            "audit-update_queue-"))
+        receipt_path = self.root / ".cambium/receipts/queue-transitions.jsonl"
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        self.assertEqual(fingerprint, receipt["before_required_queue_sha256"])
+        self.assertEqual(result["queue_sha256"],
+                         receipt["after_required_queue_sha256"])
+        self.assertEqual(
+            check_queue.UPDATE_QUEUE_TOOL_VERSION,
+            receipt["tool_version"])
+        self.assertEqual(
+            project_page_state.SEMANTIC_FINGERPRINT_PROTOCOL,
+            receipt["semantic_content_protocol"])
+        records = receipt["manifest_semantic_before_records"]
+        self.assertEqual(item["manifest"], [row["path"] for row in records])
+        self.assertEqual(len(records),
+                         receipt["manifest_semantic_before_count"])
+        self.assertEqual(
+            metadata_property_state.semantic_baseline_set_sha256(records),
+            receipt["manifest_semantic_before_set_sha256"])
+        opening = check_queue.current_opening_semantic_context(result, "B1")
+        self.assertEqual(
+            receipt["receipt_id"], opening["opening_transition_receipt"])
+        self.assertEqual(
+            receipt["manifest_semantic_before_set_sha256"],
+            opening["manifest_semantic_before_set_sha256"])
+
+    def test_page_change_after_open_state_write_aborts_without_losing_edit(self):
+        gate = self.scenario["ready_gate"]
+        revision, fingerprint = self.expected()
+        tracked = {
+            path: (self.root / path).read_bytes()
+            for path in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+                         check_queue.PROGRESS_PATH)
+        }
+        page = self.root / "Topics/A.md"
+        concurrent = page.read_text(encoding="utf-8") + \
+            "\nConcurrent semantic edit\n"
+        real_write_state = update_queue._write_state
+
+        def write_then_edit_page(*args, **kwargs):
+            result = real_write_state(*args, **kwargs)
+            page.write_text(concurrent, encoding="utf-8")
+            return result
+
+        output = io.StringIO()
+        with mock.patch.object(
+                update_queue, "_write_state", side_effect=write_then_edit_page), \
+                redirect_stdout(output):
+            code = update_queue.main([
+                str(self.root), "--id", "B1", "--transition", "open",
+                "--gate-receipt", gate,
+                "--expected-state-revision", revision,
+                "--expected-sha256", fingerprint,
+                "--actor-role", "integrator", "--apply",
+            ])
+
+        self.assertEqual(1, code, output.getvalue())
+        self.assertIn("opening semantic baseline changed", output.getvalue())
+        for path, before in tracked.items():
+            self.assertEqual(before, (self.root / path).read_bytes(), path)
+        self.assertEqual(concurrent, page.read_text(encoding="utf-8"))
+        self.assertFalse((
+            self.root / ".cambium/receipts/queue-transitions.jsonl"
+        ).exists())
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+
+    def test_open_transaction_runs_profile_load_producer_once(self):
+        gate = self.scenario["ready_gate"]
+        revision, fingerprint = self.expected()
+        producer = check_queue.check_profile.evaluate_profile_load
+        with mock.patch.object(
+                check_queue.check_profile, "evaluate_profile_load",
+                wraps=producer) as evaluate:
+            with redirect_stdout(io.StringIO()):
+                code = update_queue.main([
+                    str(self.root), "--id", "B1", "--transition", "open",
+                    "--gate-receipt", gate,
+                    "--expected-state-revision", revision,
+                    "--expected-sha256", fingerprint,
+                    "--actor-role", "integrator", "--apply",
+                ])
+        self.assertEqual(0, code)
+        self.assertEqual(1, evaluate.call_count)
+
+    def test_profile_a_b_a_between_state_and_receipt_is_rejected(self):
+        gate = self.scenario["ready_gate"]
+        revision, fingerprint = self.expected()
+        tracked = {
+            path: (self.root / path).read_bytes()
+            for path in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+                         check_queue.PROGRESS_PATH)
+        }
+        profile_slot = self.root / "profiles/test-profile/slots.md"
+        revision_a = profile_slot.read_bytes()
+        revision_b = revision_a + b"\n<!-- transient revision B -->\n"
+        real_write_state = update_queue._write_state
+        real_currency = check_queue.runtime_authority_currency_errors
+        injected = {"done": False, "observed": False}
+
+        def write_then_switch_to_b(*args, **kwargs):
+            result = real_write_state(*args, **kwargs)
+            if not injected["done"]:
+                injected["done"] = True
+                profile_slot.write_bytes(revision_b)
+            return result
+
+        def observe_b_then_restore_a(root, authority):
+            errors = real_currency(root, authority)
+            if errors and profile_slot.read_bytes() == revision_b:
+                injected["observed"] = True
+                profile_slot.write_bytes(revision_a)
+            return errors
+
+        output = io.StringIO()
+        with mock.patch.object(update_queue, "_write_state",
+                               side_effect=write_then_switch_to_b), \
+                mock.patch.object(
+                    queue_runtime.authority,
+                    "runtime_authority_currency_errors",
+                    side_effect=observe_b_then_restore_a), \
+                redirect_stdout(output):
+            code = update_queue.main([
+                str(self.root), "--id", "B1", "--transition", "open",
+                "--gate-receipt", gate,
+                "--expected-state-revision", revision,
+                "--expected-sha256", fingerprint,
+                "--actor-role", "integrator", "--apply",
+            ])
+
+        self.assertEqual(1, code, output.getvalue())
+        self.assertTrue(injected["observed"])
+        self.assertEqual(revision_a, profile_slot.read_bytes())
+        for path, before in tracked.items():
+            self.assertEqual(before, (self.root / path).read_bytes())
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+        self.assertFalse((
+            self.root / ".cambium/receipts/queue-transitions.jsonl"
+        ).exists())
+
+    def test_worker_and_stale_revision_cannot_apply(self):
+        gate = self.scenario["ready_gate"]
+        revision, fingerprint = self.expected()
+        worker = self.command(
+            "--id", "B1", "--transition", "open",
+            "--gate-receipt", gate,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint, "--apply",
+        )
+        self.assertEqual(1, worker.returncode, worker.stdout)
+        stale = self.command(
+            "--id", "B1", "--transition", "open",
+            "--gate-receipt", gate,
+            "--expected-state-revision", "99",
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--apply",
+        )
+        self.assertEqual(1, stale.returncode, stale.stdout)
+        self.assertEqual("queued", self.load(check_queue.QUEUE_PATH)
+                         ["required_queue"][0]["state"])
+
+    def test_invalid_timestamp_never_writes_invalid_state(self):
+        gate = self.scenario["ready_gate"]
+        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        completed = self.command(
+            "--id", "B1", "--transition", "open",
+            "--gate-receipt", gate, "--at", "",
+        )
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("RFC 3339", completed.stdout)
+        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_incomplete_rollback_preserves_recovery_lock(self):
+        gate = self.scenario["ready_gate"]
+        revision, fingerprint = self.expected()
+        real_write_state = update_queue._write_state
+        calls = {"count": 0}
+
+        def fail_restore(*args, **kwargs):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                return real_write_state(*args, **kwargs)
+            raise OSError("injected rollback failure")
+
+        with mock.patch.object(update_queue, "_write_state",
+                               side_effect=fail_restore), \
+                mock.patch.object(
+                    update_queue.kblib, "write_receipts",
+                    side_effect=OSError("injected receipt failure")):
+            with redirect_stdout(io.StringIO()):
+                exit_code = update_queue.main([
+                    str(self.root), "--id", "B1", "--transition", "open",
+                    "--gate-receipt", gate,
+                    "--expected-state-revision", revision,
+                    "--expected-sha256", fingerprint,
+                    "--actor-role", "integrator", "--apply",
+                ])
+        self.assertEqual(1, exit_code)
+        lock = self.root / ".cambium/tmp/state-writer.lock/owner.json"
+        self.assertTrue(lock.is_file())
+        owner = json.loads(lock.read_text(encoding="utf-8"))
+        self.assertEqual("update_queue", owner["operation"]["tool"])
+
+    def test_receipt_path_cannot_overwrite_authoritative_state(self):
+        queue_path = self.root / check_queue.QUEUE_PATH
+        before = queue_path.read_bytes()
+        gate = self.scenario["ready_gate"]
+        completed = self.command(
+            "--id", "B1", "--transition", "open",
+            "--gate-receipt", gate,
+            "--receipts", ".cambium/state/required_queue.yaml",
+        )
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertEqual(before, queue_path.read_bytes())
+
+
+class ActiveTaskScenarioTests(_TemplateBackedCase):
+    # Two update_task transitions make the task active without an open
+    # batch, then one ready-gate check: the "active-ready" template.  The
+    # write ceremonies these tests poison -- the open's receipt append, the
+    # hold no-op -- run inside each test on a private copy; the template
+    # carries only the unpoisoned prologue.  The no-op hold test ignores
+    # the walked gate, and an unused gate receipt cannot change a refusal
+    # decided before gate evidence is read.
+    TEMPLATE = "active-ready"
+
+    def test_receipt_failure_restores_state_and_receipt_bytes(self):
+        gate = self.scenario["active_ready_gate"]
+        revision, fingerprint = self.expected()
+        tracked = {
+            path: (self.root / path).read_bytes()
+            for path in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+                         check_queue.PROGRESS_PATH)
+        }
+        with mock.patch.object(
+                update_queue.kblib, "write_receipts",
+                side_effect=OSError("injected receipt failure")):
+            with redirect_stdout(io.StringIO()):
+                exit_code = update_queue.main([
+                    str(self.root), "--id", "B1", "--transition", "open",
+                    "--gate-receipt", gate,
+                    "--expected-state-revision", revision,
+                    "--expected-sha256", fingerprint,
+                    "--actor-role", "integrator", "--apply",
+                ])
+        self.assertEqual(1, exit_code)
+        for path, before in tracked.items():
+            self.assertEqual(before, (self.root / path).read_bytes())
+        self.assertFalse((self.root / ".cambium/tmp/state-writer.lock").exists())
+        self.assertFalse((self.root /
+                          ".cambium/receipts/queue-transitions.jsonl").exists())
+
+    def test_receipt_failure_does_not_clobber_concurrent_external_append(self):
+        gate = self.scenario["active_ready_gate"]
+        revision, fingerprint = self.expected()
+        tracked = {
+            path: (self.root / path).read_bytes()
+            for path in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+                         check_queue.PROGRESS_PATH)
+        }
+        external = {
+            "receipt_id": "audit-external-concurrent",
+            "check": "external",
+            "target": "unrelated",
+            "result": "pass",
+            "invalidated_by": None,
+        }
+        real_append = kblib.write_receipts
+
+        def external_then_fail(path, receipts, **kwargs):
+            real_append(path, [external])
+            raise OSError("injected failure after external append")
+
+        with mock.patch.object(update_queue.kblib, "write_receipts",
+                               side_effect=external_then_fail):
+            with redirect_stdout(io.StringIO()):
+                exit_code = update_queue.main([
+                    str(self.root), "--id", "B1", "--transition", "open",
+                    "--gate-receipt", gate,
+                    "--expected-state-revision", revision,
+                    "--expected-sha256", fingerprint,
+                    "--actor-role", "integrator", "--apply",
+                ])
+
+        self.assertEqual(1, exit_code)
+        for path, before in tracked.items():
+            self.assertEqual(before, (self.root / path).read_bytes())
+        receipt_path = (self.root /
+                        ".cambium/receipts/queue-transitions.jsonl")
+        self.assertEqual(
+            [external],
+            [json.loads(line) for line in
+             receipt_path.read_text(encoding="utf-8").splitlines()],
+        )
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists()
+        )
+
+    def test_failure_after_own_receipt_append_preserves_log_and_lock(self):
+        gate = self.scenario["active_ready_gate"]
+        revision, fingerprint = self.expected()
+        tracked = {
+            path: (self.root / path).read_bytes()
+            for path in (check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+                         check_queue.PROGRESS_PATH)
+        }
+        external = {
+            "receipt_id": "audit-external-after-own",
+            "check": "external",
+            "target": "unrelated",
+            "result": "pass",
+            "invalidated_by": None,
+        }
+        own = {}
+        real_append = kblib.write_receipts
+
+        def own_and_external_then_fail(path, receipts, **kwargs):
+            own.update(receipts[0])
+            real_append(path, receipts, **kwargs)
+            real_append(path, [external])
+            raise OSError("injected failure after durable own append")
+
+        with mock.patch.object(update_queue.kblib, "write_receipts",
+                               side_effect=own_and_external_then_fail):
+            with redirect_stdout(io.StringIO()):
+                exit_code = update_queue.main([
+                    str(self.root), "--id", "B1", "--transition", "open",
+                    "--gate-receipt", gate,
+                    "--expected-state-revision", revision,
+                    "--expected-sha256", fingerprint,
+                    "--actor-role", "integrator", "--apply",
+                ])
+
+        self.assertEqual(1, exit_code)
+        self.assertEqual(
+            tracked[check_queue.COVERAGE_PATH],
+            (self.root / check_queue.COVERAGE_PATH).read_bytes())
+        for path in (check_queue.QUEUE_PATH, check_queue.PROGRESS_PATH):
+            self.assertNotEqual(tracked[path], (self.root / path).read_bytes())
+        records = [
+            json.loads(line) for line in
+            (self.root / ".cambium/receipts/queue-transitions.jsonl")
+            .read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(
+            [own["receipt_id"], external["receipt_id"]],
+            [record["receipt_id"] for record in records],
+        )
+        self.assertTrue(
+            (self.root / ".cambium/tmp/state-writer.lock/owner.json").is_file()
+        )
+        recovery = check_queue.validate_runtime(self.root)
+        lock = recovery["_writer_locks"][0]
+        self.assertEqual("matching",
+                         lock["operation_receipt"]["status"])
+        self.assertTrue(lock["operation_receipt"]["matching_receipt"])
+        self.assertEqual(
+            {"coverage": "before", "progress": "planned-after",
+             "queue": "planned-after", "standards": "before"},
+            {name: phase["phase"] for name, phase in
+             lock["state_phases"].items()},
+        )
+
+    def test_hold_noop_does_not_bump_state_revision(self):
+        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        completed = self.command(
+            "--id", "B1", "--hold-state", "none"
+        )
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("no-op", completed.stdout)
+        self.assertEqual(before, (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+
+class OpenBatchScenarioTests(_TemplateBackedCase):
+    # `open_b1` walked once into the "open-b1" template: B1 gated ready and
+    # opened by the real writer.  Every test here admits, refuses, or holds
+    # something on top of the open batch, so each starts from a private
+    # copy.
+    TEMPLATE = "open-b1"
+
+    def test_merge_ready_cannot_predate_open(self):
+        self.append_receipt("audit-page-1", target="Topics/A.md")
+        self.append_receipt("audit-batch-1", check="batch_gate")
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-1\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8",
+        )
+        revision, fingerprint = self.expected()
+        before = (self.root / check_queue.QUEUE_PATH).read_bytes()
+        completed = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at",
+            "2026-08-04T00:59:59Z", "--apply",
+        )
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("time", completed.stdout)
+        self.assertEqual(before,
+                         (self.root / check_queue.QUEUE_PATH).read_bytes())
+
+    def test_merge_ready_rejects_invalid_gap_delta_at_admission(self):
+        self.append_receipt("audit-page-1", target="Topics/A.md")
+        self.append_receipt("audit-batch-1", check="batch_gate")
+        delta_data = {
+            "batch": "B1",
+            "generated_at": "2026-08-04T02:00:00Z",
+            "pages": [{
+                "path": "Topics/A.md",
+                "gate_receipts": ["audit-page-1"],
+            }],
+            "open_gaps_added": [{"page": "Topics/A.md"}],
+            "open_gaps_closed": [],
+            "next_batch_updates": [],
+            "watermark_advance": None,
+        }
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(kblib.canonical_yaml(delta_data), encoding="utf-8")
+        revision, fingerprint = self.expected()
+        attempted = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn(
+            "open_gaps_added contains a gap without id or page+type",
+            attempted.stdout)
+        self.assertEqual("open", self.load(check_queue.QUEUE_PATH)
+                         ["required_queue"][0]["state"])
+
+    def test_batch_receipt_must_be_batch_gate_for_exact_batch(self):
+        self.append_receipt("audit-page-only", target="Topics/A.md")
+        self.append_receipt("audit-confirmation-only", check="confirmation")
+        self.append_receipt("audit-wrong-batch", check="batch_gate", target="B2")
+        self.append_receipt(
+            "audit-batch-wrong-version", check="batch_gate",
+            tool_version="0.0.0",
+            delta_page_receipt_ids=["audit-page-only"])
+        self.append_receipt(
+            "audit-batch-wrong-binding", check="batch_gate",
+            delta_page_receipt_ids=["audit-unrelated-page"])
+        receipt_path = self.root / ".cambium/receipts/invalid-batch.jsonl"
+        kblib.write_receipts(receipt_path, [{
+            "receipt_id": "audit-invalidated-batch", "check": "batch_gate",
+            "target": "B1", "batch_id": "B1", "task_id": "fixture-task",
+            "tool": check_queue.MANUAL_ATTESTATION_TOOL,
+            "tool_version": check_queue.MANUAL_ATTESTATION_TOOL_VERSION,
+            "gate_id": check_queue.BATCH_REVIEW_GATE_ID,
+            "delta_page_receipt_ids": ["audit-page-only"], "result": "pass",
+            "invalidated_by": "audit-revocation",
+        }, {
+            "receipt_id": "audit-revocation", "check": "revocation",
+            "target": "audit-invalidated-batch", "result": "pass",
+            "invalidated_by": None,
+        }])
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-only\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8",
+        )
+        cases = (
+            ("audit-page-only", "expected 'manual-attestation'"),
+            ("audit-confirmation-only", "expected 'manual-attestation'"),
+            ("audit-wrong-batch", "expected 'B1'"),
+            ("audit-batch-wrong-version", "expected '1.0.0'"),
+            ("audit-batch-wrong-binding",
+             "expected exact Delta page receipt IDs ['audit-page-only']"),
+            ("audit-invalidated-batch", "invalidated_by='audit-revocation'"),
+        )
+        for receipt_id, expected in cases:
+            with self.subTest(receipt_id=receipt_id):
+                attempted = self.command(
+                    "--id", "B1", "--transition", "merge-ready",
+                    "--delta-path", ".cambium/deltas/B1.yaml",
+                    "--batch-receipt", receipt_id,
+                )
+                self.assertEqual(1, attempted.returncode, attempted.stdout)
+                self.assertIn(expected, attempted.stdout)
+        self.assertEqual("open", self.load(check_queue.QUEUE_PATH)
+                         ["required_queue"][0]["state"])
+
+    def test_held_open_cannot_skip_revalidation_to_merge_ready(self):
+        revision, fingerprint = self.expected()
+        held = self.command(
+            "--id", "B1", "--hold-state", "revalidation-required",
+            "--reason", "receipt invalidated",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T01:30:00Z",
+            "--apply",
+        )
+        self.assertEqual(0, held.returncode, held.stdout)
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        self.append_receipt("audit-page-1", target="Topics/A.md")
+        self.append_receipt("audit-batch-1", check="batch_gate")
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-1\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8")
+        completed = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+        )
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("held open batch", completed.stdout)
+
+    def test_an_ordinary_hold_still_clears_without_revalidation_evidence(self):
+        """The tightening must not reach holds that owe nothing.
+
+        `paused` and `blocked` mark a batch that cannot be worked right now
+        for reasons of their own.  Entering and leaving one when no
+        revalidation is owed is untouched by the sub-state machine.
+        """
+        for index, (hold, reason, when) in enumerate((
+                ("paused", "worker away", "2026-08-04T01:30:00Z"),
+                ("none", "worker back", "2026-08-04T01:40:00Z"),
+                ("blocked", "external dependency", "2026-08-04T01:50:00Z"),
+                ("none", "dependency resolved", "2026-08-04T02:00:00Z"))):
+            revision, fingerprint = self.expected()
+            arguments = ["--id", "B1", "--hold-state", hold,
+                         "--expected-state-revision", revision,
+                         "--expected-sha256", fingerprint,
+                         "--actor-role", "integrator", "--at", when, "--apply"]
+            if hold != "none":
+                arguments += ["--reason", reason]
+            completed = self.command(*arguments)
+            self.assertEqual(0, completed.returncode,
+                             "%s: %s" % (hold, completed.stdout))
+            self.assertEqual(
+                [], check_queue.validate_runtime(self.root)["errors"])
+        item = check_queue.validate_runtime(self.root)["items_by_id"]["B1"]
+        self.assertEqual("none", item["hold_state"])
+
+    def test_merge_ready_rejects_wrong_delta_path_and_batch_binding(self):
+        self.append_receipt("audit-batch-1", check="batch_gate")
+        delta_dir = self.root / ".cambium/deltas"
+        delta_dir.mkdir(parents=True, exist_ok=True)
+        (delta_dir / "other.yaml").write_text("batch: B1\npages: []\n",
+                                               encoding="utf-8")
+        wrong_path = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/other.yaml",
+            "--batch-receipt", "audit-batch-1",
+        )
+        self.assertEqual(1, wrong_path.returncode, wrong_path.stdout)
+        self.assertIn("exactly .cambium/deltas/B1.yaml", wrong_path.stdout)
+        (delta_dir / "other.yaml").unlink()
+        (delta_dir / "B1.yaml").write_text("batch: B2\npages: []\n",
+                                            encoding="utf-8")
+        wrong_batch = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+        )
+        self.assertEqual(1, wrong_batch.returncode, wrong_batch.stdout)
+        self.assertTrue("batch" in wrong_batch.stdout and
+                        ("B1" in wrong_batch.stdout or "B2" in wrong_batch.stdout),
+                        wrong_batch.stdout)
+
+    def test_merge_ready_rejects_delta_outside_frozen_manifest(self):
+        self.append_receipt("audit-page-outside", target="Topics/B.md")
+        self.append_receipt("audit-batch-1", check="batch_gate")
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\npages:\n  - path: Topics/B.md\n"
+            "    gate_receipts:\n      - audit-page-outside\n",
+            encoding="utf-8",
+        )
+        completed = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+        )
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("frozen manifest", completed.stdout)
+
+    def test_resume_admits_complete_open_delta_handoff(self):
+        self.append_receipt("audit-page-handoff", target="Topics/A.md")
+        self.append_receipt("audit-batch-handoff", check="batch_gate")
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-handoff\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8",
+        )
+        resume = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             "--resume-status", "--receipts",
+             ".cambium/receipts/resume-handoff.jsonl"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(2, resume.returncode, resume.stdout)
+        self.assertIn("handoff_status=candidate", resume.stdout)
+        self.assertIn("next_action=admit-delta:B1", resume.stdout)
+        self.assert_resume_envelope(resume, "admit-delta:B1")
+        resume_receipt = json.loads((
+            self.root / ".cambium/receipts/resume-handoff.jsonl"
+        ).read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual("admit-delta:B1", resume_receipt["next_action"])
+
+        revision, fingerprint = self.expected()
+        admitted = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-handoff",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at",
+            "2026-08-04T02:00:00Z", "--apply",
+        )
+        self.assertEqual(0, admitted.returncode, admitted.stdout)
+        self.assertEqual("merge-ready", self.load(
+            check_queue.QUEUE_PATH)["required_queue"][0]["state"])
+
+    def test_resume_rejects_incomplete_open_delta_handoff(self):
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+            "pages: []\nopen_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8",
+        )
+        resume = subprocess.run(
             [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
              "--resume-status"],
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             check=False,
         )
-        self.assertEqual(1, resumed.returncode, resumed.stdout)
-        self.assertIn("pending_delta_applies.status=repair", resumed.stdout)
-        self.assertIn("next_action=repair-runtime", resumed.stdout)
+        self.assertEqual(1, resume.returncode, resume.stdout)
+        self.assertIn("handoff_status=invalid", resume.stdout)
+        self.assertIn("pages must equal the frozen manifest exactly",
+                      resume.stdout)
+        self.assertIn("next_action=repair-runtime", resume.stdout)
+        self.assert_resume_envelope(resume, "repair-runtime")
+
+
+class HeldRevalidationScenarioTests(_TemplateBackedCase):
+    # `hold_b1_for_revalidation` walked once: open B1, then the
+    # revalidation-required hold.  Each test tries to discharge or launder
+    # that obligation differently, so each starts from a private copy.
+    TEMPLATE = "held-reval-b1"
+
+    def test_intermediate_hold_cannot_launder_a_revalidation_hold(self):
+        """A78-F03: two legal writes must not clear what neither discharged.
+
+        The guard used to name one edge, `revalidation-required -> none`, so
+        `revalidation-required -> paused -> none` walked around it: each write
+        was legal on its own and the pair left the batch at `hold_state: none`
+        with no revalidation evidence anywhere in its history.
+        """
+        revision, fingerprint = self.expected()
+        stepped = self.command(
+            "--id", "B1", "--hold-state", "paused", "--reason", "step aside",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T01:40:00Z",
+            "--apply",
+        )
+        self.assertEqual(1, stepped.returncode, stepped.stdout)
+        self.assertIn("left revalidation-required", stepped.stdout)
+        item = check_queue.validate_runtime(self.root)["items_by_id"]["B1"]
+        self.assertEqual("revalidation-required", item["hold_state"])
+
+    def test_hand_written_hold_none_over_an_owed_revalidation_fails_closed(self):
+        """The reader replays the machine, so a hand edit is caught too."""
+        queue = self.load(check_queue.QUEUE_PATH)
+        item = next(entry for entry in queue["required_queue"]
+                    if entry["id"] == "B1")
+        item["hold_state"] = "none"
+        item.pop("hold_reason", None)
+        self.write_queue(queue)
+        errors = check_queue.validate_runtime(self.root)["errors"]
+        self.assertTrue(
+            any("left revalidation-required for hold_state 'none'" in error
+                for error in errors), errors)
+
+    def test_clearing_a_revalidation_hold_from_none_still_needs_its_gate(self):
+        """The obligation, not the edge: the last hop does not matter."""
+        revision, fingerprint = self.expected()
+        cleared = self.command(
+            "--id", "B1", "--hold-state", "none",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T01:40:00Z",
+            "--apply",
+        )
+        self.assertEqual(1, cleared.returncode, cleared.stdout)
+        self.assertIn("clearing revalidation-required needs --gate-receipt",
+                      cleared.stdout)
+
+
+class MergeReadyScenarioTests(_TemplateBackedCase):
+    # `merge_b1` walked once into the "merged-b1" template: B1 open, its
+    # Delta admitted and frozen.  The rollbacks, hard exits, and fsync
+    # failures these tests inject all happen after that prologue, inside
+    # each test, on a private copy -- the poisoned walk is never shared.
+    TEMPLATE = "merged-b1"
+
+    def test_merge_ready_freezes_delta_bytes(self):
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        queue = self.load(check_queue.QUEUE_PATH)
+        frozen = queue["required_queue"][0]["delta_sha256"]
+        self.assertEqual(frozen, kblib.sha256_file(delta))
+        delta.write_text(delta.read_text(encoding="utf-8") + "# replaced\n",
+                         encoding="utf-8")
+        result = check_queue.validate_runtime(self.root)
+        self.assertTrue(any("do not match frozen delta_sha256" in error
+                            for error in result["errors"]), result["errors"])
+
+    def test_persistent_state_rejects_unrelated_current_and_historical_batch_receipts(self):
+        queue = self.load(check_queue.QUEUE_PATH)
+        queue["required_queue"][0]["batch_receipts"] = ["audit-page-1"]
+        self.write_queue(queue)
+        current_errors = "\n".join(
+            check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("batch review receipt audit-page-1 has tool=None, "
+                      "expected 'manual-attestation'", current_errors)
+
+        # Restore the valid materialized state, then create one append-only
+        # invalidation and tamper only its frozen batch-evidence list.
+        queue["required_queue"][0]["batch_receipts"] = ["audit-batch-1"]
+        self.write_queue(queue)
+        revision, fingerprint = self.expected()
+        rolled_back = self.command(
+            "--id", "B1", "--transition", "open",
+            "--reason", "global validation failed",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at",
+            "2026-08-04T03:00:00Z", "--apply",
+        )
+        self.assertEqual(0, rolled_back.returncode, rolled_back.stdout)
+        queue = self.load(check_queue.QUEUE_PATH)
+        queue["required_queue"][0]["invalidation_history"][0][
+            "batch_receipts"] = ["audit-page-1"]
+        self.write_queue(queue)
+        historical_errors = "\n".join(
+            check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("invalidation_history[0] batch evidence receipt "
+                      "audit-page-1 has check='fixture', expected 'batch_gate'",
+                      historical_errors)
+
+    def test_resume_derives_apply_then_deterministic_close_receipt(self):
+        before_apply = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             "--resume-status"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(2, before_apply.returncode, before_apply.stdout)
+        self.assertIn("next_action=apply-delta:B1", before_apply.stdout)
+        self.assert_resume_envelope(before_apply, "apply-delta:B1")
+
+        original_id = self.apply_b1()
+        original_path = self.root / ".cambium/receipts/delta-B1.jsonl"
+        original = json.loads(original_path.read_text(
+            encoding="utf-8").splitlines()[-1])
+        duplicate_id = "audit-apply_delta-0000-compatible"
+        duplicate_path = ".cambium/receipts/delta-B1-compatible.jsonl"
+        duplicate = dict(original)
+        duplicate["receipt_id"] = duplicate_id
+        duplicate["receipt_path"] = duplicate_path
+        kblib.write_receipts(self.root / duplicate_path, [duplicate])
+
+        after_apply = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             "--resume-status", "--receipts",
+             ".cambium/receipts/resume-applied.jsonl"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(2, after_apply.returncode, after_apply.stdout)
+        compatible = ",".join(sorted((duplicate_id, original_id)))
+        self.assertIn("selected_receipt=%s" % duplicate_id,
+                      after_apply.stdout)
+        self.assertIn("compatible_receipts=%s" % compatible,
+                      after_apply.stdout)
+        self.assertIn("batch_close_recovery.status=gate-required batch=B1",
+                      after_apply.stdout)
+        self.assertIn("next_action=run-batch-close-gate:B1",
+                      after_apply.stdout)
+        self.assert_resume_envelope(after_apply,
+                                    "run-batch-close-gate:B1")
+        resume_receipt = json.loads((
+            self.root / ".cambium/receipts/resume-applied.jsonl"
+        ).read_text(encoding="utf-8").splitlines()[-1])
+        self.assertEqual("run-batch-close-gate:B1",
+                         resume_receipt["next_action"])
+
+        gate = self.queue_gate()
+        close_gate = self.close_gate("B1", gate)
+        after_gate = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             "--resume-status"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        recovered_action = "close-applied-batch:B1:%s:%s:%s" % (
+            gate, close_gate, duplicate_id)
+        self.assertEqual(2, after_gate.returncode, after_gate.stdout)
+        self.assertIn("batch_close_recovery.status=ready-to-close batch=B1",
+                      after_gate.stdout)
+        self.assertIn("next_action=%s" % recovered_action,
+                      after_gate.stdout)
+        self.assert_resume_envelope(after_gate, recovered_action)
+        revision, fingerprint = self.expected()
+        closed = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", gate,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", duplicate_id,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at",
+            "2026-08-04T03:00:00Z", "--apply",
+        )
+        self.assertEqual(0, closed.returncode, closed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual(duplicate_id,
+                         result["items_by_id"]["B1"]["delta_apply_receipt"])
+
+    def test_pre_apply_rollback_needs_no_delta_apply_receipt(self):
+        """A rollback before the apply keeps its previous behaviour exactly."""
+        coverage_before = (self.root / check_queue.COVERAGE_PATH).read_bytes()
+        rolled = self.rollback_b1()
+        self.assertEqual(0, rolled.returncode, rolled.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        item = result["items_by_id"]["B1"]
+        self.assertEqual("open", item["state"])
+        self.assertEqual("revalidation-required", item["hold_state"])
+        record = item["invalidation_history"][-1]
+        for field in sorted(check_queue.INVALIDATION_APPLIED_ROLLBACK_FIELDS):
+            self.assertNotIn(field, record)
+        self.assertEqual(
+            coverage_before,
+            (self.root / check_queue.COVERAGE_PATH).read_bytes())
+        self.assertEqual([], self.pre_apply_archive())
+
+    def test_held_merge_ready_batch_refuses_delta_apply(self):
+        """C-02: applying under a hold would reach an unleavable state."""
+        revision, queue_sha = self.expected()
+        held = self.command(
+            "--id", "B1", "--hold-state", "paused",
+            "--reason", "integrator paused the merge",
+            "--expected-state-revision", revision,
+            "--expected-sha256", queue_sha,
+            "--actor-role", "integrator", "--at", "2026-08-04T02:30:00Z",
+            "--apply",
+        )
+        self.assertEqual(0, held.returncode, held.stdout)
+        coverage_before = (self.root / check_queue.COVERAGE_PATH).read_bytes()
+        attempted = subprocess.run(
+            [sys.executable, str(TOOLS / "apply_delta.py"),
+             check_queue.COVERAGE_PATH, ".cambium/deltas/B1.yaml",
+             "--root", str(self.root),
+             "--expected-coverage-sha256",
+             kblib.sha256_file(self.root / check_queue.COVERAGE_PATH),
+             "--expected-queue-sha256",
+             kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+             "--actor-role", "integrator", "--apply"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False)
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn("hold_state=none", attempted.stdout)
+        self.assertEqual(
+            coverage_before,
+            (self.root / check_queue.COVERAGE_PATH).read_bytes())
+        self.assertEqual([], self.pre_apply_archive())
 
     def test_old_attempt_apply_receipt_does_not_poison_revalidated_delta(self):
-        self.merge_b1()
         old_delta_sha = kblib.sha256_file(
             self.root / ".cambium/deltas/B1.yaml")
         old_queue = self.load(check_queue.QUEUE_PATH)
@@ -3173,7 +2298,6 @@ class UpdateQueueTests(unittest.TestCase):
                          ["selected_receipt"])
 
     def test_merge_failure_returns_to_open_and_archives_invalidated_delta(self):
-        self.merge_b1()
         delta = self.root / ".cambium/deltas/B1.yaml"
         self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
         revision, fingerprint = self.expected()
@@ -3203,7 +2327,6 @@ class UpdateQueueTests(unittest.TestCase):
         self.assertEqual(invalidation, transition["invalidation"])
 
     def test_invalidated_delta_and_receipts_cannot_be_replayed(self):
-        self.merge_b1()
         revision, fingerprint = self.expected()
         rolled_back = self.command(
             "--id", "B1", "--transition", "open",
@@ -3293,7 +2416,6 @@ class UpdateQueueTests(unittest.TestCase):
                       "audit-page-1", replay_errors)
 
     def test_hard_exit_after_delta_move_exposes_exact_archive_recovery(self):
-        self.merge_b1()
         source = self.root / ".cambium/deltas/B1.yaml"
         queue_path = self.root / check_queue.QUEUE_PATH
         coverage_path = self.root / check_queue.COVERAGE_PATH
@@ -3392,7 +2514,6 @@ raise SystemExit(update_queue.main(sys.argv[4:]))
                       mismatched.stdout)
 
     def test_archive_directory_fsync_failure_rolls_move_back_durably(self):
-        self.merge_b1()
         revision, fingerprint = self.expected()
         source = self.root / ".cambium/deltas/B1.yaml"
         archive = self.root / (
@@ -3437,7 +2558,6 @@ raise SystemExit(update_queue.main(sys.argv[4:]))
             (self.root / ".cambium/tmp/state-writer.lock").exists())
 
     def test_archive_restore_fsync_failure_preserves_recovery_lock(self):
-        self.merge_b1()
         revision, fingerprint = self.expected()
         source = self.root / ".cambium/deltas/B1.yaml"
         archive = self.root / (
@@ -3486,7 +2606,6 @@ raise SystemExit(update_queue.main(sys.argv[4:]))
         ).is_file())
 
     def test_two_merge_failures_preserve_append_only_invalidation_history(self):
-        self.merge_b1()
         revision, fingerprint = self.expected()
         first = self.command(
             "--id", "B1", "--transition", "open",
@@ -3561,8 +2680,1130 @@ raise SystemExit(update_queue.main(sys.argv[4:]))
             self.assertEqual(entry, transition["invalidation"])
 
 
-class BatchReviewRequirementTests(UpdateQueueTests):
-    """The Profile's frozen judgment obligations gate `open -> merge-ready`."""
+class AppliedDeltaScenarioTests(_TemplateBackedCase):
+    # "applied-b1": `merge_b1` then `apply_b1`, with the pre-apply Coverage
+    # bytes and the apply receipt riding along as template artifacts.
+    # Every test here rolls back, closes, or injures the applied state, so
+    # each starts from a private copy.
+    TEMPLATE = "applied-b1"
+
+    def test_applied_delta_blocks_all_state_writers_until_exact_close(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        state_paths = (
+            check_queue.COVERAGE_PATH,
+            check_queue.QUEUE_PATH,
+            check_queue.PROGRESS_PATH,
+            ".cambium/deltas/B1.yaml",
+        )
+        before = {path: (self.root / path).read_bytes()
+                  for path in state_paths}
+        revision, queue_sha = self.expected()
+        coverage_sha = kblib.sha256_file(
+            self.root / check_queue.COVERAGE_PATH)
+        progress_sha = kblib.sha256_file(
+            self.root / check_queue.PROGRESS_PATH)
+
+        attempts = [
+            subprocess.run(
+                [sys.executable, str(TOOLS / "apply_delta.py"),
+                 check_queue.COVERAGE_PATH, ".cambium/deltas/B1.yaml",
+                 "--root", str(self.root),
+                 "--expected-coverage-sha256", coverage_sha,
+                 "--expected-queue-sha256", queue_sha,
+                 "--actor-role", "integrator", "--apply"],
+                text=True, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, check=False),
+            self.command(
+                "--id", "B2", "--transition", "open",
+                "--expected-state-revision", revision,
+                "--expected-sha256", queue_sha,
+                "--actor-role", "integrator", "--apply"),
+            subprocess.run(
+                [sys.executable, str(TOOLS / "compile_queue.py"),
+                 str(self.root), "--apply-replan",
+                 "--actor-role", "integrator"],
+                text=True, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, check=False),
+            subprocess.run(
+                [sys.executable, str(TOOLS / "apply_amendment.py"),
+                 str(self.root), "--plan",
+                 ".cambium/deltas/amendments/not-loaded.yaml",
+                 "--expected-coverage-sha256", coverage_sha,
+                 "--expected-progress-sha256", progress_sha,
+                 "--expected-queue-sha256", queue_sha,
+                 "--actor-role", "integrator", "--apply"],
+                text=True, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, check=False),
+        ]
+        for attempted in attempts:
+            self.assertEqual(1, attempted.returncode, attempted.stdout)
+            # The barrier admits exactly two writes for the applied batch:
+            # its close, and its authorised rollback.  Opening a *different*
+            # batch (B2 above) stays blocked because the target differs.
+            self.assertIn("the only allowed Queue/Coverage writes are "
+                          "update_queue merge-ready->closed and the "
+                          "integrator-authorised merge-ready->open rollback "
+                          "for that batch",
+                          attempted.stdout)
+            self.assertIn(delta_apply_receipt, attempted.stdout)
+        for path, content in before.items():
+            self.assertEqual(content, (self.root / path).read_bytes(), path)
+
+        gate = self.queue_gate()
+        close_gate = self.close_gate("B1", gate)
+        revision, queue_sha = self.expected()
+        closed = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", gate,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", queue_sha,
+            "--actor-role", "integrator", "--at",
+            "2026-08-04T03:00:00Z", "--apply",
+        )
+        self.assertEqual(0, closed.returncode, closed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual("closed", result["items_by_id"]["B1"]["state"])
+        self.assertEqual("clear", result["pending_delta_applies"]["status"])
+
+    def test_applied_rollback_restores_pre_apply_coverage_bytes(self):
+        coverage_before = self.scenario["coverage_before_apply"]
+        receipt = self.scenario["delta_apply_receipt"]
+        self.assertNotEqual(
+            coverage_before,
+            (self.root / check_queue.COVERAGE_PATH).read_bytes())
+        archives = self.pre_apply_archive()
+        self.assertEqual(1, len(archives), archives)
+        self.assertEqual(coverage_before, archives[0].read_bytes())
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual("close-required",
+                         result["pending_delta_applies"]["status"])
+
+        rolled = self.rollback_b1(receipt=receipt)
+        self.assertEqual(0, rolled.returncode, rolled.stdout)
+        self.assertEqual(
+            coverage_before,
+            (self.root / check_queue.COVERAGE_PATH).read_bytes())
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual("clear", result["pending_delta_applies"]["status"])
+        item = result["items_by_id"]["B1"]
+        self.assertEqual("open", item["state"])
+        self.assertEqual("revalidation-required", item["hold_state"])
+        record = item["invalidation_history"][-1]
+        self.assertEqual(receipt, record["delta_apply_receipt"])
+        self.assertTrue(
+            record["coverage_restored_from"].startswith(
+                ".cambium/receipts/pre-apply-coverage/B1-r"),
+            record["coverage_restored_from"])
+        self.assertEqual(kblib.sha256_file(archives[0]),
+                         record["coverage_restored_sha256"])
+        self.assertEqual(
+            record["coverage_restored_sha256"],
+            kblib.sha256_file(self.root / check_queue.COVERAGE_PATH))
+        # The archived delta and the rollback evidence are both bound.
+        self.assertTrue(
+            (self.root / record["delta_archive_path"]).exists(),
+            record["delta_archive_path"])
+
+    def test_applied_rollback_requires_the_exact_delta_apply_receipt(self):
+        receipt = self.scenario["delta_apply_receipt"]
+        applied_coverage = (
+            self.root / check_queue.COVERAGE_PATH).read_bytes()
+
+        missing = self.rollback_b1()
+        self.assertEqual(1, missing.returncode, missing.stdout)
+        self.assertIn("requires --delta-apply-receipt", missing.stdout)
+        self.assertIn(receipt, missing.stdout)
+
+        wrong = self.rollback_b1(receipt="audit-batch-1")
+        self.assertEqual(1, wrong.returncode, wrong.stdout)
+        self.assertIn("does not name the unconsumed delta application",
+                      wrong.stdout)
+
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual("merge-ready", result["items_by_id"]["B1"]["state"])
+        self.assertEqual("close-required",
+                         result["pending_delta_applies"]["status"])
+        self.assertEqual(
+            applied_coverage,
+            (self.root / check_queue.COVERAGE_PATH).read_bytes())
+
+    def test_applied_rollback_fails_closed_without_the_archive(self):
+        receipt = self.scenario["delta_apply_receipt"]
+        archives = self.pre_apply_archive()
+        self.assertEqual(1, len(archives), archives)
+        applied_coverage = (
+            self.root / check_queue.COVERAGE_PATH).read_bytes()
+        archives[0].unlink()
+
+        failed = self.rollback_b1(receipt=receipt)
+        self.assertEqual(1, failed.returncode, failed.stdout)
+        self.assertIn("path does not exist", failed.stdout)
+        self.assertIn("property invalidation replay cannot load its exact "
+                      "before Coverage", failed.stdout)
+        self.assertEqual(
+            applied_coverage,
+            (self.root / check_queue.COVERAGE_PATH).read_bytes())
+        self.assertEqual(
+            "merge-ready",
+            check_queue.validate_runtime(self.root)["items_by_id"]["B1"]
+            ["state"])
+
+    def test_applied_rollback_rejects_a_tampered_archive(self):
+        receipt = self.scenario["delta_apply_receipt"]
+        archives = self.pre_apply_archive()
+        archives[0].write_text(
+            archives[0].read_text(encoding="utf-8") + "tampered: true\n",
+            encoding="utf-8")
+        failed = self.rollback_b1(receipt=receipt)
+        self.assertEqual(1, failed.returncode, failed.stdout)
+        self.assertIn("archive bytes differ from before_coverage_sha256",
+                      failed.stdout)
+
+    def test_applied_rollback_rejects_a_valid_but_substituted_archive(self):
+        """Only the digest comparison can reject this substitute.
+
+        The previous case injects an unsupported `tampered` key, so the
+        downstream Coverage schema would reject the restored document even if
+        the archive were never hashed. This one swaps in a document that is a
+        well-formed Coverage Ledger with exactly the supported field set, so
+        nothing after the restore has anything to object to: the byte digest
+        recorded by the delta application is the whole defence.
+        """
+        receipt = self.scenario["delta_apply_receipt"]
+        archives = self.pre_apply_archive()
+        self.assertEqual(1, len(archives), archives)
+        recorded_sha = kblib.sha256_file(archives[0])
+        substitute = kblib.load_yaml_file(archives[0])
+        substitute["updated_at"] = "2026-08-04T02:59:59Z"
+        archives[0].write_text(
+            kblib.canonical_yaml(substitute), encoding="utf-8")
+        substitute_sha = kblib.sha256_file(archives[0])
+        self.assertNotEqual(recorded_sha, substitute_sha)
+        # No unsupported field and no missing one: the substitute is a Coverage
+        # document every downstream check accepts.
+        self.assertEqual(
+            set(check_queue.COVERAGE_TOP_LEVEL_FIELDS), set(substitute))
+        applied_coverage = (
+            self.root / check_queue.COVERAGE_PATH).read_bytes()
+
+        failed = self.rollback_b1(receipt=receipt)
+
+        self.assertEqual(1, failed.returncode, failed.stdout)
+        # The archive digest comparison itself refuses the well-formed
+        # substitute before any later schema or binding check can accept it.
+        self.assertIn("archive bytes differ from before_coverage_sha256",
+                      failed.stdout)
+        self.assertEqual(
+            applied_coverage,
+            (self.root / check_queue.COVERAGE_PATH).read_bytes())
+        result = check_queue.validate_runtime(self.root)
+        self.assertIn(
+            "archive bytes differ from before_coverage_sha256",
+            "; ".join(result["errors"]))
+        self.assertEqual("merge-ready", result["items_by_id"]["B1"]["state"])
+
+    def test_cancelled_task_closes_an_already_applied_batch_before_archive(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        cancelled = subprocess.run(
+            [sys.executable, str(TOOLS / "update_task.py"), str(self.root),
+             "--transition", "cancelled", "--checkpoint-summary",
+             "operator cancelled after delta application",
+             "--expected-progress-sha256",
+             kblib.sha256_file(self.root / check_queue.PROGRESS_PATH),
+             "--expected-queue-sha256",
+             kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+             "--actor-role", "integrator", "--at",
+             "2026-08-04T02:30:00Z", "--apply"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(0, cancelled.returncode, cancelled.stdout)
+        resumed = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             "--resume-status"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(0, resumed.returncode, resumed.stdout)
+        self.assertIn("next_action=run-batch-close-gate:B1",
+                      resumed.stdout)
+        self.assertIn("before any Queue close, control input, another batch, "
+                      "or terminal archival", resumed.stdout)
+
+        gate = self.queue_gate()
+        close_gate = self.close_gate("B1", gate)
+        revision, queue_sha = self.expected()
+        closed = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", gate,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", queue_sha,
+            "--actor-role", "integrator", "--at",
+            "2026-08-04T03:00:00Z", "--apply",
+        )
+        self.assertEqual(0, closed.returncode, closed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual("cancelled", result["progress"]["task_state"])
+        self.assertEqual("closed", result["items_by_id"]["B1"]["state"])
+
+    def test_paused_task_resumes_before_closing_an_applied_batch(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+
+        def transition_task(state, summary, at):
+            return subprocess.run(
+                [sys.executable, str(TOOLS / "update_task.py"),
+                 str(self.root), "--transition", state,
+                 "--checkpoint-summary", summary,
+                 "--expected-progress-sha256",
+                 kblib.sha256_file(self.root / check_queue.PROGRESS_PATH),
+                 "--expected-queue-sha256",
+                 kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+                 "--actor-role", "integrator", "--at", at, "--apply"],
+                text=True, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, check=False,
+            )
+
+        paused = transition_task(
+            "paused", "operator interruption after apply",
+            "2026-08-04T02:30:00Z")
+        self.assertEqual(0, paused.returncode, paused.stdout)
+        resumed = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             "--resume-status"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(2, resumed.returncode, resumed.stdout)
+        self.assertIn("next_action=resume-paused-task", resumed.stdout)
+        self.assertIn("then rerun resume-status and close applied batch B1",
+                      resumed.stdout)
+        self.assert_resume_envelope(resumed, "resume-paused-task")
+        active = transition_task(
+            "active", "operator resumed to close applied batch",
+            "2026-08-04T02:45:00Z")
+        self.assertEqual(0, active.returncode, active.stdout)
+        close_status = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             "--resume-status"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(2, close_status.returncode, close_status.stdout)
+        self.assertIn("next_action=run-batch-close-gate:B1",
+                      close_status.stdout)
+        self.assert_resume_envelope(close_status,
+                                    "run-batch-close-gate:B1")
+        gate = self.queue_gate()
+        close_gate = self.close_gate("B1", gate)
+        revision, queue_sha = self.expected()
+        closed = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", gate,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", queue_sha,
+            "--actor-role", "integrator", "--at",
+            "2026-08-04T03:00:00Z", "--apply",
+        )
+        self.assertEqual(0, closed.returncode, closed.stdout)
+
+    def test_stale_unconsumed_delta_apply_receipt_forces_repair(self):
+        original_path = self.root / ".cambium/receipts/delta-B1.jsonl"
+        stale = json.loads(original_path.read_text(
+            encoding="utf-8").splitlines()[-1])
+        stale["receipt_id"] = "audit-apply_delta-stale-binding"
+        stale["receipt_path"] = ".cambium/receipts/delta-B1-stale.jsonl"
+        stale["required_queue_sha256"] = "sha256:" + "0" * 64
+        kblib.write_receipts(self.root / stale["receipt_path"], [stale])
+
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual("repair", result["pending_delta_applies"]["status"])
+        errors = "\n".join(result["errors"])
+        self.assertIn("stale unconsumed delta_apply receipt", errors)
+        self.assertIn("required_queue_sha256", errors)
+        resumed = subprocess.run(
+            [sys.executable, str(TOOLS / "check_queue.py"), str(self.root),
+             "--resume-status"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(1, resumed.returncode, resumed.stdout)
+        self.assertIn("pending_delta_applies.status=repair", resumed.stdout)
+        self.assertIn("next_action=repair-runtime", resumed.stdout)
+
+
+class AppliedRollbackScenarioTests(_TemplateBackedCase):
+    # "rolled-back-b1": the authorised applied rollback walked once on top
+    # of "applied-b1", its exit code and output kept as artifacts.  The
+    # tamper tests rewrite the recorded history and the redo test walks the
+    # batch to a second close, so each starts from a private copy.
+    TEMPLATE = "rolled-back-b1"
+
+    def test_a_restored_coverage_digest_must_match_both_witnesses(self):
+        """A well-formed but wrong digest is not evidence of a restore."""
+        self.assertEqual(0, self.scenario["rollback_code"],
+                         self.scenario["rollback_stdout"])
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+
+        self.tamper_invalidation_record(
+            coverage_restored_sha256="sha256:" + "0" * 64)
+
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("left Coverage at", errors)
+        self.assertIn("recorded pre-apply Coverage", errors)
+
+    def test_a_restored_coverage_path_must_match_the_delta_application(self):
+        self.assertEqual(0, self.scenario["rollback_code"],
+                         self.scenario["rollback_stdout"])
+
+        self.tamper_invalidation_record(
+            coverage_restored_from=".cambium/receipts/pre-apply-coverage/"
+                                   "B1-r99.yaml")
+
+        errors = "\n".join(check_queue.validate_runtime(self.root)["errors"])
+        self.assertIn("archived the pre-apply Coverage at", errors)
+
+    def test_a_truthful_applied_rollback_still_validates(self):
+        """Positive control: the shipped restore satisfies both witnesses."""
+        self.assertEqual(0, self.scenario["rollback_code"],
+                         self.scenario["rollback_stdout"])
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        record = result["items_by_id"]["B1"]["invalidation_history"][-1]
+        transition = result["receipt_catalog"][
+            record["transition_receipt"]][1]
+        self.assertEqual(record["coverage_restored_sha256"],
+                         transition["after_coverage_sha256"])
+
+    def test_rolled_back_batch_reaches_merge_ready_and_closes_again(self):
+        """The deadlock is broken: roll back, redo the work, close for real."""
+        coverage_before = self.scenario["coverage_before_apply"]
+        receipt = self.scenario["delta_apply_receipt"]
+        self.assertEqual(0, self.scenario["rollback_code"],
+                         self.scenario["rollback_stdout"])
+
+        gate = self.queue_gate()
+        revision, queue_sha = self.expected()
+        cleared = self.command(
+            "--id", "B1", "--hold-state", "none", "--gate-receipt", gate,
+            "--reason", "rollback revalidated",
+            "--expected-state-revision", revision,
+            "--expected-sha256", queue_sha,
+            "--actor-role", "integrator", "--at", "2026-08-04T03:30:00Z",
+            "--apply",
+        )
+        self.assertEqual(0, cleared.returncode, cleared.stdout)
+
+        self.append_receipt("audit-page-1-retry", target="Topics/A.md")
+        self.append_receipt("audit-batch-1-retry", check="batch_gate")
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T04:00:00Z\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-1-retry\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8",
+        )
+        revision, queue_sha = self.expected()
+        remerged = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1-retry",
+            "--expected-state-revision", revision,
+            "--expected-sha256", queue_sha,
+            "--actor-role", "integrator", "--at", "2026-08-04T04:00:00Z",
+            "--apply",
+        )
+        self.assertEqual(0, remerged.returncode, remerged.stdout)
+        retry_receipt = self.apply_batch(
+            "B1", relative=".cambium/receipts/delta-B1-retry.jsonl")
+        self.assertNotEqual(receipt, retry_receipt)
+        self.assertEqual(2, len(self.pre_apply_archive()),
+                         self.pre_apply_archive())
+        self.assertEqual(
+            coverage_before, self.pre_apply_archive()[-1].read_bytes())
+
+        gate = self.queue_gate()
+        close_gate = self.close_gate("B1", gate)
+        revision, queue_sha = self.expected()
+        closed = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", gate,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", retry_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", queue_sha,
+            "--actor-role", "integrator", "--at", "2026-08-04T05:00:00Z",
+            "--apply",
+        )
+        self.assertEqual(0, closed.returncode, closed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        self.assertEqual("closed", result["items_by_id"]["B1"]["state"])
+        self.assertEqual("clear", result["pending_delta_applies"]["status"])
+
+
+class BatchCloseGateScenarioTests(_TemplateBackedCase):
+    # "close-ready-b1": `merge_b1`, `apply_b1`, and the consistency gate
+    # the close ceremony consumes, with the apply receipt and gate ID as
+    # artifacts.  Each test mints its own -- usually deliberately damaged --
+    # close bundle via `close_gate` and attempts the close it exists to
+    # refuse or complete, so each starts from a private copy.
+    TEMPLATE = "close-ready-b1"
+
+    def test_close_projects_coverage_and_receipt_binds_both_fingerprints(self):
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        before_coverage_sha = kblib.sha256_file(coverage_path)
+        gate = self.scenario["consistency_gate"]
+        close_gate = self.close_gate("B1", gate)
+        revision, fingerprint = self.expected()
+        completed = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", gate,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T03:00:00Z",
+            "--apply",
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        page = result["coverage"]["pages"][0]
+        self.assertEqual("B1", page["batch"])
+        self.assertIsNone(page["next_batch"])
+        receipts = [json.loads(line) for line in
+                    (self.root / ".cambium/receipts/queue-transitions.jsonl")
+                    .read_text(encoding="utf-8").splitlines()]
+        receipt = receipts[-1]
+        self.assertEqual(before_coverage_sha,
+                         receipt["before_coverage_sha256"])
+        self.assertEqual(kblib.sha256_file(coverage_path),
+                         receipt["after_coverage_sha256"])
+
+    def test_close_requires_the_exact_delta_apply_receipt(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        gate = self.scenario["consistency_gate"]
+        revision, fingerprint = self.expected()
+        missing = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", gate,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, missing.returncode, missing.stdout)
+        self.assertIn("requires --delta-apply-receipt", missing.stdout)
+        wrong = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", gate,
+            "--delta-apply-receipt", "audit-not-the-apply-receipt",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, wrong.returncode, wrong.stdout)
+        self.assertIn("does not exist", wrong.stdout)
+        self.assertNotIn(
+            "delta_apply_receipt",
+            self.load(check_queue.QUEUE_PATH)["required_queue"][0],
+        )
+
+    def test_close_requires_an_independent_batch_close_gate(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        consistency = self.scenario["consistency_gate"]
+        revision, fingerprint = self.expected()
+        attempted = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn("requires --close-gate-receipt", attempted.stdout)
+        item = self.load(check_queue.QUEUE_PATH)["required_queue"][0]
+        self.assertNotIn("close_gate_receipt", item)
+
+    def test_close_rejects_a_handwritten_aggregator_producer(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        consistency = self.scenario["consistency_gate"]
+        close_gate = self.close_gate(
+            "B1", consistency,
+            mutate=lambda receipt: receipt.__setitem__(
+                "tool", "handwritten_close_bundle"),
+        )
+        revision, fingerprint = self.expected()
+        attempted = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--apply",
+        )
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn("expected 'check_batch_close'", attempted.stdout)
+
+    def test_close_gate_requires_exact_batch_binding(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        consistency = self.scenario["consistency_gate"]
+        close_gate = self.close_gate(
+            "B1", consistency,
+            mutate=lambda receipt: receipt.__setitem__("batch_id", "B2"),
+        )
+        revision, fingerprint = self.expected()
+        attempted = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn("batch_id='B2', expected 'B1'", attempted.stdout)
+
+    def test_current_close_action_rejects_legacy_producer_era_bundles(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        consistency = self.scenario["consistency_gate"]
+        close_gate = self.close_gate("B1", consistency)
+        revision, fingerprint = self.expected()
+
+        def attempt_close():
+            return self.command(
+                "--id", "B1", "--transition", "closed",
+                "--gate-receipt", consistency,
+                "--close-gate-receipt", close_gate,
+                "--delta-apply-receipt", delta_apply_receipt,
+                "--expected-state-revision", revision,
+                "--expected-sha256", fingerprint,
+                "--actor-role", "integrator",
+            )
+
+        self.restamp_close_bundle_version(close_gate, "1.6.0")
+        for version in ("1.6.0", "1.5.0", "1.4.0"):
+            with self.subTest(version=version):
+                if version == "1.5.0":
+                    self.restamp_close_bundle_version(close_gate, version)
+                if version == "1.4.0":
+                    self.restamp_close_bundle_as_legacy_1_4(close_gate)
+                attempted = attempt_close()
+                self.assertEqual(1, attempted.returncode, attempted.stdout)
+                self.assertIn(
+                    "unsupported tool_version='%s' for current close action; "
+                    "expected one of ['%s']" %
+                    (version, check_queue.BATCH_CLOSE_TOOL_VERSION),
+                    attempted.stdout)
+        self.assertEqual("merge-ready", self.load(
+            check_queue.QUEUE_PATH)["required_queue"][0]["state"])
+
+    def test_close_gate_rejects_stale_post_apply_snapshot(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        consistency = self.scenario["consistency_gate"]
+        close_gate = self.close_gate(
+            "B1", consistency,
+            mutate=lambda receipt: receipt.__setitem__(
+                "coverage_ledger_sha256", "sha256:" + "0" * 64),
+        )
+        revision, fingerprint = self.expected()
+        attempted = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn("coverage_ledger_sha256", attempted.stdout)
+
+    def test_required_corpus_plan_child_cannot_be_omitted(self):
+        consistency = self.scenario["consistency_gate"]
+
+        def require_missing_child(receipt):
+            receipt["corpus_plan_required"] = True
+            receipt["corpus_plan_triggers"] = ["manifest"]
+            receipt["corpus_plan_receipt"] = "audit-missing-corpus-plan"
+
+        close_gate = self.close_gate(
+            "B1", consistency, mutate=require_missing_child)
+        runtime = check_queue.validate_runtime(self.root)
+        item = next(row for row in runtime["queue"]["required_queue"]
+                    if row["id"] == "B1")
+        errors = check_queue.close_gate_receipt_errors(
+            runtime["receipt_catalog"], close_gate,
+            item_id="B1", task_id=runtime["queue"]["task_id"],
+            queue_revision=runtime["queue"]["queue_revision"],
+            queue_state_revision=runtime["queue"]["state_revision"],
+            required_queue_sha256=runtime["queue_sha256"],
+            coverage_ledger_sha256=runtime["coverage_sha256"],
+            progress_ledger_sha256=runtime["progress_sha256"],
+            delta_sha256=item["delta_sha256"],
+            queue_consistency_receipt=consistency,
+            delta_apply_receipt=next(
+                row["selected_receipt"]
+                for row in runtime["applied_delta_receipts"]
+                if row.get("batch") == "B1"),
+            corpus_plan_required=True,
+            corpus_plan_triggers=["manifest"],
+            current_repository_snapshot_sha256=
+                kblib.repository_snapshot_sha256(self.root),
+        )
+        self.assertTrue(any("Corpus Planning child references missing receipt"
+                            in error for error in errors), errors)
+
+    def test_required_corpus_plan_child_must_match_current_binding(self):
+        consistency = self.scenario["consistency_gate"]
+        runtime = check_queue.validate_runtime(self.root)
+        item = next(row for row in runtime["queue"]["required_queue"]
+                    if row["id"] == "B1")
+        snapshot = kblib.repository_snapshot_sha256(self.root)
+        profile = runtime["queue"]["selected_profile_manifest"]
+        expected = {
+            "task_id": runtime["queue"]["task_id"],
+            "queue_revision": runtime["queue"]["queue_revision"],
+            "queue_state_revision": runtime["queue"]["state_revision"],
+            "selected_profile_manifest": profile,
+            "selected_profile_manifest_sha256": kblib.sha256_file(
+                self.root / profile),
+            "corpus_planning_slot_path":
+                "profiles/test-profile/corpus-planning.yaml",
+            "corpus_planning_slot_sha256": "sha256:" + "1" * 64,
+            "profile_scope_path": None,
+            "profile_scope_sha256": None,
+            "global_map_path": None,
+            "global_map_sha256": None,
+            "capability_matrix_path": None,
+            "capability_matrix_sha256": None,
+            "gap_register_path": None,
+            "gap_register_sha256": None,
+            "corpus_plan_applicability": "not-applicable",
+            "coverage_ledger_sha256": runtime["coverage_sha256"],
+            "required_queue_sha256": runtime["queue_sha256"],
+            "progress_ledger_sha256": runtime["progress_sha256"],
+            "repository_snapshot_sha256": snapshot,
+        }
+        child_id = "audit-corpus-plan-stale-binding"
+        child_fields = dict(expected)
+        child_fields["selected_profile_manifest_sha256"] = \
+            "sha256:" + "0" * 64
+        self.append_receipt(
+            child_id, check="corpus_plan", target=profile,
+            tool=check_corpus_plan.TOOL,
+            tool_version=check_corpus_plan.TOOL_VERSION,
+            **child_fields)
+
+        def require_child(receipt):
+            receipt["corpus_plan_required"] = True
+            receipt["corpus_plan_triggers"] = ["manifest"]
+            receipt["corpus_plan_receipt"] = child_id
+
+        close_gate = self.close_gate(
+            "B1", consistency, mutate=require_child)
+        runtime = check_queue.validate_runtime(self.root)
+        errors = check_queue.close_gate_receipt_errors(
+            runtime["receipt_catalog"], close_gate,
+            item_id="B1", task_id=runtime["queue"]["task_id"],
+            queue_revision=runtime["queue"]["queue_revision"],
+            queue_state_revision=runtime["queue"]["state_revision"],
+            required_queue_sha256=runtime["queue_sha256"],
+            coverage_ledger_sha256=runtime["coverage_sha256"],
+            progress_ledger_sha256=runtime["progress_sha256"],
+            delta_sha256=item["delta_sha256"],
+            queue_consistency_receipt=consistency,
+            delta_apply_receipt=next(
+                row["selected_receipt"]
+                for row in runtime["applied_delta_receipts"]
+                if row.get("batch") == "B1"),
+            selected_profile_manifest=profile,
+            corpus_plan_required=True,
+            corpus_plan_triggers=["manifest"],
+            corpus_plan_expected_binding=expected,
+            current_repository_snapshot_sha256=snapshot,
+        )
+        self.assertTrue(any("selected_profile_manifest_sha256" in error and
+                            "expected current" in error for error in errors),
+                        errors)
+
+    def test_close_gate_requires_all_seven_closed_list_members(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        consistency = self.scenario["consistency_gate"]
+
+        def omit_member(receipt):
+            receipt["closed_list_evidence"].pop("controlled_vocabulary")
+
+        close_gate = self.close_gate("B1", consistency, mutate=omit_member)
+        revision, fingerprint = self.expected()
+        attempted = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn("closed_list_evidence misses: controlled_vocabulary",
+                      attempted.stdout)
+
+    def test_close_gate_rejects_mixed_merged_snapshots(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        consistency = self.scenario["consistency_gate"]
+        close_gate = self.close_gate(
+            "B1", consistency,
+            mutate=lambda receipt: receipt.__setitem__(
+                "merged_snapshot_sha256", "sha256:" + "9" * 64),
+        )
+        revision, fingerprint = self.expected()
+        attempted = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn("merged_snapshot_sha256", attempted.stdout)
+
+    def test_close_gate_rejects_content_changed_after_global_checks(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        consistency = self.scenario["consistency_gate"]
+        close_gate = self.close_gate("B1", consistency)
+        topic = self.root / "Topics/A.md"
+        topic.write_text(
+            topic.read_text(encoding="utf-8") + "\nchanged after gate\n",
+            encoding="utf-8",
+        )
+        revision, fingerprint = self.expected()
+        attempted = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn(
+            "semantic_content_sha256 does not match the authorized current "
+            "page content", attempted.stdout)
+
+    def test_close_gate_rejects_consistently_forged_snapshot(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        consistency = self.scenario["consistency_gate"]
+        close_gate = self.close_gate("B1", consistency)
+        gate_record = next(
+            json.loads(line)
+            for line in (self.root / ".cambium/receipts/close-gates.jsonl")
+            .read_text(encoding="utf-8").splitlines()
+            if json.loads(line).get("receipt_id") == close_gate
+        )
+        forged = "sha256:" + "9" * 64
+        self.rewrite_receipt_for_negative_test(
+            consistency,
+            lambda receipt: receipt.__setitem__(
+                "repository_snapshot_sha256", forged),
+        )
+        for receipt_id in [
+                gate_record["global_review_receipt"],
+                *gate_record["closed_list_evidence"].values(),
+                close_gate]:
+            self.rewrite_receipt_for_negative_test(
+                receipt_id,
+                lambda receipt: receipt.__setitem__(
+                    "merged_snapshot_sha256", forged),
+            )
+        revision, fingerprint = self.expected()
+        attempted = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn("does not match the current repository snapshot",
+                      attempted.stdout)
+
+    def test_close_gate_requires_independent_global_review(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        consistency = self.scenario["consistency_gate"]
+        close_gate = self.close_gate(
+            "B1", consistency,
+            mutate=lambda receipt: receipt.__setitem__(
+                "global_review_receipt", "audit-missing-global-review"),
+        )
+        revision, fingerprint = self.expected()
+        attempted = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn("global review references missing receipt",
+                      attempted.stdout)
+
+    def test_close_gate_rejects_missing_member_receipt(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        consistency = self.scenario["consistency_gate"]
+
+        def replace_member(receipt):
+            receipt["closed_list_evidence"]["structural_validity"] = \
+                "audit-missing-structure"
+
+        close_gate = self.close_gate("B1", consistency, mutate=replace_member)
+        revision, fingerprint = self.expected()
+        missing = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, missing.returncode, missing.stdout)
+        self.assertIn("references missing receipt audit-missing-structure",
+                      missing.stdout)
+
+    def test_close_gate_member_receipts_have_stable_semantics(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        consistency = self.scenario["consistency_gate"]
+        close_gate = self.close_gate("B1", consistency)
+        gate_record = next(
+            json.loads(line)
+            for line in (self.root / ".cambium/receipts/close-gates.jsonl")
+            .read_text(encoding="utf-8").splitlines()
+            if json.loads(line).get("receipt_id") == close_gate
+        )
+        member_id = gate_record["closed_list_evidence"]["structural_validity"]
+        self.rewrite_receipt_for_negative_test(
+            member_id,
+            lambda receipt: receipt.__setitem__("check", "unrelated_check"),
+        )
+        revision, fingerprint = self.expected()
+        attempted = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, attempted.returncode, attempted.stdout)
+        self.assertIn("check='unrelated_check', expected "
+                      "'closed_list_structural_validity'", attempted.stdout)
+
+    def test_close_gate_rejects_invalidated_aggregator(self):
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        consistency = self.scenario["consistency_gate"]
+        close_gate = self.close_gate(
+            "B1", consistency,
+            mutate=lambda receipt: receipt.__setitem__(
+                "invalidated_by", "audit-superseding-close"),
+        )
+        revision, fingerprint = self.expected()
+        invalidated = self.command(
+            "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply_receipt,
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator",
+        )
+        self.assertEqual(1, invalidated.returncode, invalidated.stdout)
+        self.assertIn("invalidated_by='audit-superseding-close'",
+                      invalidated.stdout)
+
+    def test_close_gate_cannot_be_reused_for_another_batch(self):
+        consistency = self.scenario["consistency_gate"]
+        close_gate = self.close_gate("B1", consistency)
+        runtime = check_queue.validate_runtime(self.root)
+        delta_apply_receipt = runtime["pending_delta_applies"]["current"][0][
+            "selected_receipt"]
+        errors = check_queue.close_gate_receipt_errors(
+            runtime["receipt_catalog"],
+            close_gate,
+            item_id="B2",
+            task_id="fixture-task",
+            queue_revision=self.load(check_queue.QUEUE_PATH)["queue_revision"],
+            queue_state_revision=self.load(
+                check_queue.QUEUE_PATH)["state_revision"],
+            required_queue_sha256=kblib.sha256_file(
+                self.root / check_queue.QUEUE_PATH),
+            coverage_ledger_sha256=kblib.sha256_file(
+                self.root / check_queue.COVERAGE_PATH),
+            progress_ledger_sha256=kblib.sha256_file(
+                self.root / check_queue.PROGRESS_PATH),
+            delta_sha256="sha256:" + "f" * 64,
+            queue_consistency_receipt=consistency,
+            delta_apply_receipt=delta_apply_receipt,
+        )
+        self.assertTrue(any("expected 'B2'" in error for error in errors), errors)
+
+    def test_close_lock_owner_binds_coverage_before_and_after(self):
+        coverage_path = self.root / check_queue.COVERAGE_PATH
+        delta_apply_receipt = self.scenario["delta_apply_receipt"]
+        before_coverage_sha = kblib.sha256_file(coverage_path)
+        gate = self.scenario["consistency_gate"]
+        close_gate = self.close_gate("B1", gate)
+        revision, fingerprint = self.expected()
+        captured = {}
+        real_lock = update_queue.kblib.runtime_write_lock
+
+        @contextmanager
+        def capturing_lock(root, **kwargs):
+            captured.update(kwargs.get("owner_metadata") or {})
+            with real_lock(root, **kwargs) as lock_path:
+                yield lock_path
+
+        with mock.patch.object(update_queue.kblib, "runtime_write_lock",
+                               new=capturing_lock):
+            with redirect_stdout(io.StringIO()):
+                exit_code = update_queue.main([
+                    str(self.root), "--id", "B1", "--transition", "closed",
+                    "--gate-receipt", gate,
+                    "--close-gate-receipt", close_gate,
+                    "--delta-apply-receipt", delta_apply_receipt,
+                    "--expected-state-revision", revision,
+                    "--expected-sha256", fingerprint,
+                    "--actor-role", "integrator",
+                    "--at", "2026-08-04T03:00:00Z", "--apply",
+                ])
+        self.assertEqual(0, exit_code)
+        self.assertEqual(before_coverage_sha,
+                         captured["before_coverage_sha256"])
+        self.assertEqual(kblib.sha256_file(coverage_path),
+                         captured["planned_after_coverage_sha256"])
+
+
+class ClosedBatchScenarioTests(_TemplateBackedCase):
+    # `close_b1` walked once into the "closed-b1" template.  Both tests
+    # mutate -- one restamps the sealed bundle's producer era, one attempts
+    # a hold on closed history -- so each starts from a private copy.
+    TEMPLATE = "closed-b1"
+
+    def test_closed_history_keeps_its_sealed_legacy_producer_era(self):
+        queue = self.load(check_queue.QUEUE_PATH)
+        close_gate = queue["required_queue"][0]["close_gate_receipt"]
+
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        self.detach_current_page_review_from_historical_bundle(close_gate)
+        self.restamp_close_bundle_version(close_gate, "1.6.0")
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        self.restamp_close_bundle_version(close_gate, "1.5.0")
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        self.restamp_close_bundle_as_legacy_1_4(close_gate)
+        result = check_queue.validate_runtime(self.root)
+
+        self.assertEqual([], result["errors"])
+        self.assertEqual("closed", result["items_by_id"]["B1"]["state"])
+
+    def test_closed_item_rejects_hold_only_mutation(self):
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+        completed = self.command("--id", "B1", "--hold-state", "paused",
+                                 "--reason", "do not mutate history")
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn("immutable", completed.stdout)
+
+
+class ConceptPageCloseFailureTests(_TemplateBackedCase):
+    # "concept-close-ready": a typed concept page written before any
+    # transition, then `merge_b1`, `apply_b1`, and the consistency gate.
+    # The close write ceremony this test poisons runs inside the test on a
+    # private copy.
+    TEMPLATE = "concept-close-ready"
+
+    def test_close_receipt_failure_restores_page_and_owner_state_together(self):
+        delta_apply_receipt = self.scenario["concept_delta_apply_receipt"]
+        gate = self.scenario["concept_consistency_gate"]
+        close_gate = self.close_gate("B1", gate)
+        revision, fingerprint = self.expected()
+        tracked = {
+            relative: (self.root / relative).read_bytes()
+            for relative in (
+                check_queue.COVERAGE_PATH, check_queue.QUEUE_PATH,
+                check_queue.PROGRESS_PATH, "Topics/A.md")
+        }
+
+        with mock.patch.object(
+                update_queue.kblib, "write_receipts",
+                side_effect=OSError("injected Queue receipt failure")):
+            with redirect_stdout(io.StringIO()):
+                exit_code = update_queue.main([
+                    str(self.root), "--id", "B1", "--transition", "closed",
+                    "--gate-receipt", gate,
+                    "--close-gate-receipt", close_gate,
+                    "--delta-apply-receipt", delta_apply_receipt,
+                    "--expected-state-revision", revision,
+                    "--expected-sha256", fingerprint,
+                    "--actor-role", "integrator",
+                    "--at", "2026-08-04T03:00:00Z", "--apply",
+                ])
+
+        self.assertEqual(1, exit_code)
+        for relative, before in tracked.items():
+            self.assertEqual(before, (self.root / relative).read_bytes(),
+                             relative)
+        self.assertFalse(
+            (self.root / ".cambium/tmp/state-writer.lock").exists())
+
+
+class ConceptPageProjectionTests(_TemplateBackedCase):
+    # `close_b1` over a typed concept page, walked once into the
+    # "concept-closed" template.  The one test here only reads the
+    # projected page and its Coverage record, and a reader cannot injure a
+    # tree, so the class shares the template itself.
+    TEMPLATE = "concept-closed"
+    SHARE_TEMPLATE = True
+
+    def test_close_projects_evidence_backed_last_reviewed(self):
+        page_path = self.root / "Topics/A.md"
+
+        coverage = self.load(check_queue.COVERAGE_PATH)
+        page = next(row for row in coverage["pages"]
+                    if row["path"] == "Topics/A.md")
+        record = page["property_state"]["last_reviewed"]
+        self.assertRegex(record["value"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertTrue(record["evidence_receipt"].startswith(
+            "audit-page-review-B1-"))
+        self.assertRegex(record["content_fingerprint"],
+                         r"^sha256:[0-9a-f]{64}$")
+        projected = page_path.read_text(encoding="utf-8")
+        self.assertIn("last_reviewed: %s" % record["value"], projected)
+
+
+class BatchReviewRequirementFixture(UpdateQueueFixture):
+    """The requirement suite's grammar: Profile sections and judgments."""
 
     REQUIREMENT_SECTION = (
         "\n## Batch Review Requirements\n\n"
@@ -3593,6 +3834,7 @@ class BatchReviewRequirementTests(UpdateQueueTests):
         "| Role ID | Bound actor or system ID/name | Responsibility |\n"
         "|---|---|---|\n"
     )
+
 
     def enable_requirement(self):
         slots = self.root / "profiles/test-profile/slots.md"
@@ -3671,9 +3913,44 @@ class BatchReviewRequirementTests(UpdateQueueTests):
         self.assertEqual(expect, completed.returncode, completed.stdout)
         return completed
 
+    def merge_b1_body_without_open(self):
+        self.append_receipt("audit-page-1", target="Topics/A.md")
+        self.append_receipt("audit-batch-1", check="batch_gate")
+        delta = self.root / ".cambium/deltas/B1.yaml"
+        delta.parent.mkdir(parents=True, exist_ok=True)
+        delta.write_text(
+            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
+            "pages:\n  - path: Topics/A.md\n"
+            "    gate_receipts:\n      - audit-page-1\n"
+            "open_gaps_added: []\nopen_gaps_closed: []\n"
+            "next_batch_updates: []\nwatermark_advance: null\n",
+            encoding="utf-8",
+        )
+        revision, fingerprint = self.expected()
+        completed = self.command(
+            "--id", "B1", "--transition", "merge-ready",
+            "--delta-path", ".cambium/deltas/B1.yaml",
+            "--batch-receipt", "audit-batch-1",
+            "--expected-state-revision", revision,
+            "--expected-sha256", fingerprint,
+            "--actor-role", "integrator", "--at", "2026-08-04T02:00:00Z",
+            "--apply",
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        return completed
+
+
+class BatchReviewRequirementTests(BatchReviewRequirementFixture,
+                                  _TemplateBackedCase):
+    """The Profile's frozen judgment obligations gate `open -> merge-ready`."""
+
+    # "req-open-b1": the requirement grammar written into the Profile, then
+    # B1 gated ready and opened, so the activation freezes the judgment
+    # obligations.  Every test here judges, forges, or withholds evidence
+    # on its own private copy.
+    TEMPLATE = "req-open-b1"
+
     def test_exact_judgment_set_reaches_merge_ready(self):
-        self.enable_requirement()
-        self.open_b1()
         receipt = self.judge()
         self.assertEqual(
             self.activation_receipt()["review_requirement_set_sha256"],
@@ -3681,14 +3958,10 @@ class BatchReviewRequirementTests(UpdateQueueTests):
         self.merge_with_wrapper([receipt])
 
     def test_missing_judgment_refuses_merge_ready(self):
-        self.enable_requirement()
-        self.open_b1()
         completed = self.merge_with_wrapper([], expect=1)
         self.assertIn("missing the required judgment", completed.stdout)
 
     def test_wrapper_without_bindings_refuses_merge_ready(self):
-        self.enable_requirement()
-        self.open_b1()
         self.judge()
         self.append_receipt("audit-page-1", target="Topics/A.md")
         self.append_receipt("audit-batch-1", check="batch_gate")
@@ -3716,22 +3989,16 @@ class BatchReviewRequirementTests(UpdateQueueTests):
         self.assertIn("review_requirement_set_sha256", completed.stdout)
 
     def test_duplicate_judgment_refuses_merge_ready(self):
-        self.enable_requirement()
-        self.open_b1()
         first = self.judge()
         second = self.judge()
         completed = self.merge_with_wrapper([first, second], expect=1)
         self.assertIn("duplicates the judgment", completed.stdout)
 
     def test_wrong_reviewer_role_is_refused_at_recording(self):
-        self.enable_requirement()
-        self.open_b1()
         output = self.judge(role="gatekeeper", expect=1)
         self.assertIn("cannot answer", output)
 
     def test_forged_reviewer_role_refuses_merge_ready(self):
-        self.enable_requirement()
-        self.open_b1()
         receipt = self.judge()
         self.rewrite_receipt_for_negative_test(
             receipt["receipt_id"],
@@ -3740,14 +4007,10 @@ class BatchReviewRequirementTests(UpdateQueueTests):
         self.assertIn("not the registered pass authority", completed.stdout)
 
     def test_unregistered_target_is_refused_at_recording(self):
-        self.enable_requirement()
-        self.open_b1()
         output = self.judge(target="Topics/Missing.md", expect=1)
         self.assertIn("not an expected obligation", output)
 
     def test_page_drift_after_judgment_refuses_merge_ready(self):
-        self.enable_requirement()
-        self.open_b1()
         receipt = self.judge()
         page = self.root / "Topics/A.md"
         page.write_text(
@@ -3758,8 +4021,6 @@ class BatchReviewRequirementTests(UpdateQueueTests):
                       completed.stdout)
 
     def test_reused_activation_binding_refuses_merge_ready(self):
-        self.enable_requirement()
-        self.open_b1()
         receipt = self.judge()
         self.rewrite_receipt_for_negative_test(
             receipt["receipt_id"],
@@ -3768,15 +4029,7 @@ class BatchReviewRequirementTests(UpdateQueueTests):
         completed = self.merge_with_wrapper([receipt], expect=1)
         self.assertIn("binds a different activation", completed.stdout)
 
-    def test_requirement_free_profile_keeps_its_exact_shape(self):
-        # The whole pre-requirement suite exercises this continuously; this
-        # case pins it explicitly: no requirements, no judgment bindings,
-        # merge-ready unchanged.
-        self.merge_b1()
-
     def test_legacy_activation_era_carries_no_obligations(self):
-        self.enable_requirement()
-        self.open_b1()
         activation = self.activation_receipt()
         # A v1 artifact is not today's manifest with an older label on it: the
         # era embedded Card and read-back arrays and asserted delivery in the
@@ -3826,45 +4079,12 @@ class BatchReviewRequirementTests(UpdateQueueTests):
             opening["receipt_id"], downgrade)
         self.merge_b1_body_without_open()
 
-    def merge_b1_body_without_open(self):
-        self.append_receipt("audit-page-1", target="Topics/A.md")
-        self.append_receipt("audit-batch-1", check="batch_gate")
-        delta = self.root / ".cambium/deltas/B1.yaml"
-        delta.parent.mkdir(parents=True, exist_ok=True)
-        delta.write_text(
-            "batch: B1\ngenerated_at: 2026-08-04T02:00:00Z\n"
-            "pages:\n  - path: Topics/A.md\n"
-            "    gate_receipts:\n      - audit-page-1\n"
-            "open_gaps_added: []\nopen_gaps_closed: []\n"
-            "next_batch_updates: []\nwatermark_advance: null\n",
-            encoding="utf-8",
-        )
-        revision, fingerprint = self.expected()
-        completed = self.command(
-            "--id", "B1", "--transition", "merge-ready",
-            "--delta-path", ".cambium/deltas/B1.yaml",
-            "--batch-receipt", "audit-batch-1",
-            "--expected-state-revision", revision,
-            "--expected-sha256", fingerprint,
-            "--actor-role", "integrator", "--at", "2026-08-04T02:00:00Z",
-            "--apply",
-        )
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        return completed
+
+class _RequirementWalker(BatchReviewRequirementFixture, _ScenarioWalker):
+    """Walks requirement scenarios with the requirement fixture's grammar."""
 
 
-# The requirement class inherits UpdateQueueTests only for its fixture
-# helpers.  Rerunning every inherited test under the subclass doubles the
-# shard's wall clock for zero new coverage — the s-z CI shard sits near its
-# 15-minute budget — so the inherited tests are explicitly skipped here and
-# keep running exactly once, on the base class.
-for _name in dir(UpdateQueueTests):
-    if _name.startswith("test_"):
-        setattr(
-            BatchReviewRequirementTests, _name,
-            unittest.skip("runs once on UpdateQueueTests")(
-                getattr(UpdateQueueTests, _name)))
-del _name
+_TEMPLATE_WALKERS["req-open-b1"] = _RequirementWalker
 
 
 if __name__ == "__main__":

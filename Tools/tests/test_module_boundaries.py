@@ -346,6 +346,63 @@ class IntraPackageDirection(unittest.TestCase):
             % "; ".join(sorted(upward)))
 
 
+class SuiteCollectsEachTestOnce(unittest.TestCase):
+    """No test file may re-collect another file's tests.
+
+    A test class that subclasses, or imports the name of, a TestCase defined
+    elsewhere makes unittest discovery collect that whole suite a second time
+    inside the borrowing file. Four files did this and it cost 299 duplicate
+    executions per run for zero additional coverage -- one of them had even
+    neutralised the duplicates with a skip loop whose own comment said "zero
+    new coverage", which fixed the reporting and left the collection.
+
+    Borrowing fixtures is fine and common here. What is not fine is letting
+    the borrowed tests run again, so a file that inherits a foreign TestCase
+    must exclude the inherited entries in `load_tests`.
+    """
+
+    def test_no_file_collects_another_files_tests(self):
+        import importlib
+        import unittest.loader
+
+        here = os.path.dirname(os.path.abspath(__file__))
+        sys.path.insert(0, here)
+        loader = unittest.TestLoader()
+        owners = {}
+        duplicated = []
+        for name in sorted(os.listdir(here)):
+            if not name.startswith("test_") or not name.endswith(".py"):
+                continue
+            module = name[:-3]
+            try:
+                suite = loader.discover(here, pattern=name, top_level_dir=here)
+            except Exception:  # a file that cannot load is another test's job
+                continue
+            seen = []
+
+            def walk(node):
+                if isinstance(node, unittest.TestSuite):
+                    for child in node:
+                        walk(child)
+                elif isinstance(node, unittest.TestCase):
+                    seen.append(node)
+
+            walk(suite)
+            for case in seen:
+                defining = type(case).__module__
+                key = "%s.%s" % (defining, case.id().split(".")[-1])
+                if defining != module and defining.startswith("test_"):
+                    duplicated.append("%s re-collects %s" % (module, key))
+                owners.setdefault(key, set()).add(module)
+
+        self.assertEqual(
+            [], sorted(set(duplicated)),
+            "test files collecting tests defined elsewhere:\n  %s\n"
+            "Borrow the fixture, not the suite: exclude inherited entries in "
+            "the borrowing file's `load_tests`."
+            % "\n  ".join(sorted(set(duplicated))[:12]))
+
+
 class DependencyDirection(unittest.TestCase):
     """No static import cycle, with no exception available.
 

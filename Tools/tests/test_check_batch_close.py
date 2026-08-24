@@ -27,18 +27,49 @@ import profile_admission
 from profile_fixture import install_loadable_profile
 
 
+# ---------------------------------------------------------------------------
+# Scenario templates.
+#
+# Every test in this file used to walk the same applied-batch lifecycle in
+# setUp -- copy the fixture tree, install the Profile and its registered
+# verifier, admit B1 through ready/open/merge-ready, apply the Delta -- and
+# many then ran one production close just to read its receipts.  Each distinct
+# lifecycle is now walked exactly once per process into a template tree below.
+# Tests that only read the walked state share the template directly; tests
+# that mutate any byte start from a private `shutil.copytree` copy of it.
+# The tools take the repository root from argv, so a copied root behaves
+# identically; a tree copy costs milliseconds where the walk it replaces
+# costs seconds of durable-write ceremony on every test.
+# ---------------------------------------------------------------------------
+
+
 class CheckBatchCloseTests(unittest.TestCase):
+    """The fixture language every scenario class below shares.
+
+    This is the original test class's helper set, unchanged; only the test
+    methods moved out, into the scenario classes.  It keeps its walking
+    setUp/tearDown and its name because test_quota_exception_lifecycle and
+    test_reviewed_era_lifecycle subclass it for these helpers (both override
+    setUp with their own trees, and the quota module inherits this tearDown).
+    It defines no test methods, so discovery collects nothing from it here
+    or in the modules that import it.
+    """
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name) / "repo"
-        shutil.copytree(FIXTURE, self.root)
-        for name in ("deltas", "receipts", "reports"):
-            (self.root / ".cambium" / name).mkdir(exist_ok=True)
-        self.install_profile_and_tools()
+        self.build_repository_fixture()
         self.prepare_applied_batch()
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def build_repository_fixture(self):
+        """Lay down the fixture tree and Profile the old setUp built."""
+        shutil.copytree(FIXTURE, self.root)
+        for name in ("deltas", "receipts", "reports"):
+            (self.root / ".cambium" / name).mkdir(exist_ok=True)
+        self.install_profile_and_tools()
 
     def reset_applied_batch(self, prepare_profile):
         """Rebuild the fixture when a test changes Profile-owned inputs.
@@ -52,10 +83,7 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.temporary.cleanup()
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name) / "repo"
-        shutil.copytree(FIXTURE, self.root)
-        for name in ("deltas", "receipts", "reports"):
-            (self.root / ".cambium" / name).mkdir(exist_ok=True)
-        self.install_profile_and_tools()
+        self.build_repository_fixture()
         prepare_profile()
         self.prepare_applied_batch()
 
@@ -393,8 +421,189 @@ class CheckBatchCloseTests(unittest.TestCase):
         (planning / "gap-register.yaml").write_text(
             "schema_version: 1\ngaps: []\n", encoding="utf-8")
 
+    @staticmethod
+    def output_value(output, name):
+        prefix = name + "="
+        return next(line[len(prefix):] for line in output.splitlines()
+                    if line.startswith(prefix))
+
+    def set_override_rows(self, rows):
+        manifest = self.root / "profiles/test-profile/profile.md"
+        text = manifest.read_text(encoding="utf-8")
+        head, _, _ = text.partition("\n## Execution Default Overrides\n")
+        manifest.write_text(
+            head + "\n## Execution Default Overrides\n\n"
+            "| Override item ID from the registry | Non-default profile value |\n"
+            "|---|---|\n" + rows, encoding="utf-8")
+        return {"queue": {
+            "selected_profile_manifest": "profiles/test-profile/profile.md",
+        }}
+
+    def set_quota_section(self, body):
+        """Rewrite the synthetic rubric's Priority Quota section."""
+        rubric = self.root / "profiles/test-profile/slots.md"
+        text = rubric.read_text(encoding="utf-8")
+        head, _, _ = text.partition("\n## Priority Quota\n")
+        rubric.write_text(head + "\n## Priority Quota\n" + body,
+                          encoding="utf-8")
+        return {"queue": {
+            "selected_profile_manifest": "profiles/test-profile/profile.md",
+        }}
+
+    def resolved_quotas(self, runtime):
+        return check_batch_close._priority_quotas(
+            check_batch_close._profile_evaluation(self.root, runtime))
+
+    def _install_authoritative_state_mutating_verifier(self, exit_code):
+        script = self.root / "Tools/fixture_residual.py"
+        script.write_text(
+            script.read_text(encoding="utf-8") +
+            "with open(os.path.join(a.root,'.cambium/state/"
+            "coverage_ledger.yaml'),'a',encoding='utf-8') as fh:\n"
+            "    fh.write('\\n')\n" +
+            ("raise SystemExit(%d)\n" % exit_code if exit_code else ""),
+            encoding="utf-8",
+        )
+
+    def _assert_state_mutating_verifier_is_uncertain(self, exit_code):
+        self._install_authoritative_state_mutating_verifier(exit_code)
+        completed = self.batch_close()
+        self.assertEqual(1, completed.returncode, completed.stdout)
+        self.assertIn(
+            "authoritative state changed while the Closed List ran",
+            completed.stdout)
+        self.assertIn(
+            "[RECOVERY] writer lock retained", completed.stdout)
+        self.assertTrue(
+            (self.root / ".cambium/tmp/state-writer.lock").is_dir())
+        self.assertFalse(
+            (self.root / ".cambium/receipts/batch-close.jsonl").exists())
+
+
+class _ScenarioWalker(CheckBatchCloseTests):
+    """Assertion-capable driver that walks a template scenario once.
+
+    It defines no test methods, so discovery collects nothing from it; it
+    exists so the walk can run the same helpers, with the same assertions,
+    that the tests ran when each walked its own tree.
+    """
+
+    def _walk(self):
+        raise NotImplementedError("never scheduled as a test")
+
+    @classmethod
+    def at(cls, root):
+        walker = cls("_walk")
+        walker.root = root
+        return walker
+
+
+def _build_base(walker, inherited):
+    walker.build_repository_fixture()
+
+
+def _build_applied(walker, inherited):
+    walker.prepare_applied_batch()
+    return {"delta_apply_receipt": walker.delta_apply_receipt}
+
+
+def _build_closed(walker, inherited):
+    completed = walker.batch_close()
+    walker.assertEqual(0, completed.returncode, completed.stdout)
+    return {"close_code": completed.returncode,
+            "close_stdout": completed.stdout}
+
+
+# Current apply_delta/1.6 content evidence binds the exact authorized Profile
+# it ran under, so a close-time Profile condition must be installed *before*
+# the Delta applies; these two variants bake the Corpus Planning slot in at
+# the only point in the walk where it can take effect.
+def _build_applied_inactive(walker, inherited):
+    walker.install_inactive_corpus_plan()
+    walker.prepare_applied_batch()
+    return {"delta_apply_receipt": walker.delta_apply_receipt}
+
+
+def _build_applied_configured(walker, inherited):
+    walker.install_configured_corpus_plan()
+    walker.prepare_applied_batch()
+    return {"delta_apply_receipt": walker.delta_apply_receipt}
+
+
+_TEMPLATE_PARENTS = {
+    "base": None,
+    "applied": "base",
+    "closed": "applied",
+    "applied-inactive": "base",
+    "applied-configured": "base",
+}
+_TEMPLATE_BUILDERS = {
+    "base": _build_base,
+    "applied": _build_applied,
+    "closed": _build_closed,
+    "applied-inactive": _build_applied_inactive,
+    "applied-configured": _build_applied_configured,
+}
+# name -> (TemporaryDirectory holder, template root, artifacts).  The holder
+# reference keeps each template alive for the whole process; TemporaryDirectory
+# finalizers remove the trees at interpreter exit.
+_TEMPLATES = {}
+
+
+def _template(name):
+    """Return (root, artifacts) for ``name``, walking it on first use."""
+    if name not in _TEMPLATES:
+        holder = tempfile.TemporaryDirectory()
+        root = Path(holder.name) / "repo"
+        artifacts = {}
+        parent = _TEMPLATE_PARENTS[name]
+        if parent is not None:
+            parent_root, parent_artifacts = _template(parent)
+            artifacts.update(parent_artifacts)
+            shutil.copytree(parent_root, root)
+        walker = _ScenarioWalker.at(root)
+        artifacts.update(_TEMPLATE_BUILDERS[name](walker, artifacts) or {})
+        _TEMPLATES[name] = (holder, root, artifacts)
+    _holder, root, artifacts = _TEMPLATES[name]
+    return root, artifacts
+
+
+class _TemplateBackedCase(CheckBatchCloseTests):
+    """A test class whose tree starts at a named scenario template."""
+
+    TEMPLATE = None
+    # Only a class whose every test is read-only may share the template tree
+    # itself; everything else gets a private copy per test.
+    SHARE_TEMPLATE = False
+
+    def setUp(self):
+        template_root, self.scenario = _template(self.TEMPLATE)
+        if self.SHARE_TEMPLATE:
+            self.temporary = None
+            self.root = template_root
+        else:
+            self.temporary = tempfile.TemporaryDirectory()
+            self.root = Path(self.temporary.name) / "repo"
+            shutil.copytree(template_root, self.root)
+        if "delta_apply_receipt" in self.scenario:
+            self.delta_apply_receipt = self.scenario["delta_apply_receipt"]
+
+    def tearDown(self):
+        if self.temporary is not None:
+            self.temporary.cleanup()
+
+
+class CorpusPlanInactiveTests(_TemplateBackedCase):
+    # Shared scenario: the applied batch walked once with the Corpus Planning
+    # slot installed as not-applicable before the Delta applied.  Both tests
+    # only run in-process checks over the walked tree -- the corpus-plan
+    # close check builds its receipt in memory and writes nothing, and the
+    # runtime edits stay inside per-test dicts -- so the class shares the
+    # template tree itself.
+    TEMPLATE = "applied-inactive"
+    SHARE_TEMPLATE = True
+
     def test_manifest_hit_requires_current_corpus_plan_child(self):
-        self.reset_applied_batch(self.install_inactive_corpus_plan)
         runtime = check_queue.validate_runtime(self.root)
         self.assertEqual([], runtime["errors"])
         item = dict(next(row for row in runtime["queue"]["required_queue"]
@@ -411,7 +620,6 @@ class CheckBatchCloseTests(unittest.TestCase):
                          outcome["receipt"]["corpus_plan_applicability"])
 
     def test_r13_cannot_close_with_not_applicable_corpus_plan(self):
-        self.reset_applied_batch(self.install_inactive_corpus_plan)
         runtime = check_queue.validate_runtime(self.root)
         self.assertEqual([], runtime["errors"])
         runtime["progress"]["contract"]["selected_route_ids"] = ["R13"]
@@ -426,8 +634,48 @@ class CheckBatchCloseTests(unittest.TestCase):
                             for error in outcome["errors"]), outcome)
         self.assertIsNone(outcome["receipt"])
 
+
+class CorpusPlanConfiguredViewTests(_TemplateBackedCase):
+    # Shared scenario: the applied batch walked once with a configured
+    # Corpus Planning slot and its bound planning artifacts installed before
+    # the Delta applied.  The one test here evaluates the authorized view
+    # in-process and writes nothing, so it reads the template tree directly.
+    TEMPLATE = "applied-configured"
+    SHARE_TEMPLATE = True
+
+    def test_one_authorized_view_drives_corpus_scan_and_quota_overrides(self):
+        view, errors = check_queue.profile_load_authorized_view(
+            self.root, "profiles/test-profile/profile.md")
+        self.assertEqual([], errors)
+        runtime = check_queue.validate_runtime(
+            self.root, authorized_profile_view=view)
+        self.assertEqual([], runtime["errors"])
+        item = runtime["items_by_id"]["B1"]
+
+        with mock.patch.object(
+                check_batch_close.check_profile, "evaluate_profile_load",
+                side_effect=AssertionError(
+                    "shared batch admission must suppress producer reruns")):
+            corpus = check_batch_close._corpus_plan_close_check(
+                self.root, runtime, item,
+                kblib.repository_snapshot_sha256(self.root),
+                authorized_profile_view=view)
+            evaluation = check_batch_close._profile_evaluation(
+                self.root, runtime, authorized_profile_view=view)
+
+        self.assertEqual([], corpus["errors"])
+        self.assertIs(view["_evaluation"], evaluation)
+        self.assertEqual((15.0, 35.0),
+                         check_batch_close._priority_quotas(evaluation))
+
+
+class CorpusPlanConfiguredCloseTests(_TemplateBackedCase):
+    # Private copies of the configured-plan template: the test runs the
+    # production close itself, which appends receipts, so it may not touch
+    # the tree the read-only class above shares.
+    TEMPLATE = "applied-configured"
+
     def test_configured_corpus_plan_child_is_consumed_by_batch_close(self):
-        self.reset_applied_batch(self.install_configured_corpus_plan)
         completed = self.batch_close()
         self.assertEqual(0, completed.returncode, completed.stdout)
         close_gate = self.output_value(completed.stdout, "close_gate_receipt")
@@ -514,43 +762,23 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertEqual([], check_queue.close_gate_receipt_errors(
             historical_catalog, close_gate, **historical_kwargs))
 
-    def test_one_authorized_view_drives_corpus_scan_and_quota_overrides(self):
-        self.reset_applied_batch(self.install_configured_corpus_plan)
-        view, errors = check_queue.profile_load_authorized_view(
-            self.root, "profiles/test-profile/profile.md")
-        self.assertEqual([], errors)
-        runtime = check_queue.validate_runtime(
-            self.root, authorized_profile_view=view)
-        self.assertEqual([], runtime["errors"])
-        item = runtime["items_by_id"]["B1"]
 
-        with mock.patch.object(
-                check_batch_close.check_profile, "evaluate_profile_load",
-                side_effect=AssertionError(
-                    "shared batch admission must suppress producer reruns")):
-            corpus = check_batch_close._corpus_plan_close_check(
-                self.root, runtime, item,
-                kblib.repository_snapshot_sha256(self.root),
-                authorized_profile_view=view)
-            evaluation = check_batch_close._profile_evaluation(
-                self.root, runtime, authorized_profile_view=view)
-
-        self.assertEqual([], corpus["errors"])
-        self.assertIs(view["_evaluation"], evaluation)
-        self.assertEqual((15.0, 35.0),
-                         check_batch_close._priority_quotas(evaluation))
+class VocabCompileOrderTests(_TemplateBackedCase):
+    # Private walk from the base template: the subject is the order of the
+    # walk itself -- the vocab artifact compiled under Profile A, the Profile
+    # changed, and only then the batch applied -- so the batch admission and
+    # the close both run inside the test and nothing here can be shared.
+    TEMPLATE = "base"
 
     def test_batch_rejects_vocab_compiled_before_profile_change(self):
         """The closed list cannot reuse Profile A's vocabulary under B."""
-        def change_profile_after_vocab_compile():
-            extension = self.root / \
-                "profiles/test-profile/vocabulary-extensions.yaml"
-            extension.write_text(
-                extension.read_text(encoding="utf-8").replace(
-                    "  fixture: stable", "  fixture: slow"),
-                encoding="utf-8")
-
-        self.reset_applied_batch(change_profile_after_vocab_compile)
+        extension = self.root / \
+            "profiles/test-profile/vocabulary-extensions.yaml"
+        extension.write_text(
+            extension.read_text(encoding="utf-8").replace(
+                "  fixture: stable", "  fixture: slow"),
+            encoding="utf-8")
+        self.prepare_applied_batch()
 
         completed = self.batch_close()
 
@@ -558,115 +786,24 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertIn("vocab-artifact-stale", completed.stdout)
         self.assertIn("does not match the selected Profile", completed.stdout)
 
-    @staticmethod
-    def output_value(output, name):
-        prefix = name + "="
-        return next(line[len(prefix):] for line in output.splitlines()
-                    if line.startswith(prefix))
 
-    def test_production_cli_generates_bundle_consumed_by_close(self):
-        completed = self.batch_close()
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        consistency = self.output_value(
-            completed.stdout, "queue_consistency_receipt")
-        close_gate = self.output_value(completed.stdout, "close_gate_receipt")
-        delta_apply = self.output_value(completed.stdout,
-                                       "delta_apply_receipt")
-        self.assertEqual(self.delta_apply_receipt, delta_apply)
-        close_records = [json.loads(line) for line in
-                         (self.root / ".cambium/receipts/batch-close.jsonl")
-                         .read_text(encoding="utf-8").splitlines()]
-        own_records = [record for record in close_records
-                       if record.get("tool") == check_batch_close.TOOL]
-        self.assertTrue(own_records)
-        self.assertEqual(
-            {check_batch_close.TOOL_VERSION},
-            {record.get("tool_version") for record in own_records})
-        self.assertEqual(
-            {check_batch_close.GATE_ID},
-            {record.get("gate_id") for record in own_records})
-        consistency_record = next(
-            record for record in close_records
-            if record.get("receipt_id") == consistency)
-        self.assertEqual("check_queue", consistency_record["tool"])
-        self.assertEqual(check_queue.TOOL_VERSION,
-                         consistency_record["tool_version"])
-        self.assertEqual("consistency",
-                         consistency_record["queue_check_mode"])
-        self.assertEqual(
-            kblib.repository_snapshot_sha256(self.root),
-            consistency_record["repository_snapshot_sha256"])
-        close_record = next(
-            record for record in close_records
-            if record.get("receipt_id") == close_gate)
-        self.assertIn("work_spec_path", close_record)
-        self.assertIn("work_spec_sha256", close_record)
-        self.assertIsNone(close_record["work_spec_path"])
-        self.assertIsNone(close_record["work_spec_sha256"])
-        self.assertEqual(1, close_record["page_review_receipt_count"])
-        self.assertEqual(
-            sorted(close_record["page_review_receipts"]),
-            close_record["page_review_receipts"])
-        self.assertEqual(
-            check_batch_close._receipt_id_set_sha256(
-                close_record["page_review_receipts"]),
-            close_record["page_review_receipt_set_sha256"])
-        page_review = next(
-            record for record in close_records
-            if record.get("receipt_id") ==
-            close_record["page_review_receipts"][0])
-        self.assertEqual("page_review_acceptance", page_review["check"])
-        self.assertEqual("Topics/A.md", page_review["target"])
-        self.assertEqual(
-            page_review["checked_at"][:10], page_review["reviewed_on"])
-        self.assertRegex(
-            page_review["semantic_content_sha256"],
-            r"^sha256:[0-9a-f]{64}$")
-        self.assertEqual(
-            close_record["metadata_execution_contract_fingerprint"],
-            page_review["metadata_execution_contract_fingerprint"])
-        for field in (
-                "selected_profile_manifest", "profile_snapshot_sha256",
-                "profile_contract_fingerprint",
-                "profile_load_inputs_sha256"):
-            self.assertEqual(close_record[field], page_review[field])
-        self.transition(
-            "closed", "--gate-receipt", consistency,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_apply)
-        self.assertEqual("closed", self.queue()["required_queue"][0]["state"])
-        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
-
-    def test_closed_bundle_snapshot_survives_a_checker_version_bump(self):
-        """K12/10 producer-era identity: a sealed close bundle's Queue
-        consistency snapshot is not re-judged against the current
-        check_queue constant after an upgrade."""
-        completed = self.batch_close()
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        consistency = self.output_value(
-            completed.stdout, "queue_consistency_receipt")
-        self.transition(
-            "closed", "--gate-receipt", consistency,
-            "--close-gate-receipt",
-            self.output_value(completed.stdout, "close_gate_receipt"),
-            "--delta-apply-receipt",
-            self.output_value(completed.stdout, "delta_apply_receipt"))
-        receipts = self.root / ".cambium/receipts/batch-close.jsonl"
-        text = receipts.read_text(encoding="utf-8")
-        needle = '"tool_version": "%s"' % check_queue.TOOL_VERSION
-        self.assertIn(needle, text)
-        receipts.write_text(
-            text.replace(needle, '"tool_version": "0.9.0"'),
-            encoding="utf-8")
-        self.assertEqual(
-            [], check_queue.validate_runtime(str(self.root))["errors"])
+class ClosedBundleReadTests(_TemplateBackedCase):
+    # Shared scenario: the applied batch carried through one production
+    # close, walked once into the "closed" template with the producer's
+    # stdout kept as an artifact.  Every test here replays validation over
+    # the recorded bundle with in-process validators and per-test copies of
+    # the receipt catalog, and writes nothing, so the class shares the
+    # template tree itself.
+    TEMPLATE = "closed"
+    SHARE_TEMPLATE = True
 
     def test_1_10_history_never_acquires_page_review_requirements(self):
-        completed = self.batch_close()
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        close_gate = self.output_value(completed.stdout, "close_gate_receipt")
+        self.assertEqual(0, self.scenario["close_code"],
+                         self.scenario["close_stdout"])
+        close_gate = self.output_value(
+            self.scenario["close_stdout"], "close_gate_receipt")
         consistency = self.output_value(
-            completed.stdout, "queue_consistency_receipt")
+            self.scenario["close_stdout"], "queue_consistency_receipt")
         runtime = check_queue.validate_runtime(self.root)
         catalog = {
             receipt_id: (path, copy.deepcopy(receipt))
@@ -687,11 +824,12 @@ class CheckBatchCloseTests(unittest.TestCase):
             catalog, close_gate, **kwargs))
 
     def test_current_page_review_subgraph_rejects_missing_extra_and_drift(self):
-        completed = self.batch_close()
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        close_gate = self.output_value(completed.stdout, "close_gate_receipt")
+        self.assertEqual(0, self.scenario["close_code"],
+                         self.scenario["close_stdout"])
+        close_gate = self.output_value(
+            self.scenario["close_stdout"], "close_gate_receipt")
         consistency = self.output_value(
-            completed.stdout, "queue_consistency_receipt")
+            self.scenario["close_stdout"], "queue_consistency_receipt")
         runtime = check_queue.validate_runtime(self.root)
         base_catalog = runtime["current_receipt_catalog"]
         kwargs = self.close_validation_kwargs(runtime, consistency)
@@ -817,85 +955,13 @@ class CheckBatchCloseTests(unittest.TestCase):
                 self.assertTrue(any(expected in error for error in errors),
                                 errors)
 
-    def test_manifest_page_identity_and_bytes_are_cas_checked_before_append(self):
-        page = self.root / "Topics/A.md"
-        original = page.read_text(encoding="utf-8")
-        real_assert = check_batch_close._assert_manifest_pages_unchanged
-        injected = {"done": False}
-
-        def change_before_first_cas(root, frozen, *, uncertain=False):
-            if not injected["done"]:
-                injected["done"] = True
-                page.write_text(original + "\nconcurrent edit\n", encoding="utf-8")
-            return real_assert(root, frozen, uncertain=uncertain)
-
-        output = io.StringIO()
-        with mock.patch.object(
-                check_batch_close, "_assert_manifest_pages_unchanged",
-                side_effect=change_before_first_cas), redirect_stdout(output):
-            code = check_batch_close.main([
-                str(self.root), "--batch", "B1",
-                "--integrator", "fixture-integrator",
-                "--reviewer", "fixture-reviewer",
-                "--review-attestation",
-                "I reviewed the exact listed candidates and merged snapshot.",
-            ])
-        self.assertEqual(1, code, output.getvalue())
-        self.assertTrue(injected["done"])
-        self.assertIn("manifest page changed before review evidence publication",
-                      output.getvalue())
-        attempts = [
-            json.loads(line)
-            for line in (self.root / ".cambium/receipts/batch-close.jsonl")
-            .read_text(encoding="utf-8").splitlines()
-        ]
-        self.assertEqual(1, len(attempts))
-        self.assertEqual("fail", attempts[0]["result"])
-        self.assertEqual("batch_close_gate", attempts[0]["check"])
-        self.assertFalse(any(
-            row.get("check") == "page_review_acceptance"
-            for row in attempts))
-
-    def test_profile_example_vocabulary_is_outside_the_vocab_member(self):
-        """A shipped example instance's own vocabulary values must not fail
-        the adopter's close: profiles/ is control plane, so the vocab member
-        excludes it like kernel/Cards (the defect only appeared on a real
-        adopter's first close)."""
-        foreign = self.root / "profiles/examples/foreign/corpus/Case.md"
-        foreign.parent.mkdir(parents=True, exist_ok=True)
-        foreign.write_text(
-            "---\ntype: service-case\npriority: P9\n---\n# Foreign Case\n",
-            encoding="utf-8")
-        completed = self.batch_close()
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        self.assertNotIn("service-case", completed.stdout)
-
-    def test_complex_work_spec_stability_guard_detects_byte_change(self):
-        relative = ".cambium/work_specs/B1.yaml"
-        path = self.root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        text = (
-            "---\nschema_version: 1\nbatch_id: B1\nmanifest:\n"
-            "  - Topics/A.md\n---\n\n# Work\n"
-        )
-        path.write_text(text, encoding="utf-8")
-        item = {
-            "work_spec_path": relative,
-            "work_spec_sha256": kblib.sha256_file(path),
-        }
-        check_batch_close._assert_work_spec_unchanged(self.root, item)
-        path.write_text(text + "changed\n", encoding="utf-8")
-        with self.assertRaisesRegex(
-                check_batch_close.ReceiptPublicationUncertain,
-                "Batch Work Spec changed"):
-            check_batch_close._assert_work_spec_unchanged(self.root, item)
-
     def test_simple_batch_close_receipt_must_bind_explicit_null_work_spec(self):
-        completed = self.batch_close()
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        close_gate = self.output_value(completed.stdout, "close_gate_receipt")
+        self.assertEqual(0, self.scenario["close_code"],
+                         self.scenario["close_stdout"])
+        close_gate = self.output_value(
+            self.scenario["close_stdout"], "close_gate_receipt")
         consistency = self.output_value(
-            completed.stdout, "queue_consistency_receipt")
+            self.scenario["close_stdout"], "queue_consistency_receipt")
         runtime = check_queue.validate_runtime(self.root)
         item = runtime["items_by_id"]["B1"]
 
@@ -931,11 +997,12 @@ class CheckBatchCloseTests(unittest.TestCase):
                                     for error in errors), errors)
 
     def test_close_evidence_from_prior_work_spec_binding_is_not_reusable(self):
-        completed = self.batch_close()
-        self.assertEqual(0, completed.returncode, completed.stdout)
-        close_gate = self.output_value(completed.stdout, "close_gate_receipt")
+        self.assertEqual(0, self.scenario["close_code"],
+                         self.scenario["close_stdout"])
+        close_gate = self.output_value(
+            self.scenario["close_stdout"], "close_gate_receipt")
         consistency = self.output_value(
-            completed.stdout, "queue_consistency_receipt")
+            self.scenario["close_stdout"], "queue_consistency_receipt")
         runtime = check_queue.validate_runtime(self.root)
         item = runtime["items_by_id"]["B1"]
         errors = check_queue.close_gate_receipt_errors(
@@ -956,12 +1023,121 @@ class CheckBatchCloseTests(unittest.TestCase):
                             "work_spec_sha256" in error
                             for error in errors), errors)
 
-    def test_resume_recovers_published_bundle_when_producer_stdout_is_lost(self):
-        published = self.batch_close()
-        self.assertEqual(0, published.returncode, published.stdout)
+
+class ClosedBundleConsumerTests(_TemplateBackedCase):
+    # Private copies of the "closed" template: each test consumes the walked
+    # close bundle -- transitioning B1 to closed, editing receipts or pages,
+    # or publishing a second bundle -- so each starts from its own copy and
+    # reads the producer stdout from the template artifacts.
+    TEMPLATE = "closed"
+
+    def test_production_cli_generates_bundle_consumed_by_close(self):
+        self.assertEqual(0, self.scenario["close_code"],
+                         self.scenario["close_stdout"])
         consistency = self.output_value(
-            published.stdout, "queue_consistency_receipt")
-        close_gate = self.output_value(published.stdout, "close_gate_receipt")
+            self.scenario["close_stdout"], "queue_consistency_receipt")
+        close_gate = self.output_value(
+            self.scenario["close_stdout"], "close_gate_receipt")
+        delta_apply = self.output_value(self.scenario["close_stdout"],
+                                       "delta_apply_receipt")
+        self.assertEqual(self.delta_apply_receipt, delta_apply)
+        close_records = [json.loads(line) for line in
+                         (self.root / ".cambium/receipts/batch-close.jsonl")
+                         .read_text(encoding="utf-8").splitlines()]
+        own_records = [record for record in close_records
+                       if record.get("tool") == check_batch_close.TOOL]
+        self.assertTrue(own_records)
+        self.assertEqual(
+            {check_batch_close.TOOL_VERSION},
+            {record.get("tool_version") for record in own_records})
+        self.assertEqual(
+            {check_batch_close.GATE_ID},
+            {record.get("gate_id") for record in own_records})
+        consistency_record = next(
+            record for record in close_records
+            if record.get("receipt_id") == consistency)
+        self.assertEqual("check_queue", consistency_record["tool"])
+        self.assertEqual(check_queue.TOOL_VERSION,
+                         consistency_record["tool_version"])
+        self.assertEqual("consistency",
+                         consistency_record["queue_check_mode"])
+        self.assertEqual(
+            kblib.repository_snapshot_sha256(self.root),
+            consistency_record["repository_snapshot_sha256"])
+        close_record = next(
+            record for record in close_records
+            if record.get("receipt_id") == close_gate)
+        self.assertIn("work_spec_path", close_record)
+        self.assertIn("work_spec_sha256", close_record)
+        self.assertIsNone(close_record["work_spec_path"])
+        self.assertIsNone(close_record["work_spec_sha256"])
+        self.assertEqual(1, close_record["page_review_receipt_count"])
+        self.assertEqual(
+            sorted(close_record["page_review_receipts"]),
+            close_record["page_review_receipts"])
+        self.assertEqual(
+            check_batch_close._receipt_id_set_sha256(
+                close_record["page_review_receipts"]),
+            close_record["page_review_receipt_set_sha256"])
+        page_review = next(
+            record for record in close_records
+            if record.get("receipt_id") ==
+            close_record["page_review_receipts"][0])
+        self.assertEqual("page_review_acceptance", page_review["check"])
+        self.assertEqual("Topics/A.md", page_review["target"])
+        self.assertEqual(
+            page_review["checked_at"][:10], page_review["reviewed_on"])
+        self.assertRegex(
+            page_review["semantic_content_sha256"],
+            r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual(
+            close_record["metadata_execution_contract_fingerprint"],
+            page_review["metadata_execution_contract_fingerprint"])
+        for field in (
+                "selected_profile_manifest", "profile_snapshot_sha256",
+                "profile_contract_fingerprint",
+                "profile_load_inputs_sha256"):
+            self.assertEqual(close_record[field], page_review[field])
+        self.transition(
+            "closed", "--gate-receipt", consistency,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_apply)
+        self.assertEqual("closed", self.queue()["required_queue"][0]["state"])
+        self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
+
+    def test_closed_bundle_snapshot_survives_a_checker_version_bump(self):
+        """K12/10 producer-era identity: a sealed close bundle's Queue
+        consistency snapshot is not re-judged against the current
+        check_queue constant after an upgrade."""
+        self.assertEqual(0, self.scenario["close_code"],
+                         self.scenario["close_stdout"])
+        consistency = self.output_value(
+            self.scenario["close_stdout"], "queue_consistency_receipt")
+        self.transition(
+            "closed", "--gate-receipt", consistency,
+            "--close-gate-receipt",
+            self.output_value(
+                self.scenario["close_stdout"], "close_gate_receipt"),
+            "--delta-apply-receipt",
+            self.output_value(
+                self.scenario["close_stdout"], "delta_apply_receipt"))
+        receipts = self.root / ".cambium/receipts/batch-close.jsonl"
+        text = receipts.read_text(encoding="utf-8")
+        needle = '"tool_version": "%s"' % check_queue.TOOL_VERSION
+        self.assertIn(needle, text)
+        receipts.write_text(
+            text.replace(needle, '"tool_version": "0.9.0"'),
+            encoding="utf-8")
+        self.assertEqual(
+            [], check_queue.validate_runtime(str(self.root))["errors"])
+
+    def test_resume_recovers_published_bundle_when_producer_stdout_is_lost(self):
+        self.assertEqual(0, self.scenario["close_code"],
+                         self.scenario["close_stdout"])
+        consistency = self.output_value(
+            self.scenario["close_stdout"], "queue_consistency_receipt")
+        close_gate = self.output_value(
+            self.scenario["close_stdout"], "close_gate_receipt")
 
         # Deliberately recover from durable state only.  None of the values
         # parsed from the producer stdout are supplied to the resume command.
@@ -995,20 +1171,11 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertEqual("closed", self.queue()["required_queue"][0]["state"])
         self.assertEqual([], check_queue.validate_runtime(self.root)["errors"])
 
-    def test_resume_requires_close_gate_when_only_apply_receipt_exists(self):
-        resumed = self.run_tool("check_queue.py", "--resume-status")
-        self.assertEqual(2, resumed.returncode, resumed.stdout)
-        self.assertIn("batch_close_recovery.status=gate-required batch=B1",
-                      resumed.stdout)
-        self.assertIn("batch_close_recovery.update_queue_command=none",
-                      resumed.stdout)
-        self.assertIn("next_action=run-batch-close-gate:B1",
-                      resumed.stdout)
-
     def test_resume_rejects_close_bundle_after_repository_snapshot_changes(self):
-        published = self.batch_close()
-        self.assertEqual(0, published.returncode, published.stdout)
-        close_gate = self.output_value(published.stdout, "close_gate_receipt")
+        self.assertEqual(0, self.scenario["close_code"],
+                         self.scenario["close_stdout"])
+        close_gate = self.output_value(
+            self.scenario["close_stdout"], "close_gate_receipt")
         topic = self.root / "Topics/A.md"
         topic.write_text(
             topic.read_text(encoding="utf-8") + "\nchanged after gate\n",
@@ -1024,9 +1191,13 @@ class CheckBatchCloseTests(unittest.TestCase):
                       resumed.stdout)
 
     def test_resume_selects_latest_of_multiple_current_close_bundles(self):
-        first = self.batch_close()
-        self.assertEqual(0, first.returncode, first.stdout)
-        first_close = self.output_value(first.stdout, "close_gate_receipt")
+        # The first bundle is the template's walked close; the sleep keeps
+        # the second bundle's second-granularity timestamps strictly later,
+        # exactly as it kept two in-test closes apart before.
+        self.assertEqual(0, self.scenario["close_code"],
+                         self.scenario["close_stdout"])
+        first_close = self.output_value(
+            self.scenario["close_stdout"], "close_gate_receipt")
         time.sleep(1.1)
         second = self.batch_close()
         self.assertEqual(0, second.returncode, second.stdout)
@@ -1047,32 +1218,37 @@ class CheckBatchCloseTests(unittest.TestCase):
                 second_consistency, second_close, self.delta_apply_receipt),
             resumed.stdout)
 
-    def set_override_rows(self, rows):
-        manifest = self.root / "profiles/test-profile/profile.md"
-        text = manifest.read_text(encoding="utf-8")
-        head, _, _ = text.partition("\n## Execution Default Overrides\n")
-        manifest.write_text(
-            head + "\n## Execution Default Overrides\n\n"
-            "| Override item ID from the registry | Non-default profile value |\n"
-            "|---|---|\n" + rows, encoding="utf-8")
-        return {"queue": {
-            "selected_profile_manifest": "profiles/test-profile/profile.md",
-        }}
 
-    def set_quota_section(self, body):
-        """Rewrite the synthetic rubric's Priority Quota section."""
-        rubric = self.root / "profiles/test-profile/slots.md"
-        text = rubric.read_text(encoding="utf-8")
-        head, _, _ = text.partition("\n## Priority Quota\n")
-        rubric.write_text(head + "\n## Priority Quota\n" + body,
-                          encoding="utf-8")
-        return {"queue": {
-            "selected_profile_manifest": "profiles/test-profile/profile.md",
-        }}
+class AppliedBatchReadTests(_TemplateBackedCase):
+    # Shared scenario: the plain applied batch, walked once.  The one test
+    # here resolves the registered scan command from the authorized Profile
+    # view entirely in-process and writes nothing, so it reads the template
+    # tree directly.
+    TEMPLATE = "applied"
+    SHARE_TEMPLATE = True
 
-    def resolved_quotas(self, runtime):
-        return check_batch_close._priority_quotas(
-            check_batch_close._profile_evaluation(self.root, runtime))
+    def test_custom_registered_verifier_without_config_remains_legal(self):
+        runtime = check_queue.validate_runtime(self.root)
+        self.assertEqual([], runtime["errors"])
+
+        evaluation = check_batch_close._profile_evaluation(self.root, runtime)
+        command, expected = check_batch_close._profile_scan_command(
+            self.root, evaluation)
+
+        self.assertEqual(sys.executable, command[0])
+        self.assertEqual(
+            str((self.root / "Tools/fixture_residual.py").resolve()),
+            command[1])
+        self.assertEqual(str(self.root.resolve()), command[2])
+        self.assertNotIn("--config", command)
+        self.assertEqual({"scan_id": "fixture-residuals"}, expected)
+
+
+class QuotaRubricSlotTests(_TemplateBackedCase):
+    # Private copies of the applied template: every test rewrites the
+    # Profile manifest or the rubric slot before reading the quota policy,
+    # so each starts from its own copy.
+    TEMPLATE = "applied"
 
     def test_priority_quotas_read_the_rubric_slot(self):
         """K00/07: the standing quota truth lives in the Priority Rubric.
@@ -1166,24 +1342,26 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertIn("--scan-id", command)
         self.assertEqual("fixture-residuals", expected["scan_id"])
 
-    def test_override_reader_ignores_fenced_examples_and_other_sections(self):
-        manifest_text = (
-            "# Profile\n\n"
-            "## Execution Default Overrides\n\n"
-            "```text\n"
-            "| `concurrency_cap` | `99` |\n"
-            "```\n\n"
-            "| Override item ID from the registry | Non-default profile value |\n"
-            "|---|---|\n"
-            "| `concurrency_cap` | `7` |\n"
-            "| `maintenance.incoming_retarget_divisor` | `a \\| b` |\n\n"
-            "## Implemented Slots\n\n"
-            "| `priority_quota.P0` | `99` |\n"
-        )
-        self.assertEqual(
-            {"concurrency_cap": "7",
-             "maintenance.incoming_retarget_divisor": "a | b"},
-            kblib.profile_execution_default_overrides(manifest_text))
+
+class CandidateGraphTests(_TemplateBackedCase):
+    # Private copies of the applied template: every test plants extra pages
+    # or files in the corpus before projecting the graph or running its own
+    # close over the changed content.
+    TEMPLATE = "applied"
+
+    def test_profile_example_vocabulary_is_outside_the_vocab_member(self):
+        """A shipped example instance's own vocabulary values must not fail
+        the adopter's close: profiles/ is control plane, so the vocab member
+        excludes it like kernel/Cards (the defect only appeared on a real
+        adopter's first close)."""
+        foreign = self.root / "profiles/examples/foreign/corpus/Case.md"
+        foreign.parent.mkdir(parents=True, exist_ok=True)
+        foreign.write_text(
+            "---\ntype: service-case\npriority: P9\n---\n# Foreign Case\n",
+            encoding="utf-8")
+        completed = self.batch_close()
+        self.assertEqual(0, completed.returncode, completed.stdout)
+        self.assertNotIn("service-case", completed.stdout)
 
     def test_candidates_require_exact_id_or_type_disposition(self):
         duplicate = self.root / "Other/A.md"
@@ -1297,30 +1475,13 @@ class CheckBatchCloseTests(unittest.TestCase):
         self.assertIn("a-first/Same.md", duplicate["details"])
         self.assertIn("z-last/Same.md", duplicate["details"])
 
-    def test_same_reviewer_and_integrator_fail_before_receipts(self):
-        completed = self.run_tool(
-            "check_batch_close.py", "--batch", "B1",
-            "--integrator", "same", "--reviewer", "same",
-            "--review-attestation", "Independent review statement.")
-        self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn("must use different declared labels", completed.stdout)
-        self.assertFalse((self.root / ".cambium/receipts/batch-close.jsonl").exists())
 
-    def test_custom_registered_verifier_without_config_remains_legal(self):
-        runtime = check_queue.validate_runtime(self.root)
-        self.assertEqual([], runtime["errors"])
-
-        evaluation = check_batch_close._profile_evaluation(self.root, runtime)
-        command, expected = check_batch_close._profile_scan_command(
-            self.root, evaluation)
-
-        self.assertEqual(sys.executable, command[0])
-        self.assertEqual(
-            str((self.root / "Tools/fixture_residual.py").resolve()),
-            command[1])
-        self.assertEqual(str(self.root.resolve()), command[2])
-        self.assertNotIn("--config", command)
-        self.assertEqual({"scan_id": "fixture-residuals"}, expected)
+class RegisteredScanTests(_TemplateBackedCase):
+    # Private copies of the applied template: every test poisons the
+    # registered verifier, its registration row, or the Profile's slot
+    # bindings before running its own close, so nothing here can share a
+    # tree -- the poisoned walk is the subject.
+    TEMPLATE = "applied"
 
     def test_registered_foreign_config_is_rejected_before_verifier_launch(self):
         foreign = self.root / "profiles/foreign/scan-config.yaml"
@@ -1460,81 +1621,91 @@ class CheckBatchCloseTests(unittest.TestCase):
             "expected 'fixture-residuals' from the admitted Profile contract",
             completed.stdout)
 
-    def test_candidate_production_receipts_do_not_replace_bound_summary(self):
-        summary = {
-            "tool": "fixture_residual",
-            "tool_version": "1.0.0",
-            "check": "residual-content-summary",
-            "scan_id": "fixture-residuals",
-            "config_fingerprint": "sha256:" + "b" * 64,
-            "positive_control_result": "passed",
-            "positive_control_mode": "production-classifier",
-            "positive_control_count": 2,
-            "positive_control_fingerprint": "sha256:" + "c" * 64,
-            "result": "pass",
-        }
-        candidate = {
-            "tool": "fixture_residual",
-            "tool_version": "1.0.0",
-            "check": "residual-content-candidate",
-            "result": "candidate",
-        }
-        self.assertEqual(
-            [], check_batch_close._positive_control_binding_errors(
-                {"receipts": [dict(summary)]},
-                {"receipts": [candidate, dict(summary)]}))
 
-    def test_both_invocations_must_match_admitted_config_bytes(self):
-        summary = {
-            "tool": "fixture_residual",
-            "tool_version": "1.0.0",
-            "check": "residual-content-summary",
-            "scan_id": "fixture-residuals",
-            "config_fingerprint": "sha256:" + "d" * 64,
-            "positive_control_result": "passed",
-            "positive_control_mode": "production-classifier",
-            "positive_control_count": 2,
-            "positive_control_fingerprint": "sha256:" + "c" * 64,
-            "result": "pass",
-        }
+class CloseCeremonyGuardTests(_TemplateBackedCase):
+    # Private copies of the applied template: the write ceremony itself is
+    # the subject here -- CAS checks around the append, retained writer
+    # locks, interrupted producers, and the recovery surface over their
+    # durable leavings -- so every walk below stays inside its own test.
+    TEMPLATE = "applied"
 
-        errors = check_batch_close._positive_control_binding_errors(
-            {"receipts": [dict(summary)]},
-            {"receipts": [dict(summary)]},
-            expected_binding={
-                "scan_id": "fixture-residuals",
-                "config_fingerprint": "sha256:" + "e" * 64,
-            })
+    def test_manifest_page_identity_and_bytes_are_cas_checked_before_append(self):
+        page = self.root / "Topics/A.md"
+        original = page.read_text(encoding="utf-8")
+        real_assert = check_batch_close._assert_manifest_pages_unchanged
+        injected = {"done": False}
 
-        self.assertEqual(2, len(errors), errors)
-        self.assertTrue(all(
-            "config_fingerprint" in error and
-            "admitted Profile contract" in error for error in errors))
+        def change_before_first_cas(root, frozen, *, uncertain=False):
+            if not injected["done"]:
+                injected["done"] = True
+                page.write_text(original + "\nconcurrent edit\n", encoding="utf-8")
+            return real_assert(root, frozen, uncertain=uncertain)
 
-    def _install_authoritative_state_mutating_verifier(self, exit_code):
-        script = self.root / "Tools/fixture_residual.py"
-        script.write_text(
-            script.read_text(encoding="utf-8") +
-            "with open(os.path.join(a.root,'.cambium/state/"
-            "coverage_ledger.yaml'),'a',encoding='utf-8') as fh:\n"
-            "    fh.write('\\n')\n" +
-            ("raise SystemExit(%d)\n" % exit_code if exit_code else ""),
-            encoding="utf-8",
+        output = io.StringIO()
+        with mock.patch.object(
+                check_batch_close, "_assert_manifest_pages_unchanged",
+                side_effect=change_before_first_cas), redirect_stdout(output):
+            code = check_batch_close.main([
+                str(self.root), "--batch", "B1",
+                "--integrator", "fixture-integrator",
+                "--reviewer", "fixture-reviewer",
+                "--review-attestation",
+                "I reviewed the exact listed candidates and merged snapshot.",
+            ])
+        self.assertEqual(1, code, output.getvalue())
+        self.assertTrue(injected["done"])
+        self.assertIn("manifest page changed before review evidence publication",
+                      output.getvalue())
+        attempts = [
+            json.loads(line)
+            for line in (self.root / ".cambium/receipts/batch-close.jsonl")
+            .read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(1, len(attempts))
+        self.assertEqual("fail", attempts[0]["result"])
+        self.assertEqual("batch_close_gate", attempts[0]["check"])
+        self.assertFalse(any(
+            row.get("check") == "page_review_acceptance"
+            for row in attempts))
+
+    def test_complex_work_spec_stability_guard_detects_byte_change(self):
+        relative = ".cambium/work_specs/B1.yaml"
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        text = (
+            "---\nschema_version: 1\nbatch_id: B1\nmanifest:\n"
+            "  - Topics/A.md\n---\n\n# Work\n"
         )
+        path.write_text(text, encoding="utf-8")
+        item = {
+            "work_spec_path": relative,
+            "work_spec_sha256": kblib.sha256_file(path),
+        }
+        check_batch_close._assert_work_spec_unchanged(self.root, item)
+        path.write_text(text + "changed\n", encoding="utf-8")
+        with self.assertRaisesRegex(
+                check_batch_close.ReceiptPublicationUncertain,
+                "Batch Work Spec changed"):
+            check_batch_close._assert_work_spec_unchanged(self.root, item)
 
-    def _assert_state_mutating_verifier_is_uncertain(self, exit_code):
-        self._install_authoritative_state_mutating_verifier(exit_code)
-        completed = self.batch_close()
+    def test_resume_requires_close_gate_when_only_apply_receipt_exists(self):
+        resumed = self.run_tool("check_queue.py", "--resume-status")
+        self.assertEqual(2, resumed.returncode, resumed.stdout)
+        self.assertIn("batch_close_recovery.status=gate-required batch=B1",
+                      resumed.stdout)
+        self.assertIn("batch_close_recovery.update_queue_command=none",
+                      resumed.stdout)
+        self.assertIn("next_action=run-batch-close-gate:B1",
+                      resumed.stdout)
+
+    def test_same_reviewer_and_integrator_fail_before_receipts(self):
+        completed = self.run_tool(
+            "check_batch_close.py", "--batch", "B1",
+            "--integrator", "same", "--reviewer", "same",
+            "--review-attestation", "Independent review statement.")
         self.assertEqual(1, completed.returncode, completed.stdout)
-        self.assertIn(
-            "authoritative state changed while the Closed List ran",
-            completed.stdout)
-        self.assertIn(
-            "[RECOVERY] writer lock retained", completed.stdout)
-        self.assertTrue(
-            (self.root / ".cambium/tmp/state-writer.lock").is_dir())
-        self.assertFalse(
-            (self.root / ".cambium/receipts/batch-close.jsonl").exists())
+        self.assertIn("must use different declared labels", completed.stdout)
+        self.assertFalse((self.root / ".cambium/receipts/batch-close.jsonl").exists())
 
     def test_failing_verifier_that_mutates_state_preserves_runtime_lock(self):
         self._assert_state_mutating_verifier_is_uncertain(1)
@@ -1620,6 +1791,81 @@ raise SystemExit(check_batch_close.main([
         self.assertIn('"status": "changed"', changed.stdout)
         self.assertIn("next_action=reconcile-interrupted-write",
                       changed.stdout)
+
+
+class PureFunctionTests(unittest.TestCase):
+    # No scenario at all: these exercise pure functions over literal inputs
+    # and never touch a repository tree.
+
+    def test_override_reader_ignores_fenced_examples_and_other_sections(self):
+        manifest_text = (
+            "# Profile\n\n"
+            "## Execution Default Overrides\n\n"
+            "```text\n"
+            "| `concurrency_cap` | `99` |\n"
+            "```\n\n"
+            "| Override item ID from the registry | Non-default profile value |\n"
+            "|---|---|\n"
+            "| `concurrency_cap` | `7` |\n"
+            "| `maintenance.incoming_retarget_divisor` | `a \\| b` |\n\n"
+            "## Implemented Slots\n\n"
+            "| `priority_quota.P0` | `99` |\n"
+        )
+        self.assertEqual(
+            {"concurrency_cap": "7",
+             "maintenance.incoming_retarget_divisor": "a | b"},
+            kblib.profile_execution_default_overrides(manifest_text))
+
+    def test_candidate_production_receipts_do_not_replace_bound_summary(self):
+        summary = {
+            "tool": "fixture_residual",
+            "tool_version": "1.0.0",
+            "check": "residual-content-summary",
+            "scan_id": "fixture-residuals",
+            "config_fingerprint": "sha256:" + "b" * 64,
+            "positive_control_result": "passed",
+            "positive_control_mode": "production-classifier",
+            "positive_control_count": 2,
+            "positive_control_fingerprint": "sha256:" + "c" * 64,
+            "result": "pass",
+        }
+        candidate = {
+            "tool": "fixture_residual",
+            "tool_version": "1.0.0",
+            "check": "residual-content-candidate",
+            "result": "candidate",
+        }
+        self.assertEqual(
+            [], check_batch_close._positive_control_binding_errors(
+                {"receipts": [dict(summary)]},
+                {"receipts": [candidate, dict(summary)]}))
+
+    def test_both_invocations_must_match_admitted_config_bytes(self):
+        summary = {
+            "tool": "fixture_residual",
+            "tool_version": "1.0.0",
+            "check": "residual-content-summary",
+            "scan_id": "fixture-residuals",
+            "config_fingerprint": "sha256:" + "d" * 64,
+            "positive_control_result": "passed",
+            "positive_control_mode": "production-classifier",
+            "positive_control_count": 2,
+            "positive_control_fingerprint": "sha256:" + "c" * 64,
+            "result": "pass",
+        }
+
+        errors = check_batch_close._positive_control_binding_errors(
+            {"receipts": [dict(summary)]},
+            {"receipts": [dict(summary)]},
+            expected_binding={
+                "scan_id": "fixture-residuals",
+                "config_fingerprint": "sha256:" + "e" * 64,
+            })
+
+        self.assertEqual(2, len(errors), errors)
+        self.assertTrue(all(
+            "config_fingerprint" in error and
+            "admitted Profile contract" in error for error in errors))
 
 
 if __name__ == "__main__":
