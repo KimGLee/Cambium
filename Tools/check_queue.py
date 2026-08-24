@@ -19,36 +19,30 @@ Usage:
 """
 
 import contextlib
-import copy
-import datetime
-import importlib
 import json
 import os
-import re
-import shlex
-import stat
 import sys
-from pathlib import Path
-from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kblib
-import check_profile
-import amendment_policy
-import contract_exception_policy
-import batch_settlement
 import card_activation
+# Five peer modules this file no longer calls, and must keep importing.  The
+# runtime moved into `queue_runtime` and took its calls with it, but about
+# twenty-five test sites patch attributes on these module objects *through*
+# `check_queue` -- `check_queue.metadata_property_state`, and so on -- and the
+# object is shared only while the import statement is here.  Removing them as
+# unused breaks all of those at once with an AttributeError, so they stay, and
+# they stay with this note attached.
 import candidate_lifecycle
-import coverage_delta
+import check_profile
 import maintenance_candidates
 import metadata_execution_contract
 import metadata_property_state
 import project_page_state
-import standards_state
-# The persisted typed Gate receipt validator this runtime asks for by
-# name.  It used to be defined here and reach back into the Gate
-# runtime through a function-body import; it now lives with the module
-# whose object it validates, and the arrow points one way.
+# The persisted typed Gate receipt validator this runtime asks for by name.
+# It used to be defined here and reach back into the Gate runtime through a
+# function-body import; it now lives with the module whose object it
+# validates, and the arrow points one way.
 import metadata_gate_runtime
 import queue_runtime.property_state
 import queue_runtime.runtime
