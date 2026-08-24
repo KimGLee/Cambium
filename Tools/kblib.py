@@ -2537,6 +2537,52 @@ def repository_path(root, relative_path, must_exist=False, reject_symlink=False)
     return candidate
 
 
+_DIRECTORY_LISTING_SCOPE = []
+
+
+@contextmanager
+def directory_listing_scope():
+    """Read every path in this block against one directory listing.
+
+    ``canonical_repository_file`` compares each declared path segment with
+    the directory entry on disk, which costs one ``os.listdir`` per segment.
+    A caller resolving many paths under a few directories pays for the same
+    listing over and over: compiling the metadata execution contract lists
+    five directories 129 times, one of them 49 times, because 47 of its
+    inputs are siblings.
+
+    What this scope changes is only *when* a directory is enumerated, not
+    what is proven about a file.  Every read still opens with ``O_NOFOLLOW``
+    and still compares the stat identity before and after, so symlink
+    substitution and mid-read replacement are refused exactly as before; a
+    name that vanishes after being listed fails at ``open`` rather than at
+    the spelling comparison.  What the scope does assume is that the block
+    inside it wants one consistent view of the tree -- which is why it is
+    opened explicitly at the two readers that already mean that, and is not
+    a process-wide cache that every caller inherits without saying so.
+
+    Never hold this open across a write.  A block that mutates the tree and
+    then reads it back must see its own writes.
+    """
+    _DIRECTORY_LISTING_SCOPE.append({})
+    try:
+        yield
+    finally:
+        _DIRECTORY_LISTING_SCOPE.pop()
+
+
+def _listdir_in_scope(path):
+    if not _DIRECTORY_LISTING_SCOPE:
+        return os.listdir(path)
+    cache = _DIRECTORY_LISTING_SCOPE[-1]
+    try:
+        return cache[path]
+    except KeyError:
+        listed = frozenset(os.listdir(path))
+        cache[path] = listed
+        return listed
+
+
 def canonical_repository_file(root, relative_path, singly_linked=False):
     """Resolve an exact-spelling, non-symlinked repository regular file.
 
@@ -2551,7 +2597,7 @@ def canonical_repository_file(root, relative_path, singly_linked=False):
     current = root_real
     for part in relative_path.split("/"):
         try:
-            entries = os.listdir(current)
+            entries = _listdir_in_scope(current)
         except OSError as exc:
             raise ValueError("cannot inspect repository path: %s" % exc)
         if part not in entries:

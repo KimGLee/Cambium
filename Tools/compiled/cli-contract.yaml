@@ -66,7 +66,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:01b5fe50f2ebd9785540d5b2788e34ea89c2a27721c885b3eb0c2f355c873134
+source_hash: sha256:e5aa7e7912632eef6c5c80f00c522bed4751d3c15d27711a06cc5cabea6fbe82
 receipt_shape:
   base_fields:
     - receipt_id
@@ -1574,7 +1574,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_profile
     module: Tools/check_profile.py
-    source_hash: sha256:e387942db547ebc8a620b4e52d18ea6a7b3981f23e86daec503fdfbf35cc4a1c
+    source_hash: sha256:af0b6b9449f95ccc2e182084098a8223a01b92624dc29413f44da7110663dbef
     description: Profile manifest completeness and unfilled-template check
     arguments:
       - dest: profile_dir
@@ -2943,7 +2943,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: metadata_execution_contract
     module: Tools/metadata_execution_contract.py
-    source_hash: sha256:afa01366368cb222b671bbdd49c951951ebc4a85e902da0f16e6cfca14f0baf0
+    source_hash: sha256:3ed90bb7c559e3413f671cf6e02422edbe4a11f9fb3b5c0b13b95dcec3799e42
     description: Compile and load Cambium's closed metadata-execution authority contract. This module is deliberately the single authority boundary between metadata declarations and executable writers. A field rule is executable only when an installed writer capability declares the same ``(field, transition, adapter)`` operation, and every installed writer operation must be authorized by exactly one rule. Unknown keys, unknown adapters, orphan implementations, and partial evidence bindings fail closed.
     arguments:
       - dest: root

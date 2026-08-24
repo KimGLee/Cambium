@@ -491,17 +491,21 @@ def finding_category(check):
 def canonical_profile_load_inputs(root):
     """Return immutable canonical producer inputs and their aggregate hash."""
     snapshots = {}
-    for relative in CANONICAL_PROFILE_LOAD_INPUTS:
-        snapshots[relative] = kblib.repository_file_snapshot(
-            root, relative, singly_linked=True)
-    capabilities = kblib.parse_yaml_subset(
-        snapshots[DEFAULT_OPERATION_CAPABILITIES].read_text())
-    capabilities = metadata_execution_contract.\
-        validate_operation_capabilities_document(capabilities)
-    for relative in metadata_execution_contract.\
-            capability_implementation_paths(capabilities):
-        snapshots[relative] = kblib.repository_file_snapshot(
-            root, relative, singly_linked=True)
+    # This walks the same capability implementations the contract compiler
+    # walks, independently and in the same process, so it pays the same
+    # repeated directory listings.  It means one consistent view too.
+    with kblib.directory_listing_scope():
+        for relative in CANONICAL_PROFILE_LOAD_INPUTS:
+            snapshots[relative] = kblib.repository_file_snapshot(
+                root, relative, singly_linked=True)
+        capabilities = kblib.parse_yaml_subset(
+            snapshots[DEFAULT_OPERATION_CAPABILITIES].read_text())
+        capabilities = metadata_execution_contract.\
+            validate_operation_capabilities_document(capabilities)
+        for relative in metadata_execution_contract.\
+                capability_implementation_paths(capabilities):
+            snapshots[relative] = kblib.repository_file_snapshot(
+                root, relative, singly_linked=True)
     fingerprint = kblib.sha256_bytes(
         "\0".join(
             "%s\0%s" % (relative, snapshots[relative].sha256)

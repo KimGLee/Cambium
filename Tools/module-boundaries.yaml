@@ -421,6 +421,7 @@ modules:
       - canonical_json_bytes
       - canonical_repository_file
       - canonical_yaml
+      - directory_listing_scope
       - durable_replace
       - exit_code
       - extract_frontmatter
