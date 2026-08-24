@@ -32,6 +32,7 @@ This file records what changes next and why.
 | Activation transport and Assignment delivery | In progress | Replace an unprovable “server sent it” claim with budgeted delivery, host conformance, acknowledgements, and a delivery gate |
 | Reference execution runtime | Next | Add durable Assignment state, a single-writer integrator loop, then isolated workers and reviewers |
 | Git-backed workspace and diff adapter | Next | Bind one Assignment to an isolated worktree, reviewable diff, named sources, exact Git snapshots, and serial post-merge read-back without making Git a second Queue |
+| Governed retrieval adapter contract | Next | Export deterministic governed-corpus manifests, invalidation feeds, and exact citation envelopes to external retrievers without making Cambium a RAG engine or an index authoritative |
 | State-aware operation discovery | Next | Its scope has changed: the shipped MCP surface comes from tool CLIs, and any future discovery view must not become a second policy engine |
 | Typed dependency runtime | Next | Compile explicit corpus relationships and produce bounded change-impact plans |
 | Independent completeness and consistency evaluation | Next | Re-derive expected scope without trusting the executor's own Queue or Delta |
@@ -62,6 +63,8 @@ operations. They may not:
 - create a second Queue, Progress ledger, or receipt authority;
 - expose an arbitrary shell runner or unrestricted repository paths;
 - run adopter-provided verifier code without explicit authorization;
+- turn a retrieval score, query result, index, or cache into policy,
+  dependency, promotion, state-transition, or completion authority;
 - claim authenticated identity, isolation, independent review, or delivery
   without evidence from the host that provides it.
 
@@ -311,6 +314,163 @@ This capability is complete when:
 - no Git branch, commit message, author label, generated graph, diff view, or
   adapter record becomes a second Queue, Progress ledger, receipt authority,
   Profile authority, or identity proof.
+
+### Governed Retrieval Adapter Contract
+
+**State: Next; a downstream consumption adapter, not a RAG engine, knowledge
+base, or second knowledge-state authority.**
+
+Cambium governs repository work, evidence, recovery, and closure, but it does
+not yet define how an external search, RAG, Wiki, or Agent runtime consumes the
+resulting governed corpus. Each adopter would otherwise have to invent which
+objects are eligible, how stale or invalidated evidence is excluded, how an
+index maps back to exact canonical bytes, and what must be rebuilt after a
+change. That duplication creates inconsistent authority and makes the value of
+governance hard to observe in downstream use.
+
+The contract will expose a deterministic governed retrieval view over the
+existing authority model:
+
+```text
+kernel + selected Profile + adopter-owned state + exact corpus snapshot
+  -> typed, owner-bound eligibility projection
+  -> eligible consumer manifest + separately authorized exclusion diagnostics
+  -> principal-scoped change/invalidation feed
+  -> disposable external lexical, vector, graph, or hybrid index
+  -> currentness gate over manifest/index/permission watermarks
+  -> retrieval result with an exact canonical citation envelope
+  -> user or Agent consumer
+```
+
+The eligibility projection is derived from existing owners. It does not add a
+universal `accepted` field, a retrieval-owned status ledger, or an implicit
+promotion path. Its policy ownership is explicit:
+
+- the kernel owns only protocol floors: exact snapshot binding, fail-closed
+  unsupported states, and the rule that retrieval artifacts have no governance
+  authority;
+- the selected Profile owns corpus-specific retrieval eligibility through a
+  typed, registered policy that maps existing authoritative facts to eligible,
+  ineligible, or diagnostic-only outcomes;
+- Coverage, property, evidence, source, claim, and invalidation owners continue
+  to own their facts; the retrieval policy may read but not reinterpret or
+  rewrite them;
+- the Host owns identity and permission evidence; the adapter may project that
+  evidence but may not invent a principal or access decision.
+
+If the selected Profile has no legal retrieval policy for an object class, or
+if a required owner fact is absent or ambiguous, eligibility is `unsupported`
+and fails closed. The adapter must not infer `accepted` from
+`authoring_status`, evidence maturity, recency, popularity, or a retrieval
+score.
+
+The contract must bind, at minimum:
+
+- corpus/workspace identity and the exact filesystem or repository snapshot;
+- current Standards and selected-Profile identity;
+- canonical object identity, path, exact span, and content hash;
+- the authoritative Coverage, property, currentness, and invalidation facts
+  that determine inclusion or exclusion;
+- registered source and claim references when the adopter's Profile provides
+  them;
+- Host Adapter conformance identity, tenant/workspace boundary, caller or
+  principal identity, resource-permission snapshot or epoch, observation time,
+  validity/expiry, and enforcement mode when permission-aware retrieval is
+  claimed;
+- an explicit unsupported result when current identity or permission evidence
+  cannot be proved; a pre-bounded trusted corpus may be used only when that
+  narrower boundary and its authorizing evidence are named, never as a claim
+  of user-specific permission enforcement;
+- adapter, manifest schema, chunker, embedding, graph, and reranker identities
+  for every layer actually used.
+
+The adapter will define four interoperable outputs:
+
+1. **Eligible consumer manifest** — only objects the typed policy and current
+   permission evidence admit, with exact byte/span identities, governing
+   inclusion reasons, snapshot identity, `manifest_id`, and permission epoch.
+2. **Principal-scoped change and invalidation feed** — deterministic additions,
+   replacements, removals, permission revocations, evidence invalidations, and
+   reindex scope between two manifests, with `from_manifest_id`,
+   `to_manifest_id`, and a monotonic feed watermark. A revocation may identify
+   a previously visible object so that a consumer can delete it; a never-visible
+   unauthorized object must not appear.
+3. **Citation and result envelope** — the returned passage plus canonical
+   object/span/hash, current snapshot and Standards/Profile identity, available
+   source/claim references, eligibility facts, retrieval trace, applied
+   `manifest_id`, index watermark, permission epoch, and currentness verdict.
+4. **Authorized exclusion diagnostics** — a separate reviewer/operator output,
+   never part of the ordinary consumer manifest. Object identity and paths are
+   shown only when current diagnostic permission evidence allows them;
+   otherwise the report exposes only safe aggregate reasons and counts.
+
+An external index must acknowledge the exact `manifest_id`, permission epoch,
+and feed watermark it has applied. A query-time currentness gate compares that
+acknowledgement with the current governed view, or performs an authoritative
+read-through validation of the cited bytes and permissions. A result may claim
+`current` only when one of those checks succeeds. A lagging, expired, or
+unverifiable consumer is explicitly stale or fails closed. The acknowledgement
+is consumption evidence, not a new knowledge or permission authority.
+
+External retrievers may use BM25, embeddings, graph traversal, reranking, or a
+combination. Those mechanisms are discovery and ranking inputs only:
+
+- retrieval score is not evidence maturity, factual confidence, or promotion
+  authority;
+- retrieval miss does not prove that knowledge is absent;
+- semantic similarity does not create a dependency edge or invalidation rule;
+- an index, cache, chunk store, or generated graph is disposable and
+  rebuildable, never canonical knowledge;
+- a query or answer may not change Coverage, Queue, Progress, Profile,
+  Standards, receipts, page state, or completion;
+- permission-aware retrieval may be claimed only when current Host evidence
+  binds the caller and source permissions; otherwise the adapter fails closed
+  or exposes only an explicitly authorized pre-bounded corpus without claiming
+  user-specific enforcement.
+
+Cambium will not build general-purpose connectors, OCR, document parsing, a
+vector database, relevance infrastructure, Chat UI, or a model gateway as part
+of this capability. A small reference adapter and conformance fixtures may use
+one lexical and one vector path solely to prove the contract. External systems
+remain responsible for ingestion mechanics, indexing, retrieval, ranking, and
+answer generation.
+
+This capability can progress in parallel with the Reference Execution Runtime.
+The Git-backed adapter supplies an exact repository tree when Git is the
+workspace, but Git is not mandatory: a plain-filesystem adopter must be able to
+bind an equivalent exact snapshot. Typed dependency runtime can later improve
+change-impact precision; v1 may consume only explicit registered relationships
+and invalidations and must not infer missing authority from similarity.
+
+This capability is complete when:
+
+- identical corpus, policy, Host-conformance, principal, permission-epoch, and
+  adapter inputs produce a byte-identical eligible consumer manifest and
+  principal-scoped change/invalidation feed;
+- every returned passage resolves to the exact current canonical object, span,
+  content hash, corpus snapshot, and governing eligibility facts;
+- fixtures classified ineligible by the typed Profile policy are absent from
+  the consumer manifest; never-visible unauthorized objects leak no identity,
+  path, span, or governing reason, while authorized diagnostics and revocation
+  tombstones reveal no more than their proven scope permits;
+- content, state, evidence, Standards, Profile, or permission changes produce
+  the required removal or reindex event, and a stale index watermark,
+  permission epoch, expired lease, or mismatched `manifest_id` prevents an old
+  result from claiming currentness;
+- at least one disposable reference index can be deleted and rebuilt from the
+  eligible manifest without losing authority, provenance, or exclusion
+  semantics;
+- a reference external-retriever fixture proves manifest ingestion,
+  incremental invalidation, index acknowledgement, permission revocation,
+  currentness rejection, citation round-trip, and fail-closed behavior;
+- the adapter exposes no shared-state write operation, and negative fixtures
+  prove that Cambium controlled writers and gates reject retrieval scores,
+  similarities, cached results, envelopes, and Agent answers as promotion,
+  dependency, state-transition, receipt, evidence-reuse, or completion
+  authority;
+- documentation and generated interface artifacts describe the same contract
+  and make unsupported identity, ACL, source, and retrieval capabilities
+  explicit.
 
 ### State-aware Operation Discovery
 
@@ -568,7 +728,7 @@ activation transport assurance
   -> cancellation, reassignment, and orchestration observability
 ```
 
-Two lines can progress in parallel:
+Three lines can progress in parallel:
 
 ```text
 explicit planning inputs
@@ -580,7 +740,18 @@ batch-level review evidence
   -> per-finding review rulings
   -> conditional fix writer
   -> close-gate consumption
+
+governed corpus eligibility projection
+  -> deterministic manifest and change/invalidation feed
+  -> citation and result envelope
+  -> disposable reference adapter
+  -> external-retriever conformance
 ```
+
+The governed retrieval line adds a downstream interface without changing the
+current execution-runtime critical path. Listing it as `Next` does not begin
+implementation or imply extra capacity; scheduling it requires an explicit
+priority and capacity decision against the other `Next` capabilities.
 
 Receipt-chain integrity, Contract Amendment expansion, and sealed-evidence
 hardening are independent control-plane improvements, but each must preserve

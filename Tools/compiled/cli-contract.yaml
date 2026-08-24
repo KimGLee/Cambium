@@ -66,7 +66,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:bb686f9c346caf8fc1c1d47367bd3423fad9ec0d73e5eab061c08f04f55e6ec9
+source_hash: sha256:01b5fe50f2ebd9785540d5b2788e34ea89c2a27721c885b3eb0c2f355c873134
 receipt_shape:
   base_fields:
     - receipt_id
@@ -1187,7 +1187,7 @@ tools:
     receipt_extensions_extraction: complete
   - tool: check_corpus_plan
     module: Tools/check_corpus_plan.py
-    source_hash: sha256:a50f52bed32af254286348809299e8966b45326e4698ebde7a5d6af37f61327f
+    source_hash: sha256:bb3d2c1643459fa785b7adccb929fdb36333cd8040e6c5a84f6baffafa030edd
     description: Validate explicit Corpus Planning artifacts
     arguments:
       - dest: root

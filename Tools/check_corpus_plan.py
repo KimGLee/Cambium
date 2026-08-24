@@ -2055,7 +2055,7 @@ def validate_corpus_plan(root, profile=None, *, authorized_profile_view=None,
         root, result, authorized_profile_view=profile_view,
         authorized_active_standards_view=
             authorized_active_standards_view)
-    result["runtime_result"] = runtime_result
+    result["runtime"] = runtime_result
     if runtime_result and not runtime_result.get("errors"):
         selected = ((runtime_result.get("progress") or {}).get("contract") or {}).get(
             "selected_profile_manifest")
