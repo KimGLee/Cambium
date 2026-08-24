@@ -28,19 +28,35 @@ import standards_state
 from profile_fixture import install_loadable_profile
 
 
-class RequiredQueueEndToEndTests(unittest.TestCase):
-    """Exercise the public control path, not internal state shortcuts."""
+# ---------------------------------------------------------------------------
+# Scenario templates.
+#
+# Most tests here walk one of a handful of identical prologues -- open B1,
+# or merge-and-apply it, or close both Required batches, or convert the
+# fixture to maintenance semantics and close everything -- and then assert
+# one property of the result.  Each distinct prologue is walked exactly once
+# per process into a template tree below.  Tests that only read the walked
+# state share the template directly; tests that mutate any byte start from a
+# private `shutil.copytree` copy of it.  The tools take the repository root
+# from argv, so a copied root behaves identically; walk outputs the tests
+# assert on (resume envelopes, refusal exits, receipt ids) ride along as
+# recorded artifacts.
+# ---------------------------------------------------------------------------
 
-    def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
-        self.root = Path(self.temporary.name) / "repo"
+
+class RequiredQueueFixture:
+    """The fixture language every scenario class below shares.
+
+    This is the original test class's helper set, unchanged; only the
+    per-test tree construction moved out, into the template registry.
+    """
+
+    def build_repository_fixture(self):
+        """Lay down the fixture tree the original per-test setUp built."""
         shutil.copytree(FIXTURE, self.root)
         install_loadable_profile(self.root)
         for name in ("deltas", "receipts", "reports"):
             (self.root / ".cambium" / name).mkdir(exist_ok=True)
-
-    def tearDown(self):
-        self.temporary.cleanup()
 
     def run_tool(self, name, *arguments):
         return subprocess.run(
@@ -49,10 +65,17 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
             check=False,
         )
 
-    def assert_resume_envelope(self, completed, next_action):
-        """Assert the one-command restart contract, not only its action token."""
+
+    def assert_resume_envelope(self, completed, next_action, root=None):
+        """Assert the one-command restart contract, not only its action token.
+
+        ``root`` names the tree the resume call actually read: this test's
+        own tree by default, or a frozen template root when the call was
+        recorded during a scenario walk.
+        """
         output = completed.stdout
-        result = check_queue.validate_runtime(self.root)
+        result = check_queue.validate_runtime(
+            self.root if root is None else root)
         for expected in (
                 "task_id=fixture-task",
                 'objective="Complete fixture Required Queue batches with durable evidence."',
@@ -679,23 +702,228 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
             "--delta-apply-receipt", delta_apply_receipt,
         )
 
+
+class _ScenarioWalker(RequiredQueueFixture, unittest.TestCase):
+    """Assertion-capable driver that walks a template scenario once.
+
+    It defines no test methods, so discovery collects nothing from it; it
+    exists so a walk can run the same helpers, with the same assertions,
+    that each test ran back when it still walked a private tree.
+    """
+
+    def _walk(self):
+        raise NotImplementedError("never scheduled as a test")
+
+    @classmethod
+    def at(cls, root):
+        walker = cls("_walk")
+        walker.root = root
+        return walker
+
+
+def _build_base(walker, inherited):
+    walker.build_repository_fixture()
+
+
+def _build_b1_open(walker, inherited):
+    ready = walker.ready_receipt("B1")
+    walker.transition(
+        "B1", "open", "--gate-receipt", ready,
+        "--at", "2026-08-04T01:00:00Z",
+    )
+    return {"b1_ready_receipt": ready}
+
+
+def _build_b1_applied(walker, inherited):
+    # The resume probe is recorded before any batch work.  --resume-status
+    # reads and reports and writes nothing, so the tree this walk goes on to
+    # build is byte-identical to one that never took the probe.
+    resume_initial = walker.run_tool("check_queue.py", "--resume-status")
+    delta_receipt, consistency_receipt, close_gate = \
+        walker.merge_and_apply("B1", "Topics/A.md")
+    return {
+        "resume_initial": resume_initial,
+        "b1_delta_apply_receipt": delta_receipt,
+        "b1_queue_consistency_receipt": consistency_receipt,
+        "b1_close_gate_receipt": close_gate,
+    }
+
+
+def _build_closed_b1(walker, inherited):
+    walker.transition(
+        "B1", "closed",
+        "--gate-receipt", inherited["b1_queue_consistency_receipt"],
+        "--close-gate-receipt", inherited["b1_close_gate_receipt"],
+        "--delta-apply-receipt", inherited["b1_delta_apply_receipt"],
+    )
+    return {"resume_after_b1":
+            walker.run_tool("check_queue.py", "--resume-status")}
+
+
+def _build_closed_both(walker, inherited):
+    walker.merge_and_close("B2", "Topics/B.md")
+
+
+def _build_maintenance_base(walker, inherited):
+    walker.use_maintenance_completion()
+    # Three refusal probes, recorded as walk artifacts.  Each refuses before
+    # writing -- no receipts flag, no state change -- so the tree the
+    # maintenance-closed walk inherits is byte-identical to one that never
+    # ran them; the probe for that claim is every downstream close and gate
+    # in this chain still passing.
+    wrong_gate = walker.run_tool("check_queue.py", "--require-complete")
+    candidate = walker.run_tool(
+        "update_task.py", "--transition", "completion-candidate",
+        "--queue-check-receipt", "not-a-gate",
+        "--checkpoint-summary", "must not enter build candidate",
+        "--expected-progress-sha256",
+        kblib.sha256_file(walker.root / check_queue.PROGRESS_PATH),
+        "--expected-queue-sha256",
+        kblib.sha256_file(walker.root / check_queue.QUEUE_PATH),
+        "--actor-role", "integrator", "--apply",
+    )
+    early = walker.run_tool(
+        "check_queue.py", "--require-maintenance-complete",
+        "--budget-manifest-receipt", "missing-budget",
+        "--ledger-advance-receipt", "missing-ledger",
+        "--watermark-advance-receipt", "missing-watermark",
+    )
+    return {
+        "maintenance_wrong_gate": wrong_gate,
+        "maintenance_candidate_refusal": candidate,
+        "maintenance_early_gate": early,
+    }
+
+
+def _build_maintenance_closed(walker, inherited):
+    walker.merge_and_close("B1", "Topics/A.md")
+    walker.merge_and_close("B2", "Topics/B.md")
+    budget_id, ledger_id, watermark_id = walker.write_maintenance_evidence()
+    return {
+        "budget_receipt": budget_id,
+        "ledger_receipt": ledger_id,
+        "watermark_receipt": watermark_id,
+    }
+
+
+_TEMPLATE_PARENTS = {
+    "base": None,
+    "b1-open": "base",
+    "b1-applied": "base",
+    "closed-b1": "b1-applied",
+    "closed-both": "closed-b1",
+    "maintenance-base": "base",
+    "maintenance-closed": "maintenance-base",
+}
+_TEMPLATE_BUILDERS = {
+    "base": _build_base,
+    "b1-open": _build_b1_open,
+    "b1-applied": _build_b1_applied,
+    "closed-b1": _build_closed_b1,
+    "closed-both": _build_closed_both,
+    "maintenance-base": _build_maintenance_base,
+    "maintenance-closed": _build_maintenance_closed,
+}
+# name -> (TemporaryDirectory holder, template root, artifacts).  The holder
+# reference keeps each template alive for the whole process; TemporaryDirectory
+# finalizers remove the trees at interpreter exit.
+_TEMPLATES = {}
+
+
+def _template(name):
+    """Return (root, artifacts) for ``name``, walking it on first use."""
+    if name not in _TEMPLATES:
+        holder = tempfile.TemporaryDirectory()
+        root = Path(holder.name) / "repo"
+        artifacts = {}
+        parent = _TEMPLATE_PARENTS[name]
+        if parent is not None:
+            parent_root, parent_artifacts = _template(parent)
+            artifacts.update(parent_artifacts)
+            shutil.copytree(parent_root, root)
+        walker = _ScenarioWalker.at(root)
+        artifacts.update(_TEMPLATE_BUILDERS[name](walker, artifacts) or {})
+        _TEMPLATES[name] = (holder, root, artifacts)
+    _holder, root, artifacts = _TEMPLATES[name]
+    return root, artifacts
+
+
+class _TemplateBackedCase(RequiredQueueFixture, unittest.TestCase):
+    """A test class whose tree starts at a named scenario template."""
+
+    TEMPLATE = None
+    # Only a class whose every test is read-only may share the template tree
+    # itself; everything else gets a private copy per test.
+    SHARE_TEMPLATE = False
+
+    def setUp(self):
+        template_root, self.scenario = _template(self.TEMPLATE)
+        if self.SHARE_TEMPLATE:
+            self.temporary = None
+            self.root = template_root
+        else:
+            self.temporary = tempfile.TemporaryDirectory()
+            self.root = Path(self.temporary.name) / "repo"
+            shutil.copytree(template_root, self.root)
+
+    def tearDown(self):
+        if self.temporary is not None:
+            self.temporary.cleanup()
+
+    def maintenance_evidence_ids(self):
+        """The receipt ids the maintenance-closed walk recorded."""
+        return (self.scenario["budget_receipt"],
+                self.scenario["ledger_receipt"],
+                self.scenario["watermark_receipt"])
+
+
+class RequiredQueueEndToEndTests(RequiredQueueFixture, unittest.TestCase):
+    """Exercise the public control path, not internal state shortcuts."""
+
+    # Private walks: every test here either owns each transition it makes
+    # from the plain fixture tree -- a held writer lock, blocked and
+    # cancelled task lifecycles, the terminal-proof environment installed
+    # before any close -- or, for the two-batch lifecycle, reads the
+    # recorded walk and finishes from a private copy of its tree.
+    # test_queue_proof constructs this class by test name for its own
+    # prologue, so setUp must keep building a standalone private tree.
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name) / "repo"
+        shutil.copytree(_template("base")[0], self.root)
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def scenario_copy(self, name):
+        """Re-point this test at a private copy of a walked scenario tree."""
+        template_root, artifacts = _template(name)
+        self.root = Path(self.temporary.name) / ("repo-" + name)
+        shutil.copytree(template_root, self.root)
+        return artifacts
+
     def test_two_batch_lifecycle_is_resumable_and_completes(self):
-        initial_resume = self.run_tool("check_queue.py", "--resume-status")
+        # The two-batch walk itself ran once, into the "closed-both"
+        # template; the resume envelopes recorded between its stages are
+        # asserted against the frozen trees those calls actually read.
+        scenario = self.scenario_copy("closed-both")
+        initial_resume = scenario["resume_initial"]
         self.assertEqual(2, initial_resume.returncode, initial_resume.stdout)
         self.assertIn("task_id=fixture-task", initial_resume.stdout)
         self.assertIn("batches.queued=B1,B2", initial_resume.stdout)
         self.assert_resume_envelope(
-            initial_resume, "activate-ready-batch:B1")
+            initial_resume, "activate-ready-batch:B1",
+            root=_template("base")[0])
 
-        self.merge_and_close("B1", "Topics/A.md")
-        after_first = self.run_tool("check_queue.py", "--resume-status")
+        after_first = scenario["resume_after_b1"]
         self.assertEqual(2, after_first.returncode, after_first.stdout)
         self.assertIn("batches.closed=B1", after_first.stdout)
         self.assertIn("batches.queued=B2", after_first.stdout)
         self.assert_resume_envelope(
-            after_first, "activate-ready-batch:B2")
+            after_first, "activate-ready-batch:B2",
+            root=_template("closed-b1")[0])
 
-        self.merge_and_close("B2", "Topics/B.md")
         complete = self.run_tool(
             "check_queue.py", "--require-complete", "--receipts",
             ".cambium/receipts/queue-complete.jsonl",
@@ -728,6 +956,7 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         self.assertIn("Remaining required work units: `0`", report)
         self.assertIn("`B1`: `closed`", report)
         self.assertIn("`B2`: `closed`", report)
+
 
     def test_live_writer_lock_blocks_silent_restart(self):
         queue_sha = kblib.sha256_file(self.root / check_queue.QUEUE_PATH)
@@ -764,120 +993,6 @@ class RequiredQueueEndToEndTests(unittest.TestCase):
         )
         self.assert_resume_envelope(resumed, "resolve-blocked-task")
 
-    def test_interrupted_close_exposes_all_planned_state_and_repairs(self):
-        delta_receipt, consistency_receipt, close_gate = \
-            self.merge_and_apply("B1", "Topics/A.md")
-        queue = self.queue()
-        arguments = [
-            str(self.root), "--id", "B1", "--transition", "closed",
-            "--gate-receipt", consistency_receipt,
-            "--close-gate-receipt", close_gate,
-            "--delta-apply-receipt", delta_receipt,
-            "--expected-state-revision", str(queue["state_revision"]),
-            "--expected-sha256",
-            kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
-            "--actor-role", "integrator", "--at",
-            "2099-01-01T03:00:00Z", "--apply",
-        ]
-        program = """
-import os
-import sys
-sys.path.insert(0, sys.argv[1])
-import update_queue
-
-def crash_before_receipt(*args, **kwargs):
-    os._exit(23)
-
-update_queue.kblib.write_receipts = crash_before_receipt
-raise SystemExit(update_queue.main(sys.argv[2:]))
-"""
-        child = subprocess.run(
-            [sys.executable, "-c", program, str(TOOLS), *arguments],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(23, child.returncode, child.stdout)
-
-        resumed = self.run_tool("check_queue.py", "--resume-status")
-        self.assertEqual(1, resumed.returncode, resumed.stdout)
-        self.assertIn("task_state=active", resumed.stdout)
-        self.assertIn("batches.closed=B1", resumed.stdout)
-        self.assertIn("state.coverage phase=planned-after", resumed.stdout)
-        self.assertIn("state.queue phase=planned-after", resumed.stdout)
-        self.assertIn("state.progress phase=planned-after", resumed.stdout)
-        self.assertIn('"status": "absent"', resumed.stdout)
-        self.assert_resume_envelope(resumed,
-                                    "reconcile-interrupted-write")
-
-    def test_interrupted_completion_transition_is_not_mistaken_for_complete(self):
-        self.merge_and_close("B1", "Topics/A.md")
-        self.merge_and_close("B2", "Topics/B.md")
-        gate_path = ".cambium/receipts/queue-complete-crash.jsonl"
-        gate = self.run_tool(
-            "check_queue.py", "--require-complete", "--receipts", gate_path)
-        self.assertEqual(0, gate.returncode, gate.stdout)
-        gate_id = json.loads((self.root / gate_path).read_text(
-            encoding="utf-8").splitlines()[-1])["receipt_id"]
-        arguments = [
-            str(self.root), "--transition", "completion-candidate",
-            "--queue-check-receipt", gate_id,
-            "--checkpoint-summary", "all Required work closed",
-            "--expected-progress-sha256",
-            kblib.sha256_file(self.root / check_queue.PROGRESS_PATH),
-            "--expected-queue-sha256",
-            kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
-            "--actor-role", "integrator", "--at",
-            "2099-01-01T04:00:00Z", "--apply",
-        ]
-        program = """
-import os
-import sys
-sys.path.insert(0, sys.argv[1])
-import update_task
-
-def crash_before_receipt(*args, **kwargs):
-    os._exit(23)
-
-update_task.kblib.write_receipts = crash_before_receipt
-raise SystemExit(update_task.main(sys.argv[2:]))
-"""
-        child = subprocess.run(
-            [sys.executable, "-c", program, str(TOOLS), *arguments],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            check=False,
-        )
-        self.assertEqual(23, child.returncode, child.stdout)
-
-        resumed = self.run_tool("check_queue.py", "--resume-status")
-        self.assertEqual(1, resumed.returncode, resumed.stdout)
-        self.assertIn("task_state=completion-candidate", resumed.stdout)
-        self.assertIn("state.coverage phase=before", resumed.stdout)
-        self.assertIn("state.queue phase=before", resumed.stdout)
-        self.assertIn("state.progress phase=planned-after", resumed.stdout)
-        self.assertIn('"status": "absent"', resumed.stdout)
-        self.assert_resume_envelope(resumed,
-                                    "reconcile-interrupted-write")
-
-    def test_cancelled_task_archives_incomplete_batch_history_without_resume(self):
-        ready = self.ready_receipt("B1")
-        self.transition(
-            "B1", "open", "--gate-receipt", ready,
-            "--at", "2026-08-04T01:00:00Z",
-        )
-        self.task_transition(
-            "cancelled", "--checkpoint-summary",
-            "user terminated the current Task Contract",
-            "--at", "2026-08-04T02:00:00Z",
-        )
-        resumed = self.run_tool("check_queue.py", "--resume-status")
-        self.assertEqual(0, resumed.returncode, resumed.stdout)
-        self.assertIn("task_state=cancelled", resumed.stdout)
-        self.assertIn("batches.open=B1", resumed.stdout)
-        self.assertIn("next_action=archive-terminal-runtime", resumed.stdout)
-        self.assertIn("preserve any unfinished batch", resumed.stdout)
-        self.assertNotIn("in-flight batch(es) require resume", resumed.stdout)
-        self.assertNotIn("resume existing task", resumed.stdout)
-        self.assert_resume_envelope(resumed, "archive-terminal-runtime")
 
     def test_require_ready_respects_task_lifecycle(self):
         self.task_transition(
@@ -899,27 +1014,6 @@ raise SystemExit(update_task.main(sys.argv[2:]))
         self.assertEqual(1, rejected.returncode, rejected.stdout)
         self.assertIn("task_state=cancelled is terminal", rejected.stdout)
 
-    def test_first_open_persists_restartable_task_activation_binding(self):
-        ready = self.ready_receipt("B1")
-        self.transition(
-            "B1", "open", "--gate-receipt", ready,
-            "--at", "2026-08-04T01:00:00Z",
-        )
-        result = check_queue.validate_runtime(self.root)
-        self.assertEqual([], result["errors"])
-        task_receipt_id = result["progress"]["task_transition_receipts"][0]
-        task_receipt = result["receipt_catalog"][task_receipt_id][1]
-        item = result["items_by_id"]["B1"]
-        self.assertEqual("B1", task_receipt["first_open_batch_id"])
-        self.assertEqual(
-            item["transition_receipts"][0],
-            task_receipt["first_open_transition_receipt"],
-        )
-        self.assertEqual(1, task_receipt["queue_state_revision"])
-        self.assertEqual(
-            check_queue.contract_sha256(result["progress"]),
-            task_receipt["contract_sha256"],
-        )
 
     def test_noncomplete_maintenance_task_cannot_claim_passed_completion(self):
         self.use_maintenance_completion()
@@ -945,6 +1039,7 @@ raise SystemExit(update_task.main(sys.argv[2:]))
             "maintenance_completion.completion_gate_receipt=null",
             errors,
         )
+
 
     def test_real_terminal_proof_receipt_completes_task(self):
         self.install_terminal_proof_environment()
@@ -1106,37 +1201,189 @@ raise SystemExit(update_task.main(sys.argv[2:]))
                             for error in missing_proof["errors"]),
                         missing_proof["errors"])
 
-    def test_maintenance_gate_is_resumable_and_completes_without_terminal_proof(self):
-        self.use_maintenance_completion()
-        wrong_gate = self.run_tool("check_queue.py", "--require-complete")
-        self.assertEqual(1, wrong_gate.returncode, wrong_gate.stdout)
-        self.assertIn("maintenance tasks must use --require-maintenance-complete",
-                      wrong_gate.stdout)
-        candidate = self.run_tool(
-            "update_task.py", "--transition", "completion-candidate",
-            "--queue-check-receipt", "not-a-gate",
-            "--checkpoint-summary", "must not enter build candidate",
+
+class OpenedBatchBindingTests(_TemplateBackedCase):
+    # Shared scenario: B1 admitted ready and opened once, in the "b1-open"
+    # template.  The one test here reads the activation binding the open
+    # transition persisted and writes nothing, so the class shares the
+    # template tree itself.
+    TEMPLATE = "b1-open"
+    SHARE_TEMPLATE = True
+
+    def test_first_open_persists_restartable_task_activation_binding(self):
+        result = check_queue.validate_runtime(self.root)
+        self.assertEqual([], result["errors"])
+        task_receipt_id = result["progress"]["task_transition_receipts"][0]
+        task_receipt = result["receipt_catalog"][task_receipt_id][1]
+        item = result["items_by_id"]["B1"]
+        self.assertEqual("B1", task_receipt["first_open_batch_id"])
+        self.assertEqual(
+            item["transition_receipts"][0],
+            task_receipt["first_open_transition_receipt"],
+        )
+        self.assertEqual(1, task_receipt["queue_state_revision"])
+        self.assertEqual(
+            check_queue.contract_sha256(result["progress"]),
+            task_receipt["contract_sha256"],
+        )
+
+
+class OpenedBatchCancellationTests(_TemplateBackedCase):
+    # Shared scenario: the same "b1-open" walk.  Cancelling the task
+    # mutates queue and progress state, so the test starts from a private
+    # copy rather than the template tree.
+    TEMPLATE = "b1-open"
+
+    def test_cancelled_task_archives_incomplete_batch_history_without_resume(self):
+        self.task_transition(
+            "cancelled", "--checkpoint-summary",
+            "user terminated the current Task Contract",
+            "--at", "2026-08-04T02:00:00Z",
+        )
+        resumed = self.run_tool("check_queue.py", "--resume-status")
+        self.assertEqual(0, resumed.returncode, resumed.stdout)
+        self.assertIn("task_state=cancelled", resumed.stdout)
+        self.assertIn("batches.open=B1", resumed.stdout)
+        self.assertIn("next_action=archive-terminal-runtime", resumed.stdout)
+        self.assertIn("preserve any unfinished batch", resumed.stdout)
+        self.assertNotIn("in-flight batch(es) require resume", resumed.stdout)
+        self.assertNotIn("resume existing task", resumed.stdout)
+        self.assert_resume_envelope(resumed, "archive-terminal-runtime")
+
+
+class InterruptedCloseTests(_TemplateBackedCase):
+    # Shared scenario: B1 merged and applied, one transition short of
+    # closed, in the "b1-applied" template.  The subject here is the write
+    # ceremony itself -- a writer crashed mid-close -- so the crash and its
+    # aftermath stay a private walk on a private copy; only the un-poisoned
+    # prologue is shared.
+    TEMPLATE = "b1-applied"
+
+    def test_interrupted_close_exposes_all_planned_state_and_repairs(self):
+        delta_receipt = self.scenario["b1_delta_apply_receipt"]
+        consistency_receipt = self.scenario["b1_queue_consistency_receipt"]
+        close_gate = self.scenario["b1_close_gate_receipt"]
+        queue = self.queue()
+        arguments = [
+            str(self.root), "--id", "B1", "--transition", "closed",
+            "--gate-receipt", consistency_receipt,
+            "--close-gate-receipt", close_gate,
+            "--delta-apply-receipt", delta_receipt,
+            "--expected-state-revision", str(queue["state_revision"]),
+            "--expected-sha256",
+            kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
+            "--actor-role", "integrator", "--at",
+            "2099-01-01T03:00:00Z", "--apply",
+        ]
+        program = """
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import update_queue
+
+def crash_before_receipt(*args, **kwargs):
+    os._exit(23)
+
+update_queue.kblib.write_receipts = crash_before_receipt
+raise SystemExit(update_queue.main(sys.argv[2:]))
+"""
+        child = subprocess.run(
+            [sys.executable, "-c", program, str(TOOLS), *arguments],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
+        )
+        self.assertEqual(23, child.returncode, child.stdout)
+
+        resumed = self.run_tool("check_queue.py", "--resume-status")
+        self.assertEqual(1, resumed.returncode, resumed.stdout)
+        self.assertIn("task_state=active", resumed.stdout)
+        self.assertIn("batches.closed=B1", resumed.stdout)
+        self.assertIn("state.coverage phase=planned-after", resumed.stdout)
+        self.assertIn("state.queue phase=planned-after", resumed.stdout)
+        self.assertIn("state.progress phase=planned-after", resumed.stdout)
+        self.assertIn('"status": "absent"', resumed.stdout)
+        self.assert_resume_envelope(resumed,
+                                    "reconcile-interrupted-write")
+
+
+class CompletedQueueInterruptionTests(_TemplateBackedCase):
+    # Shared scenario: both Required batches closed, in the "closed-both"
+    # template.  The completion transition is then crashed mid-write, so
+    # the test injures a private copy, never the template.
+    TEMPLATE = "closed-both"
+
+    def test_interrupted_completion_transition_is_not_mistaken_for_complete(self):
+        gate_path = ".cambium/receipts/queue-complete-crash.jsonl"
+        gate = self.run_tool(
+            "check_queue.py", "--require-complete", "--receipts", gate_path)
+        self.assertEqual(0, gate.returncode, gate.stdout)
+        gate_id = json.loads((self.root / gate_path).read_text(
+            encoding="utf-8").splitlines()[-1])["receipt_id"]
+        arguments = [
+            str(self.root), "--transition", "completion-candidate",
+            "--queue-check-receipt", gate_id,
+            "--checkpoint-summary", "all Required work closed",
             "--expected-progress-sha256",
             kblib.sha256_file(self.root / check_queue.PROGRESS_PATH),
             "--expected-queue-sha256",
             kblib.sha256_file(self.root / check_queue.QUEUE_PATH),
-            "--actor-role", "integrator", "--apply",
+            "--actor-role", "integrator", "--at",
+            "2099-01-01T04:00:00Z", "--apply",
+        ]
+        program = """
+import os
+import sys
+sys.path.insert(0, sys.argv[1])
+import update_task
+
+def crash_before_receipt(*args, **kwargs):
+    os._exit(23)
+
+update_task.kblib.write_receipts = crash_before_receipt
+raise SystemExit(update_task.main(sys.argv[2:]))
+"""
+        child = subprocess.run(
+            [sys.executable, "-c", program, str(TOOLS), *arguments],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            check=False,
         )
+        self.assertEqual(23, child.returncode, child.stdout)
+
+        resumed = self.run_tool("check_queue.py", "--resume-status")
+        self.assertEqual(1, resumed.returncode, resumed.stdout)
+        self.assertIn("task_state=completion-candidate", resumed.stdout)
+        self.assertIn("state.coverage phase=before", resumed.stdout)
+        self.assertIn("state.queue phase=before", resumed.stdout)
+        self.assertIn("state.progress phase=planned-after", resumed.stdout)
+        self.assertIn('"status": "absent"', resumed.stdout)
+        self.assert_resume_envelope(resumed,
+                                    "reconcile-interrupted-write")
+
+
+class MaintenanceCompletionTests(_TemplateBackedCase):
+    # Shared scenario: the fixture converted to maintenance completion
+    # semantics, both batches closed, and the three completion evidence
+    # receipts written -- the "maintenance-closed" template, with the three
+    # pre-close refusal probes riding along as recorded artifacts.  Every
+    # test here tampers with budget, watermark, or evidence bytes before
+    # running the gate, or writes gate receipts of its own, so each starts
+    # from a private copy.
+    TEMPLATE = "maintenance-closed"
+
+    def test_maintenance_gate_is_resumable_and_completes_without_terminal_proof(self):
+        wrong_gate = self.scenario["maintenance_wrong_gate"]
+        self.assertEqual(1, wrong_gate.returncode, wrong_gate.stdout)
+        self.assertIn("maintenance tasks must use --require-maintenance-complete",
+                      wrong_gate.stdout)
+        candidate = self.scenario["maintenance_candidate_refusal"]
         self.assertEqual(1, candidate.returncode, candidate.stdout)
         self.assertIn("maintenance tasks may not enter completion-candidate",
                       candidate.stdout)
-        early = self.run_tool(
-            "check_queue.py", "--require-maintenance-complete",
-            "--budget-manifest-receipt", "missing-budget",
-            "--ledger-advance-receipt", "missing-ledger",
-            "--watermark-advance-receipt", "missing-watermark",
-        )
+        early = self.scenario["maintenance_early_gate"]
         self.assertEqual(1, early.returncode, early.stdout)
         self.assertIn("zero remaining Required work", early.stdout)
 
-        self.merge_and_close("B1", "Topics/A.md")
-        self.merge_and_close("B2", "Topics/B.md")
-        budget_id, ledger_id, watermark_id = self.write_maintenance_evidence()
+        budget_id, ledger_id, watermark_id = self.maintenance_evidence_ids()
         gate_register = ".cambium/receipts/maintenance-gate.jsonl"
         gate = self.run_tool(
             "check_queue.py", "--require-maintenance-complete",
@@ -1235,11 +1482,9 @@ raise SystemExit(update_task.main(sys.argv[2:]))
         self.assert_resume_envelope(
             terminal_resume, "archive-terminal-runtime")
 
+
     def test_maintenance_gate_rejects_tampered_budget_manifest(self):
-        self.use_maintenance_completion()
-        self.merge_and_close("B1", "Topics/A.md")
-        self.merge_and_close("B2", "Topics/B.md")
-        budget_id, ledger_id, watermark_id = self.write_maintenance_evidence()
+        budget_id, ledger_id, watermark_id = self.maintenance_evidence_ids()
         budget_path = self.root / ".cambium/receipts/maintenance-budget.yaml"
         budget_path.write_text(
             budget_path.read_text(encoding="utf-8").replace(
@@ -1256,11 +1501,9 @@ raise SystemExit(update_task.main(sys.argv[2:]))
         self.assertIn("does not bind current budget_manifest_path bytes",
                       gate.stdout)
 
+
     def test_maintenance_gate_rejects_watermark_batch_outside_manifest(self):
-        self.use_maintenance_completion()
-        self.merge_and_close("B1", "Topics/A.md")
-        self.merge_and_close("B2", "Topics/B.md")
-        budget_id, ledger_id, watermark_id = self.write_maintenance_evidence()
+        budget_id, ledger_id, watermark_id = self.maintenance_evidence_ids()
 
         watermark_path = self.root / "Tools/state/watermark.yaml"
         watermark = kblib.load_yaml_file(watermark_path)
@@ -1294,11 +1537,9 @@ raise SystemExit(update_task.main(sys.argv[2:]))
             gate.stdout,
         )
 
+
     def test_maintenance_gate_rejects_fake_deferred_count_after_rebinding(self):
-        self.use_maintenance_completion()
-        self.merge_and_close("B1", "Topics/A.md")
-        self.merge_and_close("B2", "Topics/B.md")
-        budget_id, ledger_id, watermark_id = self.write_maintenance_evidence()
+        budget_id, ledger_id, watermark_id = self.maintenance_evidence_ids()
         budget_path = self.root / ".cambium/receipts/maintenance-budget.yaml"
         budget = kblib.load_yaml_file(budget_path)
         budget["deferred_count"] = 999
@@ -1316,11 +1557,9 @@ raise SystemExit(update_task.main(sys.argv[2:]))
             gate.stdout,
         )
 
+
     def test_maintenance_gate_rejects_schema_v1_after_rebinding(self):
-        self.use_maintenance_completion()
-        self.merge_and_close("B1", "Topics/A.md")
-        self.merge_and_close("B2", "Topics/B.md")
-        budget_id, ledger_id, watermark_id = self.write_maintenance_evidence()
+        budget_id, ledger_id, watermark_id = self.maintenance_evidence_ids()
         budget_path = self.root / ".cambium/receipts/maintenance-budget.yaml"
         budget = kblib.load_yaml_file(budget_path)
         budget["schema_version"] = 1
@@ -1338,11 +1577,9 @@ raise SystemExit(update_task.main(sys.argv[2:]))
             gate.stdout,
         )
 
+
     def test_maintenance_gate_enforces_page_and_hour_budget(self):
-        self.use_maintenance_completion()
-        self.merge_and_close("B1", "Topics/A.md")
-        self.merge_and_close("B2", "Topics/B.md")
-        budget_id, ledger_id, watermark_id = self.write_maintenance_evidence()
+        budget_id, ledger_id, watermark_id = self.maintenance_evidence_ids()
         budget_path = self.root / ".cambium/receipts/maintenance-budget.yaml"
 
         budget = kblib.load_yaml_file(budget_path)
@@ -1406,11 +1643,9 @@ raise SystemExit(update_task.main(sys.argv[2:]))
         self.assertEqual(
             0, hours_within_budget.returncode, hours_within_budget.stdout)
 
+
     def test_resume_ignores_stale_maintenance_gate_after_evidence_changes(self):
-        self.use_maintenance_completion()
-        self.merge_and_close("B1", "Topics/A.md")
-        self.merge_and_close("B2", "Topics/B.md")
-        budget_id, ledger_id, watermark_id = self.write_maintenance_evidence()
+        budget_id, ledger_id, watermark_id = self.maintenance_evidence_ids()
         gate_register = ".cambium/receipts/maintenance-gate.jsonl"
         gate = self.run_tool(
             "check_queue.py", "--require-maintenance-complete",

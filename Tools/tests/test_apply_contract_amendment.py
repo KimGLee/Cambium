@@ -415,5 +415,22 @@ class ContractAmendmentTests(TaskPlanTransactionTests):
 
 
 
+
+def load_tests(loader, standard_tests, pattern):
+    """Collect the amendment tests without replaying the task-plan suite.
+
+    ``ContractAmendmentTests`` inherits ``TaskPlanTransactionTests`` for its
+    fixture and tool runner.  Default discovery also collects every inherited
+    ``test_*`` method, so that suite ran a second time here on top of its
+    canonical run in ``test_apply_task_plan.py``.  Only the methods this class
+    declares are amendment coverage.
+    """
+    suite = loader.suiteClass()
+    names = [name for name in loader.getTestCaseNames(ContractAmendmentTests)
+             if name in ContractAmendmentTests.__dict__]
+    suite.addTests(ContractAmendmentTests(name) for name in names)
+    return suite
+
+
 if __name__ == "__main__":
     unittest.main()
