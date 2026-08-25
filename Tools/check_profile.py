@@ -110,16 +110,20 @@ _LIVE_RUNTIME_RECEIPT_IDENTITY = object()
 class ProfileLoadEvaluation:
     """One complete, in-memory evaluation of the ``profile-load`` Gate.
 
-    ``contract`` is exposed only when the same invocation emitted the passing
-    Gate summary.  Consumers therefore cannot accidentally authorize a partial
-    typed IR returned alongside fail/candidate findings.  ``findings`` contains
-    only non-pass receipts; the authoritative pass receipt, when present, is
-    available separately as ``summary_receipt``.
+    ``contract`` and ``metadata_execution_contract`` are exposed only when the
+    same invocation emitted the passing Gate summary.  Consumers therefore
+    cannot accidentally authorize a typed Profile from one observation beside
+    metadata rules from another, or consume either object from a
+    fail/candidate evaluation.  ``findings`` contains only non-pass receipts;
+    the authoritative pass receipt, when present, is available separately as
+    ``summary_receipt``.
     """
 
     exit_code: int
     findings: Tuple[dict, ...]
     contract: Optional[profile_contract.ProfileContract]
+    metadata_execution_contract: Optional[
+        metadata_execution_contract.CompiledMetadataExecutionContract]
     profile_id: Optional[str]
     profile_snapshot_sha256: Optional[str]
     profile_contract_fingerprint: Optional[str]
@@ -134,6 +138,7 @@ class ProfileLoadEvaluation:
         return (
             self.exit_code == 0 and
             self.contract is not None and
+            self.metadata_execution_contract is not None and
             self.profile_id is not None and
             self.summary_receipt is not None and
             self.profile_snapshot_sha256 is not None and
@@ -893,6 +898,7 @@ def main(argv=None, *, _evaluation_out=None,
     receipts = []
     seq = 0
     contract = None
+    compiled_metadata = None
     profile_id = None
     profile_snapshot_sha256 = None
     profile_snapshot = None
@@ -943,10 +949,19 @@ def main(argv=None, *, _evaluation_out=None,
                     contract.authorized and summary is not None)
                 else None
             )
+            authorized_metadata = (
+                compiled_metadata
+                if (authorized_contract is not None and isinstance(
+                    compiled_metadata,
+                    metadata_execution_contract.
+                        CompiledMetadataExecutionContract))
+                else None
+            )
             _evaluation_out.update({
                 "exit_code": exit_code,
                 "receipts": tuple(receipts),
                 "contract": authorized_contract,
+                "metadata_execution_contract": authorized_metadata,
                 "profile_id": (
                     profile_id if authorized_contract is not None else None
                 ),
@@ -1480,6 +1495,8 @@ def main(argv=None, *, _evaluation_out=None,
         summary["profile_snapshot_sha256"] = profile_snapshot_sha256
         summary["profile_contract_fingerprint"] = contract.fingerprint
         summary["profile_load_inputs_sha256"] = profile_load_inputs_sha256
+        summary["metadata_execution_contract_fingerprint"] = \
+            compiled_metadata.contract_fingerprint
 
     # ---- human-readable summary ----
     say("check_profile: %s (profile_id=%s)"
@@ -1550,6 +1567,8 @@ def evaluate_profile_load(profile_dir, *, root, interface=None, defaults=None,
             if receipt.get("result") != "pass"
         ),
         contract=evaluation.get("contract"),
+        metadata_execution_contract=evaluation.get(
+            "metadata_execution_contract"),
         profile_id=evaluation.get("profile_id"),
         profile_snapshot_sha256=evaluation.get("profile_snapshot_sha256"),
         profile_contract_fingerprint=evaluation.get(

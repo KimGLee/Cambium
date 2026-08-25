@@ -147,8 +147,19 @@ def authorized_profile_projection_rules(root, profile_view):
     if extension_gates is None:
         raise ValueError(
             "the authorized Profile has no typed extension-gate contract")
-    metadata_contract = \
-        metadata_execution_contract.load_metadata_execution_contract(root)
+    metadata_contract = profile_view.get("_metadata_execution_contract") \
+        if isinstance(profile_view, dict) else None
+    if not isinstance(
+            metadata_contract,
+            metadata_execution_contract.CompiledMetadataExecutionContract):
+        raise ValueError(
+            "the authorized Profile has no admitted metadata execution "
+            "contract")
+    if profile_view.get("metadata_execution_contract_fingerprint") != \
+            metadata_contract.contract_fingerprint:
+        raise ValueError(
+            "the authorized Profile metadata contract fingerprint differs "
+            "from its admitted object")
     return metadata_contract, profile_gate_projection_rules(
         root, extension_gates, metadata_contract=metadata_contract,
         authorized_profile_contract=contract)

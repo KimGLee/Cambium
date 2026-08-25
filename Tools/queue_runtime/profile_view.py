@@ -11,6 +11,7 @@ from pathlib import Path
 
 import check_profile
 import kblib
+import metadata_execution_contract
 import standards_state
 
 from queue_runtime.canon import SHA256_RE
@@ -103,10 +104,11 @@ def profile_load_authorized_view(root, profile):
     projection of that *same* authorized contract; it lets runtime consumers
     locate a slot without reparsing the manifest under a later revision.
 
-    ``evaluate_profile_load`` returns the contract, snapshot, fingerprint, and
-    summary from one producer invocation.  Consumers must not reconstruct the
-    contract in a second parse: doing so could pair the verdict for revision A
-    with revision B's dependency graph.
+    ``evaluate_profile_load`` returns the Profile contract, compiled metadata
+    contract, snapshot, fingerprints, and summary from one producer
+    invocation.  Consumers must not reconstruct either contract in a second
+    parse: doing so could pair the verdict for revision A with revision B's
+    dependency graph or execution rules.
     """
     errors = _selected_profile_manifest_envelope_errors(profile)
     if errors or not nonempty_string(profile):
@@ -139,6 +141,7 @@ def profile_load_authorized_view(root, profile):
         return None, errors
 
     contract = evaluation.contract
+    metadata_contract = evaluation.metadata_execution_contract
     summary = evaluation.summary_receipt
     if (not isinstance(contract,
                        check_profile.profile_contract.ProfileContract) or
@@ -146,6 +149,11 @@ def profile_load_authorized_view(root, profile):
         return None, ["profile-load pass exposed no authorized typed contract"]
     if not isinstance(summary, dict):
         return None, ["profile-load pass exposed no summary receipt"]
+    if not isinstance(
+            metadata_contract,
+            metadata_execution_contract.CompiledMetadataExecutionContract):
+        return None, ["profile-load pass exposed no authorized metadata "
+                      "execution contract"]
     if contract.manifest_repo_path != profile:
         errors.append(
             "profile-load selected manifest %r, expected %r" %
@@ -179,10 +187,17 @@ def profile_load_authorized_view(root, profile):
             not SHA256_RE.fullmatch(inputs_fingerprint)):
         return None, ["profile-load did not bind its canonical normative "
                       "input bytes"]
+    metadata_fingerprint = metadata_contract.contract_fingerprint
+    if (not isinstance(metadata_fingerprint, str) or
+            not SHA256_RE.fullmatch(metadata_fingerprint)):
+        return None, ["profile-load authorized metadata contract has an "
+                      "invalid fingerprint"]
     for field, expected in (
             ("profile_snapshot_sha256", snapshot),
             ("profile_contract_fingerprint", fingerprint),
-            ("profile_load_inputs_sha256", inputs_fingerprint)):
+            ("profile_load_inputs_sha256", inputs_fingerprint),
+            ("metadata_execution_contract_fingerprint",
+             metadata_fingerprint)):
         if summary.get(field) != expected:
             return None, ["profile-load summary %s differs from the "
                           "authorized evaluation" % field]
@@ -208,8 +223,10 @@ def profile_load_authorized_view(root, profile):
         "profile_snapshot_sha256": snapshot,
         "profile_contract_fingerprint": fingerprint,
         "profile_load_inputs_sha256": inputs_fingerprint,
+        "metadata_execution_contract_fingerprint": metadata_fingerprint,
         "_manifest_slot_paths": tuple(sorted(slot_paths.items())),
         "_contract": contract,
+        "_metadata_execution_contract": metadata_contract,
         "_profile_snapshot": bound_snapshot,
         "_evaluation": evaluation,
     }, []
@@ -358,6 +375,12 @@ def authorized_profile_view_errors(root, profile_manifest, authorized_view):
             not SHA256_RE.fullmatch(inputs_fingerprint)):
         errors.append("authorized Profile view has malformed canonical-input "
                       "fingerprint")
+    metadata_fingerprint = authorized_view.get(
+        "metadata_execution_contract_fingerprint")
+    if (not isinstance(metadata_fingerprint, str) or
+            not SHA256_RE.fullmatch(metadata_fingerprint)):
+        errors.append("authorized Profile view has malformed metadata-contract "
+                      "fingerprint")
 
     contract = authorized_view.get("_contract")
     contract_type = check_profile.profile_contract.ProfileContract
@@ -407,6 +430,22 @@ def authorized_profile_view_errors(root, profile_manifest, authorized_view):
             if getattr(evaluation, field) != authorized_view.get(field):
                 errors.append("authorized Profile evaluation %s differs "
                               "from its public binding" % field)
+
+    metadata_contract = authorized_view.get("_metadata_execution_contract")
+    metadata_type = \
+        metadata_execution_contract.CompiledMetadataExecutionContract
+    if not isinstance(metadata_contract, metadata_type):
+        errors.append("authorized Profile view has no compiled metadata "
+                      "execution contract object")
+    else:
+        if metadata_contract.contract_fingerprint != metadata_fingerprint:
+            errors.append("authorized Profile metadata contract fingerprint "
+                          "differs from its public binding")
+        if (isinstance(evaluation, check_profile.ProfileLoadEvaluation) and
+                evaluation.metadata_execution_contract is not
+                metadata_contract):
+            errors.append("authorized Profile metadata contract differs from "
+                          "its producer evaluation object")
 
     projected_pairs = ()
     try:

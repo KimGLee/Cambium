@@ -67,7 +67,7 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:74c325d79445580f10fe73b0ab0a742ac56da12ff57fc165c29448809b42271e
+source_hash: sha256:ea769d5b491604bd337ae8f531fc0a56d5e35cc4a83f6a2268c5cbb1c2d463b4
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
   sha256: sha256:839318e57903a2b70ecd6fc939b2be0a55fcc27d7ebddcf1d7bba7aa3f3eddd8
@@ -523,7 +523,7 @@ tools:
       external_write: none
   - tool: apply_delta
     module: Tools/apply_delta.py
-    source_hash: sha256:256693e1c18463c73c66d60b5b5eec6d0b4e2ab797fb570104b9ff975f38407a
+    source_hash: sha256:04cac630f51d31f01691a2573097fdcef14ee035c1716d2a8acf87896529b1e1
     description: Deterministic Coverage Delta application
     arguments:
       - dest: ledger
@@ -987,7 +987,7 @@ tools:
       external_write: none
   - tool: apply_task_plan
     module: Tools/apply_task_plan.py
-    source_hash: sha256:0f97dfe7556e3c00d6817d06bf26ef628db700c46a70cb0069a6f1ad336e6059
+    source_hash: sha256:a5a88449f82b4e1b9ab30f3e8c1d720506ebf1b65863d926ade6745d02097609
     description: Materialize a task runtime from one confirmed plan.
     arguments:
       - dest: root
@@ -1071,7 +1071,7 @@ tools:
       external_write: none
   - tool: check_batch_close
     module: Tools/check_batch_close.py
-    source_hash: sha256:430c7533d26b597e269b8e0d605470c2948d7cb8d5b7f58f56c857e52206b278
+    source_hash: sha256:0b2c86635ab800fa8f646f14ba7de30d46b3508eaa7d7354748a948314174a70
     description: Run and publish the K12/09 batch-close evidence bundle
     arguments:
       - dest: root
@@ -1406,7 +1406,7 @@ tools:
       external_write: none
   - tool: check_corpus_plan
     module: Tools/check_corpus_plan.py
-    source_hash: sha256:bb3d2c1643459fa785b7adccb929fdb36333cd8040e6c5a84f6baffafa030edd
+    source_hash: sha256:17c2d06ecd2972083e205238153698861c354d6071883a9bee7b2352d35457ea
     description: Validate explicit Corpus Planning artifacts
     arguments:
       - dest: root
@@ -1904,7 +1904,7 @@ tools:
       external_write: none
   - tool: check_profile
     module: Tools/check_profile.py
-    source_hash: sha256:af0b6b9449f95ccc2e182084098a8223a01b92624dc29413f44da7110663dbef
+    source_hash: sha256:41b625fc96829e8b941d08168e4715b6818c1653a1bc89dccda03f4f22642235
     description: Profile manifest completeness and unfilled-template check
     arguments:
       - dest: profile_dir
@@ -2150,7 +2150,7 @@ tools:
       external_write: none
   - tool: check_queue
     module: Tools/check_queue.py
-    source_hash: sha256:256a3051dce81e09d8aeaba4b9fd45e26f862cd8cb54c904d3a206a7f9bce749
+    source_hash: sha256:02ec282a2410628fa814e6b897bb3c275a187eee222b28f3428c4ccaaacbaca6
     description: Validate canonical Required Queue state
     arguments:
       - dest: root
@@ -5329,7 +5329,7 @@ tools:
       external_write: none
   - tool: update_queue
     module: Tools/update_queue.py
-    source_hash: sha256:d266021d26ce7153a18e1429bdb0ae0a1c0df167ccc7b8b4730ed79cc4dc696b
+    source_hash: sha256:ee286af78e2b501ff091af92fa87750bf36cf5856fba54f742312779264168ce
     description: Apply one Required Queue transition
     arguments:
       - dest: root

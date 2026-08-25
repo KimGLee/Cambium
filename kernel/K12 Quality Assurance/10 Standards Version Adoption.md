@@ -164,7 +164,7 @@ approved governance-rule bytes. The separate
 After snapshot SHAs deterministically bind all `kernel/` and the selected
 Profile directory. The 1.3 producer persists the exact typed dependency graph
 as `profile_contract_fingerprint_after`; the 1.4 producer additionally
-persists the fingerprint of the three root-owned profile-load inputs as
+persists the fingerprint of the complete canonical profile-load root-input closure as
 `profile_load_inputs_sha256_after`; the 1.5 producer additionally records
 the upstream identity pair (`upstream_source_ref`, `upstream_revision_id`)
 -- the distribution publishes no version numbers, so this pair, or its

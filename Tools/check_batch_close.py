@@ -62,7 +62,6 @@ import batch_settlement
 import candidate_lifecycle
 import contract_exception_policy
 import kblib
-import metadata_execution_contract
 import metadata_property_state
 import project_page_state
 import profile_admission
@@ -1680,8 +1679,7 @@ def _main(argv=None):
                 profile_evaluation = _profile_evaluation(
                     root, runtime, authorized_profile_view=profile_view)
                 metadata_contract = \
-                    metadata_execution_contract.load_metadata_execution_contract(
-                        root)
+                    check_queue.runtime_metadata_execution_contract(runtime)
                 projection_rules = \
                     metadata_property_state.profile_gate_projection_rules(
                         root, profile_view["_contract"].extension_gates,

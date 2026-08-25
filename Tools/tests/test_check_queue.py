@@ -566,19 +566,25 @@ class CurrentPropertyStateTests(unittest.TestCase):
             receipt_schema="manual-gate-attestation-v1",
             consumer_capability="metadata-transition-integrator-v1",
         )
+        self.metadata_contract = \
+            check_queue.metadata_execution_contract.\
+                CompiledMetadataExecutionContract(
+                    artifact={}, field_rules=(), writer_capabilities=(),
+                    contract_fingerprint=self.META_SHA,
+                    canonical_bytes=b"")
         self.profile_view = {
             "selected_profile_manifest":
                 "profiles/test-profile/profile.md",
             "profile_snapshot_sha256": self.PROFILE_SHA,
             "profile_contract_fingerprint": self.PROFILE_CONTRACT_SHA,
             "profile_load_inputs_sha256": self.PROFILE_INPUTS_SHA,
+            "metadata_execution_contract_fingerprint": self.META_SHA,
             "_contract": SimpleNamespace(extension_gates=(self.gate,)),
+            "_metadata_execution_contract": self.metadata_contract,
         }
         self.active_view = {
             "active_standards_sha256": self.ACTIVE_SHA,
         }
-        self.metadata_contract = SimpleNamespace(
-            contract_fingerprint=self.META_SHA)
         self.rules = (
             self.date_rule("last_content_modified"),
             self.date_rule(
@@ -607,12 +613,9 @@ class CurrentPropertyStateTests(unittest.TestCase):
     def errors(self, row, catalog):
         coverage = {"pages": [row]}
         with mock.patch.object(
-                check_queue.metadata_execution_contract,
-                "load_metadata_execution_contract",
-                return_value=self.metadata_contract), mock.patch.object(
-                    check_queue.metadata_property_state,
-                    "profile_gate_projection_rules",
-                    return_value=self.rules):
+                check_queue.metadata_property_state,
+                "profile_gate_projection_rules",
+                return_value=self.rules):
             return check_queue.coverage_property_state_errors(
                 str(self.root), coverage, catalog,
                 {"task_id": "fixture-task"}, self.profile_view,
@@ -621,12 +624,9 @@ class CurrentPropertyStateTests(unittest.TestCase):
     def errors_with_projection(self, row, catalog, page_text):
         coverage = {"pages": [row]}
         with mock.patch.object(
-                check_queue.metadata_execution_contract,
-                "load_metadata_execution_contract",
-                return_value=self.metadata_contract), mock.patch.object(
-                    check_queue.metadata_property_state,
-                    "profile_gate_projection_rules",
-                    return_value=self.rules):
+                check_queue.metadata_property_state,
+                "profile_gate_projection_rules",
+                return_value=self.rules):
             return check_queue.coverage_property_state_errors(
                 str(self.root), coverage, catalog,
                 {"task_id": "fixture-task"}, self.profile_view,
@@ -1102,16 +1102,22 @@ class InFlightPropertyStateTests(unittest.TestCase):
             "last_reviewed",
             invalidation="semantic-content-change-tombstone-v1")
         self.rules = (self.rule,)
+        self.metadata_contract = \
+            check_queue.metadata_execution_contract.\
+                CompiledMetadataExecutionContract(
+                    artifact={}, field_rules=(), writer_capabilities=(),
+                    contract_fingerprint=self.META_SHA,
+                    canonical_bytes=b"")
         self.profile_view = {
             "selected_profile_manifest":
                 "profiles/test-profile/profile.md",
             "profile_snapshot_sha256": self.PROFILE_SHA,
             "profile_contract_fingerprint": self.PROFILE_CONTRACT_SHA,
             "profile_load_inputs_sha256": self.PROFILE_INPUTS_SHA,
+            "metadata_execution_contract_fingerprint": self.META_SHA,
             "_contract": SimpleNamespace(extension_gates=()),
+            "_metadata_execution_contract": self.metadata_contract,
         }
-        self.metadata_contract = SimpleNamespace(
-            contract_fingerprint=self.META_SHA)
 
     def opening(self, manifest, fingerprints):
         records = [{
@@ -1236,11 +1242,17 @@ class CurrentOpenSemanticBaselineTests(unittest.TestCase):
     PROFILE_INPUTS_SHA = "sha256:" + "d" * 64
 
     def profile_view(self):
+        contract = check_queue.metadata_execution_contract.\
+            CompiledMetadataExecutionContract(
+                artifact={}, field_rules=(), writer_capabilities=(),
+                contract_fingerprint=self.META_SHA, canonical_bytes=b"")
         return {
             "selected_profile_manifest": "profiles/test/profile.md",
             "profile_snapshot_sha256": self.PROFILE_SHA,
             "profile_contract_fingerprint": self.PROFILE_CONTRACT_SHA,
             "profile_load_inputs_sha256": self.PROFILE_INPUTS_SHA,
+            "metadata_execution_contract_fingerprint": self.META_SHA,
+            "_metadata_execution_contract": contract,
         }
 
     @staticmethod
@@ -1277,16 +1289,17 @@ class CurrentOpenSemanticBaselineTests(unittest.TestCase):
         }
 
     def errors(self, transition, *, require_live_authority=True):
-        contract = SimpleNamespace(contract_fingerprint=self.META_SHA)
         with mock.patch.object(
                 check_queue.metadata_execution_contract,
-                "load_metadata_execution_contract", return_value=contract):
-            return check_queue.current_open_semantic_baseline_errors(
+                "load_metadata_execution_contract") as loader:
+            result = check_queue.current_open_semantic_baseline_errors(
                 "/fixture", transition,
                 {"id": "B1", "manifest": [
                     "Topics/A.md", "Topics/B.md"]},
                 self.profile_view(),
                 require_live_authority=require_live_authority)
+        loader.assert_not_called()
+        return result
 
     def test_current_open_binds_exact_manifest_before_set(self):
         self.assertEqual([], self.errors(self.transition()))
@@ -1356,14 +1369,14 @@ class CurrentOpenSemanticBaselineTests(unittest.TestCase):
             },
             "_profile_authorized_view": self.profile_view(),
         }
-        contract = SimpleNamespace(contract_fingerprint=self.META_SHA)
         with mock.patch.object(
                 check_queue.metadata_execution_contract,
-                "load_metadata_execution_contract", return_value=contract):
+                "load_metadata_execution_contract") as loader:
             self.assertEqual({
                 "Topics/A.md": "sha256:" + "1" * 64,
                 "Topics/B.md": "sha256:" + "3" * 64,
             }, check_queue.current_opening_semantic_baseline(result, "B1"))
+        loader.assert_not_called()
 
         legacy = dict(current, tool_version="1.4.0")
         result["current_receipt_catalog"]["audit-open-transition"] = (
@@ -1734,7 +1747,12 @@ class HubPageAdmissionTests(QueueFixture):
         with mock.patch.object(
                 check_queue.check_profile, "evaluate_profile_load",
                 side_effect=AssertionError(
-                    "transaction context must suppress another profile-load")):
+                    "transaction context must suppress another profile-load")), \
+                mock.patch.object(
+                    check_queue.metadata_execution_contract,
+                    "load_metadata_execution_contract",
+                    side_effect=AssertionError(
+                        "admitted metadata object must not be reopened")):
             rebound = check_queue.validate_runtime(self.root, **kwargs)
 
         self.assertEqual([], rebound["errors"])
@@ -1742,13 +1760,36 @@ class HubPageAdmissionTests(QueueFixture):
                       rebound["_profile_authorized_view"])
         self.assertIs(initial["_active_standards_authorized_view"],
                       rebound["_active_standards_authorized_view"])
+        self.assertIs(initial["_metadata_execution_contract"],
+                      rebound["_metadata_execution_contract"])
+        self.assertIs(
+            initial["_metadata_execution_contract"],
+            authority["profile_view"]["_metadata_execution_contract"])
+        self.assertIs(
+            initial["_metadata_execution_contract"],
+            authority["metadata_execution_contract"])
         lock_fields = check_queue.runtime_authority_lock_fields(authority)
         self.assertEqual("profiles/test-profile/profile.md",
                          lock_fields["selected_profile_manifest"])
         for field in (
                 "active_standards_sha256", "profile_snapshot_sha256",
-                "profile_contract_fingerprint", "profile_load_inputs_sha256"):
+                "profile_contract_fingerprint", "profile_load_inputs_sha256",
+                "metadata_execution_contract_fingerprint"):
             self.assertRegex(lock_fields[field], r"^sha256:[0-9a-f]{64}$")
+
+    def test_runtime_authority_registry_closes_primary_and_derived_members(self):
+        registry = check_queue.runtime_authority_registry()
+        self.assertIs(check_queue.RUNTIME_AUTHORITY_REGISTRY, registry)
+        self.assertEqual(
+            ("active-standards", "profile-load",
+             "metadata-execution-contract"),
+            tuple(spec.authority_id for spec in registry))
+        self.assertEqual(
+            ("primary", "primary", "derived"),
+            tuple(spec.kind for spec in registry))
+        metadata = registry[-1]
+        self.assertEqual("profile-load", metadata.covered_by)
+        self.assertIsNone(metadata.validation_kwarg)
 
     def test_runtime_rejects_stale_injected_active_standards_view(self):
         initial = check_queue.validate_runtime(self.root)
@@ -1876,6 +1917,36 @@ class HubPageAdmissionTests(QueueFixture):
             "canonical profile-load inputs changed",
             "; ".join(result["errors"]))
         self.assertNotIn("B1", result["ready"])
+
+    def test_runtime_cas_includes_metadata_registry_and_artifact_bytes(self):
+        for relative in (
+                check_queue.check_profile.DEFAULT_OPERATION_CAPABILITIES,
+                check_queue.check_profile.DEFAULT_METADATA_CONTRACT):
+            with self.subTest(relative=relative):
+                authorized_view, view_errors = \
+                    check_queue.profile_load_authorized_view(
+                        self.root, "profiles/test-profile/profile.md")
+                self.assertEqual([], view_errors)
+                target = self.root / relative
+                before = target.read_bytes()
+                try:
+                    target.write_bytes(before + b"\n")
+                    with mock.patch.object(
+                            check_queue.check_profile,
+                            "evaluate_profile_load",
+                            side_effect=AssertionError(
+                                "stale injected view must fail, not rerun")) \
+                            as load:
+                        result = check_queue.validate_runtime(
+                            self.root,
+                            authorized_profile_view=authorized_view)
+                    load.assert_not_called()
+                    self.assertIn(
+                        "canonical profile-load inputs changed",
+                        "; ".join(result["errors"]))
+                    self.assertNotIn("B1", result["ready"])
+                finally:
+                    target.write_bytes(before)
 
     def test_hub_derivation_reads_authorized_snapshot_not_transient_live_bytes(self):
         self.register_expression_layer([

@@ -1106,9 +1106,19 @@ def current_open_semantic_baseline_errors(
     live_metadata_fingerprint = None
     if require_live_authority:
         try:
+            if not isinstance(profile_view, dict):
+                raise ValueError(
+                    "runtime has no authorized Profile view")
+            metadata_contract = profile_view.get(
+                "_metadata_execution_contract")
+            if not isinstance(
+                    metadata_contract,
+                    metadata_execution_contract.
+                        CompiledMetadataExecutionContract):
+                raise ValueError(
+                    "authorized Profile view has no admitted metadata contract")
             live_metadata_fingerprint = \
-                metadata_execution_contract.load_metadata_execution_contract(
-                    root).contract_fingerprint
+                metadata_contract.contract_fingerprint
         except (OSError, UnicodeError, ValueError,
                 metadata_execution_contract.
                 MetadataExecutionContractError) as exc:

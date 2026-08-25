@@ -350,7 +350,12 @@ def _derive_property_state_adoption(root, pages, profile_view):
 
 
 def _require_property_sources_current(root, adoption):
-    """CAS every page/absence from which the migration was derived."""
+    """CAS every page/absence from which the migration was derived.
+
+    The metadata contract is part of the surrounding runtime-authority CAS;
+    reopening it here would create a second observation rather than strengthen
+    the transaction.
+    """
     for record in adoption["records"]:
         path = record["path"]
         snapshot = kblib.repository_target_snapshot(
@@ -360,13 +365,6 @@ def _require_property_sources_current(root, adoption):
             raise Refusal(
                 "initial property source page %s changed between planning "
                 "and commit" % path)
-    current_metadata = \
-        metadata_execution_contract.load_metadata_execution_contract(root)
-    if current_metadata.contract_fingerprint != adoption[
-            "metadata_execution_contract_fingerprint"]:
-        raise Refusal(
-            "metadata execution contract changed between initial property "
-            "adoption planning and commit")
 
 
 def _build_after(root, documents, plan, profile_view):

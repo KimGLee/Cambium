@@ -58,7 +58,7 @@ time_contract_result
 Repository-root validation also reruns the canonical `profile-load` producer
 against the exact frozen `selected_profile_manifest`. Its passing
 `profile-check-summary`, Profile snapshot, Profile-contract fingerprint, and
-fingerprint of the three root-owned profile-load inputs are part of the
+fingerprint of the complete canonical profile-load root-input closure are part of the
 deterministic result and proof summary; the Proof checker does not maintain a
 second registry parser. Immediately before summary publication it rebinds both
 the Profile tree and those root-owned inputs to the shared evaluation. Profile

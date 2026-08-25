@@ -241,6 +241,7 @@ modules:
       - MANUAL_ATTESTATION_TOOL
       - PROGRESS_PATH
       - QUEUE_PATH
+      - RUNTIME_AUTHORITY_REGISTRY
       - SHA256_RE
       - STANDARDS_ADOPTION_PLAN_PREFIX
       - TERMINAL_STATES
@@ -284,8 +285,10 @@ modules:
       - require_runtime_authority_current
       - required_queue_completion_errors
       - runtime_authority_context
+      - runtime_authority_registry
       - runtime_authority_lock_fields
       - runtime_authority_validation_kwargs
+      - runtime_metadata_execution_contract
       - standards_adoption_plan_errors
       - standards_gate_registry
       - standards_revalidation_receipt_errors
@@ -745,6 +748,7 @@ modules:
       - registered_gate_position
       - require_receipt
       - require_runtime_authority_current
+      - RUNTIME_AUTHORITY_REGISTRY
       - required_queue_completion_errors
       - resume_next_action
       - review_property_evidence_errors
@@ -752,7 +756,9 @@ modules:
       - runtime_authority_context
       - runtime_authority_currency_errors
       - runtime_authority_lock_fields
+      - runtime_authority_registry
       - runtime_authority_validation_kwargs
+      - runtime_metadata_execution_contract
       - selected_profile_manifest_errors
       - standards_adoption_errors
       - standards_adoption_plan_errors
@@ -791,11 +797,14 @@ modules:
     path: Tools/queue_runtime/authority.py
     provisional: true
     public:
+      - RUNTIME_AUTHORITY_REGISTRY
       - require_runtime_authority_current
       - runtime_authority_context
       - runtime_authority_currency_errors
       - runtime_authority_lock_fields
+      - runtime_authority_registry
       - runtime_authority_validation_kwargs
+      - runtime_metadata_execution_contract
   - module: queue_runtime.canon
     path: Tools/queue_runtime/canon.py
     provisional: true
