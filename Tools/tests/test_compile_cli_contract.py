@@ -32,6 +32,51 @@ import compile_cli_contract as compiler  # noqa: E402
 import kblib  # noqa: E402
 
 
+def write_interface_policy(root, tool_names):
+    arguments = {}
+    original_parse_args = compiler.argparse.ArgumentParser.parse_args
+    original_argv = list(sys.argv)
+
+    def capture(parser, _args=None, _namespace=None):
+        raise compiler._CapturedParser(parser)
+
+    compiler.argparse.ArgumentParser.parse_args = capture
+    try:
+        for name, path, _source in compiler.discover_tools(root):
+            sys.argv = [os.path.basename(path)]
+            parser = compiler.load_parser(
+                "_cambium_test_policy_%s" % name, path)
+            arguments[name] = [
+                item["dest"] for item in
+                compiler.describe_arguments(root, parser)
+            ]
+    finally:
+        compiler.argparse.ArgumentParser.parse_args = original_parse_args
+        sys.argv = original_argv
+    rows = []
+    for name in sorted(tool_names):
+        rows.append({
+            "tool": name,
+            "exposure": "cli-only",
+            "workspace_argument": None,
+            "workspace_access": None,
+            "value_arguments": arguments[name],
+            "read_paths": [],
+            "write_paths": [],
+            "read_write_paths": [],
+            "external_write": "none",
+        })
+    path = Path(root) / compiler.DEFAULT_INTERFACE_POLICY
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(kblib.canonical_yaml({
+        "schema_version": 1,
+        "artifact": "agent-interface-policy",
+        "path_defaults": [],
+        "path_overrides": [],
+        "tools": rows,
+    }), encoding="utf-8")
+
+
 def run(*arguments, env=None, cwd=None):
     environment = dict(os.environ)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -62,6 +107,9 @@ class ShippedArtifactTests(unittest.TestCase):
         }
 
         self.assertEqual(modules, expected)
+        self.assertEqual(
+            set(contract["source_files"]),
+            expected | {compiler.DEFAULT_INTERFACE_POLICY})
         self.assertEqual(contract["tool_count"], len(expected))
 
     def test_each_section_records_the_source_it_was_read_from(self):
@@ -84,13 +132,17 @@ class ShippedArtifactTests(unittest.TestCase):
 class DeterminismTests(unittest.TestCase):
     def test_two_runs_agree_across_hash_seeds(self):
         with tempfile.TemporaryDirectory() as workspace:
-            first = os.path.join(workspace, "first.yaml")
-            second = os.path.join(workspace, "second.yaml")
-            run(".", "--output", first, env={"PYTHONHASHSEED": "0"})
-            run(".", "--output", second, env={"PYTHONHASHSEED": "12345"})
+            shutil.copytree(TOOLS_DIR, Path(workspace) / "Tools")
+            artifact = Path(workspace) / compiler.DEFAULT_OUTPUT
+            first_run = run(workspace, env={"PYTHONHASHSEED": "0"})
+            self.assertEqual(first_run.returncode, 0,
+                             first_run.stdout + first_run.stderr)
+            first = artifact.read_bytes()
+            second_run = run(workspace, env={"PYTHONHASHSEED": "12345"})
+            self.assertEqual(second_run.returncode, 0,
+                             second_run.stdout + second_run.stderr)
 
-            self.assertEqual(Path(first).read_bytes(),
-                             Path(second).read_bytes())
+            self.assertEqual(first, artifact.read_bytes())
 
     def test_choices_are_recorded_in_one_canonical_order(self):
         root = str(REPO_ROOT)
@@ -118,6 +170,9 @@ class FixtureTests(unittest.TestCase):
         return path
 
     def compile(self):
+        names = [name for name, _path, _source in
+                 compiler.discover_tools(self.workspace)]
+        write_interface_policy(self.workspace, names)
         return compiler.compile_contract(self.workspace)
 
     def only_tool(self):
@@ -265,6 +320,27 @@ class FixtureTests(unittest.TestCase):
         self.assertEqual([record["tool"] for record in
                           self.compile()["tools"]], ["sample"])
 
+    def test_an_unclassified_new_argument_fails_policy_compilation(self):
+        self.write_tool("sample.py", """
+            import argparse
+
+            def main(argv=None):
+                parser = argparse.ArgumentParser(description="Sample tool")
+                parser.add_argument("root", help="where to look")
+                parser.add_argument("--new-capability", help="new surface")
+                return parser.parse_args(argv)
+        """)
+        write_interface_policy(self.workspace, ["sample"])
+        policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
+        policy = kblib.parse_yaml_subset(
+            policy_path.read_text(encoding="utf-8"))
+        policy["tools"][0]["value_arguments"].remove("new_capability")
+        policy_path.write_text(kblib.canonical_yaml(policy), encoding="utf-8")
+
+        with self.assertRaisesRegex(
+                compiler.ContractError, "unclassified=new_capability"):
+            compiler.compile_contract(self.workspace)
+
 
 class ExitCodeTests(unittest.TestCase):
     def setUp(self):
@@ -283,15 +359,18 @@ class ExitCodeTests(unittest.TestCase):
                     parser.add_argument("root", help="where to look")
                     return parser.parse_args(argv)
             """))
-        self.output = os.path.join(self.workspace, "contract.yaml")
+        write_interface_policy(self.workspace, ["sample"])
+        self.output = os.path.join(
+            self.workspace, compiler.DEFAULT_OUTPUT)
+        os.makedirs(os.path.dirname(self.output), exist_ok=True)
 
     def compile_once(self):
-        return run(self.workspace, "--output", self.output)
+        return run(self.workspace)
 
     def test_write_then_check_passes(self):
         self.assertEqual(self.compile_once().returncode, 0)
 
-        result = run(self.workspace, "--check", "--output", self.output)
+        result = run(self.workspace, "--check")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -301,12 +380,12 @@ class ExitCodeTests(unittest.TestCase):
         Path(self.output).write_text(
             text.replace("tool_count: 1", "tool_count: 2"), encoding="utf-8")
 
-        result = run(self.workspace, "--check", "--output", self.output)
+        result = run(self.workspace, "--check")
 
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
 
     def test_a_missing_artifact_holds_with_2(self):
-        result = run(self.workspace, "--check", "--output", self.output)
+        result = run(self.workspace, "--check")
 
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
 
@@ -316,7 +395,7 @@ class ExitCodeTests(unittest.TestCase):
                   encoding="utf-8") as handle:
             handle.write("\n# a later edit to the tool\n")
 
-        result = run(self.workspace, "--check", "--output", self.output)
+        result = run(self.workspace, "--check")
 
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
 
@@ -332,7 +411,7 @@ class ExitCodeTests(unittest.TestCase):
                     return parser.parse_args(argv)
             """))
 
-        result = run(self.workspace, "--check", "--output", self.output)
+        result = run(self.workspace, "--check")
 
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
 

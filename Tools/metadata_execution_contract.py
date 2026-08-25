@@ -930,9 +930,8 @@ def rules_for_capability(contract, capability_id):
 
 
 def _write_compiled(contract, root, output_path):
-    target = Path(output_path)
-    if not target.is_absolute():
-        target = _repository_root(root) / target
+    target = kblib.registered_repository_artifact_path(
+        _repository_root(root), output_path, DEFAULT_COMPILED_PATH)
     kblib.atomic_write_text(target, contract.canonical_bytes.decode("utf-8"))
 
 
@@ -945,14 +944,13 @@ def main(argv=None):
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
     try:
+        output = kblib.registered_repository_artifact_path(
+            _repository_root(args.root), args.output, DEFAULT_COMPILED_PATH)
         contract = compile_metadata_execution_contract(
             args.root, args.authority, args.capabilities)
-        output = Path(args.output)
-        if not output.is_absolute():
-            output = _repository_root(args.root) / output
         if args.check:
             try:
-                actual = output.read_bytes()
+                actual = Path(output).read_bytes()
             except OSError:
                 actual = b""
             if actual != contract.canonical_bytes:
@@ -964,8 +962,10 @@ def main(argv=None):
         print("PASS: %s (%s)" %
               (contract.contract_fingerprint, len(contract.field_rules)))
         return 0
-    except MetadataExecutionContractError as exc:
-        for error in exc.errors:
+    except (MetadataExecutionContractError, ValueError) as exc:
+        errors = exc.errors if isinstance(
+            exc, MetadataExecutionContractError) else [str(exc)]
+        for error in errors:
             print("FAIL: " + error, file=sys.stderr)
         return 1
 

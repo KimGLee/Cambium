@@ -586,6 +586,13 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
+    try:
+        output_path = kblib.registered_repository_artifact_path(
+            REPO_ROOT, args.output, DEFAULT_OUTPUT)
+    except ValueError as exc:
+        print("compose_vocab: unsafe artifact output: %s" % exc)
+        return 1
+
     active_extensions, active_profile_id, selection_errors, admission = (
         active_extensions_selection()
     )
@@ -645,8 +652,6 @@ def main(argv=None):
     if kblib.parse_yaml_subset(rendered) != output:
         print("compose_vocab: internal error: kblib round-trip mismatch")
         return 1
-
-    output_path = resolve_path(args.output)
 
     if args.check:
         if not os.path.exists(output_path):

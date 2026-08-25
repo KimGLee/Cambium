@@ -2,15 +2,15 @@
 """compile_cli_contract.py -- persistent CLI invocation-contract compiler.
 
 Deterministically derives one machine-readable calling contract for every
-CLI tool shipped under `Tools/` and writes it to
-`Tools/compiled/cli-contract.yaml` (overridable with `--output`).
+CLI tool shipped under `Tools/`, closes the host-facing capability surface
+against `Tools/agent-interface-policy.yaml`, and writes the result to the
+registered `Tools/compiled/cli-contract.yaml` artifact.
 
-Why this exists: an agent that has to invoke these tools currently has to
-read 37 argparse blocks, or trust prose that restates them. Prose drifts.
-This compiler makes the tool's own `argparse` declaration the single source
-of that statement -- every field in the artifact is read back out of the
-parser the tool itself built, and nothing in this module restates a flag, a
-default, or a help string.
+Why this exists: an agent should not have to read every argparse block or
+trust prose that restates them. Argparse is the single source of invocation
+shape. The separate policy is the single source of capability shape: MCP
+exposure, workspace binding, typed path access, and declared external effects.
+This compiler requires both sets to close exactly.
 
 Extraction:
   - Each CLI module is loaded through `importlib` under its own name, with
@@ -28,6 +28,10 @@ Extraction:
     copied from `schemas/receipt.template.jsonl`, which says in its own text
     that its examples are not the complete set. A tool that computes a key
     name at runtime is reported as `partial`, never as complete.
+  - Agent-interface policy rows name every discovered CLI exactly once, and
+    classify every argparse argument exactly once as workspace, path, or value.
+    An MCP-exposed row may not declare an external-write capability; exact and
+    namespace paths remain explicit data rather than server conventions.
 
 Determinism: `prog` is not recorded (argparse derives it from `sys.argv`),
 and the auto-added `-h/--help` action is skipped (its help text is
@@ -66,8 +70,9 @@ import kblib  # noqa: E402
 TOOL = "compile_cli_contract"
 TOOL_VERSION = "1.0.0"
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_OUTPUT = "Tools/compiled/cli-contract.yaml"
+DEFAULT_INTERFACE_POLICY = "Tools/agent-interface-policy.yaml"
 TOOLS_SUBDIR = "Tools"
 
 # The nine fields `kblib.make_receipt` writes unconditionally, plus the one
@@ -357,6 +362,294 @@ def describe_exclusive_groups(parser):
 
 
 # ---------------------------------------------------------------------------
+# Agent-interface capability policy
+# ---------------------------------------------------------------------------
+
+
+def load_interface_policy(root, records):
+    """Load and close the agent call-surface policy over every CLI tool.
+
+    Argparse remains the invocation source.  This separate document owns the
+    question argparse cannot answer: whether the operation may enter an agent
+    transport, which argument establishes the bound workspace, and which
+    caller-supplied arguments carry filesystem effects.  Exact tool and
+    argument closure makes an unclassified new CLI or path capability fail the
+    compiler instead of inheriting MCP exposure silently.
+    """
+    path = os.path.join(root, *DEFAULT_INTERFACE_POLICY.split("/"))
+    try:
+        with open(path, "rb") as handle:
+            raw = handle.read()
+    except OSError as exc:
+        raise ContractError("cannot read %s: %s" %
+                            (DEFAULT_INTERFACE_POLICY, exc))
+    try:
+        document = kblib.parse_yaml_subset(raw.decode("utf-8"))
+    except (UnicodeError, kblib.YamlSubsetError) as exc:
+        raise ContractError("%s is not parseable: %s" %
+                            (DEFAULT_INTERFACE_POLICY, exc))
+    if not isinstance(document, dict) or \
+            document.get("artifact") != "agent-interface-policy" or \
+            document.get("schema_version") != 1:
+        raise ContractError(
+            "%s must be agent-interface-policy schema_version 1"
+            % DEFAULT_INTERFACE_POLICY)
+    document_keys = {
+        "schema_version", "artifact", "path_defaults", "path_overrides",
+        "tools",
+    }
+    if set(document) != document_keys:
+        raise ContractError(
+            "%s must carry exactly %s" %
+            (DEFAULT_INTERFACE_POLICY, ", ".join(sorted(document_keys))))
+
+    def path_constraint(row, expected_keys, owner):
+        if not isinstance(row, dict) or set(row) != expected_keys:
+            raise ContractError(
+                "%s %s rows must carry exactly %s" %
+                (DEFAULT_INTERFACE_POLICY, owner,
+                 ", ".join(sorted(expected_keys))))
+        argument = row.get("argument")
+        constraint = row.get("constraint")
+        value = row.get("value")
+        suffixes = row.get("suffixes")
+        if not isinstance(argument, str) or not argument:
+            raise ContractError("%s: %s carries no argument" %
+                                (DEFAULT_INTERFACE_POLICY, owner))
+        if constraint not in ("contained", "exact", "namespace"):
+            raise ContractError(
+                "%s: %s.%s has unknown path constraint %r" %
+                (DEFAULT_INTERFACE_POLICY, owner, argument, constraint))
+        if constraint == "contained":
+            if value is not None or suffixes not in (None, []):
+                raise ContractError(
+                    "%s: contained path constraints carry no value or "
+                    "suffixes" % DEFAULT_INTERFACE_POLICY)
+            value = None
+            suffixes = []
+        else:
+            if not isinstance(value, str) or not value or \
+                    os.path.isabs(value) or "\\" in value or \
+                    os.path.normpath(value).replace(os.sep, "/") != value or \
+                    value.startswith("../") or value == "..":
+                raise ContractError(
+                    "%s: %s.%s must name a canonical repository-relative "
+                    "path" % (DEFAULT_INTERFACE_POLICY, owner, argument))
+            if not isinstance(suffixes, list) or any(
+                    not isinstance(suffix, str) or not suffix or
+                    not suffix.startswith(".") or "/" in suffix or
+                    "\\" in suffix for suffix in suffixes):
+                raise ContractError(
+                    "%s: %s.%s suffixes must be filename suffix strings" %
+                    (DEFAULT_INTERFACE_POLICY, owner, argument))
+            if constraint == "exact" and suffixes:
+                raise ContractError(
+                    "%s: exact path constraints do not need suffixes" %
+                    DEFAULT_INTERFACE_POLICY)
+        return {
+            "constraint": constraint,
+            "value": value,
+            "suffixes": list(suffixes),
+        }
+
+    defaults = {}
+    default_rows = document.get("path_defaults")
+    if not isinstance(default_rows, list):
+        raise ContractError("%s carries no path_defaults list" %
+                            DEFAULT_INTERFACE_POLICY)
+    default_keys = {"argument", "constraint", "value", "suffixes"}
+    for row in default_rows:
+        capability = path_constraint(row, default_keys, "path_defaults")
+        argument = row["argument"]
+        if argument in defaults:
+            raise ContractError("%s duplicates path default %s" %
+                                (DEFAULT_INTERFACE_POLICY, argument))
+        defaults[argument] = capability
+
+    overrides = {}
+    override_rows = document.get("path_overrides")
+    if not isinstance(override_rows, list):
+        raise ContractError("%s carries no path_overrides list" %
+                            DEFAULT_INTERFACE_POLICY)
+    override_keys = {"tool", "argument", "constraint", "value", "suffixes"}
+    for row in override_rows:
+        capability = path_constraint(row, override_keys, "path_overrides")
+        tool = row.get("tool")
+        if not isinstance(tool, str) or not tool:
+            raise ContractError("%s path override carries no tool" %
+                                DEFAULT_INTERFACE_POLICY)
+        key = (tool, row["argument"])
+        if key in overrides:
+            raise ContractError("%s duplicates path override %s.%s" %
+                                (DEFAULT_INTERFACE_POLICY, key[0], key[1]))
+        overrides[key] = capability
+
+    rows = document.get("tools")
+    if not isinstance(rows, list):
+        raise ContractError("%s carries no tools list" %
+                            DEFAULT_INTERFACE_POLICY)
+
+    expected_keys = {
+        "tool", "exposure", "workspace_argument", "workspace_access",
+        "value_arguments", "read_paths", "write_paths",
+        "read_write_paths", "external_write",
+    }
+    by_name = {}
+    record_by_name = {record["tool"]: record for record in records}
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != expected_keys:
+            raise ContractError(
+                "%s tool rows must carry exactly %s" %
+                (DEFAULT_INTERFACE_POLICY, ", ".join(sorted(expected_keys))))
+        name = row.get("tool")
+        if not isinstance(name, str) or not name or name in by_name:
+            raise ContractError("%s carries an invalid or duplicate tool %r"
+                                % (DEFAULT_INTERFACE_POLICY, name))
+        if name not in record_by_name:
+            raise ContractError("%s names unknown CLI tool %s" %
+                                (DEFAULT_INTERFACE_POLICY, name))
+        if row.get("exposure") not in ("mcp", "cli-only"):
+            raise ContractError("%s: exposure must be mcp or cli-only" % name)
+        if row.get("workspace_access") not in (None, "read", "write"):
+            raise ContractError(
+                "%s: workspace_access must be read, write, or null" % name)
+        workspace_argument = row.get("workspace_argument")
+        if (workspace_argument is None) != \
+                (row.get("workspace_access") is None):
+            raise ContractError(
+                "%s: workspace_argument and workspace_access must both be "
+                "null or both be declared" % name)
+        arguments = {item["dest"]: item for item in
+                     record_by_name[name]["arguments"]}
+        if workspace_argument is not None and workspace_argument not in arguments:
+            raise ContractError("%s: unknown workspace_argument %s" %
+                                (name, workspace_argument))
+        if row["exposure"] == "mcp" and workspace_argument is None:
+            raise ContractError(
+                "%s: every MCP tool must bind a workspace argument" % name)
+        if not isinstance(row.get("external_write"), str) or \
+                not row["external_write"]:
+            raise ContractError("%s: external_write must be explicit" % name)
+        if row["exposure"] == "mcp" and row["external_write"] != "none":
+            raise ContractError(
+                "%s: an MCP tool may not inherit external-write capability"
+                % name)
+
+        seen = set()
+        path_access = {}
+        for key, access in (("read_paths", "read"),
+                            ("write_paths", "write"),
+                            ("read_write_paths", "read-write")):
+            values = row.get(key)
+            if not isinstance(values, list) or \
+                    any(not isinstance(value, str) or not value
+                        for value in values):
+                raise ContractError("%s: %s must be a list of argument names"
+                                    % (name, key))
+            for value in values:
+                if value == workspace_argument:
+                    raise ContractError(
+                        "%s: workspace_argument %s must not be repeated in %s"
+                        % (name, value, key))
+                if value not in arguments:
+                    raise ContractError("%s: %s names unknown argument %s" %
+                                        (name, key, value))
+                if value in seen:
+                    raise ContractError(
+                        "%s: path argument %s is classified more than once"
+                        % (name, value))
+                seen.add(value)
+                path_access[value] = access
+        value_arguments = row.get("value_arguments")
+        if not isinstance(value_arguments, list) or any(
+                not isinstance(value, str) or not value
+                for value in value_arguments):
+            raise ContractError(
+                "%s: value_arguments must be a list of argument names" %
+                name)
+        if len(value_arguments) != len(set(value_arguments)):
+            raise ContractError("%s: value_arguments contains duplicates" %
+                                name)
+        for value in value_arguments:
+            if value == workspace_argument or value in seen:
+                raise ContractError(
+                    "%s: argument %s is classified more than once" %
+                    (name, value))
+            if value not in arguments:
+                raise ContractError(
+                    "%s: value_arguments names unknown argument %s" %
+                    (name, value))
+        classified = seen | set(value_arguments)
+        if workspace_argument is not None:
+            classified.add(workspace_argument)
+        actual_arguments = set(arguments)
+        if classified != actual_arguments:
+            raise ContractError(
+                "%s: argument closure mismatch: unclassified=%s "
+                "unexpected=%s" %
+                (name,
+                 ",".join(sorted(actual_arguments - classified)) or "none",
+                 ",".join(sorted(classified - actual_arguments)) or "none"))
+        if row["exposure"] == "mcp" and path_access and any(
+                access in ("write", "read-write")
+                for access in path_access.values()) and \
+                row.get("workspace_access") != "write":
+            raise ContractError(
+                "%s: a tool with caller-supplied write paths must declare "
+                "workspace_access write" % name)
+        path_arguments = []
+        for argument in sorted(path_access):
+            capability = overrides.get(
+                (name, argument), defaults.get(argument, {
+                    "constraint": "contained", "value": None,
+                    "suffixes": [],
+                }))
+            path_arguments.append({
+                "argument": argument,
+                "access": path_access[argument],
+                "constraint": capability["constraint"],
+                "value": capability["value"],
+                "suffixes": list(capability["suffixes"]),
+            })
+        by_name[name] = {
+            "exposure": row["exposure"],
+            "workspace_argument": workspace_argument,
+            "workspace_access": row["workspace_access"],
+            "value_arguments": sorted(value_arguments),
+            "path_arguments": path_arguments,
+            "external_write": row["external_write"],
+        }
+
+    declared = set(by_name)
+    actual = set(record_by_name)
+    if declared != actual:
+        raise ContractError(
+            "%s tool closure mismatch: missing=%s unexpected=%s" %
+            (DEFAULT_INTERFACE_POLICY,
+             ",".join(sorted(actual - declared)) or "none",
+             ",".join(sorted(declared - actual)) or "none"))
+    path_pairs = {
+        (name, item["argument"])
+        for name, interface in by_name.items()
+        for item in interface["path_arguments"]
+    }
+    unused_defaults = sorted(
+        argument for argument in defaults
+        if not any(pair[1] == argument for pair in path_pairs))
+    invalid_overrides = sorted(set(overrides) - path_pairs)
+    if unused_defaults:
+        raise ContractError("%s has unused path defaults: %s" %
+                            (DEFAULT_INTERFACE_POLICY,
+                             ", ".join(unused_defaults)))
+    if invalid_overrides:
+        raise ContractError(
+            "%s has overrides for unclassified path arguments: %s" %
+            (DEFAULT_INTERFACE_POLICY, ", ".join(
+                "%s.%s" % item for item in invalid_overrides)))
+    return by_name, kblib.sha256_bytes(raw)
+
+
+# ---------------------------------------------------------------------------
 # Receipt extension derivation (static, per tool)
 # ---------------------------------------------------------------------------
 
@@ -493,7 +786,14 @@ def compile_contract(root):
         sys.dont_write_bytecode = original_dont_write
         sys.argv = original_argv
 
-    manifest = "".join(
+    interface_policy, interface_policy_hash = load_interface_policy(
+        root, records)
+    for record in records:
+        record["agent_interface"] = interface_policy[record["tool"]]
+
+    manifest = "%s %s\n" % (
+        DEFAULT_INTERFACE_POLICY, interface_policy_hash)
+    manifest += "".join(
         "%s %s\n" % (record["module"], record["source_hash"])
         for record in records
     )
@@ -503,8 +803,13 @@ def compile_contract(root):
         "generator": "%s/%s.py" % (TOOLS_SUBDIR, TOOL),
         "generator_version": TOOL_VERSION,
         "derived_from": "argparse-introspection",
-        "source_files": [record["module"] for record in records],
+        "source_files": ([DEFAULT_INTERFACE_POLICY] +
+                         [record["module"] for record in records]),
         "source_hash": kblib.sha256_bytes(manifest),
+        "agent_interface_policy": {
+            "path": DEFAULT_INTERFACE_POLICY,
+            "sha256": interface_policy_hash,
+        },
         "receipt_shape": {
             "base_fields": list(RECEIPT_BASE_FIELDS),
             "conditional_fields": list(RECEIPT_CONDITIONAL_FIELDS),
@@ -518,10 +823,10 @@ def compile_contract(root):
 def build_header(contract):
     return [
         "# Generated artifact -- do not edit directly.",
-        "# Compiled by Tools/compile_cli_contract.py from the argparse",
-        "#   declaration each Tools/*.py CLI builds for itself. Every value",
-        "#   below is read back out of that parser; nothing here is written",
-        "#   by hand, and a hand edit is reported by --check as a HOLD.",
+        "# Compiled by Tools/compile_cli_contract.py from each CLI's argparse",
+        "#   declaration plus Tools/agent-interface-policy.yaml. Invocation",
+        "#   shape comes from argparse; capability shape comes from the closed",
+        "#   policy. A hand edit is reported by --check as a HOLD.",
         "# regenerate with: python3 Tools/compile_cli_contract.py .",
         "# verify with:     python3 Tools/compile_cli_contract.py . --check",
         "# `source_hash` covers the manifest of the %d tool sources listed"
@@ -568,7 +873,12 @@ def main(argv=None):
     root = os.path.abspath(args.root)
     if not os.path.isdir(root):
         return fail("root is not a directory: %s" % args.root)
-    output = args.output or os.path.join(root, DEFAULT_OUTPUT)
+    requested_output = args.output or DEFAULT_OUTPUT
+    try:
+        output = kblib.registered_repository_artifact_path(
+            root, requested_output, DEFAULT_OUTPUT)
+    except ValueError as exc:
+        return fail("unsafe artifact output: %s" % exc)
 
     try:
         contract = compile_contract(root)

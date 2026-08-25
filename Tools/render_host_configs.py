@@ -122,7 +122,7 @@ DEFAULT_PROJECTION = "Tools/compiled/mcp-tools.json"
 DEFAULT_OUTPUT_DIR = "Tools/compiled/host-configs"
 UPSTREAM_ARTIFACT = "agent-interface-projection"
 UPSTREAM_FORM = "mcp"
-UPSTREAM_SCHEMA_VERSION = 1
+UPSTREAM_SCHEMA_VERSION = 2
 
 # ---------------------------------------------------------------------------
 # The server name

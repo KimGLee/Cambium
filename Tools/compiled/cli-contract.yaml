@@ -1,8 +1,8 @@
 # Generated artifact -- do not edit directly.
-# Compiled by Tools/compile_cli_contract.py from the argparse
-#   declaration each Tools/*.py CLI builds for itself. Every value
-#   below is read back out of that parser; nothing here is written
-#   by hand, and a hand edit is reported by --check as a HOLD.
+# Compiled by Tools/compile_cli_contract.py from each CLI's argparse
+#   declaration plus Tools/agent-interface-policy.yaml. Invocation
+#   shape comes from argparse; capability shape comes from the closed
+#   policy. A hand edit is reported by --check as a HOLD.
 # regenerate with: python3 Tools/compile_cli_contract.py .
 # verify with:     python3 Tools/compile_cli_contract.py . --check
 # `source_hash` covers the manifest of the 46 tool sources listed
@@ -14,12 +14,13 @@
 # The auto-added -h/--help action is omitted: argparse translates
 #   its help text, which would make this artifact locale-dependent.
 
-schema_version: 1
+schema_version: 2
 artifact: cli-invocation-contract
 generator: Tools/compile_cli_contract.py
 generator_version: 1.0.0
 derived_from: argparse-introspection
 source_files:
+  - Tools/agent-interface-policy.yaml
   - Tools/adopt_standards.py
   - Tools/apply_amendment.py
   - Tools/apply_contract_amendment.py
@@ -66,7 +67,10 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:e5aa7e7912632eef6c5c80f00c522bed4751d3c15d27711a06cc5cabea6fbe82
+source_hash: sha256:74c325d79445580f10fe73b0ab0a742ac56da12ff57fc165c29448809b42271e
+agent_interface_policy:
+  path: Tools/agent-interface-policy.yaml
+  sha256: sha256:839318e57903a2b70ecd6fc939b2be0a55fcc27d7ebddcf1d7bba7aa3f3eddd8
 receipt_shape:
   base_fields:
     - receipt_id
@@ -221,6 +225,27 @@ tools:
       - upstream_revision_id
       - upstream_source_ref
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - actor_role
+        - apply
+        - json
+      path_arguments:
+        - argument: plan
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: apply_amendment
     module: Tools/apply_amendment.py
     source_hash: sha256:a3c2be6df35ca7087493439c13e9e90a3533cbd10b95a42a206b90643a9ea822
@@ -355,6 +380,30 @@ tools:
       - transaction_phase
       - transaction_sequence
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - actor_role
+        - apply
+        - expected_coverage_sha256
+        - expected_progress_sha256
+        - expected_queue_sha256
+        - json
+      path_arguments:
+        - argument: plan
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: apply_contract_amendment
     module: Tools/apply_contract_amendment.py
     source_hash: sha256:ea76e470beeecbdaaa5d170ef1dd16ba7c5e1a532607265691caa91c2425b4ab
@@ -451,6 +500,27 @@ tools:
       - queue_revision_before
       - transaction_phase
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - actor_role
+        - apply
+        - json
+      path_arguments:
+        - argument: plan
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: apply_delta
     module: Tools/apply_delta.py
     source_hash: sha256:256693e1c18463c73c66d60b5b5eec6d0b4e2ab797fb570104b9ff975f38407a
@@ -611,6 +681,36 @@ tools:
       - semantic_content_protocol
       - task_id
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - actor_role
+        - apply
+        - expected_coverage_sha256
+        - expected_queue_sha256
+        - force
+        - json
+        - preflight
+      path_arguments:
+        - argument: delta
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: ledger
+          access: read-write
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: apply_metadata_transition
     module: Tools/apply_metadata_transition.py
     source_hash: sha256:a613d4db1d4a86873421169e2d194c6201fc5fae7a832b0f2e19e2a0a23dcb53
@@ -775,6 +875,32 @@ tools:
       - semantic_content_fingerprint
       - transition_id
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - actor_role
+        - apply
+        - expected_coverage_sha256
+        - expected_page_sha256
+        - gate_id
+        - gate_receipt
+        - json
+        - value
+      path_arguments:
+        - argument: page
+          access: read-write
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: apply_profile_adoption
     module: Tools/apply_profile_adoption.py
     source_hash: sha256:f206c315a73af6c14c6a713fcbeca58fad05ae30f953037c309baceea9a08e25
@@ -839,6 +965,26 @@ tools:
       - identity
       - transaction_id
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - json
+      path_arguments:
+        - argument: plan
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: apply_task_plan
     module: Tools/apply_task_plan.py
     source_hash: sha256:0f97dfe7556e3c00d6817d06bf26ef628db700c46a70cb0069a6f1ad336e6059
@@ -903,6 +1049,26 @@ tools:
       - identity
       - transaction_phase
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - json
+      path_arguments:
+        - argument: plan
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: check_batch_close
     module: Tools/check_batch_close.py
     source_hash: sha256:430c7533d26b597e269b8e0d605470c2948d7cb8d5b7f58f56c857e52206b278
@@ -1083,6 +1249,28 @@ tools:
       - work_spec_path
       - work_spec_sha256
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - accept_candidate_id
+        - accept_candidate_type
+        - accept_while_unchanged_id
+        - accept_while_unchanged_type
+        - batch
+        - integrator
+        - json
+        - review_attestation
+        - reviewer
+      path_arguments:
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: check_boundary_contract
     module: Tools/check_boundary_contract.py
     source_hash: sha256:988500b4e7992395bbd2d8aed27158ab1e2ec26c07cdb049d04bc1468fce367c
@@ -1185,6 +1373,37 @@ tools:
       - root
       - selected_profile_manifest
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: vault_root
+      workspace_access: write
+      value_arguments:
+        - exclude
+        - json
+        - strict
+      path_arguments:
+        - argument: contract
+          access: read
+          constraint: exact
+          value: Tools/page_contract.yaml
+          suffixes: []
+        - argument: profile
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+        - argument: scope
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: check_corpus_plan
     module: Tools/check_corpus_plan.py
     source_hash: sha256:bb3d2c1643459fa785b7adccb929fdb36333cd8040e6c5a84f6baffafa030edd
@@ -1240,6 +1459,25 @@ tools:
       - root
       - seq
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - json
+      path_arguments:
+        - argument: profile
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: check_freshness
     module: Tools/check_freshness.py
     source_hash: sha256:7559504ea2814ec13eb2c357bdae088454354e62fe914fd2cca87d5d6a4f8ec3
@@ -1355,6 +1593,32 @@ tools:
       - volatility
       - volatility_source
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: vault_root
+      workspace_access: write
+      value_arguments:
+        - as_of
+        - exclude
+        - json
+      path_arguments:
+        - argument: defaults
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+        - argument: scope
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: check_links
     module: Tools/check_links.py
     source_hash: sha256:48c9049d6bc44aa57ce8c26bf4001474b947e709d45f74ab2edd54e0b1475b36
@@ -1419,6 +1683,26 @@ tools:
       - gate_id
       - root
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: vault_root
+      workspace_access: write
+      value_arguments:
+        - exclude
+        - json
+      path_arguments:
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+        - argument: scope
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: check_moc
     module: Tools/check_moc.py
     source_hash: sha256:bf3e830bda2bd641885848954a7df6267d0b9013f63bfaedfb4d51fbeb8772ec
@@ -1470,6 +1754,21 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - exclude
+        - json
+      path_arguments:
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: check_page_contract
     module: Tools/check_page_contract.py
     source_hash: sha256:e2397cfd5950eaf96cc6e565d9e3c1bc3ad071a346b3a82e6c2635e5479f84c4
@@ -1572,6 +1871,37 @@ tools:
       - root
       - selected_profile_manifest
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: vault_root
+      workspace_access: write
+      value_arguments:
+        - exclude
+        - json
+        - strict
+      path_arguments:
+        - argument: contract
+          access: read
+          constraint: exact
+          value: Tools/page_contract.yaml
+          suffixes: []
+        - argument: profile
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+        - argument: scope
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: check_profile
     module: Tools/check_profile.py
     source_hash: sha256:af0b6b9449f95ccc2e182084098a8223a01b92624dc29413f44da7110663dbef
@@ -1659,6 +1989,40 @@ tools:
       - gate_id
       - identity
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - json
+      path_arguments:
+        - argument: defaults
+          access: read
+          constraint: exact
+          value: Tools/schemas/execution_defaults.template.yaml
+          suffixes: []
+        - argument: execution_defaults
+          access: read
+          constraint: exact
+          value: kernel/K00 Standards Control/execution-defaults-base.yaml
+          suffixes: []
+        - argument: interface
+          access: read
+          constraint: exact
+          value: profiles/README.md
+          suffixes: []
+        - argument: profile_dir
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: check_proof
     module: Tools/check_proof.py
     source_hash: sha256:734cc2675b594d80d778e9c7a9fd82864ae400d8aad323dd393a8f584beb3b9a
@@ -1750,6 +2114,40 @@ tools:
       - terminal_proof_path
       - terminal_proof_sha256
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - json
+      path_arguments:
+        - argument: ledger
+          access: read
+          constraint: exact
+          value: .cambium/state/coverage_ledger.yaml
+          suffixes: []
+        - argument: progress_ledger
+          access: read
+          constraint: exact
+          value: .cambium/state/progress_ledger.yaml
+          suffixes: []
+        - argument: proof
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+        - argument: template
+          access: read
+          constraint: exact
+          value: Tools/schemas/terminal_proof.template.yaml
+          suffixes: []
+      external_write: none
   - tool: check_queue
     module: Tools/check_queue.py
     source_hash: sha256:256a3051dce81e09d8aeaba4b9fd45e26f862cd8cb54c904d3a206a7f9bce749
@@ -2098,6 +2496,43 @@ tools:
       - task_id
       - task_state
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - ack_activation_phase
+        - ack_activation_piece
+        - boundary_gate_receipt
+        - budget_manifest_receipt
+        - confirmation_receipt
+        - deliver_activation_piece
+        - deliver_phase
+        - deliver_readback
+        - json
+        - ledger_advance_receipt
+        - phase
+        - phase_delivery_receipt
+        - phase_nonce
+        - phase_part
+        - piece
+        - piece_delivery_receipt
+        - piece_nonce
+        - readback_rule
+        - require_complete
+        - require_maintenance_complete
+        - require_ready
+        - require_revalidation
+        - resume_status
+        - watermark_advance_receipt
+      path_arguments:
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: check_residual_content
     module: Tools/check_residual_content.py
     source_hash: sha256:e0f5f427b82286505fa05b4c3bfcc6fbb7e2c911543b49983308e72966578bfa
@@ -2186,6 +2621,28 @@ tools:
       - root
       - scan_id
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: vault_root
+      workspace_access: write
+      value_arguments:
+        - json
+        - positive_controls_only
+        - scan_id
+        - time_limit
+      path_arguments:
+        - argument: config
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: check_structure
     module: Tools/check_structure.py
     source_hash: sha256:b06683771cde0c1c9d4adc5c772f0ea106ffb72bfcd4f22e0c999fda5567582b
@@ -2246,6 +2703,25 @@ tools:
       - root
       - selected_profile_manifest
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: vault_root
+      workspace_access: write
+      value_arguments:
+        - json
+      path_arguments:
+        - argument: profile
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: check_vocab
     module: Tools/check_vocab.py
     source_hash: sha256:c7ff4d89f0802f17e58849957703be04204c0397a0622a14bbd7d521be8351fd
@@ -2358,9 +2834,37 @@ tools:
       - quota_exceeded
       - root
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: vault_root
+      workspace_access: write
+      value_arguments:
+        - exclude
+        - json
+        - policy_fingerprint
+        - quota_p0
+        - quota_p1
+      path_arguments:
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+        - argument: scope
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: vocab
+          access: read
+          constraint: exact
+          value: Tools/vocab.yaml
+          suffixes: []
+      external_write: none
   - tool: compile_cli_contract
     module: Tools/compile_cli_contract.py
-    source_hash: sha256:334de06ec6a4f6e714bc5b204a4d11ad36fa3b94a06c50a5f2c32d6cdcfb2c59
+    source_hash: sha256:b3df79c857cc635a81ea15cf3e31f94d50a8accd598dcd087e2112c30cce93a0
     description: Compile the machine-readable CLI invocation contract from every Tools/*.py argparse declaration.
     arguments:
       - dest: root
@@ -2398,6 +2902,19 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: cli-only
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - check
+      path_arguments:
+        - argument: output
+          access: write
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: compile_queue
     module: Tools/compile_queue.py
     source_hash: sha256:a92f4ce5c202ad194e857fbfa50b828b34c51889cbcdbd469298bf945c100a54
@@ -2601,9 +3118,48 @@ tools:
       - transaction_id
       - transaction_phase
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - actor_role
+        - amendment_id
+        - apply
+        - apply_replan
+        - expected_coverage_sha256
+        - expected_progress_sha256
+        - expected_queue_revision
+        - expected_sha256
+        - expected_state_revision
+        - json
+      path_arguments:
+        - argument: coverage_proposal
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: output
+          access: write
+          constraint: namespace
+          value: .cambium
+          suffixes:
+            - .yaml
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+        - argument: replan_diff
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: compose_page_contract
     module: Tools/compose_page_contract.py
-    source_hash: sha256:497e30adf894e913af8864f897788a9adee473cac2019be6c3b1de61a629b83f
+    source_hash: sha256:1cde011989693acefd86ec5b7cc70466d977155ebeeba1625271817ee1b3883c
     description: Compose the effective frontmatter page contract from the kernel bases and the selected profile's Metadata Contract.
     arguments:
       - dest: root
@@ -2686,9 +3242,42 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: cli-only
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - check
+      path_arguments:
+        - argument: base
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: output
+          access: write
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: profile
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: relationships
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: sources_role
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: compose_vocab
     module: Tools/compose_vocab.py
-    source_hash: sha256:fed225907bb5fa9b6dfc1f241eff37d7136f61775057f70882f02c5c581c178b
+    source_hash: sha256:db55939232dc7459e9d928a852f9279983c5ca57e6b26c0bbe575350018b6b1f
     description: Deterministically compose the vocabulary artifact from the kernel base and the selected profile's extensions.
     arguments:
       - dest: base
@@ -2738,6 +3327,29 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: cli-only
+      workspace_argument: null
+      workspace_access: null
+      value_arguments:
+        - check
+      path_arguments:
+        - argument: base
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: extensions
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: output
+          access: write
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: duplicate_check
     module: Tools/duplicate_check.py
     source_hash: sha256:7ab6088f75112e9db7b12c3660c1f5d7c66b58a020de8a9b346d6ada0b189d53
@@ -2800,6 +3412,26 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: vault
+      workspace_access: write
+      value_arguments:
+        - exclude
+        - json
+      path_arguments:
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+        - argument: scope
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: init_state
     module: Tools/init_state.py
     source_hash: sha256:6b0da860348a809da16b56793b8d2c00b76303e6b99478e4b5be74076f5e0992
@@ -2941,9 +3573,31 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - at
+        - completion_semantics
+        - concurrency_cap
+        - contract_version
+        - exclusions
+        - objective
+        - scope_version
+        - standards_version
+        - task_id
+      path_arguments:
+        - argument: profile_manifest
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: metadata_execution_contract
     module: Tools/metadata_execution_contract.py
-    source_hash: sha256:3ed90bb7c559e3413f671cf6e02422edbe4a11f9fb3b5c0b13b95dcec3799e42
+    source_hash: sha256:ea6a1bf73bf06bbf23f491b416d45e3fd179facc67d94edf0f82130f79d14583
     description: Compile and load Cambium's closed metadata-execution authority contract. This module is deliberately the single authority boundary between metadata declarations and executable writers. A field rule is executable only when an installed writer capability declares the same ``(field, transition, adapter)`` operation, and every installed writer operation must be authorized by exactly one rule. Unknown keys, unknown adapters, orphan implementations, and partial evidence bindings fail closed.
     arguments:
       - dest: root
@@ -3004,6 +3658,29 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: cli-only
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - check
+      path_arguments:
+        - argument: authority
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: capabilities
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: output
+          access: write
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: migrate_standards_state
     module: Tools/migrate_standards_state.py
     source_hash: sha256:91a6569657b53dce5cb5d8d8fbf437460922425c1cdf03624edb09a4f35184b4
@@ -3033,6 +3710,14 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+      path_arguments: []
+      external_write: none
   - tool: profile_onboarding_status
     module: Tools/profile_onboarding_status.py
     source_hash: sha256:3cf70ce7b7406cd32ed90a659b34356a4eb247d2659c9ba27307c31531ef822d
@@ -3073,6 +3758,15 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: read
+      value_arguments:
+        - json
+        - profile_id
+      path_arguments: []
+      external_write: none
   - tool: project_page_state
     module: Tools/project_page_state.py
     source_hash: sha256:77c500cfbb0435f78908f8ab680f3fa4858c2c4d54cb90ce53e5870ddcfa3de4
@@ -3113,6 +3807,19 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+      path_arguments:
+        - argument: page
+          access: read-write
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: record_batch_judgment
     module: Tools/record_batch_judgment.py
     source_hash: sha256:33d65be54777d0f6b4abf2f9b1d76ac0bbea5eb51d416f6782fb5111c529b7e2
@@ -3231,6 +3938,30 @@ tools:
       - semantic_content_sha256
       - target_selector
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - batch
+        - json
+        - judgment_item
+        - reviewer_role
+        - statement
+      path_arguments:
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+        - argument: target
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: record_corpus_acceptance
     module: Tools/record_corpus_acceptance.py
     source_hash: sha256:daf0221fda93476856e57f0047a0f95ebd6b6bb421c3705cdb4e388555548521
@@ -3305,6 +4036,26 @@ tools:
       - seq
       - structural_check_receipt
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - actor_role
+        - apply
+      path_arguments:
+        - argument: plan
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: record_gate_attestation
     module: Tools/record_gate_attestation.py
     source_hash: sha256:11dd382ce16d52dce53e989f46f7003f37442e468767c5e872194f0261fac4ac
@@ -3434,6 +4185,30 @@ tools:
       - semantic_content_fingerprint
       - transition_id
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - actor_role
+        - apply
+        - gate_id
+        - json
+        - statement
+        - value
+      path_arguments:
+        - argument: page
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: record_gate_result
     module: Tools/record_gate_result.py
     source_hash: sha256:fd18fb87b2985de4a5af7b5a58181ba43aad5fbdf80f0c0db9dd2c32c92abbce
@@ -3508,6 +4283,27 @@ tools:
     receipt_extensions:
       - root
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - gate_id
+        - json
+      path_arguments:
+        - argument: page
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: register_amendment
     module: Tools/register_amendment.py
     source_hash: sha256:f840989f1b566f9609f4656d11ed2b3bf238cd9e526f87f2eedaf15ba68a91e7
@@ -3740,6 +4536,43 @@ tools:
       - task_id
       - withdrawal_reason
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - actor_role
+        - amendment_id
+        - apply
+        - approval_reference
+        - date
+        - decision_mode
+        - expected_coverage_sha256
+        - expected_progress_sha256
+        - expected_queue_sha256
+        - json
+        - operation
+        - reason
+        - summary
+        - withdraw
+      path_arguments:
+        - argument: coverage_proposal
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: plan
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: render_boundary_projection
     module: Tools/render_boundary_projection.py
     source_hash: sha256:e60e7f6744b7c0daff72394eb68f2459056c2bb07559833a700f7a91f77efcbb
@@ -3813,9 +4646,33 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: vault_root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - check
+      path_arguments:
+        - argument: contract
+          access: read
+          constraint: exact
+          value: Tools/page_contract.yaml
+          suffixes: []
+        - argument: profile
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: scope
+          access: read-write
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: render_host_configs
     module: Tools/render_host_configs.py
-    source_hash: sha256:814c7752666f2e16fc8d6267268de219a6cc0c8bf4e4056168aa4c652b1e988f
+    source_hash: sha256:7a5e4fd7b46eb6aab8825ab36abcdd3d21f663c01a224189dd93040c8f0deac5
     description: Render the Cambium MCP server's registration and corpus binding into the configuration file each supported host reads.
     arguments:
       - dest: root
@@ -3917,9 +4774,31 @@ tools:
           - sources
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: cli-only
+      workspace_argument: root
+      workspace_access: read
+      value_arguments:
+        - check
+        - distribution_root
+        - host
+        - sources
+        - workspace_root
+      path_arguments:
+        - argument: output_dir
+          access: write
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: projection
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: host-config-installation
   - tool: render_interface_projection
     module: Tools/render_interface_projection.py
-    source_hash: sha256:fa7602742ca8af6f5ddcccbf546d6b02c2455f4a90ae7f320181b829ddebfa43
+    source_hash: sha256:0a2c99365fbe6d1872b3b64f5e4533bcba877df87fcbba0a840ad762a71138c1
     description: Project the compiled CLI invocation contract into the agent-facing interface forms registered in this tool.
     arguments:
       - dest: root
@@ -3995,6 +4874,26 @@ tools:
           - sources
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: cli-only
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - check
+        - form
+        - sources
+      path_arguments:
+        - argument: contract
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+        - argument: output
+          access: write
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: render_queue
     module: Tools/render_queue.py
     source_hash: sha256:d812bf79922b250ac343e42d6d34fba1ddfbf1e8277df48a41184b652731fa1b
@@ -4046,6 +4945,21 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - check
+        - stdout
+      path_arguments:
+        - argument: output
+          access: write
+          constraint: namespace
+          value: .cambium/reports
+          suffixes:
+            - .md
+      external_write: none
   - tool: render_structure_projection
     module: Tools/render_structure_projection.py
     source_hash: sha256:b985e3c17787afc4e3f2dd12f8a01d83f542b2d66c1993134f6c5df11bad8fc1
@@ -4097,6 +5011,20 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: vault_root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - check
+      path_arguments:
+        - argument: profile
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: run_gates
     module: Tools/run_gates.py
     source_hash: sha256:b6a7ab148b36941fc73b4bcb6b8784afd5e3c75a8dffcf11da133c5b2d641f6e
@@ -4148,6 +5076,20 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: read
+      value_arguments:
+        - exclude
+        - list
+      path_arguments:
+        - argument: profile
+          access: read
+          constraint: contained
+          value: null
+          suffixes: []
+      external_write: none
   - tool: scaffold_profile
     module: Tools/scaffold_profile.py
     source_hash: sha256:a32c77da94268b577b19891d1e1f229fcb24d36f0ccc7d694bd2b48d23fec361
@@ -4199,6 +5141,16 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - json
+        - profile_id
+      path_arguments: []
+      external_write: none
   - tool: seal_receipts
     module: Tools/seal_receipts.py
     source_hash: sha256:03b0b6e8715673feb9aef3876cd6a2ef99edc74c3f34fc500cbb6df08e0defa3
@@ -4281,6 +5233,23 @@ tools:
       - sealed_records
       - sealed_segments
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - apply
+        - json
+        - reconcile
+        - verify
+      path_arguments:
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: stamp_cards
     module: Tools/stamp_cards.py
     source_hash: sha256:d1fc2ede40b0e4389e824e60b14d97332d8631d7983ad06addc8e693b12c4cf1
@@ -4343,6 +5312,21 @@ tools:
     mutually_exclusive_groups: []
     receipt_extensions: []
     receipt_extensions_extraction: complete
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - acknowledge_compiled
+        - check
+        - set_version
+      path_arguments:
+        - argument: cards_dir
+          access: read-write
+          constraint: exact
+          value: kernel/Cards
+          suffixes: []
+      external_write: none
   - tool: update_queue
     module: Tools/update_queue.py
     source_hash: sha256:d266021d26ce7153a18e1429bdb0ae0a1c0df167ccc7b8b4730ed79cc4dc696b
@@ -4609,6 +5593,41 @@ tools:
       - standards_revalidation_receipt
       - task_id
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - actor_role
+        - apply
+        - at
+        - batch_receipt
+        - close_gate_receipt
+        - confirmation_receipt
+        - delta_apply_receipt
+        - expected_sha256
+        - expected_state_revision
+        - gate_receipt
+        - hold_state
+        - id
+        - json
+        - reason
+        - standards_revalidation_receipt
+        - transition
+      path_arguments:
+        - argument: delta_path
+          access: read
+          constraint: namespace
+          value: .cambium/deltas
+          suffixes:
+            - .yaml
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none
   - tool: update_task
     module: Tools/update_task.py
     source_hash: sha256:bd7402da76588e5619a1a3bf4268135b9ad78c49912a1be54446531e155fdc14
@@ -4788,3 +5807,27 @@ tools:
       - task_id
       - transaction_id
     receipt_extensions_extraction: partial
+    agent_interface:
+      exposure: mcp
+      workspace_argument: root
+      workspace_access: write
+      value_arguments:
+        - actor_role
+        - apply
+        - at
+        - checkpoint_summary
+        - expected_progress_sha256
+        - expected_queue_sha256
+        - json
+        - maintenance_completion_receipt
+        - queue_check_receipt
+        - terminal_proof_receipt
+        - transition
+      path_arguments:
+        - argument: receipts
+          access: write
+          constraint: namespace
+          value: .cambium/receipts
+          suffixes:
+            - .jsonl
+      external_write: none

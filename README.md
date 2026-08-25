@@ -74,12 +74,16 @@ Cambium currently provides:
 - explicit Global Map, Capability Matrix, and Gap Register validation;
 - deterministic page, structure, vocabulary, link, boundary, freshness, and
   residual-content checks;
-- a generated host-neutral interface: each tool's own CLI declaration compiles
-  into the agent-facing MCP projection and per-host configuration;
+- a generated host-neutral interface: each tool's own CLI declaration and the
+  closed agent-interface capability policy compile into the agent-facing MCP
+  projection and per-host configuration;
 - Card-first activation and progressive Read Set delivery primitives.
 
 The generated MCP surface is a call surface, not an orchestrator. The tools
-still decide whether an operation is valid and whether its evidence counts.
+still decide whether an operation is valid and whether its evidence counts;
+the transport only enforces the workspace directory object frozen for the host
+session and the declared filesystem capability envelope, including effective
+CLI defaults.
 
 ## What Does Not Ship Yet
 
@@ -90,6 +94,7 @@ Cambium does not currently bundle:
 - a complete single-writer integrator loop;
 - durable Assignment lifecycle management;
 - authenticated actor or reviewer identity;
+- adversarial concurrent filesystem-namespace isolation;
 - automatic corpus-wide dependency propagation;
 - an independent evaluator that re-derives the complete expected corpus;
 - an installable OpenAI Plugin package, Hooks, UI, or marketplace entry.
@@ -307,7 +312,11 @@ local trust domain. They are not signatures. Without a protected runner or
 external attestation, Cambium does not authenticate actor labels, reviewer
 labels, operating-system identities, or workspace isolation. A party that can
 rewrite the repository, tools, and evidence can construct a new internally
-consistent history.
+consistent history. The MCP transport rejects unsafe arguments and static path
+aliases inside this local trust domain; it does not claim that a separate
+adversarial process can rewrite arbitrary child paths during an in-flight tool
+call. That wider boundary requires protected execution or tool-wide stable
+path-object consumption.
 
 ## Repository Map
 

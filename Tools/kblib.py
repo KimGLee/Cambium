@@ -2651,6 +2651,38 @@ def managed_repository_path(root, relative_path, managed_prefix,
     return candidate
 
 
+def registered_repository_artifact_path(root, requested_path,
+                                        registered_relative_path):
+    """Resolve one producer output to its single registered artifact path.
+
+    Generated contracts and projections are named outputs, not general file
+    writers.  Accept either the exact repository-relative spelling registered
+    by the producer or that same path as an absolute spelling under ``root``;
+    reject every alias, alternate in-repository target, and repository escape.
+    The final path then passes through the shared managed-path boundary so a
+    symlink component or multiply-linked existing file cannot redirect an
+    otherwise correct spelling.
+    """
+    if not isinstance(requested_path, str) or not requested_path:
+        raise ValueError("artifact path must be a non-empty string")
+    root_real = os.path.realpath(os.path.abspath(root))
+    registered = repository_path(root_real, registered_relative_path)
+    if os.path.isabs(requested_path):
+        # macOS exposes system aliases such as /var -> /private/var.  Compare
+        # filesystem identity, then return the registered spelling below so
+        # an accepted alias never becomes the path used for publication.
+        if os.path.realpath(os.path.abspath(requested_path)) != registered:
+            raise ValueError(
+                "artifact path must be exactly %s under the repository root"
+                % registered_relative_path)
+    elif requested_path != registered_relative_path:
+        raise ValueError(
+            "artifact path must be exactly %s" % registered_relative_path)
+    namespace = registered_relative_path.rsplit("/", 1)[0]
+    return managed_repository_path(
+        root_real, registered_relative_path, namespace, must_exist=False)
+
+
 class RuntimeStateLockedError(RuntimeError):
     """Raised when another cooperating process owns the runtime-state lock."""
 

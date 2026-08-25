@@ -471,13 +471,17 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     root = os.path.abspath(args.root)
+    try:
+        output = kblib.registered_repository_artifact_path(
+            root, args.output or DEFAULT_OUTPUT, DEFAULT_OUTPUT)
+    except ValueError as exc:
+        print("compose_page_contract: unsafe artifact output: %s" % exc)
+        return 1
     base_path = args.base or os.path.join(root, DEFAULT_BASE)
     rel_path = args.relationships or os.path.join(
         root, DEFAULT_RELATIONSHIPS)
     sources_role_path = args.sources_role or os.path.join(
         root, DEFAULT_SOURCES_ROLE)
-    output = args.output or os.path.join(root, DEFAULT_OUTPUT)
-
     admission, errors = profile_admission.admit_profile(
         root, args.profile, active_state_path=ACTIVE_STATE_PATH)
     if admission is None:
