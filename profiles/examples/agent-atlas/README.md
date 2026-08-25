@@ -2,9 +2,9 @@
 
 ## What This Example Is
 
-This directory is a non-normative snapshot of the real, selected Agent Systems
-Atlas Profile for a Chinese-first engineering knowledge corpus. It is not a
-template, default configuration, or adoption certificate. Because it lives
+This directory is a Cambium-owned, non-normative example of a filled Profile
+for a Chinese-first engineering knowledge corpus. It is not a template,
+default configuration, live mirror, or adoption certificate. Because it lives
 under `profiles/examples/`, its manifest is intentionally not selectable in
 place.
 
@@ -30,12 +30,13 @@ The scan configuration is not another slot or standard. This example has no sepa
 
 ## Snapshot Provenance
 
-The 16 machine-active files in this directory were synchronized from the
+The initial 16 machine-active files in this directory were seeded from the
 selected Profile in Agent Systems Atlas at commit
-`15df10eac89cafd381b145c48659c4a525f93f6d`. The source package was adopted
-under Cambium Standards 3.12.0.
+`15df10eac89cafd381b145c48659c4a525f93f6d`. The source package was admitted as
+a public example under Cambium Standards 3.12.0. That commit is import
+provenance, not a continuing synchronization authority.
 
-Only location-preserving adaptations are allowed in this example copy:
+The initial import made these location-preserving adaptations:
 
 - the Profile root changes from `profiles/agent-atlas/` to
   `profiles/examples/agent-atlas/`;
@@ -44,10 +45,14 @@ Only location-preserving adaptations are allowed in this example copy:
 - the manifest title and introduction identify the package as a non-selectable
   example.
 
-No Atlas rule, enum, trigger, role, judgment requirement, corpus path,
-structure declaration, scan predicate, or escalation threshold is abridged for
-the example. The orientation README is Cambium-owned and is not part of the
-selected Profile snapshot.
+At import, no Atlas rule, enum, trigger, role, judgment requirement, corpus
+path, structure declaration, scan predicate, or escalation threshold was
+abridged. After import, Cambium owns and may evolve this public example to
+demonstrate the current public Profile contract. It does not assert that a live
+Atlas repository has adopted those changes or remains byte-equivalent. Atlas
+and every other adopter must explicitly adopt and materialize applicable
+Cambium changes through its own governance process; Cambium does not write or
+manage an adopter's runtime state.
 
 ## Atlas-specific Bindings
 

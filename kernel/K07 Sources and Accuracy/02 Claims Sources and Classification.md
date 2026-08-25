@@ -18,7 +18,13 @@ The following content MUST have sources:
 - Architecture, metrics, user scale, cost, and effectiveness data in industry cases.
 - New system / operational-control patterns synthesized from official articles or community discussions.
 
-Common-sense connective sentences do not require per-sentence citation, but "common practice" MUST NOT be used to mask unverified facts.
+Common-sense connective sentences do not require per-sentence citation, but "common practice" MUST NOT be used to mask unverified facts. Citation-free does not mean claim-free: a connective or restructuring edit MUST NOT add a causal, mechanistic, temporal, comparative, quantitative, ordering, modal, absolute, or scope relation that the page's admitted evidence does not support.
+
+## Claim-preserving Transformation
+
+Translation, summarization, list-to-prose conversion, reordering, and other form changes may reorganize supported claims; they do not create authority to complete a missing explanation. Before a transformation, the author or reviewer distinguishes the content's natural form from whether the current evidence is sufficient for the proposed rewrite. A list is a compressed causal narrative only when its existing items themselves state the relevant causal, mechanistic, or failure relations. List density, short item length, or a page-depth requirement is not evidence that those relations exist.
+
+When the target form requires a relation or mechanism that the admitted content and sources do not supply, the transformation is blocked: preserve the neutral source form, record the exact evidence or knowledge gap and its owner, and let the applicable depth/acceptance rule decide whether that gap blocks the page. Filling the gap with an inferred transition, ordering, quantity, strengthening, or universal statement in order to satisfy a prose rule is a new unsupported claim.
 
 ## Source Placement
 

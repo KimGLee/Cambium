@@ -26,8 +26,8 @@ readback_sources:
   - kernel/K07 Sources and Accuracy/04 Evaluation and Source Quality.md
   - kernel/K07 Sources and Accuracy/05 Time Formula Terminology and Uncertainty.md
 readback_policy: declared
-source_hash: 'b74b0feca7c0'
-compiled_source_hash: 'b74b0feca7c0'
+source_hash: '6c1547dcfc22'
+compiled_source_hash: '6c1547dcfc22'
 ---
 # R04 Source-driven Expansion Card
 
@@ -49,6 +49,7 @@ Turn documentation, papers, code, benchmarks, cases, postmortems, community sign
 Run the pipeline in order: Environmental Scanning → Source Capture → Claim Extraction → Evidence Classification → Cross-source Synthesis → Knowledge Gap Analysis → Graph Impact Decision → Note Creation And Integration → Verification And Promotion → Maintenance And Supersession.
 
 - Separate reported facts, inference, cross-source synthesis, and recommendation.
+- Keep source form separate from rewrite readiness: reorganize only relations the admitted evidence supports, and preserve a neutral enumeration plus an explicit gap when the source does not supply the mechanism a target prose form would require.
 - State applicability, source-specific conditions, disagreement, comparability limits, and uncertainty.
 - Express a gap as a missing question, mechanism, boundary, or owner, not merely as a missing article.
 - Update evidence maturity, provenance, relationships, affected notes, and source dates as the evidence warrants.

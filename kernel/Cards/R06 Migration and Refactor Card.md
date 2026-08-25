@@ -27,8 +27,8 @@ source_files:
 readback_sources:
   - kernel/K03 Note Types and Ownership/02 Ownership and Canonical Notes.md
 readback_policy: declared
-source_hash: 'c5aa78d90d87'
-compiled_source_hash: 'c5aa78d90d87'
+source_hash: '5e3140b35d10'
+compiled_source_hash: '5e3140b35d10'
 ---
 # R06 Migration and Refactor Card
 
@@ -59,6 +59,7 @@ Use the safe order: create and verify the target → update references and headi
 - Existing changes of uncertain origin belong to the user; preserve rather than reset them.
 - Never delete first, use destructive reset as migration, or hide a rule/content loss inside a split.
 - Preserve unique content and Sources; do not create duplicate canonical owners.
+- A structural or prose migration may reorder supported claims but must not complete a missing causal, temporal, comparative, quantitative, modal, ordering, absolute, or scope relation; preserve the source form and register the gap instead.
 - Synchronize aliases, metadata, incoming links, MOCs, and replacement/tombstone state.
 - Use only the registered initial-plan or property-state-migration writer for legacy property adoption. A hand-authored Coverage row, fabricated receipt, or page-only deletion is not a migration.
 - Record a checkpoint with modified paths and the next exact action before pausing.

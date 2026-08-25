@@ -50,8 +50,8 @@ When a `Language Contract` display change would alter an existing heading anchor
 
 ## Paragraphs And Lists
 
-- Paragraphs are responsible for explaining causality and mechanism; lists are responsible for enumeration; lists MUST NOT replace all reasoning.
+- Paragraphs are responsible for explaining causality and mechanism; lists are responsible for enumeration. This is a responsibility boundary, not permission to manufacture reasoning: list density alone never requires prose conversion, and a missing causal or mechanistic relation is recorded as a content/evidence gap under K07/02 rather than supplied by the formatting pass.
 - A section MUST NOT consist of only one sentence long-term.
-- Avoid multiple consecutive bullet lists containing only nouns and short phrases.
+- Avoid multiple consecutive bullet lists containing only nouns and short phrases, but classify their semantic form before changing it. A bare enumeration remains an enumeration; only source-supported causal, mechanistic, or failure relations may be connected as prose.
 - When comparing multiple options, use unified dimensions instead of writing an asymmetric description paragraph for each.
 - For complex hierarchies, prefer splitting into sections; avoid overly deep nested bullets.

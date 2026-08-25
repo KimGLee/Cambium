@@ -43,8 +43,8 @@ readback_sources:
   - kernel/K12 Quality Assurance/11 Content-level Propagation.md
   - kernel/K12 Quality Assurance/13 Visual Verification Escalation.md
 readback_policy: declared
-source_hash: '5f0f7919a9ed'
-compiled_source_hash: '5f0f7919a9ed'
+source_hash: '2c1d2a7c346b'
+compiled_source_hash: '2c1d2a7c346b'
 ---
 # R02 Single Note Authoring Card
 
@@ -70,6 +70,7 @@ Create, rewrite, or target one canonical note. Load [[kernel/Cards/R01 Core Boot
 - Keep frontmatter and independent status axes consistent with the content actually present.
 - Put parent, prerequisite, dependency, and first meaningful terminology links in the body; `Related` alone is not integration.
 - Support key, time-sensitive, and quantitative claims; distinguish reported claim, inference, synthesis, and recommendation.
+- Treat form and evidence sufficiency as separate decisions. Translation, summarization, reordering, and list-to-prose conversion preserve only source-supported relations; when a mechanism or relation is absent, retain the neutral form and register the gap instead of inventing a connective explanation.
 - If a reusable proper noun, metric, formula, table, code block, diagram, external claim, or substantive mechanism change appears, follow the matching Triggered route in R02 Read Set.
 - A substantive mechanism change marks direct downstream notes for propagation review.
 - A semantic content change is not a review event: the guarded writer records content-change evidence, advances `last_content_modified`, and invalidates any review or Gate evidence bound to the old semantic fingerprint. Projection-only frontmatter write-back does none of those things; only new accepted evidence can restore a current review or Gate value.
@@ -81,6 +82,7 @@ Create, rewrite, or target one canonical note. Load [[kernel/Cards/R01 Core Boot
 - [ ] The opening states the problem or position; the body explains the mechanism or causal chain, an important boundary, and an appropriate example.
 - [ ] Applicable failure behavior identifies trigger, symptom, cause, detection, and mitigation, or explicitly states why it is not applicable.
 - [ ] Key, time-sensitive, and quantitative claims have role-clear evidence; claim, inference, synthesis, and recommendation are not conflated.
+- [ ] Form changes preserve the admitted claim boundary; no causal, temporal, comparative, quantitative, modal, ordering, absolute, or scope relation was introduced for fluency, and any missing relation is an explicit gap.
 - [ ] Parent, prerequisite, key dependency, and first meaningful terminology links are present; no missing or ambiguous link remains.
 - [ ] The `Language Contract` and every triggered source, terminology, propagation, and rendering obligation have been applied.
 - [ ] Applicable deterministic checks pass; visual evidence is required only after an objective exception trigger and unresolved question are recorded.
