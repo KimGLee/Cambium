@@ -175,7 +175,7 @@ def resolve(target, by_path, by_base):
 
 def headings_cache_get(cache, by_path, key):
     if key not in cache:
-        text = open(by_path[key], encoding="utf-8", errors="replace").read()
+        text = kblib.read_text(by_path[key], errors="replace")
         cache[key] = [h for _, _, h in kblib.headings_of(kblib.strip_code(text))]
     return cache[key]
 
@@ -185,7 +185,7 @@ def lifecycle_cache_get(cache, by_path, key):
     if key not in cache:
         info = {"lifecycle": None, "superseded_by": None}
         fm_text = kblib.extract_frontmatter(
-            open(by_path[key], encoding="utf-8", errors="replace").read())
+            kblib.read_text(by_path[key], errors="replace"))
         if fm_text is not None:
             try:
                 fm = kblib.parse_yaml_subset(fm_text)
@@ -268,7 +268,7 @@ def _main():
               "block_ref_skipped": 0, "retired_target": 0, "excluded_target": 0}
 
     for full, rel in scan_files:
-        text = kblib.strip_code(open(full, encoding="utf-8", errors="replace").read())
+        text = kblib.strip_code(kblib.read_text(full, errors="replace"))
         rel_key = rel[:-3].replace(os.sep, "/")
         for lineno, line in enumerate(text.splitlines(), 1):
             for m in LINK_RE.finditer(line):

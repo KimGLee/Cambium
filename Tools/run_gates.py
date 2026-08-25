@@ -77,8 +77,16 @@ def _tool_path(name):
 def _selected_profile(root, override):
     """Resolve the selected profile manifest, live runtime first."""
     if override:
+        capability = kblib.inherited_path_capability(override, "snapshot")
         manifest = os.path.join(override, "profile.md")
-        if not os.path.isfile(os.path.join(root, manifest)):
+        if capability is not None:
+            if not capability["exists"] or capability["kind"] != "directory":
+                raise RunnerError("--profile must name a Profile directory")
+            kblib.repository_tree_snapshot(root, override)
+            exists = kblib.retained_tree_contains(manifest)
+        else:
+            exists = os.path.isfile(os.path.join(root, manifest))
+        if not exists:
             raise RunnerError(
                 "--profile %s has no profile.md under the repository root"
                 % override)
@@ -154,16 +162,14 @@ def _effective_policy(root, manifest):
     tool did exactly that, which is why this function exists.
     """
     manifest_path = os.path.join(root, manifest)
-    with open(manifest_path, encoding="utf-8") as handle:
-        manifest_text = handle.read()
+    manifest_text = kblib.read_text(manifest_path)
     bindings = kblib.profile_slot_bindings(manifest_text)
     binding = (bindings.get("Priority Rubric") or "").strip("`").strip()
     if not binding:
         raise RunnerError("the selected Profile binds no Priority Rubric "
                           "slot; K00/07 places the standing quotas there")
     rubric_path = os.path.join(os.path.dirname(manifest_path), binding)
-    with open(rubric_path, encoding="utf-8") as handle:
-        rubric_text = handle.read()
+    rubric_text = kblib.read_text(rubric_path)
     policy, fingerprint, errors = (
         contract_exception_policy.effective_priority_policy(rubric_text))
     if errors or fingerprint is None:
@@ -294,7 +300,7 @@ def derive_verification_set(root, registry, recipes):
 
 
 def _run(command):
-    completed = subprocess.run(
+    completed = kblib.run_cambium_subprocess(
         command, text=True, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, check=False)
     return completed.returncode, completed.stdout

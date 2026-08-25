@@ -188,7 +188,7 @@ import traceback
 # same way. `render_host_configs.SERVER_NAME` is the declaration; this is
 # the server answering to it.
 SERVER_NAME = "cambium"
-SERVER_VERSION = "1.0.0"
+SERVER_VERSION = "1.1.0"
 SERVER_TITLE = "Cambium"
 
 # Every protocol revision whose wire shape was read before being claimed.
@@ -216,11 +216,13 @@ EXECUTION_CONTEXT_ENV = "CAMBIUM_EXECUTION_CONTEXT_ID"
 HOST_CLIENT_NAME_ENV = "CAMBIUM_HOST_CLIENT_NAME"
 HOST_CLIENT_VERSION_ENV = "CAMBIUM_HOST_CLIENT_VERSION"
 SOURCE_HASH_ENV = "CAMBIUM_INTERFACE_SOURCE_HASH"
+PATH_CAPABILITIES_ENV = "CAMBIUM_PATH_CAPABILITIES"
+PATH_CAPABILITIES_ACK_ENV = "CAMBIUM_PATH_CAPABILITIES_ACK_FD"
 
 # What the projection must claim about itself before it is served.
 PROJECTION_ARTIFACT = "agent-interface-projection"
 PROJECTION_FORM = "mcp"
-PROJECTION_SCHEMA_VERSION = 2
+PROJECTION_SCHEMA_VERSION = 3
 PATH_EXTENSION_KEY = "x-cambium-path"
 WORKSPACE_EXTENSION_KEY = "x-cambium-workspace"
 
@@ -526,10 +528,13 @@ def load_projection(distribution_root, environ):
                 continue
             if not isinstance(path_capability, dict) or \
                     set(path_capability) != {
-                        "access", "constraint", "value", "suffixes",
+                        "access", "consumption", "constraint", "value",
+                        "suffixes", "active_when_any", "inactive_when_any",
                     } or \
                     path_capability.get("access") not in \
                     ("read", "write", "read-write") or \
+                    path_capability.get("consumption") not in \
+                    ("snapshot", "append", "replace", "transaction") or \
                     path_capability.get("constraint") not in \
                     ("contained", "exact", "namespace"):
                 raise RpcError(
@@ -538,8 +543,51 @@ def load_projection(distribution_root, environ):
                     "path capability for %s.%s" % (path, name, argument),
                     {"path": path, "tool": name, "argument": argument})
             constraint = path_capability["constraint"]
+            consumption = path_capability["consumption"]
+            access = path_capability["access"]
+            compatible = {
+                "read": {"snapshot"},
+                "write": {"append", "replace"},
+                "read-write": {"transaction"},
+            }
+            if consumption not in compatible[access]:
+                raise RpcError(
+                    UNRELIABLE_EVIDENCE,
+                    "the compiled tool projection at %s carries an "
+                    "incompatible consumption mode for %s.%s" %
+                    (path, name, argument),
+                    {"path": path, "tool": name, "argument": argument})
             value = path_capability["value"]
             suffixes = path_capability["suffixes"]
+            active_when_any = path_capability["active_when_any"]
+            inactive_when_any = path_capability["inactive_when_any"]
+            for label, conditions in (
+                    ("active_when_any", active_when_any),
+                    ("inactive_when_any", inactive_when_any)):
+                if (not isinstance(conditions, list) or
+                        len(conditions) != len(set(conditions)) or
+                        any(not isinstance(condition, str) or
+                            condition not in schema["properties"] or
+                            schema["properties"][condition].get("type") !=
+                            "boolean" or
+                            cli_metadata(
+                                schema["properties"][condition]).get(
+                                    "action") != "store_true"
+                            for condition in conditions)):
+                    raise RpcError(
+                        UNRELIABLE_EVIDENCE,
+                        "the compiled tool projection at %s carries invalid "
+                        "%s conditions for %s.%s" %
+                        (path, label, name, argument),
+                        {"path": path, "tool": name,
+                         "argument": argument})
+            if set(active_when_any) & set(inactive_when_any):
+                raise RpcError(
+                    UNRELIABLE_EVIDENCE,
+                    "the compiled tool projection at %s activates and "
+                    "deactivates %s.%s on the same condition" %
+                    (path, name, argument),
+                    {"path": path, "tool": name, "argument": argument})
             if not isinstance(suffixes, list) or any(
                     not isinstance(suffix, str) or not suffix or
                     not suffix.startswith(".") or "/" in suffix or
@@ -767,14 +815,56 @@ def _canonical_workspace_spelling(tool_name, argument, spelling):
     return spelling
 
 
-def _refuse_link_aliases(tool_name, argument, workspace_fd, spelling):
-    """Refuse link aliases while walking from the pinned workspace object."""
+def _path_capability_is_active(capability, arguments):
+    """Evaluate one compiled, closed operation-mode predicate."""
+    active_when_any = capability.get("active_when_any") or []
+    inactive_when_any = capability.get("inactive_when_any") or []
+    positive = (not active_when_any or
+                any(arguments.get(name) is True
+                    for name in active_when_any))
+    excluded = any(arguments.get(name) is True
+                   for name in inactive_when_any)
+    return positive and not excluded
+
+
+def _retain_path_capability(tool_name, argument, workspace_fd, spelling,
+                            capability, value_index):
+    """Retain the admitted target and parent objects for one typed path.
+
+    Validation that closes a descriptor has only moved a pathname race.  This
+    walk returns the exact descriptors a cooperating tool must consume: the
+    existing target object for a snapshot, and the stable parent object for a
+    create, append, replacement, or transaction.  The original spelling is
+    retained only as display/lookup identity; it grants no filesystem reach.
+    """
     if spelling == ".":
         components = []
     else:
         components = spelling.split("/")
     current_fd = os.dup(workspace_fd)
+    retained = []
     try:
+        if not components:
+            target_fd = os.dup(current_fd)
+            retained.append(target_fd)
+            descriptor = os.fstat(target_fd)
+            return ({
+                "capability_id": "%s[%d]" % (argument, value_index),
+                "argument": argument,
+                "value_index": value_index,
+                "spelling": spelling,
+                "access": capability["access"],
+                "consumption": capability["consumption"],
+                "constraint": capability["constraint"],
+                "exists": True,
+                "kind": "directory",
+                "target_fd": target_fd,
+                "parent_fd": None,
+                "basename": ".",
+                "missing_components": [],
+                "target_dev": descriptor.st_dev,
+                "target_ino": descriptor.st_ino,
+            }, retained)
         for index, component in enumerate(components):
             try:
                 metadata = os.stat(
@@ -782,7 +872,28 @@ def _refuse_link_aliases(tool_name, argument, workspace_fd, spelling):
             except FileNotFoundError:
                 # A may-create path is anchored by the deepest existing
                 # parent opened from the frozen workspace directory.
-                break
+                parent_fd = os.dup(current_fd)
+                retained.append(parent_fd)
+                parent = os.fstat(parent_fd)
+                return ({
+                    "capability_id": "%s[%d]" % (argument, value_index),
+                    "argument": argument,
+                    "value_index": value_index,
+                    "spelling": spelling,
+                    "access": capability["access"],
+                    "consumption": capability["consumption"],
+                    "constraint": capability["constraint"],
+                    "exists": False,
+                    "kind": "missing",
+                    "target_fd": None,
+                    "parent_fd": parent_fd,
+                    "basename": components[-1],
+                    "missing_components": components[index:],
+                    "target_dev": None,
+                    "target_ino": None,
+                    "parent_dev": parent.st_dev,
+                    "parent_ino": parent.st_ino,
+                }, retained)
             except OSError as exc:
                 raise RpcError(
                     INVALID_PARAMS,
@@ -802,9 +913,69 @@ def _refuse_link_aliases(tool_name, argument, workspace_fd, spelling):
                     "identity is ambiguous" % (tool_name, argument),
                     {"tool": tool_name, "argument": argument})
             if index == len(components) - 1:
-                continue
+                if stat.S_ISDIR(metadata.st_mode):
+                    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                elif stat.S_ISREG(metadata.st_mode):
+                    if capability["consumption"] == "append":
+                        flags = os.O_RDWR | os.O_APPEND | os.O_NOFOLLOW
+                    else:
+                        flags = os.O_RDONLY | os.O_NOFOLLOW
+                else:
+                    raise RpcError(
+                        INVALID_PARAMS,
+                        "%s.%s must name a regular file or directory" %
+                        (tool_name, argument),
+                        {"tool": tool_name, "argument": argument})
+                if hasattr(os, "O_CLOEXEC"):
+                    flags |= os.O_CLOEXEC
+                try:
+                    target_fd = os.open(
+                        component, flags, dir_fd=current_fd)
+                except OSError as exc:
+                    raise RpcError(
+                        INVALID_PARAMS,
+                        "%s.%s changed while its target was being retained: "
+                        "%s" % (tool_name, argument, exc),
+                        {"tool": tool_name, "argument": argument})
+                opened = os.fstat(target_fd)
+                if ((metadata.st_dev, metadata.st_ino) !=
+                        (opened.st_dev, opened.st_ino)):
+                    os.close(target_fd)
+                    raise RpcError(
+                        INVALID_PARAMS,
+                        "%s.%s changed while its target was being retained" %
+                        (tool_name, argument),
+                        {"tool": tool_name, "argument": argument})
+                target_kind = ("directory" if stat.S_ISDIR(opened.st_mode)
+                               else "file")
+                parent_fd = os.dup(current_fd)
+                retained.extend((target_fd, parent_fd))
+                parent = os.fstat(parent_fd)
+                return ({
+                    "capability_id": "%s[%d]" % (argument, value_index),
+                    "argument": argument,
+                    "value_index": value_index,
+                    "spelling": spelling,
+                    "access": capability["access"],
+                    "consumption": capability["consumption"],
+                    "constraint": capability["constraint"],
+                    "exists": True,
+                    "kind": target_kind,
+                    "target_fd": target_fd,
+                    "parent_fd": parent_fd,
+                    "basename": component,
+                    "missing_components": [],
+                    "target_dev": opened.st_dev,
+                    "target_ino": opened.st_ino,
+                    "parent_dev": parent.st_dev,
+                    "parent_ino": parent.st_ino,
+                }, retained)
             if not stat.S_ISDIR(metadata.st_mode):
-                break
+                raise RpcError(
+                    INVALID_PARAMS,
+                    "%s.%s has a non-directory parent component" %
+                    (tool_name, argument),
+                    {"tool": tool_name, "argument": argument})
             flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
             if hasattr(os, "O_CLOEXEC"):
                 flags |= os.O_CLOEXEC
@@ -818,13 +989,25 @@ def _refuse_link_aliases(tool_name, argument, workspace_fd, spelling):
                     {"tool": tool_name, "argument": argument})
             os.close(current_fd)
             current_fd = next_fd
+        raise RpcError(
+            INTERNAL_ERROR,
+            "%s.%s capability retention reached no terminal state" %
+            (tool_name, argument),
+            {"tool": tool_name, "argument": argument})
+    except Exception:
+        for descriptor in retained:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        raise
     finally:
         os.close(current_fd)
 
 
 def enforce_workspace_capabilities(tool, arguments, workspace_root,
                                    workspace_fd):
-    """Refuse a call whose declared paths escape the host-bound workspace."""
+    """Validate and retain every effective typed path capability."""
     root_real = os.path.realpath(os.path.abspath(workspace_root))
     workspace_argument = tool["workspace_argument"]
     if workspace_argument not in arguments:
@@ -846,54 +1029,84 @@ def enforce_workspace_capabilities(tool, arguments, workspace_root,
              "workspace_root": workspace_root})
 
     properties = tool["schema"]["properties"]
-    for argument, property_schema in properties.items():
-        if argument == workspace_argument:
-            continue
-        capability = property_schema.get(PATH_EXTENSION_KEY)
-        if capability is None:
-            continue
-        if argument in arguments:
-            value = arguments[argument]
-        elif "default" in property_schema and \
-                property_schema["default"] is not None:
-            # An omitted option still has an effective path. Validate the
-            # compiled argparse default before the child process can use it.
-            value = property_schema["default"]
-        else:
-            continue
-        for spelling in _path_values(tool["name"], argument, value):
-            spelling = _canonical_workspace_spelling(
-                tool["name"], argument, spelling)
-            _refuse_link_aliases(
-                tool["name"], argument, workspace_fd, spelling)
-            constraint = capability["constraint"]
-            registered = capability["value"]
-            if constraint == "exact":
-                if spelling != registered:
+    records = []
+    descriptors = []
+    semantic_slots = {}
+    try:
+        for argument, property_schema in properties.items():
+            if argument == workspace_argument:
+                continue
+            capability = property_schema.get(PATH_EXTENSION_KEY)
+            if capability is None:
+                continue
+            if not _path_capability_is_active(capability, arguments):
+                continue
+            if argument in arguments:
+                value = arguments[argument]
+            elif "default" in property_schema and \
+                    property_schema["default"] is not None:
+                # An omitted option still has an effective path. Validate and
+                # retain the compiled default before the child can use it.
+                value = property_schema["default"]
+            else:
+                continue
+            for value_index, spelling in enumerate(
+                    _path_values(tool["name"], argument, value)):
+                spelling = _canonical_workspace_spelling(
+                    tool["name"], argument, spelling)
+                semantic_slot = (spelling, capability["consumption"])
+                prior = semantic_slots.get(semantic_slot)
+                if prior is not None:
                     raise RpcError(
                         INVALID_PARAMS,
-                        "%s.%s must name exactly %s" %
-                        (tool["name"], argument, registered),
+                        "%s.%s aliases active path capability %s at %s "
+                        "with the same consumption mode" %
+                        (tool["name"], argument, prior, spelling),
                         {"tool": tool["name"], "argument": argument,
-                         "expected": registered})
-            elif constraint == "namespace":
-                in_namespace = spelling.startswith(registered + "/")
-                if not in_namespace:
-                    raise RpcError(
-                        INVALID_PARAMS,
-                        "%s.%s must name an artifact under %s" %
-                        (tool["name"], argument, registered),
-                        {"tool": tool["name"], "argument": argument,
-                         "namespace": registered})
-                suffixes = capability["suffixes"]
-                if suffixes and not any(
-                        spelling.endswith(suffix) for suffix in suffixes):
-                    raise RpcError(
-                        INVALID_PARAMS,
-                        "%s.%s must end in one of %s" %
-                        (tool["name"], argument, ", ".join(suffixes)),
-                        {"tool": tool["name"], "argument": argument,
-                         "suffixes": suffixes})
+                         "aliased_argument": prior, "path": spelling,
+                         "consumption": capability["consumption"]})
+                semantic_slots[semantic_slot] = argument
+                constraint = capability["constraint"]
+                registered = capability["value"]
+                if constraint == "exact":
+                    if spelling != registered:
+                        raise RpcError(
+                            INVALID_PARAMS,
+                            "%s.%s must name exactly %s" %
+                            (tool["name"], argument, registered),
+                            {"tool": tool["name"], "argument": argument,
+                             "expected": registered})
+                elif constraint == "namespace":
+                    in_namespace = spelling.startswith(registered + "/")
+                    if not in_namespace:
+                        raise RpcError(
+                            INVALID_PARAMS,
+                            "%s.%s must name an artifact under %s" %
+                            (tool["name"], argument, registered),
+                            {"tool": tool["name"], "argument": argument,
+                             "namespace": registered})
+                    suffixes = capability["suffixes"]
+                    if suffixes and not any(
+                            spelling.endswith(suffix) for suffix in suffixes):
+                        raise RpcError(
+                            INVALID_PARAMS,
+                            "%s.%s must end in one of %s" %
+                            (tool["name"], argument, ", ".join(suffixes)),
+                            {"tool": tool["name"], "argument": argument,
+                             "suffixes": suffixes})
+                record, opened = _retain_path_capability(
+                    tool["name"], argument, workspace_fd, spelling,
+                    capability, value_index)
+                records.append(record)
+                descriptors.extend(opened)
+    except Exception:
+        for descriptor in descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        raise
+    return records, descriptors
 
 
 # ---------------------------------------------------------------------------
@@ -908,36 +1121,99 @@ def interpreter():
 
 def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
     """Run one tool as a child process and report exactly what came back."""
-    enforce_workspace_capabilities(
+    capability_records, capability_fds = enforce_workspace_capabilities(
         tool, arguments, workspace_root, workspace_fd)
     execution_arguments = dict(arguments)
     # The caller must name the right binding, but the child consumes `.` from
     # the already-open directory object. It can therefore never reopen a
     # replaced pathname between authorization and subprocess startup.
     execution_arguments[tool["workspace_argument"]] = "."
+    # Effective typed defaults were admitted and retained above. Materialize
+    # them onto argv so argparse cannot reconstruct an absolute default from
+    # the distribution checkout and bypass the workspace capability object.
+    for argument, property_schema in tool["schema"]["properties"].items():
+        if argument in execution_arguments or \
+                property_schema.get(PATH_EXTENSION_KEY) is None:
+            continue
+        capability = property_schema[PATH_EXTENSION_KEY]
+        if not _path_capability_is_active(
+                capability, execution_arguments):
+            continue
+        if property_schema.get("default") is not None:
+            execution_arguments[argument] = property_schema["default"]
     tail, ignored = build_argv(tool, execution_arguments)
     argv = [interpreter(), tool["script"]] + tail
 
     child_env = dict(environ)
     child_env[WORKSPACE_ENV] = workspace_root
+    ack_read_fd, ack_write_fd = os.pipe()
+    child_env[PATH_CAPABILITIES_ACK_ENV] = str(ack_write_fd)
+    child_env[PATH_CAPABILITIES_ENV] = canonical_json({
+        "schema_version": 1,
+        "tool": tool["name"],
+        "workspace_dev": os.fstat(workspace_fd).st_dev,
+        "workspace_ino": os.fstat(workspace_fd).st_ino,
+        "capabilities": capability_records,
+    })
 
     try:
-        completed = subprocess.run(
-            argv,
-            env=child_env,
-            # The server's own stdin is the JSON-RPC stream. A child that
-            # inherited it could consume the protocol.
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            pass_fds=(workspace_fd,),
-            preexec_fn=lambda: os.fchdir(workspace_fd),
-        )
+        try:
+            completed = subprocess.run(
+                argv,
+                env=child_env,
+                # The server's own stdin is the JSON-RPC stream. A child that
+                # inherited it could consume the protocol.
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                pass_fds=tuple(
+                    [workspace_fd, ack_write_fd] + capability_fds),
+                preexec_fn=lambda: os.fchdir(workspace_fd),
+            )
+        finally:
+            os.close(ack_write_fd)
+            for descriptor in capability_fds:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+        acknowledged_raw = b""
+        while True:
+            chunk = os.read(ack_read_fd, 65536)
+            if not chunk:
+                break
+            acknowledged_raw += chunk
+        acknowledged = set(
+            line for line in acknowledged_raw.decode(
+                "utf-8", errors="replace").splitlines() if line)
+        # Every active typed path must reach a descriptor-backed consumer.
+        # A mode that does not consume an otherwise effective path must declare
+        # its activation predicate in the compiled interface; silently
+        # treating all write paths as optional would let an unmigrated writer
+        # reopen argv names and still return a clean result with no
+        # acknowledgement.
+        required_consumption = {
+            row["capability_id"] for row in capability_records
+        }
+        missing_consumption = sorted(required_consumption - acknowledged)
     except OSError as exc:
         raise RpcError(
             INTERNAL_ERROR,
             "%s could not be started: %s" % (tool["name"], exc),
             {"tool": tool["name"], "argv": argv})
+    finally:
+        try:
+            os.close(ack_read_fd)
+        except OSError:
+            pass
+
+    if completed.returncode in (0, 2) and missing_consumption:
+        raise RpcError(
+            INTERNAL_ERROR,
+            "%s completed without consuming retained path capability(s): %s"
+            % (tool["name"], ", ".join(missing_consumption)),
+            {"tool": tool["name"],
+             "missing_path_capabilities": missing_consumption})
 
     report_text = completed.stderr.decode("utf-8", errors="replace")
     report, report_truncated = clip(report_text)
@@ -990,6 +1266,8 @@ def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
         "report": report,
         "report_truncated": report_truncated,
         "transport": "%s-mcp-server/%s" % (SERVER_NAME, SERVER_VERSION),
+        "path_capability_assurance": "descriptor-retained",
+        "consumed_path_capabilities": sorted(acknowledged),
     }
     if parse_state == "parsed":
         envelope["stdout_json"] = payload

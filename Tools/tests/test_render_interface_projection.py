@@ -135,9 +135,12 @@ class ShippedArtifactTests(unittest.TestCase):
                 expected = {
                     item["argument"]: {
                         "access": item["access"],
+                        "consumption": item["consumption"],
                         "constraint": item["constraint"],
                         "value": item["value"],
                         "suffixes": item["suffixes"],
+                        "active_when_any": item["active_when_any"],
+                        "inactive_when_any": item["inactive_when_any"],
                     }
                     for item in policy["path_arguments"]
                 }
@@ -154,13 +157,12 @@ class ShippedArtifactTests(unittest.TestCase):
             if receipts is None:
                 continue
             with self.subTest(tool=tool["name"], argument="receipts"):
-                self.assertEqual(
-                    receipts[projector.PATH_EXTENSION_KEY], {
-                        "access": "write",
-                        "constraint": "namespace",
-                        "value": ".cambium/receipts",
-                        "suffixes": [".jsonl"],
-                    })
+                capability = receipts[projector.PATH_EXTENSION_KEY]
+                self.assertEqual(capability["access"], "write")
+                self.assertEqual(capability["consumption"], "append")
+                self.assertEqual(capability["constraint"], "namespace")
+                self.assertEqual(capability["value"], ".cambium/receipts")
+                self.assertEqual(capability["suffixes"], [".jsonl"])
         exact = {
             ("check_vocab", "vocab"): "Tools/vocab.yaml",
             ("check_proof", "template"):

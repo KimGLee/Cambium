@@ -23,6 +23,7 @@ import check_queue
 import compose_vocab
 import kblib
 import metadata_execution_contract
+import module_boundary_facts
 import profile_admission
 from profile_fixture import install_loadable_profile
 
@@ -149,7 +150,8 @@ class CheckBatchCloseTests(unittest.TestCase):
         tools = self.root / "Tools"
         tools.mkdir(exist_ok=True)
         (tools / "schemas").mkdir(exist_ok=True)
-        shutil.copy2(TOOLS / "kblib.py", tools / "kblib.py")
+        module_boundary_facts.stage_shipped_modules(
+            str(TOOLS.parent), str(self.root), ["kblib"])
         (tools / "fixture_residual.py").write_text(
             "#!/usr/bin/env python3\n"
             "import argparse, hashlib, json, os, sys\n"

@@ -123,7 +123,7 @@ def main(argv=None):
         )
         if args.check:
             try:
-                current = open(output, encoding="utf-8").read()
+                current = kblib.read_text(output)
             except OSError:
                 print("[FAIL] report is missing: %s" % args.output)
                 return 1

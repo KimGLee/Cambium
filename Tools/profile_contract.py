@@ -426,6 +426,12 @@ class _TableRow:
 def _repo_relative(root, path):
     root_real = os.path.realpath(os.path.abspath(os.fspath(root)))
     path_absolute = os.path.abspath(os.fspath(path))
+    lexical_relative = os.path.relpath(
+        path_absolute, os.path.abspath(os.fspath(root))).replace(os.sep, "/")
+    if (lexical_relative != "." and
+            not lexical_relative.startswith("../") and
+            kblib.retained_tree_is_bound(lexical_relative)):
+        return lexical_relative
     path_real = os.path.realpath(path_absolute)
     try:
         inside = os.path.commonpath((root_real, path_real)) == root_real

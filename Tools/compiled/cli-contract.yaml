@@ -14,10 +14,10 @@
 # The auto-added -h/--help action is omitted: argparse translates
 #   its help text, which would make this artifact locale-dependent.
 
-schema_version: 2
+schema_version: 3
 artifact: cli-invocation-contract
 generator: Tools/compile_cli_contract.py
-generator_version: 1.0.0
+generator_version: 1.1.0
 derived_from: argparse-introspection
 source_files:
   - Tools/agent-interface-policy.yaml
@@ -67,10 +67,10 @@ source_files:
   - Tools/stamp_cards.py
   - Tools/update_queue.py
   - Tools/update_task.py
-source_hash: sha256:ea769d5b491604bd337ae8f531fc0a56d5e35cc4a83f6a2268c5cbb1c2d463b4
+source_hash: sha256:90532b76b0ee1e6dc84b292137be273bdebeb403fc1956f6c056a1ff03cbfe15
 agent_interface_policy:
   path: Tools/agent-interface-policy.yaml
-  sha256: sha256:839318e57903a2b70ecd6fc939b2be0a55fcc27d7ebddcf1d7bba7aa3f3eddd8
+  sha256: sha256:13f6cf606ca826338529b8c71ff54765367351e710b078c44e1fcba47830150b
 receipt_shape:
   base_fields:
     - receipt_id
@@ -89,7 +89,7 @@ tool_count: 46
 tools:
   - tool: adopt_standards
     module: Tools/adopt_standards.py
-    source_hash: sha256:ccf86c2b4ae4e88178368102d349a8270decc6a318c4afc9a1e85eba4c4558e3
+    source_hash: sha256:144f12f9129679e4875d9faee34f4ef4d292ffc9fdae5fcfa981f61e678374da
     description: Adopt one approved Standards/Profile revision
     arguments:
       - dest: root
@@ -236,19 +236,26 @@ tools:
       path_arguments:
         - argument: plan
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none
   - tool: apply_amendment
     module: Tools/apply_amendment.py
-    source_hash: sha256:a3c2be6df35ca7087493439c13e9e90a3533cbd10b95a42a206b90643a9ea822
+    source_hash: sha256:ebf2fa5e1c6725beeb5ca5e5fbebb5b8937b4c6442467774f12c2f544625b465
     description: Apply one approved cross-Ledger Amendment transaction
     arguments:
       - dest: root
@@ -394,19 +401,26 @@ tools:
       path_arguments:
         - argument: plan
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none
   - tool: apply_contract_amendment
     module: Tools/apply_contract_amendment.py
-    source_hash: sha256:ea76e470beeecbdaaa5d170ef1dd16ba7c5e1a532607265691caa91c2425b4ab
+    source_hash: sha256:fac265fa84a0bb552dc6c3bb3ae6fdf67abbdb7be20ccefffb76b6536d27ec2e
     description: Amend the frozen Task Contract from one confirmed plan.
     arguments:
       - dest: root
@@ -511,19 +525,26 @@ tools:
       path_arguments:
         - argument: plan
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none
   - tool: apply_delta
     module: Tools/apply_delta.py
-    source_hash: sha256:04cac630f51d31f01691a2573097fdcef14ee035c1716d2a8acf87896529b1e1
+    source_hash: sha256:75894def8e3037d5a3340d251091c081b67c9076a086b8c80619a0069cb1627d
     description: Deterministic Coverage Delta application
     arguments:
       - dest: ledger
@@ -696,20 +717,30 @@ tools:
       path_arguments:
         - argument: delta
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: ledger
           access: read-write
+          consumption: transaction
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none
   - tool: apply_metadata_transition
     module: Tools/apply_metadata_transition.py
@@ -891,19 +922,26 @@ tools:
       path_arguments:
         - argument: page
           access: read-write
+          consumption: transaction
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none
   - tool: apply_profile_adoption
     module: Tools/apply_profile_adoption.py
-    source_hash: sha256:f206c315a73af6c14c6a713fcbeca58fad05ae30f953037c309baceea9a08e25
+    source_hash: sha256:341e678a239e2e8083e5e95e8f32f1c1db5a716c72ef33fb5cc5effaca4ef610
     description: Apply one no-runtime R09 Profile adoption (initial adoption or pre-runtime profile revision) from a restricted-YAML plan
     arguments:
       - dest: root
@@ -975,19 +1013,26 @@ tools:
       path_arguments:
         - argument: plan
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none
   - tool: apply_task_plan
     module: Tools/apply_task_plan.py
-    source_hash: sha256:a5a88449f82b4e1b9ab30f3e8c1d720506ebf1b65863d926ade6745d02097609
+    source_hash: sha256:9a71cf8d5483dbc7cfba876ae1e82c1008555e53196ff6066bfe54abf43c81b8
     description: Materialize a task runtime from one confirmed plan.
     arguments:
       - dest: root
@@ -1059,19 +1104,26 @@ tools:
       path_arguments:
         - argument: plan
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none
   - tool: check_batch_close
     module: Tools/check_batch_close.py
-    source_hash: sha256:0b2c86635ab800fa8f646f14ba7de30d46b3508eaa7d7354748a948314174a70
+    source_hash: sha256:f792f44810d2d4841bb2d603c1c07b98d4b82e035d0cd29b7bb8924bed64a454
     description: Run and publish the K12/09 batch-close evidence bundle
     arguments:
       - dest: root
@@ -1266,14 +1318,17 @@ tools:
       path_arguments:
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: check_boundary_contract
     module: Tools/check_boundary_contract.py
-    source_hash: sha256:988500b4e7992395bbd2d8aed27158ab1e2ec26c07cdb049d04bc1468fce367c
+    source_hash: sha256:b0933d69f68a852f195c5739fe505c30aab83d53db237c5eebf7395b8a9fe568
     description: "Validate page boundary blocks against the K08/09 page boundary contract (gate: boundary-contract; advisory by default)."
     arguments:
       - dest: vault_root
@@ -1384,29 +1439,41 @@ tools:
       path_arguments:
         - argument: contract
           access: read
+          consumption: snapshot
           constraint: exact
           value: Tools/page_contract.yaml
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: profile
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
         - argument: scope
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: check_corpus_plan
     module: Tools/check_corpus_plan.py
-    source_hash: sha256:17c2d06ecd2972083e205238153698861c354d6071883a9bee7b2352d35457ea
+    source_hash: sha256:3b2fdeec61c0e4df805db1a912a6fcd165e0ae5c93ef340720c4d0b00f17e286
     description: Validate explicit Corpus Planning artifacts
     arguments:
       - dest: root
@@ -1468,19 +1535,25 @@ tools:
       path_arguments:
         - argument: profile
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: check_freshness
     module: Tools/check_freshness.py
-    source_hash: sha256:7559504ea2814ec13eb2c357bdae088454354e62fe914fd2cca87d5d6a4f8ec3
+    source_hash: sha256:da4eeb5ba326b30f4968293ec57c3aae175e1a4ee5729e5b76b70146e31a734a
     description: Closed-world freshness / review_by candidate check
     arguments:
       - dest: vault_root
@@ -1604,24 +1677,33 @@ tools:
       path_arguments:
         - argument: defaults
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
         - argument: scope
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: check_links
     module: Tools/check_links.py
-    source_hash: sha256:48c9049d6bc44aa57ce8c26bf4001474b947e709d45f74ab2edd54e0b1475b36
+    source_hash: sha256:310281e70c906fc04c24e95a99835960c2475ff023667a32d37004c704fc2698
     description: Wiki link missing/ambiguous/heading check
     arguments:
       - dest: vault_root
@@ -1693,15 +1775,21 @@ tools:
       path_arguments:
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
         - argument: scope
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: check_moc
     module: Tools/check_moc.py
@@ -1764,14 +1852,17 @@ tools:
       path_arguments:
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: check_page_contract
     module: Tools/check_page_contract.py
-    source_hash: sha256:e2397cfd5950eaf96cc6e565d9e3c1bc3ad071a346b3a82e6c2635e5479f84c4
+    source_hash: sha256:d57d9550e325288c8f3ffcb541b18d143881fe46aff5fbacdb4625b3a034d8b9
     description: "Validate pages against the compiled frontmatter page contract (gate: page-contract; advisory by default)."
     arguments:
       - dest: vault_root
@@ -1882,29 +1973,41 @@ tools:
       path_arguments:
         - argument: contract
           access: read
+          consumption: snapshot
           constraint: exact
           value: Tools/page_contract.yaml
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: profile
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
         - argument: scope
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: check_profile
     module: Tools/check_profile.py
-    source_hash: sha256:41b625fc96829e8b941d08168e4715b6818c1653a1bc89dccda03f4f22642235
+    source_hash: sha256:3ef0bbaad47235a2ef66d2292906f2e08a80de62082ba9dfff974d508de0ef21
     description: Profile manifest completeness and unfilled-template check
     arguments:
       - dest: profile_dir
@@ -1998,34 +2101,49 @@ tools:
       path_arguments:
         - argument: defaults
           access: read
+          consumption: snapshot
           constraint: exact
           value: Tools/schemas/execution_defaults.template.yaml
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: execution_defaults
           access: read
+          consumption: snapshot
           constraint: exact
           value: kernel/K00 Standards Control/execution-defaults-base.yaml
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: interface
           access: read
+          consumption: snapshot
           constraint: exact
           value: profiles/README.md
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: profile_dir
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: check_proof
     module: Tools/check_proof.py
-    source_hash: sha256:734cc2675b594d80d778e9c7a9fd82864ae400d8aad323dd393a8f584beb3b9a
+    source_hash: sha256:5499d308de79839e5cea12f8144d1ce93f8b80e3abfbf88b839fb96494d35d30
     description: Terminal Proof completeness and zero-condition check
     arguments:
       - dest: proof
@@ -2123,30 +2241,45 @@ tools:
       path_arguments:
         - argument: ledger
           access: read
+          consumption: snapshot
           constraint: exact
           value: .cambium/state/coverage_ledger.yaml
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: progress_ledger
           access: read
+          consumption: snapshot
           constraint: exact
           value: .cambium/state/progress_ledger.yaml
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: proof
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
         - argument: template
           access: read
+          consumption: snapshot
           constraint: exact
           value: Tools/schemas/terminal_proof.template.yaml
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: check_queue
     module: Tools/check_queue.py
@@ -2528,14 +2661,17 @@ tools:
       path_arguments:
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: check_residual_content
     module: Tools/check_residual_content.py
-    source_hash: sha256:e0f5f427b82286505fa05b4c3bfcc6fbb7e2c911543b49983308e72966578bfa
+    source_hash: sha256:cc1f3dca30e3037e5a77cb7b548269c9353b63a947c8e05a6aaace2b700be82c
     description: Find profile-configured residual content outside accepted roots.
     arguments:
       - dest: vault_root
@@ -2633,19 +2769,25 @@ tools:
       path_arguments:
         - argument: config
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: check_structure
     module: Tools/check_structure.py
-    source_hash: sha256:b06683771cde0c1c9d4adc5c772f0ea106ffb72bfcd4f22e0c999fda5567582b
+    source_hash: sha256:9ae2573e83e6911097a8b3a22ae698e920bef2f8dfa36ab342dd25fb476893ab
     description: "Validate the selected profile's Structure Registry against the vault (gate: structure-registry)."
     arguments:
       - dest: vault_root
@@ -2712,19 +2854,25 @@ tools:
       path_arguments:
         - argument: profile
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: check_vocab
     module: Tools/check_vocab.py
-    source_hash: sha256:c7ff4d89f0802f17e58849957703be04204c0397a0622a14bbd7d521be8351fd
+    source_hash: sha256:53441efce3af1e55582b212892a51133c53860227971e0157b8f71387c9eb18f
     description: Frontmatter controlled-vocabulary check
     arguments:
       - dest: vault_root
@@ -2847,24 +2995,33 @@ tools:
       path_arguments:
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
         - argument: scope
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: vocab
           access: read
+          consumption: snapshot
           constraint: exact
           value: Tools/vocab.yaml
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: compile_cli_contract
     module: Tools/compile_cli_contract.py
-    source_hash: sha256:b3df79c857cc635a81ea15cf3e31f94d50a8accd598dcd087e2112c30cce93a0
+    source_hash: sha256:cbbe7713e7cdecec052b5ff8cf0edc081b2e68bee27d2d5a79e961b4a264d5e3
     description: Compile the machine-readable CLI invocation contract from every Tools/*.py argparse declaration.
     arguments:
       - dest: root
@@ -2910,14 +3067,17 @@ tools:
         - check
       path_arguments:
         - argument: output
-          access: write
+          access: read-write
+          consumption: transaction
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: compile_queue
     module: Tools/compile_queue.py
-    source_hash: sha256:a92f4ce5c202ad194e857fbfa50b828b34c51889cbcdbd469298bf945c100a54
+    source_hash: sha256:a858c9b8ae6a539f156206639be1a4c1637d0ece7dc3b55b8feac8408359081a
     description: Compile Required Queue from explicit Coverage assignments
     arguments:
       - dest: root
@@ -3136,30 +3296,45 @@ tools:
       path_arguments:
         - argument: coverage_proposal
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: output
           access: write
+          consumption: replace
           constraint: namespace
           value: .cambium
           suffixes:
             - .yaml
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+            - apply_replan
+          inactive_when_any: []
         - argument: replan_diff
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any:
+            - apply_replan
+          inactive_when_any: []
       external_write: none
   - tool: compose_page_contract
     module: Tools/compose_page_contract.py
-    source_hash: sha256:1cde011989693acefd86ec5b7cc70466d977155ebeeba1625271817ee1b3883c
+    source_hash: sha256:8ee0171fa441e1e6ba97e9d669c61450abcc5028bd4a52c0e813a2f224026637
     description: Compose the effective frontmatter page contract from the kernel bases and the selected profile's Metadata Contract.
     arguments:
       - dest: root
@@ -3251,33 +3426,48 @@ tools:
       path_arguments:
         - argument: base
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: output
-          access: write
+          access: read-write
+          consumption: transaction
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: profile
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: relationships
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: sources_role
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: compose_vocab
     module: Tools/compose_vocab.py
-    source_hash: sha256:db55939232dc7459e9d928a852f9279983c5ca57e6b26c0bbe575350018b6b1f
+    source_hash: sha256:7738bd5ef3837ad4077a42ee4c2145854daa4d79184b65e2ddcce5e48c2b0ab3
     description: Deterministically compose the vocabulary artifact from the kernel base and the selected profile's extensions.
     arguments:
       - dest: base
@@ -3336,23 +3526,32 @@ tools:
       path_arguments:
         - argument: base
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: extensions
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: output
-          access: write
+          access: read-write
+          consumption: transaction
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: duplicate_check
     module: Tools/duplicate_check.py
-    source_hash: sha256:7ab6088f75112e9db7b12c3660c1f5d7c66b58a020de8a9b346d6ada0b189d53
+    source_hash: sha256:1a955241c2560d3fb4c6c73637123b8f53994ba5046c996bffe887ecd8e3af81
     description: Cross-file duplicate paragraph candidate detection (for maintenance runs and governance tasks)
     arguments:
       - dest: vault
@@ -3422,15 +3621,21 @@ tools:
       path_arguments:
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any: []
+          inactive_when_any: []
         - argument: scope
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: init_state
     module: Tools/init_state.py
@@ -3591,13 +3796,16 @@ tools:
       path_arguments:
         - argument: profile_manifest
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: metadata_execution_contract
     module: Tools/metadata_execution_contract.py
-    source_hash: sha256:ea6a1bf73bf06bbf23f491b416d45e3fd179facc67d94edf0f82130f79d14583
+    source_hash: sha256:9acc6ec84563f38d9651b0121b853b5cd79e5a0eedbf3c5869b5f13025aceb8f
     description: Compile and load Cambium's closed metadata-execution authority contract. This module is deliberately the single authority boundary between metadata declarations and executable writers. A field rule is executable only when an installed writer capability declares the same ``(field, transition, adapter)`` operation, and every installed writer operation must be authorized by exactly one rule. Unknown keys, unknown adapters, orphan implementations, and partial evidence bindings fail closed.
     arguments:
       - dest: root
@@ -3667,19 +3875,28 @@ tools:
       path_arguments:
         - argument: authority
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: capabilities
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: output
-          access: write
+          access: read-write
+          consumption: transaction
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: migrate_standards_state
     module: Tools/migrate_standards_state.py
@@ -3769,7 +3986,7 @@ tools:
       external_write: none
   - tool: project_page_state
     module: Tools/project_page_state.py
-    source_hash: sha256:77c500cfbb0435f78908f8ab680f3fa4858c2c4d54cb90ce53e5870ddcfa3de4
+    source_hash: sha256:701f0ca69bdd34cb8a15d021ce25d9a4a4e64502dad041f4128cdf8f1a57d2e0
     description: Project metadata-contract owner state onto page frontmatter
     arguments:
       - dest: root
@@ -3816,9 +4033,12 @@ tools:
       path_arguments:
         - argument: page
           access: read-write
+          consumption: transaction
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: record_batch_judgment
     module: Tools/record_batch_judgment.py
@@ -3949,18 +4169,18 @@ tools:
         - judgment_item
         - reviewer_role
         - statement
+        - target
       path_arguments:
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
-        - argument: target
-          access: read
-          constraint: contained
-          value: null
-          suffixes: []
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none
   - tool: record_corpus_acceptance
     module: Tools/record_corpus_acceptance.py
@@ -4046,15 +4266,22 @@ tools:
       path_arguments:
         - argument: plan
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none
   - tool: record_gate_attestation
     module: Tools/record_gate_attestation.py
@@ -4199,19 +4426,26 @@ tools:
       path_arguments:
         - argument: page
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none
   - tool: record_gate_result
     module: Tools/record_gate_result.py
-    source_hash: sha256:fd18fb87b2985de4a5af7b5a58181ba43aad5fbdf80f0c0db9dd2c32c92abbce
+    source_hash: sha256:2d9b054fb2fa20ab1d0bc4946bf5049db0d5a819b56ee7a7ca435f98bbb294a1
     description: Run a registered scan and record a deterministic Extension Gate result
     arguments:
       - dest: root
@@ -4294,19 +4528,26 @@ tools:
       path_arguments:
         - argument: page
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none
   - tool: register_amendment
     module: Tools/register_amendment.py
-    source_hash: sha256:f840989f1b566f9609f4656d11ed2b3bf238cd9e526f87f2eedaf15ba68a91e7
+    source_hash: sha256:ab91d923a7b04e3d855b05693778e3e7abee0bfe49bcb6ff81dc96a7ce3eca3a
     description: Register one approved current-protocol Amendment
     arguments:
       - dest: root
@@ -4558,24 +4799,34 @@ tools:
       path_arguments:
         - argument: coverage_proposal
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: plan
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none
   - tool: render_boundary_projection
     module: Tools/render_boundary_projection.py
-    source_hash: sha256:e60e7f6744b7c0daff72394eb68f2459056c2bb07559833a700f7a91f77efcbb
+    source_hash: sha256:43b94eb2f04249df270574b306dc717c36c6ae97ce3b5f3b2853af77e6099ff2
     description: Render the K08/09 boundary projection blocks from page `boundary` frontmatter.
     arguments:
       - dest: vault_root
@@ -4656,23 +4907,32 @@ tools:
       path_arguments:
         - argument: contract
           access: read
+          consumption: snapshot
           constraint: exact
           value: Tools/page_contract.yaml
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: profile
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: scope
           access: read-write
+          consumption: transaction
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: render_host_configs
     module: Tools/render_host_configs.py
-    source_hash: sha256:7a5e4fd7b46eb6aab8825ab36abcdd3d21f663c01a224189dd93040c8f0deac5
+    source_hash: sha256:3a2931c1709b381cce5909cb2cc44fe96aff6b1e953da0ac2f652af6545fa287
     description: Render the Cambium MCP server's registration and corpus binding into the configuration file each supported host reads.
     arguments:
       - dest: root
@@ -4786,19 +5046,25 @@ tools:
         - workspace_root
       path_arguments:
         - argument: output_dir
-          access: write
+          access: read-write
+          consumption: transaction
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: projection
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: host-config-installation
   - tool: render_interface_projection
     module: Tools/render_interface_projection.py
-    source_hash: sha256:0a2c99365fbe6d1872b3b64f5e4533bcba877df87fcbba0a840ad762a71138c1
+    source_hash: sha256:001d285a7f08446aa6b4a6dd4d9d6769a4fc01d65d8a88ddecf3778c28fd806b
     description: Project the compiled CLI invocation contract into the agent-facing interface forms registered in this tool.
     arguments:
       - dest: root
@@ -4885,18 +5151,24 @@ tools:
       path_arguments:
         - argument: contract
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
         - argument: output
-          access: write
+          access: read-write
+          consumption: transaction
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: render_queue
     module: Tools/render_queue.py
-    source_hash: sha256:d812bf79922b250ac343e42d6d34fba1ddfbf1e8277df48a41184b652731fa1b
+    source_hash: sha256:46610b9bda26392e58fe6885d516d91040fb3120f85827a79e16b3a4909f4304
     description: Render Required Queue human report
     arguments:
       - dest: root
@@ -4954,15 +5226,19 @@ tools:
         - stdout
       path_arguments:
         - argument: output
-          access: write
+          access: read-write
+          consumption: transaction
           constraint: namespace
           value: .cambium/reports
           suffixes:
             - .md
+          active_when_any: []
+          inactive_when_any:
+            - stdout
       external_write: none
   - tool: render_structure_projection
     module: Tools/render_structure_projection.py
-    source_hash: sha256:b985e3c17787afc4e3f2dd12f8a01d83f542b2d66c1993134f6c5df11bad8fc1
+    source_hash: sha256:f0b8af48fcf9a66b60e14cd35082eb33d4ce67190d4a54df8d045b030911ed57
     description: Render derived Structure Registry coverage projections (K01/05 derived roles).
     arguments:
       - dest: vault_root
@@ -5021,13 +5297,16 @@ tools:
       path_arguments:
         - argument: profile
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: run_gates
     module: Tools/run_gates.py
-    source_hash: sha256:b6a7ab148b36941fc73b4bcb6b8784afd5e3c75a8dffcf11da133c5b2d641f6e
+    source_hash: sha256:171e2830adc2db8035c532ec2dcc50857cc7a1f24bd9c39e6a6f67e65f996ddf
     description: Run the adopter verification set derived from the K00/12 Stable Gate ID Registry (deterministic, not-batch-scoped producers).
     arguments:
       - dest: root
@@ -5086,9 +5365,12 @@ tools:
       path_arguments:
         - argument: profile
           access: read
+          consumption: snapshot
           constraint: contained
           value: null
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: scaffold_profile
     module: Tools/scaffold_profile.py
@@ -5153,7 +5435,7 @@ tools:
       external_write: none
   - tool: seal_receipts
     module: Tools/seal_receipts.py
-    source_hash: sha256:03b0b6e8715673feb9aef3876cd6a2ef99edc74c3f34fc500cbb6df08e0defa3
+    source_hash: sha256:eb8e9e7dc41018fdfe4741bd33678f89008db75b82fb3122c90581f0adb1ba69
     description: "Seal verified frozen receipt history (K12/07). --apply is a maintenance-window operation: run it only with no other Cambium or adopter writer, checker or receipt appender active against this repository."
     arguments:
       - dest: root
@@ -5245,14 +5527,20 @@ tools:
       path_arguments:
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any:
+            - reconcile
+            - verify
       external_write: none
   - tool: stamp_cards
     module: Tools/stamp_cards.py
-    source_hash: sha256:d1fc2ede40b0e4389e824e60b14d97332d8631d7983ad06addc8e693b12c4cf1
+    source_hash: sha256:797dd1ee3173e606377c70bb774f0d4b4612a91877df947a161248a044e77932
     description: Stamp kernel Runtime Cards
     arguments:
       - dest: root
@@ -5323,9 +5611,12 @@ tools:
       path_arguments:
         - argument: cards_dir
           access: read-write
+          consumption: transaction
           constraint: exact
           value: kernel/Cards
           suffixes: []
+          active_when_any: []
+          inactive_when_any: []
       external_write: none
   - tool: update_queue
     module: Tools/update_queue.py
@@ -5617,16 +5908,23 @@ tools:
       path_arguments:
         - argument: delta_path
           access: read
+          consumption: snapshot
           constraint: namespace
           value: .cambium/deltas
           suffixes:
             - .yaml
+          active_when_any: []
+          inactive_when_any: []
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none
   - tool: update_task
     module: Tools/update_task.py
@@ -5826,8 +6124,12 @@ tools:
       path_arguments:
         - argument: receipts
           access: write
+          consumption: append
           constraint: namespace
           value: .cambium/receipts
           suffixes:
             - .jsonl
+          active_when_any:
+            - apply
+          inactive_when_any: []
       external_write: none

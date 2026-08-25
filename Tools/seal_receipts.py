@@ -480,6 +480,15 @@ def _append_lines(path, lines):
 
 
 def _existing_lines(path):
+    capability = kblib.inherited_path_capability(path, "append")
+    if capability is not None:
+        if not capability["exists"]:
+            # The observation itself consumes the retained may-create
+            # capability; do not fall back to a pathname existence check.
+            kblib.receipt_append_observation(path, [])
+            return []
+        return kblib.read_bytes(
+            path, consumptions=("append",)).decode("utf-8").splitlines()
     if not os.path.exists(path):
         return []
     with open(path, encoding="utf-8") as handle:

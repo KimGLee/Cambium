@@ -69,10 +69,16 @@ def write_interface_policy(root, tool_names):
     path = Path(root) / compiler.DEFAULT_INTERFACE_POLICY
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(kblib.canonical_yaml({
-        "schema_version": 1,
+        "schema_version": 2,
         "artifact": "agent-interface-policy",
+        "consumption_defaults": {
+            "read": "snapshot",
+            "write": "replace",
+            "read-write": "transaction",
+        },
         "path_defaults": [],
         "path_overrides": [],
+        "path_activation_overrides": [],
         "tools": rows,
     }), encoding="utf-8")
 
@@ -339,6 +345,50 @@ class FixtureTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
                 compiler.ContractError, "unclassified=new_capability"):
+            compiler.compile_contract(self.workspace)
+
+    def test_path_activation_is_closed_over_same_tool_boolean_modes(self):
+        self.write_tool("sample.py", """
+            import argparse
+
+            def main(argv=None):
+                parser = argparse.ArgumentParser(description="Sample tool")
+                parser.add_argument("root", help="where to look")
+                parser.add_argument("--output", default="reports/out.md")
+                parser.add_argument("--apply", action="store_true")
+                parser.add_argument("--label")
+                return parser.parse_args(argv)
+        """)
+        write_interface_policy(self.workspace, ["sample"])
+        policy_path = Path(self.workspace) / compiler.DEFAULT_INTERFACE_POLICY
+        policy = kblib.parse_yaml_subset(
+            policy_path.read_text(encoding="utf-8"))
+        row = policy["tools"][0]
+        row.update({
+            "exposure": "mcp",
+            "workspace_argument": "root",
+            "workspace_access": "write",
+            "value_arguments": ["apply", "label"],
+            "write_paths": ["output"],
+        })
+        policy["path_activation_overrides"] = [{
+            "tool": "sample", "argument": "output",
+            "active_when_any": ["apply"], "inactive_when_any": [],
+        }]
+        policy_path.write_text(
+            kblib.canonical_yaml(policy), encoding="utf-8")
+
+        compiled = compiler.compile_contract(self.workspace)
+        capability = compiled["tools"][0]["agent_interface"][
+            "path_arguments"][0]
+        self.assertEqual(capability["active_when_any"], ["apply"])
+
+        policy["path_activation_overrides"][0]["active_when_any"] = [
+            "label"]
+        policy_path.write_text(
+            kblib.canonical_yaml(policy), encoding="utf-8")
+        with self.assertRaisesRegex(
+                compiler.ContractError, "must name one store_true"):
             compiler.compile_contract(self.workspace)
 
 

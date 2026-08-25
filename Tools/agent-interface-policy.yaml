@@ -7,13 +7,18 @@
 # and overrides narrow containment to a registered namespace or exact artifact.
 # A CLI-only tool may retain an external-write workflow, but that effect is
 # never inherited by MCP merely because the CLI happens to declare it.
-schema_version: 1
+schema_version: 2
 artifact: agent-interface-policy
+consumption_defaults:
+  read: snapshot
+  write: replace
+  read-write: transaction
 path_defaults:
   - argument: receipts
     constraint: namespace
     value: .cambium/receipts
     suffixes: [.jsonl]
+    consumption: append
 path_overrides:
   - tool: check_boundary_contract
     argument: contract
@@ -85,6 +90,79 @@ path_overrides:
     constraint: namespace
     value: .cambium/deltas
     suffixes: [.yaml]
+path_activation_overrides:
+  - tool: adopt_standards
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: apply_amendment
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: apply_contract_amendment
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: apply_delta
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: apply_metadata_transition
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: apply_profile_adoption
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: apply_task_plan
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: compile_queue
+    argument: receipts
+    active_when_any: [apply, apply_replan]
+    inactive_when_any: []
+  - tool: compile_queue
+    argument: replan_diff
+    active_when_any: [apply_replan]
+    inactive_when_any: []
+  - tool: record_batch_judgment
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: record_corpus_acceptance
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: record_gate_attestation
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: record_gate_result
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: register_amendment
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: render_queue
+    argument: output
+    active_when_any: []
+    inactive_when_any: [stdout]
+  - tool: seal_receipts
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: [reconcile, verify]
+  - tool: update_queue
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
+  - tool: update_task
+    argument: receipts
+    active_when_any: [apply]
+    inactive_when_any: []
 tools:
   - tool: adopt_standards
     exposure: mcp
@@ -272,8 +350,8 @@ tools:
     workspace_access: write
     value_arguments: [check]
     read_paths: []
-    write_paths: [output]
-    read_write_paths: []
+    write_paths: []
+    read_write_paths: [output]
     external_write: none
   - tool: compile_queue
     exposure: mcp
@@ -290,8 +368,8 @@ tools:
     workspace_access: write
     value_arguments: [check]
     read_paths: [base, relationships, sources_role, profile]
-    write_paths: [output]
-    read_write_paths: []
+    write_paths: []
+    read_write_paths: [output]
     external_write: none
   - tool: compose_vocab
     exposure: cli-only
@@ -299,8 +377,8 @@ tools:
     workspace_access: null
     value_arguments: [check]
     read_paths: [base, extensions]
-    write_paths: [output]
-    read_write_paths: []
+    write_paths: []
+    read_write_paths: [output]
     external_write: none
   - tool: duplicate_check
     exposure: mcp
@@ -326,8 +404,8 @@ tools:
     workspace_access: write
     value_arguments: [check]
     read_paths: [authority, capabilities]
-    write_paths: [output]
-    read_write_paths: []
+    write_paths: []
+    read_write_paths: [output]
     external_write: none
   - tool: migrate_standards_state
     exposure: mcp
@@ -360,8 +438,8 @@ tools:
     exposure: mcp
     workspace_argument: root
     workspace_access: write
-    value_arguments: [batch, judgment_item, reviewer_role, statement, apply, json]
-    read_paths: [target]
+    value_arguments: [batch, judgment_item, target, reviewer_role, statement, apply, json]
+    read_paths: []
     write_paths: [receipts]
     read_write_paths: []
     external_write: none
@@ -416,8 +494,8 @@ tools:
     workspace_access: read
     value_arguments: [host, distribution_root, workspace_root, check, sources]
     read_paths: [projection]
-    write_paths: [output_dir]
-    read_write_paths: []
+    write_paths: []
+    read_write_paths: [output_dir]
     external_write: host-config-installation
   - tool: render_interface_projection
     exposure: cli-only
@@ -425,8 +503,8 @@ tools:
     workspace_access: write
     value_arguments: [form, check, sources]
     read_paths: [contract]
-    write_paths: [output]
-    read_write_paths: []
+    write_paths: []
+    read_write_paths: [output]
     external_write: none
   - tool: render_queue
     exposure: mcp
@@ -434,8 +512,8 @@ tools:
     workspace_access: write
     value_arguments: [stdout, check]
     read_paths: []
-    write_paths: [output]
-    read_write_paths: []
+    write_paths: []
+    read_write_paths: [output]
     external_write: none
   - tool: render_structure_projection
     exposure: mcp

@@ -318,6 +318,13 @@ def _canonical_state_argument(root, raw_path, canonical_relative):
             return None, "must be exactly %s" % canonical_relative
         candidate = root / supplied
 
+    capability = kblib.inherited_path_capability(
+        canonical_relative, "snapshot")
+    if capability is not None:
+        if not capability["exists"] or capability["kind"] != "file":
+            return None, "canonical state object is not a regular file"
+        return candidate, None
+
     current = root
     for component in Path(canonical_relative).parts:
         current = current / component
@@ -1750,8 +1757,7 @@ def _main():
             print("[FAIL] unsafe receipt path: %s" % exc)
             return 1
 
-    template = kblib.parse_yaml_subset(
-        Path(args.template).read_text(encoding="utf-8"))
+    template = kblib.parse_yaml_subset(kblib.read_text(args.template))
     required_fields = list(template.keys())
 
     receipts = []
@@ -1760,7 +1766,7 @@ def _main():
     proof_sha256 = None
 
     try:
-        proof_bytes = Path(args.proof).read_bytes()
+        proof_bytes = kblib.read_bytes(args.proof)
         proof_sha256 = kblib.sha256_bytes(proof_bytes)
         proof = kblib.parse_yaml_subset(proof_bytes.decode("utf-8"))
     except (OSError, UnicodeError, kblib.YamlSubsetError) as exc:
@@ -2770,7 +2776,14 @@ def _main():
             if valid_profile_route_ids else
             ", no supplemental profile route recorded")
         proof_receipt_path = proof_name
-        if args.root and root is not None and root.is_dir():
+        proof_capability = kblib.inherited_path_capability(
+            args.proof, "snapshot")
+        if proof_capability is not None:
+            # The receipt names the object admitted by the transport.  Do not
+            # resolve the argv spelling again after stable bytes were consumed;
+            # a concurrent namespace replacement must not relabel the proof.
+            proof_receipt_path = proof_capability["spelling"]
+        elif args.root and root is not None and root.is_dir():
             try:
                 proof_receipt_path = Path(args.proof).resolve().relative_to(
                     root

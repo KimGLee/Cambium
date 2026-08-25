@@ -473,6 +473,26 @@ def _resolve_manifest(root, profile, result):
         return None, selected_from_progress
     profile = profile.strip()
     try:
+        capability = kblib.inherited_path_capability(profile, "snapshot")
+        if capability is not None:
+            if not capability["exists"]:
+                raise ValueError("path does not exist: %s" % profile)
+            if capability["kind"] == "directory":
+                kblib.repository_tree_snapshot(root, profile)
+                profile = profile.rstrip("/") + "/profile.md"
+            elif capability["kind"] == "file":
+                if not profile.lower().endswith(".md"):
+                    raise ValueError(
+                        "must identify a Markdown Profile manifest")
+                kblib.repository_parent_tree_snapshot(root, profile)
+            else:
+                raise ValueError(
+                    "must identify a Profile directory or Markdown manifest")
+            candidate = os.path.join(root, *profile.split("/"))
+            if not kblib.retained_tree_contains(profile):
+                raise ValueError("Profile manifest is absent from the "
+                                 "retained package")
+            return candidate, selected_from_progress
         candidate = kblib.repository_path(root, profile, must_exist=True,
                                           reject_symlink=True)
         if os.path.isdir(candidate):

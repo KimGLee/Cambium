@@ -657,14 +657,13 @@ def main(argv=None):
         if not os.path.exists(output_path):
             print("compose_vocab --check: output not found: %s" % output_path)
             return 2
-        with open(output_path, "r", encoding="utf-8") as fh:
-            existing_text = fh.read()
-            try:
-                existing = kblib.parse_yaml_subset(existing_text)
-            except kblib.YamlSubsetError as exc:
-                print("compose_vocab --check: existing output is not "
-                      "parseable: %s" % exc)
-                return 2
+        existing_text = kblib.read_text(output_path)
+        try:
+            existing = kblib.parse_yaml_subset(existing_text)
+        except kblib.YamlSubsetError as exc:
+            print("compose_vocab --check: existing output is not "
+                  "parseable: %s" % exc)
+            return 2
         diff = first_diff_key(output, existing)
         if diff:
             print("compose_vocab --check: MISMATCH at key: %s" % diff)

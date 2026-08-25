@@ -91,6 +91,45 @@ class Completeness(unittest.TestCase):
                          "  %s" % (", ".join(stale), REGENERATE))
 
 
+class ProcessBoundaries(unittest.TestCase):
+    """Cambium children must inherit the stable path-capability chain."""
+
+    def test_tool_modules_do_not_bypass_the_shared_subprocess_boundary(self):
+        import ast
+
+        # mcp_server brokers the original descriptors; kblib owns the one
+        # wrapper that merges them into subsequent Cambium process launches.
+        owners = {"kblib.py", "mcp_server.py"}
+        bypasses = []
+        for filename in sorted(os.listdir(TOOLS)):
+            if not filename.endswith(".py") or filename in owners:
+                continue
+            path = os.path.join(TOOLS, filename)
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read(), filename=path)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and \
+                        node.module == "subprocess" and any(
+                            alias.name in ("run", "Popen")
+                            for alias in node.names):
+                    bypasses.append("%s:%d imports subprocess.%s" % (
+                        filename, node.lineno,
+                        "/".join(alias.name for alias in node.names)))
+                if not isinstance(node, ast.Call) or \
+                        not isinstance(node.func, ast.Attribute) or \
+                        not isinstance(node.func.value, ast.Name) or \
+                        node.func.value.id != "subprocess" or \
+                        node.func.attr not in ("run", "Popen"):
+                    continue
+                bypasses.append("%s:%d calls subprocess.%s" % (
+                    filename, node.lineno, node.func.attr))
+        self.assertEqual(
+            [], bypasses,
+            "Cambium child processes must use "
+            "kblib.run_cambium_subprocess so retained descriptors and the "
+            "ACK channel survive: %s" % "; ".join(bypasses))
+
+
 class PublicSurface(unittest.TestCase):
     """Cross-module consumption stays inside what the owner declared."""
 

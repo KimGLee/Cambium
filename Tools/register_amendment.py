@@ -70,8 +70,7 @@ def _load_yaml(root, relative, prefix, suffixes):
     )
     if not os.path.isfile(path):
         raise ValueError("managed YAML path is not a regular file: %s" % relative)
-    with open(path, "rb") as fh:
-        raw = fh.read()
+    raw = kblib.read_bytes(path)
     try:
         value = kblib.parse_yaml_subset(raw.decode("utf-8"))
     except UnicodeDecodeError as exc:

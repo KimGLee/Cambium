@@ -68,9 +68,9 @@ sys.path.insert(0, TOOLS_DIR)
 import kblib  # noqa: E402
 
 TOOL = "compile_cli_contract"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DEFAULT_OUTPUT = "Tools/compiled/cli-contract.yaml"
 DEFAULT_INTERFACE_POLICY = "Tools/agent-interface-policy.yaml"
 TOOLS_SUBDIR = "Tools"
@@ -390,12 +390,13 @@ def load_interface_policy(root, records):
                             (DEFAULT_INTERFACE_POLICY, exc))
     if not isinstance(document, dict) or \
             document.get("artifact") != "agent-interface-policy" or \
-            document.get("schema_version") != 1:
+            document.get("schema_version") != 2:
         raise ContractError(
-            "%s must be agent-interface-policy schema_version 1"
+            "%s must be agent-interface-policy schema_version 2"
             % DEFAULT_INTERFACE_POLICY)
     document_keys = {
-        "schema_version", "artifact", "path_defaults", "path_overrides",
+        "schema_version", "artifact", "consumption_defaults",
+        "path_defaults", "path_overrides", "path_activation_overrides",
         "tools",
     }
     if set(document) != document_keys:
@@ -403,8 +404,21 @@ def load_interface_policy(root, records):
             "%s must carry exactly %s" %
             (DEFAULT_INTERFACE_POLICY, ", ".join(sorted(document_keys))))
 
+    consumption_defaults = document.get("consumption_defaults")
+    expected_consumption_defaults = {
+        "read": "snapshot",
+        "write": "replace",
+        "read-write": "transaction",
+    }
+    if consumption_defaults != expected_consumption_defaults:
+        raise ContractError(
+            "%s consumption_defaults must be exactly %r" %
+            (DEFAULT_INTERFACE_POLICY, expected_consumption_defaults))
+
     def path_constraint(row, expected_keys, owner):
-        if not isinstance(row, dict) or set(row) != expected_keys:
+        if (not isinstance(row, dict) or
+                not expected_keys.issubset(row) or
+                set(row) != expected_keys):
             raise ContractError(
                 "%s %s rows must carry exactly %s" %
                 (DEFAULT_INTERFACE_POLICY, owner,
@@ -446,18 +460,29 @@ def load_interface_policy(root, records):
                 raise ContractError(
                     "%s: exact path constraints do not need suffixes" %
                     DEFAULT_INTERFACE_POLICY)
-        return {
+        result = {
             "constraint": constraint,
             "value": value,
             "suffixes": list(suffixes),
         }
+        if "consumption" in expected_keys:
+            consumption = row.get("consumption")
+            if consumption not in ("snapshot", "append", "replace",
+                                    "transaction"):
+                raise ContractError(
+                    "%s: %s.%s has unknown consumption mode %r" %
+                    (DEFAULT_INTERFACE_POLICY, owner, argument, consumption))
+            result["consumption"] = consumption
+        return result
 
     defaults = {}
     default_rows = document.get("path_defaults")
     if not isinstance(default_rows, list):
         raise ContractError("%s carries no path_defaults list" %
                             DEFAULT_INTERFACE_POLICY)
-    default_keys = {"argument", "constraint", "value", "suffixes"}
+    default_keys = {
+        "argument", "constraint", "value", "suffixes", "consumption",
+    }
     for row in default_rows:
         capability = path_constraint(row, default_keys, "path_defaults")
         argument = row["argument"]
@@ -483,6 +508,59 @@ def load_interface_policy(root, records):
             raise ContractError("%s duplicates path override %s.%s" %
                                 (DEFAULT_INTERFACE_POLICY, key[0], key[1]))
         overrides[key] = capability
+
+    activations = {}
+    activation_rows = document.get("path_activation_overrides")
+    if not isinstance(activation_rows, list):
+        raise ContractError(
+            "%s carries no path_activation_overrides list" %
+            DEFAULT_INTERFACE_POLICY)
+    activation_keys = {
+        "tool", "argument", "active_when_any", "inactive_when_any",
+    }
+    for row in activation_rows:
+        if not isinstance(row, dict) or set(row) != activation_keys:
+            raise ContractError(
+                "%s path_activation_overrides rows must carry exactly %s" %
+                (DEFAULT_INTERFACE_POLICY,
+                 ", ".join(sorted(activation_keys))))
+        tool = row.get("tool")
+        argument = row.get("argument")
+        active_when_any = row.get("active_when_any")
+        inactive_when_any = row.get("inactive_when_any")
+        if not isinstance(tool, str) or not tool or \
+                not isinstance(argument, str) or not argument:
+            raise ContractError(
+                "%s path activation override must name one tool argument" %
+                DEFAULT_INTERFACE_POLICY)
+        for label, flags in (
+                ("active_when_any", active_when_any),
+                ("inactive_when_any", inactive_when_any)):
+            if (not isinstance(flags, list) or
+                    any(not isinstance(flag, str) or not flag
+                        for flag in flags) or
+                    len(flags) != len(set(flags))):
+                raise ContractError(
+                    "%s: %s.%s %s must be a unique string list" %
+                    (DEFAULT_INTERFACE_POLICY, tool, argument, label))
+        if not active_when_any and not inactive_when_any:
+            raise ContractError(
+                "%s: %s.%s activation override changes no condition" %
+                (DEFAULT_INTERFACE_POLICY, tool, argument))
+        if set(active_when_any) & set(inactive_when_any):
+            raise ContractError(
+                "%s: %s.%s activation flag cannot both activate and "
+                "deactivate the path" %
+                (DEFAULT_INTERFACE_POLICY, tool, argument))
+        key = (tool, argument)
+        if key in activations:
+            raise ContractError(
+                "%s duplicates path activation override %s.%s" %
+                (DEFAULT_INTERFACE_POLICY, tool, argument))
+        activations[key] = {
+            "active_when_any": list(active_when_any),
+            "inactive_when_any": list(inactive_when_any),
+        }
 
     rows = document.get("tools")
     if not isinstance(rows, list):
@@ -604,12 +682,43 @@ def load_interface_policy(root, records):
                     "constraint": "contained", "value": None,
                     "suffixes": [],
                 }))
+            consumption = capability.get(
+                "consumption", consumption_defaults[path_access[argument]])
+            compatible = {
+                "read": {"snapshot"},
+                "write": {"append", "replace"},
+                "read-write": {"transaction"},
+            }
+            if consumption not in compatible[path_access[argument]]:
+                raise ContractError(
+                    "%s.%s: consumption mode %s is incompatible with %s "
+                    "access" % (name, argument, consumption,
+                                path_access[argument]))
+            activation = activations.get((name, argument), {
+                "active_when_any": [], "inactive_when_any": [],
+            })
+            for condition_name in (
+                    activation["active_when_any"] +
+                    activation["inactive_when_any"]):
+                condition_record = arguments.get(condition_name)
+                if (condition_name not in value_arguments or
+                        not isinstance(condition_record, dict) or
+                        condition_record.get("action") != "store_true"):
+                    raise ContractError(
+                        "%s.%s: activation condition %s must name one "
+                        "store_true "
+                        "value argument of the same tool" %
+                        (name, argument, condition_name))
             path_arguments.append({
                 "argument": argument,
                 "access": path_access[argument],
+                "consumption": consumption,
                 "constraint": capability["constraint"],
                 "value": capability["value"],
                 "suffixes": list(capability["suffixes"]),
+                "active_when_any": list(activation["active_when_any"]),
+                "inactive_when_any": list(
+                    activation["inactive_when_any"]),
             })
         by_name[name] = {
             "exposure": row["exposure"],
@@ -637,6 +746,7 @@ def load_interface_policy(root, records):
         argument for argument in defaults
         if not any(pair[1] == argument for pair in path_pairs))
     invalid_overrides = sorted(set(overrides) - path_pairs)
+    invalid_activation_overrides = sorted(set(activations) - path_pairs)
     if unused_defaults:
         raise ContractError("%s has unused path defaults: %s" %
                             (DEFAULT_INTERFACE_POLICY,
@@ -646,6 +756,11 @@ def load_interface_policy(root, records):
             "%s has overrides for unclassified path arguments: %s" %
             (DEFAULT_INTERFACE_POLICY, ", ".join(
                 "%s.%s" % item for item in invalid_overrides)))
+    if invalid_activation_overrides:
+        raise ContractError(
+            "%s has activation overrides for unclassified path arguments: %s"
+            % (DEFAULT_INTERFACE_POLICY, ", ".join(
+                "%s.%s" % item for item in invalid_activation_overrides)))
     return by_name, kblib.sha256_bytes(raw)
 
 
@@ -890,8 +1005,7 @@ def main(argv=None):
 
     if args.check:
         try:
-            with open(output, "r", encoding="utf-8") as handle:
-                existing = handle.read()
+            existing = kblib.read_text(output)
         except OSError as exc:
             print("%s --check: cannot read %s: %s" % (TOOL, output, exc))
             return 2

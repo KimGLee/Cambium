@@ -69,8 +69,7 @@ PROVENANCE_RE = re.compile(
 
 
 def read_text(path):
-    with open(path, encoding="utf-8") as handle:
-        return handle.read()
+    return kblib.read_text(path)
 
 
 

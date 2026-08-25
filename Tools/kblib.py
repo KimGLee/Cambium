@@ -41,7 +41,57 @@ import time
 from types import MappingProxyType
 import uuid
 
-LIB_VERSION = "1.10.0"
+import path_capability as _pathcaps
+
+LIB_VERSION = "1.11.0"
+
+def inherited_path_capability(path, consumptions=None):
+    return _pathcaps.inherited_capability(path, consumptions)
+
+
+def inherited_path_capability_subprocess():
+    return _pathcaps.subprocess_kwargs()
+
+
+def run_cambium_subprocess(*popenargs, **kwargs):
+    """Run one Cambium child without dropping inherited path authority.
+
+    Direct ``subprocess.run`` calls silently close the retained target,
+    parent, and acknowledgement descriptors.  Centralizing this boundary
+    makes capability propagation the default for every Cambium child while
+    remaining a no-op for ordinary CLI execution.
+    """
+    inherited = inherited_path_capability_subprocess()
+    caller_fds = kwargs.pop("pass_fds", ())
+    if caller_fds is None:
+        caller_fds = ()
+    if not isinstance(caller_fds, (tuple, list, set)):
+        raise TypeError("pass_fds must be a tuple, list, or set")
+    descriptors = set(caller_fds)
+    descriptors.update(inherited.get("pass_fds", ()))
+    if descriptors:
+        kwargs["pass_fds"] = tuple(sorted(descriptors))
+    return subprocess.run(*popenargs, **kwargs)
+
+
+def read_bytes(path, consumptions=("snapshot", "transaction")):
+    return _pathcaps.read_bytes(path, consumptions)
+
+
+def read_text(path, encoding="utf-8", errors="strict"):
+    return _pathcaps.read_text(path, encoding=encoding, errors=errors)
+
+
+def retained_tree_contains(path):
+    return _pathcaps.tree_contains(path)
+
+
+def retained_tree_is_bound(relative_directory):
+    return _pathcaps.tree_is_bound(relative_directory)
+
+
+def open_path_capability_parent(path, consumptions=("replace", "transaction")):
+    return _pathcaps.open_parent(path, consumptions)
 
 # ---------------------------------------------------------------------------
 # Restricted YAML subset parser
@@ -545,6 +595,26 @@ def iter_managed_md_files(vault_root, scope=None):
         raise ValueError("Markdown scope escapes the repository root")
     scope_relative = os.path.relpath(target, root_real).replace(os.sep, "/")
 
+    capability = (inherited_path_capability(
+        scope, ("snapshot", "transaction"))
+                  if scope else None)
+    if capability is not None:
+        if capability["kind"] == "file":
+            snapshot = repository_file_snapshot(root_real, scope_relative)
+            return ([(snapshot.path, snapshot.repository_path)]
+                    if scope_relative.lower().endswith(".md") else [])
+        snapshot = repository_tree_snapshot(root_real, scope_relative)
+        managed = {relative for _absolute, relative in
+                   repository_content_files(root_real)}
+        prefix_length = 0 if scope_relative == "." else len(scope_relative)
+        return [
+            (os.path.join(root_real, *relative.split("/")), relative)
+            for relative in sorted(snapshot.files)
+            if relative in managed and relative.lower().endswith(".md") and
+            not any(part.startswith(".") for part in
+                    relative[prefix_length:].lstrip("/").split("/")[:-1])
+        ]
+
     result = []
     for absolute, relative in repository_content_files(root_real):
         if scope_relative != ".":
@@ -570,6 +640,25 @@ def iter_md_files(vault_root, scope=None):
     a directory nor an .md file yields an empty list -- callers implementing a
     gate MUST treat an empty scan set as a failure, not a pass.
     """
+    capability = (inherited_path_capability(
+        scope, ("snapshot", "transaction"))
+                  if scope else None)
+    if capability is not None:
+        scope_relative = _pathcaps.logical_spelling(scope)
+        if capability["kind"] == "file":
+            snapshot = repository_file_snapshot(vault_root, scope_relative)
+            return ([(snapshot.path, snapshot.repository_path)]
+                    if scope_relative.lower().endswith(".md") else [])
+        snapshot = repository_tree_snapshot(vault_root, scope_relative)
+        prefix_length = 0 if scope_relative == "." else len(scope_relative)
+        return [
+            (os.path.join(os.path.abspath(vault_root), *relative.split("/")),
+             relative)
+            for relative in sorted(snapshot.files)
+            if relative.lower().endswith(".md") and
+            not any(part.startswith(".") for part in
+                    relative[prefix_length:].lstrip("/").split("/")[:-1])
+        ]
     base = os.path.join(vault_root, scope) if scope else vault_root
     base = os.path.normpath(base)
     if os.path.isfile(base):
@@ -2215,6 +2304,18 @@ def _read_receipt_bytes(path):
     after-error inspection cannot be redirected to authoritative state.
     """
     absolute = validate_receipt_output_path(path)
+    capability = inherited_path_capability(path, consumptions="append")
+    if capability is not None:
+        if not capability["exists"]:
+            _pathcaps.acknowledge(capability)
+            return False, b""
+        if capability["kind"] != "file":
+            raise ValueError("receipt target must be a regular file")
+        content = _pathcaps.read_stable_descriptor(
+            capability["target_fd"], capability["target_dev"],
+            capability["target_ino"], absolute)
+        _pathcaps.acknowledge(capability)
+        return True, content
     parent = os.path.dirname(absolute)
     basename = os.path.basename(absolute)
     nofollow = getattr(os, "O_NOFOLLOW", None)
@@ -2395,7 +2496,12 @@ def _append_receipt_lines(absolute, lines, exclusive=False):
     basename = os.path.basename(absolute)
     if not basename:
         raise ValueError("receipt target must name a file")
-    os.makedirs(parent, exist_ok=True)
+    capability, retained_parent_fd, retained_basename = _pathcaps.open_parent(
+        absolute, "append")
+    if capability is None:
+        os.makedirs(parent, exist_ok=True)
+    else:
+        basename = retained_basename
     nofollow = getattr(os, "O_NOFOLLOW", None)
     directory_only = getattr(os, "O_DIRECTORY", None)
     if nofollow is None or directory_only is None:
@@ -2404,24 +2510,39 @@ def _append_receipt_lines(absolute, lines, exclusive=False):
                       absolute)
     directory_flags = os.O_RDONLY | directory_only | nofollow
     directory_flags |= getattr(os, "O_CLOEXEC", 0)
-    parent_fd = os.open(parent, directory_flags)
+    parent_fd = (retained_parent_fd if retained_parent_fd is not None else
+                 os.open(parent, directory_flags))
     flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | nofollow
     if exclusive:
         flags |= os.O_EXCL
     flags |= getattr(os, "O_CLOEXEC", 0)
     try:
-        # APFS can transiently surface ENOENT when several O_CREAT|O_APPEND
-        # opens race on the same previously absent name through a directory
-        # descriptor.  Retrying that one result is safe: no namespace entry is
-        # removed or replaced, and O_EXCL retains its winner semantics.
-        for attempt in range(5):
-            try:
-                fd = os.open(basename, flags, 0o666, dir_fd=parent_fd)
-                break
-            except FileNotFoundError:
-                if attempt == 4:
-                    raise
-                continue
+        if capability is not None and capability["exists"]:
+            if exclusive:
+                raise FileExistsError(errno.EEXIST,
+                                      "receipt target already exists",
+                                      absolute)
+            named = os.stat(basename, dir_fd=parent_fd,
+                            follow_symlinks=False)
+            if (stat.S_ISLNK(named.st_mode) or
+                    (named.st_dev, named.st_ino) !=
+                    (capability["target_dev"], capability["target_ino"])):
+                raise OSError(errno.EAGAIN,
+                              "receipt target changed after admission",
+                              absolute)
+            fd = os.dup(capability["target_fd"])
+        else:
+            # APFS can transiently surface ENOENT when several
+            # O_CREAT|O_APPEND opens race on one absent name. Retrying that
+            # result is safe; O_EXCL retains its winner semantics.
+            for attempt in range(5):
+                try:
+                    fd = os.open(basename, flags, 0o666, dir_fd=parent_fd)
+                    break
+                except FileNotFoundError:
+                    if attempt == 4:
+                        raise
+                    continue
     except Exception:
         os.close(parent_fd)
         raise
@@ -2445,6 +2566,14 @@ def _append_receipt_lines(absolute, lines, exclusive=False):
                 raise OSError(errno.EIO, "receipt append was partial",
                               absolute)
         os.fsync(fd)
+        if capability is not None and capability["exists"]:
+            named_after = os.stat(basename, dir_fd=parent_fd,
+                                  follow_symlinks=False)
+            if ((named_after.st_dev, named_after.st_ino) !=
+                    (capability["target_dev"], capability["target_ino"])):
+                raise OSError(errno.EAGAIN,
+                              "receipt target changed during append",
+                              absolute)
         # Persist a newly created receipt name as well as its contents.
         os.fsync(parent_fd)
     finally:
@@ -2521,6 +2650,23 @@ def repository_path(root, relative_path, must_exist=False, reject_symlink=False)
     if any(part in ("", ".", "..") for part in parts):
         raise ValueError("path must not contain empty, '.' or '..' segments")
 
+    capability = inherited_path_capability(relative_path)
+    ancestor = (_pathcaps.ancestor_directory_capability(
+        relative_path, ("snapshot", "transaction", "replace", "append"))
+                if capability is None else None)
+    if capability is not None:
+        if must_exist and not capability["exists"]:
+            raise ValueError("path does not exist: %s" % relative_path)
+        if reject_symlink and capability["kind"] not in (
+                "file", "directory", "missing"):
+            raise ValueError("canonical state path is not a retained object")
+        return os.path.join(os.path.abspath(root), *parts)
+    if ancestor is not None:
+        # Containment is already represented by the retained ancestor object.
+        # Actual reads/writes must still go through the matching snapshot or
+        # fd-relative shared primitive.
+        return os.path.join(os.path.abspath(root), *parts)
+
     root_real = os.path.realpath(os.path.abspath(root))
     candidate = os.path.join(root_real, *parts)
     resolved = os.path.realpath(candidate)
@@ -2592,7 +2738,35 @@ def canonical_repository_file(root, relative_path, singly_linked=False):
     Unicode aliases fail consistently across filesystems), rejects every
     symlink component, and optionally requires a single hard link.
     """
+    cached = _pathcaps.cached_file(relative_path)
+    if cached is not None:
+        _data, descriptor = cached
+        if singly_linked and descriptor.st_nlink != 1:
+            raise ValueError("path must name a singly-linked regular file")
+        return os.path.join(os.path.abspath(root), *relative_path.split("/"))
+    capability = inherited_path_capability(
+        relative_path, consumptions=("snapshot", "transaction"))
+    if capability is None and _pathcaps.records():
+        _pathcaps.materialize_ancestor_tree(relative_path)
+        cached = _pathcaps.cached_file(relative_path)
+        if cached is not None:
+            _data, descriptor = cached
+            if singly_linked and descriptor.st_nlink != 1:
+                raise ValueError("path must name a singly-linked regular file")
+            return os.path.join(
+                os.path.abspath(root), *relative_path.split("/"))
     candidate = repository_path(root, relative_path)
+    if capability is not None:
+        if not capability["exists"]:
+            raise ValueError("path does not exist: %s" % relative_path)
+        if capability["kind"] != "file":
+            raise ValueError("path must name a regular file")
+        target_fd, _target_dev, _target_ino = \
+            _pathcaps.effective_target(capability)
+        descriptor = os.fstat(target_fd)
+        if singly_linked and descriptor.st_nlink != 1:
+            raise ValueError("path must name a singly-linked regular file")
+        return candidate
     root_real = os.path.realpath(os.path.abspath(root))
     current = root_real
     for part in relative_path.split("/"):
@@ -2634,6 +2808,17 @@ def managed_repository_path(root, relative_path, managed_prefix,
         raise ValueError("path must be inside %s/" % prefix)
     if suffixes and not normalized.endswith(tuple(suffixes)):
         raise ValueError("path must end with %s" % " or ".join(suffixes))
+    capability = inherited_path_capability(relative_path)
+    if capability is not None:
+        if must_exist and not capability["exists"]:
+            raise ValueError("path does not exist: %s" % relative_path)
+        if capability["exists"] and capability["kind"] == "file":
+            descriptor = os.fstat(capability["target_fd"])
+            if descriptor.st_nlink != 1:
+                raise ValueError(
+                    "managed file must have exactly one hard link: %s" %
+                    relative_path)
+        return candidate
     root_abs = os.path.realpath(os.path.abspath(root))
     current = root_abs
     for part in normalized.split("/"):
@@ -2847,8 +3032,7 @@ def runtime_write_lock(root, lock_name="state-writer", timeout=0.0,
 
 def load_yaml_file(path):
     """Read and parse a UTF-8 restricted-subset YAML document."""
-    with open(path, encoding="utf-8") as fh:
-        value = parse_yaml_subset(fh.read())
+    value = parse_yaml_subset(read_text(path))
     if not isinstance(value, dict):
         raise YamlSubsetError("top-level YAML value must be a mapping")
     return value
@@ -2998,11 +3182,7 @@ def sha256_bytes(data):
 
 
 def sha256_file(path):
-    digest = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return "sha256:" + digest.hexdigest()
+    return sha256_bytes(read_bytes(path))
 
 
 class RepositoryTargetSnapshot:
@@ -3080,7 +3260,14 @@ def repository_target_snapshot(root, relative_path, suffixes=None,
     targets must be regular files and are read from a stable ``O_NOFOLLOW``
     descriptor.
     """
-    absolute = repository_path(root, relative_path)
+    cached = _pathcaps.cached_file(relative_path)
+    cached_data = cached[0] if cached is not None else None
+    cached_descriptor = cached[1] if cached is not None else None
+    capability = inherited_path_capability(
+        relative_path, consumptions=("snapshot", "transaction"))
+    absolute = (os.path.join(os.path.abspath(root), relative_path)
+                if capability is not None or cached_data is not None else
+                repository_path(root, relative_path))
     if isinstance(suffixes, str):
         suffixes = (suffixes,)
     elif suffixes is not None:
@@ -3093,6 +3280,50 @@ def repository_target_snapshot(root, relative_path, suffixes=None,
         if not relative_path.endswith(suffixes):
             raise ValueError("path must end with %s" %
                              " or ".join(suffixes))
+
+    if cached_data is not None:
+        if singly_linked and cached_descriptor.st_nlink != 1:
+            raise ValueError("path must name a singly-linked regular file")
+        return RepositoryTargetSnapshot(
+            absolute, relative_path, exists=True,
+            parent_repository_path="/".join(relative_path.split("/")[:-1]),
+            descriptor=cached_descriptor, data=cached_data)
+
+    if capability is not None:
+        parent_fd = capability.get("parent_fd")
+        if parent_fd is None:
+            parent_dev = parent_ino = None
+        else:
+            parent = os.fstat(parent_fd)
+            parent_dev, parent_ino = parent.st_dev, parent.st_ino
+        if not capability["exists"]:
+            missing = list(capability["missing_components"])
+            existing_count = len(relative_path.split("/")) - len(missing)
+            parent_repository_path = "/".join(
+                relative_path.split("/")[:existing_count])
+            snapshot = RepositoryTargetSnapshot(
+                absolute, relative_path, exists=False,
+                missing_components=missing,
+                parent_repository_path=parent_repository_path,
+                parent_dev=parent_dev, parent_ino=parent_ino)
+            _pathcaps.acknowledge(capability)
+            return snapshot
+        if capability["kind"] != "file":
+            raise ValueError("path must name a regular file")
+        target_fd, target_dev, target_ino = \
+            _pathcaps.effective_target(capability)
+        data = _pathcaps.read_stable_descriptor(
+            target_fd, target_dev, target_ino, relative_path)
+        descriptor = os.fstat(target_fd)
+        if singly_linked and descriptor.st_nlink != 1:
+            raise ValueError("path must name a singly-linked regular file")
+        snapshot = RepositoryTargetSnapshot(
+            absolute, relative_path, exists=True,
+            parent_repository_path="/".join(relative_path.split("/")[:-1]),
+            parent_dev=parent_dev, parent_ino=parent_ino,
+            descriptor=descriptor, data=data)
+        _pathcaps.acknowledge(capability)
+        return snapshot
 
     nofollow = getattr(os, "O_NOFOLLOW", None)
     directory_only = getattr(os, "O_DIRECTORY", None)
@@ -3225,6 +3456,33 @@ class RepositoryFileSnapshot:
 
 def repository_file_snapshot(root, relative_path, singly_linked=True):
     """Read one canonical repository file through a stable no-follow fd."""
+    cached = _pathcaps.cached_file(relative_path)
+    if cached is not None:
+        cached_data, descriptor = cached
+        if singly_linked and descriptor.st_nlink != 1:
+            raise ValueError("path must name a singly-linked regular file")
+        return RepositoryFileSnapshot(
+            os.path.join(os.path.abspath(root), relative_path), relative_path,
+            cached_data)
+    capability = inherited_path_capability(
+        relative_path, consumptions=("snapshot", "transaction"))
+    if capability is not None:
+        if not capability["exists"]:
+            raise ValueError("path does not exist: %s" % relative_path)
+        if capability["kind"] != "file":
+            raise ValueError("path must name a regular file")
+        target_fd, target_dev, target_ino = \
+            _pathcaps.effective_target(capability)
+        descriptor = os.fstat(target_fd)
+        if singly_linked and descriptor.st_nlink != 1:
+            raise ValueError("path must name a singly-linked regular file")
+        data = _pathcaps.read_stable_descriptor(
+            target_fd, target_dev, target_ino, relative_path)
+        snapshot = RepositoryFileSnapshot(
+            os.path.join(os.path.abspath(root), relative_path),
+            relative_path, data)
+        _pathcaps.acknowledge(capability)
+        return snapshot
     absolute = canonical_repository_file(
         root, relative_path, singly_linked=singly_linked)
     listed = os.lstat(absolute)
@@ -3293,6 +3551,9 @@ class RepositoryTreeSnapshot:
         return self.read_bytes(repository_relative_path).decode("utf-8")
 
 
+_pathcaps.register_tree_snapshot_factory(RepositoryTreeSnapshot)
+
+
 def repository_tree_snapshot(root, relative_directory):
     """Read and hash one repository-contained regular-file tree.
 
@@ -3302,6 +3563,23 @@ def repository_tree_snapshot(root, relative_directory):
     produced the digest.  Profile parsers use this object so an A-to-B-to-A
     file swap cannot combine a digest of A with declarations parsed from B.
     """
+    cached = _pathcaps.cached_tree(relative_directory)
+    if cached is not None:
+        return cached
+    capability = inherited_path_capability(
+        relative_directory, consumptions=("snapshot", "transaction"))
+    if capability is not None:
+        if not capability["exists"]:
+            raise ValueError("snapshot target does not exist: %s" %
+                             relative_directory)
+        if capability["kind"] != "directory":
+            raise ValueError("snapshot target must be a real directory: %s" %
+                             relative_directory)
+        snapshot = _pathcaps.materialize_tree(
+            root, relative_directory, capability)
+        if capability["consumption"] == "snapshot":
+            _pathcaps.cache_tree(relative_directory, snapshot)
+        return snapshot
     directory = repository_path(
         root, relative_directory, must_exist=True, reject_symlink=True)
     if not os.path.isdir(directory) or os.path.islink(directory):
@@ -3378,6 +3656,18 @@ def repository_tree_snapshot(root, relative_directory):
     return RepositoryTreeSnapshot(
         root_real, relative_directory,
         "sha256:" + digest.hexdigest(), contents)
+
+
+def repository_parent_tree_snapshot(root, child_path):
+    """Bind the admitted parent package of one explicit file capability.
+
+    Some public arguments accept either a Profile directory or its
+    ``profile.md`` manifest.  The manifest form still denotes the Profile
+    package closure.  Its server-retained parent descriptor is therefore the
+    only safe way to materialize that closure after admission; reopening the
+    directory name would reintroduce the race this capability protocol closes.
+    """
+    return _pathcaps.parent_tree_snapshot(root, child_path)
 
 
 def repository_tree_sha256(root, relative_directory):
@@ -3580,9 +3870,20 @@ def durable_replace(source, destination):
     destination = os.path.abspath(os.fspath(destination))
     source_parent = os.path.dirname(source)
     destination_parent = os.path.dirname(destination)
-    os.replace(source, destination)
+    capability, destination_fd, destination_name = _pathcaps.open_parent(
+        destination, consumptions=("replace", "transaction"))
+    if capability is None:
+        os.replace(source, destination)
+    else:
+        try:
+            os.replace(source, destination_name, dst_dir_fd=destination_fd)
+            _pathcaps.record_replacement(
+                capability, destination_fd, destination_name, destination)
+            os.fsync(destination_fd)
+        finally:
+            os.close(destination_fd)
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-    parents = [destination_parent]
+    parents = ([] if capability is not None else [destination_parent])
     if os.path.realpath(source_parent) != os.path.realpath(destination_parent):
         parents.append(source_parent)
     for parent in parents:
@@ -3598,26 +3899,54 @@ def atomic_write_text(path, text, validator=None):
     if validator:
         validator(text)
     parent = os.path.dirname(os.path.abspath(path))
-    os.makedirs(parent, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=".cambium-write-", dir=parent)
+    capability, parent_fd, basename = _pathcaps.open_parent(
+        path, consumptions=("replace", "transaction"))
+    if capability is None:
+        os.makedirs(parent, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(
+            prefix=".cambium-write-", dir=parent)
+        temporary_name = None
+    else:
+        temporary_name = ".cambium-write-%s" % uuid.uuid4().hex
+        flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                 getattr(os, "O_NOFOLLOW", 0) |
+                 getattr(os, "O_CLOEXEC", 0))
+        fd = os.open(temporary_name, flags, 0o600, dir_fd=parent_fd)
+        temporary = None
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(temporary, path)
-        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-        directory_fd = os.open(parent, directory_flags)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+        if capability is None:
+            os.replace(temporary, path)
+            directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+            directory_fd = os.open(parent, directory_flags)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        else:
+            os.replace(temporary_name, basename,
+                       src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+            published = os.stat(
+                basename, dir_fd=parent_fd, follow_symlinks=False)
+            _pathcaps.cache_file(path, text.encode("utf-8"), published)
+            _pathcaps.record_replacement(
+                capability, parent_fd, basename, path)
+            os.fsync(parent_fd)
     except Exception:
         try:
-            os.unlink(temporary)
+            if capability is None:
+                os.unlink(temporary)
+            else:
+                os.unlink(temporary_name, dir_fd=parent_fd)
         except OSError:
             pass
         raise
+    finally:
+        if parent_fd is not None:
+            os.close(parent_fd)
 
 
 def atomic_write_yaml(path, data):

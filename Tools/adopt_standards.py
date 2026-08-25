@@ -163,8 +163,7 @@ def _after_profile_evidence(root, plan, *, expected=None, phase):
 def _load_plan(root, relative):
     path = kblib.managed_repository_path(
         root, relative, PLAN_PREFIX, suffixes=(".yaml",), must_exist=True)
-    with open(path, "rb") as fh:
-        raw = fh.read()
+    raw = kblib.read_bytes(path)
     try:
         plan = kblib.parse_yaml_subset(raw.decode("utf-8"))
     except UnicodeDecodeError as exc:

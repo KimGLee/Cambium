@@ -164,16 +164,7 @@ def replace_frontmatter_scalar(text, field, value):
 
 
 def atomic_write(path, text):
-    fd, tmp = tempfile.mkstemp(prefix=".stamp_cards-", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
+    kblib.atomic_write_text(path, text)
 
 
 def as_repo_path(root, value, label, failures):
@@ -203,7 +194,7 @@ def read_owner_text(root, rel, label, failures):
         failures.append("%s is missing: %s" % (label, rel))
         return None
     try:
-        return path.read_text(encoding="utf-8")
+        return kblib.read_text(path)
     except (OSError, UnicodeError) as exc:
         failures.append("%s is unreadable: %s (%s)" % (label, rel, exc))
         return None
@@ -212,7 +203,7 @@ def read_owner_text(root, rel, label, failures):
 def source_digest(paths):
     digest = hashlib.sha256()
     for path in paths:
-        digest.update(path.read_bytes())
+        digest.update(kblib.read_bytes(path))
     return digest.hexdigest()[:12]
 
 
@@ -238,7 +229,7 @@ def parse_document(path, root, failures):
         failures.append("%s must not be a symlink" % rel)
         return rel, None, None
     try:
-        text = path.read_text(encoding="utf-8")
+        text = kblib.read_text(path)
     except (OSError, UnicodeError) as exc:
         failures.append("%s is not readable UTF-8: %s" % (rel, exc))
         return rel, None, None
@@ -920,7 +911,10 @@ def main():
     if cards_arg.is_absolute() or ".." in cards_arg.parts:
         print("stamp_cards: FAIL — --cards-dir must stay inside the repository")
         return 1
-    cards_dir = (root / cards_arg).resolve()
+    cards_capability = kblib.inherited_path_capability(
+        args.cards_dir, "transaction")
+    cards_dir = ((root / cards_arg) if cards_capability is not None else
+                 (root / cards_arg).resolve())
     try:
         cards_dir.relative_to(root)
     except ValueError:
@@ -944,7 +938,16 @@ def main():
         return 1
 
     try:
-        card_paths = markdown_paths(cards_dir)
+        if cards_capability is not None:
+            cards_snapshot = kblib.repository_tree_snapshot(
+                str(root), args.cards_dir)
+            card_paths = [
+                root / Path(relative)
+                for relative in sorted(cards_snapshot.files)
+                if relative.lower().endswith(".md")
+            ]
+        else:
+            card_paths = markdown_paths(cards_dir)
         read_set_paths = markdown_paths(read_sets_dir)
     except (OSError, RuntimeError) as exc:
         print("stamp_cards: FAIL — route directories cannot be scanned: %s" % exc)
@@ -985,7 +988,7 @@ def main():
         )
     else:
         try:
-            skeleton_text = skeleton_path.read_text(encoding="utf-8")
+            skeleton_text = kblib.read_text(skeleton_path)
         except (OSError, UnicodeError) as exc:
             failures.append(
                 "section skeleton owner is unreadable: %s (%s)"
@@ -1563,7 +1566,7 @@ def main():
 
     changes = []
     for path, rel, text, expected_hash, _compiled_hash_after in rendered:
-        current = path.read_text(encoding="utf-8")
+        current = kblib.read_text(path)
         if current == text:
             continue
         changes.append((path, rel, text, expected_hash, current))

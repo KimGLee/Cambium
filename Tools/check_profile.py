@@ -599,8 +599,7 @@ def h2_sections(text):
 
 
 def read_text(path):
-    with open(path, encoding="utf-8", errors="strict") as handle:
-        return handle.read()
+    return kblib.read_text(path)
 
 
 def interface_slots(text):
@@ -867,7 +866,14 @@ def main(argv=None, *, _evaluation_out=None,
     # same temporary tree as both /var and /private/var; mixing those aliases
     # must not make a contained Profile appear to escape its repository.
     root = os.path.realpath(os.path.abspath(args.root))
-    profile_dir = os.path.realpath(os.path.abspath(args.profile_dir))
+    profile_input = os.path.abspath(args.profile_dir)
+    lexical_profile = os.path.relpath(
+        profile_input, root).replace(os.sep, "/")
+    if (kblib.inherited_path_capability(args.profile_dir, "snapshot") is not
+            None or kblib.retained_tree_is_bound(lexical_profile)):
+        profile_dir = os.path.join(root, *lexical_profile.split("/"))
+    else:
+        profile_dir = os.path.realpath(profile_input)
     profile_disp = os.path.relpath(profile_dir, root).replace(os.sep, "/")
     interface_path = args.interface or os.path.join(root, DEFAULT_INTERFACE)
     defaults_path = args.defaults or os.path.join(root, DEFAULT_DEFAULTS)
@@ -1072,36 +1078,44 @@ def main(argv=None, *, _evaluation_out=None,
             "compiled from the same root-input snapshot: %s" % exc)
         return finish()
 
-    # ---- inputs must be readable before anything can be judged ----
-    if not os.path.isdir(profile_dir):
-        add("profile-dir-missing", profile_disp, "fail",
-            "profile directory does not exist; a scan with nothing to check "
-            "is an invocation error, never a pass")
-        say("check_profile: FAIL — no such profile directory: %s" % args.profile_dir)
-        return finish()
-
-    manifest_path = os.path.join(profile_dir, MANIFEST_NAME)
-    if not os.path.isfile(manifest_path):
-        add("manifest-missing", "%s/%s" % (profile_disp, MANIFEST_NAME), "fail",
-            "the profile manifest %s is missing; every slot binding is "
-            "declared there, so nothing about this profile can be verified"
-            % MANIFEST_NAME)
-        say("check_profile: FAIL — %s has no %s" % (profile_disp, MANIFEST_NAME))
-        return finish()
-
-    # Bind the exact Profile bytes before reading any of its declarations.
+    # Bind the exact Profile bytes before any existence judgment or read.  A
+    # pathname-level isdir/isfile preflight after MCP admission would merely
+    # reopen the race before this snapshot.
     # A second digest below must match before a pass receipt can describe this
     # snapshot; otherwise the run combined observations from two revisions.
     try:
         profile_snapshot = kblib.repository_tree_snapshot(
             root, profile_disp)
     except (OSError, ValueError) as exc:
-        add("profile-snapshot-invalid", profile_disp, "fail",
-            "cannot bind the selected Profile directory snapshot: %s" % exc)
-        say("check_profile: FAIL — cannot bind one immutable Profile "
-              "snapshot: %s" % exc)
+        missing = (isinstance(exc, FileNotFoundError) or
+                   "does not exist" in str(exc) or
+                   "real directory" in str(exc))
+        if missing:
+            details = ("profile directory does not exist; a scan with "
+                       "nothing to check is an invocation error, never a "
+                       "pass")
+            add("profile-dir-missing", profile_disp, "fail", details)
+        else:
+            details = (
+                "cannot bind the selected Profile directory snapshot: %s" %
+                exc)
+            add("profile-snapshot-invalid", profile_disp, "fail", details)
+        say("check_profile: FAIL — %s" % details)
         return finish()
     profile_snapshot_before = profile_snapshot.sha256
+
+    manifest_path = os.path.join(profile_dir, MANIFEST_NAME)
+    manifest_relative = (
+        MANIFEST_NAME if profile_disp == "." else
+        "%s/%s" % (profile_disp, MANIFEST_NAME))
+    if manifest_relative not in profile_snapshot.files:
+        add("manifest-missing", manifest_relative, "fail",
+            "the profile manifest %s is missing; every slot binding is "
+            "declared there, so nothing about this profile can be verified"
+            % MANIFEST_NAME)
+        say("check_profile: FAIL — %s has no %s" %
+            (profile_disp, MANIFEST_NAME))
+        return finish()
 
     def profile_snapshot_text(path):
         relative = os.path.relpath(

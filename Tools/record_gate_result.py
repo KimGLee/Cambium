@@ -215,7 +215,7 @@ def run_registered_gate_scan(context):
             environment.pop("PYTHONHOME", None)
             environment["PYTHONDONTWRITEBYTECODE"] = "1"
             environment["PYTHONNOUSERSITE"] = "1"
-            completed = subprocess.run(
+            completed = kblib.run_cambium_subprocess(
                 execution_command + ["--receipts", output_path],
                 cwd=context.root, env=environment,
                 text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

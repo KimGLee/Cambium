@@ -76,14 +76,20 @@ Cambium currently provides:
   residual-content checks;
 - a generated host-neutral interface: each tool's own CLI declaration and the
   closed agent-interface capability policy compile into the agent-facing MCP
-  projection and per-host configuration;
+  projection and per-host configuration; every active caller-visible path is
+  retained as a descriptor capability through subprocess consumption;
 - Card-first activation and progressive Read Set delivery primitives.
 
 The generated MCP surface is a call surface, not an orchestrator. The tools
-still decide whether an operation is valid and whether its evidence counts;
-the transport only enforces the workspace directory object frozen for the host
-session and the declared filesystem capability envelope, including effective
-CLI defaults.
+still decide whether an operation is valid and whether its evidence counts.
+For every typed path whose compiled operation-mode predicate is active,
+including an effective CLI default, the transport retains the admitted file
+or parent directory descriptor and the shared tool
+I/O layer consumes that same object for snapshot, append, replacement, or
+transaction access. A nested Cambium subprocess inherits the same capability;
+distinct active arguments may not alias one path under the same consumption
+mode because that would make consumption identity ambiguous. An unsupported
+platform fails server initialization instead of claiming this assurance.
 
 ## What Does Not Ship Yet
 
@@ -94,7 +100,7 @@ Cambium does not currently bundle:
 - a complete single-writer integrator loop;
 - durable Assignment lifecycle management;
 - authenticated actor or reviewer identity;
-- adversarial concurrent filesystem-namespace isolation;
+- protected whole-workspace execution against arbitrary concurrent mutation;
 - automatic corpus-wide dependency propagation;
 - an independent evaluator that re-derives the complete expected corpus;
 - an installable OpenAI Plugin package, Hooks, UI, or marketplace entry.
@@ -313,10 +319,14 @@ external attestation, Cambium does not authenticate actor labels, reviewer
 labels, operating-system identities, or workspace isolation. A party that can
 rewrite the repository, tools, and evidence can construct a new internally
 consistent history. The MCP transport rejects unsafe arguments and static path
-aliases inside this local trust domain; it does not claim that a separate
-adversarial process can rewrite arbitrary child paths during an in-flight tool
-call. That wider boundary requires protected execution or tool-wide stable
-path-object consumption.
+aliases inside this local trust domain. For every caller-visible typed path,
+it also prevents a post-admission name or parent replacement from redirecting
+the child tool: the exact admitted object is retained and consumed. This is
+not protected whole-workspace execution. A concurrently privileged process
+can still attack fixed or derived internal paths that are not part of the
+public call surface, rewrite repository code and evidence together, or
+interfere outside the filesystem capability boundary; those wider guarantees
+require an isolated workspace or external trust anchor.
 
 ## Repository Map
 

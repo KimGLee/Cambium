@@ -109,8 +109,7 @@ def _load_replan_proposal(root, relative):
         root, relative, REPLAN_PROPOSAL_PREFIX,
         suffixes=(".coverage.yaml",), must_exist=True,
     )
-    with open(path, encoding="utf-8") as fh:
-        raw = fh.read()
+    raw = kblib.read_text(path)
     proposal = kblib.parse_yaml_subset(raw)
     if not isinstance(proposal, dict):
         raise ValueError("Coverage proposal must be a top-level mapping")
@@ -1374,8 +1373,7 @@ def _run(args):
             }
 
             def revalidate_delegated_decision(locked):
-                with open(proposal_coverage_file, "rb") as handle:
-                    live_proposal_raw = handle.read()
+                live_proposal_raw = kblib.read_bytes(proposal_coverage_file)
                 if kblib.sha256_bytes(live_proposal_raw) != proposal_coverage_sha:
                     raise ValueError(
                         "Coverage proposal changed after transaction planning")
