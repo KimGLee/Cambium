@@ -13,6 +13,8 @@ concurrency:
 
 permissions:
   contents: read
+  issues: read
+  pull-requests: read
 
 jobs:
   plan:
@@ -35,6 +37,16 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
+
+      - name: Require a canonical open Issue owner
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python .github/scripts/issue_owner.py \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --repository "$GITHUB_REPOSITORY"
 
       - name: Compute fail-closed impact plan
         id: plan

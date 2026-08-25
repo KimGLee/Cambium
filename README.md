@@ -328,6 +328,7 @@ path-object consumption.
 | [`Tools/compiled/`](Tools/compiled/) | Generated CLI, MCP, metadata, and host projections |
 | [`assets/readme/`](assets/readme/) | Public diagrams embedded by the root READMEs |
 | [`ROADMAP.md`](ROADMAP.md) | Status-based implementation roadmap |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Issue ownership, defect promotion, and pull-request contract |
 
 Examples show answer shape; they are not defaults and must not be selected in
 place of an adopter-owned profile.
