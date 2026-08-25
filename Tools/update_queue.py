@@ -22,7 +22,6 @@ import kblib
 import update_task
 import apply_delta
 import batch_settlement
-import metadata_execution_contract
 import metadata_property_state
 import project_page_state
 
@@ -90,8 +89,7 @@ def _metadata_projection_context(result):
     if (profile is None or
             getattr(profile, "authorized", False) is not True):
         raise ValueError("runtime Profile contract is not authorized")
-    contract = metadata_execution_contract.load_metadata_execution_contract(
-        result["root"])
+    contract = check_queue.runtime_metadata_execution_contract(result)
     rules = metadata_property_state.profile_gate_projection_rules(
         result["root"], profile.extension_gates,
         metadata_contract=contract,

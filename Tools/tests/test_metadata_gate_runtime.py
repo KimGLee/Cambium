@@ -183,6 +183,9 @@ class MetadataGateRuntimeTests(unittest.TestCase):
         contract = profile_contract.load_profile_contract(
             REPOSITORY, REPOSITORY / manifest)
         self.assertTrue(contract.authorized, contract.diagnostics)
+        metadata_contract = \
+            metadata_execution_contract.load_metadata_execution_contract(
+                REPOSITORY)
         profile_snapshot = kblib.repository_tree_sha256(
             REPOSITORY, "profiles/examples/agent-atlas")
         authority = {
@@ -193,11 +196,15 @@ class MetadataGateRuntimeTests(unittest.TestCase):
                 "profile_contract_fingerprint":
                     contract.profile_contract_fingerprint,
                 "profile_load_inputs_sha256": "sha256:" + "b" * 64,
+                "metadata_execution_contract_fingerprint":
+                    metadata_contract.contract_fingerprint,
                 "_contract": contract,
+                "_metadata_execution_contract": metadata_contract,
             },
             "active_standards_view": {
                 "active_standards_sha256": "sha256:" + "c" * 64,
             },
+            "metadata_execution_contract": metadata_contract,
         }
         # Paired the way production pairs them: the authority carries the
         # very view objects the admission put on the runtime, which is what
@@ -208,6 +215,7 @@ class MetadataGateRuntimeTests(unittest.TestCase):
             "_profile_authorized_view": authority["profile_view"],
             "_active_standards_authorized_view":
                 authority["active_standards_view"],
+            "_metadata_execution_contract": metadata_contract,
         }
         context = metadata_gate_runtime.load_gate_context(
             REPOSITORY, "P:agent-atlas:interview-readiness",

@@ -42,7 +42,19 @@ an absent or ambiguous heading is unresolved. The closure is all-or-nothing:
 an invalid edge does not disappear and the foreign target's bytes cannot stand
 in for an authorized dependency.
 
-The `profile-load` Gate in [[kernel/K00 Standards Control/12 Control Registry#Control Registry|Control Registry]] is the sole control owner. Its producer derives the closure from one immutable Profile-tree snapshot and emits that snapshot fingerprint, a typed contract fingerprint, and one fingerprint over the three canonical root-owned inputs that define the Profile interface, execution-default schema, and base defaults. Consumers invoke that producer once or consume a current receipt; they MUST NOT reparse registry prose, reopen slot bytes, or substitute caller-selected rule inputs into a second authority graph.
+The `profile-load` Gate in [[kernel/K00 Standards Control/12 Control Registry#Control Registry|Control Registry]] is the sole control owner. Its producer derives the closure from one immutable Profile-tree snapshot and emits that snapshot fingerprint, a typed contract fingerprint, and one fingerprint over the complete canonical root-input closure. That closure is nine fixed roots -- the Profile interface, form defaults, execution defaults, operation capabilities, metadata authority, compiled metadata artifact, applicability base, relationship base, and Gate registry -- plus the exact capability-implementation set deterministically enumerated from the frozen operation-capability registry. Consumers invoke that producer once or consume a current receipt; they MUST NOT reparse registry prose, reopen slot bytes, or substitute caller-selected rule inputs into a second authority graph.
+
+Runtime authority membership is a closed machine-readable registry. Active
+Standards and `profile-load` are primary compare-and-swap authorities. The
+compiled metadata execution contract is a derived authority covered by the
+exact `profile-load` root-input closure: the producer compiles it from those
+same immutable snapshots, proves the registered artifact byte-equal, and
+retains that exact in-process object for runtime consumers. A consumer with an
+admitted runtime MUST reuse that object; reopening the artifact would create a
+second authority observation and repeat the implementation closure. A future
+runtime authority MUST declare whether it is primary or which registered
+primary authority covers its complete input set before it can enter the
+transaction context.
 
 The closure is not a Read Set, selects no route, and is never copied into
 `selected_read_sets` or `loaded_module_paths`. Because every Profile-owned

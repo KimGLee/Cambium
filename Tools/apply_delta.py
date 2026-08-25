@@ -536,7 +536,7 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
     )
     try:
         metadata_contract = \
-            metadata_execution_contract.load_metadata_execution_contract(root)
+            check_queue.runtime_metadata_execution_contract(current)
         profile_contract = current["_profile_authorized_view"]["_contract"]
         projection_rules = \
             metadata_property_state.profile_gate_projection_rules(

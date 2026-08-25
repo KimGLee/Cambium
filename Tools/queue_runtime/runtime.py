@@ -1197,6 +1197,9 @@ def validate_runtime(root, allowed_open_delta=None,
         "task_runtime": task_runtime,
         "_active_standards_authorized_view": active_standards_view,
         "_profile_authorized_view": profile_view,
+        "_metadata_execution_contract": (
+            profile_view.get("_metadata_execution_contract")
+            if isinstance(profile_view, dict) else None),
     }
 
 

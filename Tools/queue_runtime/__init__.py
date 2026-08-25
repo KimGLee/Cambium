@@ -130,11 +130,14 @@ from queue_runtime.amendments import (  # noqa: F401
     operational_amendment_registration_errors,
 )
 from queue_runtime.authority import (  # noqa: F401
+    RUNTIME_AUTHORITY_REGISTRY,
     require_runtime_authority_current,
+    runtime_authority_registry,
     runtime_authority_context,
     runtime_authority_currency_errors,
     runtime_authority_lock_fields,
     runtime_authority_validation_kwargs,
+    runtime_metadata_execution_contract,
 )
 from queue_runtime.control_plane import (  # noqa: F401
     unadmitted_profile_hub_paths,

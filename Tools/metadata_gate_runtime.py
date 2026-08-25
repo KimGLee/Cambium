@@ -41,6 +41,7 @@ from queue_runtime import (
     SHA256_RE,
     evidence_identity_errors,
     property_receipt_utc_date,
+    runtime_metadata_execution_contract,
 )
 
 
@@ -259,9 +260,12 @@ def require_paired_authority(runtime, authority):
     to reason about, since the second observation was never admitted alongside
     this runtime.
     """
-    for field, source in (("profile_view", "_profile_authorized_view"),
-                          ("active_standards_view",
-                           "_active_standards_authorized_view")):
+    for field, source in (
+            ("profile_view", "_profile_authorized_view"),
+            ("active_standards_view",
+             "_active_standards_authorized_view"),
+            ("metadata_execution_contract",
+             "_metadata_execution_contract")):
         if authority.get(field) is not runtime.get(source):
             raise ValueError(
                 "runtime authority was frozen from a different admission "
@@ -291,9 +295,7 @@ def load_gate_context(root, gate_id, page_path, *, runtime, authority,
     gate = _exact_gate(contract, gate_id)
     _require_capability_linkage(canonical_root, gate)
 
-    metadata_contract = \
-        metadata_execution_contract.load_metadata_execution_contract(
-            canonical_root)
+    metadata_contract = runtime_metadata_execution_contract(authority)
     rules = _projection_rules(metadata_contract, contract)
     page_snapshot = kblib.repository_target_snapshot(
         canonical_root, page_path, suffixes=".md", singly_linked=True)
@@ -638,20 +640,15 @@ def validate_persisted_gate_owner(context, gate_receipt,
 
 
 def require_authorities_current(context, phase, *, runtime=None):
-    """CAS the metadata contract, the Profile manifest and three Ledgers.
+    """CAS the Profile manifest and three Ledgers after shared authority CAS.
 
-    The runtime-authority CAS that used to open this function is now run by
-    the caller immediately before it, under the same ``phase`` label.  That
-    order is load-bearing: a moved ``profile-load`` or active-Standards view
-    has to be reported as an authority change, not as the metadata-contract
-    or manifest difference it would otherwise surface as.
+    The caller immediately runs the closed runtime-authority CAS before this
+    function under the same ``phase`` label.  That CAS now includes the
+    metadata contract as a Profile-load-covered derived authority, so opening
+    the artifact again here would compare a second observation and repeat the
+    whole implementation closure.  This local half retains only the exact
+    manifest and mutable-ledger checks owned by the Gate context.
     """
-    metadata_contract = \
-        metadata_execution_contract.load_metadata_execution_contract(
-            context.root)
-    if metadata_contract.contract_fingerprint != \
-            context.metadata_contract_fingerprint:
-        raise ValueError("%s: metadata execution contract changed" % phase)
     manifest = kblib.repository_file_snapshot(
         context.root, context.profile_view["selected_profile_manifest"],
         singly_linked=True)

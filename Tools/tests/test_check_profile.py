@@ -537,6 +537,14 @@ class ProfileLoadCliTests(ProfileCliFixture):
             evaluation.profile_contract_fingerprint,
             evaluation.summary_receipt["profile_contract_fingerprint"],
         )
+        self.assertIsInstance(
+            evaluation.metadata_execution_contract,
+            metadata_execution_contract.CompiledMetadataExecutionContract)
+        self.assertEqual(
+            evaluation.metadata_execution_contract.contract_fingerprint,
+            evaluation.summary_receipt[
+                "metadata_execution_contract_fingerprint"],
+        )
         # ``None`` is an explicit identity-free API evaluation, not a request
         # to infer identity from whatever Queue may happen to be on disk.
         self.assertNotIn("task_id", evaluation.summary_receipt)

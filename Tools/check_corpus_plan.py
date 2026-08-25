@@ -512,11 +512,16 @@ def _authorized_profile_view(root, profile, result,
                     evaluation.profile_contract_fingerprint,
                 "profile_load_inputs_sha256":
                     evaluation.profile_load_inputs_sha256,
+                "metadata_execution_contract_fingerprint":
+                    evaluation.metadata_execution_contract.
+                        contract_fingerprint,
                 "_manifest_slot_paths": tuple(sorted(
                     (edge.owner_id, edge.path)
                     for edge in admission.contract.dependency_edges
                     if edge.kind == "manifest-slot")),
                 "_contract": admission.contract,
+                "_metadata_execution_contract":
+                    evaluation.metadata_execution_contract,
                 "_profile_snapshot": evaluation.profile_snapshot,
                 "_evaluation": evaluation,
             }
