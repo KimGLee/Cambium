@@ -1,0 +1,48 @@
+name: Bug report
+description: Promote a confirmed Cambium defect into its canonical repository owner.
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form after reproducing or otherwise confirming a repository defect. Local investigation notes are supporting evidence, not the lifecycle owner.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What observable contract or behavior is wrong?
+      placeholder: Describe the current behavior and the expected boundary it violates.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Give the smallest reproduction, current source references, or other direct evidence.
+      placeholder: Include commands, exit codes, paths, revisions, or receipts needed to verify the claim.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Affected scope
+      description: Which tools, contracts, adopters, or workflows are affected, and which are not?
+    validations:
+      required: true
+  - type: textarea
+    id: system_boundary
+    attributes:
+      label: System-level expectation
+      description: State the invariant or ownership boundary a durable fix must restore. Do not prescribe a patch unless the design has already been decided.
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I checked current main or identified the exact revision used as evidence.
+          required: true
+        - label: I separated confirmed behavior from inference and unresolved scope.
+          required: true
