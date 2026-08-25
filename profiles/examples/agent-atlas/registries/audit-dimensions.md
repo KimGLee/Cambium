@@ -19,7 +19,7 @@ Interface: [Audit Dimension Registry slot](../../../README.md#audit-dimension-re
 | `agent-atlas-interview-readiness-acceptance` | `interview` | `Single Note Review` | One Interview Card and its bound canonical topics presented for `interview-ready` promotion satisfy the registered readiness predicate. | `emits` | `profiles/examples/agent-atlas/registries/audit-dimensions.md#Interview Readiness Acceptance` |
 | `agent-atlas-profile-wide-interview-acceptance` | `interview` | `Specialized Audit` | The complete in-scope Agent Systems Atlas snapshot satisfies the registered profile-wide Interview-layer acceptance predicate. | `emits` | `profiles/examples/agent-atlas/registries/audit-dimensions.md#Profile-wide Interview Acceptance` |
 | `agent-atlas-interview-residual-disposition` | `coverage_and_integration` | `Batch Review` | The merged in-scope snapshot's Interview-answer residual candidates outside `Interview Preparation/` all have an accepted disposition. | `emits` | `profiles/examples/agent-atlas/registries/audit-dimensions.md#Residual-content Disposition` |
-| `agent-atlas-content-form-classification` | `content_and_depth` | `Batch Review` | Every page on one batch's frozen manifest carries an explicit four-class content-form classification judged against the Content Form Review criteria. | `emits` | `profiles/examples/agent-atlas/language-contract.md#Content Form Review` |
+| `agent-atlas-content-form-classification` | `content_and_depth` | `Batch Review` | Every reviewed block on every page in one batch's frozen manifest carries both a closed `form_class` and a closed `rewrite_disposition`; any `source-gap` names its registered gap. | `emits` | `profiles/examples/agent-atlas/language-contract.md#Content Form Review` |
 
 ## Interview Card Review
 

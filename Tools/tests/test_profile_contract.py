@@ -364,6 +364,30 @@ class AuthorizedContractTests(unittest.TestCase):
         self.assertEqual("interview-reviewer", gate.producer_reference)
         self.assertEqual(("interview-ready",), gate.completion_values)
 
+        language = (REPOSITORY / "profiles/examples/agent-atlas/"
+                    "language-contract.md").read_text(encoding="utf-8")
+        for value in (
+                "`contract-enumeration`", "`native-structure`",
+                "`compressed-narrative`", "`natural-prose`",
+                "`retain`", "`rewrite`", "`source-gap`"):
+            self.assertIn(value, language)
+        self.assertIn(
+            "`source-gap` is a rewrite disposition, not a fifth form class",
+            language)
+        self.assertNotIn(
+            "is judged by\nwhether it explains the mechanism",
+            language)
+        requirement = atlas.batch_review_requirements[0]
+        self.assertEqual(
+            "agent-atlas-content-form-classification",
+            requirement.judgment_item_id)
+        item = next(row for row in atlas.judgment_items
+                    if row.judgment_item_id ==
+                    requirement.judgment_item_id)
+        self.assertIn("`form_class`", item.audit_object)
+        self.assertIn("`rewrite_disposition`", item.audit_object)
+        self.assertIn("`source-gap`", item.audit_object)
+
 
 class ExtensionGateContractTests(unittest.TestCase):
     def setUp(self):

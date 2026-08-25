@@ -85,25 +85,46 @@ sources-role section.
 
 ## Content Form Review
 
-Classify each reviewed content block by its natural form. The deciding
-question is whether a list is a closed contract or a compressed causal chain.
+Review each content block on two independent axes. `form_class` records what
+the source block naturally is; `rewrite_disposition` records whether the
+current evidence authorizes a form change. A form classification never by
+itself authorizes content that is absent from the source.
 
-1. **Contract enumeration.** Responsibility boundaries (`owns`, `excludes`,
+The closed `form_class` values are:
+
+1. **`contract-enumeration`.** Responsibility boundaries (`owns`, `excludes`,
    goals, non-goals) and external-reference sets belong in the frontmatter
    `boundary` block. `boundary-contract` validates that block, and
    `render_boundary_projection.py` produces its reader view. Body prose may
    refer to the projection but must not duplicate the enumeration. The author
    chooses where the projection markers appear.
-2. **Natural table, diagram, or code.** Comparison tables, sequence diagrams,
+2. **`native-structure`.** Comparison tables, sequence diagrams,
    architecture diagrams, structure definitions, pseudocode, and formulas
    keep their native form. Marker comments distinguish authored content from
    generated projections.
-3. **Compressed narrative.** Parallel bullets that carry causality,
-   mechanisms, or failure analysis are rewritten as connected prose. The
-   prose makes causal and trade-off relations explicit and is judged by
-   whether it explains the mechanism, not by enumeration completeness.
-4. **Natural prose.** Existing prose is edited for clarity without changing
+3. **`compressed-narrative`.** Parallel bullets qualify only when the source
+   items themselves state causal, mechanistic, trade-off, or failure
+   relations that connected prose can preserve. A noun-phrase list or bare
+   enumeration is not this class, regardless of list density, page type, or
+   the amount of surrounding prose.
+4. **`natural-prose`.** Existing prose is edited for clarity without changing
    its form.
+
+The closed `rewrite_disposition` values are:
+
+- **`retain`** — the natural form remains appropriate or no migration is
+  needed;
+- **`rewrite`** — the proposed form change can be completed entirely from
+  relations already supported by the current content and admitted evidence;
+- **`source-gap`** — the target prose would require a relation or mechanism
+  the source does not state. Keep the neutral source form and register the
+  missing question, evidence, or canonical owner; do not supply a connective,
+  ordering, quantity, modal strengthening, absolute, or causal explanation to
+  make the rewrite appear complete.
+
+`source-gap` is a rewrite disposition, not a fifth form class. The applicable
+depth and acceptance rules decide whether the registered gap blocks the
+page's target status; the formatting rule never makes that decision.
 
 A responsibility block belongs only to a page that asserts who owns a
 concern. Overview, module-entry, and system-design pages commonly qualify;
@@ -119,13 +140,14 @@ manifest page from carrying its own boundary. When a batch introduces its
 first new boundary block, Batch Review records the slug design for integrator
 review.
 
-Before `merge-ready`, Batch Review applies the four-way classification to
-every manifest page and records an explicit result in that page's
-content-correctness evidence. A conclusion that no migration is needed is a
-valid result; an omitted result is not a completed review. Category 3 and 4
-edits also apply the Term Band Rule. The classification is not a separate
-checkpoint artifact. Pages not reached by ordinary batches are handled by a
-finishing batch before Queue exhaustion can be claimed.
+Before `merge-ready`, Batch Review records both axes for every reviewed block
+on every manifest page in that page's content-correctness evidence. A `retain`
+result is valid; `source-gap` additionally names the registered gap; an
+omitted axis or a bare statement such as “reviewed” is not a completed
+judgment. Rewrites of `compressed-narrative` and `natural-prose` also apply the
+Term Band Rule. The two-axis judgment is not a separate checkpoint artifact.
+Pages not reached by ordinary batches are handled by a finishing batch before
+Queue exhaustion can be claimed.
 
 ## Registered Term Displays
 
