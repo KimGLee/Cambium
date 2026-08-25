@@ -36,10 +36,13 @@ help:
 # Registry producer table.
 #
 # compile_cli_contract --check covers Tools/compiled/cli-contract.yaml, the
-# compiled statement of every tool's argparse calling contract.  It is placed
-# here rather than in the K00/12 Stable Gate ID Registry on purpose: run_gates
-# needs a selected profile before it can start, and this artifact depends on
-# no profile at all, so a registry row for it could never be swept.
+# compiled statement of every tool's argparse calling contract plus the closed
+# agent-interface capability policy.  Tool, argument, exposure, workspace, and
+# path-constraint closure therefore fail before any host projection is served.
+# It is placed here rather than in the K00/12 Stable Gate ID Registry on
+# purpose: run_gates needs a selected profile before it can start, and this
+# artifact depends on no profile at all, so a registry row for it could never
+# be swept.
 #
 # metadata_execution_contract --check binds live Kernel metadata authority to
 # the installed writer/consumer/producer capability registry.  It runs here

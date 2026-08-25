@@ -139,14 +139,14 @@ carries the raw bytes verbatim, and infers nothing from them.  Reporting
 
 What this layer refuses, and what it does not
 ---------------------------------------------
-It refuses only calls for which no argv can be formed at all: an undeclared
-argument name, a JSON value whose type cannot be rendered onto argv, and a
-missing positional that would silently rebind a later positional's value
-onto an earlier parameter.  It does not check `enum` membership, does not
-check that required arguments are present, and does not check any path.
-Every one of those is a judgment the tool itself already makes, and letting
-the tool make it is how "the kernel's refusal arrives as the kernel's
-refusal" stays true instead of being asserted.
+It refuses calls for which no argv can be formed and calls that contradict the
+host binding carried by the compiled interface policy.  Every MCP operation
+must supply its declared workspace argument, that argument must resolve to the
+session's `CAMBIUM_WORKSPACE_ROOT`, and every effective filesystem path -- an
+explicit value or an omitted argparse default -- must remain inside its typed
+envelope.  These are transport capabilities, not domain judgments: enum
+membership, state transitions, evidence sufficiency, and the meaning of a
+tool's result remain with the tool.
 
 The binding
 -----------
@@ -158,16 +158,23 @@ best-effort is not something a binding may rest on.  An unset, relative, or
 un-substituted value fails `initialize` with a message naming the variable
 the host has to set.
 
-The bound root becomes the child process's working directory, so a
-repository-relative argument such as `.` resolves against the corpus.
-Arguments are never rewritten to point at it: choosing a caller's paths for
-them would be this layer deciding what may run, and each tool already owns
-that question through its own containment checks.
+Initialize opens and pins the canonical directory object.  That descriptor,
+not a pathname resolved a second time, becomes every child process's working
+directory, so replacing or retargeting the configured path cannot transfer an
+in-flight session to another corpus.  The closed projection also declares
+which argument must resolve back to that same root and which arguments are
+filesystem capabilities.  The server refuses a missing or alternate root and
+refuses typed paths outside their declared contained, exact, or namespace
+envelope before a child exists.  The child receives `.` for the workspace
+argument so it resolves from the pinned object; ordinary path argument values
+are preserved.  Tools still own state authorization, evidence sufficiency,
+and verdicts.
 """
 
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 import uuid
@@ -213,7 +220,9 @@ SOURCE_HASH_ENV = "CAMBIUM_INTERFACE_SOURCE_HASH"
 # What the projection must claim about itself before it is served.
 PROJECTION_ARTIFACT = "agent-interface-projection"
 PROJECTION_FORM = "mcp"
-PROJECTION_SCHEMA_VERSION = 1
+PROJECTION_SCHEMA_VERSION = 2
+PATH_EXTENSION_KEY = "x-cambium-path"
+WORKSPACE_EXTENSION_KEY = "x-cambium-workspace"
 
 # The flag this layer owns. It is appended to every tool that declares it,
 # and a caller-supplied value for it is reported back as ignored.
@@ -332,7 +341,60 @@ def resolve_workspace_root(environ):
             "%s is %r, which is not an existing directory."
             % (WORKSPACE_ENV, value),
             detail)
-    return value
+    return os.path.realpath(os.path.abspath(value))
+
+
+def workspace_identity(workspace_root):
+    """Return the filesystem identity currently named by a root path."""
+    try:
+        metadata = os.stat(workspace_root)
+    except OSError as exc:
+        raise RpcError(
+            NOT_BOUND,
+            "the configured workspace cannot be identified safely: %s" %
+            exc,
+            {"variable": WORKSPACE_ENV, "workspace_root": workspace_root})
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise RpcError(
+            NOT_BOUND,
+            "the configured workspace is no longer a directory",
+            {"variable": WORKSPACE_ENV, "workspace_root": workspace_root})
+    return (metadata.st_dev, metadata.st_ino)
+
+
+def open_workspace_directory(workspace_root):
+    """Open and verify the stable directory object used by one session."""
+    required = ("O_DIRECTORY", "O_NOFOLLOW")
+    if any(not hasattr(os, name) for name in required) or \
+            not hasattr(os, "fchdir"):
+        raise RpcError(
+            NOT_BOUND,
+            "this platform cannot hold a no-follow workspace directory "
+            "through the subprocess execution boundary",
+            {"variable": WORKSPACE_ENV, "workspace_root": workspace_root})
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    descriptor = None
+    try:
+        descriptor = os.open(workspace_root, flags)
+        metadata = os.fstat(descriptor)
+    except OSError as exc:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise RpcError(
+            NOT_BOUND,
+            "the configured workspace cannot be opened safely: %s" % exc,
+            {"variable": WORKSPACE_ENV, "workspace_root": workspace_root})
+    identity = (metadata.st_dev, metadata.st_ino)
+    if workspace_identity(workspace_root) != identity:
+        os.close(descriptor)
+        raise RpcError(
+            NOT_BOUND,
+            "the configured workspace changed while initialize was "
+            "binding it; retry with a stable workspace",
+            {"variable": WORKSPACE_ENV, "workspace_root": workspace_root})
+    return descriptor, identity
 
 
 # ---------------------------------------------------------------------------
@@ -440,7 +502,76 @@ def load_projection(distribution_root, environ):
                 "the compiled tool projection at %s lists %s, but %s is not "
                 "present" % (path, name, script),
                 {"path": path, "tool": name})
-        by_name[name] = {"name": name, "schema": schema, "script": script}
+        workspace = entry.get(WORKSPACE_EXTENSION_KEY)
+        if not isinstance(workspace, dict) or \
+                set(workspace) != {"argument", "access"} or \
+                workspace.get("access") not in ("read", "write"):
+            raise RpcError(
+                UNRELIABLE_EVIDENCE,
+                "the compiled tool projection at %s carries no valid "
+                "workspace binding for %s" % (path, name),
+                {"path": path, "tool": name})
+        workspace_argument = workspace.get("argument")
+        if not isinstance(workspace_argument, str) or \
+                workspace_argument not in schema["properties"]:
+            raise RpcError(
+                UNRELIABLE_EVIDENCE,
+                "the compiled tool projection at %s binds %s to unknown "
+                "workspace argument %r" %
+                (path, name, workspace_argument),
+                {"path": path, "tool": name})
+        for argument, property_schema in schema["properties"].items():
+            path_capability = property_schema.get(PATH_EXTENSION_KEY)
+            if path_capability is None:
+                continue
+            if not isinstance(path_capability, dict) or \
+                    set(path_capability) != {
+                        "access", "constraint", "value", "suffixes",
+                    } or \
+                    path_capability.get("access") not in \
+                    ("read", "write", "read-write") or \
+                    path_capability.get("constraint") not in \
+                    ("contained", "exact", "namespace"):
+                raise RpcError(
+                    UNRELIABLE_EVIDENCE,
+                    "the compiled tool projection at %s carries an invalid "
+                    "path capability for %s.%s" % (path, name, argument),
+                    {"path": path, "tool": name, "argument": argument})
+            constraint = path_capability["constraint"]
+            value = path_capability["value"]
+            suffixes = path_capability["suffixes"]
+            if not isinstance(suffixes, list) or any(
+                    not isinstance(suffix, str) or not suffix or
+                    not suffix.startswith(".") or "/" in suffix or
+                    "\\" in suffix for suffix in suffixes):
+                raise RpcError(
+                    UNRELIABLE_EVIDENCE,
+                    "the compiled tool projection at %s carries invalid "
+                    "suffix constraints for %s.%s" %
+                    (path, name, argument),
+                    {"path": path, "tool": name, "argument": argument})
+            if constraint == "contained":
+                valid_constraint = value is None and not suffixes
+            else:
+                valid_constraint = isinstance(value, str) and value and \
+                    not os.path.isabs(value) and "\\" not in value and \
+                    os.path.normpath(value).replace(os.sep, "/") == value and \
+                    value != ".." and not value.startswith("../")
+                if constraint == "exact" and suffixes:
+                    valid_constraint = False
+            if not valid_constraint:
+                raise RpcError(
+                    UNRELIABLE_EVIDENCE,
+                    "the compiled tool projection at %s carries an invalid "
+                    "%s constraint for %s.%s" %
+                    (path, constraint, name, argument),
+                    {"path": path, "tool": name, "argument": argument})
+        by_name[name] = {
+            "name": name,
+            "schema": schema,
+            "script": script,
+            "workspace_argument": workspace_argument,
+        }
         # Pass the compiled entry through as-is. Rebuilding it from a
         # whitelist would silently drop any field the projection carries
         # that this server does not itself read -- the mutual-exclusion
@@ -603,6 +734,168 @@ def build_argv(tool, arguments):
     return tail, ignored
 
 
+def _path_values(tool_name, argument, value):
+    """Yield path strings from one scalar or list-valued path argument."""
+    values = value if isinstance(value, list) else [value]
+    for item in values:
+        if not isinstance(item, str) or not item or item != item.strip() or \
+                "\x00" in item:
+            raise RpcError(
+                INVALID_PARAMS,
+                "%s.%s must carry non-empty canonical path strings" %
+                (tool_name, argument),
+                {"tool": tool_name, "argument": argument})
+        yield item
+
+
+def _bound_path(workspace_root, spelling):
+    candidate = spelling if os.path.isabs(spelling) else \
+        os.path.join(workspace_root, spelling)
+    return os.path.realpath(os.path.abspath(candidate))
+
+
+def _canonical_workspace_spelling(tool_name, argument, spelling):
+    """Require one stable repository-relative spelling at the MCP boundary."""
+    if os.path.isabs(spelling) or "\\" in spelling or \
+            os.path.normpath(spelling).replace(os.sep, "/") != spelling or \
+            spelling == ".." or spelling.startswith("../"):
+        raise RpcError(
+            INVALID_PARAMS,
+            "%s.%s must use a canonical repository-relative path" %
+            (tool_name, argument),
+            {"tool": tool_name, "argument": argument})
+    return spelling
+
+
+def _refuse_link_aliases(tool_name, argument, workspace_fd, spelling):
+    """Refuse link aliases while walking from the pinned workspace object."""
+    if spelling == ".":
+        components = []
+    else:
+        components = spelling.split("/")
+    current_fd = os.dup(workspace_fd)
+    try:
+        for index, component in enumerate(components):
+            try:
+                metadata = os.stat(
+                    component, dir_fd=current_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                # A may-create path is anchored by the deepest existing
+                # parent opened from the frozen workspace directory.
+                break
+            except OSError as exc:
+                raise RpcError(
+                    INVALID_PARAMS,
+                    "%s.%s cannot be inspected safely: %s" %
+                    (tool_name, argument, exc),
+                    {"tool": tool_name, "argument": argument})
+            if stat.S_ISLNK(metadata.st_mode):
+                raise RpcError(
+                    INVALID_PARAMS,
+                    "%s.%s traverses a symlink, which is not a canonical "
+                    "workspace artifact" % (tool_name, argument),
+                    {"tool": tool_name, "argument": argument})
+            if stat.S_ISREG(metadata.st_mode) and metadata.st_nlink != 1:
+                raise RpcError(
+                    INVALID_PARAMS,
+                    "%s.%s names a multiply-linked file, so its repository "
+                    "identity is ambiguous" % (tool_name, argument),
+                    {"tool": tool_name, "argument": argument})
+            if index == len(components) - 1:
+                continue
+            if not stat.S_ISDIR(metadata.st_mode):
+                break
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            if hasattr(os, "O_CLOEXEC"):
+                flags |= os.O_CLOEXEC
+            try:
+                next_fd = os.open(component, flags, dir_fd=current_fd)
+            except OSError as exc:
+                raise RpcError(
+                    INVALID_PARAMS,
+                    "%s.%s changed while its path was being inspected: %s" %
+                    (tool_name, argument, exc),
+                    {"tool": tool_name, "argument": argument})
+            os.close(current_fd)
+            current_fd = next_fd
+    finally:
+        os.close(current_fd)
+
+
+def enforce_workspace_capabilities(tool, arguments, workspace_root,
+                                   workspace_fd):
+    """Refuse a call whose declared paths escape the host-bound workspace."""
+    root_real = os.path.realpath(os.path.abspath(workspace_root))
+    workspace_argument = tool["workspace_argument"]
+    if workspace_argument not in arguments:
+        raise RpcError(
+            INVALID_PARAMS,
+            "%s requires %s over MCP so the operation is bound to this "
+            "session's workspace" % (tool["name"], workspace_argument),
+            {"tool": tool["name"], "required_workspace_argument":
+             workspace_argument})
+    workspace_values = list(_path_values(
+        tool["name"], workspace_argument, arguments[workspace_argument]))
+    if len(workspace_values) != 1 or \
+            _bound_path(root_real, workspace_values[0]) != root_real:
+        raise RpcError(
+            INVALID_PARAMS,
+            "%s.%s must resolve exactly to the session workspace %s" %
+            (tool["name"], workspace_argument, workspace_root),
+            {"tool": tool["name"], "argument": workspace_argument,
+             "workspace_root": workspace_root})
+
+    properties = tool["schema"]["properties"]
+    for argument, property_schema in properties.items():
+        if argument == workspace_argument:
+            continue
+        capability = property_schema.get(PATH_EXTENSION_KEY)
+        if capability is None:
+            continue
+        if argument in arguments:
+            value = arguments[argument]
+        elif "default" in property_schema and \
+                property_schema["default"] is not None:
+            # An omitted option still has an effective path. Validate the
+            # compiled argparse default before the child process can use it.
+            value = property_schema["default"]
+        else:
+            continue
+        for spelling in _path_values(tool["name"], argument, value):
+            spelling = _canonical_workspace_spelling(
+                tool["name"], argument, spelling)
+            _refuse_link_aliases(
+                tool["name"], argument, workspace_fd, spelling)
+            constraint = capability["constraint"]
+            registered = capability["value"]
+            if constraint == "exact":
+                if spelling != registered:
+                    raise RpcError(
+                        INVALID_PARAMS,
+                        "%s.%s must name exactly %s" %
+                        (tool["name"], argument, registered),
+                        {"tool": tool["name"], "argument": argument,
+                         "expected": registered})
+            elif constraint == "namespace":
+                in_namespace = spelling.startswith(registered + "/")
+                if not in_namespace:
+                    raise RpcError(
+                        INVALID_PARAMS,
+                        "%s.%s must name an artifact under %s" %
+                        (tool["name"], argument, registered),
+                        {"tool": tool["name"], "argument": argument,
+                         "namespace": registered})
+                suffixes = capability["suffixes"]
+                if suffixes and not any(
+                        spelling.endswith(suffix) for suffix in suffixes):
+                    raise RpcError(
+                        INVALID_PARAMS,
+                        "%s.%s must end in one of %s" %
+                        (tool["name"], argument, ", ".join(suffixes)),
+                        {"tool": tool["name"], "argument": argument,
+                         "suffixes": suffixes})
+
+
 # ---------------------------------------------------------------------------
 # Execution
 # ---------------------------------------------------------------------------
@@ -613,9 +906,16 @@ def interpreter():
     return sys.executable or "python3"
 
 
-def run_tool(tool, arguments, workspace_root, environ):
+def run_tool(tool, arguments, workspace_root, workspace_fd, environ):
     """Run one tool as a child process and report exactly what came back."""
-    tail, ignored = build_argv(tool, arguments)
+    enforce_workspace_capabilities(
+        tool, arguments, workspace_root, workspace_fd)
+    execution_arguments = dict(arguments)
+    # The caller must name the right binding, but the child consumes `.` from
+    # the already-open directory object. It can therefore never reopen a
+    # replaced pathname between authorization and subprocess startup.
+    execution_arguments[tool["workspace_argument"]] = "."
+    tail, ignored = build_argv(tool, execution_arguments)
     argv = [interpreter(), tool["script"]] + tail
 
     child_env = dict(environ)
@@ -624,13 +924,14 @@ def run_tool(tool, arguments, workspace_root, environ):
     try:
         completed = subprocess.run(
             argv,
-            cwd=workspace_root,
             env=child_env,
             # The server's own stdin is the JSON-RPC stream. A child that
             # inherited it could consume the protocol.
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            pass_fds=(workspace_fd,),
+            preexec_fn=lambda: os.fchdir(workspace_fd),
         )
     except OSError as exc:
         raise RpcError(
@@ -746,6 +1047,8 @@ class Server(object):
         self.distribution_root = distribution_root or DISTRIBUTION_ROOT
         self.environ = dict(os.environ if environ is None else environ)
         self.workspace_root = None
+        self.workspace_identity = None
+        self.workspace_fd = None
         self.projection = None
         self.execution_context_id = None
         self.client_name = None
@@ -756,9 +1059,20 @@ class Server(object):
     def handle_initialize(self, params):
         # Both preconditions are settled here, so a session never comes up
         # advertising an interface it cannot serve.
-        self.workspace_root = resolve_workspace_root(self.environ)
-        self.projection = load_projection(self.distribution_root,
-                                          self.environ)
+        candidate_root = resolve_workspace_root(self.environ)
+        candidate_fd, candidate_identity = \
+            open_workspace_directory(candidate_root)
+        try:
+            candidate_projection = load_projection(
+                self.distribution_root, self.environ)
+        except Exception:
+            os.close(candidate_fd)
+            raise
+        self.close()
+        self.workspace_root = candidate_root
+        self.workspace_fd = candidate_fd
+        self.workspace_identity = candidate_identity
+        self.projection = candidate_projection
         self.execution_context_id = "mcp:%s" % uuid.uuid4().hex
         client = params.get("clientInfo")
         if isinstance(client, dict):
@@ -794,7 +1108,8 @@ class Server(object):
         }
 
     def require_session(self):
-        if self.projection is None or self.workspace_root is None:
+        if self.projection is None or self.workspace_root is None or \
+                self.workspace_identity is None or self.workspace_fd is None:
             raise RpcError(
                 INVALID_REQUEST,
                 "initialize has not completed on this session; the tool "
@@ -822,9 +1137,22 @@ class Server(object):
         if not isinstance(arguments, dict):
             raise RpcError(INVALID_PARAMS,
                            "tools/call arguments must be an object")
-        # Re-read the binding: the directory can go away between calls, and
-        # a stale root would run the corpus's tools somewhere else.
-        workspace_root = resolve_workspace_root(self.environ)
+        # Re-read and compare the binding. A pathname can be renamed,
+        # replaced or have a symlink retargeted after initialize; the session
+        # remains authorized only for the canonical directory object it
+        # originally pinned.
+        current_root = resolve_workspace_root(self.environ)
+        current_identity = workspace_identity(current_root)
+        if current_root != self.workspace_root or \
+                current_identity != self.workspace_identity:
+            raise RpcError(
+                NOT_BOUND,
+                "the configured workspace changed after initialize; start "
+                "a new MCP session for the new workspace",
+                {"variable": WORKSPACE_ENV,
+                 "workspace_root": self.workspace_root,
+                 "current_workspace_root": current_root})
+        workspace_root = self.workspace_root
         execution_env = dict(self.environ)
         execution_env[EXECUTION_CONTEXT_ENV] = self.execution_context_id
         # Absent rather than empty: an unset variable claims nothing, while an
@@ -835,7 +1163,21 @@ class Server(object):
                 execution_env[name] = value
             else:
                 execution_env.pop(name, None)
-        return run_tool(tool, arguments, workspace_root, execution_env)
+        return run_tool(
+            tool, arguments, workspace_root, self.workspace_fd, execution_env)
+
+    def close(self):
+        """Release the session's stable workspace directory object."""
+        descriptor = self.workspace_fd
+        self.workspace_fd = None
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+    def __del__(self):
+        self.close()
 
     def handle_ping(self, _params):
         return {}

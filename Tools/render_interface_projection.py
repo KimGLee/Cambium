@@ -79,11 +79,11 @@ import kblib  # noqa: E402
 TOOL = "render_interface_projection"
 TOOL_VERSION = "1.0.0"
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 ARTIFACT_KIND = "agent-interface-projection"
 DEFAULT_CONTRACT = "Tools/compiled/cli-contract.yaml"
 UPSTREAM_ARTIFACT = "cli-invocation-contract"
-UPSTREAM_SCHEMA_VERSION = 1
+UPSTREAM_SCHEMA_VERSION = 2
 
 # The transports the `mcp` form declares. Deliberately two, and
 # deliberately not four.
@@ -123,6 +123,8 @@ COUNT_ACTIONS = ("count",)
 
 CLI_EXTENSION_KEY = "x-cambium-cli"
 EXCLUSIVE_EXTENSION_KEY = "x-cambium-mutually-exclusive"
+PATH_EXTENSION_KEY = "x-cambium-path"
+WORKSPACE_EXTENSION_KEY = "x-cambium-workspace"
 
 NOTICE = (
     "Generated artifact -- do not edit. Every value here is projected from "
@@ -132,7 +134,8 @@ NOTICE = (
 NOT_A_REVISION_BASIS = (
     "This file is downstream of each tool's own argparse declaration and is "
     "never the basis for revising one. To change what an agent may call, "
-    "change the tool's argparse block, recompile %s, then regenerate this "
+    "change the tool's argparse block or the closed agent-interface policy, "
+    "recompile %s, then regenerate this "
     "file." % DEFAULT_CONTRACT
 )
 REGENERATE = "python3 Tools/%s.py ." % TOOL
@@ -176,7 +179,8 @@ FIELD_SOURCES = {
         "Tools/compiled/cli-contract.yaml: source_hash (its own manifest "
         "of the tool sources it was compiled from)",
     "tool_count":
-        "count of Tools/compiled/cli-contract.yaml: tools[]",
+        "count of Tools/compiled/cli-contract.yaml: tools[] whose "
+        "agent_interface.exposure is mcp",
     "generated.notice":
         "Tools/render_interface_projection.py: NOTICE; rule owner "
         "kernel/K08 Metadata and Status/07 Frontmatter Writer and "
@@ -252,6 +256,32 @@ FIELD_SOURCES = {
     "tools[].inputSchema.properties.*.%s.type" % CLI_EXTENSION_KEY:
         "Tools/compiled/cli-contract.yaml: tools[].arguments[].type, "
         "verbatim (omitted when the argument declares none)",
+    "tools[].inputSchema.properties.*.%s.access" % PATH_EXTENSION_KEY:
+        "Tools/compiled/cli-contract.yaml: "
+        "tools[].agent_interface.path_arguments[].access for the matching "
+        "argument",
+    "tools[].inputSchema.properties.*.%s.constraint" % PATH_EXTENSION_KEY:
+        "Tools/compiled/cli-contract.yaml: "
+        "tools[].agent_interface.path_arguments[].constraint for the "
+        "matching argument",
+    "tools[].inputSchema.properties.*.%s.value" % PATH_EXTENSION_KEY:
+        "Tools/compiled/cli-contract.yaml: "
+        "tools[].agent_interface.path_arguments[].value for the matching "
+        "argument",
+    "tools[].inputSchema.properties.*.%s.suffixes[]" % PATH_EXTENSION_KEY:
+        "Tools/compiled/cli-contract.yaml: "
+        "tools[].agent_interface.path_arguments[].suffixes for the matching "
+        "argument",
+    "tools[].inputSchema.properties.*.%s.suffixes" % PATH_EXTENSION_KEY:
+        "Tools/compiled/cli-contract.yaml: "
+        "tools[].agent_interface.path_arguments[].suffixes for the matching "
+        "argument; the empty list is the no-suffix-constraint case",
+    "tools[].%s.argument" % WORKSPACE_EXTENSION_KEY:
+        "Tools/compiled/cli-contract.yaml: "
+        "tools[].agent_interface.workspace_argument",
+    "tools[].%s.access" % WORKSPACE_EXTENSION_KEY:
+        "Tools/compiled/cli-contract.yaml: "
+        "tools[].agent_interface.workspace_access",
     "tools[].%s[].required" % EXCLUSIVE_EXTENSION_KEY:
         "Tools/compiled/cli-contract.yaml: "
         "tools[].mutually_exclusive_groups[].required",
@@ -327,6 +357,52 @@ def read_contract(path):
             raise ProjectionError(
                 "%s: tool %r carries no arguments list"
                 % (path, record.get("tool")))
+        interface = record.get("agent_interface")
+        if not isinstance(interface, dict) or \
+                set(interface) != {
+                    "exposure", "workspace_argument", "workspace_access",
+                    "value_arguments", "path_arguments", "external_write",
+                } or interface.get("exposure") not in ("mcp", "cli-only"):
+            raise ProjectionError(
+                "%s: tool %r carries no closed agent-interface policy"
+                % (path, record.get("tool")))
+        arguments = {item.get("dest") for item in record["arguments"]}
+        values = interface.get("value_arguments")
+        paths = interface.get("path_arguments")
+        if not isinstance(values, list) or not isinstance(paths, list):
+            raise ProjectionError(
+                "%s: tool %r carries no closed argument classification" %
+                (path, record.get("tool")))
+        path_names = set()
+        for item in paths:
+            if not isinstance(item, dict) or set(item) != {
+                    "argument", "access", "constraint", "value",
+                    "suffixes"}:
+                raise ProjectionError(
+                    "%s: tool %r carries a malformed path capability" %
+                    (path, record.get("tool")))
+            path_names.add(item.get("argument"))
+        classified = set(values) | path_names
+        workspace_argument = interface.get("workspace_argument")
+        if workspace_argument is not None:
+            classified.add(workspace_argument)
+        if classified != arguments or len(path_names) != len(paths) or \
+                len(set(values)) != len(values) or set(values) & path_names:
+            raise ProjectionError(
+                "%s: tool %r agent-interface arguments do not close over "
+                "its argparse contract" % (path, record.get("tool")))
+        if workspace_argument is not None and \
+                (workspace_argument in values or
+                 workspace_argument in path_names):
+            raise ProjectionError(
+                "%s: tool %r classifies its workspace argument twice" %
+                (path, record.get("tool")))
+        if interface["exposure"] == "mcp" and \
+                (workspace_argument not in arguments or
+                 interface.get("workspace_access") not in ("read", "write")):
+            raise ProjectionError(
+                "%s: MCP tool %r carries no valid workspace binding" %
+                (path, record.get("tool")))
     return contract, kblib.sha256_bytes(raw)
 
 
@@ -380,7 +456,7 @@ def is_list_valued(argument):
     return isinstance(nargs, int) and not isinstance(nargs, bool) and nargs >= 1
 
 
-def property_schema(argument):
+def property_schema(argument, path_capability=None):
     """One JSON Schema property for one declared argument."""
     action = argument.get("action")
     nargs = argument.get("nargs")
@@ -417,6 +493,13 @@ def property_schema(argument):
     if argument.get("type") is not None:
         extension["type"] = argument["type"]
     schema[CLI_EXTENSION_KEY] = extension
+    if path_capability is not None:
+        schema[PATH_EXTENSION_KEY] = {
+            "access": path_capability["access"],
+            "constraint": path_capability["constraint"],
+            "value": path_capability["value"],
+            "suffixes": list(path_capability["suffixes"]),
+        }
     return schema
 
 
@@ -424,9 +507,14 @@ def input_schema(record):
     """The MCP `inputSchema` for one tool record of the compiled contract."""
     properties = {}
     required = []
+    path_capabilities = {
+        item["argument"]: item
+        for item in record["agent_interface"].get("path_arguments") or []
+    }
     for argument in record["arguments"]:
         dest = argument["dest"]
-        properties[dest] = property_schema(argument)
+        properties[dest] = property_schema(
+            argument, path_capability=path_capabilities.get(dest))
         if argument.get("required"):
             required.append(dest)
     schema = {
@@ -441,6 +529,10 @@ def input_schema(record):
 
 def mcp_tool(record):
     tool = {"name": record["tool"], "inputSchema": input_schema(record)}
+    tool[WORKSPACE_EXTENSION_KEY] = {
+        "argument": record["agent_interface"]["workspace_argument"],
+        "access": record["agent_interface"]["workspace_access"],
+    }
     if record.get("description"):
         tool["description"] = record["description"]
     groups = [
@@ -482,10 +574,15 @@ def build_envelope(form_name, contract, contract_hash, source_spelling):
 
 
 def build_mcp(form_name, contract, contract_hash, source_spelling):
+    records = [
+        record for record in contract["tools"]
+        if record["agent_interface"]["exposure"] == "mcp"
+    ]
     artifact = build_envelope(
         form_name, contract, contract_hash, source_spelling)
+    artifact["tool_count"] = len(records)
     artifact["transports"] = list(MCP_TRANSPORTS)
-    artifact["tools"] = [mcp_tool(record) for record in contract["tools"]]
+    artifact["tools"] = [mcp_tool(record) for record in records]
     return artifact
 
 
@@ -597,6 +694,14 @@ def main(argv=None):
     if args.output and args.form is None:
         parser.error("--output names one artifact; pass --form to say which "
                      "form it holds")
+    outputs = {}
+    for form_name in forms:
+        try:
+            outputs[form_name] = kblib.registered_repository_artifact_path(
+                root, args.output or FORMS[form_name]["output"],
+                FORMS[form_name]["output"])
+        except ValueError as exc:
+            return fail("unsafe %s artifact output: %s" % (form_name, exc))
 
     contract_path = args.contract or os.path.join(root, DEFAULT_CONTRACT)
     if not os.path.isabs(contract_path):
@@ -626,7 +731,7 @@ def main(argv=None):
         except (TypeError, ValueError) as exc:
             return fail("the %s form is not renderable: %s"
                         % (form_name, exc))
-        output = args.output or os.path.join(root, form["output"])
+        output = outputs[form_name]
         rendered.append((form_name, output, text, artifact))
 
     # Time-of-check / time-of-use: everything above was projected from the
@@ -645,7 +750,7 @@ def main(argv=None):
 
     if args.check:
         stale = 0
-        for form_name, output, text, _artifact in rendered:
+        for form_name, output, text, artifact in rendered:
             try:
                 with open(output, "r", encoding="utf-8") as handle:
                     existing = handle.read()
@@ -659,13 +764,13 @@ def main(argv=None):
                 stale += 1
                 continue
             print("%s --check: %s is current (%s form, %d tool(s))"
-                  % (TOOL, output, form_name, len(contract["tools"])))
+                  % (TOOL, output, form_name, artifact["tool_count"]))
         return 2 if stale else 0
 
-    for form_name, output, text, _artifact in rendered:
+    for form_name, output, text, artifact in rendered:
         kblib.atomic_write_text(output, text, validator=validate_json)
         print("%s: wrote %s (%s form, %d tool(s), %d byte(s))"
-              % (TOOL, output, form_name, len(contract["tools"]), len(text)))
+              % (TOOL, output, form_name, artifact["tool_count"], len(text)))
     return 0
 
 

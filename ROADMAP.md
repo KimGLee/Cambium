@@ -125,7 +125,7 @@ parallel control plane.
 The host-neutral interface is complete:
 
 ```text
-each tool's argparse declaration
+each tool's argparse declaration + closed agent-interface policy
   -> Tools/compiled/cli-contract.yaml
   -> Tools/compiled/mcp-tools.json
   -> Tools/mcp_server.py
@@ -134,8 +134,20 @@ each tool's argparse declaration
 
 Claude Code, Codex, Kimi Code, and dsh consume generated registration and
 workspace binding. The MCP server runs tools as subprocesses and passes their
-verdicts through. It does not decide whether an operation is allowed or whether
-evidence is sufficient.
+verdicts through. It pins an open canonical workspace directory object through
+the subprocess boundary and requires every projected operation and every
+effective filesystem path, including an omitted CLI default, to stay inside
+its declared capability envelope; this is capability containment, not a
+decision about whether an operation is allowed or whether evidence is
+sufficient. CLI-only build/install operations never enter the MCP table, and
+their registered external effects remain explicit.
+
+This completed interface boundary rejects unsafe caller paths and static link
+aliases inside the adopter's local trust domain. It does not claim adversarial
+concurrent namespace exclusion for every child path: closing that wider
+boundary requires either protected workspace execution or a tool-wide stable
+path-object API, and belongs with the isolated workspace adapter rather than a
+transport-only pathname check.
 
 This delivery changed the Plugin plan: Cambium no longer needs an OpenAI Plugin
 to obtain a callable agent interface. A Plugin would add packaging and

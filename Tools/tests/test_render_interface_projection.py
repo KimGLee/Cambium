@@ -71,6 +71,14 @@ def fixture_contract(**overrides):
             "mutually_exclusive_groups": [],
             "receipt_extensions": [],
             "receipt_extensions_extraction": "complete",
+            "agent_interface": {
+                "exposure": "mcp",
+                "workspace_argument": "root",
+                "workspace_access": "read",
+                "value_arguments": [],
+                "path_arguments": [],
+                "external_write": "none",
+            },
         }],
     }
     data.update(overrides)
@@ -95,11 +103,76 @@ class ShippedArtifactTests(unittest.TestCase):
                 self.assertTrue((REPO_ROOT / form["output"]).is_file())
 
     def test_every_contracted_tool_is_projected_under_its_own_name(self):
-        expected = [record["tool"] for record in self.contract["tools"]]
+        expected = [
+            record["tool"] for record in self.contract["tools"]
+            if record["agent_interface"]["exposure"] == "mcp"
+        ]
 
         self.assertEqual([tool["name"] for tool in self.artifact["tools"]],
                          expected)
         self.assertEqual(self.artifact["tool_count"], len(expected))
+
+    def test_cli_only_operations_do_not_enter_the_mcp_surface(self):
+        cli_only = {
+            record["tool"] for record in self.contract["tools"]
+            if record["agent_interface"]["exposure"] == "cli-only"
+        }
+        projected = {tool["name"] for tool in self.artifact["tools"]}
+
+        self.assertTrue(cli_only)
+        self.assertEqual(cli_only & projected, set())
+
+    def test_every_projected_tool_carries_workspace_and_path_capabilities(self):
+        contracted = {record["tool"]: record for record in
+                      self.contract["tools"]}
+        for tool in self.artifact["tools"]:
+            policy = contracted[tool["name"]]["agent_interface"]
+            with self.subTest(tool=tool["name"]):
+                self.assertEqual(
+                    tool[projector.WORKSPACE_EXTENSION_KEY],
+                    {"argument": policy["workspace_argument"],
+                     "access": policy["workspace_access"]})
+                expected = {
+                    item["argument"]: {
+                        "access": item["access"],
+                        "constraint": item["constraint"],
+                        "value": item["value"],
+                        "suffixes": item["suffixes"],
+                    }
+                    for item in policy["path_arguments"]
+                }
+                actual = {}
+                for name, schema in tool["inputSchema"]["properties"].items():
+                    if projector.PATH_EXTENSION_KEY in schema:
+                        actual[name] = schema[projector.PATH_EXTENSION_KEY]
+                self.assertEqual(actual, expected)
+
+    def test_receipts_and_registered_selectors_are_narrower_than_containment(self):
+        by_name = {tool["name"]: tool for tool in self.artifact["tools"]}
+        for tool in self.artifact["tools"]:
+            receipts = tool["inputSchema"]["properties"].get("receipts")
+            if receipts is None:
+                continue
+            with self.subTest(tool=tool["name"], argument="receipts"):
+                self.assertEqual(
+                    receipts[projector.PATH_EXTENSION_KEY], {
+                        "access": "write",
+                        "constraint": "namespace",
+                        "value": ".cambium/receipts",
+                        "suffixes": [".jsonl"],
+                    })
+        exact = {
+            ("check_vocab", "vocab"): "Tools/vocab.yaml",
+            ("check_proof", "template"):
+                "Tools/schemas/terminal_proof.template.yaml",
+            ("stamp_cards", "cards_dir"): "kernel/Cards",
+        }
+        for (tool_name, argument), value in exact.items():
+            with self.subTest(tool=tool_name, argument=argument):
+                capability = by_name[tool_name]["inputSchema"][
+                    "properties"][argument][projector.PATH_EXTENSION_KEY]
+                self.assertEqual(capability["constraint"], "exact")
+                self.assertEqual(capability["value"], value)
 
     def test_the_upstream_binding_is_the_bytes_that_were_read(self):
         self.assertEqual(self.artifact["source_hash"],
@@ -194,15 +267,21 @@ class ShippedArtifactTests(unittest.TestCase):
 class DeterminismTests(unittest.TestCase):
     def test_two_runs_agree_across_hash_seeds(self):
         with tempfile.TemporaryDirectory() as workspace:
-            first = os.path.join(workspace, "first.json")
-            second = os.path.join(workspace, "second.json")
-            run(".", "--form", "mcp", "--output", first,
-                env={"PYTHONHASHSEED": "0"})
-            run(".", "--form", "mcp", "--output", second,
-                env={"PYTHONHASHSEED": "12345"})
+            contract_path = Path(workspace) / projector.DEFAULT_CONTRACT
+            contract_path.parent.mkdir(parents=True)
+            contract_path.write_bytes(CONTRACT.read_bytes())
+            artifact = Path(workspace) / projector.FORMS["mcp"]["output"]
+            first_run = run(workspace, "--form", "mcp",
+                            env={"PYTHONHASHSEED": "0"})
+            self.assertEqual(first_run.returncode, 0,
+                             first_run.stdout + first_run.stderr)
+            first = artifact.read_bytes()
+            second_run = run(workspace, "--form", "mcp",
+                             env={"PYTHONHASHSEED": "12345"})
+            self.assertEqual(second_run.returncode, 0,
+                             second_run.stdout + second_run.stderr)
 
-            self.assertEqual(Path(first).read_bytes(),
-                             Path(second).read_bytes())
+            self.assertEqual(first, artifact.read_bytes())
 
 
 class MappingTests(unittest.TestCase):
@@ -287,7 +366,9 @@ class FixtureRunTests(unittest.TestCase):
         self.workspace = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.workspace, ignore_errors=True)
         self.contract_path = os.path.join(self.workspace, "contract.yaml")
-        self.output = os.path.join(self.workspace, "mcp-tools.json")
+        self.output = os.path.join(
+            self.workspace, projector.FORMS["mcp"]["output"])
+        os.makedirs(os.path.dirname(self.output), exist_ok=True)
         self.write_contract()
 
     def write_contract(self, **overrides):
@@ -296,7 +377,7 @@ class FixtureRunTests(unittest.TestCase):
 
     def project(self, *extra):
         return run(self.workspace, "--form", "mcp", "--contract",
-                   self.contract_path, "--output", self.output, *extra)
+                   self.contract_path, *extra)
 
     def test_write_then_check_passes(self):
         self.assertEqual(self.project().returncode, 0)

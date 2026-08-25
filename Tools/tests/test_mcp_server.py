@@ -25,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 TOOLS = Path(__file__).resolve().parents[1]
@@ -89,12 +90,20 @@ FAKE_TOOLS = {
 }
 
 
-def _string(description, option=None):
+def _string(description, option=None, path_access=None,
+            path_constraint="contained", path_value=None, suffixes=None):
     schema = {"description": description, "type": "string"}
     schema["x-cambium-cli"] = {
         "action": "store",
         "option_strings": [option] if option else [],
     }
+    if path_access is not None:
+        schema[mcp_server.PATH_EXTENSION_KEY] = {
+            "access": path_access,
+            "constraint": path_constraint,
+            "value": path_value,
+            "suffixes": list(suffixes or []),
+        }
     return schema
 
 
@@ -129,7 +138,10 @@ def fake_projection():
         if name == "echo_tool":
             properties["first"] = _string("first positional")
             properties["second"] = _string("second positional")
-            properties["scope"] = _string("scoped path", "--scope")
+            properties["root"] = _string(
+                "repository root", "--root")
+            properties["scope"] = _string(
+                "scoped path", "--scope", path_access="read")
             properties["apply"] = _flag("write the transaction", "--apply")
             properties["exclude"] = _appended("excluded tree", "--exclude")
             properties["count"] = {
@@ -152,11 +164,13 @@ def fake_projection():
                 "type": "object",
             },
             "name": name,
+            mcp_server.WORKSPACE_EXTENSION_KEY: {
+                "argument": "root", "access": "read"},
         })
     return {
         "artifact": "agent-interface-projection",
         "form": "mcp",
-        "schema_version": 1,
+        "schema_version": mcp_server.PROJECTION_SCHEMA_VERSION,
         "tool_count": len(tools),
         "tools": tools,
         "transports": ["stdio", "streamable-http"],
@@ -270,7 +284,7 @@ class LayerBoundaryTests(unittest.TestCase):
 
     def test_every_import_is_standard_library(self):
         allowed = {
-            "hashlib", "json", "os", "subprocess", "sys", "traceback",
+            "hashlib", "json", "os", "stat", "subprocess", "sys", "traceback",
             "uuid",
         }
 
@@ -412,12 +426,54 @@ class BindingTests(SyntheticCase):
 
         result = request(server, "tools/call",
                          {"name": "echo_tool",
-                          "arguments": {"first": "a", "second": "b"}})["result"]
+                          "arguments": {"root": ".", "first": "a",
+                                        "second": "b"}})["result"]
 
         payload = result["structuredContent"]["stdout_json"]
         self.assertEqual(os.path.realpath(payload["cwd"]),
                          os.path.realpath(str(self.dist.workspace)))
-        self.assertEqual(payload["workspace"], str(self.dist.workspace))
+        self.assertEqual(payload["workspace"],
+                         os.path.realpath(str(self.dist.workspace)))
+
+    def test_a_session_refuses_a_replaced_workspace_directory(self):
+        server = started(self.dist)
+        original = self.dist.workspace
+        displaced = original.with_name("corpus-initialized")
+        original.rename(displaced)
+        original.mkdir()
+
+        response = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": {"root": ".", "first": "a", "second": "b"},
+        })
+
+        self.assertEqual(response["error"]["code"], mcp_server.NOT_BOUND)
+        self.assertIn("changed after initialize", response["error"]["message"])
+
+    def test_one_call_cannot_race_into_a_replacement_workspace(self):
+        server = started(self.dist)
+        original = self.dist.workspace
+        displaced = original.with_name("corpus-authorized")
+        actual_run_tool = mcp_server.run_tool
+
+        def replace_after_binding_check(tool, arguments, workspace_root,
+                                        workspace_fd, environ):
+            original.rename(displaced)
+            original.mkdir()
+            return actual_run_tool(
+                tool, arguments, workspace_root, workspace_fd, environ)
+
+        with mock.patch.object(
+                mcp_server, "run_tool", side_effect=replace_after_binding_check):
+            response = request(server, "tools/call", {
+                "name": "echo_tool",
+                "arguments": {"root": ".", "first": "a", "second": "b"},
+            })
+
+        self.assertIn("result", response, response)
+        payload = response["result"]["structuredContent"]["stdout_json"]
+        self.assertEqual(os.path.realpath(payload["cwd"]),
+                         os.path.realpath(str(displaced)))
 
 
 class ProjectionLoadTests(SyntheticCase):
@@ -515,11 +571,7 @@ class ToolsListTests(SyntheticCase):
         server = started(self.dist)
         document = json.loads(
             self.dist.projection_path.read_text(encoding="utf-8"))
-        expected = [
-            {"name": tool["name"], "description": tool["description"],
-             "inputSchema": tool["inputSchema"]}
-            for tool in document["tools"]
-        ]
+        expected = document["tools"]
 
         listed = request(server, "tools/list")["result"]["tools"]
 
@@ -550,8 +602,24 @@ class ToolsListTests(SyntheticCase):
 
 
 class ArgvTests(SyntheticCase):
+    def server_with_scope_capability(self, constraint, value=None,
+                                     suffixes=None):
+        projection = fake_projection()
+        echo = next(tool for tool in projection["tools"]
+                    if tool["name"] == "echo_tool")
+        echo["inputSchema"]["properties"]["scope"][
+            mcp_server.PATH_EXTENSION_KEY] = {
+                "access": "read", "constraint": constraint,
+                "value": value, "suffixes": list(suffixes or []),
+            }
+        distribution = SyntheticDistribution(projection=projection)
+        self.addCleanup(distribution.cleanup)
+        return distribution, started(distribution)
+
     def envelope(self, name, arguments, server=None):
         server = server or started(self.dist)
+        arguments = dict(arguments)
+        arguments.setdefault("root", ".")
         response = request(server, "tools/call",
                            {"name": name, "arguments": arguments})
         self.assertIn("result", response, response)
@@ -564,12 +632,199 @@ class ArgvTests(SyntheticCase):
 
         self.assertEqual(payload["argv"][:2], ["FIRST", "SECOND"])
 
+    def test_a_missing_workspace_argument_is_refused_before_execution(self):
+        server = started(self.dist)
+
+        response = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": {"first": "a", "second": "b"},
+        })
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.INVALID_PARAMS)
+        self.assertEqual(
+            response["error"]["data"]["required_workspace_argument"],
+            "root")
+
+    def test_a_different_root_cannot_replace_the_session_binding(self):
+        server = started(self.dist)
+        with tempfile.TemporaryDirectory() as outside:
+            response = request(server, "tools/call", {
+                "name": "echo_tool",
+                "arguments": {"root": outside, "first": "a",
+                              "second": "b"},
+            })
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.INVALID_PARAMS)
+        self.assertIn("resolve exactly", response["error"]["message"])
+
+    def test_a_typed_path_cannot_escape_the_bound_workspace(self):
+        server = started(self.dist)
+
+        response = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": {"root": ".", "first": "a", "second": "b",
+                          "scope": "../outside"},
+        })
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.INVALID_PARAMS)
+        self.assertEqual(response["error"]["data"]["argument"], "scope")
+
+    def test_a_symlink_cannot_redirect_a_typed_path_outside(self):
+        server = started(self.dist)
+        with tempfile.TemporaryDirectory() as outside:
+            link = self.dist.workspace / "redirect"
+            link.symlink_to(outside, target_is_directory=True)
+            response = request(server, "tools/call", {
+                "name": "echo_tool",
+                "arguments": {"root": ".", "first": "a", "second": "b",
+                              "scope": "redirect/file.md"},
+            })
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.INVALID_PARAMS)
+        self.assertEqual(response["error"]["data"]["argument"], "scope")
+
+    def test_an_in_workspace_symlink_is_still_not_a_canonical_artifact(self):
+        server = started(self.dist)
+        (self.dist.workspace / "real").mkdir()
+        (self.dist.workspace / "alias").symlink_to(
+            self.dist.workspace / "real", target_is_directory=True)
+
+        response = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": {"root": ".", "first": "a", "second": "b",
+                          "scope": "alias/page.md"},
+        })
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.INVALID_PARAMS)
+        self.assertIn("symlink", response["error"]["message"])
+
+    def test_a_multiply_linked_file_is_not_a_unique_workspace_artifact(self):
+        server = started(self.dist)
+        source = self.dist.workspace / "source.md"
+        source.write_text("source", encoding="utf-8")
+        os.link(str(source), str(self.dist.workspace / "alias.md"))
+
+        response = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": {"root": ".", "first": "a", "second": "b",
+                          "scope": "alias.md"},
+        })
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.INVALID_PARAMS)
+        self.assertIn("multiply-linked", response["error"]["message"])
+
+    def test_a_typed_path_must_use_repository_relative_canonical_spelling(self):
+        server = started(self.dist)
+
+        response = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": {"root": ".", "first": "a", "second": "b",
+                          "scope": str(self.dist.workspace / "kernel")},
+        })
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.INVALID_PARAMS)
+        self.assertIn("repository-relative", response["error"]["message"])
+
+    def test_an_exact_path_constraint_refuses_an_alternate_artifact(self):
+        _distribution, server = self.server_with_scope_capability(
+            "exact", "kernel/Cards")
+
+        response = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": {"root": ".", "first": "a", "second": "b",
+                          "scope": "kernel/Other"},
+        })
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.INVALID_PARAMS)
+        self.assertEqual(response["error"]["data"]["expected"],
+                         "kernel/Cards")
+
+    def test_an_exact_registered_path_cannot_be_a_symlink(self):
+        distribution, server = self.server_with_scope_capability(
+            "exact", "kernel/Cards")
+        (distribution.workspace / "kernel").mkdir()
+        (distribution.workspace / "alternate-cards").mkdir()
+        (distribution.workspace / "kernel/Cards").symlink_to(
+            "../alternate-cards", target_is_directory=True)
+
+        response = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": {"root": ".", "first": "a", "second": "b",
+                          "scope": "kernel/Cards"},
+        })
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.INVALID_PARAMS)
+        self.assertIn("symlink", response["error"]["message"])
+
+    def test_an_omitted_path_default_is_still_capability_checked(self):
+        projection = fake_projection()
+        echo = next(tool for tool in projection["tools"]
+                    if tool["name"] == "echo_tool")
+        scope = echo["inputSchema"]["properties"]["scope"]
+        scope["default"] = "kernel/Cards"
+        scope[mcp_server.PATH_EXTENSION_KEY] = {
+            "access": "read-write", "constraint": "exact",
+            "value": "kernel/Cards", "suffixes": [],
+        }
+        distribution = SyntheticDistribution(projection=projection)
+        self.addCleanup(distribution.cleanup)
+        (distribution.workspace / "kernel").mkdir()
+        (distribution.workspace / "alternate-cards").mkdir()
+        (distribution.workspace / "kernel/Cards").symlink_to(
+            "../alternate-cards", target_is_directory=True)
+        server = started(distribution)
+
+        response = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": {"root": ".", "first": "a", "second": "b"},
+        })
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.INVALID_PARAMS)
+        self.assertIn("symlink", response["error"]["message"])
+
+    def test_a_namespace_constraint_requires_namespace_and_suffix(self):
+        _distribution, server = self.server_with_scope_capability(
+            "namespace", ".cambium/receipts", [".jsonl"])
+        common = {"root": ".", "first": "a", "second": "b"}
+
+        outside = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": dict(common, scope="README.jsonl"),
+        })
+        wrong_suffix = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": dict(
+                common, scope=".cambium/receipts/ready.yaml"),
+        })
+        accepted = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": dict(
+                common, scope=".cambium/receipts/ready.jsonl"),
+        })
+
+        self.assertEqual(outside["error"]["code"],
+                         mcp_server.INVALID_PARAMS)
+        self.assertEqual(wrong_suffix["error"]["code"],
+                         mcp_server.INVALID_PARAMS)
+        self.assertIn("result", accepted, accepted)
+
     def test_a_gap_in_the_positionals_is_refused_rather_than_rebound(self):
         server = started(self.dist)
 
         response = request(server, "tools/call",
                            {"name": "echo_tool",
-                            "arguments": {"second": "SECOND"}})
+                            "arguments": {"root": ".",
+                                          "second": "SECOND"}})
 
         self.assertEqual(response["error"]["code"], mcp_server.INVALID_PARAMS)
         self.assertEqual(response["error"]["data"]["missing"], "first")
@@ -616,7 +871,8 @@ class ArgvTests(SyntheticCase):
 
         response = request(server, "tools/call",
                            {"name": "echo_tool",
-                            "arguments": {"first": "a", "second": "b",
+                            "arguments": {"root": ".", "first": "a",
+                                          "second": "b",
                                           "not_a_real_argument": "x"}})
 
         self.assertEqual(response["error"]["code"], mcp_server.INVALID_PARAMS)
@@ -628,7 +884,8 @@ class ArgvTests(SyntheticCase):
 
         response = request(server, "tools/call",
                            {"name": "echo_tool",
-                            "arguments": {"first": {"a": 1}, "second": "b"}})
+                            "arguments": {"root": ".", "first": {"a": 1},
+                                          "second": "b"}})
 
         self.assertEqual(response["error"]["code"], mcp_server.INVALID_PARAMS)
 

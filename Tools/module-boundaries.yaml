@@ -447,6 +447,7 @@ modules:
       - reachable_batch_states
       - read_set_boundary_targets
       - read_set_document_type
+      - registered_repository_artifact_path
       - receipt_append_mutex
       - receipt_append_observation
       - receipt_append_outcome
