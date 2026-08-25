@@ -6,6 +6,7 @@ are separate questions and both are asked here, because a view that was valid
 at admission and is stale now is the exact state a long transaction produces.
 """
 
+from dataclasses import dataclass
 import os
 from pathlib import Path
 
@@ -19,6 +20,15 @@ from queue_runtime.primitives import nonempty_string
 
 
 EXPRESSION_LAYER_SLOT = "Expression Layer Entry"
+
+
+@dataclass(frozen=True)
+class _ProfileViewReadScope:
+    """One outer validation's permission to read an admitted snapshot."""
+
+    root: str
+    profile_manifest: str
+    authorized_view: dict
 
 
 def _selected_profile_manifest_envelope_errors(profile):
@@ -479,6 +489,43 @@ def authorized_profile_view_errors(root, profile_manifest, authorized_view):
             root, authorized_view, "before")
         if snapshot_error:
             errors.append(snapshot_error)
+    return errors
+
+
+def open_profile_view_read_scope(root, profile_manifest, authorized_view):
+    """CAS one Profile view before an outer snapshot-reading phase.
+
+    The returned object is deliberately opaque.  A nested helper may validate
+    its root/manifest/view identity and read the already-frozen snapshot
+    without reopening the same 9-plus-implementation closure.  The outer
+    owner MUST run its ordinary after-phase currency check; this scope is not
+    a cache and never authorizes another transaction phase.
+    """
+    canonical_root = os.path.realpath(os.path.abspath(os.fspath(root)))
+    errors = authorized_profile_view_errors(
+        canonical_root, profile_manifest, authorized_view)
+    if errors:
+        return None, errors
+    return _ProfileViewReadScope(
+        root=canonical_root,
+        profile_manifest=profile_manifest,
+        authorized_view=authorized_view,
+    ), []
+
+
+def profile_view_read_scope_errors(
+        scope, root, profile_manifest, authorized_view):
+    """Reject a nested read not owned by this exact outer validation."""
+    if not isinstance(scope, _ProfileViewReadScope):
+        return ["Profile read scope was not opened by the currency owner"]
+    canonical_root = os.path.realpath(os.path.abspath(os.fspath(root)))
+    errors = []
+    if scope.root != canonical_root:
+        errors.append("Profile read scope belongs to another repository root")
+    if scope.profile_manifest != profile_manifest:
+        errors.append("Profile read scope selects another manifest")
+    if scope.authorized_view is not authorized_view:
+        errors.append("Profile read scope carries another authorized view")
     return errors
 
 

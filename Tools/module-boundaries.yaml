@@ -1003,11 +1003,13 @@ modules:
       - active_standards_authorized_view
       - active_standards_view_currency_errors
       - authorized_profile_view_errors
+      - open_profile_view_read_scope
       - profile_load_authorized_view
       - profile_load_authorized_view_currency_errors
       - profile_load_errors
       - profile_load_evidence
       - profile_view_snapshot_error
+      - profile_view_read_scope_errors
       - public_profile_load_evidence
       - selected_profile_manifest_errors
   - module: queue_runtime.property_state
