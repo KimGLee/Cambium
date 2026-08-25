@@ -66,7 +66,7 @@ from queue_runtime.primitives import (
     valid_timestamp,
 )
 from queue_runtime.profile_view import (
-    authorized_profile_view_errors,
+    open_profile_view_read_scope,
     profile_view_snapshot_error,
     active_standards_authorized_view,
     active_standards_view_currency_errors,
@@ -383,6 +383,7 @@ def validate_runtime(root, allowed_open_delta=None,
 
     profile = queue.get("selected_profile_manifest")
     profile_view = None
+    profile_read_scope = None
     if nonempty_string(profile):
         if allow_invalid_current_profile_for_corrective_adoption:
             # Corrective adoption is not synonymous with an invalid current
@@ -397,15 +398,15 @@ def validate_runtime(root, allowed_open_delta=None,
                 profile_view = None
                 errors.extend(selected_profile_manifest_errors(root, profile))
         elif authorized_profile_view is not None:
-            profile_errors = authorized_profile_view_errors(
-                root, profile, authorized_profile_view)
-            errors.extend(profile_errors)
-            if not profile_errors:
-                profile_view = authorized_profile_view
+            profile_view = authorized_profile_view
         else:
             profile_view, profile_errors = profile_load_authorized_view(
                 root, profile)
             errors.extend(profile_errors)
+        if profile_view is not None:
+            profile_read_scope, profile_currency_errors = \
+                open_profile_view_read_scope(root, profile, profile_view)
+            errors.extend(profile_currency_errors)
     elif authorized_profile_view is not None:
         errors.append("authorized Profile view cannot be injected when Queue "
                       "selected_profile_manifest is uninstantiated")
@@ -970,6 +971,7 @@ def validate_runtime(root, allowed_open_delta=None,
     registered_hub_paths, hub_derivation_errors = profile_hub_paths(
         root, queue.get("selected_profile_manifest"),
         authorized_view=profile_view, evaluate_if_missing=False,
+        profile_read_scope=profile_read_scope,
         # The corrective flag permits an unadmitted derivation only when the
         # one canonical producer actually failed above.  A valid current
         # Profile keeps its authorized typed view throughout the same run.

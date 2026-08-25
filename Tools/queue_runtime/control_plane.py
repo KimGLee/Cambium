@@ -14,9 +14,10 @@ import kblib
 from queue_runtime.primitives import nonempty_string
 from queue_runtime.profile_view import (
     EXPRESSION_LAYER_SLOT,
-    authorized_profile_view_errors,
+    open_profile_view_read_scope,
     profile_view_snapshot_error,
     profile_load_authorized_view,
+    profile_view_read_scope_errors,
 )
 from queue_runtime.repofs import (
     normalized_repository_path,
@@ -122,7 +123,8 @@ def unadmitted_profile_hub_paths(root, profile_manifest):
 
 def profile_hub_paths(root, profile_manifest, *, authorized_view=None,
                       evaluate_if_missing=True,
-                      allow_unadmitted_profile=False):
+                      allow_unadmitted_profile=False,
+                      profile_read_scope=None):
     """Return Expression hubs from one snapshot-bound Profile view.
 
     K13/10 binds pages registered by the ``Expression Layer Entry`` into the
@@ -133,18 +135,20 @@ def profile_hub_paths(root, profile_manifest, *, authorized_view=None,
     combined with Expression rows from revision B.
 
     Direct callers may omit ``authorized_view`` and this function will create
-    exactly one.  ``validate_runtime`` passes its already-created view and sets
-    ``evaluate_if_missing=False`` so a failed producer is not run twice.  The
-    unadmitted path is reserved for the explicit corrective-adoption escape.
+    exactly one.  Such a direct call owns both currency checks.  The outer
+    runtime instead passes the opaque read scope it opened after its own
+    before check; this helper then reads the same immutable snapshot and lets
+    the runtime's final check close the phase.  The unadmitted path is reserved
+    for the explicit corrective-adoption escape.
     """
     if type(evaluate_if_missing) is not bool:
         raise TypeError("evaluate_if_missing must be boolean")
     if type(allow_unadmitted_profile) is not bool:
         raise TypeError("allow_unadmitted_profile must be boolean")
     if allow_unadmitted_profile:
-        if authorized_view is not None:
+        if authorized_view is not None or profile_read_scope is not None:
             raise ValueError("corrective Profile hub derivation cannot accept "
-                             "an authorized view")
+                             "an authorized view or read scope")
         return unadmitted_profile_hub_paths(root, profile_manifest)
 
     if not nonempty_string(profile_manifest):
@@ -163,8 +167,13 @@ def profile_hub_paths(root, profile_manifest, *, authorized_view=None,
         if authorized_view is None:
             return set(), errors
 
-    view_errors = authorized_profile_view_errors(
-        root, profile_manifest, authorized_view)
+    owns_currency_boundary = profile_read_scope is None
+    if owns_currency_boundary:
+        profile_read_scope, view_errors = open_profile_view_read_scope(
+            root, profile_manifest, authorized_view)
+    else:
+        view_errors = profile_view_read_scope_errors(
+            profile_read_scope, root, profile_manifest, authorized_view)
     if view_errors:
         return set(), view_errors
     slot_paths = dict(authorized_view["_manifest_slot_paths"])
@@ -176,9 +185,11 @@ def profile_hub_paths(root, profile_manifest, *, authorized_view=None,
         return set(), ["authorized selected profile %s is unreadable, so the "
                        "K13/10 hub set cannot be derived: %s" % (
                            EXPRESSION_LAYER_SLOT, exc)]
-    after_error = profile_view_snapshot_error(root, authorized_view, "after")
-    if after_error:
-        return set(), [after_error]
+    if owns_currency_boundary:
+        after_error = profile_view_snapshot_error(
+            root, authorized_view, "after")
+        if after_error:
+            return set(), [after_error]
 
     paths = set()
     for cells in check_profile.table_rows(text.splitlines()):

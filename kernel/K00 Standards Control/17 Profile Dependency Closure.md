@@ -56,6 +56,13 @@ runtime authority MUST declare whether it is primary or which registered
 primary authority covers its complete input set before it can enter the
 transaction context.
 
+One runtime validation phase owns one Profile currency bracket. After its
+before-check it MAY give nested readers an opaque scope bound to the exact
+root, manifest and authorized view. They read that immutable snapshot;
+the outer phase owns the after-check. A direct reader owns both checks. The
+scope MUST NOT cross a write, validation return, or phase: it removes nested
+rereads, not the CAS boundaries protecting state or receipt publication.
+
 The closure is not a Read Set, selects no route, and is never copied into
 `selected_read_sets` or `loaded_module_paths`. Because every Profile-owned
 target of a passing closure remains inside one Profile directory, the directory

@@ -1791,6 +1791,43 @@ class HubPageAdmissionTests(QueueFixture):
         self.assertEqual("profile-load", metadata.covered_by)
         self.assertIsNone(metadata.validation_kwarg)
 
+    def test_runtime_owns_one_profile_before_after_pair_per_validation(self):
+        initial = check_queue.validate_runtime(self.root)
+        self.assertEqual([], initial["errors"])
+        canonical_inputs = \
+            check_queue.check_profile.canonical_profile_load_inputs
+        with mock.patch.object(
+                check_queue.check_profile, "canonical_profile_load_inputs",
+                wraps=canonical_inputs) as snapshots:
+            rebound = check_queue.validate_runtime(
+                self.root,
+                authorized_profile_view=
+                    initial["_profile_authorized_view"],
+                authorized_active_standards_view=
+                    initial["_active_standards_authorized_view"],
+            )
+        self.assertEqual([], rebound["errors"])
+        self.assertEqual(2, snapshots.call_count)
+
+    def test_direct_hub_reader_keeps_its_own_profile_currency_pair(self):
+        authorized_view, view_errors = \
+            check_queue.profile_load_authorized_view(
+                self.root, "profiles/test-profile/profile.md")
+        self.assertEqual([], view_errors)
+        canonical_inputs = \
+            check_queue.check_profile.canonical_profile_load_inputs
+        with mock.patch.object(
+                check_queue.check_profile, "canonical_profile_load_inputs",
+                wraps=canonical_inputs) as snapshots:
+            paths, errors = check_queue.profile_hub_paths(
+                self.root, "profiles/test-profile/profile.md",
+                authorized_view=authorized_view,
+                evaluate_if_missing=False,
+            )
+        self.assertEqual([], errors)
+        self.assertEqual(set(), paths)
+        self.assertEqual(2, snapshots.call_count)
+
     def test_runtime_rejects_stale_injected_active_standards_view(self):
         initial = check_queue.validate_runtime(self.root)
         self.assertEqual([], initial["errors"])
