@@ -34,6 +34,7 @@ SERVER_SOURCE = TOOLS / "mcp_server.py"
 
 sys.path.insert(0, str(TOOLS))
 import mcp_server  # noqa: E402
+import path_capability  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +70,12 @@ FAKE_TOOLS = {
     ),
     "echo_tool": (
         "import json, os, sys\n"
+        "manifest=json.loads(os.environ.get('CAMBIUM_PATH_CAPABILITIES', "
+        "'{}'))\n"
+        "ack=os.environ.get('CAMBIUM_PATH_CAPABILITIES_ACK_FD')\n"
+        "if ack is not None:\n"
+        "    for row in manifest.get('capabilities', []):\n"
+        "        os.write(int(ack), (row['capability_id']+'\\n').encode())\n"
         "print(json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd(),\n"
         "                  'workspace': os.environ.get("
         "'CAMBIUM_WORKSPACE_ROOT'),\n"
@@ -100,9 +107,16 @@ def _string(description, option=None, path_access=None,
     if path_access is not None:
         schema[mcp_server.PATH_EXTENSION_KEY] = {
             "access": path_access,
+            "consumption": {
+                "read": "snapshot",
+                "write": "replace",
+                "read-write": "transaction",
+            }[path_access],
             "constraint": path_constraint,
             "value": path_value,
             "suffixes": list(suffixes or []),
+            "active_when_any": [],
+            "inactive_when_any": [],
         }
     return schema
 
@@ -392,6 +406,18 @@ class BindingTests(SyntheticCase):
         self.assertIn("CAMBIUM_WORKSPACE_ROOT", error["message"])
         self.assertEqual(error["data"]["variable"], "CAMBIUM_WORKSPACE_ROOT")
 
+    def test_a_platform_without_no_follow_descriptors_refuses_initialize(self):
+        original = mcp_server.os.O_NOFOLLOW
+        delattr(mcp_server.os, "O_NOFOLLOW")
+        try:
+            error = self.refusal()
+        finally:
+            setattr(mcp_server.os, "O_NOFOLLOW", original)
+
+        self.assertEqual(error["code"], mcp_server.NOT_BOUND)
+        self.assertIn("cannot hold a no-follow workspace directory",
+                      error["message"])
+
     def test_the_refusal_says_the_host_must_set_the_variable(self):
         error = self.refusal(**{mcp_server.WORKSPACE_ENV: None})
 
@@ -603,14 +629,17 @@ class ToolsListTests(SyntheticCase):
 
 class ArgvTests(SyntheticCase):
     def server_with_scope_capability(self, constraint, value=None,
-                                     suffixes=None):
+                                     suffixes=None, access="read",
+                                     consumption="snapshot"):
         projection = fake_projection()
         echo = next(tool for tool in projection["tools"]
                     if tool["name"] == "echo_tool")
         echo["inputSchema"]["properties"]["scope"][
             mcp_server.PATH_EXTENSION_KEY] = {
-                "access": "read", "constraint": constraint,
+                "access": access, "consumption": consumption,
+                "constraint": constraint,
                 "value": value, "suffixes": list(suffixes or []),
+                "active_when_any": [], "inactive_when_any": [],
             }
         distribution = SyntheticDistribution(projection=projection)
         self.addCleanup(distribution.cleanup)
@@ -624,6 +653,370 @@ class ArgvTests(SyntheticCase):
                            {"name": name, "arguments": arguments})
         self.assertIn("result", response, response)
         return response["result"]["structuredContent"]
+
+
+class StableConsumptionTests(ArgvTests):
+    """Admission descriptors, not reopened names, reach shared tool I/O."""
+
+    def distribution_for(self, source, access, consumption):
+        sources = dict(FAKE_TOOLS)
+        sources["echo_tool"] = source
+        sources["kblib"] = (TOOLS / "kblib.py").read_text(encoding="utf-8")
+        sources["path_capability"] = (
+            TOOLS / "path_capability.py").read_text(encoding="utf-8")
+        projection = fake_projection()
+        echo = next(tool for tool in projection["tools"]
+                    if tool["name"] == "echo_tool")
+        echo["inputSchema"]["properties"]["scope"][
+            mcp_server.PATH_EXTENSION_KEY] = {
+                "access": access,
+                "consumption": consumption,
+                "constraint": "contained",
+                "value": None,
+                "suffixes": [],
+                "active_when_any": [],
+                "inactive_when_any": [],
+            }
+        distribution = SyntheticDistribution(
+            projection=projection, tool_sources=sources)
+        self.addCleanup(distribution.cleanup)
+        return distribution, started(distribution)
+
+    def test_acknowledgement_names_only_the_exact_consumed_record(self):
+        rows = (
+            {"capability_id": "first[0]", "spelling": "same.md",
+             "consumption": "snapshot"},
+            {"capability_id": "second[0]", "spelling": "same.md",
+             "consumption": "snapshot"},
+        )
+        read_fd, write_fd = os.pipe()
+        self.addCleanup(os.close, read_fd)
+        with mock.patch.object(path_capability, "_MANIFEST_CACHE", rows), \
+                mock.patch.object(path_capability, "_ACKNOWLEDGED", set()), \
+                mock.patch.dict(os.environ, {
+                    path_capability.PATH_CAPABILITIES_ACK_ENV: str(write_fd),
+                }, clear=False):
+            path_capability.acknowledge(rows[0])
+        os.close(write_fd)
+
+        self.assertEqual(os.read(read_fd, 1024), b"first[0]\n")
+
+    @staticmethod
+    def call(server, scope):
+        return request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": {
+                "root": ".", "first": "a", "second": "b",
+                "scope": scope,
+            },
+        })
+
+    @staticmethod
+    def reader_source(body):
+        return (
+            "import argparse, json, kblib\n"
+            "p=argparse.ArgumentParser()\n"
+            "p.add_argument('first'); p.add_argument('second')\n"
+            "p.add_argument('--root'); p.add_argument('--scope')\n"
+            "p.add_argument('--apply', action='store_true')\n"
+            "p.add_argument('--exclude', action='append')\n"
+            "p.add_argument('--count', type=int)\n"
+            "p.add_argument('--json', action='store_true')\n"
+            "a=p.parse_args()\n" + body
+        )
+
+    def _swap_during_spawn(self, mutate):
+        real_run = mcp_server.subprocess.run
+        fired = {"value": False}
+
+        def barrier(*args, **kwargs):
+            if not fired["value"]:
+                fired["value"] = True
+                mutate()
+            return real_run(*args, **kwargs)
+        return mock.patch.object(mcp_server.subprocess, "run",
+                                 side_effect=barrier)
+
+    def test_snapshot_file_reads_the_admitted_inode_after_final_swap(self):
+        source = self.reader_source(
+            "print(json.dumps({'content': kblib.read_text(a.scope)}))\n")
+        distribution, server = self.distribution_for(
+            source, "read", "snapshot")
+        admitted = distribution.workspace / "note.md"
+        admitted.write_text("admitted", encoding="utf-8")
+        outside_dir = Path(self.dist._tmp.name) / "outside-read"
+        outside_dir.mkdir()
+        outside = outside_dir / "secret.md"
+        outside.write_text("outside", encoding="utf-8")
+        displaced = distribution.workspace / "note-admitted.md"
+
+        def mutate():
+            admitted.rename(displaced)
+            admitted.symlink_to(outside)
+
+        with self._swap_during_spawn(mutate):
+            response = self.call(server, "note.md")
+
+        self.assertIn("result", response, response)
+        payload = response["result"]["structuredContent"]["stdout_json"]
+        self.assertEqual(payload["content"], "admitted")
+
+    def test_repeatable_paths_retain_and_consume_each_admitted_object(self):
+        source = (
+            "import argparse, json, kblib\n"
+            "p=argparse.ArgumentParser()\n"
+            "p.add_argument('first'); p.add_argument('second')\n"
+            "p.add_argument('--root'); p.add_argument('--scope', "
+            "action='append')\n"
+            "p.add_argument('--apply', action='store_true')\n"
+            "p.add_argument('--exclude', action='append')\n"
+            "p.add_argument('--count', type=int)\n"
+            "p.add_argument('--json', action='store_true')\n"
+            "a=p.parse_args()\n"
+            "print(json.dumps({'content': [kblib.read_text(path) "
+            "for path in a.scope]}))\n"
+        )
+        sources = dict(FAKE_TOOLS)
+        sources["echo_tool"] = source
+        sources["kblib"] = (TOOLS / "kblib.py").read_text(
+            encoding="utf-8")
+        sources["path_capability"] = (
+            TOOLS / "path_capability.py").read_text(encoding="utf-8")
+        projection = fake_projection()
+        echo = next(tool for tool in projection["tools"]
+                    if tool["name"] == "echo_tool")
+        scope = _appended("scoped path", "--scope")
+        scope[mcp_server.PATH_EXTENSION_KEY] = {
+            "access": "read", "consumption": "snapshot",
+            "constraint": "contained", "value": None, "suffixes": [],
+            "active_when_any": [], "inactive_when_any": [],
+        }
+        echo["inputSchema"]["properties"]["scope"] = scope
+        distribution = SyntheticDistribution(
+            projection=projection, tool_sources=sources)
+        self.addCleanup(distribution.cleanup)
+        server = started(distribution)
+        first = distribution.workspace / "first.md"
+        second = distribution.workspace / "second.md"
+        first.write_text("first-admitted", encoding="utf-8")
+        second.write_text("second-admitted", encoding="utf-8")
+        displaced = distribution.workspace / "second-admitted.md"
+        outside = Path(self.dist._tmp.name) / "outside-repeatable.md"
+        outside.write_text("outside", encoding="utf-8")
+
+        def mutate():
+            second.rename(displaced)
+            second.symlink_to(outside)
+
+        with self._swap_during_spawn(mutate):
+            response = self.call(server, ["first.md", "second.md"])
+
+        self.assertIn("result", response, response)
+        structured = response["result"]["structuredContent"]
+        self.assertEqual(
+            structured["stdout_json"]["content"],
+            ["first-admitted", "second-admitted"])
+        self.assertEqual(
+            structured["consumed_path_capabilities"],
+            ["scope[0]", "scope[1]"])
+
+    def test_snapshot_tree_reads_the_admitted_directory_after_parent_swap(self):
+        source = self.reader_source(
+            "s=kblib.repository_tree_snapshot(a.root,a.scope)\n"
+            "print(json.dumps({'content': s.read_text(a.scope+'/note.md')}))\n")
+        distribution, server = self.distribution_for(
+            source, "read", "snapshot")
+        admitted = distribution.workspace / "scope"
+        admitted.mkdir()
+        (admitted / "note.md").write_text("admitted", encoding="utf-8")
+        outside = Path(self.dist._tmp.name) / "outside-tree"
+        outside.mkdir()
+        (outside / "note.md").write_text("outside", encoding="utf-8")
+        displaced = distribution.workspace / "scope-admitted"
+
+        def mutate():
+            admitted.rename(displaced)
+            admitted.symlink_to(outside, target_is_directory=True)
+
+        with self._swap_during_spawn(mutate):
+            response = self.call(server, "scope")
+
+        self.assertIn("result", response, response)
+        payload = response["result"]["structuredContent"]["stdout_json"]
+        self.assertEqual(payload["content"], "admitted")
+
+    def test_manifest_file_binds_its_admitted_profile_package_parent(self):
+        source = self.reader_source(
+            "s=kblib.repository_parent_tree_snapshot(a.root,a.scope)\n"
+            "print(json.dumps({'content': "
+            "s.read_text('profile/slot.md')}))\n")
+        distribution, server = self.distribution_for(
+            source, "read", "snapshot")
+        admitted = distribution.workspace / "profile"
+        admitted.mkdir()
+        (admitted / "profile.md").write_text("manifest", encoding="utf-8")
+        (admitted / "slot.md").write_text("admitted", encoding="utf-8")
+        displaced = distribution.workspace / "profile-admitted"
+        outside = Path(self.dist._tmp.name) / "outside-profile"
+        outside.mkdir()
+        (outside / "profile.md").write_text("outside", encoding="utf-8")
+        (outside / "slot.md").write_text("outside", encoding="utf-8")
+
+        def mutate():
+            admitted.rename(displaced)
+            admitted.symlink_to(outside, target_is_directory=True)
+
+        with self._swap_during_spawn(mutate):
+            response = self.call(server, "profile/profile.md")
+
+        self.assertIn("result", response, response)
+        payload = response["result"]["structuredContent"]["stdout_json"]
+        self.assertEqual(payload["content"], "admitted")
+
+    def test_nested_cambium_process_keeps_the_same_retained_object(self):
+        parent = self.reader_source(
+            "import os, subprocess, sys\n"
+            "child=os.path.join(os.path.dirname(__file__),'child_tool.py')\n"
+            "c=kblib.run_cambium_subprocess([sys.executable,child,a.scope],"
+            "text=True,stdout=subprocess.PIPE,check=True,"
+            ")\n"
+            "print(c.stdout.strip())\n")
+        child = (
+            "import json,sys\n"
+            "import kblib\n"
+            "print(json.dumps({'content':kblib.read_text(sys.argv[1])}))\n"
+        )
+        sources = dict(FAKE_TOOLS)
+        sources["echo_tool"] = parent
+        sources["child_tool"] = child
+        sources["kblib"] = (TOOLS / "kblib.py").read_text(encoding="utf-8")
+        sources["path_capability"] = (
+            TOOLS / "path_capability.py").read_text(encoding="utf-8")
+        projection = fake_projection()
+        distribution = SyntheticDistribution(
+            projection=projection, tool_sources=sources)
+        self.addCleanup(distribution.cleanup)
+        server = started(distribution)
+        admitted = distribution.workspace / "note.md"
+        admitted.write_text("admitted", encoding="utf-8")
+        displaced = distribution.workspace / "note-admitted.md"
+        outside = Path(self.dist._tmp.name) / "outside-child.md"
+        outside.write_text("outside", encoding="utf-8")
+
+        def mutate():
+            admitted.rename(displaced)
+            admitted.symlink_to(outside)
+
+        with self._swap_during_spawn(mutate):
+            response = self.call(server, "note.md")
+
+        self.assertIn("result", response, response)
+        payload = response["result"]["structuredContent"]["stdout_json"]
+        self.assertEqual(payload["content"], "admitted")
+
+    def test_replace_uses_the_admitted_parent_after_parent_swap(self):
+        source = self.reader_source(
+            "kblib.atomic_write_text(a.scope,'published')\n"
+            "print(json.dumps({'written': True}))\n")
+        distribution, server = self.distribution_for(
+            source, "write", "replace")
+        admitted_parent = distribution.workspace / "reports"
+        admitted_parent.mkdir()
+        displaced = distribution.workspace / "reports-admitted"
+        outside = Path(self.dist._tmp.name) / "outside-write"
+        outside.mkdir()
+
+        def mutate():
+            admitted_parent.rename(displaced)
+            admitted_parent.symlink_to(outside, target_is_directory=True)
+
+        with self._swap_during_spawn(mutate):
+            response = self.call(server, "reports/result.md")
+
+        self.assertIn("result", response, response)
+        self.assertEqual((displaced / "result.md").read_text(), "published")
+        self.assertFalse((outside / "result.md").exists())
+
+    def test_append_uses_the_admitted_parent_after_parent_swap(self):
+        source = self.reader_source(
+            "kblib.write_receipts(a.scope,[{'receipt_id':'r1'}])\n"
+            "print(json.dumps({'written': True}))\n")
+        distribution, server = self.distribution_for(
+            source, "write", "append")
+        admitted_parent = distribution.workspace / "receipts"
+        admitted_parent.mkdir()
+        displaced = distribution.workspace / "receipts-admitted"
+        outside = Path(self.dist._tmp.name) / "outside-append"
+        outside.mkdir()
+
+        def mutate():
+            admitted_parent.rename(displaced)
+            admitted_parent.symlink_to(outside, target_is_directory=True)
+
+        with self._swap_during_spawn(mutate):
+            response = self.call(server, "receipts/result.jsonl")
+
+        self.assertIn("result", response, response)
+        self.assertIn('"receipt_id": "r1"',
+                      (displaced / "result.jsonl").read_text())
+        self.assertFalse((outside / "result.jsonl").exists())
+
+    def test_transaction_reads_before_and_replaces_name_without_following_swap(self):
+        source = self.reader_source(
+            "before=kblib.read_text(a.scope)\n"
+            "kblib.atomic_write_text(a.scope,before+'+published')\n"
+            "print(json.dumps({'content': kblib.read_text(a.scope)}))\n")
+        distribution, server = self.distribution_for(
+            source, "read-write", "transaction")
+        page = distribution.workspace / "page.md"
+        page.write_text("admitted", encoding="utf-8")
+        displaced = distribution.workspace / "page-admitted.md"
+        outside = Path(self.dist._tmp.name) / "outside-transaction.md"
+        outside.write_text("outside", encoding="utf-8")
+
+        def mutate():
+            page.rename(displaced)
+            page.symlink_to(outside)
+
+        with self._swap_during_spawn(mutate):
+            response = self.call(server, "page.md")
+
+        self.assertIn("result", response, response)
+        payload = response["result"]["structuredContent"]["stdout_json"]
+        self.assertEqual(payload["content"], "admitted+published")
+        self.assertEqual(outside.read_text(), "outside")
+        self.assertEqual(page.read_text(), "admitted+published")
+
+    def test_success_without_consuming_a_typed_path_is_refused(self):
+        source = self.reader_source(
+            "print(json.dumps({'ignored': a.scope}))\n")
+        distribution, server = self.distribution_for(
+            source, "read", "snapshot")
+        (distribution.workspace / "note.md").write_text(
+            "admitted", encoding="utf-8")
+
+        response = self.call(server, "note.md")
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.INTERNAL_ERROR)
+        self.assertEqual(
+            response["error"]["data"]["missing_path_capabilities"],
+            ["scope[0]"])
+
+    def test_success_without_consuming_a_write_path_is_refused(self):
+        source = self.reader_source(
+            "print(json.dumps({'ignored': a.scope}))\n")
+        distribution, server = self.distribution_for(
+            source, "write", "replace")
+        (distribution.workspace / "reports").mkdir()
+
+        response = self.call(server, "reports/result.md")
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.INTERNAL_ERROR)
+        self.assertEqual(
+            response["error"]["data"]["missing_path_capabilities"],
+            ["scope[0]"])
 
     def test_positionals_keep_their_declaration_order(self):
         """`required` preserves it; sorted `properties` keys do not."""
@@ -671,6 +1064,35 @@ class ArgvTests(SyntheticCase):
         self.assertEqual(response["error"]["code"],
                          mcp_server.INVALID_PARAMS)
         self.assertEqual(response["error"]["data"]["argument"], "scope")
+
+    def test_two_active_arguments_cannot_alias_one_consumption_identity(self):
+        projection = fake_projection()
+        echo = next(tool for tool in projection["tools"]
+                    if tool["name"] == "echo_tool")
+        echo["inputSchema"]["properties"]["other"] = _string(
+            "second scoped path", "--other", path_access="read")
+        distribution = SyntheticDistribution(projection=projection)
+        self.addCleanup(distribution.cleanup)
+        (distribution.workspace / "note.md").write_text(
+            "admitted", encoding="utf-8")
+        server = started(distribution)
+
+        response = request(server, "tools/call", {
+            "name": "echo_tool",
+            "arguments": {
+                "root": ".", "first": "a", "second": "b",
+                "scope": "note.md", "other": "note.md",
+            },
+        })
+
+        self.assertEqual(response["error"]["code"],
+                         mcp_server.INVALID_PARAMS)
+        self.assertEqual(
+            {response["error"]["data"]["argument"],
+             response["error"]["data"]["aliased_argument"]},
+            {"scope", "other"})
+        self.assertEqual(response["error"]["data"]["consumption"],
+                         "snapshot")
 
     def test_a_symlink_cannot_redirect_a_typed_path_outside(self):
         server = started(self.dist)
@@ -772,8 +1194,10 @@ class ArgvTests(SyntheticCase):
         scope = echo["inputSchema"]["properties"]["scope"]
         scope["default"] = "kernel/Cards"
         scope[mcp_server.PATH_EXTENSION_KEY] = {
-            "access": "read-write", "constraint": "exact",
+            "access": "read-write", "consumption": "transaction",
+            "constraint": "exact",
             "value": "kernel/Cards", "suffixes": [],
+            "active_when_any": [], "inactive_when_any": [],
         }
         distribution = SyntheticDistribution(projection=projection)
         self.addCleanup(distribution.cleanup)
@@ -791,6 +1215,59 @@ class ArgvTests(SyntheticCase):
         self.assertEqual(response["error"]["code"],
                          mcp_server.INVALID_PARAMS)
         self.assertIn("symlink", response["error"]["message"])
+
+    def test_a_declared_mode_can_make_an_omitted_output_inactive(self):
+        projection = fake_projection()
+        echo = next(tool for tool in projection["tools"]
+                    if tool["name"] == "echo_tool")
+        scope = echo["inputSchema"]["properties"]["scope"]
+        scope["default"] = "reports/result.md"
+        scope[mcp_server.PATH_EXTENSION_KEY] = {
+            "access": "read-write", "consumption": "transaction",
+            "constraint": "contained", "value": None, "suffixes": [],
+            "active_when_any": [], "inactive_when_any": ["apply"],
+        }
+        distribution = SyntheticDistribution(projection=projection)
+        self.addCleanup(distribution.cleanup)
+        server = started(distribution)
+
+        envelope = self.envelope(
+            "echo_tool",
+            {"first": "a", "second": "b", "apply": True},
+            server=server)
+
+        self.assertIn("--apply", envelope["stdout_json"]["argv"])
+        self.assertNotIn("--scope", envelope["stdout_json"]["argv"])
+        self.assertEqual(envelope["path_capability_assurance"],
+                         "descriptor-retained")
+        self.assertEqual(envelope["consumed_path_capabilities"], [])
+
+    def test_a_default_output_activates_only_in_its_declared_write_mode(self):
+        projection = fake_projection()
+        echo = next(tool for tool in projection["tools"]
+                    if tool["name"] == "echo_tool")
+        scope = echo["inputSchema"]["properties"]["scope"]
+        scope["default"] = "reports/result.md"
+        scope[mcp_server.PATH_EXTENSION_KEY] = {
+            "access": "write", "consumption": "replace",
+            "constraint": "contained", "value": None, "suffixes": [],
+            "active_when_any": ["apply"], "inactive_when_any": [],
+        }
+        distribution = SyntheticDistribution(projection=projection)
+        self.addCleanup(distribution.cleanup)
+        server = started(distribution)
+
+        dry_run = self.envelope(
+            "echo_tool", {"first": "a", "second": "b"}, server=server)
+        write_run = self.envelope(
+            "echo_tool", {"first": "a", "second": "b", "apply": True},
+            server=server)
+
+        self.assertNotIn("--scope", dry_run["stdout_json"]["argv"])
+        self.assertEqual(dry_run["consumed_path_capabilities"], [])
+        self.assertIn("--scope", write_run["stdout_json"]["argv"])
+        self.assertEqual(write_run["consumed_path_capabilities"],
+                         ["scope[0]"])
 
     def test_a_namespace_constraint_requires_namespace_and_suffix(self):
         _distribution, server = self.server_with_scope_capability(

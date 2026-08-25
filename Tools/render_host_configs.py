@@ -116,13 +116,13 @@ except ImportError:  # pragma: no cover - older interpreters
     tomllib = None
 
 TOOL = "render_host_configs"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 
 DEFAULT_PROJECTION = "Tools/compiled/mcp-tools.json"
 DEFAULT_OUTPUT_DIR = "Tools/compiled/host-configs"
 UPSTREAM_ARTIFACT = "agent-interface-projection"
 UPSTREAM_FORM = "mcp"
-UPSTREAM_SCHEMA_VERSION = 2
+UPSTREAM_SCHEMA_VERSION = 3
 
 # ---------------------------------------------------------------------------
 # The server name
@@ -1194,8 +1194,7 @@ def main(argv=None):
         stale = 0
         for host, output, text, _product in rendered:
             try:
-                with open(output, "r", encoding="utf-8") as handle:
-                    existing = handle.read()
+                existing = kblib.read_text(output)
             except OSError as exc:
                 print("%s --check: cannot read %s: %s" % (TOOL, output, exc))
                 stale += 1

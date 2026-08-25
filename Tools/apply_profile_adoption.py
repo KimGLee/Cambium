@@ -141,8 +141,7 @@ def load_plan(root, plan_argument):
         raise AdoptionRefusal(
             "--plan must not live under kernel/; the transaction writes "
             "there and the plan is its input, not its output")
-    with open(path, "rb") as handle:
-        raw = handle.read()
+    raw = kblib.read_bytes(path)
     try:
         text = raw.decode("utf-8")
     except UnicodeError as exc:
@@ -602,7 +601,7 @@ def restore_from_staging(root, staging, journal):
 
 def _run_step(command, cwd):
     """Run one producer step; kept module-level so tests can inject failure."""
-    completed = subprocess.run(
+    completed = kblib.run_cambium_subprocess(
         command, cwd=cwd, text=True, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, check=False)
     return completed.returncode, completed.stdout

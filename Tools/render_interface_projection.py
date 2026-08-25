@@ -77,13 +77,13 @@ sys.path.insert(0, TOOLS_DIR)
 import kblib  # noqa: E402
 
 TOOL = "render_interface_projection"
-TOOL_VERSION = "1.0.0"
+TOOL_VERSION = "1.1.0"
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 ARTIFACT_KIND = "agent-interface-projection"
 DEFAULT_CONTRACT = "Tools/compiled/cli-contract.yaml"
 UPSTREAM_ARTIFACT = "cli-invocation-contract"
-UPSTREAM_SCHEMA_VERSION = 2
+UPSTREAM_SCHEMA_VERSION = 3
 
 # The transports the `mcp` form declares. Deliberately two, and
 # deliberately not four.
@@ -260,6 +260,10 @@ FIELD_SOURCES = {
         "Tools/compiled/cli-contract.yaml: "
         "tools[].agent_interface.path_arguments[].access for the matching "
         "argument",
+    "tools[].inputSchema.properties.*.%s.consumption" % PATH_EXTENSION_KEY:
+        "Tools/compiled/cli-contract.yaml: "
+        "tools[].agent_interface.path_arguments[].consumption for the "
+        "matching argument",
     "tools[].inputSchema.properties.*.%s.constraint" % PATH_EXTENSION_KEY:
         "Tools/compiled/cli-contract.yaml: "
         "tools[].agent_interface.path_arguments[].constraint for the "
@@ -276,6 +280,26 @@ FIELD_SOURCES = {
         "Tools/compiled/cli-contract.yaml: "
         "tools[].agent_interface.path_arguments[].suffixes for the matching "
         "argument; the empty list is the no-suffix-constraint case",
+    "tools[].inputSchema.properties.*.%s.active_when_any[]" %
+        PATH_EXTENSION_KEY:
+        "Tools/compiled/cli-contract.yaml: "
+        "tools[].agent_interface.path_arguments[].active_when_any for the "
+        "matching argument; the empty list means no positive mode condition",
+    "tools[].inputSchema.properties.*.%s.active_when_any" %
+        PATH_EXTENSION_KEY:
+        "Tools/compiled/cli-contract.yaml: "
+        "tools[].agent_interface.path_arguments[].active_when_any for the "
+        "matching argument",
+    "tools[].inputSchema.properties.*.%s.inactive_when_any[]" %
+        PATH_EXTENSION_KEY:
+        "Tools/compiled/cli-contract.yaml: "
+        "tools[].agent_interface.path_arguments[].inactive_when_any for the "
+        "matching argument; the empty list means no excluding mode condition",
+    "tools[].inputSchema.properties.*.%s.inactive_when_any" %
+        PATH_EXTENSION_KEY:
+        "Tools/compiled/cli-contract.yaml: "
+        "tools[].agent_interface.path_arguments[].inactive_when_any for the "
+        "matching argument",
     "tools[].%s.argument" % WORKSPACE_EXTENSION_KEY:
         "Tools/compiled/cli-contract.yaml: "
         "tools[].agent_interface.workspace_argument",
@@ -376,8 +400,8 @@ def read_contract(path):
         path_names = set()
         for item in paths:
             if not isinstance(item, dict) or set(item) != {
-                    "argument", "access", "constraint", "value",
-                    "suffixes"}:
+                    "argument", "access", "consumption", "constraint", "value",
+                    "suffixes", "active_when_any", "inactive_when_any"}:
                 raise ProjectionError(
                     "%s: tool %r carries a malformed path capability" %
                     (path, record.get("tool")))
@@ -496,9 +520,13 @@ def property_schema(argument, path_capability=None):
     if path_capability is not None:
         schema[PATH_EXTENSION_KEY] = {
             "access": path_capability["access"],
+            "consumption": path_capability["consumption"],
             "constraint": path_capability["constraint"],
             "value": path_capability["value"],
             "suffixes": list(path_capability["suffixes"]),
+            "active_when_any": list(path_capability["active_when_any"]),
+            "inactive_when_any": list(
+                path_capability["inactive_when_any"]),
         }
     return schema
 
@@ -752,8 +780,7 @@ def main(argv=None):
         stale = 0
         for form_name, output, text, artifact in rendered:
             try:
-                with open(output, "r", encoding="utf-8") as handle:
-                    existing = handle.read()
+                existing = kblib.read_text(output)
             except OSError as exc:
                 print("%s --check: cannot read %s: %s" % (TOOL, output, exc))
                 stale += 1

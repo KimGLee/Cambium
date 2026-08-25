@@ -732,8 +732,7 @@ def _canonical_apply(args, delta, new_text, planned, rejected,
                     raise ValueError(
                         "routed-gap settlement binding changed under lock")
 
-                with open(ledger_path, encoding="utf-8") as handle:
-                    old_text = handle.read()
+                old_text = kblib.read_text(ledger_path)
                 archive_path = kblib.managed_repository_path(
                     root, archive_relative, ".cambium/receipts",
                     suffixes=(".yaml",), must_exist=False,
@@ -1019,11 +1018,9 @@ def _run(args):
                                                 reject_symlink=True)
         else:
             delta_file, ledger_file = args.delta, args.ledger
-        with open(delta_file, "rb") as handle:
-            delta_raw = handle.read()
+        delta_raw = kblib.read_bytes(delta_file)
         delta = _parse_delta_bytes(delta_raw)
-        with open(ledger_file, "rb") as handle:
-            ledger_raw = handle.read()
+        ledger_raw = kblib.read_bytes(ledger_file)
         ledger_text = ledger_raw.decode("utf-8")
         lines = ledger_text.splitlines(keepends=True)
     except (OSError, UnicodeError, ValueError, kblib.YamlSubsetError) as exc:

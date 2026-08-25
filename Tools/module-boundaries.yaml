@@ -241,7 +241,6 @@ modules:
       - MANUAL_ATTESTATION_TOOL
       - PROGRESS_PATH
       - QUEUE_PATH
-      - RUNTIME_AUTHORITY_REGISTRY
       - SHA256_RE
       - STANDARDS_ADOPTION_PLAN_PREFIX
       - TERMINAL_STATES
@@ -285,7 +284,6 @@ modules:
       - require_runtime_authority_current
       - required_queue_completion_errors
       - runtime_authority_context
-      - runtime_authority_registry
       - runtime_authority_lock_fields
       - runtime_authority_validation_kwargs
       - runtime_metadata_execution_contract
@@ -429,6 +427,7 @@ modules:
       - exit_code
       - extract_frontmatter
       - headings_of
+      - inherited_path_capability
       - iter_managed_md_files
       - iter_md_files
       - load_yaml_file
@@ -438,6 +437,7 @@ modules:
       - markdown_atx_heading
       - markdown_authority_lines
       - no_authoritative_write_guard
+      - open_path_capability_parent
       - parse_scalar
       - parse_vocabulary_artifact
       - parse_wiki_link
@@ -448,22 +448,28 @@ modules:
       - profile_slot_bindings
       - quota_share_within_limit
       - reachable_batch_states
+      - read_bytes
       - read_set_boundary_targets
       - read_set_document_type
-      - registered_repository_artifact_path
+      - read_text
       - receipt_append_mutex
       - receipt_append_observation
       - receipt_append_outcome
       - receipt_outcome_from
+      - registered_repository_artifact_path
       - render_boundary_projection_lines
       - repository_content_files
       - repository_file_snapshot
+      - repository_parent_tree_snapshot
       - repository_path
       - repository_snapshot_sha256
       - repository_target_snapshot
       - repository_tree_sha256
       - repository_tree_snapshot
       - resolve_profile_binding
+      - retained_tree_contains
+      - retained_tree_is_bound
+      - run_cambium_subprocess
       - runtime_receipt_identity
       - runtime_write_lock
       - sha256_bytes
@@ -546,6 +552,32 @@ modules:
   - module: migrate_standards_state
     path: Tools/migrate_standards_state.py
     public: []
+  - module: path_capability
+    path: Tools/path_capability.py
+    provisional: true
+    public:
+      - acknowledge
+      - ancestor_directory_capability
+      - cache_file
+      - cache_tree
+      - cached_file
+      - cached_tree
+      - effective_target
+      - inherited_capability
+      - logical_spelling
+      - materialize_ancestor_tree
+      - materialize_tree
+      - open_parent
+      - parent_tree_snapshot
+      - read_bytes
+      - read_stable_descriptor
+      - read_text
+      - record_replacement
+      - records
+      - register_tree_snapshot_factory
+      - subprocess_kwargs
+      - tree_contains
+      - tree_is_bound
   - module: profile_admission
     path: Tools/profile_admission.py
     provisional: true
@@ -670,6 +702,7 @@ modules:
       - QUEUE_PATH
       - RECEIPT_REFERENCE_FIELDS
       - REGISTER_AMENDMENT_TOOL_VERSION
+      - RUNTIME_AUTHORITY_REGISTRY
       - SHA256_RE
       - STANDARDS_ADOPTION_PLAN_PREFIX
       - STANDARDS_ADOPTION_TOOL
@@ -748,7 +781,6 @@ modules:
       - registered_gate_position
       - require_receipt
       - require_runtime_authority_current
-      - RUNTIME_AUTHORITY_REGISTRY
       - required_queue_completion_errors
       - resume_next_action
       - review_property_evidence_errors
@@ -1008,8 +1040,8 @@ modules:
       - profile_load_authorized_view_currency_errors
       - profile_load_errors
       - profile_load_evidence
-      - profile_view_snapshot_error
       - profile_view_read_scope_errors
+      - profile_view_snapshot_error
       - public_profile_load_evidence
       - selected_profile_manifest_errors
   - module: queue_runtime.property_state

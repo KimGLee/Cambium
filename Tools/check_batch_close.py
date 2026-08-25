@@ -371,7 +371,7 @@ def _run_receipting_command(command, cwd, label):
     """Run a deterministic checker and return its actual script receipts."""
     with tempfile.TemporaryDirectory(prefix="cambium-batch-close-") as temp:
         receipt_path = os.path.join(temp, "receipts.jsonl")
-        completed = subprocess.run(
+        completed = kblib.run_cambium_subprocess(
             list(command) + ["--receipts", receipt_path],
             cwd=cwd, text=True, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, check=False,

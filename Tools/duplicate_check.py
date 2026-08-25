@@ -133,7 +133,7 @@ def collect_paragraphs(vault: Path, excludes):
     """Collect all comparable paragraphs: [(file, para_text, shingle_set), ...]."""
     items = []
     for path in iter_markdown_files(vault, excludes):
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = kblib.read_text(path, errors="replace")
         for para in split_paragraphs(text):
             if len(para) < MIN_PARA_LEN or is_link_list(para):
                 continue
@@ -221,8 +221,11 @@ def _run(args):
     excludes = [c.strip("/") for c in excludes if c.strip("/")]
     scope = None
     if args.scope:
+        capability = kblib.inherited_path_capability(args.scope, "snapshot")
         scope_path = Path(args.scope)
-        scope = (scope_path if scope_path.is_absolute() else vault / scope_path).resolve()
+        scope = ((vault / scope_path) if capability is not None else
+                 (scope_path if scope_path.is_absolute() else
+                  vault / scope_path).resolve())
 
     items = collect_paragraphs(vault, excludes)
     pairs = find_duplicates(items)

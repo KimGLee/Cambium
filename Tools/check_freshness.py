@@ -198,6 +198,22 @@ def _utc_modified_on(mtime_ns):
 
 def _stable_external_file_snapshot(path):
     """Read one standalone defaults file without following its final link."""
+    capability = kblib.inherited_path_capability(path, "snapshot")
+    if capability is not None:
+        if not capability["exists"] or capability["kind"] != "file":
+            raise ValueError("standalone defaults must name a regular file")
+        data = kblib.read_bytes(path)
+        descriptor = os.fstat(capability["target_fd"])
+        return data, {
+            "dev": descriptor.st_dev,
+            "ino": descriptor.st_ino,
+            "mode": descriptor.st_mode,
+            "nlink": descriptor.st_nlink,
+            "size": descriptor.st_size,
+            "mtime_ns": descriptor.st_mtime_ns,
+            "ctime_ns": descriptor.st_ctime_ns,
+            "sha256": kblib.sha256_bytes(data),
+        }
     nofollow = getattr(os, "O_NOFOLLOW", None)
     if nofollow is None:
         raise OSError("standalone defaults snapshots require O_NOFOLLOW")
@@ -265,6 +281,25 @@ def _admit_scope(root, requested_scope):
     directory component with exact spelling and no symlink traversal without
     duplicating that primitive's descriptor walk here.
     """
+    capability = (kblib.inherited_path_capability(
+        requested_scope, "snapshot") if requested_scope is not None else None)
+    if capability is not None:
+        if not capability["exists"]:
+            raise ValueError("scope path does not exist")
+        descriptor = os.fstat(capability["target_fd"])
+        if capability["kind"] == "directory":
+            return requested_scope, {
+                "kind": "directory", "dev": descriptor.st_dev,
+                "ino": descriptor.st_ino,
+            }
+        if capability["kind"] == "file" and \
+                _is_markdown_path(requested_scope):
+            return requested_scope, {
+                "kind": "file", "dev": descriptor.st_dev,
+                "ino": descriptor.st_ino,
+            }
+        raise ValueError("scope must name a directory or one Markdown file")
+
     if requested_scope is None or requested_scope == ".":
         return ".", _directory_identity(root)
 
@@ -307,13 +342,28 @@ def _admit_scope(root, requested_scope):
 
 
 def _scope_argument(scope):
-    return None if scope == "." else scope
+    if scope == "." and kblib.inherited_path_capability(
+            scope, "snapshot") is None:
+        return None
+    return scope
 
 
 def _listed_markdown_paths(root, scope):
     root = os.path.realpath(os.path.abspath(root))
     scope_argument = _scope_argument(scope)
     admitted_scope, identity = _admit_scope(root, scope_argument)
+    capability = (kblib.inherited_path_capability(
+        scope_argument, "snapshot") if scope_argument else None)
+    if capability is not None:
+        if capability["kind"] == "file":
+            return [admitted_scope]
+        snapshot = kblib.repository_tree_snapshot(root, admitted_scope)
+        prefix_length = 0 if admitted_scope == "." else len(admitted_scope)
+        return sorted(path for path in snapshot.files
+                      if _is_markdown_path(path) and
+                      not any(component.startswith(".") for component in
+                              path[prefix_length:].lstrip("/").split(
+                                  "/")[:-1]))
     base = (root if admitted_scope == "." else
             kblib.repository_path(root, admitted_scope, must_exist=True,
                                    reject_symlink=True))

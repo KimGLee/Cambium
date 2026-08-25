@@ -46,8 +46,7 @@ END = kblib.BOUNDARY_PROJECTION_END
 
 
 def read_text(path):
-    with open(path, encoding="utf-8", errors="replace") as handle:
-        return handle.read()
+    return kblib.read_text(path, errors="replace")
 
 
 def scope_directories(admission, errors):
@@ -162,7 +161,11 @@ def main(argv=None):
     pages = []
     for scan_root in scan_roots:
         base = os.path.normpath(os.path.join(root, scan_root))
-        if not os.path.isdir(base) and not (
+        scope_capability = kblib.inherited_path_capability(
+            scan_root, "transaction")
+        scope_exists = (scope_capability is not None and
+                        scope_capability["exists"])
+        if not scope_exists and not os.path.isdir(base) and not (
                 os.path.isfile(base) and base.lower().endswith(".md")):
             print("render_boundary_projection: scan root does not exist: %s"
                   % scan_root)

@@ -950,7 +950,7 @@ def main(argv=None):
             args.root, args.authority, args.capabilities)
         if args.check:
             try:
-                actual = Path(output).read_bytes()
+                actual = kblib.read_bytes(output)
             except OSError:
                 actual = b""
             if actual != contract.canonical_bytes:

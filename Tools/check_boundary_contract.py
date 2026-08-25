@@ -140,8 +140,7 @@ END = kblib.BOUNDARY_PROJECTION_END
 
 
 def read_text(path):
-    with open(path, encoding="utf-8", errors="replace") as handle:
-        return handle.read()
+    return kblib.read_text(path, errors="replace")
 
 
 class Findings:

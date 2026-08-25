@@ -149,11 +149,11 @@ def validate_path_sets(allowed, excluded):
 
 
 def load_config(path):
-    if not os.path.isfile(path) or os.path.islink(path):
+    capability = kblib.inherited_path_capability(path, "snapshot")
+    if capability is None and (not os.path.isfile(path) or os.path.islink(path)):
         raise ValueError("config must be a real readable file")
     try:
-        with open(path, "rb") as handle:
-            raw = handle.read()
+        raw = kblib.read_bytes(path)
         text = raw.decode("utf-8")
         data = kblib.parse_yaml_subset(text)
     except (OSError, UnicodeError, ValueError) as exc:

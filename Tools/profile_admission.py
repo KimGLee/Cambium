@@ -164,7 +164,15 @@ def admit_profile(root, override=None, *,
         profile_dir = os.fspath(override)
         if not os.path.isabs(profile_dir):
             profile_dir = os.path.join(root, profile_dir)
-        if not os.path.isdir(profile_dir):
+        relative = os.path.relpath(profile_dir, root).replace(os.sep, "/")
+        if (kblib.inherited_path_capability(override, "snapshot") is not None
+                or kblib.retained_tree_is_bound(relative)):
+            try:
+                kblib.repository_tree_snapshot(root, relative)
+            except (OSError, ValueError) as exc:
+                return None, ["--profile cannot bind its admitted directory: "
+                              "%s" % exc]
+        elif not os.path.isdir(profile_dir):
             return None, [
                 "--profile does not name an existing directory: %s" %
                 override

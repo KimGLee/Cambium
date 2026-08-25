@@ -143,8 +143,7 @@ LEGACY_STATUS_FIELD = "status"
 
 
 def read_text(path):
-    with open(path, encoding="utf-8", errors="replace") as handle:
-        return handle.read()
+    return kblib.read_text(path, errors="replace")
 
 
 class Findings:

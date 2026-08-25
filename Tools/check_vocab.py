@@ -110,8 +110,7 @@ def load_vocab(path, text=None):
     is that requirement as a deterministic predicate.
     """
     if text is None:
-        with open(path, encoding="utf-8") as handle:
-            text = handle.read()
+        text = kblib.read_text(path)
     data = kblib.parse_vocabulary_artifact(text)
     fields = data.get("fields") or {}
     vocab = {}
@@ -180,7 +179,10 @@ def _run(args, produced, authorized_admission):
 
     vocab_path = args.vocab or os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "vocab.yaml")
-    if not os.path.exists(vocab_path):
+    vocab_capability = kblib.inherited_path_capability(
+        vocab_path, "snapshot")
+    if ((vocab_capability is not None and not vocab_capability["exists"]) or
+            (vocab_capability is None and not os.path.exists(vocab_path))):
         # The vocabulary is a composed artifact, not a shipped file: it exists
         # only once a profile has been selected. Report that as an
         # unconfigured vault, not as a crash.
@@ -198,9 +200,12 @@ def _run(args, produced, authorized_admission):
     admission = authorized_admission
     try:
         canonical_vocab = (
-            os.path.commonpath((root, os.path.realpath(vocab_path))) == root and
-            os.path.relpath(os.path.realpath(vocab_path), root).replace(
-                os.sep, "/") == compose_vocab.DEFAULT_OUTPUT)
+            (vocab_capability is not None and
+             vocab_capability["spelling"] == compose_vocab.DEFAULT_OUTPUT) or
+            (vocab_capability is None and
+             os.path.commonpath((root, os.path.realpath(vocab_path))) == root and
+             os.path.relpath(os.path.realpath(vocab_path), root).replace(
+                 os.sep, "/") == compose_vocab.DEFAULT_OUTPUT))
     except ValueError:
         canonical_vocab = False
     if canonical_vocab:
@@ -277,7 +282,7 @@ def _run(args, produced, authorized_admission):
     for full, rel in scan_files:
         rel_disp = rel.replace(os.sep, "/")
         counts["files"] += 1
-        text = open(full, encoding="utf-8", errors="replace").read()
+        text = kblib.read_text(full, errors="replace")
         fm_text = kblib.extract_frontmatter(text)
         if fm_text is None:
             counts["no_frontmatter"] += 1

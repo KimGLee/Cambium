@@ -137,17 +137,31 @@ workspace binding. The MCP server runs tools as subprocesses and passes their
 verdicts through. It pins an open canonical workspace directory object through
 the subprocess boundary and requires every projected operation and every
 effective filesystem path, including an omitted CLI default, to stay inside
-its declared capability envelope; this is capability containment, not a
-decision about whether an operation is allowed or whether evidence is
-sufficient. CLI-only build/install operations never enter the MCP table, and
-their registered external effects remain explicit.
+its declared capability envelope. The closed policy also assigns each typed
+path one consumption mode: `snapshot`, `append`, `replace`, or `transaction`.
 
-This completed interface boundary rejects unsafe caller paths and static link
-aliases inside the adopter's local trust domain. It does not claim adversarial
-concurrent namespace exclusion for every child path: closing that wider
-boundary requires either protected workspace execution or a tool-wide stable
-path-object API, and belongs with the isolated workspace adapter rather than a
-transport-only pathname check.
+For an MCP call, the transport retains the admitted target and/or stable parent
+descriptor, passes a content-bound capability manifest plus those descriptors
+to the child, and requires every active typed path to acknowledge actual
+descriptor-backed consumption before a clean or held result can return. Shared
+I/O primitives preserve the object through reads, may-create publication,
+append, atomic replacement, transaction self-read, and nested Cambium
+subprocesses. Two active arguments cannot alias one path under the same
+consumption mode, because one use cannot prove which semantic input was
+consumed. A declared operation mode may activate or deactivate an otherwise
+effective output default; that predicate is part of the compiled interface
+rather than an implementation guess. A host platform without no-follow
+directory descriptors and descriptor-relative subprocess execution fails
+initialization.
+
+This is capability containment for the public call surface, not a decision
+about whether an operation is allowed or whether evidence is sufficient.
+CLI-only build/install operations never enter the MCP table, and their
+registered external effects remain explicit. Protected whole-workspace
+execution remains a separate adapter concern: fixed or derived internal paths,
+repository code and evidence rewritten together, and effects outside the
+filesystem capability boundary are not promoted into guarantees of this
+transport.
 
 This delivery changed the Plugin plan: Cambium no longer needs an OpenAI Plugin
 to obtain a callable agent interface. A Plugin would add packaging and

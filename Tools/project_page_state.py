@@ -665,6 +665,10 @@ def _report_plan(plan, apply):
 
 def _open_parent(root, relative):
     """Open a canonical no-follow parent and return ``(fd, basename)``."""
+    capability, parent_fd, basename = \
+        kblib.open_path_capability_parent(relative, "transaction")
+    if capability is not None:
+        return parent_fd, basename
     nofollow = getattr(os, "O_NOFOLLOW", None)
     directory_only = getattr(os, "O_DIRECTORY", None)
     if nofollow is None or directory_only is None:
