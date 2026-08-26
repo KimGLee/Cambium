@@ -701,6 +701,50 @@ class StableConsumptionTests(ArgvTests):
 
         self.assertEqual(os.read(read_fd, 1024), b"first[0]\n")
 
+    def test_advanced_targets_are_isolated_by_exact_capability(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            target = parent / "same.jsonl"
+            spelling = path_capability.logical_spelling(target)
+            append = {
+                "capability_id": "append[0]", "spelling": spelling,
+                "consumption": "append",
+            }
+            transaction = {
+                "capability_id": "transaction[0]", "spelling": spelling,
+                "consumption": "transaction",
+            }
+            parent_fd = os.open(parent, os.O_RDONLY)
+            writer_fd = os.open(target, os.O_WRONLY | os.O_CREAT, 0o600)
+            advanced = {}
+            try:
+                written = os.fstat(writer_fd)
+                with mock.patch.object(
+                        path_capability, "_ADVANCED_TARGETS", advanced):
+                    path_capability.record_append_target(
+                        append, parent_fd, target.name, target, written)
+                    os.close(writer_fd)
+                    writer_fd = None
+                    replacement = parent / "replacement"
+                    replacement.write_text("replacement", encoding="utf-8")
+                    os.replace(replacement, target)
+                    path_capability.record_replacement(
+                        transaction, parent_fd, target.name, target)
+
+                    append_target = path_capability.effective_target(append)
+                    transaction_target = path_capability.effective_target(
+                        transaction)
+                    self.assertEqual(
+                        append_target[1:], (written.st_dev, written.st_ino))
+                    self.assertNotEqual(
+                        append_target[1:], transaction_target[1:])
+            finally:
+                if writer_fd is not None:
+                    os.close(writer_fd)
+                for row in advanced.values():
+                    os.close(row["fd"])
+                os.close(parent_fd)
+
     @staticmethod
     def call(server, scope):
         return request(server, "tools/call", {
@@ -960,6 +1004,259 @@ class StableConsumptionTests(ArgvTests):
         self.assertIn('"receipt_id": "r1"',
                       (displaced / "result.jsonl").read_text())
         self.assertFalse((outside / "result.jsonl").exists())
+
+    def test_first_append_to_missing_path_proves_exact_publication(self):
+        source = self.reader_source(
+            "first={'receipt_id':'r1'}\n"
+            "second={'receipt_id':'r2'}\n"
+            "o1,e1,_=kblib.write_receipts_observed(a.scope,[first])\n"
+            "o2,e2,_=kblib.write_receipts_observed(a.scope,[second])\n"
+            "print(json.dumps({'outcomes':[o1,o2],'errors':[str(e) "
+            "if e else None for e in (e1,e2)]}))\n")
+        distribution, server = self.distribution_for(
+            source, "write", "append")
+        receipts = distribution.workspace / "receipts"
+        receipts.mkdir()
+
+        response = self.call(server, "receipts/first.jsonl")
+
+        self.assertIn("result", response, response)
+        payload = response["result"]["structuredContent"]["stdout_json"]
+        self.assertEqual(
+            payload,
+            {"outcomes": ["present", "present"],
+             "errors": [None, None]},
+        )
+        self.assertEqual(
+            [{"receipt_id": "r1"}, {"receipt_id": "r2"}],
+            [json.loads(line) for line in
+             (receipts / "first.jsonl").read_text(
+                 encoding="utf-8").splitlines()],
+        )
+
+    def test_created_append_is_still_present_after_parent_fsync_error(self):
+        source = self.reader_source(
+            "import os,stat\n"
+            "real_fsync=kblib.os.fsync\n"
+            "def fail_parent(fd):\n"
+            " if stat.S_ISDIR(os.fstat(fd).st_mode):\n"
+            "  raise OSError(5,'parent fsync failed')\n"
+            " return real_fsync(fd)\n"
+            "kblib.os.fsync=fail_parent\n"
+            "receipt={'receipt_id':'r1'}\n"
+            "outcome,error,_=kblib.write_receipts_observed("
+            "a.scope,[receipt])\n"
+            "print(json.dumps({'outcome':outcome,'error':str(error) "
+            "if error else None}))\n")
+        distribution, server = self.distribution_for(
+            source, "write", "append")
+        receipts = distribution.workspace / "receipts"
+        receipts.mkdir()
+
+        response = self.call(server, "receipts/uncertain-name.jsonl")
+
+        self.assertIn("result", response, response)
+        payload = response["result"]["structuredContent"]["stdout_json"]
+        self.assertEqual(payload["outcome"], "present")
+        self.assertIn("parent fsync failed", payload["error"])
+        self.assertEqual(
+            [{"receipt_id": "r1"}],
+            [json.loads(line) for line in
+             (receipts / "uncertain-name.jsonl").read_text(
+                 encoding="utf-8").splitlines()],
+        )
+
+    def test_partial_first_append_is_uncertain_not_absent(self):
+        source = self.reader_source(
+            "import os,stat\n"
+            "real_write=kblib.os.write\n"
+            "def short_regular(fd,data):\n"
+            " if stat.S_ISREG(os.fstat(fd).st_mode):\n"
+            "  part=data[:max(1,len(data)//2)]\n"
+            "  return real_write(fd,part)\n"
+            " return real_write(fd,data)\n"
+            "kblib.os.write=short_regular\n"
+            "receipt={'receipt_id':'r1'}\n"
+            "outcome,error,_=kblib.write_receipts_observed("
+            "a.scope,[receipt])\n"
+            "print(json.dumps({'outcome':outcome,'error':str(error) "
+            "if error else None}))\n")
+        distribution, server = self.distribution_for(
+            source, "write", "append")
+        receipts = distribution.workspace / "receipts"
+        receipts.mkdir()
+
+        response = self.call(server, "receipts/partial.jsonl")
+
+        self.assertIn("result", response, response)
+        payload = response["result"]["structuredContent"]["stdout_json"]
+        self.assertEqual(payload["outcome"], "uncertain")
+        self.assertIn("receipt append was partial", payload["error"])
+        self.assertGreater((receipts / "partial.jsonl").stat().st_size, 0)
+
+    def test_created_append_displaced_before_observation_is_uncertain(self):
+        source = self.reader_source(
+            "import os,stat\n"
+            "real_fsync=kblib.os.fsync\n"
+            "fired={'value':False}\n"
+            "def displace_on_parent_fsync(fd):\n"
+            " if stat.S_ISDIR(os.fstat(fd).st_mode) and not fired['value']:\n"
+            "  fired['value']=True\n"
+            "  os.replace(a.scope,a.scope+'.displaced')\n"
+            "  with open(a.scope,'w',encoding='utf-8') as foreign:\n"
+            "   foreign.write('{\\\"receipt_id\\\":\\\"foreign\\\"}\\n')\n"
+            " return real_fsync(fd)\n"
+            "kblib.os.fsync=displace_on_parent_fsync\n"
+            "receipt={'receipt_id':'r1'}\n"
+            "outcome,error,_=kblib.write_receipts_observed("
+            "a.scope,[receipt])\n"
+            "print(json.dumps({'outcome':outcome,'error':str(error) "
+            "if error else None}))\n")
+        distribution, server = self.distribution_for(
+            source, "write", "append")
+        receipts = distribution.workspace / "receipts"
+        receipts.mkdir()
+
+        response = self.call(server, "receipts/displaced.jsonl")
+
+        self.assertIn("result", response, response)
+        payload = response["result"]["structuredContent"]["stdout_json"]
+        self.assertEqual(payload["outcome"], "uncertain")
+        self.assertIn("could not be proven durable", payload["error"])
+        self.assertEqual(
+            {"receipt_id": "r1"},
+            json.loads((receipts / "displaced.jsonl.displaced").read_text(
+                encoding="utf-8")),
+        )
+
+    def test_existing_append_displaced_before_observation_is_uncertain(self):
+        source = self.reader_source(
+            "import os,stat\n"
+            "real_fsync=kblib.os.fsync\n"
+            "fired={'value':False}\n"
+            "def displace_on_parent_fsync(fd):\n"
+            " if stat.S_ISDIR(os.fstat(fd).st_mode) and not fired['value']:\n"
+            "  fired['value']=True\n"
+            "  os.replace(a.scope,a.scope+'.displaced')\n"
+            "  with open(a.scope,'w',encoding='utf-8') as foreign:\n"
+            "   foreign.write('{\\\"receipt_id\\\":\\\"foreign\\\"}\\n')\n"
+            " return real_fsync(fd)\n"
+            "kblib.os.fsync=displace_on_parent_fsync\n"
+            "receipt={'receipt_id':'r1'}\n"
+            "outcome,error,_=kblib.write_receipts_observed("
+            "a.scope,[receipt])\n"
+            "print(json.dumps({'outcome':outcome,'error':str(error) "
+            "if error else None}))\n")
+        distribution, server = self.distribution_for(
+            source, "write", "append")
+        receipts = distribution.workspace / "receipts"
+        receipts.mkdir()
+        target = receipts / "existing.jsonl"
+        target.write_text(
+            json.dumps({"receipt_id": "before"}) + "\n", encoding="utf-8")
+
+        response = self.call(server, "receipts/existing.jsonl")
+
+        self.assertIn("result", response, response)
+        payload = response["result"]["structuredContent"]["stdout_json"]
+        self.assertEqual(payload["outcome"], "uncertain")
+        self.assertIn("could not be proven durable", payload["error"])
+        self.assertEqual(
+            [{"receipt_id": "before"}, {"receipt_id": "r1"}],
+            [json.loads(line) for line in
+             (receipts / "existing.jsonl.displaced").read_text(
+                 encoding="utf-8").splitlines()],
+        )
+
+    def test_created_append_hard_linked_before_observation_is_uncertain(self):
+        source = self.reader_source(
+            "import os,stat\n"
+            "real_fsync=kblib.os.fsync\n"
+            "fired={'value':False}\n"
+            "def link_on_parent_fsync(fd):\n"
+            " if stat.S_ISDIR(os.fstat(fd).st_mode) and not fired['value']:\n"
+            "  fired['value']=True\n"
+            "  os.link(a.scope,a.scope+'.alias')\n"
+            " return real_fsync(fd)\n"
+            "kblib.os.fsync=link_on_parent_fsync\n"
+            "receipt={'receipt_id':'r1'}\n"
+            "outcome,error,_=kblib.write_receipts_observed("
+            "a.scope,[receipt])\n"
+            "print(json.dumps({'outcome':outcome,'error':str(error) "
+            "if error else None}))\n")
+        distribution, server = self.distribution_for(
+            source, "write", "append")
+        receipts = distribution.workspace / "receipts"
+        receipts.mkdir()
+
+        response = self.call(server, "receipts/linked.jsonl")
+
+        self.assertIn("result", response, response)
+        payload = response["result"]["structuredContent"]["stdout_json"]
+        self.assertEqual(payload["outcome"], "uncertain")
+        self.assertIn("could not be proven durable", payload["error"])
+        self.assertEqual((receipts / "linked.jsonl").stat().st_nlink, 2)
+
+    def test_nested_child_receives_advanced_append_capability(self):
+        parent = self.reader_source(
+            "import os,subprocess,sys\n"
+            "first={'receipt_id':'r1'}\n"
+            "o1,e1,_=kblib.write_receipts_observed(a.scope,[first])\n"
+            "child=os.path.join(os.path.dirname(__file__),'child_tool.py')\n"
+            "c=kblib.run_cambium_subprocess([sys.executable,child,a.scope],"
+            "text=True,stdout=subprocess.PIPE,check=True,"
+            "env={'CUSTOM_SENTINEL':'kept',"
+            "'CAMBIUM_PATH_CAPABILITIES':'forged'})\n"
+            "print(json.dumps({'parent_outcome':o1,'parent_error':str(e1) "
+            "if e1 else None,'child':json.loads(c.stdout)}))\n")
+        child = (
+            "import json,sys\n"
+            "import kblib\n"
+            "second={'receipt_id':'r2'}\n"
+            "outcome,error,_=kblib.write_receipts_observed("
+            "sys.argv[1],[second])\n"
+            "print(json.dumps({'outcome':outcome,'error':str(error) "
+            "if error else None,'custom':__import__('os').environ.get("
+            "'CUSTOM_SENTINEL')}))\n"
+        )
+        sources = dict(FAKE_TOOLS)
+        sources["echo_tool"] = parent
+        sources["child_tool"] = child
+        sources["kblib"] = (TOOLS / "kblib.py").read_text(encoding="utf-8")
+        sources["path_capability"] = (
+            TOOLS / "path_capability.py").read_text(encoding="utf-8")
+        projection = fake_projection()
+        echo = next(tool for tool in projection["tools"]
+                    if tool["name"] == "echo_tool")
+        echo["inputSchema"]["properties"]["scope"][
+            mcp_server.PATH_EXTENSION_KEY] = {
+                "access": "write", "consumption": "append",
+                "constraint": "contained", "value": None,
+                "suffixes": [], "active_when_any": [],
+                "inactive_when_any": [],
+            }
+        distribution = SyntheticDistribution(
+            projection=projection, tool_sources=sources)
+        self.addCleanup(distribution.cleanup)
+        server = started(distribution)
+        receipts = distribution.workspace / "receipts"
+        receipts.mkdir()
+
+        response = self.call(server, "receipts/nested.jsonl")
+
+        self.assertIn("result", response, response)
+        payload = response["result"]["structuredContent"]["stdout_json"]
+        self.assertEqual(payload, {
+            "parent_outcome": "present", "parent_error": None,
+            "child": {"outcome": "present", "error": None,
+                      "custom": "kept"},
+        })
+        self.assertEqual(
+            [{"receipt_id": "r1"}, {"receipt_id": "r2"}],
+            [json.loads(line) for line in
+             (receipts / "nested.jsonl").read_text(
+                 encoding="utf-8").splitlines()],
+        )
 
     def test_transaction_reads_before_and_replaces_name_without_following_swap(self):
         source = self.reader_source(

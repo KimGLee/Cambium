@@ -30,7 +30,7 @@ _MANIFEST_CACHE = None
 _TREE_BYTES = {}
 _TREE_METADATA = {}
 _TREE_SNAPSHOTS = {}
-_REPLACEMENTS = {}
+_ADVANCED_TARGETS = {}
 _ACKNOWLEDGED = set()
 _TREE_SNAPSHOT_FACTORY = None
 
@@ -205,9 +205,22 @@ def subprocess_kwargs():
     if not inherited:
         return {}
     descriptors = set()
+    forwarded = []
     for row in inherited:
+        forwarded_row = dict(row)
+        advanced = _ADVANCED_TARGETS.get(row["capability_id"])
+        if advanced is not None:
+            forwarded_row.update({
+                "exists": True,
+                "kind": "file",
+                "target_fd": advanced["fd"],
+                "target_dev": advanced["dev"],
+                "target_ino": advanced["ino"],
+                "missing_components": [],
+            })
+        forwarded.append(forwarded_row)
         for field in ("target_fd", "parent_fd"):
-            descriptor = row.get(field)
+            descriptor = forwarded_row.get(field)
             if descriptor is not None:
                 descriptors.add(descriptor)
     raw_ack = os.environ.get(PATH_CAPABILITIES_ACK_ENV)
@@ -218,7 +231,19 @@ def subprocess_kwargs():
         descriptors.add(int(raw_ack))
     except (TypeError, ValueError):
         raise ValueError("path capability acknowledgement fd is invalid")
-    return {"pass_fds": tuple(sorted(descriptors))}
+    document = json.loads(os.environ[PATH_CAPABILITIES_ENV])
+    document["capabilities"] = forwarded
+    environment = {
+        PATH_CAPABILITIES_ENV: json.dumps(
+            document, sort_keys=True, separators=(",", ":")),
+        PATH_CAPABILITIES_ACK_ENV: os.environ[PATH_CAPABILITIES_ACK_ENV],
+    }
+    if WORKSPACE_ENV in os.environ:
+        environment[WORKSPACE_ENV] = os.environ[WORKSPACE_ENV]
+    return {
+        "pass_fds": tuple(sorted(descriptors)),
+        "env_overrides": environment,
+    }
 
 
 def _stat_identity(descriptor):
@@ -261,8 +286,8 @@ def read_stable_descriptor(descriptor, expected_dev, expected_ino,
 
 
 def effective_target(capability):
-    """Return the currently authoritative descriptor for a transaction."""
-    replacement = _REPLACEMENTS.get(capability["spelling"])
+    """Return the descriptor advanced by this exact capability, if any."""
+    replacement = _ADVANCED_TARGETS.get(capability["capability_id"])
     if replacement is not None:
         return replacement["fd"], replacement["dev"], replacement["ino"]
     return (capability.get("target_fd"), capability.get("target_dev"),
@@ -281,12 +306,85 @@ def record_replacement(capability, parent_fd, basename, published_path):
     if not stat.S_ISREG(descriptor.st_mode) or descriptor.st_nlink != 1:
         os.close(fd)
         raise ValueError("published transaction target is not a unique file")
-    old = _REPLACEMENTS.get(capability["spelling"])
+    key = capability["capability_id"]
+    old = _ADVANCED_TARGETS.get(key)
     if old is not None:
         os.close(old["fd"])
-    _REPLACEMENTS[capability["spelling"]] = {
+    _ADVANCED_TARGETS[key] = {
         "fd": fd, "dev": descriptor.st_dev, "ino": descriptor.st_ino,
     }
+
+
+def record_append_target(capability, parent_fd, basename, published_path,
+                         written_descriptor):
+    """Bind a formerly missing append capability to its created inode.
+
+    Admission retains the parent when an append target does not yet exist.
+    Once ``O_CREAT`` has selected a regular file, later durability inspection
+    in the same process must read that exact object rather than treating the
+    frozen ``exists=false`` fact as permanent.  The read descriptor is opened
+    relative to the retained parent and matched to the already-open writer
+    before any receipt bytes are published.
+    """
+    if capability.get("consumption") != "append" or \
+            capability.get("spelling") != logical_spelling(published_path):
+        return
+    flags = (os.O_RDWR | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0) |
+             getattr(os, "O_CLOEXEC", 0))
+    fd = os.open(basename, flags, dir_fd=parent_fd)
+    descriptor = os.fstat(fd)
+    expected = (written_descriptor.st_dev, written_descriptor.st_ino)
+    if (not stat.S_ISREG(descriptor.st_mode) or descriptor.st_nlink != 1 or
+            (descriptor.st_dev, descriptor.st_ino) != expected):
+        os.close(fd)
+        raise OSError(errno.EAGAIN,
+                      "append target changed before publication",
+                      os.fspath(published_path))
+    key = capability["capability_id"]
+    old = _ADVANCED_TARGETS.get(key)
+    if old is not None and (old["dev"], old["ino"]) != expected:
+        os.close(fd)
+        raise OSError(errno.EAGAIN,
+                      "append target changed after first publication",
+                      os.fspath(published_path))
+    if old is not None:
+        os.close(old["fd"])
+    _ADVANCED_TARGETS[key] = {
+        "fd": fd, "dev": descriptor.st_dev, "ino": descriptor.st_ino,
+    }
+
+
+def verify_named_target(capability, published_path):
+    """Prove an effective file is still the unique admitted final name."""
+    target_fd, target_dev, target_ino = effective_target(capability)
+    if target_fd is None:
+        raise FileNotFoundError(errno.ENOENT,
+                                "typed path does not exist",
+                                os.fspath(published_path))
+    target = os.fstat(target_fd)
+    if (not stat.S_ISREG(target.st_mode) or target.st_nlink != 1 or
+            (target.st_dev, target.st_ino) != (target_dev, target_ino)):
+        raise OSError(errno.EAGAIN,
+                      "retained target is not a unique regular file",
+                      os.fspath(published_path))
+    parent_fd = capability.get("parent_fd")
+    if parent_fd is None:
+        raise OSError(errno.ENOTSUP,
+                      "typed path has no retained parent capability",
+                      os.fspath(published_path))
+    parent = os.fstat(parent_fd)
+    if (parent.st_dev, parent.st_ino) != (
+            capability.get("parent_dev"), capability.get("parent_ino")):
+        raise OSError(errno.EAGAIN,
+                      "retained parent capability identity changed",
+                      os.fspath(published_path))
+    named = os.stat(capability["basename"], dir_fd=parent_fd,
+                    follow_symlinks=False)
+    if (not stat.S_ISREG(named.st_mode) or named.st_nlink != 1 or
+            (named.st_dev, named.st_ino) != (target_dev, target_ino)):
+        raise OSError(errno.EAGAIN,
+                      "typed path no longer names the retained target",
+                      os.fspath(published_path))
 
 
 def cached_file(path):

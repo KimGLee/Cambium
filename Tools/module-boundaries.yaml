@@ -572,12 +572,14 @@ modules:
       - read_bytes
       - read_stable_descriptor
       - read_text
+      - record_append_target
       - record_replacement
       - records
       - register_tree_snapshot_factory
       - subprocess_kwargs
       - tree_contains
       - tree_is_bound
+      - verify_named_target
   - module: profile_admission
     path: Tools/profile_admission.py
     provisional: true
@@ -1229,6 +1231,7 @@ modules:
       - snapshot
   - module: tool_availability
     path: Tools/tool_availability.py
+    provisional: true
     public:
       - AvailabilityError
       - PROJECTION_TARGETS
